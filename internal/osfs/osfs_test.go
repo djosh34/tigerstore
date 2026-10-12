@@ -10,7 +10,7 @@ import (
 )
 
 func TestWALOnDisk(t *testing.T) {
-	dir, err := osfs.New(t.TempDir() + "/wal")
+	dir, err := osfs.New(t.TempDir() + "/new/data/wal/")
 	if err != nil {
 		t.Fatal(err)
 	}

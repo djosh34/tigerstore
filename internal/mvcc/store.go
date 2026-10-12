@@ -88,13 +88,16 @@ func New() *Store {
 	return &Store{
 		keys: btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
 		rev:  1,
+		// etcd's compacted revision starts at -1, so a read at revision
+		// -1 inside a transaction is not "compacted".
+		compactRev: -1,
 	}
 }
 
 // Rev is the current revision.
 func (s *Store) Rev() int64 { return s.rev }
 
-// CompactRev is the revision of the last compaction, 0 if none.
+// CompactRev is the revision of the last compaction, -1 if none.
 func (s *Store) CompactRev() int64 { return s.compactRev }
 
 // ascend calls fn for every key in [key, end) in order until fn returns

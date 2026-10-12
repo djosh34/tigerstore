@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -299,5 +300,34 @@ func TestHashFollowsState(t *testing.T) {
 	put(t, b, "k", "2")
 	if a.Hash() == b.Hash() {
 		t.Fatal("different stores hash the same")
+	}
+}
+
+func TestEtcdRangeEdges(t *testing.T) {
+	s := New()
+	s.LeaseExists = func(id int64) bool { return id == 7 }
+	if _, err := s.Put(&pb.PutRequest{Key: []byte("a"), Value: []byte("1"), Lease: 7}); err != nil {
+		t.Fatal(err)
+	}
+	r := get(t, s, &pb.RangeRequest{Key: []byte("a"), KeysOnly: true})
+	if r.Kvs[0].Lease != 0 || r.Kvs[0].Value != nil || r.Kvs[0].ModRevision != 2 {
+		t.Fatalf("keys-only kv = %v, want no lease and no value", r.Kvs[0])
+	}
+	r = get(t, s, &pb.RangeRequest{Key: []byte("a"), KeysOnly: true, SortTarget: pb.RangeRequest_VALUE})
+	if r.Kvs[0].Lease != 7 {
+		t.Fatalf("keys-only kv sorted by value = %v, want the lease", r.Kvs[0])
+	}
+	r = get(t, s, &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte{0}, Limit: math.MaxInt64})
+	if len(r.Kvs) != 1 || r.Count != 1 || r.More {
+		t.Fatalf("limit MaxInt64 = %v", r)
+	}
+	txn, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a"), Revision: -1}}},
+	}})
+	if err != nil {
+		t.Fatalf("txn range at revision -1: %v", err)
+	}
+	if len(txn.Responses[0].GetResponseRange().Kvs) != 1 {
+		t.Fatalf("txn range at revision -1 = %v", txn)
 	}
 }
