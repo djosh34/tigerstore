@@ -50,8 +50,10 @@ type input struct {
 // the node closes it. The client then reconnects and resumes.
 const watchQueue = 4096
 
-// ErrWatchTooSlow closes a watch stream whose client does not keep up.
-var ErrWatchTooSlow = status.Error(codes.ResourceExhausted, "tigerstore: watch stream fell too far behind")
+// ErrWatchTooSlow closes a watch stream whose client does not keep up. It
+// is Unavailable because clientv3 resumes watches after that code and
+// gives up after most others.
+var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream fell too far behind")
 
 // WatchStream is one client watch stream on this node.
 type WatchStream struct {
@@ -74,7 +76,9 @@ func (ws *WatchStream) Send(ctx context.Context, r *pb.WatchRequest) error {
 	return ws.n.put(ctx, input{watchReq: r, stream: ws.id})
 }
 
-// Close ends the stream and its watchers.
+// Close ends the stream and its watchers. It waits for room in the
+// committer's inbox, so it can wait while the committer takes no new
+// inputs because the disk is behind.
 func (ws *WatchStream) Close() {
 	select {
 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:

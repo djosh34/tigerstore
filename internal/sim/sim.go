@@ -393,6 +393,9 @@ func (s *Sim) start(n *node) error {
 	w.SetSegmentBytes(256 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
+	// Progress notifications every 2 s instead of 10 minutes, so runs see
+	// them.
+	cfg.ProgressTicks = 20
 	c, err := core.New(cfg, rec)
 	if err != nil {
 		return fmt.Errorf("node %d cannot start: %w", n.id, err)
