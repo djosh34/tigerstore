@@ -85,6 +85,7 @@ type WAL struct {
 	crc     uint32
 	last    uint64
 	buf     []byte
+	dirty   bool
 	maxSize int64
 }
 
@@ -305,22 +306,36 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 	}
 }
 
-// Sync writes what Append buffered and makes it durable. After an error the
-// log is in an unknown state and the node must stop: a failed fsync is
-// never retried.
-func (w *WAL) Sync() error {
+// Flush writes what Append buffered without syncing it. The simulator
+// uses it to put a crash between the write and the fsync.
+func (w *WAL) Flush() error {
 	if len(w.buf) == 0 {
 		return nil
 	}
 	n, err := w.seg.Write(w.buf)
 	w.size += int64(n)
+	w.dirty = true
 	if err != nil {
 		return err
 	}
 	w.buf = w.buf[:0]
+	return nil
+}
+
+// Sync writes what Append buffered and makes everything written durable.
+// After an error the log is in an unknown state and the node must stop: a
+// failed fsync is never retried.
+func (w *WAL) Sync() error {
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if !w.dirty {
+		return nil
+	}
 	if err := w.seg.Sync(); err != nil {
 		return err
 	}
+	w.dirty = false
 	if w.size < w.maxSize {
 		return nil
 	}
