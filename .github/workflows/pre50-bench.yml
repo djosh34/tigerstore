@@ -1,0 +1,35 @@
+name: pre50 etcd baseline
+on:
+  push:
+    branches: [exp/pre-50-bench]
+    paths: ['experiments/pre50/**', '.github/workflows/pre50-bench.yml']
+permissions:
+  contents: read
+jobs:
+  put:
+    if: github.ref == 'refs/heads/exp/pre-50-bench'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [isolated, leader2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Build and measure
+        env:
+          LAYOUT: ${{ matrix.layout }}
+        run: bash experiments/pre50/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre50-${{ matrix.layout }}
+          path: experiments/pre50/out
+          retention-days: 90
+      - name: Clean build and data output
+        if: always()
+        run: rm -rf experiments/pre50/work
