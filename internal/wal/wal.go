@@ -115,6 +115,20 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 	slices.Sort(segs)
+	// Segment names must be consecutive: a gap is a lost segment, even
+	// when the newest segment is empty.
+	for i := 1; i < len(segs); i++ {
+		var prev, cur uint64
+		if _, err := fmt.Sscanf(segs[i-1], "%016x.wal", &prev); err != nil {
+			return nil, nil, fmt.Errorf("%w: segment name %s: %w", ErrCorrupt, segs[i-1], err)
+		}
+		if _, err := fmt.Sscanf(segs[i], "%016x.wal", &cur); err != nil {
+			return nil, nil, fmt.Errorf("%w: segment name %s: %w", ErrCorrupt, segs[i], err)
+		}
+		if cur != prev+1 {
+			return nil, nil, fmt.Errorf("%w: segment %s follows %s", ErrCorrupt, segs[i], segs[i-1])
+		}
+	}
 
 	w := &WAL{fs: fs, maxSize: SegmentBytes}
 	rec := &Recovered{}
@@ -207,8 +221,10 @@ func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
 			return int64(off), nil
 		}
 		body := data[off+8 : end]
-		if crc32.Update(w.crc, castagnoli, body) != sum {
-			if verifiesAfter(data, end, sum) {
+		if got := crc32.Update(w.crc, castagnoli, body); got != sum {
+			// The damage may be in the body or in the stored crc, so try
+			// the next record chained from either.
+			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
 				return int64(off), fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
 			}
 			return int64(off), nil

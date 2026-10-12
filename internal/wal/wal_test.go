@@ -186,15 +186,19 @@ func wantCorrupt(t *testing.T, d *simfs.Disk) {
 }
 
 func TestMissingSegmentIsCorrupt(t *testing.T) {
-	d := simfs.New()
-	names := segments(t, d, 3)
-	if err := d.Remove(names[1]); err != nil {
-		t.Fatal(err)
+	// With 3 batches the gap is before a segment with records; with 2 it
+	// is right before the empty newest segment that rotation left.
+	for _, n := range []uint64{2, 3} {
+		d := simfs.New()
+		names := segments(t, d, n)
+		if err := d.Remove(names[1]); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.SyncDir(); err != nil {
+			t.Fatal(err)
+		}
+		wantCorrupt(t, d)
 	}
-	if err := d.SyncDir(); err != nil {
-		t.Fatal(err)
-	}
-	wantCorrupt(t, d)
 }
 
 func TestDamagedNewestHeaderIsCorrupt(t *testing.T) {
@@ -231,21 +235,27 @@ func TestDamagedRecordBeforeValidOneIsCorrupt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rewrite(t, d, names[0], func(b []byte) []byte {
-		// The second record is the first hard state, right after the
-		// header and the first entry record of 9+17+5 bytes.
-		b[20+31+9+3] ^= 0x40
-		return b
-	})
-	wantCorrupt(t, d)
+	// The second record is the first hard state, right after the header
+	// and the first entry record of 9+17+5 bytes. Damage its body, its
+	// type and its stored crc in turn.
+	for _, at := range []int{20 + 31 + 9 + 3, 20 + 31 + 8, 20 + 31 + 5} {
+		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
+		wantCorrupt(t, d)
+		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
+	}
 }
 
 var errCrash2 = errors.New("crash in recovery")
 
-// failFrom fails every disk operation from the k-th on.
+// failFrom fails every disk operation from the k-th writing one on.
+// Reads are not counted, so k reaches recovery's truncate, sync, remove
+// and new-segment steps.
 func failFrom(d *simfs.Disk, k int) {
 	n := 0
-	d.Fault = func(simfs.Op, string) error {
+	d.Fault = func(op simfs.Op, _ string) error {
+		if op == simfs.OpRead || op == simfs.OpOpen {
+			return nil
+		}
 		n++
 		if n >= k {
 			return errCrash2
@@ -289,7 +299,7 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 				d.Crash(rng)
 				// Sometimes crash again in the middle of recovery.
 				for rng.IntN(2) == 0 {
-					failFrom(d, 1+rng.IntN(8))
+					failFrom(d, 1+rng.IntN(6))
 					if _, _, err := wal.Open(d); err != nil && !errors.Is(err, errCrash2) {
 						t.Fatalf("seed %d: open during crash: %v", seed, err)
 					}
