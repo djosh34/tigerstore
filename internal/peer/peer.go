@@ -269,11 +269,15 @@ func size(m *raftpb.Message) int64 {
 
 // isData reports whether a message goes on the data queue. Appends and
 // snapshots do, empty appends included, so that they stay in order with
-// each other. Everything else (heartbeats, votes, ReadIndex and their
-// responses) goes ahead of them, as etcd's separate append stream does.
+// each other, and so do proposals that a follower forwards to the leader,
+// which carry whole write batches. Everything else (heartbeats, votes,
+// ReadIndex and their responses) goes ahead of them.
 func isData(m *raftpb.Message) bool {
-	t := m.GetType()
-	return t == raftpb.MsgApp || t == raftpb.MsgSnap
+	switch m.GetType() {
+	case raftpb.MsgApp, raftpb.MsgSnap, raftpb.MsgProp:
+		return true
+	}
+	return false
 }
 
 func (s *sender) send(m *raftpb.Message) {
