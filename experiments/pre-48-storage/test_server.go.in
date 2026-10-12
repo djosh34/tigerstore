@@ -1,0 +1,108 @@
+// Throwaway external-API test server adapter. Never embed or inspect etcd.
+package testserver
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+	"time"
+
+	"go.etcd.io/etcd/client/pkg/v3/transport"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/kubernetes"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest"
+	storagetesting "k8s.io/apiserver/pkg/storage/testing"
+)
+
+// Config keeps the one server setting the upstream tests change.
+// The factory must honor this setting. It is not an etcd member RPC.
+type Config struct { WatchProgressNotifyInterval time.Duration }
+
+func NewTestConfig(t testing.TB) *Config {
+	t.Helper()
+	return &Config{}
+}
+
+// RunEtcd connects through normal etcd client APIs to a fresh external server.
+// STORAGE_TEST_FACTORY prints one comma-separated endpoint line on stdout.
+// It stays alive until SIGINT, owns a fresh data directory, and receives the
+// requested progress interval in STORAGE_TEST_PROGRESS_INTERVAL.
+// Static endpoint mode is useful for a single isolated setup. It deliberately
+// fails on reused state instead of rewriting revision expectations or skipping.
+func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
+	t.Helper()
+	start := time.Now()
+	endpoints := os.Getenv("STORAGE_TEST_ENDPOINTS")
+	if factory := os.Getenv("STORAGE_TEST_FACTORY"); factory != "" {
+		dir := t.TempDir()
+		interval := time.Duration(0)
+		if cfg != nil { interval = cfg.WatchProgressNotifyInterval }
+		log, err := os.Create(dir + "/server.log")
+		if err != nil { t.Fatal(err) }
+		cmd := exec.Command(factory)
+		cmd.Env = append(os.Environ(), "STORAGE_TEST_DATA_DIR="+dir+"/data", "STORAGE_TEST_PROGRESS_INTERVAL="+interval.String())
+		cmd.Stderr = log
+		stdout, err := cmd.StdoutPipe()
+		if err != nil { log.Close(); t.Fatal(err) }
+		if err := cmd.Start(); err != nil { log.Close(); t.Fatal(err) }
+		t.Cleanup(func() {
+			if err := cmd.Process.Signal(os.Interrupt); err != nil { t.Errorf("server interrupt: %v", err) }
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			select {
+			case err := <-done:
+				if err != nil { t.Errorf("server exit: %v", err) }
+			case <-time.After(5 * time.Second):
+				_ = cmd.Process.Kill()
+				<-done
+				t.Error("server did not stop within 5s")
+			}
+			if err := log.Close(); err != nil { t.Error(err) }
+			if t.Failed() {
+				b, err := os.ReadFile(dir + "/server.log")
+				if err == nil { t.Logf("external server log:\n%s", b) }
+			}
+		})
+		line := make(chan string, 1)
+		go func() {
+			r := bufio.NewReader(stdout)
+			s, _ := r.ReadString('\n')
+			line <- strings.TrimSpace(s)
+			_, _ = io.Copy(io.Discard, r)
+		}()
+		select {
+		case endpoints = <-line:
+		case <-time.After(10 * time.Second): t.Fatal("factory did not print endpoints within 10s")
+		}
+	}
+	if endpoints == "" { t.Fatal("set STORAGE_TEST_FACTORY or STORAGE_TEST_ENDPOINTS") }
+	tlsInfo := transport.TLSInfo{
+		TrustedCAFile: os.Getenv("STORAGE_TEST_CA"),
+		CertFile: os.Getenv("STORAGE_TEST_CERT"),
+		KeyFile: os.Getenv("STORAGE_TEST_KEY"),
+	}
+	tls, err := tlsInfo.ClientConfig()
+	if err != nil { t.Fatal(err) }
+	client, err := kubernetes.New(clientv3.Config{
+		Endpoints: strings.Split(endpoints, ","), TLS: tls, DialTimeout: 10*time.Second,
+		Logger: zaptest.NewLogger(t, zaptest.Level(zapcore.ErrorLevel)).Named("external-etcd-client"),
+	})
+	if err != nil { t.Fatal(err) }
+	t.Cleanup(func() { if err := client.Close(); err != nil { t.Error(err) } })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := client.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
+	if err != nil { t.Fatal(fmt.Errorf("external endpoint readiness: %w", err)) }
+	if resp.Header.Revision != 1 || resp.Count != 0 {
+		t.Fatalf("fresh server required: revision=%d count=%d; deleting keys does not reset history or compaction", resp.Header.Revision, resp.Count)
+	}
+	t.Logf("external endpoint=%s ready=%s", endpoints, time.Since(start))
+	@@RECORDERS@@
+	return client
+}

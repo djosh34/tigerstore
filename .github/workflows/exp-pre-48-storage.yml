@@ -1,0 +1,35 @@
+name: exp-pre-48-storage
+on:
+  push:
+    branches: [exp/pre-48-storage]
+    paths:
+      - 'experiments/pre-48-storage/**'
+      - '.github/workflows/exp-pre-48-storage.yml'
+permissions:
+  contents: read
+jobs:
+  storage:
+    name: storage-${{ matrix.version }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [v0.35.0, v0.36.0, v0.37.0]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run stock external etcd storage suites
+        run: experiments/pre-48-storage/run.sh '${{ matrix.version }}'
+      - name: Preserve inventories, changes and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: storage-${{ matrix.version }}-${{ github.run_attempt }}
+          path: experiments/pre-48-storage/.work/${{ matrix.version }}/evidence/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove build output even on failure
+        if: always()
+        run: |
+          root="$GITHUB_WORKSPACE/experiments/pre-48-storage/.work/${{ matrix.version }}"
+          rm -rf "$root/tmp" "$root/cache" "$root/tools" "$root/k8s.io"
