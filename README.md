@@ -4,6 +4,20 @@ Does a prefix-compressed arena B+tree justify its complexity at 10 million Kuber
 
 This is throwaway code for tigerstore #47, not a storage engine. It must never merge to main.
 
+## Result
+
+Keep the arena B+tree direction. It used 47.8 index bytes/key after random insertion, versus 84.0 for the buffered slice and 92.6 for google/btree. Including the common MVCC arena, those became 131.3, 167.5 and 176.1 bytes/key. It won point reads and writes in this experiment. The slice won warm million-key counts and historical namespace counts before churn.
+
+The slice's largest observed flush took 521 ms on the only application goroutine. Its first range after 32,768 updates spent 7.24 ms sorting the buffer. Charging both triggered flushes and the final drain gives 5,363 ns/overwrite and 3,558 ns/create, not the tens of nanoseconds seen when merely adding to the buffer.
+
+Median full-collection GC CPU was 0.10 ms for the arena, 88.49 ms for the slice and 547.63 ms for google/btree. Scannable heaps were 0.066, 240.0 and 362.8 MB. Corresponding median stop-the-world pauses were only 5.4, 12.5 and 22.4 microseconds. Do not mistake full-collection CPU or wall time for a pause. The slice allocated about 4,582 bytes per timed overwrite including merges and spent 359 ms of GC CPU across that phase. The arena allocated about 63 bytes per overwrite from version slab growth and ran no automatic GC during that phase.
+
+The random-load arena and bulk-load arena occupied 47.8 and 44.4 index bytes/key. This difference is measured, not a projected packing factor. The full-key page run used source commit `f33157e4fddff73de732fb9e374212decea26f03`. Its results are in [results/summary.md](results/summary.md), with raw JSON, machine details, process counters and validation output in the same directory. `summarize.py` verifies identical checksums across all four implementations and computes the table.
+
+[results-heads-only/summary.md](results-heads-only/summary.md) records an earlier complete run at `c8cdfb1`, before adding the full-key page measurement. Stock-tree million-key count medians differed between the two builds, 37.1 ms and 61.0 ms, without GC in those timed batches. The cause is unproven. The final google/btree run recorded one major fault; the other final runs recorded none. The shared host had small amounts of swap traffic. Do not treat exact speed ratios as stable runner measurements.
+
+Production gains remain a guess. These numbers support the index direction, not a complete-store capacity or throughput claim. Historical counts still walk versions; the arena is not faster for every operation. Keep a simple tree/map oracle and test reclamation, long keys and recovery separately before using a production implementation.
+
 ## Run
 
 ```sh
