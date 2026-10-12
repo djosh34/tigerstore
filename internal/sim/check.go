@@ -26,6 +26,8 @@ import (
 //     its previous values match the revision before;
 //   - revisions follow real time: a call never sees a revision older than
 //     one returned before it started, and a write gets a newer one;
+//   - every write is in the committed log at most once, an acknowledged
+//     write is in it, and a write that failed for certain is not;
 //   - every call that starts after the cluster healed succeeds.
 func (s *Sim) check(res *Result) error {
 	final, err := s.converged()
@@ -57,6 +59,9 @@ func (s *Sim) check(res *Result) error {
 		}
 	}
 	if err := checkRealTime(res.History); err != nil {
+		return err
+	}
+	if err := checkLog(res); err != nil {
 		return err
 	}
 	live := 0
@@ -183,6 +188,11 @@ func checkRecord(st *mvcc.Store, r *Record) error {
 		rev := resp.Header.Revision
 		if kv, err := at(st, req.Key, rev); err != nil || kv != nil {
 			return fmt.Errorf("key %q exists at revision %d after an acknowledged delete: %v %w", req.Key, rev, kv, err)
+		}
+		if resp.Deleted > 0 {
+			if kv, err := at(st, req.Key, rev-1); err != nil || kv == nil {
+				return fmt.Errorf("delete of %q reported a deletion, but the key did not exist at revision %d", req.Key, rev-1)
+			}
 		}
 		if resp.Deleted > 0 && req.PrevKv {
 			if len(resp.PrevKvs) != 1 {
@@ -331,6 +341,64 @@ func checkRealTime(h []*Record) error {
 				return fmt.Errorf("clients %d and %d both wrote at revision %d", other.Client, b.Client, rev)
 			}
 			seen[rev] = b
+		}
+	}
+	return nil
+}
+
+// putValues returns the values that a write request puts. Every value the
+// clients write is unique to one call.
+func putValues(op proto.Message) []string {
+	switch op := op.(type) {
+	case *pb.PutRequest:
+		return []string{string(op.Value)}
+	case *pb.TxnRequest:
+		var out []string
+		for _, o := range slices.Concat(op.Success, op.Failure) {
+			if p := o.GetRequestPut(); p != nil {
+				out = append(out, string(p.Value))
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// checkLog matches the committed log against the calls by their unique
+// values.
+func checkLog(res *Result) error {
+	calls := map[string]*Record{}
+	for _, r := range res.History {
+		for _, v := range putValues(r.req) {
+			calls[v] = r
+		}
+	}
+	committed := map[string]bool{}
+	for i, op := range res.Log {
+		for _, v := range putValues(op) {
+			if committed[v] {
+				return fmt.Errorf("the write of %q is in the log twice, again at write %d", v, i)
+			}
+			committed[v] = true
+			r, ok := calls[v]
+			if !ok {
+				return fmt.Errorf("write %d of the log puts %q, which no call wrote", i, v)
+			}
+			if r.Err != nil && !r.Ambiguous {
+				return fmt.Errorf("client %d's call at %d ms failed for certain with %w, but it is in the log",
+					r.Client, r.Call/Millisecond, r.Err)
+			}
+		}
+	}
+	for _, r := range res.History {
+		if r.Err != nil {
+			continue
+		}
+		for _, v := range putValues(r.req) {
+			if !committed[v] {
+				return fmt.Errorf("client %d's acknowledged call at %d ms putting %q is not in the log",
+					r.Client, r.Call/Millisecond, v)
+			}
 		}
 	}
 	return nil
