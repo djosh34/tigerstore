@@ -97,7 +97,7 @@ func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
 	t.Cleanup(func() { if err := client.Close(); err != nil { t.Error(err) } })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := client.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
+	resp, err := client.KV.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
 	if err != nil { t.Fatal(fmt.Errorf("external endpoint readiness: %w", err)) }
 	if resp.Header.Revision != 1 || resp.Count != 0 {
 		t.Fatalf("fresh server required: revision=%d count=%d; deleting keys does not reset history or compaction", resp.Header.Revision, resp.Count)

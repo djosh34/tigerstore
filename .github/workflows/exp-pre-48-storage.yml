@@ -32,4 +32,5 @@ jobs:
         if: always()
         run: |
           root="$GITHUB_WORKSPACE/experiments/pre-48-storage/.work/${{ matrix.version }}"
+          if [ -d "$root/cache" ]; then chmod -R u+w "$root/cache"; fi
           rm -rf "$root/tmp" "$root/cache" "$root/tools" "$root/k8s.io"

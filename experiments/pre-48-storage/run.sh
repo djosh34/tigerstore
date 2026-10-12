@@ -9,7 +9,7 @@ version=${1:?pass v0.35.0, v0.36.0 or v0.37.0}
 root=${2:-$script/.work/$version}
 mkdir -p "$root"
 root=$(cd "$root" && pwd)
-export TMPDIR="$root/tmp" GOCACHE="$root/cache/build" GOPATH="$root/cache/go" GOMODCACHE="$root/cache/mod" GOTOOLCHAIN=local
+export TMPDIR="$root/tmp" GOCACHE="$root/cache/build" GOPATH="$root/cache/go" GOMODCACHE="$root/cache/mod" GOTOOLCHAIN=local GOFLAGS=-modcacherw
 mkdir -p "$TMPDIR" "$GOCACHE" "$GOPATH" "$GOMODCACHE" "$root/tools" "$root/evidence"
 arch=$(uname -m)
 case $arch in aarch64|arm64) arch=arm64;; x86_64) arch=amd64;; *) exit 1;; esac
@@ -30,7 +30,7 @@ gofmt -w pkg/storage/etcd3/testserver/test_server.go pkg/storage/etcd3/store_tes
 # Build timing is distinct from execution timing. This also proves no original
 # embedded etcd implementation remains in the selected package dependencies.
 /usr/bin/time -p -o "$root/evidence/build.time" go test -run '^$' -count=1 ./pkg/storage/etcd3/... ./pkg/storage/testing > "$root/evidence/build.log" 2>&1
-go list -deps ./pkg/storage/etcd3/... ./pkg/storage/testing > "$root/evidence/dependencies.txt"
+go list -deps -test ./pkg/storage/etcd3/... ./pkg/storage/testing > "$root/evidence/dependencies.txt"
 go test -list . ./pkg/storage/etcd3/... ./pkg/storage/testing > "$root/evidence/test-list.txt"
 set +e
 /usr/bin/time -p -o "$root/evidence/test.time" go test -json -count=1 -timeout=10m ./pkg/storage/etcd3/... ./pkg/storage/testing > "$root/evidence/tests.jsonl" 2> "$root/evidence/test.stderr"

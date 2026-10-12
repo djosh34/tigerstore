@@ -41,7 +41,7 @@ for directory in [module / "pkg/storage/etcd3", module / "pkg/storage/testing"]:
                 continue
             line = text.count("\n", 0, m.start()) + 1
             rows.append({"file": str(f.relative_to(module)), "line": line, "name": name,
-                         "kind": "shared helper" if name.startswith("Run") else "Go entrypoint",
+                         "kind": ("shared helper" if name.startswith("Run") else "Go entrypoint" if f.name.endswith("_test.go") else "test utility"),
                          "referenced_from_etcd3": name in shared_calls if name.startswith("Run") else None})
 (evidence / "source-inventory.json").write_text(json.dumps(rows, indent=2) + "\n")
 
