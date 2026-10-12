@@ -1,0 +1,41 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - gocritic
+    - govet
+    - ineffassign
+    - misspell
+    - modernize
+    - nilerr
+    - nolintlint
+    - perfsprint
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: ^panic$
+          msg: return an error instead
+        - pattern: ^recover$
+          msg: return an error instead of panicking and recovering
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+          msg: write to an explicit io.Writer or use a logger
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofumpt
