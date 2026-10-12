@@ -1,0 +1,46 @@
+All CPU columns divide by bidirectional plaintext decimal MB.
+| Rep | Path | p50 us | p95 us | p99 us | Endpoint CPU ms/MB | Proxy CPU ms/MB | Total CPU ms/MB | Echo request MB/s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | direct | 7.334 | 8.083 | 14.334 | 0.678 | 0.000 | 0.678 | 732.976 |
+| 1 | proxy | 22.083 | 48.750 | 79.792 | 0.735 | 0.547 | 1.282 | 391.565 |
+| 2 | proxy | 21.292 | 35.125 | 40.500 | 0.744 | 0.527 | 1.271 | 391.026 |
+| 2 | direct | 7.292 | 7.750 | 15.584 | 0.667 | 0.000 | 0.667 | 747.833 |
+| 3 | direct | 7.291 | 7.625 | 8.083 | 0.657 | 0.000 | 0.657 | 757.597 |
+| 3 | proxy | 21.459 | 36.792 | 52.667 | 0.726 | 0.547 | 1.272 | 397.732 |
+| 4 | proxy | 21.458 | 35.666 | 39.583 | 0.731 | 0.527 | 1.259 | 397.524 |
+| 4 | direct | 7.250 | 7.667 | 13.084 | 0.657 | 0.000 | 0.657 | 759.230 |
+| 5 | direct | 7.292 | 7.792 | 9.667 | 0.662 | 0.000 | 0.662 | 753.710 |
+| 5 | proxy | 21.334 | 36.625 | 46.167 | 0.724 | 0.527 | 1.251 | 397.134 |
+
+Medians
+direct latency_p50_ns median 7292 min 7250 max 7334
+direct latency_p95_ns median 7750 min 7625 max 8083
+direct latency_p99_ns median 13084 min 8083 max 15584
+direct bulk_endpoint_cpu_ns_per_decimal_MB_bidir median 661787.7237106825 min 656938.4246908197 max 678304.2447783342
+direct bulk_proxy_cpu_ns_per_decimal_MB_bidir median 0 min 0 max 0
+direct bulk_total_cpu_ns_per_decimal_MB_bidir median 661787.7237106825 min 656938.4246908197 max 678304.2447783342
+direct bulk_roundtrip_MB_per_s median 753.7096628627489 min 732.9757674994825 max 759.2303520845704
+proxy latency_p50_ns median 21458 min 21292 max 22083
+proxy latency_p95_ns median 36625 min 35125 max 48750
+proxy latency_p99_ns median 46167 min 39583 max 79792
+proxy bulk_endpoint_cpu_ns_per_decimal_MB_bidir median 731398.5029958083 min 723949.7609652982 max 743874.267046909
+proxy bulk_proxy_cpu_ns_per_decimal_MB_bidir median 527310.0021598617 min 527310.0021598617 max 546840.0022398566
+proxy bulk_total_cpu_ns_per_decimal_MB_bidir median 1271184.2692067707 min 1251259.76312516 max 1281865.22625052
+proxy bulk_roundtrip_MB_per_s median 397.13399231878157 min 391.025950186204 max 397.73172886296976
+
+| Mode | Seed 49 wall ms, 3 runs | Seed 50 wall ms, 3 runs |
+| --- | --- | --- |
+| none | 0.105 / 0.086 / 0.088 | 0.154 / 0.092 / 0.094 |
+| drop | 0.103 / 0.089 / 0.090 | 0.106 / 0.132 / 0.092 |
+| short | 16.430 / 15.712 / 15.686 | 15.998 / 16.291 / 16.178 |
+| long | 353.194 / 353.916 / 353.298 | 353.371 / 353.221 / 355.365 |
+| switching | 160.353 / 160.121 / 162.519 | 208.827 / 209.005 / 210.723 |
+| stall | 250.207 / 250.494 / 250.583 | 250.501 / 250.785 / 250.650 |
+| reset | 0.175 / 0.059 / 0.066 | 0.183 / 0.061 / 0.062 |
+| corrupt | 0.388 / 0.103 / 0.082 | 0.417 / 0.094 / 0.083 |
+| duplicate | 0.095 / 0.085 / 0.134 | 0.080 / 0.088 / 0.114 |
+| one-way-cut | 250.477 / 250.520 / 250.438 | 250.432 / 250.731 / 250.640 |
+| both-cut | 250.550 / 250.809 / 250.221 | 250.596 / 251.123 / 250.373 |
+| fast | 2.380 / 2.354 / 2.286 | 2.350 / 2.370 / 2.412 |
+| slow | 54.888 / 54.149 / 54.071 | 54.289 / 55.029 / 54.811 |
+All 78 cases passed. Each mode's canonical policy hash matched across its three runs for each seed.

@@ -1,0 +1,51 @@
+=== RUN   TestSmallTLSRecords
+=== RUN   TestSmallTLSRecords/none
+=== RUN   TestSmallTLSRecords/short
+=== RUN   TestSmallTLSRecords/long
+=== RUN   TestSmallTLSRecords/switching
+=== RUN   TestSmallTLSRecords/fast
+=== RUN   TestSmallTLSRecords/slow
+--- PASS: TestSmallTLSRecords (0.11s)
+    --- PASS: TestSmallTLSRecords/none (0.01s)
+    --- PASS: TestSmallTLSRecords/short (0.01s)
+    --- PASS: TestSmallTLSRecords/long (0.06s)
+    --- PASS: TestSmallTLSRecords/switching (0.01s)
+    --- PASS: TestSmallTLSRecords/fast (0.01s)
+    --- PASS: TestSmallTLSRecords/slow (0.01s)
+=== RUN   TestStallBackpressure
+    proxy_test.go:78: stall blocked client TLS writes after 4194304 plaintext bytes; error=write tcp 127.0.0.1:57284->127.0.0.1:33113: i/o timeout
+--- PASS: TestStallBackpressure (5.26s)
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/drop/1bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/drop/7bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/drop/113bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/drop/4096bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/drop/8192bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/duplicate/1bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/duplicate/7bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/duplicate/113bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/duplicate/4096bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/duplicate/8192bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/corrupt/1bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/corrupt/7bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/corrupt/113bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/corrupt/4096bytes
+=== RUN   TestMutationOffsetsIgnoreReadFragmentation/corrupt/8192bytes
+--- PASS: TestMutationOffsetsIgnoreReadFragmentation (0.05s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/drop/1bytes (0.01s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/drop/7bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/drop/113bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/drop/4096bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/drop/8192bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/duplicate/1bytes (0.01s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/duplicate/7bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/duplicate/113bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/duplicate/4096bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/duplicate/8192bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/corrupt/1bytes (0.01s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/corrupt/7bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/corrupt/113bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/corrupt/4096bytes (0.00s)
+    --- PASS: TestMutationOffsetsIgnoreReadFragmentation/corrupt/8192bytes (0.00s)
+PASS
+ok  	example.invalid/tls-fault-sketch	6.439s

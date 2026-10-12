@@ -1,0 +1,2 @@
+4ea4a902c45f7b182be0694b73c45182734de73fb059b468cfbfb5ba3a64db89  sources/design.md
+4ea4a902c45f7b182be0694b73c45182734de73fb059b468cfbfb5ba3a64db89  sources/design-pinned.md

@@ -1,0 +1,4 @@
+Runner=GitHub Actions 1000005220 arch=ARM64 kernel=6.17.0-1022-azure uid=1001 time=2026-10-12T22:25:28Z
+INSTALLED actual FUSE mount=/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/fuse.jBatEu/mnt libfuse=3.14.0
+FIRED kernel-visible fsync EIO; real process write/read succeeded
+PASS FUSE mount and fsync callback exercised without sudo or fuse.conf changes

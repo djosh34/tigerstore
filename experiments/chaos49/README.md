@@ -4,6 +4,8 @@ Question: which fault mechanisms can outcome #49 use on free Actions runners, an
 
 This is throwaway pre-work, not tigerstore implementation code. Do not merge this branch. The starting main commit was `91c4f974a6661ac02c2e7747781ea215353c643b`.
 
+Read [the consolidated findings](REPORT.md), [the disk comparison](reports/disk.md), [the proxy report](proxy/REPORT.md), and [the etcd source audit](etcd/REPORT.md). Raw runner evidence is under `results/`; host proxy measurements are under `proxy/raw/`. The final runner run was [38316542472](https://github.com/djosh34/tigerstore/actions/runs/38316542472), with all 13 jobs passing. This branch also retains the earlier false-green failure and its cause.
+
 ## Runner probes
 
 The on-push workflow `.github/workflows/chaos49-probe.yml` runs isolated, short jobs on `ubuntu-24.04-arm` and `ubuntu-24.04`. Run the following only on disposable Linux runners with passwordless sudo:

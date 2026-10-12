@@ -1,0 +1,2 @@
+TARGET                                                                                  SOURCE FSTYPE OPTIONS
+/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/enospc.st6PST/mnt tmpfs  tmpfs  rw,relatime,size=1024k,nr_inodes=128,mode=700,inode64

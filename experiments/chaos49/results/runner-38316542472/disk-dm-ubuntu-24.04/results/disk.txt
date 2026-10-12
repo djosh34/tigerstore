@@ -1,0 +1,12 @@
+Runner=GitHub Actions 1000005211 arch=X64 kernel=6.17.0-1022-azure uid=1001 time=2026-10-12T22:25:14Z
+Runner=GitHub Actions 1000005211 arch=X64 kernel=6.17.0-1022-azure uid=0 time=2026-10-12T22:25:14Z
+0 32768 flakey 7:0 0 0 60 1 error_writes
+INSTALLED flakey on owned loop=/dev/loop0 image=/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/dm.zUoCYD/disk.img
+FIRED dm-flakey direct write EIO; read remains healthy
+0 32768 flakey 
+0 32768 delay 7:0 0 0 7:0 0 200 7:0 0 300
+INSTALLED delay on owned loop=/dev/loop0 image=/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/dm.zUoCYD/disk.img
+FIRED dm-delay direct write plus fsync elapsed_seconds=0.514947
+9-argument flush table installed; flush-only delay is not independently established by this timing
+0 32768 delay 0 0 0
+PASS dm-flakey and dm-delay real block I/O exercised; no existing device was modified

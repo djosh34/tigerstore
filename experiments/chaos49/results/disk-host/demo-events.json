@@ -1,0 +1,110 @@
+{
+  "ok": true,
+  "pid": 3509059,
+  "incarnation": "3509059-1791843755233481385",
+  "n": 0,
+  "events": [
+    {
+      "seq": 1,
+      "phase": "installed",
+      "id": "sync-eio",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "error",
+      "n": 0
+    },
+    {
+      "seq": 2,
+      "phase": "fired",
+      "id": "sync-eio",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "error",
+      "n": 0,
+      "error": "input/output error"
+    },
+    {
+      "seq": 3,
+      "phase": "installed",
+      "id": "sync-stall",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "stall",
+      "n": 0
+    },
+    {
+      "seq": 4,
+      "phase": "fired",
+      "id": "sync-stall",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "stall",
+      "n": 0
+    },
+    {
+      "seq": 5,
+      "phase": "completed",
+      "id": "sync-stall",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "stall",
+      "n": 0
+    },
+    {
+      "seq": 6,
+      "phase": "installed",
+      "id": "partial-enospc",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "write",
+      "action": "enospc",
+      "n": 0
+    },
+    {
+      "seq": 7,
+      "phase": "fired",
+      "id": "partial-enospc",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "write",
+      "action": "enospc",
+      "n": 3,
+      "error": "no space left on device"
+    },
+    {
+      "seq": 8,
+      "phase": "installed",
+      "id": "torn-record",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "write",
+      "action": "tear",
+      "n": 0
+    },
+    {
+      "seq": 9,
+      "phase": "fired",
+      "id": "torn-record",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "write",
+      "action": "tear",
+      "n": 5,
+      "error": "input/output error"
+    },
+    {
+      "seq": 10,
+      "phase": "installed",
+      "id": "kill-stall",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "stall",
+      "n": 0
+    },
+    {
+      "seq": 11,
+      "phase": "fired",
+      "id": "kill-stall",
+      "path": "/home/joshazimullah.linux/work_mounts/scratch/pre-49-chaos/helpers/disk/.tmp/demo.qilHEf/data/wal.bin",
+      "op": "sync",
+      "action": "stall",
+      "n": 0
+    }
+  ]
+}
