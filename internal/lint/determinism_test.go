@@ -19,6 +19,7 @@ import (
 // drivers in other packages do those things and feed the results in as
 // events.
 var corePackages = []string{
+	"history",
 	"internal/core",
 	"internal/mvcc",
 	"internal/sim",

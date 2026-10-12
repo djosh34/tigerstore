@@ -35,6 +35,7 @@ func (s *Sim) check(res *Result) error {
 	if err != nil {
 		return err
 	}
+	res.FinalRev = final.Rev()
 	ents, err := s.nodes[0].core.AppliedEntries()
 	if err != nil {
 		return err

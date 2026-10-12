@@ -88,8 +88,8 @@ jobs:
           fi
           echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
           echo "seeds $first to $((first + 399))"
-      - name: Run seeds, each twice in one process
-        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/a.txt"
+      - name: Run seeds, each twice in one process, with the checkers
+        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/a.txt"
       - name: Replay the seeds in a second process
         run: GOMAXPROCS=1 go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/b.txt"
       - name: Compare trace hashes

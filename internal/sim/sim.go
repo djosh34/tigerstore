@@ -239,6 +239,10 @@ type Result struct {
 	Log     []proto.Message
 	Watches []WatchResult
 	Stats   Stats
+	// FinalRev is the revision of the converged cluster at the end.
+	FinalRev int64
+	// Clients is the number of request clients.
+	Clients int
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -293,7 +297,7 @@ func Run(cfg Config) (*Result, error) {
 	if s.err != nil {
 		return nil, fmt.Errorf("seed %d at %d ms: %w", cfg.Seed, s.now/Millisecond, s.err)
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
