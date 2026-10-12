@@ -1,0 +1,52 @@
+name: chaos49 throwaway probe
+on:
+  push:
+    branches: [exp/49-real-process-chaos]
+    paths:
+      - '.github/workflows/chaos49-probe.yml'
+      - 'experiments/chaos49/network.py'
+      - 'experiments/chaos49/process.py'
+      - 'experiments/chaos49/disk/**'
+permissions:
+  contents: read
+jobs:
+  network:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          mkdir -p results
+          uname -a | tee results/versions.txt
+          dpkg-query -W iproute2 python3 systemd >> results/versions.txt
+          printenv ImageOS ImageVersion >> results/versions.txt
+          sudo unshare --net python3 experiments/chaos49/network.py | tee results/network.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: network-${{ matrix.runner }}
+          path: results
+  process:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          mkdir -p results
+          uname -a | tee results/versions.txt
+          dpkg-query -W iproute2 python3 systemd >> results/versions.txt
+          printenv ImageOS ImageVersion >> results/versions.txt
+          sudo python3 experiments/chaos49/process.py "$PWD/results/process" | tee results/process.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: process-${{ matrix.runner }}
+          path: results
