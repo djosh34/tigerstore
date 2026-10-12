@@ -98,6 +98,8 @@ const (
 	evDeliver
 	evDiskDone
 	evCrash
+	evCrashOnce
+	evLinksOnce
 	evRestart
 	evLinks
 	evHeal
@@ -278,9 +280,13 @@ func Run(cfg Config) (*Result, error) {
 	s.startWatchers()
 	if cfg.Faults.CrashEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.CrashEvery), kind: evCrash})
+		// One crash at a uniform time, so that no run goes without.
+		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evCrashOnce})
 	}
 	if cfg.Faults.LinkEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.LinkEvery), kind: evLinks})
+		// One change at a uniform time, so that no run goes without.
+		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evLinksOnce})
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 
@@ -350,6 +356,11 @@ func (s *Sim) handle(e *event) {
 		s.diskDone(e)
 	case evCrash:
 		s.crashRandom()
+		if !s.healed {
+			s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+		}
+	case evCrashOnce:
+		s.crashRandom()
 	case evRestart:
 		n := s.nodes[e.node]
 		if !n.up && n.gen == e.gen {
@@ -359,6 +370,12 @@ func (s *Sim) handle(e *event) {
 		}
 	case evLinks:
 		s.changeLinks()
+	case evLinksOnce:
+		if !s.healed {
+			s.stats.LinkChanges++
+			// Any mask but all links up.
+			s.setLinks(s.rng.Uint64N(1<<6 - 1))
+		}
 	case evHeal:
 		s.heal()
 	case evClientStart:
@@ -391,6 +408,9 @@ func (s *Sim) start(n *node) error {
 	w.SetSegmentBytes(256 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
+	// Progress notifications every 2 s instead of 10 minutes, so runs see
+	// them.
+	cfg.ProgressTicks = 20
 	c, err := core.New(cfg, rec)
 	if err != nil {
 		return fmt.Errorf("node %d cannot start: %w", n.id, err)
@@ -522,16 +542,24 @@ func (s *Sim) cut(i int) {
 	}
 }
 
+// crashRandom crashes a node that is up and restarts it up to MaxDown
+// later.
 func (s *Sim) crashRandom() {
 	if s.healed {
 		return
 	}
-	n := s.nodes[s.rng.IntN(len(s.nodes))]
-	if n.up {
-		s.crash(n)
-		s.push(&event{at: s.now + 1 + s.rng.Int64N(s.cfg.Faults.MaxDown), kind: evRestart, node: n.idx, gen: n.gen})
+	var up []*node
+	for _, n := range s.nodes {
+		if n.up {
+			up = append(up, n)
+		}
 	}
-	s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+	if len(up) == 0 {
+		return
+	}
+	n := up[s.rng.IntN(len(up))]
+	s.crash(n)
+	s.push(&event{at: s.now + 1 + s.rng.Int64N(s.cfg.Faults.MaxDown), kind: evRestart, node: n.idx, gen: n.gen})
 }
 
 func (s *Sim) crash(n *node) {

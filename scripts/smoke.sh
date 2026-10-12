@@ -41,13 +41,21 @@ ctl put a 1 >/dev/null
 ctl put b 2 >/dev/null
 expect $'a\n1\nb\n2' get a c
 expect 2 del a c
-ctl watch w --prefix >"$work/watch.out" 2>&1 &
+# Watch from the revision after a marker write, so the puts below cannot
+# race the watch's start. etcdctl runs in the background directly, so that
+# kill reaches it.
+rev=$(ctl put w0 marker -w json | grep -o '"revision":[0-9]*' | cut -d: -f2)
+etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
+	--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	watch w --prefix --rev=$((rev + 1)) >"$work/watch.out" 2>&1 &
 watcher=$!
-sleep 1
 ctl put w1 x >/dev/null
 ctl put w2 y >/dev/null
 ctl del w1 >/dev/null
-sleep 1
+for _ in $(seq 50); do
+	[ "$(wc -l <"$work/watch.out")" -ge 8 ] && break
+	sleep 0.2
+done
 kill "$watcher"
 want=$'PUT\nw1\nx\nPUT\nw2\ny\nDELETE\nw1'
 if [ "$(cat "$work/watch.out")" != "$want" ]; then

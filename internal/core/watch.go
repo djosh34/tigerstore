@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -26,7 +28,10 @@ const invalidWatchID = -1
 // header, as in etcd.
 const catchUpRevs = 1000
 
-const errDuplicateWatchID = "mvcc: duplicate watch ID provided on the WatchStream"
+const (
+	errDuplicateWatchID = "mvcc: duplicate watch ID provided on the WatchStream"
+	errEmptyWatchRange  = "mvcc: watcher range is empty"
+)
 
 type watcher struct {
 	stream   *watchStream
@@ -39,10 +44,20 @@ type watcher struct {
 	// start is the first revision the watcher delivers. Changes are
 	// matched after it is created, so later revisions are always newer;
 	// start only holds back a watcher that asked for a future revision.
-	start   int64
+	start int64
+	// asked is the start revision the client asked for, 0 for "from now".
+	asked   int64
 	pending []*mvccpb.Event
-	dead    bool
+	// sent is set when the watcher got events since the last progress
+	// tick; etcd then skips its progress notification.
+	sent bool
+	dead bool
 }
+
+// ahead reports whether the watcher asked to start above the current
+// revision. etcd sends no progress for such a watcher, because a client
+// resumes from progress revision + 1 and would go back.
+func (w *watcher) ahead(rev int64) bool { return rev < w.asked }
 
 type watchStream struct {
 	id     uint64
@@ -82,9 +97,19 @@ func (n *Node) Watch(stream uint64, r *pb.WatchRequest) {
 			n.watchReply(stream, &pb.WatchResponse{WatchId: id, Canceled: true})
 		}
 	case r.GetProgressRequest() != nil:
-		// Every watcher here is synced, because catching up happens
-		// inside one call, so etcd's answer is always due.
+		// Every watcher is synced, because catching up happens inside one
+		// call. Like etcd, answer once for the stream, unless it has no
+		// watchers or one of them starts above the current revision.
 		n.flushWatches()
+		rev := n.kv.Rev()
+		if len(s.byID) == 0 {
+			return
+		}
+		for _, w := range n.watchers {
+			if !w.dead && w.stream == s && w.ahead(rev) {
+				return
+			}
+		}
 		n.watchReply(stream, &pb.WatchResponse{WatchId: invalidWatchID})
 	}
 }
@@ -137,6 +162,16 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		n.watchReply(s.id, created)
 		return
 	}
+	key := c.Key
+	if len(key) == 0 {
+		key = []byte{0}
+	}
+	fromKey := len(c.RangeEnd) == 1 && c.RangeEnd[0] == 0
+	if len(c.RangeEnd) != 0 && !fromKey && bytes.Compare(key, c.RangeEnd) >= 0 {
+		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errEmptyWatchRange
+		n.watchReply(s.id, created)
+		return
+	}
 	id := c.WatchId
 	if id == 0 {
 		for s.byID[s.nextID] != nil {
@@ -149,11 +184,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		n.watchReply(s.id, created)
 		return
 	}
-	key := c.Key
-	if len(key) == 0 {
-		key = []byte{0}
-	}
-	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, start: c.StartRevision}
+	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, start: c.StartRevision, asked: c.StartRevision}
 	for _, f := range c.Filters {
 		switch f {
 		case pb.WatchCreateRequest_NOPUT:
@@ -240,16 +271,20 @@ func (n *Node) flushWatches() {
 		}
 		n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id, Events: w.pending})
 		w.pending = nil
+		w.sent = true
 	}
 }
 
 // progressNotify sends a progress notification to every watcher that
-// asked for them.
+// asked for them, unless it got events since the last notification or it
+// starts above the current revision, as etcd does.
 func (n *Node) progressNotify() {
 	n.flushWatches()
+	rev := n.kv.Rev()
 	for _, w := range n.watchers {
-		if !w.dead && w.progress {
+		if !w.dead && w.progress && !w.sent && !w.ahead(rev) {
 			n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id})
 		}
+		w.sent = false
 	}
 }

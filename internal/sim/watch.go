@@ -19,6 +19,9 @@ type watchClient struct {
 	sim      *Sim
 	key, end []byte
 	prevKV   bool
+	progress bool
+	// watchID is the ID of the current stream's watcher.
+	watchID int64
 	// start is the first revision of the watch, known once the first
 	// stream is created. next is the first revision not yet seen.
 	start, next int64
@@ -30,7 +33,7 @@ type watchClient struct {
 	node   int
 	gen    uint64
 	stream uint64
-	last   int64 // delivery time of the last response, for ordering
+	lastAt int64 // delivery time of the last response, for ordering
 }
 
 // WatchRecord is one watch response as the client got it.
@@ -49,15 +52,16 @@ type WatchResult struct {
 
 func (s *Sim) startWatchers() {
 	specs := []struct {
-		key, end string
-		prevKV   bool
+		key, end         string
+		prevKV, progress bool
 	}{
-		{"k", "l", true},
-		{"k3", "", true},
-		{"k", "\x00", false},
+		{"k", "l", true, false},
+		{"k2", "k5", true, true},
+		{"k3", "", true, false},
+		{"k", "\x00", false, true},
 	}
 	for i, sp := range specs {
-		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV}
+		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV, progress: sp.progress}
 		if sp.end != "" {
 			w.end = []byte(sp.end)
 		}
@@ -109,9 +113,9 @@ func (w *watchClient) create(n *node, gen uint64) {
 	}
 	n.nextStream++
 	n.streams[n.nextStream] = w
-	w.open, w.node, w.gen, w.stream, w.last = true, n.idx, n.gen, n.nextStream, 0
+	w.open, w.node, w.gen, w.stream, w.lastAt, w.watchID = true, n.idx, n.gen, n.nextStream, 0, -1
 	n.core.Watch(n.nextStream, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
-		Key: w.key, RangeEnd: w.end, StartRevision: w.next, PrevKv: w.prevKV,
+		Key: w.key, RangeEnd: w.end, StartRevision: w.next, PrevKv: w.prevKV, ProgressNotify: w.progress,
 	}}})
 	s.process(n)
 }
@@ -129,8 +133,8 @@ func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
 		return
 	}
 	s.mixBytes(b)
-	at := max(s.now+s.clientLatency(), w.last)
-	w.last = at
+	at := max(s.now+s.clientLatency(), w.lastAt)
+	w.lastAt = at
 	s.push(&event{at: at, kind: evWatchResponse, node: n.idx, gen: n.gen, from: int(r.Stream), watch: w, data: b})
 }
 
@@ -156,6 +160,17 @@ func (w *watchClient) receive(e *event) {
 		if w.start == 0 {
 			w.start = w.next
 		}
+		w.watchID = r.WatchId
+		return
+	}
+	if r.WatchId != w.watchID {
+		s.fail("watch %d got a response for watch ID %d on a stream whose watcher is %d", w.id, r.WatchId, w.watchID)
+		return
+	}
+	if len(r.Events) == 0 {
+		// A progress notification: every event up to its revision was
+		// delivered, so clientv3 resumes after it.
+		w.next = max(w.next, r.Header.Revision+1)
 		return
 	}
 	last := w.next

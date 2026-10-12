@@ -95,11 +95,12 @@ func checkers(t *testing.T, res *Result) {
 }
 
 // LinearizableConfig is a short run whose history Porcupine can check:
-// about 8 virtual seconds with the same faults and 4 clients.
+// 5 virtual seconds with the same faults and 4 clients, then 5 s of
+// healing.
 func LinearizableConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 5 * Second
-	cfg.Heal = 3 * Second
+	cfg.Heal = 5 * Second
 	cfg.Clients = 4
 	return cfg
 }
