@@ -1,0 +1,43 @@
+name: pre48 kind external etcd
+on:
+  push:
+    branches: [exp/pre-48-k8s]
+    paths: ['experiments/pre48/**', '.github/workflows/pre48-kind.yml']
+permissions:
+  contents: read
+jobs:
+  boot-and-mass-delete:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deadline guard
+        run: test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+      - name: Boot three-member external TLS etcd and kind
+        run: bash experiments/pre48/boot.sh
+      - name: Create 50k ConfigMaps and verify namespace deletion
+        run: python3 experiments/pre48/massdelete.py
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p .pre48/results
+          for n in 1 2 3; do docker logs "external-etcd-$n" > ".pre48/results/etcd-$n.log" 2>&1 || true; done
+          .pre48/bin/kubectl -n kube-system logs -l component=kube-apiserver --tail=-1 > .pre48/results/apiserver.log 2>&1 || true
+          .pre48/bin/kubectl -n kube-system logs -l component=kube-controller-manager --tail=-1 > .pre48/results/controller-manager.log 2>&1 || true
+          docker stats --no-stream > .pre48/results/docker-stats.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre48-${{ matrix.runner }}
+          path: .pre48/results
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: |
+          .pre48/bin/kind delete cluster --name pre48 || true
+          docker rm -f external-etcd-1 external-etcd-2 external-etcd-3 || true
+          sudo rm -rf .pre48/data .pre48/bin .pre48/certs .pre48/kube-certs .pre48/api-*.pem .pre48/tmp .pre48/etcd.tgz
