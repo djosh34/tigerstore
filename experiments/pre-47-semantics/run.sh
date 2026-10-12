@@ -65,6 +65,7 @@ for p in health version 'health?serializable=true'; do
   name=${p//\?/-}
   curl -sS --cacert "$CA" --cert "$CERT" --key "$KEY" -D "$WORK/results/no-leader-$name.headers" "$ENDPOINT/$p" -o "$WORK/results/no-leader-$name.body"
 done
+MODE=no-leader "$WORK/tmp/probe" > "$WORK/results/no-leader-rpc.log"
 grep -Eq '^HTTP/[^ ]+ 503( |\r|$)' "$WORK/results/no-leader-health.headers"
 jq -e '.health == "false" and .reason == "RAFT NO LEADER"' "$WORK/results/no-leader-health.body" >/dev/null
 printf 'PASS\n'

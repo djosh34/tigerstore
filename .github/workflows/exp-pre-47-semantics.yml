@@ -32,4 +32,8 @@ jobs:
           retention-days: 7
       - name: Delete output and caches
         if: always()
-        run: rm -rf '${{ runner.temp }}/pre-47-semantics'
+        run: |
+          if [ -d '${{ runner.temp }}/pre-47-semantics/mod' ]; then
+            chmod -R u+w '${{ runner.temp }}/pre-47-semantics/mod'
+          fi
+          rm -rf '${{ runner.temp }}/pre-47-semantics'

@@ -107,6 +107,20 @@ func brief(r *pb.WatchResponse) any {
 	}
 	return map[string]any{"header": r.Header, "events": events, "canceled": r.Canceled, "compact_revision": r.CompactRevision, "cancel_reason": r.CancelReason, "fragment": r.Fragment, "watch_id": r.WatchId}
 }
+func probeNoLeader(c *clientv3.Client) {
+	ctx, cancel := context.WithTimeout(clientv3.WithRequireLeader(context.Background()), 3*time.Second)
+	defer cancel()
+	_, err := pb.NewKVClient(c.ActiveConnection()).Range(ctx, &pb.RangeRequest{Key: []byte("health")})
+	check(status.Code(err).String() == "Unavailable", "require-leader unary error")
+	emit("no-leader-range", status.Convert(err).Message())
+	stream, err := pb.NewWatchClient(c.ActiveConnection()).Watch(ctx)
+	must(err)
+	must(stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("health")}}}))
+	_, err = stream.Recv()
+	check(status.Code(err).String() == "Unavailable", "require-leader stream error")
+	emit("no-leader-watch", status.Convert(err).Message())
+}
+
 func main() {
 	cert, err := tls.LoadX509KeyPair(os.Getenv("CERT"), os.Getenv("KEY"))
 	must(err)
@@ -121,6 +135,10 @@ func main() {
 	c, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}, TLS: &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: pool, MinVersion: tls.VersionTLS12}, DialTimeout: 3 * time.Second, DialKeepAliveTime: 30 * time.Second, DialKeepAliveTimeout: 10 * time.Second, DialOptions: []grpc.DialOption{grpc.WithChainUnaryInterceptor(trace), grpc.WithChainStreamInterceptor(streamTrace)}})
 	must(err)
 	defer c.Close()
+	if os.Getenv("MODE") == "no-leader" {
+		probeNoLeader(c)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	kv := pb.NewKVClient(c.ActiveConnection())
