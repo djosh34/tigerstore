@@ -49,11 +49,59 @@ jobs:
           go-version-file: go.mod
       - run: go test -race ./...
 
+  determinism-lint:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./internal/lint/
+
+  # Each shard runs its seeds twice in one process, then again in a second
+  # process with GOMAXPROCS=1, and compares the trace hashes. Shards 0 and 1
+  # run fixed seeds; shards 2 and 3 run fresh seeds from the run ID. A
+  # failing seed reproduces with
+  # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
+  sim:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Pick seeds
+        env:
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ "$SHARD" -lt 2 ]; then
+            first=$((1 + SHARD * 400))
+          else
+            first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
+          fi
+          echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
+          echo "seeds $first to $((first + 399))"
+      - name: Run seeds, each twice in one process
+        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/a.txt"
+      - name: Replay the seeds in a second process
+        run: GOMAXPROCS=1 go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/b.txt"
+      - name: Compare trace hashes
+        run: |
+          test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
+          diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test]
+    needs: [lint, build, test, determinism-lint, sim]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

@@ -6,7 +6,7 @@ This file is the current design. It starts from the merged starting design ([#32
 
 ## Status
 
-Built so far: the Go module, a `tigerstore` command that exits with an error, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`) and the simulated disk (`internal/simfs`). The section "What is built" describes them. Everything else is the design that the next pull requests build.
+Built so far: the Go module, a `tigerstore` command that exits with an error, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`) and the determinism lint (`internal/lint`). There is no server yet. The section "What is built" describes them. Everything else is the design that the next pull requests build.
 
 ## Fixed by the owner
 
@@ -129,6 +129,42 @@ The WAL crash test runs 500 seeds of random appends, suffix replacements and cra
 
 `osfs.New` creates the data directory and its missing parents, and on every start syncs the directory and every ancestor up to the root, so a setup that crashed halfway is finished by the next start.
 
+**Committer.** `internal/core` is one node's committer as an event and effect machine. Its inputs are method calls: `Submit` (a client request), `Step` (a Raft message from a peer), `Tick` (one clock tick) and `Persisted` (a disk write finished). `Process` runs Raft until it has nothing left to do and returns `Effects`: persist jobs, messages to send and replies. The driver calls these from one goroutine and carries out the effects. In the real node that driver is the committer goroutine; in the simulator it is the event loop.
+
+- **Writes.** `Submit` validates the request with `mvcc.Check*` and the 1.5 MiB size limit, then queues it. `Process` packs every queued write into one Raft entry, so the batch holds whatever arrived since the last call. The byte cap is `MaxBatchBytes` (4 MiB), and there is no timer. Each write in the entry carries its origin node, the origin's boot ID and the request ID (`core/codec.go`). Raft is `RawNode` with `AsyncStorageWrites`, so the local append comes out as a `PersistJob`. The driver appends every queued job to the WAL, syncs once and reports each job with `Persisted`. The core then appends the entries to its in-memory Raft log and steps the responses. When an entry commits, the core applies it to the index on the spot and answers the requests whose origin and boot match its own. A boot ID is random per process start, so an entry proposed before a restart never answers a request made after it. Within one boot, the driver never reuses a request ID, because a write that timed out can still commit later. A write that the index rejects at apply time (an unknown lease, a missing key for `ignore_value`, a range at a compacted or future revision) is answered with etcd's error on every replica and changes nothing.
+- **Reads.** Linearizable reads and read-only transactions queue up, and each `Process` turns the queue into one `ReadIndex` request. The reads run against the index once the applied index reaches the read index. Raft drops a `ReadIndex` without a word when a follower knows no leader, when a message is lost, and on every term change. So a batch without an index asks again every 3 ticks and at once when a new leader appears, and batches are served in any order. Serializable reads run at once against local state. The read context carries the boot ID too.
+- **Timeouts.** Every request has a deadline in ticks (`RequestTicks`, 7 s). After it, the request fails with etcd's "request timed out", which is ambiguous: it may still commit. A proposal that Raft drops because there is no leader fails at once with "no leader".
+- **Membership is fixed.** The Raft storage wrapper reports the 3 voters as its configuration, and there are no configuration entries. On start, the core loads the recovered log into memory and Raft applies it again from index 1, which rebuilds the index. That is the whole of recovery until checkpoints exist.
+- **Fatal errors stop the node.** A failed disk write, an entry that does not decode, or a snapshot (none is ever made yet) stops the core. `Process` then returns the error, and every waiting request fails with "server stopped". Raft's own logger is silenced but still panics on broken invariants.
+- **Responses are not prepared before commit yet.** Every node computes the results when it applies an entry, and the origin node replies right away. The apply step is a function of the index and the entry alone, so the leader can later run it ahead on a copy and hold the encoded replies until commit (see Seams).
+
+**Deterministic simulator.** `internal/sim` runs the real `core.Node`, `wal.WAL` and `mvcc.Store` of all 3 nodes in one process. Everything is an event in one queue ordered by virtual time and sequence number:
+
+- Ticks every 100 ms per node, with a random phase.
+- A disk write writes at once and finishes its fsync 50 µs to 1 ms later, or 20 to 100 ms later for 2% of writes. A crash in between leaves a torn tail.
+- Directed links are ordered streams: a message never overtakes an earlier one on the same link. Messages are marshalled at the sender and unmarshalled at the receiver, so nothing is shared between nodes. Delays are 20 to 220 µs, and 10% of messages take up to 5 ms. A link that goes down, and every link of a node that crashes, drops what it carries.
+- Faults in the first 20 virtual seconds: a node crash about every 3 s with a restart up to 2 s later, and a change of the set of up links about every 2 s. Half of those changes heal every link; the other half pick a random one of the 64 directed-link masks.
+- Six clients, each with one call in flight, on 8 keys: puts and deletes with and without previous values, compare-and-swap transactions with a failure-branch range, linearizable and serializable reads, prefix reads with limits, and reads at past revisions. A client gives up after 3 s.
+- Then 10 healthy seconds with the clients still running, and 3 quiet seconds.
+
+The seed drives a PCG generator for every choice. Raft draws its election timeouts from `crypto/rand`, which the test makes deterministic with `cryptotest.SetGlobalRandom` seeded from the same seed. Each event, each message, each reply and each restart goes into an FNV-64a trace hash. `TestSeeds` runs every seed twice and fails if the hashes differ.
+
+After a run, the simulator checks:
+
+- every node is up, has applied the same entries, and has the same index hash;
+- every successful read returns exactly what the final index holds at the revision the read saw, including reads inside transactions;
+- every acknowledged put is in the final index at its revision, its previous value is the final index's value at the revision before, and an acknowledged delete removed a key that existed and left none behind;
+- every compare-and-swap held at the revision before its write, or failed at the revision it saw;
+- no call sees a revision older than one that another call returned before it started, every write gets a newer revision than that, and no two writes share a revision;
+- every write is in the committed log at most once, every acknowledged write is in it, and no write that failed for certain is (each written value belongs to one call);
+- every call that starts 2 s or more after healing succeeds, and at least 50 do. Two seconds is two election timeouts, which a node restarted at healing may need.
+
+These checks catch a stale read (linearizable reads served without `ReadIndex`), a WAL that skips fsync, and a transaction compare that is off by one; each was planted by hand and failed seed 1. The Porcupine, watch, durability and revision checkers of [#56](https://github.com/djosh34/tigerstore/pull/56) are the independent oracle; `Result.History` and `Result.Log` are what the simulator hands them.
+
+Cost on this host (aarch64, 8 cores): about 80 ms per run of one seed, so 64 seeds replayed twice take 10 s, with 230 MB resident. Trace hashes match between processes with `GOMAXPROCS` 1 and 8. CI runs 4 shards of 400 seeds, two on fixed seeds and two on seeds from the run ID; each shard replays its seeds in a second process with `GOMAXPROCS=1` and compares the hashes.
+
+**Determinism lint.** `internal/lint` is a test that parses the non-test files of `internal/core`, `internal/mvcc`, `internal/wal`, `internal/simfs` and `internal/sim`. It fails on a `go` statement, a dot import, a call to a global `math/rand/v2` function, a `log` function that writes to standard error, an import of a module package outside the core list, and imports of `time`, `os`, `syscall`, `net`, `path/filepath`, `crypto/rand`, `math/rand`, `sync`, `runtime` and `unsafe`. It does not see a range over a map, which Go randomizes; the cross-process trace diff in CI catches that. A second test feeds it a file with each violation and requires each to be reported. CI runs it as its own job.
+
 ## Testing
 
 ### Deterministic simulation
@@ -170,7 +206,13 @@ Later pieces plug in here without reshaping what exists.
 - **Values point into the log.** The index stores value slices without copying. A decoder that leaves the value bytes inside the Raft entry (protowire instead of `proto.Unmarshal`) removes the second copy without touching the index.
 - **Compaction and segment cleaning.** `Store.CompactRev` already gates Range and Txn reads with `ErrCompacted`. Compaction drops versions below the revision from each key's list. Segment cleaning removes old segments with `FS.Remove` and `FS.SyncDir`. Recovery accepts a first segment with any sequence number, because its header carries the crc it chains from, but it still requires the log to start at index 1. Cleaning therefore needs the recovery root first: a synced checkpoint that names the first index the log must start at.
 - **Leases.** `Store.LeaseExists` decides whether a Put with a lease is accepted. Until the lessor exists it is nil, and every lease is unknown.
-- **Disk faults.** `simfs.Disk.Fault` can fail any operation on any file. Slow and stalled fsync are a delay in the simulator's scheduling of the completion, not a disk property.
+- **Disk faults.** `simfs.Disk.Fault` can fail any operation on any file. Slow and stalled fsync are a delay in the simulator's scheduling of the completion, not a disk property. Today any disk error fails the run; with injected faults, the simulator must instead stop the node and check that it fenced itself.
+- **More simulated faults.** `sim.Faults` holds the fault rates. `Sim.setLinks(mask)` sets all six directed links from one 6-bit mask, so a test can walk all 64 masks and the switches between them. Clock skew and jumps are a per-node tick interval and a burst of ticks. A process pause is a node whose events are held back and then delivered at once. A gray node is a node with slow disk writes and delayed links. Each fault needs a numeric liveness bound in `Sim.check`, like the 4 s after healing used now.
+- **Responses prepared before commit.** `core.Node.apply` runs one entry against the index and answers its requests. To prepare responses before commit, the leader runs the same function on its proposals while they replicate, keeps the encoded replies, and releases them when the entry commits at the expected index and term. A leader change drops them. The followers keep applying at commit.
+- **Watches.** After each applied write, `Store.Changes` lists the changed keys. The core matches them against its watchers and emits watch events as a new kind of effect.
+- **Leases and compaction.** New kinds in the entry codec (`core/codec.go`). The lessor lives in the core and sets `Store.LeaseExists`. The leader checks expiry on `Tick` and proposes a revoke. Raft log compaction needs snapshots, which the core refuses today.
+- **Planted bugs.** A build tag such as `plantedbugs` can switch a code path in `core`, `mvcc` or `wal`, as the three hand-planted bugs above did. A test lists each bug with its seed budget and requires `TestSeeds` to fail within it.
+- **The transport.** The core only produces and consumes `raftpb.Message` values. The node driver marshals them and hands them to the node-to-node transport, which is the next piece.
 
 ## Open for the architect
 
