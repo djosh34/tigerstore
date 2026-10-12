@@ -109,23 +109,25 @@ An entry record replaces every entry at or after its index. A truncated Raft suf
 
 A new segment gets its header written and synced before its directory entry is synced and before any record goes in. So after a crash, a segment either has its full header or holds nothing else.
 
-Recovery (`wal.Open`) reads the segments in order. In the newest segment, a record that does not verify starts a torn tail. If nothing after it verifies, the write was never synced and never acknowledged, so recovery truncates the tail and syncs. A newest segment that holds no more than a damaged header is removed. Everything else is `wal.ErrCorrupt`, and the node refuses to start without changing any file:
+Recovery (`wal.Open`) first checks that the segment names are consecutive, then reads the segments in order. In the newest segment, a record that does not verify starts a torn tail. If the next record does not verify either, chained from the bad record's stored crc or from its computed one, the write was never synced and never acknowledged, so recovery truncates the tail and syncs. A newest segment that holds no more than a damaged header is removed. Everything else is `wal.ErrCorrupt`, and the node refuses to start without changing any file:
 
 - a damaged record in an older segment;
-- a damaged record followed by a record that verifies, chained from the damaged record's stored crc;
+- a damaged record (body, type or stored crc) followed by a record that verifies;
 - a damaged header with records after it, a file name that does not match its header, or a gap in the segment sequence or crc chain;
 - an entry that leaves a gap or does not start the log at index 1;
 - a commit index past the last entry.
 
-The second rule can also fence a node after a crash in which the disk wrote a later sector of the last write but not an earlier one. Refusing to start is the safe answer there: cutting the tail could roll back a synced vote. A disk that lies about fsync can still lose a synced tail without detection; that is outside the guarantee.
+The second rule can also fence a node after a crash in which the disk wrote a later sector of the last write but not an earlier one. Refusing to start is the safe answer there: cutting the tail could roll back a synced vote.
+
+Known limits: damage to a record's length field misframes everything after it and looks like a torn tail, and so does damage to the last synced record. A disk that lies about fsync can lose a synced tail the same way. Recovery cuts the log silently in these cases; they are outside the guarantee until records carry redundant headers.
 
 The WAL does no I/O of its own. It goes through `wal.FS`, a directory with List, Create, Open, Remove and SyncDir, and files with ReadAll, Write (append), Truncate and Sync. `internal/osfs` implements it on the local file system. `internal/simfs` implements it in memory for the simulator.
 
 **Simulated disk.** `simfs.Disk` keeps volatile and durable state per file and per directory. Write and Truncate change the volatile content; Sync makes it durable. Create and Remove change the volatile directory; SyncDir makes it durable. `Crash` keeps the durable state plus a random prefix of each file's unsynced appends, and one time in four turns the last kept bytes into garbage, like a torn sector. `Erase` empties the disk for the erase-one-disk checks. A `Fault` hook runs before every operation and can fail it, which is where ENOSPC, EIO and stalled fsyncs come in.
 
-The WAL crash test runs 500 seeds of random appends, suffix replacements and crashes, including crashes between the write and the fsync of one sync and repeated crashes in the middle of recovery. After each crash, recovery must return the synced log plus a prefix of the unsynced records. The test fails if recovery skips the torn-tail truncation or the crc check. Separate tests damage a record in the middle of the newest segment, the header of the newest segment, and remove a middle segment; each must give `ErrCorrupt` and leave the files alone.
+The WAL crash test runs 500 seeds of random appends, suffix replacements and crashes, including crashes between the write and the fsync of one sync, and repeated crashes at one of the first six writing operations of recovery (truncate, sync, remove, and the create, write and syncs of a new segment). After each crash, recovery must return the synced log plus a prefix of the unsynced records. The test fails if recovery skips the torn-tail truncation or the crc check. Separate tests damage the body, type and stored crc of a record in the middle of the newest segment and the header of the newest segment, and remove a middle segment, also right before an empty newest one; each must give `ErrCorrupt` and leave the files alone.
 
-`osfs.New` creates the data directory and its missing parents and syncs the parent of each directory it created.
+`osfs.New` creates the data directory and its missing parents, and on every start syncs the directory and every ancestor up to the root, so a setup that crashed halfway is finished by the next start.
 
 **Committer.** `internal/core` is one node's committer as an event and effect machine. Its inputs are method calls: `Submit` (a client request), `Step` (a Raft message from a peer), `Tick` (one clock tick) and `Persisted` (a disk write finished). `Process` runs Raft until it has nothing left to do and returns `Effects`: persist jobs, messages to send and replies. The driver calls these from one goroutine and carries out the effects. In the real node that driver is the committer goroutine; in the simulator it is the event loop.
 
