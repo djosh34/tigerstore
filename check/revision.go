@@ -157,7 +157,7 @@ func (c *revisionChecker) observed() {
 			continue
 		}
 		at := op.Resp.Revision
-		if op.Req.Range != nil && op.Req.Range.Revision != 0 {
+		if op.Req.Range != nil && op.Req.Range.Revision > 0 {
 			at = op.Req.Range.Revision
 			if at > op.Resp.Revision {
 				c.fail("op %d (client %d) read at revision %d but its header revision is %d", i, op.Client, at, op.Resp.Revision)
@@ -274,7 +274,7 @@ func (c *revisionChecker) compaction() {
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
 		rev := requestedRevision(op.Req)
-		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev == 0 {
+		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev <= 0 {
 			continue
 		}
 		// covers reports whether a compaction at k makes rev compacted

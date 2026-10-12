@@ -17,12 +17,12 @@ func TestModel(t *testing.T) {
 	b.put(0, "a", "2")
 	b.put(0, "b", "x")
 	// One revision for a txn that writes two keys.
-	txn := b.do(0, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
+	two := b.do(0, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
 		{Put: &history.PutRequest{Key: "a", Value: "3", PrevKV: true}},
 		{Put: &history.PutRequest{Key: "c", Value: "y"}},
 		{Range: &history.RangeRequest{Key: "c"}},
 	}}})
-	r := b.h.Ops[txn].Resp
+	r := b.h.Ops[two].Resp
 	if r.Revision != 5 || !r.Txn.Succeeded {
 		t.Fatalf("txn: %+v", r)
 	}
@@ -76,6 +76,19 @@ func TestModel(t *testing.T) {
 	}
 	if o := b.h.Ops[b.do(0, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 8}})]; o.Err != errFutureRev {
 		t.Fatalf("read above the current revision: %+v", o.Err)
+	}
+	// etcd reads at the current revision for a revision below zero.
+	if o := b.h.Ops[b.do(0, history.Request{Range: &history.RangeRequest{Key: "a", Revision: -1}})]; o.Err != nil || o.Resp.Range.KVs[0].Value != "4" {
+		t.Fatalf("read at revision -1: %+v %+v", o.Resp, o.Err)
+	}
+	txn := func(rev int64) *history.Error {
+		return b.h.Ops[b.do(0, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Range: &history.RangeRequest{Key: "a", Revision: rev}}}}})].Err
+	}
+	if err := txn(4); err != errCompacted {
+		t.Fatalf("txn read below the compaction revision: %+v", err)
+	}
+	if err := txn(8); err != errFutureRev {
+		t.Fatalf("txn read above the current revision: %+v", err)
 	}
 	if o := b.h.Ops[b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 5}})]; o.Err != errCompacted {
 		t.Fatalf("compact at the compaction revision again: %+v", o.Err)

@@ -60,6 +60,13 @@ func TestWatchesGood(t *testing.T) {
 		}
 		mustPass(t, "Watches", Watches(h))
 	})
+	t.Run("compaction cancel at the next revision when the previous value is gone", func(t *testing.T) {
+		h := workload(t).done()
+		h.Watches = append(h.Watches, history.Watch{Client: 4, Req: history.WatchRequest{Key: "/r/a", StartRevision: 4, PrevKV: true}, Responses: []history.WatchResponse{
+			{Revision: h.Target, Canceled: true, CompactRevision: 4},
+		}})
+		mustPass(t, "Watches", Watches(h))
+	})
 	t.Run("one txn over two keys in one response", func(t *testing.T) {
 		mustPass(t, "Watches", Watches(twoKeyTxn(t)))
 	})

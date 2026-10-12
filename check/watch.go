@@ -28,7 +28,8 @@ const maxErrors = 20
 //     before every event above R.
 //   - Nothing is delivered above the committed log.
 //   - A compaction cancel names a compacted revision above the next revision
-//     the watch needed.
+//     the watch needed, or equal to it if the watch asked for previous
+//     values: etcd v3.7.2 sends such an event without one.
 //
 // A watch with no start revision must record its created response, so the
 // checker knows where it starts.
@@ -131,8 +132,11 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			if !resp.Canceled {
 				fail("compaction response at %d does not cancel the watch", resp.CompactRevision)
 			}
+			// The watch may also be canceled at the revision it needs
+			// next when it asked for previous values, because the
+			// value before that revision is compacted.
 			next := max(first, delivered+1)
-			if next >= resp.CompactRevision {
+			if next > resp.CompactRevision || next == resp.CompactRevision && !w.Req.PrevKV {
 				fail("canceled as compacted at %d, but it only needed revision %d on", resp.CompactRevision, next)
 			}
 			if !slices.Contains(r.compactions, resp.CompactRevision) {

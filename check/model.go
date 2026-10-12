@@ -152,15 +152,25 @@ func (s *state) step(req history.Request, withEvents bool) outcome {
 }
 
 func (s *state) stepRange(r *history.RangeRequest) outcome {
-	switch {
-	case r.Revision > s.rev:
-		return outcome{err: errFutureRev}
-	case r.Revision != 0 && r.Revision < s.compacted:
-		return outcome{err: errCompacted}
-	case r.Revision != 0 && r.Revision < s.rev:
+	if err := s.checkRevision(r.Revision); err != nil {
+		return outcome{err: err}
+	}
+	if r.Revision > 0 && r.Revision < s.rev {
 		return outcome{resp: &history.Response{Revision: s.rev, Range: &history.RangeResponse{}}, historical: true}
 	}
 	return outcome{resp: &history.Response{Revision: s.rev, Range: s.read(r)}}
+}
+
+// checkRevision returns the error of a read at rev. etcd reads at the current
+// revision when rev is zero or less.
+func (s *state) checkRevision(rev int64) *history.Error {
+	switch {
+	case rev > s.rev:
+		return errFutureRev
+	case rev > 0 && rev < s.compacted:
+		return errCompacted
+	}
+	return nil
 }
 
 // read answers a range at the current revision.
@@ -247,11 +257,15 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		if op.Put != nil && op.Put.Lease != 0 && !s.hasLease(op.Put.Lease) {
 			return outcome{err: errLeaseNotFound}
 		}
-		if op.Range != nil && op.Range.Revision != 0 {
-			// Historical reads inside a txn are not modelled. Treat
-			// them as unknown, which never matches a response.
-			return outcome{err: &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn"}}
+		if op.Range == nil || op.Range.Revision <= 0 || op.Range.Revision == s.rev {
+			continue
 		}
+		if err := s.checkRevision(op.Range.Revision); err != nil {
+			return outcome{err: err}
+		}
+		// Other historical reads inside a txn are not modelled. Treat
+		// them as unknown, which never matches a response.
+		return outcome{err: &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn"}}
 	}
 	next := s.rev + 1
 	changed := false

@@ -111,7 +111,8 @@ type KeyValue struct {
 type RangeRequest struct {
 	Key string `json:"key"`
 	End string `json:"end,omitempty"`
-	// Revision is the revision to read at. Zero means the current one.
+	// Revision is the revision to read at. Zero or less means the current
+	// one.
 	Revision  int64 `json:"revision,omitempty"`
 	Limit     int64 `json:"limit,omitempty"`
 	CountOnly bool  `json:"countOnly,omitempty"`

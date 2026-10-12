@@ -138,7 +138,7 @@ func Durable(h *history.History) error {
 		}
 		for j, q := range reads {
 			rev := q.Revision
-			if rev == 0 {
+			if rev <= 0 {
 				rev = op.Resp.Revision
 			}
 			if op.Resp.Revision > r.rev {
