@@ -99,6 +99,7 @@ const (
 	evDiskDone
 	evCrash
 	evCrashOnce
+	evLinksOnce
 	evRestart
 	evLinks
 	evHeal
@@ -280,6 +281,8 @@ func Run(cfg Config) (*Result, error) {
 	}
 	if cfg.Faults.LinkEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.LinkEvery), kind: evLinks})
+		// One change at a uniform time, so that no run goes without.
+		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evLinksOnce})
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 
@@ -349,7 +352,9 @@ func (s *Sim) handle(e *event) {
 		s.diskDone(e)
 	case evCrash:
 		s.crashRandom()
-		s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+		if !s.healed {
+			s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+		}
 	case evCrashOnce:
 		s.crashRandom()
 	case evRestart:
@@ -361,6 +366,12 @@ func (s *Sim) handle(e *event) {
 		}
 	case evLinks:
 		s.changeLinks()
+	case evLinksOnce:
+		if !s.healed {
+			s.stats.LinkChanges++
+			// Any mask but all links up.
+			s.setLinks(s.rng.Uint64N(1<<6 - 1))
+		}
 	case evHeal:
 		s.heal()
 	case evClientStart:
