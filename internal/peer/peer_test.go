@@ -189,6 +189,9 @@ func TestQueueByType(t *testing.T) {
 		{&raftpb.Message{Type: raftpb.MsgApp.Enum()}, true}, // an empty append updates commit
 		{msg(1, "x"), true},
 		{&raftpb.Message{Type: raftpb.MsgSnap.Enum()}, true},
+		{&raftpb.Message{Type: raftpb.MsgProp.Enum(), Entries: []*raftpb.Entry{{Data: make([]byte, 4<<20)}}}, true},
+		{&raftpb.Message{Type: raftpb.MsgHeartbeatResp.Enum()}, false},
+		{&raftpb.Message{Type: raftpb.MsgAppResp.Enum()}, false},
 		{&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum()}, false},
 		{&raftpb.Message{Type: raftpb.MsgReadIndex.Enum(), Entries: []*raftpb.Entry{{Data: []byte("ctx")}}}, false},
 		{&raftpb.Message{Type: raftpb.MsgReadIndexResp.Enum(), Entries: []*raftpb.Entry{{Data: []byte("ctx")}}}, false},

@@ -98,6 +98,7 @@ const (
 	evDeliver
 	evDiskDone
 	evCrash
+	evCrashOnce
 	evRestart
 	evLinks
 	evHeal
@@ -274,6 +275,8 @@ func Run(cfg Config) (*Result, error) {
 	s.startWatchers()
 	if cfg.Faults.CrashEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.CrashEvery), kind: evCrash})
+		// One crash at a uniform time, so that no run goes without.
+		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evCrashOnce})
 	}
 	if cfg.Faults.LinkEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.LinkEvery), kind: evLinks})
@@ -345,6 +348,9 @@ func (s *Sim) handle(e *event) {
 	case evDiskDone:
 		s.diskDone(e)
 	case evCrash:
+		s.crashRandom()
+		s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+	case evCrashOnce:
 		s.crashRandom()
 	case evRestart:
 		n := s.nodes[e.node]
@@ -518,16 +524,24 @@ func (s *Sim) cut(i int) {
 	}
 }
 
+// crashRandom crashes a node that is up and restarts it up to MaxDown
+// later.
 func (s *Sim) crashRandom() {
 	if s.healed {
 		return
 	}
-	n := s.nodes[s.rng.IntN(len(s.nodes))]
-	if n.up {
-		s.crash(n)
-		s.push(&event{at: s.now + 1 + s.rng.Int64N(s.cfg.Faults.MaxDown), kind: evRestart, node: n.idx, gen: n.gen})
+	var up []*node
+	for _, n := range s.nodes {
+		if n.up {
+			up = append(up, n)
+		}
 	}
-	s.push(&event{at: s.exp(s.cfg.Faults.CrashEvery), kind: evCrash})
+	if len(up) == 0 {
+		return
+	}
+	n := up[s.rng.IntN(len(up))]
+	s.crash(n)
+	s.push(&event{at: s.now + 1 + s.rng.Int64N(s.cfg.Faults.MaxDown), kind: evRestart, node: n.idx, gen: n.gen})
 }
 
 func (s *Sim) crash(n *node) {
