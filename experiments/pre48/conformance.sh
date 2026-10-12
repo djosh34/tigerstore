@@ -21,7 +21,7 @@ set +e
 timeout -k 20s 10m hydrophone --conformance --skip='' --parallel=4 \
   --conformance-image=registry.k8s.io/conformance:v1.37.0 \
   --startup-timeout=2m --disable-progress-status \
-  --extra-ginkgo-args='--timeout=8m,--seed=48,--json-report=/tmp/results/ginkgo.json' \
+  --extra-ginkgo-args='--timeout=8m,--seed=48' \
   --output-dir="$root/results/conformance" \
   > "$root/results/conformance/hydrophone.log" 2>&1
 rc=$?
