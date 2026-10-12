@@ -13,6 +13,40 @@ defaults:
   run:
     shell: bash
 jobs:
+  disk:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+        probe: [fuse, dm, tmpfs, loop]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.probe == 'fuse'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends fuse3 libfuse3-dev pkg-config
+      - env:
+          PROBE: ${{ matrix.probe }}
+        run: |
+          mkdir -p results
+          uname -a | tee results/versions.txt
+          printenv ImageOS ImageVersion >> results/versions.txt
+          dpkg-query -W dmsetup util-linux e2fsprogs >> results/versions.txt
+          if [ "$PROBE" = fuse ]; then dpkg-query -W fuse3 libfuse3-dev >> results/versions.txt; fi
+          case "$PROBE" in
+            fuse|dm) bash "experiments/chaos49/disk/probes/probe-$PROBE.sh" 2>&1 | tee results/disk.txt ;;
+            *) bash experiments/chaos49/disk/probes/probe-enospc.sh "$PROBE" 2>&1 | tee results/disk.txt ;;
+          esac
+          grep -q '^PASS ' results/disk.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: disk-${{ matrix.probe }}-${{ matrix.runner }}
+          path: |
+            results
+            experiments/chaos49/disk/results
   network:
     strategy:
       fail-fast: false
