@@ -71,6 +71,15 @@ func parse(args []string) (*flags, error) {
 	if f.advertiseClient == "" {
 		f.advertiseClient = f.listenClient
 	}
+	// etcd takes comma-separated lists in these flags; tigerstore serves
+	// one URL each for now.
+	for _, fl := range []struct{ name, v string }{
+		{"listen-client-urls", f.listenClient}, {"advertise-client-urls", f.advertiseClient}, {"listen-peer-urls", f.listenPeer},
+	} {
+		if strings.Contains(fl.v, ",") {
+			return nil, fmt.Errorf("--%s takes one URL; lists are not supported yet: %q", fl.name, fl.v)
+		}
+	}
 	return f, nil
 }
 
@@ -215,8 +224,15 @@ func run(args []string, logger *log.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	served := make(chan error, 1)
-	go func() { served <- g.Serve(ln) }()
+	go func() {
+		// A node that cannot serve clients stops instead of staying a
+		// silent Raft member.
+		served <- g.Serve(ln)
+		cancel()
+	}()
 	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
 	runErr := n.Run(ctx, t)
 	g.Stop()

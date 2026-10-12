@@ -58,7 +58,7 @@ const (
 	// maxFrame caps one received message. Raft messages are capped at 4
 	// MiB of entries, plus headers.
 	maxFrame = 64 << 20
-	// maxQueued caps the entry bytes queued for one peer.
+	// maxQueued caps the estimated bytes in each of a peer's two queues.
 	maxQueued = 64 << 20
 	// controlQueue and dataQueue cap the queued messages per peer.
 	controlQueue = 4096
@@ -245,46 +245,52 @@ func (t *TCP) receive(c net.Conn) error {
 
 // sender owns the connection to one peer.
 type sender struct {
-	t      *TCP
-	id     uint64
-	addr   string
-	ctrl   chan *raftpb.Message
-	data   chan *raftpb.Message
-	queued atomic.Int64
+	t    *TCP
+	id   uint64
+	addr string
+	ctrl chan *raftpb.Message
+	data chan *raftpb.Message
+	// ctrlBytes and dataBytes are the estimated bytes in each queue.
+	ctrlBytes, dataBytes atomic.Int64
 }
 
-// size estimates the bytes a message keeps queued.
+// size estimates the bytes a message keeps queued: its entries, context
+// and snapshot.
 func size(m *raftpb.Message) int64 {
-	n := int64(64)
+	n := int64(64 + len(m.Context))
 	for _, e := range m.Entries {
 		n += int64(len(e.Data)) + 32
+	}
+	if m.Snapshot != nil {
+		n += int64(len(m.Snapshot.Data))
 	}
 	return n
 }
 
-// isData reports whether a message carries entries or a snapshot. Other
-// messages (heartbeats, votes, ReadIndex) go ahead of them.
+// isData reports whether a message goes on the data queue. Appends and
+// snapshots do, empty appends included, so that they stay in order with
+// each other. Everything else (heartbeats, votes, ReadIndex and their
+// responses) goes ahead of them, as etcd's separate append stream does.
 func isData(m *raftpb.Message) bool {
-	return len(m.Entries) > 0 || m.Snapshot != nil
+	t := m.GetType()
+	return t == raftpb.MsgApp || t == raftpb.MsgSnap
 }
 
 func (s *sender) send(m *raftpb.Message) {
-	q := s.ctrl
+	q, budget := s.ctrl, &s.ctrlBytes
 	if isData(m) {
-		q = s.data
-		n := size(m)
-		if s.queued.Add(n) > maxQueued {
-			s.queued.Add(-n)
-			s.t.cfg.Unreachable(s.id)
-			return
-		}
+		q, budget = s.data, &s.dataBytes
+	}
+	n := size(m)
+	if budget.Add(n) > maxQueued {
+		budget.Add(-n)
+		s.t.cfg.Unreachable(s.id)
+		return
 	}
 	select {
 	case q <- m:
 	default:
-		if isData(m) {
-			s.queued.Add(-size(m))
-		}
+		budget.Add(-n)
 		s.t.cfg.Unreachable(s.id)
 	}
 }
@@ -294,14 +300,16 @@ func (s *sender) send(m *raftpb.Message) {
 func (s *sender) next(ctx context.Context) (*raftpb.Message, bool) {
 	select {
 	case m := <-s.ctrl:
+		s.ctrlBytes.Add(-size(m))
 		return m, true
 	default:
 	}
 	select {
 	case m := <-s.ctrl:
+		s.ctrlBytes.Add(-size(m))
 		return m, true
 	case m := <-s.data:
-		s.queued.Add(-size(m))
+		s.dataBytes.Add(-size(m))
 		return m, true
 	case <-ctx.Done():
 		return nil, false
@@ -314,9 +322,10 @@ func (s *sender) pending() bool { return len(s.ctrl) > 0 || len(s.data) > 0 }
 func (s *sender) drop() {
 	for {
 		select {
-		case <-s.ctrl:
+		case m := <-s.ctrl:
+			s.ctrlBytes.Add(-size(m))
 		case m := <-s.data:
-			s.queued.Add(-size(m))
+			s.dataBytes.Add(-size(m))
 		default:
 			s.t.cfg.Unreachable(s.id)
 			return
@@ -392,6 +401,13 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		m, ok := s.next(ctx)
 		if !ok {
 			return nil
+		}
+		if n := proto.Size(m); n > maxFrame {
+			// The receiver would refuse it; Raft sends again in smaller
+			// pieces after the unreachable report.
+			s.t.logf("peer: dropping a %s of %d bytes to %d, over the frame limit", m.GetType(), n, s.id)
+			s.t.cfg.Unreachable(s.id)
+			continue
 		}
 		var err error
 		buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)

@@ -180,3 +180,36 @@ func TestRejectsOtherCA(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+func TestQueueByType(t *testing.T) {
+	cases := []struct {
+		m    *raftpb.Message
+		data bool
+	}{
+		{&raftpb.Message{Type: raftpb.MsgApp.Enum()}, true}, // an empty append updates commit
+		{msg(1, "x"), true},
+		{&raftpb.Message{Type: raftpb.MsgSnap.Enum()}, true},
+		{&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum()}, false},
+		{&raftpb.Message{Type: raftpb.MsgReadIndex.Enum(), Entries: []*raftpb.Entry{{Data: []byte("ctx")}}}, false},
+		{&raftpb.Message{Type: raftpb.MsgReadIndexResp.Enum(), Entries: []*raftpb.Entry{{Data: []byte("ctx")}}}, false},
+		{&raftpb.Message{Type: raftpb.MsgVote.Enum()}, false},
+	}
+	for _, c := range cases {
+		if got := isData(c.m); got != c.data {
+			t.Errorf("%s with %d entries: data queue = %v, want %v", c.m.GetType(), len(c.m.Entries), got, c.data)
+		}
+	}
+}
+
+func TestControlQueueIsCapped(t *testing.T) {
+	var dropped atomic.Int64
+	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }}}
+	s := &sender{t: tr, id: 2, ctrl: make(chan *raftpb.Message, controlQueue), data: make(chan *raftpb.Message, dataQueue)}
+	big := make([]byte, 1<<20)
+	for range 100 {
+		s.send(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), Context: big})
+	}
+	if dropped.Load() == 0 || s.ctrlBytes.Load() > maxQueued {
+		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrlBytes.Load(), dropped.Load(), maxQueued)
+	}
+}

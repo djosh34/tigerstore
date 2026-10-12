@@ -32,13 +32,11 @@ type Config struct {
 	Logf func(format string, args ...any)
 }
 
-// input is one event for the committer.
+// input is one event for the committer from a client or a peer.
 type input struct {
 	req         *request
 	msg         *raftpb.Message
-	persisted   []core.PersistJob
 	unreachable uint64
-	err         error
 }
 
 type request struct {
@@ -49,15 +47,14 @@ type request struct {
 
 // Node is a running node.
 type Node struct {
-	cfg      Config
-	core     *core.Node
-	wal      *wal.WAL
-	inbox    chan input
-	persistQ chan []core.PersistJob
-	nextID   atomic.Uint64
-	done     chan struct{}
-	stopOnce sync.Once
-	err      error
+	cfg       Config
+	core      *core.Node
+	wal       *wal.WAL
+	inbox     chan input
+	persistQ  chan []core.PersistJob
+	persisted chan persistDone
+	nextID    atomic.Uint64
+	done      chan struct{}
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
@@ -79,12 +76,13 @@ func New(cfg Config) (*Node, error) {
 		return nil, errors.Join(err, w.Close())
 	}
 	return &Node{
-		cfg:      cfg,
-		core:     c,
-		wal:      w,
-		inbox:    make(chan input, 8192),
-		persistQ: make(chan []core.PersistJob, 1024),
-		done:     make(chan struct{}),
+		cfg:       cfg,
+		core:      c,
+		wal:       w,
+		inbox:     make(chan input, 8192),
+		persistQ:  make(chan []core.PersistJob, maxBacklog),
+		persisted: make(chan persistDone, 1),
+		done:      make(chan struct{}),
 	}, nil
 }
 
@@ -140,6 +138,11 @@ func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) 
 	}
 }
 
+// maxBacklog is the number of persist batches that may wait for the disk.
+// Beyond it the committer stops taking new inputs, but it keeps ticking
+// and taking finished disk writes.
+const maxBacklog = 64
+
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
@@ -148,35 +151,52 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx) })
 	err := n.commit(ctx, t)
-	n.stopOnce.Do(func() { n.err = err; close(n.done) })
+	close(n.done)
 	cancel()
 	wg.Wait()
 	return errors.Join(err, n.wal.Close())
 }
 
 // commit is the committer loop. It is the only goroutine that touches the
-// core.
+// core, and it never blocks on the disk.
 func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
 	waiters := map[uint64]chan core.Reply{}
+	var backlog [][]core.PersistJob
 	for {
+		inbox := n.inbox
+		if len(backlog) >= maxBacklog {
+			inbox = nil
+		}
+		var toDisk chan<- []core.PersistJob
+		var next []core.PersistJob
+		if len(backlog) > 0 {
+			toDisk, next = n.persistQ, backlog[0]
+		}
 		select {
-		case in := <-n.inbox:
-			if err := n.handle(in, waiters); err != nil {
-				return err
-			}
+		case in := <-inbox:
+			n.handle(in, waiters)
 		drain:
 			for range 4096 {
 				select {
 				case in := <-n.inbox:
-					if err := n.handle(in, waiters); err != nil {
-						return err
-					}
+					n.handle(in, waiters)
 				default:
 					break drain
 				}
 			}
+		case done := <-n.persisted:
+			if done.err != nil {
+				return done.err
+			}
+			for _, j := range done.jobs {
+				n.core.Persisted(j)
+			}
+		case toDisk <- next:
+			backlog[0] = nil
+			backlog = backlog[1:]
+			continue
 		case <-ticker.C:
 			n.core.Tick()
 		case <-ctx.Done():
@@ -184,11 +204,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
-			select {
-			case n.persistQ <- eff.Persist:
-			case <-ctx.Done():
-				return nil
-			}
+			backlog = append(backlog, eff.Persist)
 		}
 		for _, m := range eff.Send {
 			t.Send(m)
@@ -206,10 +222,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	}
 }
 
-func (n *Node) handle(in input, waiters map[uint64]chan core.Reply) error {
+func (n *Node) handle(in input, waiters map[uint64]chan core.Reply) {
 	switch {
-	case in.err != nil:
-		return in.err
 	case in.req != nil:
 		waiters[in.req.id] = in.req.reply
 		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
@@ -217,18 +231,21 @@ func (n *Node) handle(in input, waiters map[uint64]chan core.Reply) error {
 		if err := n.core.Step(in.msg); err != nil {
 			n.logf("step message from %d: %v", in.msg.GetFrom(), err)
 		}
-	case in.persisted != nil:
-		for _, j := range in.persisted {
-			n.core.Persisted(j)
-		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
 	}
-	return nil
 }
 
-// persist writes every queued job, syncs once, and reports the jobs back.
-// A failed write or sync stops the node; it is never retried.
+// persistDone reports one group of synced jobs, or the error that stops
+// the node.
+type persistDone struct {
+	jobs []core.PersistJob
+	err  error
+}
+
+// persist writes every queued job, syncs once, and reports the jobs back
+// on their own channel, so it never waits for the committer's inbox. A
+// failed write or sync stops the node; it is never retried.
 func (n *Node) persist(ctx context.Context) {
 	for {
 		var jobs []core.PersistJob
@@ -249,16 +266,16 @@ func (n *Node) persist(ctx context.Context) {
 		for _, j := range jobs {
 			n.wal.Append(j.HardState, j.Entries)
 		}
-		in := input{persisted: jobs}
+		done := persistDone{jobs: jobs}
 		if err := n.wal.Sync(); err != nil {
-			in = input{err: err}
+			done = persistDone{err: err}
 		}
 		select {
-		case n.inbox <- in:
+		case n.persisted <- done:
 		case <-ctx.Done():
 			return
 		}
-		if in.err != nil {
+		if done.err != nil {
 			return
 		}
 	}
