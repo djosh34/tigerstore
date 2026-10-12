@@ -1,0 +1,5 @@
+{"generation": 0, "elapsed_seconds": 14.509863683999981}
+{"generation": 1, "elapsed_seconds": 34.797993555999994}
+{"generation": 2, "elapsed_seconds": 57.19161232799999}
+{"generation": 3, "elapsed_seconds": 81.969937631}
+{"objects": {"deployments": 122, "pods": 128, "pod_phases": {"Running": 123, "Pending": 5, "Succeeded": 0, "Failed": 0}, "replicasets": 446, "configmaps": 385, "secrets": 121, "events": 3604, "leases": 244, "endpointslices": 362}, "elapsed_seconds": 127.29901855499998}

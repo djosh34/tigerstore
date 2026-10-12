@@ -1,0 +1,29 @@
+name,value
+status,started
+go_version,go1.27.2
+goarch,arm64
+gomaxprocs,1
+repetitions,5
+target_ms_per_direction,40
+run_budget_seconds,230
+training_fraction_rule,sha256(key): big-endian first u64 modulo 5 equals 0
+split_policy,train20 excluded from dictionary evaluation; test80 uses all other keys
+shuffle_seed,42
+dependency:github.com/klauspost/compress,v1.20.3
+dependency:github.com/pierrec/lz4/v4,v4.1.33
+all_values,6261
+train_values,1346
+test_values,4915
+training_sample_count,1346
+training_sample_bytes,1986161
+zstd_1_dictionary_build_wall_ns,421320831
+zstd_1_dictionary_build_cpu_ns,421313000
+zstd_1_dictionary_bytes,32897
+zstd_1_dictionary_status,trained
+zstd_3_dictionary_build_wall_ns,504747434
+zstd_3_dictionary_build_cpu_ns,504658000
+zstd_3_dictionary_bytes,32913
+zstd_3_dictionary_status,trained
+configurations_completed,310
+run_wall_ns,134322725709
+status,complete

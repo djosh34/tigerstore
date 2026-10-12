@@ -1,0 +1,73 @@
+Mon Oct 12 22:53:13 UTC 2026
+ef1add68e253dad9df03a97e80c54f41c1e65a13
+go version go1.27.2 linux/arm64
+Linux runnervmy3dvn 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          32-bit, 64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  4
+On-line CPU(s) list:                     0-3
+Vendor ID:                               ARM
+Model name:                              Neoverse-N2
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Stepping:                                r0p0
+BogoMIPS:                                2000.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16
+L1d cache:                               256 KiB (4 instances)
+L1i cache:                               256 KiB (4 instances)
+L2 cache:                                4 MiB (4 instances)
+L3 cache:                                128 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-3
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     16722010112  1450545152 12863246336    44548096  2727428096 15271464960
+Swap:     3221221376           0  3221221376
+Runner image: ubuntu24-arm64 20261004.142.1
+kind v0.33.0 go1.26.7 linux/arm64
+registry.k8s.io/etcd:3.7.0-0
+etcd Version: 3.7.0
+Git SHA: 4d71f7c
+Go Version: go1.26.5
+Go OS/Arch: linux/arm64
+/tmp/tmp.vYb0P2DDxz/compressbench: go1.27.2
+	path	codec-helper
+	mod	codec-helper	(devel)	
+	dep	github.com/klauspost/compress	v1.20.3	h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=
+	dep	github.com/pierrec/lz4/v4	v4.1.33	h1:GjG1TJ1V4IzKP8L96muuuDNpTwd7D+l2ccXrjAbe014=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=ef1add68e253dad9df03a97e80c54f41c1e65a13
+	build	vcs.time=2026-10-12T22:52:58Z
+	build	vcs.modified=true
+Compression CPU: 0; GOMAXPROCS=1; cluster deleted before timings
