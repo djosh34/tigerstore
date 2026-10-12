@@ -31,7 +31,7 @@ func Revisions(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
-	c := revisionChecker{h: h, byRev: map[int64]int{}, seen: map[string][]history.KeyValue{}, deleted: map[string][]int64{}}
+	c := revisionChecker{h: h, byRev: map[int64]int{}, seen: map[string][]observation{}, deleted: map[string][]int64{}}
 	c.writes()
 	c.realTime()
 	c.observed()
@@ -46,7 +46,7 @@ type revisionChecker struct {
 	// byRev maps the revision of an acked write to its op.
 	byRev map[int64]int
 	// seen collects every observed key by name.
-	seen map[string][]history.KeyValue
+	seen map[string][]observation
 	// deleted collects, per key, the revisions at which clients saw it
 	// deleted.
 	deleted map[string][]int64
@@ -164,8 +164,8 @@ func (c *revisionChecker) observed() {
 			}
 		}
 		where := fmt.Sprintf("op %d (client %d)", i, op.Client)
-		for _, kv := range keysIn(op) {
-			c.kv(where, kv, at)
+		for _, o := range keysIn(op) {
+			c.kv(where, o, at)
 		}
 		for _, key := range deletedBy(op) {
 			c.deleted[key] = append(c.deleted[key], op.Resp.Revision)
@@ -176,13 +176,16 @@ func (c *revisionChecker) observed() {
 			for _, e := range resp.Events {
 				where := fmt.Sprintf("watch %d (client %d)", i, w.Client)
 				if e.PrevKV != nil {
-					c.kv(where, *e.PrevKV, e.Revision()-1)
+					c.kv(where, observation{kv: *e.PrevKV}, e.Revision()-1)
 				}
 				if e.Type == history.EventPut {
-					c.kv(where, e.KV, resp.Revision)
+					c.kv(where, observation{kv: e.KV}, resp.Revision)
 					continue
 				}
 				kv := e.KV
+				if kv.ModRevision > resp.Revision {
+					c.fail("%s: delete event of key %q at revision %d is above its response's header revision %d", where, kv.Key, kv.ModRevision, resp.Revision)
+				}
 				c.deleted[kv.Key] = append(c.deleted[kv.Key], kv.ModRevision)
 				if kv.Version != 0 || kv.CreateRevision != 0 || kv.Value != "" || kv.ModRevision < 2 {
 					c.fail("%s: delete event %+v must have only a key and a mod revision", where, kv)
@@ -195,9 +198,18 @@ func (c *revisionChecker) observed() {
 	}
 }
 
+// observation is a key a client saw. A keys-only read has no value.
+type observation struct {
+	kv       history.KeyValue
+	keysOnly bool
+}
+
 // kv checks one observed key, read at revision at.
-func (c *revisionChecker) kv(where string, kv history.KeyValue, at int64) {
+func (c *revisionChecker) kv(where string, o observation, at int64) {
+	kv := o.kv
 	switch {
+	case o.keysOnly && kv.Value != "":
+		c.fail("%s: key %q has a value in a keys-only read", where, kv.Key)
 	case kv.Version < 1:
 		c.fail("%s: key %q has version %d", where, kv.Key, kv.Version)
 	case kv.CreateRevision < 2 || kv.CreateRevision > kv.ModRevision:
@@ -211,12 +223,11 @@ func (c *revisionChecker) kv(where string, kv history.KeyValue, at int64) {
 		p := puts(&c.h.Ops[j], kv.Key)
 		if p == nil {
 			c.fail("%s: key %q has mod revision %d, but op %d wrote that revision and did not put it", where, kv.Key, kv.ModRevision, j)
-		} else if p.Lease != kv.Lease || p.Value != kv.Value && kv.Value != "" {
-			// An empty value may be a keys-only read.
+		} else if p.Lease != kv.Lease || p.Value != kv.Value && !o.keysOnly {
 			c.fail("%s: key %q at revision %d is %+v, but op %d put %+v", where, kv.Key, kv.ModRevision, kv, j, *p)
 		}
 	}
-	c.seen[kv.Key] = append(c.seen[kv.Key], kv)
+	c.seen[kv.Key] = append(c.seen[kv.Key], o)
 }
 
 // versions checks that each key looks the same at the same mod revision and
@@ -228,8 +239,9 @@ func (c *revisionChecker) versions() {
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		kvs := c.seen[key]
-		for _, kv := range kvs {
+		obs := c.seen[key]
+		for _, o := range obs {
+			kv := o.kv
 			for _, d := range c.deleted[key] {
 				if kv.CreateRevision <= d && d <= kv.ModRevision {
 					c.fail("key %q was deleted at revision %d, but %+v was created before and modified after", key, d, kv)
@@ -237,13 +249,13 @@ func (c *revisionChecker) versions() {
 				}
 			}
 		}
-		slices.SortFunc(kvs, func(a, b history.KeyValue) int { return cmp.Compare(a.ModRevision, b.ModRevision) })
-		for i := 1; i < len(kvs); i++ {
-			a, b := kvs[i-1], kvs[i]
+		slices.SortFunc(obs, func(a, b observation) int { return cmp.Compare(a.kv.ModRevision, b.kv.ModRevision) })
+		for i := 1; i < len(obs); i++ {
+			a, b := obs[i-1].kv, obs[i].kv
 			switch {
 			case a.ModRevision == b.ModRevision:
 				// A keys-only read has no value; compare the rest.
-				if a.Value == "" || b.Value == "" {
+				if obs[i-1].keysOnly || obs[i].keysOnly {
 					a.Value, b.Value = "", ""
 				}
 				if a != b {
@@ -329,27 +341,32 @@ func deletedBy(op *history.Op) []string {
 }
 
 // keysIn returns every key in the response of an acked op.
-func keysIn(op *history.Op) []history.KeyValue {
-	var kvs []history.KeyValue
-	addRange := func(r *history.RangeResponse) { kvs = append(kvs, r.KVs...) }
-	addPut := func(p *history.PutResponse) {
-		if p.PrevKV != nil {
-			kvs = append(kvs, *p.PrevKV)
+func keysIn(op *history.Op) []observation {
+	var obs []observation
+	add := func(kvs []history.KeyValue, keysOnly bool) {
+		for _, kv := range kvs {
+			obs = append(obs, observation{kv: kv, keysOnly: keysOnly})
 		}
 	}
-	addDelete := func(d *history.DeleteResponse) { kvs = append(kvs, d.PrevKVs...) }
+	addPut := func(p *history.PutResponse) {
+		if p.PrevKV != nil {
+			add([]history.KeyValue{*p.PrevKV}, false)
+		}
+	}
+	addDelete := func(d *history.DeleteResponse) { add(d.PrevKVs, false) }
 	switch r := op.Resp; {
 	case r.Range != nil:
-		addRange(r.Range)
+		add(r.Range.KVs, op.Req.Range.KeysOnly)
 	case r.Put != nil:
 		addPut(r.Put)
 	case r.Delete != nil:
 		addDelete(r.Delete)
 	case r.Txn != nil:
-		for _, res := range r.Txn.Results {
+		ops := branch(op)
+		for i, res := range r.Txn.Results {
 			switch {
 			case res.Range != nil:
-				addRange(res.Range)
+				add(res.Range.KVs, ops[i].Range.KeysOnly)
 			case res.Put != nil:
 				addPut(res.Put)
 			case res.Delete != nil:
@@ -357,7 +374,7 @@ func keysIn(op *history.Op) []history.KeyValue {
 			}
 		}
 	}
-	return kvs
+	return obs
 }
 
 // branch returns the txn operations an acked op ran.

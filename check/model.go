@@ -267,14 +267,26 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		// them as unknown, which never matches a response.
 		return outcome{err: &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn"}}
 	}
+	// A read at the txn's own start revision sees the store before the
+	// txn, as etcd keeps a positive requested revision.
+	var before *state
+	for _, op := range ops {
+		if op.Range != nil && op.Range.Revision > 0 {
+			before = s.clone()
+			break
+		}
+	}
 	next := s.rev + 1
 	changed := false
 	var events []history.Event
 	resp := &history.TxnResponse{Succeeded: ok, Results: make([]history.TxnOpResponse, len(ops))}
 	for i, op := range ops {
 		switch {
+		case op.Range != nil && op.Range.Revision > 0:
+			resp.Results[i].Range = before.read(op.Range)
 		case op.Range != nil:
-			// Reads inside a txn see the txn's earlier writes.
+			// Reads at the current revision see the txn's earlier
+			// writes.
 			resp.Results[i].Range = s.read(op.Range)
 		case op.Put != nil:
 			p := op.Put

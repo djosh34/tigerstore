@@ -132,8 +132,10 @@ func Durable(h *history.History) error {
 				branch = op.Req.Txn.Failure
 			}
 			for j, o := range branch {
-				reads = append(reads, o.Range)
-				got = append(got, op.Resp.Txn.Results[j].Range)
+				if o.Range != nil {
+					reads = append(reads, o.Range)
+					got = append(got, op.Resp.Txn.Results[j].Range)
+				}
 			}
 		}
 		for j, q := range reads {
