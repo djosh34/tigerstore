@@ -33,7 +33,7 @@ Goals, in order: the most objects, the highest write throughput, then latency eq
 
 ### Responses prepared before commit
 
-While a batch is being replicated and synced, the committer prepares the response bytes and watch events for it. When the batch commits, the committer releases them at once. Nothing is released before commit. If the entries are lost in a leader change, the prepared bytes are dropped. Replicas only report the log index they have durably accepted, as Raft followers already do.
+While a batch is being replicated and synced, its responses and watch events are prepared. The committer fixes the results and revisions, and helper goroutines encode the bytes. When the batch commits, the committer releases them at once. Nothing is released before commit. If the entries are lost in a leader change, the prepared bytes are dropped. Replicas only report the log index they have durably accepted, as Raft followers already do.
 
 ### Batching
 
@@ -61,7 +61,12 @@ How batch size follows node-to-node latency:
 - The peer window is bounded by bytes (16 MiB or more), not by entry count, so 10 ms between nodes does not throttle throughput.
 - Followers forward what arrived in one core turn and do not wait for the previous forward to be acked.
 
-Write latency for one client is about the client round trip plus `max(t_a, RTT + t_a on the follower)` plus at most one batch of queueing. At 1 to 10 ms between nodes that is about 2.3 to 20 ms, dominated by `RTT`.
+Write latency for one client is the client round trip, plus at most one batch of queueing, plus the commit path:
+
+- A request that lands on the leader commits after about `max(t_a, RTT + t_a on a follower)`, so about `RTT + t_a`.
+- A request that lands on a follower is forwarded to the leader, replicated, and the follower learns the commit afterwards. That is about `2 · RTT + t_a`. Two thirds of requests take this path.
+
+At 1 to 10 ms between nodes, one-client write latency is therefore about 2.3 to 20 ms, dominated by `RTT`.
 
 The batch byte cap and the peer window size are open for measurement.
 
