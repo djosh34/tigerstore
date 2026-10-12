@@ -11,7 +11,8 @@ import time
 import urllib.request
 
 ROOT = Path.cwd()
-OUT = ROOT / 'evidence/pre50profile/raw'
+DETAIL = os.environ.get('PRE50_DETAIL') == '1'
+OUT = ROOT / ('evidence/pre50profile/detail' if DETAIL else 'evidence/pre50profile/raw')
 TMP = Path(os.environ['RUNNER_TEMP']) / 'pre50profile'
 CERT = TMP / 'certs'
 BIN = TMP / 'bin'
@@ -68,7 +69,7 @@ def cluster(store, label, profile_op=None):
                          f'https://127.0.0.1:{2380+100*i}', '--quota-backend-bytes',
                          '8589934592', '--tls-min-version', 'TLS1.3', '--tls-max-version', 'TLS1.3',
                          '--logger', 'zap', '--log-level', 'warn']
-            env = os.environ | {'GOMAXPROCS': '1', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}'}
+            env = os.environ | {'GOMAXPROCS': '1', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}', 'PRE50_DISK_TIMING': '1' if DETAIL else '0'}
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
             COMMANDS.append(args)
@@ -119,15 +120,19 @@ def cluster(store, label, profile_op=None):
                 suffix = 'profile' if kind == 'cpu' else kind
                 b = http(6060+i, f'/debug/pprof/{suffix}?seconds=30')
                 (dest/f'n{i}-{kind}.pb.gz').write_bytes(b)
-            for i in order[:2]:
+            selected = order if DETAIL else order[:2]
+            for i in selected:
                 http(6060+i,'/debug/rates?on=1')
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-                futures = [pool.submit(fetch_profile,i,k) for i in order[:2] for k in ['cpu','mutex','block','allocs']]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+                futures = [pool.submit(fetch_profile,i,k) for i in selected for k in ['cpu','mutex','block','allocs']]
                 time.sleep(1)
+                disk_before = [json.loads(http(6060+i,'/debug/disk')) for i in order] if DETAIL else []
                 load(profile_op, 'profile-load', 0, '25s')
+                disk_after = [json.loads(http(6060+i,'/debug/disk')) for i in order] if DETAIL else []
+                (dest/'disk.json').write_text(json.dumps({'before':disk_before,'after':disk_after},indent=2))
                 for f in futures:
                     f.result()
-            for i in order[:2]:
+            for i in selected:
                 http(6060+i,'/debug/rates?on=0')
         else:
             load('put','put')
@@ -164,7 +169,7 @@ def cluster(store, label, profile_op=None):
 def main():
     check_time()
     OUT.mkdir(parents=True,exist_ok=True)
-    for rep in range(1,6):
+    for rep in ([] if DETAIL else range(1,6)):
         for store in (['tigerstore','etcd'] if rep%2 else ['etcd','tigerstore']):
             print(f'{rep} {store}',flush=True)
             cluster(store,f'{rep}-{store}')

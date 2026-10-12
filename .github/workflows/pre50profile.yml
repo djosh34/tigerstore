@@ -17,9 +17,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: timeout --kill-after=5s 800s bash experiments/pre50profile/run.sh
+      - run: timeout --kill-after=5s 240s bash experiments/pre50profile/run.sh
+        env:
+          PRE50_DETAIL: '1'
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: pre50-profile-${{ github.run_id }}
-          path: evidence/pre50profile/raw
+          path: evidence/pre50profile/detail

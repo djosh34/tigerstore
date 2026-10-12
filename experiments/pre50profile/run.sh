@@ -2,6 +2,7 @@
 set -euo pipefail
 [[ $(date -u +%s) -lt $(date -ud 2026-10-13T22:00:00Z +%s) ]]
 OUT=$PWD/evidence/pre50profile/raw
+if [[ ${PRE50_DETAIL:-0} == 1 ]]; then OUT=$PWD/evidence/pre50profile/detail; fi
 PRIVATE=$RUNNER_TEMP/pre50profile
 mkdir -p "$OUT" "$PRIVATE/bin"
 {
@@ -25,6 +26,9 @@ curl --fail --location --retry 3 -o "$PRIVATE/etcd.tar.gz" https://github.com/et
 tar -xzf "$PRIVATE/etcd.tar.gz" -C "$PRIVATE"
 cp "$PRIVATE/etcd-v3.7.2-linux-arm64/etcd" "$PRIVATE/etcd-v3.7.2-linux-arm64/etcdctl" "$PRIVATE/bin/"
 echo '17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d  '"$PRIVATE/bin/etcd" | sha256sum -c -
+git diff --exit-code
+# Generated evidence is untracked, so Go records vcs.modified=true.
+git status --short > "$OUT/build-status.txt"
 go build -o "$PRIVATE/bin/tigerstore" ./cmd/tigerstore
 go build -o "$PRIVATE/bin/load" ./experiments/pre50profile/load
 go test ./experiments/pre50profile/load

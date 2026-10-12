@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/osfs"
 )
 
 func pre50Observe(n *node.Node) error {
@@ -20,6 +21,11 @@ func pre50Observe(n *node.Node) error {
 	}
 	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader()}); err != nil {
+			return
+		}
+	})
+	http.HandleFunc("/debug/disk", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(osfs.Pre50Stats()); err != nil {
 			return
 		}
 	})
