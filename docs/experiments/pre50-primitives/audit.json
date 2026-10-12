@@ -1,0 +1,31 @@
+{
+  "source_matches_pushed_commit": {
+    "go.mod": true,
+    "pre50-primitives.yml": true,
+    "go.sum": true,
+    "local.go": true,
+    "summarize.py": true,
+    "run.sh": true,
+    "README.md": true,
+    "network.go": true,
+    "main.go": true,
+    "costs_test.go": true
+  },
+  "affinity_snapshots": 94,
+  "result_counts": {
+    "affinity": 94,
+    "rpc-process": 20,
+    "TLS-network": 40,
+    "quorum-process": 30,
+    "follower-result-received": 20,
+    "sizes": 1,
+    "cost": 95,
+    "TLS-record-evidence": 10,
+    "buffered-final-flush": 5,
+    "sink": 1,
+    "fsync": 15
+  },
+  "stderr_files": 52,
+  "stderr_nonempty": 0,
+  "note": "vcs.modified=true reflects generated untracked .run files, exact uploaded code matches commit 28edcb7"
+}
