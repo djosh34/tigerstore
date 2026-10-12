@@ -4,11 +4,13 @@ package testserver
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -57,7 +59,15 @@ func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
 			go func() { done <- cmd.Wait() }()
 			select {
 			case err := <-done:
-				if err != nil { t.Errorf("server exit: %v", err) }
+				if err != nil {
+					var exit *exec.ExitError
+					if errors.As(err, &exit) {
+						status, ok := exit.Sys().(syscall.WaitStatus)
+						if ok && status.Signaled() && status.Signal() == syscall.SIGINT {
+							t.Log("external server exited by the requested SIGINT")
+						} else { t.Errorf("server exit: %v", err) }
+					} else { t.Errorf("server wait: %v", err) }
+				}
 			case <-time.After(5 * time.Second):
 				_ = cmd.Process.Kill()
 				<-done
