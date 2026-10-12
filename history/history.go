@@ -180,7 +180,8 @@ const (
 )
 
 // Compare is one txn condition on a single key. A missing key has version,
-// create revision, mod revision and lease 0 and the empty value.
+// create revision, mod revision and lease 0, and every value compare on it
+// fails, as in etcd.
 type Compare struct {
 	Key    string `json:"key"`
 	Target Target `json:"target"`

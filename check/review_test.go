@@ -83,3 +83,70 @@ func TestDurableNoOpTxnWithDelete(t *testing.T) {
 	}}})
 	mustPass(t, "Durable", Durable(b.done()))
 }
+
+// Regressions for the second review.
+
+func TestLegalRejectionWhereTheModelRejectsToo(t *testing.T) {
+	b := newBuilder(t, "a")
+	put := b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "x", Lease: 5}})
+	h := b.done()
+	h.Ops[put].Err = &history.Error{Code: "ResourceExhausted", Message: "etcdserver: too many requests"}
+	mustPass(t, "Linearizable", Linearizable(h, timeout))
+}
+
+func TestSerializableReadsOnALaggingNode(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	b.do(0, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+	h := b.done()
+	end := h.Ops[len(h.Ops)-1].Return
+	h.Ops = append(h.Ops,
+		// The node has not applied revision 3 yet.
+		history.Op{Client: 1, Call: end + 1, Return: end + 2, Req: history.Request{Range: &history.RangeRequest{Key: "a", Revision: 3, Serializable: true}}, Err: errFutureRev},
+		// Nor the compaction.
+		history.Op{Client: 1, Call: end + 3, Return: end + 4, Req: history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2, Serializable: true}}, Resp: &history.Response{Revision: 2, Range: &history.RangeResponse{
+			KVs: []history.KeyValue{{Key: "a", Value: "1", CreateRevision: 2, ModRevision: 2, Version: 1}}, Count: 1,
+		}}},
+	)
+	mustPass(t, "Revisions", Revisions(h))
+}
+
+func TestDurableNoOpAgainstTheLog(t *testing.T) {
+	t.Run("txn reports the wrong branch", func(t *testing.T) {
+		b := newBuilder(t, "a")
+		b.put(0, "a", "1")
+		txn := b.do(0, history.Request{Txn: &history.TxnRequest{
+			Compare: []history.Compare{{Key: "a", Target: history.TargetMod, Result: history.Equal, Number: 2}},
+			Success: []history.TxnOp{{Delete: &history.DeleteRequest{Key: "missing"}}},
+		}})
+		h := b.done()
+		mustPass(t, "Durable", Durable(h))
+		h.Ops[txn].Resp.Txn = &history.TxnResponse{Succeeded: false}
+		mustFail(t, "Durable", Durable(h), "its compares select succeeded=true")
+	})
+	t.Run("delete finds nothing while the key exists", func(t *testing.T) {
+		b := newBuilder(t, "a")
+		b.put(0, "a", "1")
+		h := b.done()
+		h.Ops = append(h.Ops, history.Op{Client: 1, Call: 100, Return: 110, Req: history.Request{Delete: &history.DeleteRequest{Key: "a"}}, Resp: &history.Response{Revision: 2, Delete: &history.DeleteResponse{}}})
+		mustFail(t, "Durable", Durable(h), "found no key while the log holds 1")
+	})
+}
+
+func TestUnsupportedHistoricalTxnRead(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	h := b.done()
+	h.Ops = append(h.Ops, history.Op{
+		Client: 1, Call: 100, Return: 110,
+		Req:  history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{{Range: &history.RangeRequest{Key: "a", Revision: 2}}}}},
+		Resp: &history.Response{Revision: 3, Txn: &history.TxnResponse{Succeeded: true, Results: []history.TxnOpResponse{{Range: &history.RangeResponse{}}}}},
+	})
+	mustFail(t, "Linearizable", Linearizable(h, timeout), "does not support")
+}
+
+func TestZeroTimeout(t *testing.T) {
+	mustFail(t, "Linearizable", Linearizable(&history.History{}, 0), "positive timeout")
+}

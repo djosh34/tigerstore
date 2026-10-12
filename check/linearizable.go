@@ -29,6 +29,9 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
+	if timeout <= 0 {
+		return fmt.Errorf("linearizability check needs a positive timeout, got %s", timeout)
+	}
 	ops := make([]porcupine.Operation, 0, len(h.Ops))
 	var reqs []history.Request
 	for i := range h.Ops {
@@ -52,14 +55,17 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	}
 	keys := keysOf(reqs)
 
-	var tripped atomic.Bool
+	var tripped, unsupported atomic.Bool
 	m := porcupine.Model{
 		Init: func() any { return states{newState(keys)} },
 		Step: func(st, in, out any) (bool, any) {
 			if tripped.Load() {
 				return false, nil
 			}
-			next := st.(states).step(in.(input), out.(output))
+			next, unsup := st.(states).step(in.(input), out.(output))
+			if unsup {
+				unsupported.Store(true)
+			}
 			return len(next) > 0, next
 		},
 		Equal: func(a, b any) bool { return a.(states).equal(b.(states)) },
@@ -79,6 +85,9 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 	case porcupine.Ok:
 		return nil
 	case porcupine.Illegal:
+		if unsupported.Load() {
+			return fmt.Errorf("history of %d operations has a historical range inside a txn, which the model does not support", len(ops))
+		}
 		return fmt.Errorf("history of %d operations is not linearizable", len(ops))
 	case porcupine.Unknown:
 		return fmt.Errorf("linearizability check of %d operations timed out after %s", len(ops), timeout)
@@ -144,33 +153,37 @@ func keysOf(reqs []history.Request) []string {
 // where it took effect and one where it did not.
 type states []*state
 
-func (ss states) step(in input, out output) states {
+// step returns the states after one op, and whether the model met a request
+// it does not support.
+func (ss states) step(in input, out output) (states, bool) {
 	next := make(states, 0, len(ss))
 	add := func(s *state) {
 		if !slices.ContainsFunc(next, s.equal) {
 			next = append(next, s)
 		}
 	}
+	unsupported := false
 	for _, s := range ss {
 		n := s.clone()
 		o := n.step(in.req, false)
+		unsupported = unsupported || o.err == errUnsupported
 		switch {
 		case out.err != nil && out.err.Ambiguous:
 			add(s)
 			add(n)
 		case out.err != nil:
-			// The server rejected it, so it had no effect. If the model
-			// rejects it too, the errors must agree. A rejection the
-			// model cannot decide (overload, size, bad arguments) is
-			// allowed, unless it is one the model decides.
-			if o.err != nil && sameError(o.err, out.err) || o.err == nil && !isModelError(out.err) {
+			// The server rejected it, so it had no effect. A rejection
+			// the model does not decide (overload, size, bad arguments)
+			// is always legal, since etcd checks those first. One the
+			// model decides must agree with the model.
+			if !isModelError(out.err) || o.err != nil && sameError(o.err, out.err) {
 				add(s)
 			}
 		case o.err == nil && matches(o, out.resp):
 			add(n)
 		}
 	}
-	return next
+	return next, unsupported
 }
 
 func (ss states) equal(o states) bool {

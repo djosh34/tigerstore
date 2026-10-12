@@ -26,7 +26,7 @@ import (
 //     the current revision fails as future, and only then. Compact follows
 //     the same rules.
 //
-// Serializable reads are left out of the real-time rule.
+// Serializable reads are left out of the rules that need real-time order.
 func Revisions(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
@@ -128,7 +128,9 @@ func (c *revisionChecker) realTime() {
 	// Errors that claim a revision is in the future.
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
-		if op.Err == nil || !sameError(op.Err, errFutureRev) {
+		if op.Err == nil || !sameError(op.Err, errFutureRev) || op.Req.Range != nil && op.Req.Range.Serializable {
+			// A lagging node may legally answer a serializable read
+			// with a future revision error.
 			continue
 		}
 		rev := requestedRevision(op.Req)
@@ -286,7 +288,9 @@ func (c *revisionChecker) compaction() {
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
 		rev := requestedRevision(op.Req)
-		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev <= 0 {
+		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && (rev <= 0 || op.Req.Range.Serializable) {
+			// A lagging node may serve a serializable read below a
+			// compaction it has not applied yet.
 			continue
 		}
 		// covers reports whether a compaction at k makes rev compacted

@@ -133,6 +133,9 @@ func TestCompareTargets(t *testing.T) {
 		// creates: MOD == 0.
 		{history.Compare{Key: "missing", Target: history.TargetMod, Result: history.Equal, Number: 0}, true},
 		{history.Compare{Key: "missing", Target: history.TargetVersion, Result: history.Equal, Number: 0}, true},
+		// etcd fails every value compare on a missing key.
+		{history.Compare{Key: "missing", Target: history.TargetValue, Result: history.Equal, Value: ""}, false},
+		{history.Compare{Key: "missing", Target: history.TargetValue, Result: history.NotEqual, Value: "x"}, false},
 	} {
 		if got := s.compare(c.cmp); got != c.want {
 			t.Errorf("compare %+v = %v, want %v", c.cmp, got, c.want)
