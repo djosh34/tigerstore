@@ -3,6 +3,7 @@ package mvcc
 import (
 	"errors"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -329,5 +330,32 @@ func TestEtcdRangeEdges(t *testing.T) {
 	}
 	if len(txn.Responses[0].GetResponseRange().Kvs) != 1 {
 		t.Fatalf("txn range at revision -1 = %v", txn)
+	}
+}
+
+func TestHistory(t *testing.T) {
+	s := New()
+	put(t, s, "a", "1")                                                                                       // 2
+	put(t, s, "b", "1")                                                                                       // 3
+	put(t, s, "a", "2")                                                                                       // 4
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}); err != nil { // 5.0, 5.1
+		t.Fatal(err)
+	}
+	put(t, s, "c", "1") // 6
+	var got []string
+	for _, c := range s.History([]byte("a"), []byte("c"), 3) {
+		ev := c.Event(true)
+		prev := ""
+		if ev.PrevKv != nil {
+			prev = string(ev.PrevKv.Value)
+		}
+		got = append(got, ev.Type.String()+" "+string(ev.Kv.Key)+"@"+strconv.FormatInt(ev.Kv.ModRevision, 10)+" prev="+prev)
+	}
+	want := []string{"PUT b@3 prev=", "PUT a@4 prev=1", "DELETE a@5 prev=2", "DELETE b@5 prev=1"}
+	if strings.Join(got, ";") != strings.Join(want, ";") {
+		t.Fatalf("history = %v, want %v", got, want)
+	}
+	if !InRange([]byte("b"), []byte("a"), []byte{0}) || InRange([]byte("c"), []byte("a"), []byte("c")) || !InRange([]byte("a"), []byte("a"), nil) {
+		t.Fatal("InRange is wrong")
 	}
 }

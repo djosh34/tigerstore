@@ -5,13 +5,16 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -226,5 +229,71 @@ func TestClientCertificateRequired(t *testing.T) {
 	defer cancel()
 	if _, err := kv.Range(ctx, &pb.RangeRequest{Key: []byte("a"), Serializable: true}); err == nil {
 		t.Fatal("a client certificate from another CA was accepted")
+	}
+}
+
+func TestWatchOverTLS(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 98)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	first := retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("w/a"), Value: []byte("1")})
+	})
+	conn, err := grpc.NewClient(c.running[2].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() //nolint:errcheck // closing a test client
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
+	ws, err := pb.NewWatchClient(conn).Watch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+		Key: []byte("w/"), RangeEnd: []byte("w0"), StartRevision: first.Header.Revision, PrevKv: true,
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("w/a"), Value: []byte("2")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kv.DeleteRange(ctx, &pb.DeleteRangeRequest{Key: []byte("w/a")}); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	created := false
+	for len(got) < 3 {
+		r, err := ws.Recv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		created = created || r.Created
+		for _, ev := range r.Events {
+			s := ev.Type.String() + " " + string(ev.Kv.Value)
+			if ev.PrevKv != nil {
+				s += " prev " + string(ev.PrevKv.Value)
+			}
+			got = append(got, s)
+		}
+	}
+	if !created || strings.Join(got, ", ") != "PUT 1, PUT 2 prev 1, DELETE  prev 2" {
+		t.Fatalf("created %v, events %q", created, got)
+	}
+	if err := ws.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := ws.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.WatchId != -1 || r.Header.Revision < first.Header.Revision+2 || len(r.Events) != 0 {
+		t.Fatalf("progress response = %v", r)
 	}
 }

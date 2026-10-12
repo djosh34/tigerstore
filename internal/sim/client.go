@@ -132,11 +132,14 @@ func (c *client) request() proto.Message {
 	k := s.rng.IntN(numKeys)
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
 	switch p := s.rng.IntN(100); {
-	case p < 25:
+	case p < 22:
 		return &pb.PutRequest{Key: key(k), Value: val, PrevKv: s.rng.IntN(2) == 0}
-	case p < 35:
+	case p < 30:
 		return &pb.DeleteRangeRequest{Key: key(k), PrevKv: s.rng.IntN(2) == 0}
-	case p < 55:
+	case p < 34:
+		// A range delete changes several keys in one revision.
+		return &pb.DeleteRangeRequest{Key: key(k), RangeEnd: key(min(k+3, numKeys)), PrevKv: s.rng.IntN(2) == 0}
+	case p < 50:
 		return &pb.TxnRequest{
 			Compare: []*pb.Compare{{
 				Key: key(k), Target: pb.Compare_MOD, Result: pb.Compare_EQUAL,
@@ -145,6 +148,13 @@ func (c *client) request() proto.Message {
 			Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key(k), Value: val}}}},
 			Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key(k)}}}},
 		}
+	case p < 55:
+		// A transaction that writes two keys in one revision.
+		k2 := (k + 1 + s.rng.IntN(numKeys-1)) % numKeys
+		return &pb.TxnRequest{Success: []*pb.RequestOp{
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key(k), Value: fmt.Appendf(nil, "%sa", val), PrevKv: true}}},
+			{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key(k2), Value: fmt.Appendf(nil, "%sb", val)}}},
+		}}
 	case p < 80:
 		return &pb.RangeRequest{Key: key(k)}
 	case p < 90:

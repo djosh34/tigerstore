@@ -28,6 +28,7 @@ import (
 //     one returned before it started, and a write gets a newer one;
 //   - every write is in the committed log at most once, an acknowledged
 //     write is in it, and a write that failed for certain is not;
+//   - every watch delivered exactly the final history of its range;
 //   - every call that starts after the cluster healed succeeds.
 func (s *Sim) check(res *Result) error {
 	final, err := s.converged()
@@ -62,6 +63,9 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	if err := checkLog(res); err != nil {
+		return err
+	}
+	if err := s.checkWatches(final, res); err != nil {
 		return err
 	}
 	live := 0
@@ -152,6 +156,40 @@ func samePrev(st *mvcc.Store, key []byte, rev int64, got *mvccpb.KeyValue) error
 	return nil
 }
 
+// checkDelete checks that a delete removed exactly the keys of its range
+// that existed at the revision before, and returned them when asked.
+func checkDelete(st *mvcc.Store, req *pb.DeleteRangeRequest, resp *pb.DeleteRangeResponse) error {
+	rev := resp.Header.Revision
+	after, err := st.Range(&pb.RangeRequest{Key: req.Key, RangeEnd: req.RangeEnd, Revision: rev})
+	if err != nil {
+		return err
+	}
+	if len(after.Kvs) != 0 {
+		return fmt.Errorf("keys %v exist at revision %d after an acknowledged delete", after.Kvs, rev)
+	}
+	if resp.Deleted == 0 {
+		return nil
+	}
+	before, err := st.Range(&pb.RangeRequest{Key: req.Key, RangeEnd: req.RangeEnd, Revision: rev - 1})
+	if err != nil {
+		return err
+	}
+	if int64(len(before.Kvs)) != resp.Deleted {
+		return fmt.Errorf("delete reported %d keys, the final store had %d at revision %d", resp.Deleted, len(before.Kvs), rev-1)
+	}
+	if req.PrevKv {
+		if len(resp.PrevKvs) != len(before.Kvs) {
+			return fmt.Errorf("delete returned %d previous values for %d keys", len(resp.PrevKvs), len(before.Kvs))
+		}
+		for i := range before.Kvs {
+			if !proto.Equal(before.Kvs[i], resp.PrevKvs[i]) {
+				return fmt.Errorf("previous value %v, the final store has %v at revision %d", resp.PrevKvs[i], before.Kvs[i], rev-1)
+			}
+		}
+	}
+	return nil
+}
+
 func checkPut(st *mvcc.Store, p *pb.PutRequest, rev int64, prev *mvccpb.KeyValue) error {
 	kv, err := at(st, p.Key, rev)
 	if err != nil {
@@ -185,22 +223,7 @@ func checkRecord(st *mvcc.Store, r *Record) error {
 		if !ok {
 			return errors.New("wrong response type")
 		}
-		rev := resp.Header.Revision
-		if kv, err := at(st, req.Key, rev); err != nil || kv != nil {
-			return fmt.Errorf("key %q exists at revision %d after an acknowledged delete: %v %w", req.Key, rev, kv, err)
-		}
-		if resp.Deleted > 0 {
-			if kv, err := at(st, req.Key, rev-1); err != nil || kv == nil {
-				return fmt.Errorf("delete of %q reported a deletion, but the key did not exist at revision %d", req.Key, rev-1)
-			}
-		}
-		if resp.Deleted > 0 && req.PrevKv {
-			if len(resp.PrevKvs) != 1 {
-				return fmt.Errorf("delete of one key returned %d previous values", len(resp.PrevKvs))
-			}
-			return samePrev(st, req.Key, rev-1, resp.PrevKvs[0])
-		}
-		return nil
+		return checkDelete(st, req, resp)
 	case *pb.TxnRequest:
 		resp, ok := r.Resp.(*pb.TxnResponse)
 		if !ok {

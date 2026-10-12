@@ -14,10 +14,11 @@ import (
 
 // single runs a one-node cluster on a simulated disk.
 type single struct {
-	t    *testing.T
-	disk *simfs.Disk
-	log  *wal.WAL
-	n    *Node
+	t     *testing.T
+	disk  *simfs.Disk
+	log   *wal.WAL
+	n     *Node
+	watch []WatchResponse
 }
 
 func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
@@ -55,6 +56,7 @@ func (s *single) run() []Reply {
 			s.t.Fatalf("node stopped: %v", err)
 		}
 		out = append(out, eff.Replies...)
+		s.watch = append(s.watch, eff.Watch...)
 		if len(eff.Persist) == 0 {
 			return out
 		}

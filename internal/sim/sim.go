@@ -107,20 +107,26 @@ const (
 	evSubmit
 	evClientReply
 	evClientTimeout
+	evWatchOpen
+	evWatchCreate
+	evWatchResponse
+	evWatchBroken
+	evWatchDrop
 )
 
 type event struct {
-	at   int64
-	seq  uint64
-	kind kind
-	node int
-	gen  uint64 // node generation or link epoch the event belongs to
-	from int
-	data []byte
-	jobs []core.PersistJob
-	op   *clientOp
-	resp proto.Message
-	err  error
+	at    int64
+	seq   uint64
+	kind  kind
+	node  int
+	gen   uint64 // node generation or link epoch the event belongs to
+	from  int
+	data  []byte
+	jobs  []core.PersistJob
+	op    *clientOp
+	watch *watchClient
+	resp  proto.Message
+	err   error
 }
 
 // queue is a binary min-heap of events by time, then sequence number.
@@ -187,6 +193,9 @@ type node struct {
 	nextReq     uint64
 	reqs        map[uint64]*clientOp
 	outstanding []*clientOp
+
+	nextStream uint64
+	streams    map[uint64]*watchClient
 }
 
 type link struct {
@@ -209,10 +218,11 @@ type Sim struct {
 	healAt, stopAt, endAt int64
 	healed                bool
 
-	clients []*client
-	history []*Record
-	stats   Stats
-	err     error
+	clients  []*client
+	watchers []*watchClient
+	history  []*Record
+	stats    Stats
+	err      error
 }
 
 // Stats counts what happened in a run.
@@ -228,8 +238,9 @@ type Result struct {
 	Trace   uint64
 	History []*Record
 	// Log is every committed write in commit order.
-	Log   []proto.Message
-	Stats Stats
+	Log     []proto.Message
+	Watches []WatchResult
+	Stats   Stats
 }
 
 // Run runs one seed and checks it. The error describes the first broken
@@ -251,7 +262,7 @@ func Run(cfg Config) (*Result, error) {
 		for j := range s.links[i] {
 			s.links[i][j].up = true
 		}
-		n := &node{idx: i, id: id, disk: simfs.New(), reqs: map[uint64]*clientOp{}}
+		n := &node{idx: i, id: id, disk: simfs.New(), reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}}
 		s.nodes = append(s.nodes, n)
 		if err := s.start(n); err != nil {
 			return nil, err
@@ -262,6 +273,7 @@ func Run(cfg Config) (*Result, error) {
 		s.clients = append(s.clients, c)
 		s.push(&event{at: s.rng.Int64N(100 * Millisecond), kind: evClientStart, op: &clientOp{client: c}})
 	}
+	s.startWatchers()
 	if cfg.Faults.CrashEvery > 0 {
 		s.push(&event{at: s.exp(cfg.Faults.CrashEvery), kind: evCrash})
 		// One crash at a uniform time, so that no run goes without.
@@ -370,6 +382,16 @@ func (s *Sim) handle(e *event) {
 		e.op.client.done(e.op, e.resp, e.err)
 	case evClientTimeout:
 		e.op.client.done(e.op, nil, errClientTimeout)
+	case evWatchOpen:
+		e.watch.openWatch()
+	case evWatchCreate:
+		e.watch.create(s.nodes[e.node], e.gen)
+	case evWatchResponse:
+		e.watch.receive(e)
+	case evWatchBroken:
+		e.watch.broken()
+	case evWatchDrop:
+		e.watch.drop()
 	}
 }
 
@@ -382,6 +404,9 @@ func (s *Sim) start(n *node) error {
 	w.SetSegmentBytes(256 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
+	// Progress notifications every 2 s instead of 10 minutes, so runs see
+	// them.
+	cfg.ProgressTicks = 20
 	c, err := core.New(cfg, rec)
 	if err != nil {
 		return fmt.Errorf("node %d cannot start: %w", n.id, err)
@@ -404,6 +429,9 @@ func (s *Sim) process(n *node) {
 	}
 	for _, r := range eff.Replies {
 		s.replied(n, r)
+	}
+	for _, r := range eff.Watch {
+		s.watchResponse(n, r)
 	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)
@@ -543,6 +571,12 @@ func (s *Sim) crash(n *node) {
 	}
 	n.outstanding = nil
 	n.reqs = map[uint64]*clientOp{}
+	for _, w := range s.watchers {
+		if w.open && w.node == n.idx && w.gen == n.gen {
+			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w})
+		}
+	}
+	n.streams = map[uint64]*watchClient{}
 }
 
 func (s *Sim) changeLinks() {

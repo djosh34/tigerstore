@@ -58,7 +58,7 @@ func New(n *node.Node, cfg Config) *grpc.Server {
 	kv := &kvServer{n: n}
 	pb.RegisterKVServer(g, kv)
 	pb.RegisterClusterServer(g, &clusterServer{n: n, cfg: cfg})
-	pb.RegisterWatchServer(g, &pb.UnimplementedWatchServer{})
+	pb.RegisterWatchServer(g, &watchServer{n: n})
 	pb.RegisterLeaseServer(g, &pb.UnimplementedLeaseServer{})
 	pb.RegisterMaintenanceServer(g, &pb.UnimplementedMaintenanceServer{})
 	pb.RegisterAuthServer(g, &pb.UnimplementedAuthServer{})
