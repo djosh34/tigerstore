@@ -235,6 +235,14 @@ func (n *Node) Step(m *raftpb.Message) error {
 	return n.rn.Step(m)
 }
 
+// Unreachable reports that a message to a peer was dropped, so Raft
+// probes it instead of streaming to it.
+func (n *Node) Unreachable(id uint64) {
+	if n.err == nil {
+		n.rn.ReportUnreachable(id)
+	}
+}
+
 // Submit hands the node a client request. The reply comes in a later
 // Effects.
 func (n *Node) Submit(r Request) {

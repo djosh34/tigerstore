@@ -6,7 +6,7 @@ This file is the current design. It starts from the merged starting design ([#32
 
 ## Status
 
-Built so far: the Go module, a `tigerstore` command that exits with an error, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`) and the determinism lint (`internal/lint`). There is no server yet. The section "What is built" describes them. Everything else is the design that the next pull requests build.
+Built so far: the Go module, a `tigerstore` command that exits with an error, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`), the determinism lint (`internal/lint`), and the real node: its driver (`internal/node`), the peer transport (`internal/peer`), the etcd gRPC server (`internal/server`) and the `tigerstore` command. The section "What is built" describes them. Everything else is the design that the next pull requests build.
 
 ## Fixed by the owner
 
@@ -162,6 +162,14 @@ Cost on this host (aarch64, 8 cores): about 80 ms per run of one seed, so 64 see
 
 **Determinism lint.** `internal/lint` is a test that parses the non-test files of `internal/core`, `internal/mvcc`, `internal/wal`, `internal/simfs` and `internal/sim`. It fails on a `go` statement, a call to a global `math/rand/v2` function, and imports of `time`, `os`, `syscall`, `net`, `crypto/rand`, `math/rand`, `sync`, `runtime` and `unsafe`. A second test feeds it a file with each violation and requires each to be reported. CI runs it as its own job.
 
+**Real node.** `internal/node` is the driver of `core.Node` outside the simulator. One committer goroutine owns the core. It waits for an input (a client request, a peer message, a finished disk write, an unreachable report) or a 100 ms tick, takes up to 4096 more inputs that are already queued, calls `Process` once, and carries out the effects. One disk goroutine takes every queued persist job, appends them to the WAL, syncs once and hands them back. That is the group commit: while one fsync runs, the next batch builds up. gRPC handlers call `Node.Do(ctx, op)`, which queues the request with a reply channel and waits for the reply or the context. A request whose client gave up still runs; its reply is dropped. A failed write or sync stops the node.
+
+**Peer transport.** `internal/peer` implements the decided transport. `peer.Transport` has two methods, `Send` and `Close`, so other transports can replace it. The TCP implementation keeps one outbound TLS 1.3 connection per peer, with the peer CA verified on both ends. The dialer first sends its Raft ID as 8 bytes, then frames of a 4-byte length and a protobuf `raftpb.Message`, so every Raft field survives. Each peer has a writer goroutine with two queues: control messages (heartbeats, votes, ReadIndex) go before messages with entries. The entry queue holds at most 64 MiB, received frames at most 64 MiB, and each write has a 5 s deadline. `Send` never blocks: a full queue or a broken connection drops the message and reports the peer unreachable to Raft, which falls back to probing. The writer marshals messages, not the committer. Snapshots are not sent yet.
+
+**gRPC server.** `internal/server` registers etcd's KV service (Range, Put, DeleteRange, Txn) and Cluster.MemberList. Every other service and method, including Compact, Watch, Lease, Maintenance and RangeStream, returns Unimplemented through the generated `Unimplemented*Server` types. The receive limit is etcd's 1.5 MiB request limit plus 512 KiB. Client TLS takes a certificate, and with `--client-cert-auth` it requires client certificates from `--trusted-ca-file`.
+
+**Command.** `tigerstore` runs one node with etcd's flag names: `--name`, `--data-dir`, `--initial-cluster`, `--initial-cluster-token`, `--listen-peer-urls`, `--listen-client-urls`, `--advertise-client-urls`, `--cert-file`, `--key-file`, `--trusted-ca-file`, `--client-cert-auth`, and the `--peer-*` versions. A node's Raft ID is its position in `--initial-cluster`, and the cluster ID is a hash of the token and that list. Peer URLs must be https. `scripts/dev-certs.sh` and `scripts/local-cluster.sh` start a local cluster. CI's `smoke` job runs etcdctl v3.7.2 put, get and del against it over TLS and checks that a client without a certificate is refused. `internal/server` has a Go test that runs 3 nodes in one process over real TLS, restarts one from its disk and reads its data back.
+
 ## Testing
 
 ### Deterministic simulation
@@ -209,7 +217,9 @@ Later pieces plug in here without reshaping what exists.
 - **Watches.** After each applied write, `Store.Changes` lists the changed keys. The core matches them against its watchers and emits watch events as a new kind of effect.
 - **Leases and compaction.** New kinds in the entry codec (`core/codec.go`). The lessor lives in the core and sets `Store.LeaseExists`. The leader checks expiry on `Tick` and proposes a revoke. Raft log compaction needs snapshots, which the core refuses today.
 - **Planted bugs.** A build tag such as `plantedbugs` can switch a code path in `core`, `mvcc` or `wal`, as the three hand-planted bugs above did. A test lists each bug with its seed budget and requires `TestSeeds` to fail within it.
-- **The transport.** The core only produces and consumes `raftpb.Message` values. The node driver marshals them and hands them to the node-to-node transport, which is the next piece.
+- **Other transports.** The core only produces and consumes `raftpb.Message` values, and `node.Node` only needs a `peer.Transport` for sending and `Node.Deliver` for receiving. A tournament transport implements those two.
+- **Health, version and the rest of the API.** `GET /health` and `/version` share the client port with gRPC: serve the port with an `http.Server` whose handler sends `application/grpc` requests to `grpc.Server.ServeHTTP` and the rest to the HTTP handlers, or split the listener by the first bytes. Maintenance.Status, Lease and Compact replace their Unimplemented stubs in `server.New`.
+- **Backpressure.** The committer blocks when 1024 persist batches are queued, which only happens when the disk is far behind. A peer connection blocks in `Node.Deliver` when the committer's inbox of 8192 inputs is full.
 
 ## Open for the architect
 
