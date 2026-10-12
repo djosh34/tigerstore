@@ -1,0 +1,835 @@
+{
+  "packages": [
+    {
+      "Time": "2026-10-12T22:24:24.939959955Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:24:24.939978275Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testing/testingcert",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:24:24.939988148Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testserver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:24:24.943172375Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/preflight",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-10-12T22:24:24.94784152Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/metrics",
+      "Elapsed": 0.008
+    },
+    {
+      "Time": "2026-10-12T22:24:24.952774402Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/testing",
+      "Elapsed": 0.013
+    },
+    {
+      "Time": "2026-10-12T22:26:33.663986269Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Elapsed": 128.724
+    }
+  ],
+  "test_results": {
+    "pass": 426,
+    "fail": 111
+  },
+  "top_level_results": {
+    "pass": 24,
+    "fail": 63
+  },
+  "failed_tests": [
+    {
+      "Time": "2026-10-12T22:24:26.026948179Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCompact",
+      "Elapsed": 1.07
+    },
+    {
+      "Time": "2026-10-12T22:24:27.251226571Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCompactIntervalZero",
+      "Elapsed": 1.22
+    },
+    {
+      "Time": "2026-10-12T22:24:28.278327492Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCompactConflict",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:29.304703071Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestLinearizedReadRevisionInvariant",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:30.328736065Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCreate",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:24:33.86244889Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCreateWithTTL",
+      "Elapsed": 3.53
+    },
+    {
+      "Time": "2026-10-12T22:24:34.886368191Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCreateWithKeyExist",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:24:35.91343328Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGet",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:36.951615945Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestUnconditionalDelete",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:24:37.977507625Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestConditionalDelete",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:39.207553057Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithSuggestion",
+      "Elapsed": 1.23
+    },
+    {
+      "Time": "2026-10-12T22:24:40.233539426Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithSuggestionAndConflict",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:41.27038535Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithSuggestionOfDeletedObject",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:24:42.308854523Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestValidateDeletionWithSuggestion",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:24:43.333885444Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestValidateDeletionWithOnlySuggestionValid",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:24:44.359646516Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithConflict",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:45.385691996Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithConflictAndMissingExpectedTransformOrDecodeError",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:46.410396926Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithConflictAndExpectedTransformError",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:24:47.437246739Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithConflictAndExpectedDecodeError",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:48.462356354Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestDeleteWithSuggestionAndMissingExpectedTransformOrDecodeFailure",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:49.4883303Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPreconditionalDeleteWithSuggestion",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:50.514856954Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPreconditionalDeleteWithSuggestionPass",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:51.541409372Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListPaging",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:52.580491145Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListNonRecursive",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:24:53.615036389Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListRecursivePrefix",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:54.647255635Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestKeySchema",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:55.884133995Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListWithErrorAggregation",
+      "Elapsed": 1.24
+    },
+    {
+      "Time": "2026-10-12T22:24:56.910887164Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListWithoutErrorAggregation",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:24:57.950136476Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGuaranteedUpdate",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:25:00.982324644Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGuaranteedUpdateWithTTL",
+      "Elapsed": 3.03
+    },
+    {
+      "Time": "2026-10-12T22:25:02.00740003Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGuaranteedUpdateChecksStoredData",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:03.033643868Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGuaranteedUpdateWithConflict",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:04.058699308Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGuaranteedUpdateWithSuggestionAndConflict",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:05.084585781Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestTransformationFailure",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:07.133307425Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestList/rangeStream=false",
+      "Elapsed": 2.03
+    },
+    {
+      "Time": "2026-10-12T22:25:09.182491918Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestList/rangeStream=true",
+      "Elapsed": 2.03
+    },
+    {
+      "Time": "2026-10-12T22:25:09.182500094Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestList",
+      "Elapsed": 4.1
+    },
+    {
+      "Time": "2026-10-12T22:25:10.208649842Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListStreamFallsBackToPaginated",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:11.250540626Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetListStreamMultiChunk",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:25:12.273897077Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListMetrics/rangeStream=false",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:13.298054535Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListMetrics/rangeStream=true",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:13.298072112Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListMetrics",
+      "Elapsed": 2.05
+    },
+    {
+      "Time": "2026-10-12T22:25:14.325524095Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestConsistentList/rangeStream=false",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:15.352377251Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestConsistentList/rangeStream=true",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:15.352385827Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestConsistentList",
+      "Elapsed": 2.05
+    },
+    {
+      "Time": "2026-10-12T22:25:17.395086273Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestCompactRevision",
+      "Elapsed": 2.04
+    },
+    {
+      "Time": "2026-10-12T22:25:18.420851753Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListContinuation",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:20.055471756Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListPaginationRareObject",
+      "Elapsed": 1.63
+    },
+    {
+      "Time": "2026-10-12T22:25:21.08236625Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListContinuationWithFilter",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:22.147810059Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestNamespaceScopedList",
+      "Elapsed": 1.07
+    },
+    {
+      "Time": "2026-10-12T22:25:24.180259109Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListInconsistentContinuation",
+      "Elapsed": 2.03
+    },
+    {
+      "Time": "2026-10-12T22:25:25.224835255Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestListResourceVersionMatch",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:25:26.256770095Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestStats/SizeBasedListCostEstimate=true",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:27.289818952Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestStats/SizeBasedListCostEstimate=false",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:27.289829297Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestStats",
+      "Elapsed": 2.06
+    },
+    {
+      "Time": "2026-10-12T22:25:30.366781017Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrefix",
+      "Elapsed": 3.08
+    },
+    {
+      "Time": "2026-10-12T22:25:31.392238822Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestLeaseMaxObjectCount",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:32.413919514Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrepareKey",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:33.44866296Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestInvalidKeys",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:25:34.472532224Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestGetCurrentResourceVersion",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:35.496743714Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrefixGetKeys",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:36.520689231Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrefixStats/Estimate=false",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:37.545078711Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrefixStats/Estimate=true",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:37.545096183Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestPrefixStats",
+      "Elapsed": 2.05
+    },
+    {
+      "Time": "2026-10-12T22:25:38.603563751Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/Watch",
+      "Elapsed": 1.06
+    },
+    {
+      "Time": "2026-10-12T22:25:39.649683056Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/ClusterScopedWatch",
+      "Elapsed": 1.05
+    },
+    {
+      "Time": "2026-10-12T22:25:40.751394698Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/NamespaceScopedWatch",
+      "Elapsed": 1.1
+    },
+    {
+      "Time": "2026-10-12T22:25:41.775833109Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/DeleteTriggerWatch",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:43.816472885Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchFromZero",
+      "Elapsed": 2.04
+    },
+    {
+      "Time": "2026-10-12T22:25:44.840608201Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchFromNonZero",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:46.883610166Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/DelayedWatchDelivery",
+      "Elapsed": 2.04
+    },
+    {
+      "Time": "2026-10-12T22:25:47.920277772Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchError",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:25:48.942570814Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchContextCancel",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:50.00793188Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatcherTimeout",
+      "Elapsed": 1.07
+    },
+    {
+      "Time": "2026-10-12T22:25:51.032784099Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchDeleteEventObjectHaveLatestRV",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:52.05710233Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchInitializationSignal",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:25:54.153645459Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/ProgressNotify",
+      "Elapsed": 2.1
+    },
+    {
+      "Time": "2026-10-12T22:25:55.178374885Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchWithUnsafeDelete",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:02.20599759Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchDispatchBookmarkEvents",
+      "Elapsed": 7.03
+    },
+    {
+      "Time": "2026-10-12T22:26:03.227898208Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/SendInitialEventsBackwardCompatibility",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:05.625508303Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=false/WatchSemantics",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:08.022055979Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=false/WatchSemanticsWithConcurrentDecode",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:09.149787357Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=false/WatchSemanticInitialEventsExtended",
+      "Elapsed": 1.13
+    },
+    {
+      "Time": "2026-10-12T22:26:10.276463979Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=false/WatchListMatchSingle",
+      "Elapsed": 1.13
+    },
+    {
+      "Time": "2026-10-12T22:26:10.276552413Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=false",
+      "Elapsed": 7.05
+    },
+    {
+      "Time": "2026-10-12T22:26:12.673991112Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=true/WatchSemantics",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:14.986506843Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=true/WatchSemanticsWithConcurrentDecode",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:16.115045253Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=true/WatchSemanticInitialEventsExtended",
+      "Elapsed": 1.13
+    },
+    {
+      "Time": "2026-10-12T22:26:17.241912777Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=true/WatchListMatchSingle",
+      "Elapsed": 1.13
+    },
+    {
+      "Time": "2026-10-12T22:26:17.24200646Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/RangeStream=true",
+      "Elapsed": 6.97
+    },
+    {
+      "Time": "2026-10-12T22:26:18.283264923Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch/WatchErrorEventIsBlockingFurtherEvent",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:26:18.283278163Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatch",
+      "Elapsed": 40.74
+    },
+    {
+      "Time": "2026-10-12T22:26:19.306064612Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchErrorIncorrectConfiguration/no_newFunc_provided",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:19.306075549Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchErrorIncorrectConfiguration",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:20.330253904Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestTooLargeResourceVersionErrorForWatchList",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:21.355731603Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/Paginated/None_of_the_current_objects_match_watchKey:_sync_with_empty_page",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:26:22.380452629Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/Paginated/The_number_of_current_objects_is_less_than_defaultWatcherMaxLimit:_sync_with_one_page",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:23.404724917Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/Paginated/a_new_item_added_to_etcd_before_returning_a_second_page_is_not_returned:_sync_with_two_page",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:24.430156496Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/RangeStream/None_of_the_current_objects_match_watchKey:_sync_with_empty_page",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:26:25.458350238Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/RangeStream/The_number_of_current_objects_is_less_than_defaultWatcherMaxLimit:_sync_with_one_page",
+      "Elapsed": 1.03
+    },
+    {
+      "Time": "2026-10-12T22:26:26.4818999Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync/RangeStream/a_new_item_added_to_etcd_before_returning_a_second_page_is_not_returned:_sync_with_two_page",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:26.481915196Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSync",
+      "Elapsed": 6.15
+    },
+    {
+      "Time": "2026-10-12T22:26:27.517648495Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamMatchesPaginated",
+      "Elapsed": 1.04
+    },
+    {
+      "Time": "2026-10-12T22:26:28.541798322Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamFallsBackToPaginated",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:29.565800324Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamCompactionError",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:30.590612676Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamMetrics/success_records_a_listStream_request",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:31.613457243Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamMetrics/unimplemented_is_not_recorded",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:31.613469052Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchChanSyncStreamMetrics",
+      "Elapsed": 2.05
+    },
+    {
+      "Time": "2026-10-12T22:26:32.637347929Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchWithShardSelector/gate_enabled_filters_out-of-shard_events",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:33.661931081Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchWithShardSelector/gate_disabled_ignores_the_shard_selector",
+      "Elapsed": 1.02
+    },
+    {
+      "Time": "2026-10-12T22:26:33.661947585Z",
+      "Action": "fail",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Test": "TestWatchWithShardSelector",
+      "Elapsed": 2.05
+    }
+  ],
+  "skipped_tests": [],
+  "factory_starts": 101
+}

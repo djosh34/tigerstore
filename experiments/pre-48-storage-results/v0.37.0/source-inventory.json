@@ -1,0 +1,1115 @@
+[
+  {
+    "file": "pkg/storage/etcd3/block_logger_test.go",
+    "line": 32,
+    "name": "TestBlockLogger",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/compact_test.go",
+    "line": 36,
+    "name": "TestCompact",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/compact_test.go",
+    "line": 113,
+    "name": "TestCompactIntervalZero",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/compact_test.go",
+    "line": 154,
+    "name": "TestCompactConflict",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/corrupt_obj_deleter_test.go",
+    "line": 26,
+    "name": "TestAggregatedStorageErrorMessage",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/event_test.go",
+    "line": 29,
+    "name": "TestParseEvent",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/healthcheck_test.go",
+    "line": 23,
+    "name": "TestEtcdHealthCheck",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/lease_manager_test.go",
+    "line": 23,
+    "name": "TestGetReuseDurationSeconds",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/linearized_read_test.go",
+    "line": 27,
+    "name": "TestLinearizedReadRevisionInvariant",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 32,
+    "name": "TestRecordDecodeError",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 63,
+    "name": "TestRecordEtcdEvent",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 93,
+    "name": "TestRecordEtcdBookmark",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 126,
+    "name": "TestRecordEtcdRequest",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 248,
+    "name": "TestStorageSizeCollector",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 293,
+    "name": "TestUpdateStoreStats",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/metrics/metrics_test.go",
+    "line": 379,
+    "name": "TestDeleteStoreStats",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 27,
+    "name": "TestParseServerURIGood",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 39,
+    "name": "TestParseServerURIGoodUnix",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 51,
+    "name": "TestParseServerURIBad",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 58,
+    "name": "TestEtcdConnection",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 67,
+    "name": "TestCheckEtcdServersEmpty",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 78,
+    "name": "TestCheckEtcdServersUri",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 90,
+    "name": "TestCheckEtcdServers",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/preflight/checks_test.go",
+    "line": 102,
+    "name": "TestPollCheckServer",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/stats_test.go",
+    "line": 28,
+    "name": "TestStatsCache",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store.go",
+    "line": 692,
+    "name": "TestOnlyResetResourceSizeEstimator",
+    "kind": "test utility",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 110,
+    "name": "TestCreate",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 115,
+    "name": "TestCreateWithTTL",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 120,
+    "name": "TestCreateWithKeyExist",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 125,
+    "name": "TestGet",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 130,
+    "name": "TestUnconditionalDelete",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 135,
+    "name": "TestConditionalDelete",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 140,
+    "name": "TestDeleteWithSuggestion",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 145,
+    "name": "TestDeleteWithSuggestionAndConflict",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 150,
+    "name": "TestDeleteWithSuggestionOfDeletedObject",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 155,
+    "name": "TestValidateDeletionWithSuggestion",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 160,
+    "name": "TestValidateDeletionWithOnlySuggestionValid",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 165,
+    "name": "TestDeleteWithConflict",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 202,
+    "name": "TestDeleteWithConflictAndMissingExpectedTransformOrDecodeError",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 211,
+    "name": "TestDeleteWithConflictAndExpectedTransformError",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 220,
+    "name": "TestDeleteWithConflictAndExpectedDecodeError",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 229,
+    "name": "TestDeleteWithSuggestionAndMissingExpectedTransformOrDecodeFailure",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 236,
+    "name": "TestPreconditionalDeleteWithSuggestion",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 241,
+    "name": "TestPreconditionalDeleteWithSuggestionPass",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 246,
+    "name": "TestListPaging",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 251,
+    "name": "TestGetListNonRecursive",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 256,
+    "name": "TestGetListRecursivePrefix",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 261,
+    "name": "TestKeySchema",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 266,
+    "name": "TestGetListWithErrorAggregation",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 274,
+    "name": "TestGetListWithoutErrorAggregation",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 313,
+    "name": "TestGuaranteedUpdate",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 318,
+    "name": "TestGuaranteedUpdateWithTTL",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 323,
+    "name": "TestGuaranteedUpdateChecksStoredData",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 328,
+    "name": "TestGuaranteedUpdateWithConflict",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 333,
+    "name": "TestGuaranteedUpdateWithSuggestionAndConflict",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 338,
+    "name": "TestTransformationFailure",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 343,
+    "name": "TestList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 364,
+    "name": "TestGetListStreamFallsBackToPaginated",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 419,
+    "name": "TestGetListStreamMultiChunk",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 475,
+    "name": "TestListMetrics",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 525,
+    "name": "TestConsistentList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 536,
+    "name": "TestCompactRevision",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 573,
+    "name": "TestListContinuation",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 580,
+    "name": "TestListPaginationRareObject",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 590,
+    "name": "TestListContinuationWithFilter",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 597,
+    "name": "TestNamespaceScopedList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 644,
+    "name": "TestListInconsistentContinuation",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 649,
+    "name": "TestListResourceVersionMatch",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 654,
+    "name": "TestStats",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 677,
+    "name": "TestPrefix",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 691,
+    "name": "Test_growSlice",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 784,
+    "name": "TestLeaseMaxObjectCount",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 941,
+    "name": "TestPrepareKey",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1031,
+    "name": "TestInvalidKeys",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1053,
+    "name": "BenchmarkStore_GetList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1182,
+    "name": "BenchmarkStoreWriteThroughput",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1205,
+    "name": "BenchmarkStoreList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1246,
+    "name": "TestGetCurrentResourceVersion",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1292,
+    "name": "BenchmarkStoreStats",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1301,
+    "name": "BenchmarkStatsCacheCleanKeys",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1331,
+    "name": "TestPrefixGetKeys",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/store_test.go",
+    "line": 1364,
+    "name": "TestPrefixStats",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher.go",
+    "line": 82,
+    "name": "TestOnlySetFatalOnDecodeError",
+    "kind": "test utility",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 57,
+    "name": "TestWatch",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 169,
+    "name": "TestWatchErrorIncorrectConfiguration",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 207,
+    "name": "TestTooLargeResourceVersionErrorForWatchList",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 252,
+    "name": "TestWatchChanSync",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 365,
+    "name": "TestWatchChanSyncStreamMatchesPaginated",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 396,
+    "name": "TestWatchChanSyncStreamFallsBackToPaginated",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 451,
+    "name": "TestWatchChanSyncStreamCompactionError",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 489,
+    "name": "TestWatchChanSyncStreamMetrics",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/etcd3/watcher_test.go",
+    "line": 638,
+    "name": "TestWatchWithShardSelector",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/testing/store_benchmarks.go",
+    "line": 68,
+    "name": "RunBenchmarkWriteThroughput",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_benchmarks.go",
+    "line": 397,
+    "name": "RunBenchmarkStoreList",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_benchmarks.go",
+    "line": 581,
+    "name": "RunBenchmarkStoreStats",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_benchmarks_test.go",
+    "line": 29,
+    "name": "TestWatchLatencyTimestampRoundTrip",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/testing/store_benchmarks_test.go",
+    "line": 41,
+    "name": "TestWatchLatencyTracker_RecordWriteAndHandleEvent",
+    "kind": "Go entrypoint",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 52,
+    "name": "RunTestCreate",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 94,
+    "name": "RunTestCreateWithTTL",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 110,
+    "name": "RunTestCreateWithKeyExist",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 121,
+    "name": "RunTestGet",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 245,
+    "name": "RunTestUnconditionalDelete",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 289,
+    "name": "RunTestConditionalDelete",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 358,
+    "name": "RunTestDeleteWithSuggestion",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 371,
+    "name": "RunTestDeleteWithSuggestionAndConflict",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 398,
+    "name": "RunTestDeleteWithConflict",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 442,
+    "name": "RunTestDeleteWithSuggestionOfDeletedObject",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 458,
+    "name": "RunTestValidateDeletionWithSuggestion",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 515,
+    "name": "RunTestValidateDeletionWithOnlySuggestionValid",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 572,
+    "name": "RunTestPreconditionalDeleteWithSuggestion",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 600,
+    "name": "RunTestPreconditionalDeleteWithOnlySuggestionPass",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 629,
+    "name": "RunTestList",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2294,
+    "name": "RunTestDeleteWithConflictAndMissingExpectedTransformOrDecodeError",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2334,
+    "name": "RunTestDeleteExpectedTransformOrDecodeError",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2357,
+    "name": "RunTestDeleteWithSuggestionAndMissingExpectedTransformOrDecodeError",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2372,
+    "name": "RunTestConsistentList",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2562,
+    "name": "RunTestGetListNonRecursive",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2723,
+    "name": "RunTestGetListRecursivePrefix",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 2865,
+    "name": "RunTestGetListWithErrorAggregation",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3186,
+    "name": "RunTestGetListWithoutErrorAggregation",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3260,
+    "name": "RunTestListContinuation",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3408,
+    "name": "RunTestListPaginationRareObject",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3449,
+    "name": "RunTestListContinuationWithFilter",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3560,
+    "name": "RunTestListInconsistentContinuation",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3722,
+    "name": "RunTestListResourceVersionMatch",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3809,
+    "name": "RunTestGuaranteedUpdate",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3965,
+    "name": "RunTestGuaranteedUpdateWithTTL",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 3986,
+    "name": "RunTestGuaranteedUpdateChecksStoredData",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4051,
+    "name": "RunTestGuaranteedUpdateWithConflict",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4096,
+    "name": "RunTestGuaranteedUpdateWithSuggestionAndConflict",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4167,
+    "name": "RunTestTransformationFailure",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4246,
+    "name": "RunTestStats",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4326,
+    "name": "RunTestListPaging",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4378,
+    "name": "RunTestNamespaceScopedList",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4778,
+    "name": "RunTestCompactRevision",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/store_tests.go",
+    "line": 4819,
+    "name": "RunTestKeySchema",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/utils.go",
+    "line": 229,
+    "name": "TestCheckResultsInStrictOrder",
+    "kind": "test utility",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/testing/utils.go",
+    "line": 235,
+    "name": "TestCheckNoMoreResultsWithIgnoreFunc",
+    "kind": "test utility",
+    "referenced_from_etcd3": null
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 50,
+    "name": "RunTestWatch",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 207,
+    "name": "RunTestWatchFromZero",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 292,
+    "name": "RunTestDeleteTriggerWatch",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 304,
+    "name": "RunTestWatchFromNonZero",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 321,
+    "name": "RunTestDelayedWatchDelivery",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 380,
+    "name": "RunTestWatchError",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 416,
+    "name": "RunTestWatchWithUnsafeDelete",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 478,
+    "name": "RunTestWatchContextCancel",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 501,
+    "name": "RunTestWatcherTimeout",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 558,
+    "name": "RunTestWatchDeleteEventObjectHaveLatestRV",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 581,
+    "name": "RunTestWatchInitializationSignal",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 600,
+    "name": "RunOptionalTestProgressNotify",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 652,
+    "name": "RunTestClusterScopedWatch",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 806,
+    "name": "RunTestNamespaceScopedWatch",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1126,
+    "name": "RunTestWatchDispatchBookmarkEvents",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1197,
+    "name": "RunTestOptionalWatchBookmarksWithCorrectResourceVersion",
+    "kind": "shared helper",
+    "referenced_from_etcd3": false
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1295,
+    "name": "RunSendInitialEventsBackwardCompatibility",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1316,
+    "name": "RunWatchSemantics",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1619,
+    "name": "RunWatchSemanticInitialEventsExtended",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1667,
+    "name": "RunWatchListMatchSingle",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  },
+  {
+    "file": "pkg/storage/testing/watcher_tests.go",
+    "line": 1722,
+    "name": "RunWatchErrorIsBlockingFurtherEvents",
+    "kind": "shared helper",
+    "referenced_from_etcd3": true
+  }
+]

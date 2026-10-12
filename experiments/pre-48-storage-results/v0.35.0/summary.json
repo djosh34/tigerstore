@@ -1,0 +1,55 @@
+{
+  "packages": [
+    {
+      "Time": "2026-10-12T22:30:24.169080784Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:30:24.169095457Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testing/testingcert",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:30:24.169105905Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/testserver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:30:24.169115681Z",
+      "Action": "skip",
+      "Package": "k8s.io/apiserver/pkg/storage/testing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-10-12T22:30:24.172993269Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/preflight",
+      "Elapsed": 0.004
+    },
+    {
+      "Time": "2026-10-12T22:30:24.177393745Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3/metrics",
+      "Elapsed": 0.008
+    },
+    {
+      "Time": "2026-10-12T22:32:01.470798452Z",
+      "Action": "pass",
+      "Package": "k8s.io/apiserver/pkg/storage/etcd3",
+      "Elapsed": 97.302
+    }
+  ],
+  "test_results": {
+    "pass": 357
+  },
+  "top_level_results": {
+    "pass": 87
+  },
+  "failed_tests": [],
+  "skipped_tests": [],
+  "factory_starts": 75
+}
