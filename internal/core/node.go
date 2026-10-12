@@ -108,8 +108,14 @@ type pending struct {
 type readBatch struct {
 	ctx   uint64
 	index uint64 // 0 until the read index is known
+	sent  int64  // tick of the last ReadIndex request
 	reads []*pending
 }
+
+// readRetryTicks is how long a read batch waits for its read index before
+// it asks again. Raft drops a ReadIndex without a word when a follower
+// knows no leader or a message is lost.
+const readRetryTicks = 3
 
 // Node is one replica's committer.
 type Node struct {
@@ -213,6 +219,12 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
+	for _, b := range n.readBatches {
+		if b.index == 0 && n.now-b.sent >= readRetryTicks {
+			b.sent = n.now
+			n.rn.ReadIndex(readCtx(n.cfg.Boot, b.ctx))
+		}
+	}
 }
 
 // Step hands the node a message from a peer.
@@ -339,7 +351,7 @@ func (n *Node) requestReads() {
 		return
 	}
 	n.nextReadCtx++
-	b := &readBatch{ctx: n.nextReadCtx, reads: n.reads}
+	b := &readBatch{ctx: n.nextReadCtx, sent: n.now, reads: n.reads}
 	n.reads = nil
 	n.readBatches = append(n.readBatches, b)
 	n.rn.ReadIndex(readCtx(n.cfg.Boot, b.ctx))
@@ -440,31 +452,31 @@ func (n *Node) readIndexKnown(rs raft.ReadState) {
 		return
 	}
 	for _, b := range n.readBatches {
-		if b.ctx == ctx {
+		if b.ctx == ctx && b.index == 0 {
 			b.index = rs.Index
 		}
 	}
 }
 
-// serveReads answers the read batches whose index is applied. Batches
-// complete in order, because a later read index is never smaller.
+// serveReads answers the read batches whose index is applied and drops
+// the batches whose reads all timed out. A read index is valid for every
+// read that arrived before it was requested, so batches need not finish in
+// order.
 func (n *Node) serveReads() {
-	for len(n.readBatches) > 0 {
-		b := n.readBatches[0]
-		if b.index == 0 || b.index > n.applied {
-			// A batch whose ReadIndex was dropped never gets an index and
-			// its reads time out; later batches may still be served.
-			if b.index == 0 && allDone(b.reads) {
-				n.readBatches = n.readBatches[1:]
-				continue
+	left := n.readBatches[:0]
+	for _, b := range n.readBatches {
+		if b.index != 0 && b.index <= n.applied {
+			for _, p := range b.reads {
+				n.serveRead(p)
 			}
-			break
+			continue
 		}
-		for _, p := range b.reads {
-			n.serveRead(p)
+		if !allDone(b.reads) {
+			left = append(left, b)
 		}
-		n.readBatches = n.readBatches[1:]
 	}
+	clear(n.readBatches[len(left):])
+	n.readBatches = left
 }
 
 func allDone(ps []*pending) bool {
