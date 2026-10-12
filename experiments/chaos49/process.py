@@ -88,9 +88,10 @@ for trial in range(10):
     time.sleep(.02)
     # Kill a stopped process too. SIGKILL does not require SIGCONT first.
     os.kill(pid,signal.SIGSTOP); os.waitpid(pid,os.WUNTRACED)
-    start=time.monotonic_ns(); os.kill(pid,signal.SIGKILL); p.wait(timeout=2)
-    killed.append((time.monotonic_ns()-start)/1e6); assert p.returncode==-signal.SIGKILL
+    start=time.monotonic_ns(); os.kill(pid,signal.SIGKILL); _,status=os.waitpid(pid,0)
+    killed.append((time.monotonic_ns()-start)/1e6)
+    p.returncode=os.waitstatus_to_exitcode(status); assert p.returncode==-signal.SIGKILL
 emit(stop_ms=stop,continue_ms=resume,kill_wait_ms=killed,
      stop_median_ms=statistics.median(stop),kill_wait_median_ms=statistics.median(killed),
-     note='kill_wait includes Python Popen.wait polling; not kernel scheduling latency')
+     note='kill_wait is kill syscall through blocking waitpid reaping, controller overhead included')
 print('PASS: per-process quota, throttle counters, stopped state, frozen CPU and reaped SIGKILL',flush=True)

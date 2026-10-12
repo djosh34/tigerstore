@@ -36,7 +36,7 @@ def setup(options, reverse=False):
             tc('filter', 'add', 'dev', 'lo', 'parent', '1:', 'protocol', 'ip', 'pref', str(pref),
                'flower', 'ip_proto', proto, 'src_ip', src, 'dst_ip', dst, port, '2380', 'classid', '1:3')
             pref += 1
-    filters = json.loads(tc('-j', '-s', 'filter', 'show', 'dev', 'lo', 'parent', '1:'))
+    filters = [f for f in json.loads(tc('-j', '-s', 'filter', 'show', 'dev', 'lo', 'parent', '1:')) if 'options' in f]
     assert len(filters) == pref-1, filters
     assert all(f['options']['classid'] == '1:3' for f in filters), filters
     print(json.dumps({'installed': options, 'reverse': reverse, 'qdisc': stats(), 'filters': filters}), flush=True)

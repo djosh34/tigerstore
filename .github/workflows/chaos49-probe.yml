@@ -9,6 +9,9 @@ on:
       - 'experiments/chaos49/disk/**'
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   network:
     strategy:
@@ -24,7 +27,9 @@ jobs:
           uname -a | tee results/versions.txt
           dpkg-query -W iproute2 python3 systemd >> results/versions.txt
           printenv ImageOS ImageVersion >> results/versions.txt
-          sudo unshare --net python3 experiments/chaos49/network.py | tee results/network.txt
+          if (false | tee results/negative-pipeline.txt); then exit 1; fi
+          sudo unshare --net python3 experiments/chaos49/network.py 2>&1 | tee results/network.txt
+          grep -q '^PASS:' results/network.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -44,7 +49,8 @@ jobs:
           uname -a | tee results/versions.txt
           dpkg-query -W iproute2 python3 systemd >> results/versions.txt
           printenv ImageOS ImageVersion >> results/versions.txt
-          sudo python3 experiments/chaos49/process.py "$PWD/results/process" | tee results/process.txt
+          sudo python3 experiments/chaos49/process.py "$PWD/results/process" 2>&1 | tee results/process.txt
+          grep -q '^PASS:' results/process.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
