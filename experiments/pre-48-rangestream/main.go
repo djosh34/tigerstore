@@ -18,6 +18,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -79,7 +80,7 @@ func run() error {
 	base := func() *pb.RangeRequest { return &pb.RangeRequest{Key: []byte("/probe/"), RangeEnd: end} }
 	probe := func(name string, req *pb.RangeRequest, want codes.Code) error {
 		emit("request", map[string]any{"name": name, "request": req})
-		stream, err := kv.RangeStream(ctx, req)
+		stream, err := kv.RangeStream(ctx, req, grpc.MaxCallRecvMsgSize(32*1024*1024))
 		merged := &pb.RangeResponse{}
 		chunks := 0
 		if err == nil {
@@ -117,7 +118,7 @@ func run() error {
 			return fmt.Errorf("%s returned %s, want %s", name, code, want)
 		}
 		if code == codes.OK {
-			unary, err := kv.Range(ctx, req)
+			unary, err := kv.Range(ctx, req, grpc.MaxCallRecvMsgSize(32*1024*1024))
 			if err != nil {
 				return err
 			}
