@@ -74,6 +74,24 @@ func TestIndexes(t *testing.T) {
 				if j != len(ordered) {
 					t.Fatalf("walk size %d want %d", j, len(ordered))
 				}
+				out := make([]result, 100)
+				got := idx.Page(a, b, out)
+				wantPage := 0
+				for _, k := range keys[x:y] {
+					if alive(ref[k]) == 0 {
+						continue
+					}
+					if wantPage == 100 {
+						break
+					}
+					if wantPage >= got || string(out[wantPage].key[:out[wantPage].n]) != k || out[wantPage].head != ref[k] {
+						t.Fatal("page mismatch")
+					}
+					wantPage++
+				}
+				if got != wantPage {
+					t.Fatal("page length mismatch")
+				}
 			}
 		})
 	}

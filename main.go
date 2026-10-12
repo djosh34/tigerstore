@@ -262,7 +262,16 @@ func main() {
 	}
 	emit(map[string]any{"stage": "validated", "get_samples": 10000, "namespace_counts": 4096})
 	runtime.GC()
+	out := make([]result, 100)
 	benchReads := func(suffix string) {
+		measure("prefix_keys100"+suffix, *reps, 20000, func(i int) uint64 {
+			n := idx.Page(lo[i%len(lo)], hi[i%len(lo)], out)
+			var sum uint64
+			for j := 0; j < n; j++ {
+				sum += uint64(out[j].head) + uint64(out[j].key[out[j].n-1])
+			}
+			return sum
+		})
 		measure("get"+suffix, *reps, *ops, func(i int) uint64 { return uint64(idx.Get(q[i&(qn-1)])) })
 		measure("miss"+suffix, *reps, *ops, func(i int) uint64 { return uint64(idx.Get(miss[i&(qn-1)])) })
 		revision := uint64(*n + (*n+9)/10)
@@ -368,5 +377,5 @@ func main() {
 	runtime.KeepAlive(q)
 	runtime.KeepAlive(hist)
 	runtime.KeepAlive(miss)
-	emit(map[string]any{"stage": "done", "sink": sink, "timestamp": time.Now().UTC().Format(time.RFC3339), "key_length": len(key(0)), "notes": strings.Join([]string{"descriptor-only ranges", "no WAL, values, TLS, RPC or etcd baseline"}, "; ")})
+	emit(map[string]any{"stage": "done", "sink": sink, "timestamp": time.Now().UTC().Format(time.RFC3339), "key_length": len(key(0)), "notes": strings.Join([]string{"prefix_keys100 copies keys and heads; prefix_limit100 returns heads only", "no WAL, values, TLS, RPC or etcd baseline"}, "; ")})
 }

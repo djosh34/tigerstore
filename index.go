@@ -22,11 +22,17 @@ type item struct {
 	key  string
 	head uint32
 }
+type result struct {
+	key  [maxKey]byte
+	n    uint16
+	head uint32
+}
 type index interface {
 	Get(string) uint32
 	Put(string, uint32)
 	Walk(string, string, func(uint32) bool)
 	Count(string, string) uint64
+	Page(string, string, []result) int
 }
 
 func lower(a []item, k string) int {
@@ -48,6 +54,18 @@ func (s *stock) Get(k string) uint32 {
 func (s *stock) Put(k string, h uint32) { s.t.ReplaceOrInsert(item{k, h}) }
 func (s *stock) Walk(a, b string, f func(uint32) bool) {
 	s.t.AscendRange(item{key: a}, item{key: b}, func(v item) bool { return f(v.head) })
+}
+func (s *stock) Page(a, b string, out []result) (n int) {
+	s.t.AscendRange(item{key: a}, item{key: b}, func(v item) bool {
+		if alive(v.head) != 0 {
+			copy(out[n].key[:], v.key)
+			out[n].n = uint16(len(v.key))
+			out[n].head = v.head
+			n++
+		}
+		return n < len(out)
+	})
+	return
 }
 func (s *stock) Count(a, b string) (n uint64) {
 	s.Walk(a, b, func(h uint32) bool { n += alive(h); return true })
@@ -133,6 +151,18 @@ func (s *buffered) merge(f func(item) bool, a, b string) {
 }
 func (s *buffered) Walk(a, b string, f func(uint32) bool) {
 	s.merge(func(v item) bool { return f(v.head) }, a, b)
+}
+func (s *buffered) Page(a, b string, out []result) (n int) {
+	s.merge(func(v item) bool {
+		if alive(v.head) != 0 {
+			copy(out[n].key[:], v.key)
+			out[n].n = uint16(len(v.key))
+			out[n].head = v.head
+			n++
+		}
+		return n < len(out)
+	}, a, b)
+	return
 }
 func (s *buffered) Count(a, b string) uint64 {
 	s.sorted()

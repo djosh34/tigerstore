@@ -347,6 +347,32 @@ func (a *arena) Walk(start, end string, f func(uint32) bool) {
 	}
 }
 
+func (a *arena) Page(start, end string, out []result) (n int) {
+	id, p := a.find(start)
+	for id != 0 {
+		l := a.lp(id)
+		for ; p < int(l.n); p++ {
+			if !l.less(p, end) {
+				return
+			}
+			s := l.slots[p]
+			if alive(s.head) != 0 {
+				copy(out[n].key[:], l.prefix[:l.plen])
+				copy(out[n].key[l.plen:], l.data[s.off:s.off+s.n])
+				out[n].n = l.plen + s.n
+				out[n].head = s.head
+				n++
+				if n == len(out) {
+					return
+				}
+			}
+		}
+		id = l.next
+		p = 0
+	}
+	return
+}
+
 // Bulk load to 75% slot occupancy. Real inserts, prefix changes and splits use Put.
 func (a *arena) bulk(n int, key func(int) string, head func(int) uint32) {
 	a.slabs = nil
