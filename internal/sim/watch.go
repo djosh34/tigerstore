@@ -1,0 +1,210 @@
+package sim
+
+import (
+	"fmt"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
+)
+
+// watchClient keeps one logical watch open across node crashes, the way
+// Kubernetes does: when its stream breaks, it opens a new one on a random
+// node from the next revision it has not seen.
+type watchClient struct {
+	id       int
+	sim      *Sim
+	key, end []byte
+	prevKV   bool
+	// start is the first revision of the watch, known once the first
+	// stream is created. next is the first revision not yet seen.
+	start, next int64
+	events      []*mvccpb.Event
+	responses   []WatchRecord
+
+	// The current stream, if any.
+	open   bool
+	node   int
+	gen    uint64
+	stream uint64
+	last   int64 // delivery time of the last response, for ordering
+}
+
+// WatchRecord is one watch response as the client got it.
+type WatchRecord struct {
+	Time int64
+	Resp *pb.WatchResponse
+}
+
+// WatchResult is one logical watch at the end of a run.
+type WatchResult struct {
+	Key, End  []byte
+	PrevKV    bool
+	Start     int64
+	Responses []WatchRecord
+}
+
+func (s *Sim) startWatchers() {
+	specs := []struct {
+		key, end string
+		prevKV   bool
+	}{
+		{"k", "l", true},
+		{"k3", "", true},
+		{"k", "\x00", false},
+	}
+	for i, sp := range specs {
+		w := &watchClient{id: i, sim: s, key: []byte(sp.key), prevKV: sp.prevKV}
+		if sp.end != "" {
+			w.end = []byte(sp.end)
+		}
+		// Half the watches start from revision 1, the rest from now.
+		if s.rng.IntN(2) == 0 {
+			w.next = 1
+		}
+		s.watchers = append(s.watchers, w)
+		s.push(&event{at: s.rng.Int64N(Second), kind: evWatchOpen, watch: w})
+		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
+	}
+}
+
+// drop closes the stream on purpose, as clients do on a timeout, and
+// resumes up to 2 s later, so the next stream catches up on history.
+func (w *watchClient) drop() {
+	s := w.sim
+	if w.open {
+		n := s.nodes[w.node]
+		if n.up && n.gen == w.gen {
+			delete(n.streams, w.stream)
+			n.core.CloseWatchStream(w.stream)
+			s.process(n)
+		}
+		w.open = false
+		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
+	}
+	if s.now < s.stopAt {
+		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
+	}
+}
+
+// openWatch picks a node and sends the create request.
+func (w *watchClient) openWatch() {
+	s := w.sim
+	n := s.nodes[s.rng.IntN(len(s.nodes))]
+	if !n.up {
+		s.push(&event{at: s.now + 100*Millisecond + s.rng.Int64N(400*Millisecond), kind: evWatchOpen, watch: w})
+		return
+	}
+	s.push(&event{at: s.now + s.clientLatency(), kind: evWatchCreate, node: n.idx, gen: n.gen, watch: w})
+}
+
+func (w *watchClient) create(n *node, gen uint64) {
+	s := w.sim
+	if !n.up || n.gen != gen {
+		w.openWatch()
+		return
+	}
+	n.nextStream++
+	n.streams[n.nextStream] = w
+	w.open, w.node, w.gen, w.stream, w.last = true, n.idx, n.gen, n.nextStream, 0
+	n.core.Watch(n.nextStream, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+		Key: w.key, RangeEnd: w.end, StartRevision: w.next, PrevKv: w.prevKV,
+	}}})
+	s.process(n)
+}
+
+// watchResponse routes a response from a node to its client, in order.
+func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
+	w, ok := n.streams[r.Stream]
+	if !ok {
+		s.fail("node %d answered unknown watch stream %d", n.id, r.Stream)
+		return
+	}
+	b, err := marshal.Marshal(r.Resp)
+	if err != nil {
+		s.fail("marshal watch response: %w", err)
+		return
+	}
+	s.mixBytes(b)
+	at := max(s.now+s.clientLatency(), w.last)
+	w.last = at
+	s.push(&event{at: at, kind: evWatchResponse, node: n.idx, gen: n.gen, from: int(r.Stream), watch: w, data: b})
+}
+
+func (w *watchClient) receive(e *event) {
+	s := w.sim
+	if !w.open || w.node != e.node || w.gen != e.gen || w.stream != uint64(e.from) {
+		return // a response of a stream that already broke
+	}
+	r := &pb.WatchResponse{}
+	if err := proto.Unmarshal(e.data, r); err != nil {
+		s.fail("unmarshal watch response: %w", err)
+		return
+	}
+	w.responses = append(w.responses, WatchRecord{Time: s.now, Resp: r})
+	if r.Canceled {
+		s.fail("watch %d was canceled: %v", w.id, r)
+		return
+	}
+	if r.Created {
+		if w.next == 0 {
+			w.next = r.Header.Revision + 1
+		}
+		if w.start == 0 {
+			w.start = w.next
+		}
+		return
+	}
+	last := w.next
+	for _, ev := range r.Events {
+		rev := ev.Kv.ModRevision
+		if rev < last {
+			s.fail("watch %d got an event at revision %d after one at %d", w.id, rev, last)
+			return
+		}
+		if rev > r.Header.Revision {
+			s.fail("watch %d got an event at revision %d in a response with header revision %d", w.id, rev, r.Header.Revision)
+			return
+		}
+		last = rev
+	}
+	w.events = append(w.events, r.Events...)
+	// A revision is never split across responses, so the next stream can
+	// start after the last event. A response without events says nothing.
+	if len(r.Events) > 0 {
+		w.next = last + 1
+	}
+}
+
+// broken is a stream that died with its node.
+func (w *watchClient) broken() {
+	w.open = false
+	w.openWatch()
+}
+
+// checkWatches requires every watch to have delivered exactly the final
+// store's history of its range, from its start to the final revision, in
+// order, without duplicates, with previous values where asked.
+func (s *Sim) checkWatches(final *mvcc.Store, res *Result) error {
+	for _, w := range s.watchers {
+		res.Watches = append(res.Watches, WatchResult{Key: w.key, End: w.end, PrevKV: w.prevKV, Start: w.start, Responses: w.responses})
+		if w.start == 0 {
+			return fmt.Errorf("watch %d was never created", w.id)
+		}
+		// The final history runs to the final revision, so equality also
+		// means the watch delivered everything.
+		want := final.History(w.key, w.end, w.start)
+		if len(w.events) != len(want) {
+			return fmt.Errorf("watch %d on %q from %d got %d events, the store has %d", w.id, w.key, w.start, len(w.events), len(want))
+		}
+		for i, c := range want {
+			if ev := c.Event(w.prevKV); !proto.Equal(ev, w.events[i]) {
+				return fmt.Errorf("watch %d event %d is %v, the store has %v", w.id, i, w.events[i], ev)
+			}
+		}
+	}
+	return nil
+}

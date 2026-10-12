@@ -41,6 +41,19 @@ ctl put a 1 >/dev/null
 ctl put b 2 >/dev/null
 expect $'a\n1\nb\n2' get a c
 expect 2 del a c
+ctl watch w --prefix >"$work/watch.out" 2>&1 &
+watcher=$!
+sleep 1
+ctl put w1 x >/dev/null
+ctl put w2 y >/dev/null
+ctl del w1 >/dev/null
+sleep 1
+kill "$watcher"
+want=$'PUT\nw1\nx\nPUT\nw2\ny\nDELETE\nw1'
+if [ "$(cat "$work/watch.out")" != "$want" ]; then
+	echo "etcdctl watch: got [$(cat "$work/watch.out")], want [$want]"
+	exit 1
+fi
 if etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) --cacert "$work/certs/ca.pem" \
 	--command-timeout=3s get foo >/dev/null 2>&1; then
 	echo "a client without a client certificate was served"

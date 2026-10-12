@@ -50,6 +50,9 @@ type Config struct {
 	RequestTicks int
 	// MaxBatchBytes caps the requests packed into one Raft entry.
 	MaxBatchBytes int
+	// ProgressTicks is the interval of progress notifications to watchers
+	// that ask for them; 0 turns them off.
+	ProgressTicks int
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -62,6 +65,7 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		HeartbeatTicks: 1,
 		RequestTicks:   70,
 		MaxBatchBytes:  4 << 20,
+		ProgressTicks:  6000, // etcd's 10 minutes
 	}
 }
 
@@ -97,6 +101,7 @@ type Effects struct {
 	Persist []PersistJob
 	Send    []*raftpb.Message
 	Replies []Reply
+	Watch   []WatchResponse
 }
 
 // pending is a request that waits for its entry to apply or for a read
@@ -140,6 +145,9 @@ type Node struct {
 	readBatches []*readBatch
 	nextReadCtx uint64
 
+	streams  map[uint64]*watchStream
+	watchers []*watcher
+
 	out Effects
 	err error
 }
@@ -175,6 +183,7 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 		kv:      mvcc.New(),
 		term:    rec.HardState.Term,
 		waiting: map[uint64]*pending{},
+		streams: map[uint64]*watchStream{},
 	}, nil
 }
 
@@ -223,6 +232,9 @@ func (n *Node) Tick() {
 	n.rn.Tick()
 	n.expire()
 	n.retryReads(false)
+	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
+		n.progressNotify()
+	}
 }
 
 // retryReads asks again for the read index of batches that have none,
@@ -414,6 +426,7 @@ func (n *Node) Process() (Effects, error) {
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
 		}
+		n.flushWatches()
 	}
 	if n.err != nil {
 		n.stop()
@@ -556,6 +569,9 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			resp, err := n.applyOp(op)
 			if errors.Is(err, errInternal) {
 				return err
+			}
+			if err == nil {
+				n.matchWatches()
 			}
 			if origin == n.cfg.ID && boot == n.cfg.Boot {
 				if p, ok := n.waiting[id]; ok {

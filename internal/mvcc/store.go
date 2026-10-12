@@ -8,8 +8,10 @@ package mvcc
 
 import (
 	"bytes"
+	"cmp"
 	"hash"
 	"hash/fnv"
+	"slices"
 
 	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -176,4 +178,38 @@ func writeInt(h hash.Hash64, v int64) {
 		b[i] = byte(v >> (8 * i))
 	}
 	h.Write(b[:])
+}
+
+// History returns every change to keys in [key, end) at main revision
+// from or later, in revision order. end follows Range: empty means only
+// key, "\x00" means every key from key on.
+func (s *Store) History(key, end []byte, from int64) []Change {
+	var out []Change
+	s.ascend(key, end, func(k *keyIndex) bool {
+		i := k.at(from - 1)
+		for i++; i < len(k.vers); i++ {
+			out = append(out, Change{k: k, i: i})
+		}
+		return true
+	})
+	slices.SortFunc(out, func(a, b Change) int {
+		x, y := a.k.vers[a.i].mod, b.k.vers[b.i].mod
+		if x.main != y.main {
+			return cmp.Compare(x.main, y.main)
+		}
+		return cmp.Compare(x.sub, y.sub)
+	})
+	return out
+}
+
+// InRange reports whether key is in [start, end) with Range's meaning of
+// end.
+func InRange(key, start, end []byte) bool {
+	switch {
+	case len(end) == 0:
+		return bytes.Equal(key, start)
+	case len(end) == 1 && end[0] == 0:
+		return bytes.Compare(key, start) >= 0
+	}
+	return bytes.Compare(key, start) >= 0 && bytes.Compare(key, end) < 0
 }

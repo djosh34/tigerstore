@@ -13,8 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -37,6 +40,66 @@ type input struct {
 	req         *request
 	msg         *raftpb.Message
 	unreachable uint64
+	watchOpen   *WatchStream
+	watchReq    *pb.WatchRequest
+	watchClose  bool
+	stream      uint64
+}
+
+// watchQueue is how many responses a watch stream may fall behind before
+// the node closes it. The client then reconnects and resumes.
+const watchQueue = 4096
+
+// ErrWatchTooSlow closes a watch stream whose client does not keep up.
+var ErrWatchTooSlow = status.Error(codes.ResourceExhausted, "tigerstore: watch stream fell too far behind")
+
+// WatchStream is one client watch stream on this node.
+type WatchStream struct {
+	n  *Node
+	id uint64
+	// C carries the responses in order.
+	C    chan *pb.WatchResponse
+	done chan struct{}
+	err  error
+}
+
+// Done is closed when the node dropped the stream; Err then says why.
+func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+
+// Err is why the node dropped the stream.
+func (ws *WatchStream) Err() error { return ws.err }
+
+// Send hands the node one request of the stream.
+func (ws *WatchStream) Send(ctx context.Context, r *pb.WatchRequest) error {
+	return ws.n.put(ctx, input{watchReq: r, stream: ws.id})
+}
+
+// Close ends the stream and its watchers.
+func (ws *WatchStream) Close() {
+	select {
+	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+	case <-ws.n.done:
+	}
+}
+
+// OpenWatch starts a watch stream.
+func (n *Node) OpenWatch(ctx context.Context) (*WatchStream, error) {
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, watchQueue), done: make(chan struct{})}
+	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
+func (n *Node) put(ctx context.Context, in input) error {
+	select {
+	case n.inbox <- in:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-n.done:
+		return rpctypes.ErrGRPCStopped
+	}
 }
 
 type request struct {
@@ -121,12 +184,8 @@ func (n *Node) Unreachable(id uint64) {
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
-	select {
-	case n.inbox <- input{req: r}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-n.done:
-		return nil, rpctypes.ErrGRPCStopped
+	if err := n.put(ctx, input{req: r}); err != nil {
+		return nil, err
 	}
 	select {
 	case rep := <-r.reply:
@@ -164,6 +223,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	defer ticker.Stop()
 	waiters := map[uint64]chan core.Reply{}
 	var backlog [][]core.PersistJob
+	streams := map[uint64]*WatchStream{}
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
@@ -176,12 +236,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		select {
 		case in := <-inbox:
-			n.handle(in, waiters)
+			n.handle(in, waiters, streams)
 		drain:
 			for range 4096 {
 				select {
 				case in := <-n.inbox:
-					n.handle(in, waiters)
+					n.handle(in, waiters, streams)
 				default:
 					break drain
 				}
@@ -215,6 +275,20 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				ch <- r
 			}
 		}
+		for _, w := range eff.Watch {
+			ws, ok := streams[w.Stream]
+			if !ok {
+				continue
+			}
+			select {
+			case ws.C <- w.Resp:
+			default:
+				delete(streams, w.Stream)
+				n.core.CloseWatchStream(w.Stream)
+				ws.err = ErrWatchTooSlow
+				close(ws.done)
+			}
+		}
 		n.leader.Store(n.core.Leader())
 		if err != nil {
 			return err
@@ -222,8 +296,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	}
 }
 
-func (n *Node) handle(in input, waiters map[uint64]chan core.Reply) {
+func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[uint64]*WatchStream) {
 	switch {
+	case in.watchOpen != nil:
+		streams[in.watchOpen.id] = in.watchOpen
+	case in.watchReq != nil:
+		if _, ok := streams[in.stream]; ok {
+			n.core.Watch(in.stream, in.watchReq)
+		}
+	case in.watchClose:
+		delete(streams, in.stream)
+		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:
 		waiters[in.req.id] = in.req.reply
 		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
