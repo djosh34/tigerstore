@@ -1,0 +1,4 @@
+NAME                  STATUS   ROLES           AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                       KERNEL-VERSION              CONTAINER-RUNTIME
+pre48-control-plane   Ready    control-plane   28s   v1.37.0   172.18.0.6    <none>        Debian GNU/Linux 13 (trixie)   6.17.0-1022-azure (arm64)   containerd://2.3.4
+pre48-worker          Ready    <none>          13s   v1.37.0   172.18.0.5    <none>        Debian GNU/Linux 13 (trixie)   6.17.0-1022-azure (arm64)   containerd://2.3.4
+pre48-worker2         Ready    <none>          13s   v1.37.0   172.18.0.7    <none>        Debian GNU/Linux 13 (trixie)   6.17.0-1022-azure (arm64)   containerd://2.3.4

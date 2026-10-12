@@ -1,0 +1,203 @@
+{
+  "version": "v1.37.0",
+  "verified_with_official_binary": true,
+  "shards": [
+    {
+      "shard": 0,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 1,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 2,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 3,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 4,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 5,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 6,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 7,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 8,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 9,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 10,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 11,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 12,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 13,
+      "selected": 15,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 14,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 15,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 16,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 17,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 18,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 19,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 20,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 21,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 22,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 23,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 24,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 25,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 26,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 27,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 28,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 29,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 30,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    },
+    {
+      "shard": 31,
+      "selected": 14,
+      "binary_dry_run": true,
+      "actual_tests_executed": 0
+    }
+  ],
+  "union": 462,
+  "duplicates": 0,
+  "missing": 0,
+  "certified_report": false,
+  "actual_tests_executed": 0
+}

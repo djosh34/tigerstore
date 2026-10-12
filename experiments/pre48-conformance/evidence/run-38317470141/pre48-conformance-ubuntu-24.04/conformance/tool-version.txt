@@ -1,0 +1,10 @@
+hydrophone
+  module:   sigs.k8s.io/hydrophone
+  version:  v0.8.0
+  go:       go1.26.5
+  vcs:      git
+  revision: 622f40fdea73362ca57bcdfe3a9dc534fdc36905
+  time:     2026-09-02T12:36:21Z
+  dirty:    false
+  mode:     exe
+

@@ -1,0 +1,5 @@
+{"level":"warn","ts":"2026-10-12T22:35:04.987325Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-12T22:35:04.987488Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-12T22:35:04.989076Z","caller":"fileutil/fileutil.go:56","msg":"check file permission","error":"directory \"/data\" exist, but the permission is \"drwxr-xr-x\". The recommended permission is \"-rwx------\" to prevent possible unprivileged access to the data"}
+{"level":"warn","ts":"2026-10-12T22:35:05.001032Z","caller":"auth/store.go:1137","msg":"simple token is not cryptographically signed"}
+{"level":"warn","ts":"2026-10-12T22:35:44.434039Z","caller":"txn/util.go:93","msg":"apply request took too long","took":"208.599032ms","expected-duration":"100ms","prefix":"read-only range ","request":"key:\"/registry/peerserverleases/apiserver-76cxpaguwhq7vkvgkz52fmhhdi\" limit:1","response":"range_response_count:1 size:235"}

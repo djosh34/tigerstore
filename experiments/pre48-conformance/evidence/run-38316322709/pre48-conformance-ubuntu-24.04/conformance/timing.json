@@ -1,0 +1,11 @@
+{
+  "start_utc": "2026-10-12T22:24:01Z",
+  "elapsed_seconds": 546.362015247345,
+  "hydrophone_exit_code": 1,
+  "suite_timeout_seconds": 480,
+  "outer_timeout_seconds": 600,
+  "parallel": 4,
+  "focus": "\\[Conformance\\]",
+  "skip": "",
+  "discovery_only": true
+}

@@ -1,0 +1,12 @@
+{
+  "source": "https://github.com/cncf/k8s-conformance/blob/master/v1.37/talos/e2e.log",
+  "suite_seconds": 6789.861,
+  "suite_minutes": 113.16435,
+  "serial_spec_count": 29,
+  "sum_serial_seconds": 1026.530156461,
+  "sum_serial_minutes": 17.108835941016665,
+  "environment": "Talos QEMU, not our free runners",
+  "conformance_passed": 462,
+  "failed": 0,
+  "pending": 0
+}

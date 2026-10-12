@@ -1,0 +1,800 @@
+22:23:49 INF API endpoint: https://127.0.0.1:37885
+22:23:49 INF Server version: version.Info{Major:"1", Minor:"37", EmulationMajor:"1", EmulationMinor:"37", MinCompatibilityMajor:"1", MinCompatibilityMinor:"36", GitVersion:"v1.37.0", GitCommit:"f54c212e3a2f75d674b717a9b29052b20b60aefc", GitTreeState:"clean", BuildDate:"2026-08-26T10:44:25Z", GoVersion:"go1.26.6", Compiler:"gc", Platform:"linux/arm64"}
+22:23:49 INF Using namespace: conformance
+22:23:49 INF Using conformance image: registry.k8s.io/conformance:v1.37.0
+22:23:49 INF Using busybox image: registry.k8s.io/e2e-test-images/busybox:1.36.1-1
+22:23:49 INF Test framework will start 4 thread(s) and use verbosity level 4.
+22:23:49 INF Created namespace conformance.
+22:23:49 INF Created ServiceAccount conformance-serviceaccount.
+22:23:49 INF Created ClusterRole conformance-serviceaccount:conformance.
+22:23:49 INF Created ClusterRoleBinding conformance-serviceaccount-role:conformance.
+22:23:49 INF Created Pod e2e-conformance-test.
+22:23:49 INF Waiting up to 2m0s for Pod to start...
+22:23:52 INF Created ConformancePod e2e-conformance-test.
+2026/10/12 22:23:51 Running command:
+Command env: []
+Run from directory: 
+Executable path: /usr/local/bin/ginkgo
+Args (comma-delimited): /usr/local/bin/ginkgo,--focus=\[Conformance\],--skip=,--no-color=true,--timeout=8m,--seed=48,--json-report=/tmp/results/ginkgo.json,--procs=4,/usr/local/bin/e2e.test,--,--disable-log-dump,--repo-root=/kubernetes,--provider=skeleton,--report-dir=/tmp/results,--kubeconfig=
+2026/10/12 22:23:51 Now listening for interrupts
+Running Suite: Kubernetes e2e suite - /usr/local/bin
+====================================================
+Random Seed: 48 - will randomize all specs
+
+Will run 462 of 3206 specs
+Running in parallel across 4 processes
+SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS•SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS•SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS•SSSSSSSSSSSSSSS••SSS•SSS•SS••S••SSSSSSSSSS•S•SSSSSSSSS•SS•SSSS•SSSSSSS••SSSSS••SS•SSSS•SSSSS•SSSSSSSSS••S•S•SSS•SSSSS•SSS•SSSSSSSS•SSSSSSSSSSSSS•SSSSSSSSSSS•SSS•SSSSS•SSSSSSSSSSSSSSS•S•SS•SS•S•SS•SSSSSSSS•SSSSSSSS••SSSSS•SSSSSS•SSSSSSSSSSSSSS•SSSSSSSSSSSSSS•SSSSSSSSSSSSSSSS•••SSS•SSSSSSSSSSS•SSSS•S•SSSSSS•SS•SSSSSSSSSSSSSSSSSSSSSS•SSSS•SSSSSSSSSSSS•SS•••SSSSSS•SSSSS•SS•S•S•S•SSSS•SSSSS•SSSSSSSSS•S•SS•SS•SSS•SSSSSSSS•SSS•SSSSSSS•SSSSSS•SS•S•S•S••SSSSSSSSSS•S•SS•S•••SSSSSS•SSSS•SSS•SSSSSSSSSS•SSS•S•••SS•SSSSSS•••SSSSSS•SS•SS•S•SSSS•SSSSSSSS•SSS•SS
+------------------------------
+• [TIMEDOUT] [3.558 seconds]
+[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] [DeferCleanup (Each)] should unconditionally reject operations on fail closed webhook [Conformance] [sig-api-machinery, Conformance]
+  [DeferCleanup (Each)] tear down framework | framework.go:319
+  [It] k8s.io/kubernetes/test/e2e/apimachinery/webhook.go:237
+
+  Timeline >>
+  STEP: Creating a kubernetes client @ 10/12/26 22:31:48.811
+  I1012 22:31:48.811566      36 util.go:414] >>> kubeConfig: /tmp/kubeconfig-3496616795
+  STEP: Building a namespace api object, basename webhook @ 10/12/26 22:31:48.812
+  STEP: Waiting for a default service account to be provisioned in namespace @ 10/12/26 22:31:48.819
+  STEP: Waiting for kube-root-ca.crt to be provisioned in namespace @ 10/12/26 22:31:48.822
+  STEP: Setting up server cert @ 10/12/26 22:31:48.838
+  STEP: Create role binding to let webhook read extension-apiserver-authentication @ 10/12/26 22:31:49.135
+  STEP: Deploying the webhook pod @ 10/12/26 22:31:49.138
+  STEP: Wait for the deployment to be ready @ 10/12/26 22:31:49.144
+  I1012 22:31:49.149242      36 deployment.go:223] deployment "sample-webhook-deployment" doesn't have the required revision set
+  STEP: Deploying the webhook service @ 10/12/26 22:31:51.157
+  STEP: Verifying the service has paired with the endpoint @ 10/12/26 22:31:51.162
+  I1012 22:31:51.162410      36 wait.go:65] Waiting for amount of service webhook-573/e2e-test-webhook endpoints to be 1
+  I1012 22:31:51.168367      36 wait.go:68] Waiting for at least 1 EndpointSlice to exist
+  STEP: Registering a webhook that server cannot talk to, with fail closed policy, via the AdmissionRegistration API @ 10/12/26 22:31:52.166
+  I1012 22:31:52.183044      36 webhook.go:2781] Waiting for webhook configuration to be ready...
+  STEP: create a namespace for the webhook @ 10/12/26 22:31:52.29
+  STEP: create a configmap should be unconditionally rejected by the webhook @ 10/12/26 22:31:52.298
+  I1012 22:31:52.345352      36 helper.go:127] Waiting up to 7m0s for all (but 0) nodes to be ready
+  STEP: Destroying namespace "webhook-573" for this suite. @ 10/12/26 22:31:52.351
+  STEP: Destroying namespace "webhook-markers-5381" for this suite. @ 10/12/26 22:31:52.36
+  [TIMEDOUT] in [DeferCleanup (Each)] - tear down framework | framework.go:319 @ 10/12/26 22:31:52.364
+  STEP: Collecting events from namespace "webhook-markers-5381". @ 10/12/26 22:31:52.365
+  I1012 22:31:52.369454      36 dump.go:44] Unexpected error: failed to list events in namespace "webhook-markers-5381": 
+      <*errors.errorString | 0x8da2470>: 
+      context canceled
+      {
+          s: "context canceled",
+      }
+  [FAILED] in [DeferCleanup (Each)] - k8s.io/kubernetes/test/e2e/framework/debug/dump.go:44 @ 10/12/26 22:31:52.369
+  << Timeline
+
+  [TIMEDOUT] A suite timeout occurred
+  In [DeferCleanup (Each)] at: tear down framework | framework.go:319 @ 10/12/26 22:31:52.364
+
+  This is the Progress Report generated when the suite timeout occurred:
+    [sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should unconditionally reject operations on fail closed webhook [Conformance] (Spec Runtime: 3.553s)
+      k8s.io/kubernetes/test/e2e/apimachinery/webhook.go:237
+      In [DeferCleanup (Each)] (Node Runtime: 13ms)
+        tear down framework | framework.go:319
+        At [By Step] Destroying namespace "webhook-markers-5381" for this suite. (Step Runtime: 4ms)
+          k8s.io/kubernetes/test/e2e/framework/framework.go:469
+
+        Spec Goroutine
+        goroutine 7397 [select]
+          golang.org/x/net/http2.(*ClientConn).internalRoundTrip(0x32dcad1dba40, 0x32dcae9cf040, 0x0)
+            golang.org/x/net@v0.57.0/http2/transport.go:1030
+          golang.org/x/net/http2.(*ClientConn).roundTrip(...)
+            golang.org/x/net@v0.57.0/http2/transport.go:945
+          golang.org/x/net/http2.(*ClientConn).RoundTrip(0x32dcb194a690?, 0x32dcad1dba40?)
+            golang.org/x/net@v0.57.0/http2/clientconn.go:13
+          golang.org/x/net/http2.(*Transport).roundTripViaPool(0x32dcaf9b60a0, 0x32dcae9cf040, {0xf8?, 0xb7?}, {0x5fd43e8, 0x32dcadad9500})
+            golang.org/x/net@v0.57.0/http2/transport_common.go:279
+          golang.org/x/net/http2.(*Transport).roundTripOpt(0x32dcaf9b60a0, 0x32dcae9cf040, {0x0?, 0x0?})
+            golang.org/x/net@v0.57.0/http2/transport.go:413
+          golang.org/x/net/http2.(*Transport).RoundTripOpt(...)
+            golang.org/x/net@v0.57.0/http2/transport_common.go:231
+          golang.org/x/net/http2.(*Transport).RoundTrip(0x32dcad82b868?, 0x25e6720?)
+            golang.org/x/net@v0.57.0/http2/transport_common.go:226
+          golang.org/x/net/http2.noDialH2RoundTripper.RoundTrip({0x32dcadf7e1a0?}, 0x32dcae9cf040?)
+            golang.org/x/net@v0.57.0/http2/transport.go:2875
+          net/http.(*Transport).roundTrip(0x32dcadf7e1a0, 0x32dcae9cef00)
+            net/http/transport.go:623
+          net/http.(*Transport).RoundTrip(...)
+            net/http/roundtrip.go:33
+          k8s.io/client-go/transport.(*atomicTransportHolder).RoundTrip(0x32dcb00da001?, 0x32dcae9cef00)
+            k8s.io/client-go/transport/ca_rotation.go:50
+          k8s.io/client-go/transport.(*trackedTransport).RoundTrip(0x5761560?, 0x32dcb1f5cd20?)
+            k8s.io/client-go/transport/cache.go:245
+          k8s.io/client-go/transport.(*bearerAuthRoundTripper).RoundTrip(0x32dcb009e1e0, 0x32dcae9cedc0)
+            k8s.io/client-go/transport/round_trippers.go:323
+          k8s.io/client-go/transport.(*userAgentRoundTripper).RoundTrip(0x32dcafe17dc0, 0x32dcae9cec80)
+            k8s.io/client-go/transport/round_trippers.go:174
+          net/http.send(0x32dcae9cec80, {0x5fb9ea0, 0x32dcafe17dc0}, {0x5a09ba0?, 0x32dcad82bf18?, 0x0?})
+            net/http/client.go:264
+          net/http.(*Client).send(0x32dcb009e210, 0x32dcae9cec80, {0x32dcad82bf58?, 0x2153e2c?, 0x0?})
+            net/http/client.go:185
+          net/http.(*Client).do(0x32dcb009e210, 0x32dcae9cec80)
+            net/http/client.go:733
+          net/http.(*Client).Do(...)
+            net/http/client.go:592
+          k8s.io/client-go/rest.(*Request).request(0x32dcaff68f00, {0x5ff3f90, 0x32dcb0cd0390}, 0x32dcad82c3a8)
+            k8s.io/client-go/rest/request.go:1090
+          k8s.io/client-go/rest.(*Request).Do(0x32dcaff68f00, {0x5ff3f90, 0x32dcb0cd0390})
+            k8s.io/client-go/rest/request.go:1138
+          k8s.io/client-go/gentype.(*Client[...]).Delete(0x32dcb11001e0, {0x5ff3f90?, 0x32dcb0cd0390}, {0x32dcb03342a0, 0x14}, {{{0x0, 0x0}, {0x0, 0x0}}, 0x0, ...})
+            k8s.io/client-go/gentype/type.go:257
+        > k8s.io/kubernetes/test/e2e/framework.(*Framework).AfterEach.func1()
+            k8s.io/kubernetes/test/e2e/framework/framework.go:470
+        > k8s.io/kubernetes/test/e2e/framework.(*Framework).AfterEach(0x32dcad021540, {0x5ff3f90?, 0x32dcb0cd0390?})
+            k8s.io/kubernetes/test/e2e/framework/framework.go:519
+          reflect.Value.call({0x50511a0?, 0x32dcafe5cb20?, 0x1f032dcacccb808?}, {0x5aac0f8, 0x4}, {0x32dcadc94e70, 0x1, 0x267ac64?})
+            reflect/value.go:586
+          reflect.Value.Call({0x50511a0?, 0x32dcafe5cb20?, 0x32dcadc94e38?}, {0x32dcadc94e70?, 0x100c94e48?, 0xff3be4135098?})
+            reflect/value.go:369
+          github.com/onsi/ginkgo/v2/internal.NewCleanupNode.func2({0x60082f0?, 0x32dcb0cd0390?})
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:702
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 2151
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911
+
+        Goroutines of Interest
+        goroutine 6870 [select]
+          github.com/moby/spdystream.(*Stream).Read(0x32dcae783cc0, {0x32dcaed6b400, 0x200, 0x20e7a9c?})
+            github.com/moby/spdystream@v0.5.1/stream.go:96
+          io.ReadAll({0xff3bd4d47f58, 0x32dcae783cc0})
+            io/io.go:722
+        > k8s.io/kubernetes/test/e2e/framework/pod.(*Dialer).DialContainerPort.func3()
+            k8s.io/kubernetes/test/e2e/framework/pod/dial.go:134
+        > k8s.io/kubernetes/test/e2e/framework/pod.(*Dialer).DialContainerPort in goroutine 6994
+            k8s.io/kubernetes/test/e2e/framework/pod/dial.go:133
+
+  [FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:
+  failed to list events in namespace "webhook-markers-5381": context canceled
+  In [DeferCleanup (Each)] at: k8s.io/kubernetes/test/e2e/framework/debug/dump.go:44 @ 10/12/26 22:31:52.369
+------------------------------
+SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+------------------------------
+• [TIMEDOUT] [87.587 seconds]
+[sig-node] Pods Extended (pod generation) Pod Generation [It] issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance] [sig-node, Conformance]
+k8s.io/kubernetes/test/e2e/node/pods.go:581
+
+  Timeline >>
+  STEP: Creating a kubernetes client @ 10/12/26 22:30:25.123
+  I1012 22:30:25.123509      33 util.go:414] >>> kubeConfig: /tmp/kubeconfig-4229486904
+  STEP: Building a namespace api object, basename pods @ 10/12/26 22:30:25.124
+  STEP: Waiting for a default service account to be provisioned in namespace @ 10/12/26 22:30:25.132
+  STEP: Waiting for kube-root-ca.crt to be provisioned in namespace @ 10/12/26 22:30:25.197
+  STEP: creating the pod @ 10/12/26 22:30:25.201
+  STEP: submitting the pod to kubernetes @ 10/12/26 22:30:25.201
+  I1012 22:30:27.726716      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:28.236003      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:28.744880      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:29.254019      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:29.762588      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:30.270826      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:30.779005      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:31.287814      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:31.797292      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:32.307032      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:32.815882      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:33.324420      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:33.836208      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:34.347168      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:34.855944      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:35.364717      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:35.874080      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:36.381990      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:36.891516      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:37.400276      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:37.909798      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:38.417778      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:38.927723      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:39.437137      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:39.947071      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:40.455860      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:40.964361      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:41.472216      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:41.981725      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:42.490211      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:42.998443      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:43.508152      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:44.019712      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:44.528437      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:45.037465      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:45.545920      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:46.054378      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:46.564302      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:47.074261      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:47.584093      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:48.092572      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:48.601822      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:49.109888      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:49.621627      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:50.130075      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:50.638744      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:51.147182      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:51.655417      33 pod_client.go:192] Conflicting update to pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b", re-get and re-update: Operation cannot be fulfilled on pods "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b": the object has been modified; please apply your changes to the latest version and try again
+  I1012 22:30:52.154535      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:52.662310      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:53.172482      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:53.682885      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:54.195473      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:54.704564      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:55.214064      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:55.722766      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:56.231189      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:56.741025      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:57.250325      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:57.759870      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:58.269060      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:58.776741      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:59.287411      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:30:59.795740      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:00.304458      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:00.813292      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:01.322302      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:01.830811      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:02.337901      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:02.847239      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:03.355068      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:03.863791      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:04.372126      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:04.879838      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:05.388644      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:05.897738      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:06.405743      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:06.913887      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:07.422123      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:07.930460      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:08.438496      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:08.947051      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:09.455953      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:09.964826      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:10.473077      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:10.982165      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:11.490658      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:11.999365      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:12.508556      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:13.016909      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:13.525116      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:14.034352      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:14.543771      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:15.052233      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:15.560246      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:16.070360      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:16.579612      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:17.089014      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:17.598666      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:18.110256      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:18.618749      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:19.127451      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:19.636144      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:20.146170      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:20.654407      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:21.162107      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:21.670482      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:22.179257      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:22.692072      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:23.200080      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:23.719116      33 pod_client.go:192] Conflicting update to pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b", re-get and re-update: Operation cannot be fulfilled on pods "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b": the object has been modified; please apply your changes to the latest version and try again
+  I1012 22:31:24.209775      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:24.716669      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:25.225017      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:25.732905      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:26.241088      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:26.752878      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:27.260552      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:27.768950      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:28.276841      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:28.786141      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:29.295699      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:29.804719      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:30.312783      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:30.822278      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:31.330511      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:31.838436      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:32.346075      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:32.854175      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:33.360817      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:33.869198      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:34.377326      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:34.886872      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:35.395674      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:35.904685      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:36.412752      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:36.923135      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:37.431393      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:37.939365      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:38.448573      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:38.961371      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:39.469118      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:39.976888      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:40.485544      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:40.993499      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:41.501529      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:42.009870      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:42.517226      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:43.025307      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:43.532365      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:44.042303      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:44.549929      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:45.068839      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:45.576868      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:46.084472      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:46.592008      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:47.103124      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:47.612741      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:48.121459      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:48.629745      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:49.139097      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:49.647428      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:50.156266      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:50.664518      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:51.177871      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:51.687403      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  I1012 22:31:52.196923      33 pod_client.go:188] Successfully updated pod "pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b"
+  [TIMEDOUT] in [It] - k8s.io/kubernetes/test/e2e/node/pods.go:581 @ 10/12/26 22:31:52.361
+  I1012 22:31:52.362452      33 pod_client.go:180] Unexpected error: 
+      <*errors.errorString | 0x8da2470>: 
+      context canceled
+      {
+          s: "context canceled",
+      }
+  [FAILED] in [It] - k8s.io/kubernetes/test/e2e/framework/pod/pod_client.go:180 @ 10/12/26 22:31:52.362
+  STEP: deleting the pod @ 10/12/26 22:31:52.362
+  I1012 22:31:52.381340      33 helper.go:127] Waiting up to 7m0s for all (but 0) nodes to be ready
+  STEP: dump namespace information after failure @ 10/12/26 22:31:52.452
+  STEP: Collecting events from namespace "pods-299". @ 10/12/26 22:31:52.452
+  STEP: Found 4 events. @ 10/12/26 22:31:52.455
+  I1012 22:31:52.455824      33 dump.go:53] At 2026-10-12 22:30:25 +0000 UTC - event for pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b: {default-scheduler } Scheduled: Successfully assigned pods-299/pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b to pre48-worker
+  I1012 22:31:52.455835      33 dump.go:53] At 2026-10-12 22:30:25 +0000 UTC - event for pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b: {kubelet pre48-worker} Pulled: Container image "registry.k8s.io/e2e-test-images/agnhost:2.66.1" already present on machine and can be accessed by the pod
+  I1012 22:31:52.455841      33 dump.go:53] At 2026-10-12 22:30:25 +0000 UTC - event for pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b: {kubelet pre48-worker} Created: Container created
+  I1012 22:31:52.455846      33 dump.go:53] At 2026-10-12 22:30:25 +0000 UTC - event for pod-generation-eafbb5f9-7d31-47b1-b604-306629db2d8b: {kubelet pre48-worker} Started: Container started
+  I1012 22:31:52.459557      33 resource.go:151] POD  NODE  PHASE  GRACE  CONDITIONS
+  I1012 22:31:52.459582      33 resource.go:161] 
+  I1012 22:31:52.465504      33 dump.go:109] 
+  Logging node info for node pre48-control-plane
+  I1012 22:31:52.469992      33 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-control-plane    e007f7e5-615f-4f7b-99e4-7a70cc021ac8 2590 0 2026-10-12 22:23:23 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-control-plane kubernetes.io/os:linux node-role.kubernetes.io/control-plane: node.kubernetes.io/exclude-from-external-load-balancers:] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kubelet Update v1 2026-10-12 22:23:23 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubeadm Update v1 2026-10-12 22:23:25 +0000 UTC FieldsV1 {"f:metadata":{"f:labels":{"f:node-role.kubernetes.io/control-plane":{},"f:node.kubernetes.io/exclude-from-external-load-balancers":{}}}} } {kube-controller-manager Update v1 2026-10-12 22:23:44 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.0.0/24\"":{}},"f:taints":{}}} } {kubelet Update v1 2026-10-12 22:26:51 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}}}} status}]},Spec:NodeSpec{PodCIDR:10.244.0.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-control-plane,Unschedulable:false,Taints:[]Taint{Taint{Key:node-role.kubernetes.io/control-plane,Value:,Effect:NoSchedule,TimeAdded:<nil>,},},ConfigSource:nil,PodCIDRs:[10.244.0.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:44 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.7,},NodeAddress{Type:Hostname,Address:pre48-control-plane,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:2950a6fcb9e24760b8f3fcbae3e81648,SystemUUID:343d7f42-aec9-4e9e-a06f-415b03dffff4,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074036,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.470033      33 dump.go:116] 
+  Logging kubelet events for node pre48-control-plane
+  I1012 22:31:52.476679      33 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-control-plane
+  I1012 22:31:52.489525      33 dump.go:128] kube-system/kube-controller-manager-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489541      33 dump.go:134] 	Container kube-controller-manager ready: true, restart count 0
+  I1012 22:31:52.489547      33 dump.go:128] kube-system/kube-scheduler-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489551      33 dump.go:134] 	Container kube-scheduler ready: true, restart count 0
+  I1012 22:31:52.489556      33 dump.go:128] kube-system/coredns-559f6c778d-2dfkj started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489560      33 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:31:52.489564      33 dump.go:128] kube-system/coredns-559f6c778d-6qpms started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489568      33 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:31:52.489574      33 dump.go:128] kube-system/kube-apiserver-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489578      33 dump.go:134] 	Container kube-apiserver ready: true, restart count 0
+  I1012 22:31:52.489583      33 dump.go:128] kube-system/kindnet-f2dqd started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489587      33 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.489591      33 dump.go:128] kube-system/kube-proxy-bfq82 started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489595      33 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.489600      33 dump.go:128] local-path-storage/local-path-provisioner-75f7fc7dc5-jbh8b started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.489604      33 dump.go:134] 	Container local-path-provisioner ready: true, restart count 0
+  I1012 22:31:52.544252      33 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-control-plane
+  I1012 22:31:52.544326      33 dump.go:109] 
+  Logging node info for node pre48-worker
+  I1012 22:31:52.551064      33 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker    7ff10e97-4358-4dfa-9722-a51026a20f67 5326 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.2.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:30:42 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.2.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.2.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.6,},NodeAddress{Type:Hostname,Address:pre48-worker,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:331795b819eb4cbcbf162352045b8847,SystemUUID:45b9fd0f-6c99-4149-9ad2-fec43ad466b6,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[registry.k8s.io/conformance@sha256:ac2957464746344fe3e44c4ef24bc03e4161c3abb86213cdf62ae3b5cd48946c registry.k8s.io/conformance:v1.37.0],SizeBytes:92056998,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84533341,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:a9155b13325b2abef48e71de77bb8ac015412a566829f621d06bfae5c699b1b9 registry.k8s.io/e2e-test-images/busybox:1.36.1-1],SizeBytes:1920342,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.551090      33 dump.go:116] 
+  Logging kubelet events for node pre48-worker
+  I1012 22:31:52.557948      33 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker
+  I1012 22:31:52.566153      33 dump.go:128] kube-system/kube-proxy-fbrbr started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.566170      33 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.566176      33 dump.go:128] conformance/e2e-conformance-test started at 2026-10-12 22:23:49 +0000 UTC (0+2 container statuses recorded)
+  I1012 22:31:52.566182      33 dump.go:134] 	Container conformance-container ready: true, restart count 0
+  I1012 22:31:52.566186      33 dump.go:134] 	Container output-container ready: true, restart count 0
+  I1012 22:31:52.566191      33 dump.go:128] services-3581/execpodxppm9 started at 2026-10-12 22:31:46 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.566195      33 dump.go:134] 	Container agnhost-container ready: true, restart count 0
+  I1012 22:31:52.566202      33 dump.go:128] kube-system/kindnet-4ss2q started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.566206      33 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.612660      33 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker
+  I1012 22:31:52.612709      33 dump.go:109] 
+  Logging node info for node pre48-worker2
+  I1012 22:31:52.616254      33 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker2    756da9c4-d636-422c-ac92-dfb3ca13055c 6037 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker2 kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.1.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:31:34 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.1.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker2,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.1.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.5,},NodeAddress{Type:Hostname,Address:pre48-worker2,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:fd6464b635fb4cdfbf29457c4ec55112,SystemUUID:24412609-5a7e-4f16-87db-6e333687b641,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.616273      33 dump.go:116] 
+  Logging kubelet events for node pre48-worker2
+  I1012 22:31:52.621053      33 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker2
+  I1012 22:31:52.630645      33 dump.go:128] kube-system/kube-proxy-mthz5 started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.630674      33 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.630680      33 dump.go:128] kube-system/kindnet-r257x started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.630685      33 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.630691      33 dump.go:128] projected-8171/pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e started at 2026-10-12 22:31:28 +0000 UTC (0+3 container statuses recorded)
+  I1012 22:31:52.630695      33 dump.go:134] 	Container creates-volume-test ready: true, restart count 0
+  I1012 22:31:52.630699      33 dump.go:134] 	Container dels-volume-test ready: true, restart count 0
+  I1012 22:31:52.630704      33 dump.go:134] 	Container upds-volume-test ready: true, restart count 0
+  I1012 22:31:52.703774      33 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker2
+  STEP: Destroying namespace "pods-299" for this suite. @ 10/12/26 22:31:52.704
+  << Timeline
+
+  [TIMEDOUT] A suite timeout occurred
+  In [It] at: k8s.io/kubernetes/test/e2e/node/pods.go:581 @ 10/12/26 22:31:52.361
+
+  This is the Progress Report generated when the suite timeout occurred:
+    [sig-node] Pods Extended (pod generation) Pod Generation issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance] (Spec Runtime: 1m27.238s)
+      k8s.io/kubernetes/test/e2e/node/pods.go:581
+      In [It] (Node Runtime: 1m27.161s)
+        k8s.io/kubernetes/test/e2e/node/pods.go:581
+        At [By Step] submitting the pod to kubernetes (Step Runtime: 1m27.161s)
+          k8s.io/kubernetes/test/e2e/node/pods.go:591
+
+        Spec Goroutine
+        goroutine 4174 [select]
+          k8s.io/apimachinery/pkg/util/wait.loopConditionUntilContext({0x5ff3ac0, 0x723ad55cf570}, {0x5fdfec8, 0x723ad591fa60}, 0x0, 0x0, 0x723ad636bd10)
+            k8s.io/apimachinery/pkg/util/wait/loop.go:66
+          k8s.io/apimachinery/pkg/util/wait.PollUntilContextTimeout({0x5ff3f90?, 0x723ad6c0bc50?}, 0x1dcd6500, 0x0?, 0x0, 0x723ad636bd10)
+            k8s.io/apimachinery/pkg/util/wait/poll.go:48
+          k8s.io/kubernetes/test/e2e/framework/pod.(*PodClient).Update(0x723ad636be28?, {0x5ff3f90?, 0x723ad6c0bc50?}, {0x723ad6d17c40?, 0x0?}, 0x0?)
+            k8s.io/kubernetes/test/e2e/framework/pod/pod_client.go:180
+        > k8s.io/kubernetes/test/e2e/node.init.func27.1.4({0x5ff3f90, 0x723ad6c0bc50})
+            k8s.io/kubernetes/test/e2e/node/pods.go:599
+          github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x60082f0?, 0x723ad6c0bc50?})
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 3348
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911
+
+  [FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:
+  context canceled
+  In [It] at: k8s.io/kubernetes/test/e2e/framework/pod/pod_client.go:180 @ 10/12/26 22:31:52.362
+------------------------------
+SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+------------------------------
+• [TIMEDOUT] [24.793 seconds]
+[sig-storage] Projected secret [It] optional updates should be reflected in volume [Conformance] [NodeConformance] [sig-storage, NodeConformance, Conformance]
+k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226
+
+  Timeline >>
+  STEP: Creating a kubernetes client @ 10/12/26 22:31:27.958
+  I1012 22:31:27.958490      35 util.go:414] >>> kubeConfig: /tmp/kubeconfig-3880426187
+  STEP: Building a namespace api object, basename projected @ 10/12/26 22:31:27.959
+  STEP: Waiting for a default service account to be provisioned in namespace @ 10/12/26 22:31:27.966
+  STEP: Waiting for kube-root-ca.crt to be provisioned in namespace @ 10/12/26 22:31:28.004
+  STEP: Creating secret with name s-test-opt-del-0babf1b5-f722-42da-a769-2a6a75e75794 @ 10/12/26 22:31:28.05
+  STEP: Creating secret with name s-test-opt-upd-5f767133-c7f3-480f-84ff-4a0479dd6939 @ 10/12/26 22:31:28.054
+  STEP: Creating the pod @ 10/12/26 22:31:28.056
+  STEP: Deleting secret s-test-opt-del-0babf1b5-f722-42da-a769-2a6a75e75794 @ 10/12/26 22:31:30.083
+  STEP: Updating secret s-test-opt-upd-5f767133-c7f3-480f-84ff-4a0479dd6939 @ 10/12/26 22:31:30.088
+  STEP: Creating secret with name s-test-opt-create-21408afc-7983-4626-8afc-6581094711fa @ 10/12/26 22:31:30.092
+  STEP: waiting to observe update in volume @ 10/12/26 22:31:30.095
+  [TIMEDOUT] in [It] - k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226 @ 10/12/26 22:31:52.402
+  [FAILED] in [It] - k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:417 @ 10/12/26 22:31:52.404
+  I1012 22:31:52.405375      35 helper.go:127] Waiting up to 7m0s for all (but 0) nodes to be ready
+  STEP: dump namespace information after failure @ 10/12/26 22:31:52.452
+  STEP: Collecting events from namespace "projected-8171". @ 10/12/26 22:31:52.452
+  STEP: Found 10 events. @ 10/12/26 22:31:52.455
+  I1012 22:31:52.455885      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {default-scheduler } Scheduled: Successfully assigned projected-8171/pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e to pre48-worker2
+  I1012 22:31:52.455895      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Pulled: Container image "registry.k8s.io/e2e-test-images/agnhost:2.66.1" already present on machine and can be accessed by the pod
+  I1012 22:31:52.455901      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Created: Container created
+  I1012 22:31:52.455906      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Started: Container started
+  I1012 22:31:52.455909      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Pulled: Container image "registry.k8s.io/e2e-test-images/agnhost:2.66.1" already present on machine and can be accessed by the pod
+  I1012 22:31:52.455915      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Created: Container created
+  I1012 22:31:52.455920      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Started: Container started
+  I1012 22:31:52.455924      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Pulled: Container image "registry.k8s.io/e2e-test-images/agnhost:2.66.1" already present on machine and can be accessed by the pod
+  I1012 22:31:52.455929      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Created: Container created
+  I1012 22:31:52.455934      35 dump.go:53] At 2026-10-12 22:31:28 +0000 UTC - event for pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e: {kubelet pre48-worker2} Started: Container started
+  I1012 22:31:52.459841      35 resource.go:151] POD                                                         NODE           PHASE    GRACE  CONDITIONS
+  I1012 22:31:52.459894      35 resource.go:158] pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e  pre48-worker2  Running         [{PodReadyToStartContainers 1 True 0001-01-01 00:00:00 +0000 UTC 2026-10-12 22:31:28 +0000 UTC  } {Initialized 1 True 0001-01-01 00:00:00 +0000 UTC 2026-10-12 22:31:28 +0000 UTC  } {Ready 1 True 0001-01-01 00:00:00 +0000 UTC 2026-10-12 22:31:28 +0000 UTC  } {ContainersReady 1 True 0001-01-01 00:00:00 +0000 UTC 2026-10-12 22:31:28 +0000 UTC  } {PodScheduled 1 True 0001-01-01 00:00:00 +0000 UTC 2026-10-12 22:31:28 +0000 UTC  }]
+  I1012 22:31:52.459900      35 resource.go:161] 
+  I1012 22:31:52.489336      35 dump.go:109] 
+  Logging node info for node pre48-control-plane
+  I1012 22:31:52.493572      35 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-control-plane    e007f7e5-615f-4f7b-99e4-7a70cc021ac8 2590 0 2026-10-12 22:23:23 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-control-plane kubernetes.io/os:linux node-role.kubernetes.io/control-plane: node.kubernetes.io/exclude-from-external-load-balancers:] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kubelet Update v1 2026-10-12 22:23:23 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubeadm Update v1 2026-10-12 22:23:25 +0000 UTC FieldsV1 {"f:metadata":{"f:labels":{"f:node-role.kubernetes.io/control-plane":{},"f:node.kubernetes.io/exclude-from-external-load-balancers":{}}}} } {kube-controller-manager Update v1 2026-10-12 22:23:44 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.0.0/24\"":{}},"f:taints":{}}} } {kubelet Update v1 2026-10-12 22:26:51 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}}}} status}]},Spec:NodeSpec{PodCIDR:10.244.0.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-control-plane,Unschedulable:false,Taints:[]Taint{Taint{Key:node-role.kubernetes.io/control-plane,Value:,Effect:NoSchedule,TimeAdded:<nil>,},},ConfigSource:nil,PodCIDRs:[10.244.0.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:26:51 +0000 UTC,LastTransitionTime:2026-10-12 22:23:44 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.7,},NodeAddress{Type:Hostname,Address:pre48-control-plane,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:2950a6fcb9e24760b8f3fcbae3e81648,SystemUUID:343d7f42-aec9-4e9e-a06f-415b03dffff4,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074036,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.493590      35 dump.go:116] 
+  Logging kubelet events for node pre48-control-plane
+  I1012 22:31:52.497709      35 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-control-plane
+  I1012 22:31:52.526866      35 dump.go:128] kube-system/kube-controller-manager-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526886      35 dump.go:134] 	Container kube-controller-manager ready: true, restart count 0
+  I1012 22:31:52.526893      35 dump.go:128] kube-system/kube-scheduler-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526899      35 dump.go:134] 	Container kube-scheduler ready: true, restart count 0
+  I1012 22:31:52.526904      35 dump.go:128] kube-system/coredns-559f6c778d-2dfkj started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526908      35 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:31:52.526913      35 dump.go:128] kube-system/coredns-559f6c778d-6qpms started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526917      35 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:31:52.526921      35 dump.go:128] kube-system/kube-apiserver-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526925      35 dump.go:134] 	Container kube-apiserver ready: true, restart count 0
+  I1012 22:31:52.526929      35 dump.go:128] kube-system/kindnet-f2dqd started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526932      35 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.526936      35 dump.go:128] kube-system/kube-proxy-bfq82 started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526941      35 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.526947      35 dump.go:128] local-path-storage/local-path-provisioner-75f7fc7dc5-jbh8b started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.526950      35 dump.go:134] 	Container local-path-provisioner ready: true, restart count 0
+  I1012 22:31:52.570858      35 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-control-plane
+  I1012 22:31:52.570923      35 dump.go:109] 
+  Logging node info for node pre48-worker
+  I1012 22:31:52.574361      35 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker    7ff10e97-4358-4dfa-9722-a51026a20f67 5326 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.2.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:30:42 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.2.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.2.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.6,},NodeAddress{Type:Hostname,Address:pre48-worker,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:331795b819eb4cbcbf162352045b8847,SystemUUID:45b9fd0f-6c99-4149-9ad2-fec43ad466b6,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[registry.k8s.io/conformance@sha256:ac2957464746344fe3e44c4ef24bc03e4161c3abb86213cdf62ae3b5cd48946c registry.k8s.io/conformance:v1.37.0],SizeBytes:92056998,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84533341,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:a9155b13325b2abef48e71de77bb8ac015412a566829f621d06bfae5c699b1b9 registry.k8s.io/e2e-test-images/busybox:1.36.1-1],SizeBytes:1920342,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.574380      35 dump.go:116] 
+  Logging kubelet events for node pre48-worker
+  I1012 22:31:52.579211      35 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker
+  I1012 22:31:52.600485      35 dump.go:128] kube-system/kube-proxy-fbrbr started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.600514      35 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.600520      35 dump.go:128] conformance/e2e-conformance-test started at 2026-10-12 22:23:49 +0000 UTC (0+2 container statuses recorded)
+  I1012 22:31:52.600525      35 dump.go:134] 	Container conformance-container ready: true, restart count 0
+  I1012 22:31:52.600531      35 dump.go:134] 	Container output-container ready: true, restart count 0
+  I1012 22:31:52.600536      35 dump.go:128] services-3581/execpodxppm9 started at 2026-10-12 22:31:46 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.600540      35 dump.go:134] 	Container agnhost-container ready: true, restart count 0
+  I1012 22:31:52.600545      35 dump.go:128] kube-system/kindnet-4ss2q started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.600549      35 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.653806      35 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker
+  I1012 22:31:52.653832      35 dump.go:109] 
+  Logging node info for node pre48-worker2
+  I1012 22:31:52.659363      35 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker2    756da9c4-d636-422c-ac92-dfb3ca13055c 6037 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker2 kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.1.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:31:34 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.1.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker2,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.1.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.5,},NodeAddress{Type:Hostname,Address:pre48-worker2,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:fd6464b635fb4cdfbf29457c4ec55112,SystemUUID:24412609-5a7e-4f16-87db-6e333687b641,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:31:52.659383      35 dump.go:116] 
+  Logging kubelet events for node pre48-worker2
+  I1012 22:31:52.664276      35 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker2
+  I1012 22:31:52.683331      35 dump.go:128] kube-system/kube-proxy-mthz5 started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.683364      35 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:31:52.683370      35 dump.go:128] kube-system/kindnet-r257x started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:31:52.683374      35 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:31:52.683379      35 dump.go:128] projected-8171/pod-projected-secrets-9fe3f3f7-87b6-4de8-9404-6e745aa6f93e started at 2026-10-12 22:31:28 +0000 UTC (0+3 container statuses recorded)
+  I1012 22:31:52.683384      35 dump.go:134] 	Container creates-volume-test ready: true, restart count 0
+  I1012 22:31:52.683388      35 dump.go:134] 	Container dels-volume-test ready: true, restart count 0
+  I1012 22:31:52.683392      35 dump.go:134] 	Container upds-volume-test ready: true, restart count 0
+  I1012 22:31:52.740760      35 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker2
+  STEP: Destroying namespace "projected-8171" for this suite. @ 10/12/26 22:31:52.742
+  << Timeline
+
+  [TIMEDOUT] A suite timeout occurred
+  In [It] at: k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226 @ 10/12/26 22:31:52.402
+
+  This is the Progress Report generated when the suite timeout occurred:
+    [sig-storage] Projected secret optional updates should be reflected in volume [Conformance] [NodeConformance] (Spec Runtime: 24.445s)
+      k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226
+      In [It] (Node Runtime: 24.395s)
+        k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226
+        At [By Step] waiting to observe update in volume (Step Runtime: 22.307s)
+          k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:415
+
+        Spec Goroutine
+        goroutine 5737 [select]
+          github.com/onsi/gomega/internal.(*AsyncAssertion).match(0x3177c4600000, {0x5fdfc28, 0x3177c2e120c0}, 0x1, {0x0, 0x0, 0x0})
+            github.com/onsi/gomega@v1.40.0/internal/async_assertion.go:558
+          github.com/onsi/gomega/internal.(*AsyncAssertion).Should(0x3177c4600000, {0x5fdfc28, 0x3177c2e120c0}, {0x0, 0x0, 0x0})
+            github.com/onsi/gomega@v1.40.0/internal/async_assertion.go:145
+        > k8s.io/kubernetes/test/e2e/common/storage.init.func9.10({0x5ff3f90, 0x3177c3277bf0})
+            k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:417
+          github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x60082f0?, 0x3177c3277bf0?})
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 2876
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911
+
+        Begin Additional Progress Reports >>
+          Expected
+              <string>: Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+              
+          to contain substring
+              <string>: value-1
+        << End Additional Progress Reports
+
+  [FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:
+  Context was cancelled (cause: suite timeout occurred) after 22.308s.
+  Expected
+      <string>: Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      Error reading file /etc/projected-secret-volumes/create/data-1: open /etc/projected-secret-volumes/create/data-1: no such file or directory, retrying
+      
+  to contain substring
+      <string>: value-1
+  In [It] at: k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:417 @ 10/12/26 22:31:52.404
+------------------------------
+SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+------------------------------
+• [TIMEDOUT] [497.778 seconds]
+[sig-api-machinery] Servers with support for API chunking [It] should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow] [sig-api-machinery, Slow, Conformance]
+k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144
+
+  Timeline >>
+  STEP: Creating a kubernetes client @ 10/12/26 22:23:52.703
+  I1012 22:23:52.703402      32 util.go:414] >>> kubeConfig: /tmp/kubeconfig-1396925567
+  STEP: Building a namespace api object, basename chunking @ 10/12/26 22:23:52.704
+  STEP: Waiting for a default service account to be provisioned in namespace @ 10/12/26 22:23:52.726
+  STEP: Waiting for kube-root-ca.crt to be provisioned in namespace @ 10/12/26 22:23:52.74
+  STEP: creating a large number of resources @ 10/12/26 22:23:52.801
+  STEP: retrieving the first page @ 10/12/26 22:24:10.305
+  I1012 22:24:10.355025      32 chunking.go:163] Retrieved 40/40 results with rv 1152 and continue eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9
+  STEP: retrieving the second page until the token expires @ 10/12/26 22:24:10.355
+  I1012 22:24:30.357665      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:24:50.357665      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:25:10.357879      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:25:30.357738      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:25:50.357411      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:26:10.357764      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:26:30.358105      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:26:50.357256      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:27:10.357187      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:27:30.357755      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:27:50.356996      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:28:10.357533      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:28:30.357731      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:28:50.357468      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:29:10.357170      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:29:30.357697      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:29:50.357387      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:30:10.357950      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:30:30.358275      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:30:50.357295      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:31:10.357495      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:31:30.357250      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  I1012 22:31:50.357636      32 chunking.go:171] Token eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTE1Miwic3RhcnQiOiIvdGVtcGxhdGUtMDAzOVx1MDAwMCJ9 has not expired yet
+  [TIMEDOUT] in [It] - k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144 @ 10/12/26 22:31:52.362
+  STEP: retrieving the second page again with the token received with the error message @ 10/12/26 22:32:10.355
+  I1012 22:32:10.355770      32 chunking.go:193] Unexpected error: failed to list pod templates in namespace: chunking-5236, given inconsistent continue token  and limit: 40: 
+      <*errors.errorString | 0x8da2470>: 
+      context canceled
+      {
+          s: "context canceled",
+      }
+  [FAILED] in [It] - k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:193 @ 10/12/26 22:32:10.355
+  I1012 22:32:10.356407      32 helper.go:127] Waiting up to 7m0s for all (but 0) nodes to be ready
+  STEP: dump namespace information after failure @ 10/12/26 22:32:10.36
+  STEP: Collecting events from namespace "chunking-5236". @ 10/12/26 22:32:10.36
+  STEP: Found 0 events. @ 10/12/26 22:32:10.362
+  I1012 22:32:10.364476      32 resource.go:151] POD  NODE  PHASE  GRACE  CONDITIONS
+  I1012 22:32:10.364494      32 resource.go:161] 
+  I1012 22:32:10.366308      32 dump.go:109] 
+  Logging node info for node pre48-control-plane
+  I1012 22:32:10.368502      32 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-control-plane    e007f7e5-615f-4f7b-99e4-7a70cc021ac8 6385 0 2026-10-12 22:23:23 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-control-plane kubernetes.io/os:linux node-role.kubernetes.io/control-plane: node.kubernetes.io/exclude-from-external-load-balancers:] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kubelet Update v1 2026-10-12 22:23:23 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubeadm Update v1 2026-10-12 22:23:25 +0000 UTC FieldsV1 {"f:metadata":{"f:labels":{"f:node-role.kubernetes.io/control-plane":{},"f:node.kubernetes.io/exclude-from-external-load-balancers":{}}}} } {kube-controller-manager Update v1 2026-10-12 22:23:44 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.0.0/24\"":{}},"f:taints":{}}} } {kubelet Update v1 2026-10-12 22:31:57 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}}}} status}]},Spec:NodeSpec{PodCIDR:10.244.0.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-control-plane,Unschedulable:false,Taints:[]Taint{Taint{Key:node-role.kubernetes.io/control-plane,Value:,Effect:NoSchedule,TimeAdded:<nil>,},},ConfigSource:nil,PodCIDRs:[10.244.0.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:57 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:57 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:57 +0000 UTC,LastTransitionTime:2026-10-12 22:23:23 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:31:57 +0000 UTC,LastTransitionTime:2026-10-12 22:23:44 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.7,},NodeAddress{Type:Hostname,Address:pre48-control-plane,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:2950a6fcb9e24760b8f3fcbae3e81648,SystemUUID:343d7f42-aec9-4e9e-a06f-415b03dffff4,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074036,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:32:10.368527      32 dump.go:116] 
+  Logging kubelet events for node pre48-control-plane
+  I1012 22:32:10.370924      32 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-control-plane
+  I1012 22:32:10.376294      32 dump.go:128] kube-system/kindnet-f2dqd started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376309      32 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:32:10.376315      32 dump.go:128] kube-system/kube-proxy-bfq82 started at 2026-10-12 22:23:32 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376320      32 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:32:10.376326      32 dump.go:128] local-path-storage/local-path-provisioner-75f7fc7dc5-jbh8b started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376331      32 dump.go:134] 	Container local-path-provisioner ready: true, restart count 0
+  I1012 22:32:10.376336      32 dump.go:128] kube-system/kube-controller-manager-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376340      32 dump.go:134] 	Container kube-controller-manager ready: true, restart count 0
+  I1012 22:32:10.376344      32 dump.go:128] kube-system/kube-scheduler-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376348      32 dump.go:134] 	Container kube-scheduler ready: true, restart count 0
+  I1012 22:32:10.376352      32 dump.go:128] kube-system/coredns-559f6c778d-2dfkj started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376356      32 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:32:10.376361      32 dump.go:128] kube-system/coredns-559f6c778d-6qpms started at 2026-10-12 22:23:44 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376365      32 dump.go:134] 	Container coredns ready: true, restart count 0
+  I1012 22:32:10.376370      32 dump.go:128] kube-system/kube-apiserver-pre48-control-plane started at 2026-10-12 22:23:26 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.376374      32 dump.go:134] 	Container kube-apiserver ready: true, restart count 0
+  I1012 22:32:10.403111      32 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-control-plane
+  I1012 22:32:10.403134      32 dump.go:109] 
+  Logging node info for node pre48-worker
+  I1012 22:32:10.406014      32 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker    7ff10e97-4358-4dfa-9722-a51026a20f67 5326 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.2.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:30:42 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.2.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.2.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:30:42 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.6,},NodeAddress{Type:Hostname,Address:pre48-worker,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:331795b819eb4cbcbf162352045b8847,SystemUUID:45b9fd0f-6c99-4149-9ad2-fec43ad466b6,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[registry.k8s.io/conformance@sha256:ac2957464746344fe3e44c4ef24bc03e4161c3abb86213cdf62ae3b5cd48946c registry.k8s.io/conformance:v1.37.0],SizeBytes:92056998,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84533341,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:a9155b13325b2abef48e71de77bb8ac015412a566829f621d06bfae5c699b1b9 registry.k8s.io/e2e-test-images/busybox:1.36.1-1],SizeBytes:1920342,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:32:10.406033      32 dump.go:116] 
+  Logging kubelet events for node pre48-worker
+  I1012 22:32:10.408638      32 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker
+  I1012 22:32:10.411977      32 dump.go:128] kube-system/kube-proxy-fbrbr started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.411992      32 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:32:10.412000      32 dump.go:128] conformance/e2e-conformance-test started at 2026-10-12 22:23:49 +0000 UTC (0+2 container statuses recorded)
+  I1012 22:32:10.412004      32 dump.go:134] 	Container conformance-container ready: true, restart count 0
+  I1012 22:32:10.412008      32 dump.go:134] 	Container output-container ready: true, restart count 0
+  I1012 22:32:10.412013      32 dump.go:128] kube-system/kindnet-4ss2q started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.412017      32 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:32:10.438192      32 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker
+  I1012 22:32:10.438214      32 dump.go:109] 
+  Logging node info for node pre48-worker2
+  I1012 22:32:10.440869      32 dump.go:114] Node Info: &Node{ObjectMeta:{pre48-worker2    756da9c4-d636-422c-ac92-dfb3ca13055c 6037 0 2026-10-12 22:23:33 +0000 UTC <nil> <nil> map[beta.kubernetes.io/arch:arm64 beta.kubernetes.io/os:linux kubernetes.io/arch:arm64 kubernetes.io/hostname:pre48-worker2 kubernetes.io/os:linux] map[node.alpha.kubernetes.io/ttl:0 volumes.kubernetes.io/controller-managed-attach-detach:true] [] [] [{kube-controller-manager Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{"f:node.alpha.kubernetes.io/ttl":{}}},"f:spec":{"f:podCIDR":{},"f:podCIDRs":{".":{},"v:\"10.244.1.0/24\"":{}}}} } {kubelet Update v1 2026-10-12 22:23:33 +0000 UTC FieldsV1 {"f:metadata":{"f:annotations":{".":{},"f:volumes.kubernetes.io/controller-managed-attach-detach":{}},"f:labels":{".":{},"f:beta.kubernetes.io/arch":{},"f:beta.kubernetes.io/os":{},"f:kubernetes.io/arch":{},"f:kubernetes.io/hostname":{},"f:kubernetes.io/os":{}}},"f:spec":{"f:providerID":{}}} } {kubelet Update v1 2026-10-12 22:31:34 +0000 UTC FieldsV1 {"f:status":{"f:conditions":{"k:{\"type\":\"DiskPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"MemoryPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"PIDPressure\"}":{"f:lastHeartbeatTime":{}},"k:{\"type\":\"Ready\"}":{"f:lastHeartbeatTime":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{}}},"f:images":{}}} status}]},Spec:NodeSpec{PodCIDR:10.244.1.0/24,DoNotUseExternalID:,ProviderID:kind://docker/pre48/pre48-worker2,Unschedulable:false,Taints:[]Taint{},ConfigSource:nil,PodCIDRs:[10.244.1.0/24],PodPreemptionPolicy:nil,},Status:NodeStatus{Capacity:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Allocatable:ResourceList{cpu: {{4 0} {<nil>} 4 DecimalSI},ephemeral-storage: {{154894188544 0} {<nil>} 154894188544 DecimalSI},hugepages-1Gi: {{0 0} {<nil>} 0 DecimalSI},hugepages-2Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-32Mi: {{0 0} {<nil>} 0 DecimalSI},hugepages-64Ki: {{0 0} {<nil>} 0 DecimalSI},memory: {{16722010112 0} {<nil>}  BinarySI},pods: {{110 0} {<nil>} 110 DecimalSI},},Phase:,Conditions:[]NodeCondition{NodeCondition{Type:MemoryPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientMemory,Message:kubelet has sufficient memory available,},NodeCondition{Type:DiskPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasNoDiskPressure,Message:kubelet has no disk pressure,},NodeCondition{Type:PIDPressure,Status:False,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:33 +0000 UTC,Reason:KubeletHasSufficientPID,Message:kubelet has sufficient PID available,},NodeCondition{Type:Ready,Status:True,LastHeartbeatTime:2026-10-12 22:31:34 +0000 UTC,LastTransitionTime:2026-10-12 22:23:47 +0000 UTC,Reason:KubeletReady,Message:kubelet is posting ready status,},},Addresses:[]NodeAddress{NodeAddress{Type:InternalIP,Address:172.18.0.5,},NodeAddress{Type:Hostname,Address:pre48-worker2,},},DaemonEndpoints:NodeDaemonEndpoints{KubeletEndpoint:DaemonEndpoint{Port:10250,},},NodeInfo:NodeSystemInfo{MachineID:fd6464b635fb4cdfbf29457c4ec55112,SystemUUID:24412609-5a7e-4f16-87db-6e333687b641,BootID:ed55e927-a459-4404-b999-e9ff570520b0,KernelVersion:6.17.0-1022-azure,OSImage:Debian GNU/Linux 13 (trixie),ContainerRuntimeVersion:containerd://2.3.4,KubeletVersion:v1.37.0,KubeProxyVersion:,OperatingSystem:linux,Architecture:arm64,Swap:&NodeSwapStatus{Capacity:*3221221376,},RunningInUserNamespace:*false,},Images:[]ContainerImage{ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:4fbbef5581e6ed60b96426e3786371b57da07f66e350b4ff2b0077413c2b0444 registry.k8s.io/kube-apiserver-arm64:v1.37.0 registry.k8s.io/kube-apiserver:v1.37.0],SizeBytes:97074418,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:dda35f6553455c1dde75aebfbb20759d24b7de776b884eb06415f242f276200c registry.k8s.io/kube-controller-manager-arm64:v1.37.0 registry.k8s.io/kube-controller-manager:v1.37.0],SizeBytes:85081821,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:d5e740cce95911da5590b633aae2f7f7e3370ec9d212d4dbbbf3bf19fa07551f registry.k8s.io/kube-proxy-arm64:v1.37.0 registry.k8s.io/kube-proxy:v1.37.0],SizeBytes:84532964,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/glibc-dns-testing@sha256:f37f573a5ad1049cfc06b0965bc7170e81b2690bd6fa6b65029d68f72515c1c2 registry.k8s.io/e2e-test-images/glibc-dns-testing:2.1.1],SizeBytes:73341315,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:6e2eef87d0dc77e070a7549bc5fdfa290c0fefe3359eb33c2ad1eda692fe66a4 registry.k8s.io/e2e-test-images/agnhost:2.66.1],SizeBytes:59736727,},ContainerImage{Names:[docker.io/library/import-2026-08-26@sha256:2aa78b45454b3df79d15bf6a57b4f9871f11ce16c8b645109ba2310076d228dd registry.k8s.io/kube-scheduler-arm64:v1.37.0 registry.k8s.io/kube-scheduler:v1.37.0],SizeBytes:59129565,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/agnhost@sha256:541cafada1867e8684b25d24f0cb1132e76aff093401b5987490b654fbd79c0a registry.k8s.io/e2e-test-images/agnhost:2.55],SizeBytes:54232906,},ContainerImage{Names:[docker.io/kindest/kindnetd:v20260820-69b56db7],SizeBytes:35652389,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/nginx@sha256:11d0107f43f9a06c8bb11f85eb5a06f08c8f3366c3bf1527a78e01ee4931da84 registry.k8s.io/e2e-test-images/nginx:1.27.0-2],SizeBytes:21823748,},ContainerImage{Names:[registry.k8s.io/coredns/coredns:v1.14.6],SizeBytes:21239459,},ContainerImage{Names:[registry.k8s.io/etcd:3.7.0-0],SizeBytes:20455189,},ContainerImage{Names:[docker.io/kindest/local-path-provisioner:v20260820-69b56db7],SizeBytes:14217939,},ContainerImage{Names:[docker.io/kindest/local-path-helper:v20260131-7181c60a],SizeBytes:2740462,},ContainerImage{Names:[registry.k8s.io/e2e-test-images/busybox@sha256:690925c6f3493b235eb590113f8c481564dcd4f1962cf7d5b321f185980721ef registry.k8s.io/e2e-test-images/busybox:1.37.0-2],SizeBytes:1848553,},ContainerImage{Names:[registry.k8s.io/pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4 registry.k8s.io/pause:3.10.2],SizeBytes:268296,},ContainerImage{Names:[registry.k8s.io/pause:3.10],SizeBytes:267933,},},VolumesInUse:[],VolumesAttached:[]AttachedVolume{},Config:nil,RuntimeHandlers:[]NodeRuntimeHandler{NodeRuntimeHandler{Name:,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:runc,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},NodeRuntimeHandler{Name:test-handler,Features:&NodeRuntimeHandlerFeatures{RecursiveReadOnlyMounts:*true,UserNamespaces:*true,},},},Features:&NodeFeatures{SupplementalGroupsPolicy:*true,},DeclaredFeatures:[ExtendWebSocketsToKubelet InPlacePodLevelResourcesVerticalScaling InPlacePodVerticalScalingInitContainers RestartAllContainersOnContainerExits],},}
+  I1012 22:32:10.440883      32 dump.go:116] 
+  Logging kubelet events for node pre48-worker2
+  I1012 22:32:10.443600      32 dump.go:121] 
+  Logging pods the kubelet thinks are on node pre48-worker2
+  I1012 22:32:10.450172      32 dump.go:128] kube-system/kube-proxy-mthz5 started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.450199      32 dump.go:134] 	Container kube-proxy ready: true, restart count 0
+  I1012 22:32:10.450205      32 dump.go:128] kube-system/kindnet-r257x started at 2026-10-12 22:23:35 +0000 UTC (0+1 container statuses recorded)
+  I1012 22:32:10.450209      32 dump.go:134] 	Container kindnet-cni ready: true, restart count 0
+  I1012 22:32:10.476250      32 kubelet_metrics.go:205] 
+  Latency metrics for node pre48-worker2
+  STEP: Destroying namespace "chunking-5236" for this suite. @ 10/12/26 22:32:10.476
+  << Timeline
+
+  [TIMEDOUT] A suite timeout occurred
+  In [It] at: k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144 @ 10/12/26 22:31:52.362
+
+  This is the Progress Report generated when the suite timeout occurred:
+    [sig-api-machinery] Servers with support for API chunking should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow] (Spec Runtime: 7m59.66s)
+      k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144
+      In [It] (Node Runtime: 7m42.057s)
+        k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144
+        At [By Step] retrieving the second page until the token expires (Step Runtime: 7m42.008s)
+          k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:165
+
+        Spec Goroutine
+        goroutine 3833 [select]
+          k8s.io/apimachinery/pkg/util/wait.waitForWithContext({0x5ff3938, 0x8fc1a00}, 0x7794ab1b6b0, 0x779498fd708)
+            k8s.io/apimachinery/pkg/util/wait/wait.go:210
+          k8s.io/apimachinery/pkg/util/wait.poll({0x5ff3938, 0x8fc1a00}, 0x0?, 0x7794ab1b6b0, 0x7794ab1b708)
+            k8s.io/apimachinery/pkg/util/wait/poll.go:260
+          k8s.io/apimachinery/pkg/util/wait.PollWithContext({0x5ff3938?, 0x8fc1a00?}, 0x0?, 0x0?, 0x32?)
+            k8s.io/apimachinery/pkg/util/wait/poll.go:85
+          k8s.io/apimachinery/pkg/util/wait.Poll(0x5bd2fd7?, 0x54?, 0x0?)
+            k8s.io/apimachinery/pkg/util/wait/poll.go:66
+        > k8s.io/kubernetes/test/e2e/apimachinery.init.func5.3({0x5ff3f90, 0x7794b578300})
+            k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:168
+          github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x60082f0?, 0x7794b578300?})
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946
+          github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 2549
+            github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911
+
+  [FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:
+  failed to list pod templates in namespace: chunking-5236, given inconsistent continue token  and limit: 40: context canceled
+  In [It] at: k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:193 @ 10/12/26 22:32:10.355
+------------------------------
+SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+------------------------------
+[ReportAfterSuite] [FAILED] [0.018 seconds]
+[ReportAfterSuite] Autogenerated ReportAfterSuite for --json-report
+autogenerated by Ginkgo
+
+  [FAILED] Failed to generate JSON report:
+  mkdir /usr/local/bin/tmp: permission denied
+  In [ReportAfterSuite] at: github.com/onsi/ginkgo/v2@v2.32.0/reporting_dsl.go:215 @ 10/12/26 22:32:10.721
+------------------------------
+
+Summarizing 5 Failures:
+  [TIMEDOUT] [sig-node] Pods Extended (pod generation) Pod Generation [It] issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance] [sig-node, Conformance]
+  k8s.io/kubernetes/test/e2e/node/pods.go:581
+  [TIMEDOUT] [sig-storage] Projected secret [It] optional updates should be reflected in volume [Conformance] [NodeConformance] [sig-storage, NodeConformance, Conformance]
+  k8s.io/kubernetes/test/e2e/common/storage/projected_secret.go:226
+  [TIMEDOUT] [sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] [DeferCleanup (Each)] should unconditionally reject operations on fail closed webhook [Conformance] [sig-api-machinery, Conformance]
+  tear down framework | framework.go:319
+  [TIMEDOUT] [sig-api-machinery] Servers with support for API chunking [It] should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow] [sig-api-machinery, Slow, Conformance]
+  k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144
+  [FAIL] [ReportAfterSuite] Autogenerated ReportAfterSuite for --json-report
+  github.com/onsi/ginkgo/v2@v2.32.0/reporting_dsl.go:215
+
+Ran 114 of 3206 Specs in 498.208 seconds
+FAIL! - Suite Timeout Elapsed -- 110 Passed | 4 Failed | 0 Pending | 3092 Skipped
+
+Could not open /usr/local/bin/tmp/results/ginkgo.json:
+open /usr/local/bin/tmp/results/ginkgo.json: no such file or directory
+
+Ginkgo ran 1 suite in 8m19.431327299s
+
+Test Suite Failed
+2026/10/12 22:32:10 Saving results at /tmp/results
+2026/10/12 22:32:10 running command: exit status 1
+22:32:11 INF Tests finished after 8m19s.
+22:32:11 INF Downloading e2e.log to /home/runner/work/tigerstore/tigerstore/.pre48/results/conformance/e2e.log...
+22:32:11 INF Downloading junit_01.xml to /home/runner/work/tigerstore/tigerstore/.pre48/results/conformance/junit_01.xml...
+22:32:11 INF Waiting for Pod to terminate...
+22:32:11 INF Container conformance-container terminated.
+22:32:11 INF Deleted ClusterRoleBinding conformance-serviceaccount-role:conformance.
+22:32:11 INF Deleted ClusterRole conformance-serviceaccount:conformance.
+22:32:11 INF Waiting for Namespace conformance to be deleted.
+22:32:54 INF Deleted Namespace conformance.
+22:32:54 ERR Tests failed (code 1).

@@ -1,0 +1,2788 @@
+{
+  "certified_pass": false,
+  "expected_conformance_count": 462,
+  "reported_conformance_count": 462,
+  "states": {
+    "passed": 94,
+    "skipped": 364,
+    "failed": 4
+  },
+  "missing_names": [],
+  "unexpected_names": [],
+  "duplicate_names": [],
+  "sum_serial_reported_seconds": 0.0,
+  "specs": [
+    {
+      "name": "[sig-api-machinery] Servers with support for API chunking should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow]",
+      "state": "failed",
+      "runtime_seconds": 497.757580557,
+      "failure_or_skip": "\n[TIMEDOUT] A suite timeout occurred\nIn [It] at: k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144 @ 10/12/26 22:32:06.283\n\nThis is the Progress Report generated when the suite timeout occurred:\n  [sig-api-machinery] Servers with support for API chunking should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow] (Spec Runtime: 7m59.842s)\n    k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144\n    In [It] (Node Runtime: 7m42.237s)\n      k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:144\n      At [By Step] retrieving the second page until the token expires (Step Runtime: 7m42.188s)\n        k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:165\n\n      Spec Goroutine\n      goroutine 3774 [select]\n        k8s.io/apimachinery/pkg/util/wait.waitForWithContext({0x6692718, 0x96ea400}, 0x3b52151df6e0, 0x3b5213bf7730)\n          k8s.io/apimachinery/pkg/util/wait/wait.go:210\n        k8s.io/apimachinery/pkg/util/wait.poll({0x6692718, 0x96ea400}, 0x0?, 0x3b52151df6e0, 0x3b52151df730)\n          k8s.io/apimachinery/pkg/util/wait/poll.go:260\n        k8s.io/apimachinery/pkg/util/wait.PollWithContext({0x6692718?, 0x96ea400?}, 0x0?, 0x32?, 0x0?)\n          k8s.io/apimachinery/pkg/util/wait/poll.go:85\n        k8s.io/apimachinery/pkg/util/wait.Poll(0x6271cbf?, 0x54?, 0x0?)\n          k8s.io/apimachinery/pkg/util/wait/poll.go:66\n      > k8s.io/kubernetes/test/e2e/apimachinery.init.func5.3({0x6692d70, 0x3b5215c10b40})\n          k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:168\n        github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x66aa430?, 0x3b5215c10b40?})\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 3347\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911\n\n[FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:\nfailed to list pod templates in namespace: chunking-8624, given inconsistent continue token  and limit: 40: context canceled\nIn [It] at: k8s.io/kubernetes/test/e2e/apimachinery/chunking.go:193 @ 10/12/26 22:32:24.096\n"
+    },
+    {
+      "name": "[sig-apps] CronJob should not schedule jobs when suspended [Conformance] [Slow]",
+      "state": "passed",
+      "runtime_seconds": 300.124612872,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Variable Expansion should verify that a failing subpath expansion can be modified during the lifecycle of a container [Conformance] [Slow]",
+      "state": "passed",
+      "runtime_seconds": 154.956508339,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should apply changes to a resourcequota status [Conformance]",
+      "state": "failed",
+      "runtime_seconds": 151.805779155,
+      "failure_or_skip": "\n[TIMEDOUT] A suite timeout occurred\nIn [It] at: k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1078 @ 10/12/26 22:32:06.179\n\nThis is the Progress Report generated when the suite timeout occurred:\n  [sig-api-machinery] ResourceQuota should apply changes to a resourcequota status [Conformance] (Spec Runtime: 2m31.449s)\n    k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1078\n    In [It] (Node Runtime: 2m31.44s)\n      k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1078\n      At [By Step] Repatching \"e2e-rq-status-qkp7n\" /status before checking Spec is unchanged (Step Runtime: 2m31.42s)\n        k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1216\n\n      Spec Goroutine\n      goroutine 4332 [select]\n        k8s.io/apimachinery/pkg/util/wait.loopConditionUntilContext({0x66928a0, 0x3bf33454c8c0}, {0x667eca8, 0x3bf3341912c0}, 0x1, 0x0, 0x3bf333637db8)\n          k8s.io/apimachinery/pkg/util/wait/loop.go:66\n        k8s.io/apimachinery/pkg/util/wait.PollUntilContextTimeout({0x6692d70?, 0x3bf334196c90?}, 0x12a05f200, 0x3bf3341f4990?, 0x1, 0x3bf334807db8)\n          k8s.io/apimachinery/pkg/util/wait/poll.go:48\n      > k8s.io/kubernetes/test/e2e/apimachinery.init.func29.16({0x6692d70, 0x3bf334196c90})\n          k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1257\n        github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x66aa430?, 0x3bf334196c90?})\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 3315\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911\n\n[FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:\nError waiting for ResourceQuota \"e2e-rq-status-qkp7n\" to reset its Status: context canceled\nIn [It] at: k8s.io/kubernetes/test/e2e/apimachinery/resource_quota.go:1279 @ 10/12/26 22:32:06.179\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap optional updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 78.443093512,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected configMap updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 74.333821297,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] Scaling should happen in predictable order and halt if any stateful pod is unhealthy [Conformance] [Slow]",
+      "state": "passed",
+      "runtime_seconds": 70.961514473,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] Burst scaling should run to completion even with unhealthy pods [Conformance] [Slow]",
+      "state": "passed",
+      "runtime_seconds": 60.592819329,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Probing container should be restarted with a GRPC liveness probe [Conformance] [NodeConformance]",
+      "state": "failed",
+      "runtime_seconds": 54.219691794,
+      "failure_or_skip": "\n[TIMEDOUT] A suite timeout occurred\nIn [It] at: k8s.io/kubernetes/test/e2e/common/node/container_probe.go:664 @ 10/12/26 22:32:06.214\n\nThis is the Progress Report generated when the suite timeout occurred:\n  [sig-node] Probing container should be restarted with a GRPC liveness probe [Conformance] [NodeConformance] (Spec Runtime: 52.798s)\n    k8s.io/kubernetes/test/e2e/common/node/container_probe.go:664\n    In [It] (Node Runtime: 52.788s)\n      k8s.io/kubernetes/test/e2e/common/node/container_probe.go:664\n      At [By Step] checking the pod's current state and verifying that restartCount is present (Step Runtime: 50.778s)\n        k8s.io/kubernetes/test/e2e/common/node/container_probe.go:1956\n\n      Spec Goroutine\n      goroutine 7156 [sleep]\n        time.Sleep(0x77359400)\n          runtime/time.go:363\n      > k8s.io/kubernetes/test/e2e/common/node.runLivenessTest({0x6692d70, 0x27dfa4de6ff0}, 0x27dfa3af2f00, 0x27dfa4121908, 0x1, 0x37e11d6000, {0x6152824, 0x7})\n          k8s.io/kubernetes/test/e2e/common/node/container_probe.go:1968\n      > k8s.io/kubernetes/test/e2e/common/node.RunLivenessTest({0x6692d70, 0x27dfa4de6ff0}, 0x27dfa3af2f00, 0x27dfa4121908, 0x1, 0x37e11d6000)\n          k8s.io/kubernetes/test/e2e/common/node/container_probe.go:1921\n      > k8s.io/kubernetes/test/e2e/common/node.init.func2.26({0x6692d70, 0x27dfa4de6ff0})\n          k8s.io/kubernetes/test/e2e/common/node/container_probe.go:676\n        github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x66aa430?, 0x27dfa4de6ff0?})\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 3336\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911\n\n[FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:\ngetting pod : context canceled\nIn [It] at: k8s.io/kubernetes/test/e2e/common/node/container_probe.go:1971 @ 10/12/26 22:32:07.512\n\nThere were additional failures detected after the initial failure. These are visible in the timeline\n"
+    },
+    {
+      "name": "[sig-apps] CronJob should not schedule new jobs when ForbidConcurrent [Conformance] [Slow]",
+      "state": "passed",
+      "runtime_seconds": 54.075922463,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] Job should allow to use a pod failure policy to ignore failure matching on DisruptionTarget condition [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 50.287523613,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Variable Expansion should succeed in writing subpaths in container [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 34.698584368,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Subpath Atomic writer volumes should support subpaths with configmap pod [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 24.228538662,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Subpath Atomic writer volumes should support subpaths with projected pod [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 24.194240147,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] Deployment deployment should support rollover [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 21.152454373,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] Should recreate evicted statefulset [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 14.291523745,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Pods Extended (pod generation) Pod Generation pod generation should start at 1 and increment per update [MinimumKubeletVersion:1.34] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 13.936530899,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] StorageVersionMigration CRUD Tests storagemigration.k8s.io/v1 StorageVersionMigration [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 10.229897631,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should prevent a pod from starting if: sets optional=false and the configured CTB does not exist [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 10.124874055,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should prevent a pod from starting if: sets optional=false and no trust bundle matches query [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 10.061922416,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a replication controller. [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 9.252780418,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] PreStop should call prestop when killing a pod [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 9.059313706,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Pods Extended (pod generation) Pod Generation issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance]",
+      "state": "failed",
+      "runtime_seconds": 8.563341048,
+      "failure_or_skip": "\n[TIMEDOUT] A suite timeout occurred\nIn [It] at: k8s.io/kubernetes/test/e2e/node/pods.go:581 @ 10/12/26 22:32:06.24\n\nThis is the Progress Report generated when the suite timeout occurred:\n  [sig-node] Pods Extended (pod generation) Pod Generation issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance] (Spec Runtime: 8.197s)\n    k8s.io/kubernetes/test/e2e/node/pods.go:581\n    In [It] (Node Runtime: 8.085s)\n      k8s.io/kubernetes/test/e2e/node/pods.go:581\n      At [By Step] submitting the pod to kubernetes (Step Runtime: 8.085s)\n        k8s.io/kubernetes/test/e2e/node/pods.go:591\n\n      Spec Goroutine\n      goroutine 4665 [select]\n        k8s.io/apimachinery/pkg/util/wait.loopConditionUntilContext({0x66928a0, 0x3e9487583f0}, {0x667eca8, 0x3e94a8cede0}, 0x0, 0x0, 0x3e948b0bd38)\n          k8s.io/apimachinery/pkg/util/wait/loop.go:66\n        k8s.io/apimachinery/pkg/util/wait.PollUntilContextTimeout({0x6692d70?, 0x3e94a936150?}, 0x1dcd6500, 0x0?, 0x0, 0x3e948b0bd38)\n          k8s.io/apimachinery/pkg/util/wait/poll.go:48\n        k8s.io/kubernetes/test/e2e/framework/pod.(*PodClient).Update(0x3e948b0be48?, {0x6692d70?, 0x3e94a936150?}, {0x3e949f4a0c0?, 0x0?}, 0x0?)\n          k8s.io/kubernetes/test/e2e/framework/pod/pod_client.go:180\n      > k8s.io/kubernetes/test/e2e/node.init.func27.1.4({0x6692d70, 0x3e94a936150})\n          k8s.io/kubernetes/test/e2e/node/pods.go:599\n        github.com/onsi/ginkgo/v2/internal.extractBodyFunction.func2({0x66aa430?, 0x3e94a936150?})\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/node.go:578\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode.func3()\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:946\n        github.com/onsi/ginkgo/v2/internal.(*Suite).runNode in goroutine 3346\n          github.com/onsi/ginkgo/v2@v2.32.0/internal/suite.go:911\n\n[FAILED] A suite timeout occurred and then the following failure was recorded in the timedout node before it exited:\ncontext canceled\nIn [It] at: k8s.io/kubernetes/test/e2e/framework/pod/pod_client.go:180 @ 10/12/26 22:32:06.241\n"
+    },
+    {
+      "name": "[sig-node] [DRA] CRUD Tests resource.k8s.io/v1 DeviceTaintRule [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 8.345865014,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] DNS should provide DNS for ExternalName services [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 8.077875337,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a service. [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 7.182315787,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-cli] Kubectl logs logs should be able to retrieve and filter logs [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 6.438452488,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] [DRA] CRUD Tests resource.k8s.io/v1 ResourceClaim [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 6.354965343,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume with mappings [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 6.352517344,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceConversionWebhook [Privileged:ClusterAdmin] should be able to convert from CR v1 to CR v2 [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 6.3253164680000005,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] removes definition from spec when one version gets changed to not be served [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 6.076356353,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should not be blocked by dependency circle [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 5.509640092,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl expose should create services for rc [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 5.340906874,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] Services should be able to change the type from ExternalName to ClusterIP [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.595608369,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide container's memory limit [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.469945353,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] EndpointSlice should support a Service with multiple ports specified in multiple EndpointSlices [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.248635041,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide container's cpu limit [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.226076916,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Kubelet when scheduling a busybox command that always fails in a pod should have an terminated reason [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.206675478,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be able to specify multiple CTB volumes [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.187393317,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0666,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.149626832,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Variable Expansion should allow composing env vars into new env vars [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.142401819,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] DNS should provide DNS for pods for Hostname [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.14183069,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] DisruptionController should update/patch PodDisruptionBudget status [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.140383141,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Containers should use the image defaults if command and args are blank [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.136737275,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Ephemeral Containers will start an ephemeral container in an existing pod [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.070250895,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0777,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.06010506,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] Job with successPolicy should succeeded when all indexes succeeded [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.057916032,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Variable Expansion should fail substituting values in a volume subpath with backticks [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 4.050185917,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Downward API should provide default limits.cpu/memory from node allocatable [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.044213587,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable from pods in volume [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.039495498,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Security Context When creating a pod with readOnlyRootFilesystem should run the container with writable rootfs when readOnlyRootFilesystem=false [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 4.034878382,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should detect unknown metadata fields in both the root and embedded object of a CR [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 3.408258394,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate everything except 'skip-me' configmaps [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 3.282128345,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Pods should be updated [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.543050894,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should reject validating webhook configurations with invalid match conditions [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.345390526,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should mount an API token into pods [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.271069823,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] Job should apply changes to a job status [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.2586178009999998,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be capable to mount multiple trust bundles by signer+labels can combine multiple CTBs with signer name and label selector [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.198620161,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.198239966,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Containers should be able to override the image's default arguments (container cmd) [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.197112142,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should honor UserAnnotations for SPIFFE URI path [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.154275454,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] [DRA] CRUD Tests resource.k8s.io/v1 ResourceClaimTemplate [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.140398365,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] EndpointsController should create and delete Endpoints for a Service with a selector that matches no pods [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.139145099,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable from pods in volume with mappings and Item Mode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.13307809,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0777,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.109064043,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable from pods in volume with mappings [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.10794741,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0666,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.088331402,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume with defaultMode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.066617153,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Pods should support remote command execution over websockets [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.064209357,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide container's memory limit [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.056276063,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-apps] ReplicaSet Replicaset should have a working scale subresource [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 2.052384619,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.03905247,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable from pods in volume with mappings and Item Mode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.036847944,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Pods should get a host IP [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 2.026193936,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] InitContainer should invoke init containers on a RestartAlways pod [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 1.931719911,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl server-side dry-run should check if kubectl can dry-run update Pods [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 1.901866206,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should guarantee kube-root-ca.crt exist in any namespace [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 1.02583014,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition resources [Privileged:ClusterAdmin] Simple CustomResourceDefinition getting/updating/patching custom resource definition status sub-resource works [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.639576922,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl diff should check if kubectl diff finds a difference for Deployments [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.596614701,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] Ingress API should support creating Ingress API operations [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.448590639,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should allow opting out of API token automount [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.29244658,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] Services should complete a service status lifecycle [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.149505486,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] ConfigMap should run through a ConfigMap lifecycle [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.146233699,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-cli] Kubectl client Proxy server should support --unix-socket=/path [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.142205588,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be immutable if `immutable` field is set [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.128848913,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Kubelet when scheduling a busybox command that always fails in a pod should be possible to delete [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 0.127894427,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] MaxExpirationSeconds validations should reject pod creation when MaxExpirationSeconds exceeds maximum (91d) [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.116638324,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] ConfigMap should update ConfigMap successfully [Conformance] [NodeConformance]",
+      "state": "passed",
+      "runtime_seconds": 0.10123964,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-instrumentation] Events API should ensure that an event can be fetched, patched, deleted, and listed [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.100921739,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Secrets should patch a secret [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.100583969,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-instrumentation] Events should delete a collection of events [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.100307184,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-network] API Server should have Endpoints and EndpointSlices pointing to API Server [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.099855687,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] API priority and fairness should support FlowSchema API operations [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.098839528,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] API priority and fairness should support PriorityLevelConfiguration API operations [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.097942268,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] CSIInlineVolumes should run through the lifecycle of a CSIDriver [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.097743925,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-node] Lease lease API should be available [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.097432666,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-storage] CSIInlineVolumes should support CSIVolumeSource in Pod API [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.096888117,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] Watchers should be able to restart watching from the last resource version observed by the previous watch [Conformance]",
+      "state": "passed",
+      "runtime_seconds": 0.092543899,
+      "failure_or_skip": ""
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] listing mutating webhooks should work [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] listing validating webhooks should work [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] patching/updating a mutating webhook should work [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] patching/updating a validating webhook should work [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should be able to create and update mutating webhook configurations with match conditions [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should be able to create and update validating webhook configurations with match conditions [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should be able to deny attaching pod [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should be able to deny custom resource creation, update and deletion [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should be able to deny pod and configmap creation [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should deny crd creation [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should honor timeout [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should include webhook resources in discovery documents [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate configmap [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate custom resource [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate custom resource with different stored version [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate custom resource with pruning [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should mutate pod and apply defaults after mutation [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should not be able to mutate or prevent deletion of webhook configuration objects [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should reject mutating webhook configurations with invalid match conditions [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AdmissionWebhook [Privileged:ClusterAdmin] should unconditionally reject operations on fail closed webhook [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AggregatedDiscovery should support aggregated discovery interface [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AggregatedDiscovery should support aggregated discovery interface for CRDs [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AggregatedDiscovery should support raw aggregated discovery endpoint Accept headers [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] AggregatedDiscovery should support raw aggregated discovery request for CRDs [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Aggregator Should be able to support the 1.17 Sample API Server using the current Aggregator [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceConversionWebhook [Privileged:ClusterAdmin] should be able to convert a non homogeneous list of CRs [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition Watch [Privileged:ClusterAdmin] CustomResourceDefinition Watch watch on custom resource definition objects [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition resources [Privileged:ClusterAdmin] Simple CustomResourceDefinition creating/deleting custom resource definition objects works [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition resources [Privileged:ClusterAdmin] Simple CustomResourceDefinition listing custom resource definition objects works [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition resources [Privileged:ClusterAdmin] custom resource defaulting for requests and from storage works [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceDefinition resources [Privileged:ClusterAdmin] should include custom resource definition resources in discovery documents [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourceFieldSelectors [Privileged:ClusterAdmin] CustomResourceFieldSelectors MUST list and watch custom resources matching the field selector [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] updates the published spec when one version gets renamed [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for CRD preserving unknown fields at the schema root [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for CRD preserving unknown fields in an embedded object [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for CRD with validation schema [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for CRD without validation schema [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for multiple CRDs of different groups [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for multiple CRDs of same group and version but different kinds [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] CustomResourcePublishOpenAPI [Privileged:ClusterAdmin] works for multiple CRDs of same group but different versions [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Discovery should locate the groupVersion and a resource within each APIGroup [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Discovery should validate PreferredVersion for each APIGroup [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should create/apply a CR with unknown fields for CRD with no validation schema [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should create/apply a valid CR for CRD with validation schema [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should create/apply an invalid CR with extra properties for CRD with validation schema [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should detect duplicates in a CR when preserving unknown fields [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should detect unknown and duplicate fields of a typed object [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] FieldValidation should detect unknown metadata fields of a typed object [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should delete RS created by deployment when not orphaning [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should delete pods created by rc when not orphaning [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should keep the rc around until all its pods are deleted if the deleteOptions says so [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should not delete dependents that have both valid owner and owner that's waiting for dependents to be deleted [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should orphan RS created by deployment when deleteOptions.PropagationPolicy is Orphan [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Garbage collector should orphan pods created by rc if delete options say so [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] MutatingAdmissionPolicy [Privileged:ClusterAdmin] should mutate a Deployment [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] MutatingAdmissionPolicy [Privileged:ClusterAdmin] should mutate a Deployment with annotations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] MutatingAdmissionPolicy [Privileged:ClusterAdmin] should support MutatingAdmissionPolicy API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] MutatingAdmissionPolicy [Privileged:ClusterAdmin] should support MutatingAdmissionPolicyBinding API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should apply a finalizer to a Namespace [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should apply an update to a Namespace [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should apply changes to a namespace status [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should ensure that all pods are removed when a namespace is deleted [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should ensure that all services are removed when a namespace is deleted [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Namespaces should patch a Namespace [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] OrderedNamespaceDeletion namespace deletion should delete pod first [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should be able to update and delete ResourceQuota. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a configMap. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a pod. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a replica set. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and capture the life of a secret. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should create a ResourceQuota and ensure its status is promptly calculated. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should manage the lifecycle of a ResourceQuota [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should verify ResourceQuota with best effort scope. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ResourceQuota should verify ResourceQuota with terminating scopes. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Servers with support for API chunking should return chunks of results for list calls [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Servers with support for Table transformation should return a 406 for a backend which does not implement metadata [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ValidatingAdmissionPolicy [Privileged:ClusterAdmin] should allow expressions to refer variables. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ValidatingAdmissionPolicy [Privileged:ClusterAdmin] should support ValidatingAdmissionPolicy API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ValidatingAdmissionPolicy [Privileged:ClusterAdmin] should support ValidatingAdmissionPolicyBinding API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] ValidatingAdmissionPolicy [Privileged:ClusterAdmin] should validate against a Deployment [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Watchers should be able to start watching from a specific resource version [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Watchers should observe add, update, and delete watch notifications on configmaps [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Watchers should observe an object deletion if it stops meeting the requirements of the selector [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] Watchers should receive events on concurrent watches in same order [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-api-machinery] server version should find the server version [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ControllerRevision should manage the lifecycle of a ControllerRevision [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] CronJob should replace jobs when ReplaceConcurrent [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] CronJob should schedule multiple jobs concurrently [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] CronJob should support CronJob API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should list and delete a collection of DaemonSets [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should retry creating failed daemon pods [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should rollback without unnecessary restarts [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should run and stop complex daemon [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should run and stop simple daemon [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should update pod when spec was updated and update strategy is RollingUpdate [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Daemon set should verify changes to a daemon set status [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment Deployment should have a working scale subresource [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment RecreateDeployment should delete old pods and create new ones [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment RollingUpdateDeployment should delete old pods and create new ones [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment deployment should delete old replica sets [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment deployment should support proportional scaling [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment should run the lifecycle of a Deployment [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Deployment should validate Deployment Status endpoints [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] DisruptionController Listing PodDisruptionBudgets for all namespaces should list and delete a collection of PodDisruptionBudgets [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] DisruptionController should block an eviction until the PDB is updated to allow it [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] DisruptionController should create a PodDisruptionBudget [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] DisruptionController should observe PodDisruptionBudget status updated [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should adopt matching orphans and release non-matching pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should allow to use the pod failure policy on exit code to fail the job early [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should create pods for an Indexed job with completion indexes and specified hostname [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should delete a job [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should execute all indexes despite some failing when using backoffLimitPerIndex [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should manage the lifecycle of a job [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should mark indexes as failed when the FailIndex action is matched in podFailurePolicy [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should run a job to completion when tasks sometimes fail and are locally restarted [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job should terminate job execution when the number of failed indexes exceeds maxFailedIndexes [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job with successPolicy succeededCount rule should succeeded even when some indexes remain pending [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] Job with successPolicy succeededIndexes rule should succeeded even when some indexes remain pending [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicaSet Replace and Patch tests [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicaSet should adopt matching pods on creation and release no longer matching pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicaSet should list and delete a collection of ReplicaSets [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicaSet should serve a basic image on each replica with a public image [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicaSet should validate Replicaset Status endpoints [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should adopt matching pods on creation [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should get and update a ReplicationController scale [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should release no longer matching pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should serve a basic image on each replica with a public image [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should surface a failure condition on a common issue like exceeded quota [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] ReplicationController should test the lifecycle of a ReplicationController [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] should have a working scale subresource [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] should list, patch and delete a collection of StatefulSets [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] should perform canary updates and phased rolling updates of template modifications [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] should perform rolling updates and roll backs of template modifications [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-apps] StatefulSet Basic StatefulSet functionality [StatefulSetBasic] should validate Statefulset Status endpoints [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-architecture] Conformance Tests should have at least two untainted nodes [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] Certificates API [Privileged:ClusterAdmin] should support CSR API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] PodCertificateRequest API [Privileged:ClusterAdmin] should support PodCertificateRequest API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] MaxExpirationSeconds validations should issue certificate with default life time (24h) when MaxExpirationSeconds is not set [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] MaxExpirationSeconds validations should issue certificate with specified duration (1h) when MaxExpirationSeconds is set [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] MaxExpirationSeconds validations should reject pod creation when MaxExpirationSeconds is less than minimum (1h) [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] Projected PodCertificate [FeatureGate:PodCertificateRequest] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should allow server and client pods to establish an mTLS connection [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts ServiceAccountIssuerDiscovery should support OIDC discovery of service account issuer [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should create a serviceAccountToken and ensure a successful TokenReview [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should mount projected service account token [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should run through the lifecycle of a ServiceAccount [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] ServiceAccounts should update a ServiceAccount [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] SubjectReview should support SubjectReview API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] CRUD Tests certificates.k8s.io/v1 ClusterTrustBundles [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be able to mount a big number (>100) of CTBs [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be able to mount a single ClusterTrustBundle by name [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be capable to mount multiple trust bundles by signer+labels can combine all signer CTBs with an empty label selector [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be capable to mount multiple trust bundles by signer+labels should start if only signer name and explicit label selector matches nothing + optional=true [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-auth] [FeatureGate:ClusterTrustBundle] [FeatureGate:ClusterTrustBundleProjection] should be capable to mount multiple trust bundles by signer+labels should start if only signer name and nil label selector + optional=true [MinimumKubeletVersion:1.37] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Guestbook application should create and stop a working application [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl api-versions should check if v1 is in available api versions [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl cluster-info should check if Kubernetes control plane services is included in cluster-info [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl describe should check if kubectl describe prints relevant information for rc and pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl label should update the label on a resource [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl patch should add annotations for pods in rc [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl replace should update a single-container pod's image [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl run pod should create a pod from an image when restart is Never [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Kubectl version should check is all data is printed [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Proxy server should support proxy with --port 0 [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Update Demo should create and stop a replication controller [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-cli] Kubectl client Update Demo should scale a replication controller [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-instrumentation] Events API should delete a collection of events [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-instrumentation] Events should manage the lifecycle of an event [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] API Server should provide secure master service [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should provide /etc/hosts entries for the cluster [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should provide DNS for pods for Subdomain [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should provide DNS for services [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should provide DNS for the cluster [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should resolve DNS of partial qualified names for services [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] DNS should support configurable pod DNS nameservers [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointSlice should create Endpoints and EndpointSlices for Pods matching a Service [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointSlice should create and delete EndpointSlices for a Service with a selector that matches no pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointSlice should support a Service with multiple endpoint IPs specified in multiple EndpointSlices [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointSlice should support creating EndpointSlice API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointSliceMirroring should mirror a custom Endpoints resource through create update and delete [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Endpoints should test the lifecycle of an Endpoint [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] EndpointsController should create Endpoints for Pods matching a Service [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] HostPort validates that there is no conflict between pods with same hostPort but different hostIP and protocol [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] IngressClass API should support creating IngressClass API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Networking Granular Checks: Pods should function for intra-pod communication: http [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Networking Granular Checks: Pods should function for intra-pod communication: udp [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Networking Granular Checks: Pods should function for node-pod communication: http [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Networking Granular Checks: Pods should function for node-pod communication: udp [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Proxy version v1 A set of valid responses are returned for both pod and service Proxy [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Proxy version v1 A set of valid responses are returned for both pod and service ProxyWithPath [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Proxy version v1 should proxy through a service and a pod [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Service endpoints latency should not be very high [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] ServiceCIDR and IPAddress API should support IPAddress API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] ServiceCIDR and IPAddress API should support ServiceCIDR API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to change the type from ClusterIP to ExternalName [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to change the type from ExternalName to NodePort [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to change the type from NodePort to ExternalName [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to create a functioning NodePort service [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to switch session affinity for NodePort service [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should be able to switch session affinity for service with type clusterIP [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should delete a collection of services [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should find a service from listing all namespaces [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should have session affinity work for NodePort service [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should have session affinity work for service with type clusterIP [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should serve a basic endpoint from pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should serve endpoints on same port and different protocols [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-network] Services should serve multiport endpoints from pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] ConfigMap should be consumable as environment variable names with various prefixes [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] ConfigMap should be consumable via environment variable [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] ConfigMap should be consumable via the environment [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] ConfigMap should fail to create ConfigMap with empty key [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Lifecycle Hook when create a pod with lifecycle hook should execute poststart exec hook properly [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Lifecycle Hook when create a pod with lifecycle hook should execute poststart http hook properly [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Lifecycle Hook when create a pod with lifecycle hook should execute prestop exec hook properly [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Lifecycle Hook when create a pod with lifecycle hook should execute prestop http hook properly [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Runtime blackbox test on terminated container should report termination message as empty when pod succeeds and TerminationMessagePolicy FallbackToLogsOnError is set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Runtime blackbox test on terminated container should report termination message from file when pod succeeds and TerminationMessagePolicy FallbackToLogsOnError is set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Runtime blackbox test on terminated container should report termination message from log output if TerminationMessagePolicy FallbackToLogsOnError is set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Runtime blackbox test on terminated container should report termination message if TerminationMessagePath is set as non-root user and at a non-default path [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Container Runtime blackbox test when starting a container that exits should run with the expected status [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Containers should be able to override the image's default command (container entrypoint) [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Containers should be able to override the image's default command and arguments [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Downward API should provide container's limits.cpu/memory and requests.cpu/memory as env vars [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Downward API should provide host IP as an env var [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Downward API should provide hostIPs as an env var [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Downward API should provide pod UID as env vars [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Downward API should provide pod name, namespace and IP address as env vars [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Ephemeral Containers should update the ephemeral containers in an existing pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] ImageVolume should succeed with pod and pull policy of Always [LinuxOnly] [MinimumKubeletVersion:1.35] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] InitContainer should invoke init containers on a RestartNever pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] InitContainer should not start app containers and fail the pod if init containers fail on a RestartNever pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] InitContainer should not start app containers if init containers fail on a RestartAlways pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Kubelet when scheduling a busybox command in a pod should print the output to logs [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Kubelet when scheduling a read only busybox container should not write to root filesystem [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Kubelet when scheduling an agnhost Pod with hostAliases should write entries to /etc/hosts [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] KubeletManagedEtcHosts should test kubelet managed /etc/hosts file [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] NoExecuteTaintManager Multiple Pods evicts pods with minTolerationSeconds [Conformance] [Disruptive] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] NoExecuteTaintManager Single Pod removing taint cancels eviction [Conformance] [Disruptive] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Node Lifecycle should run through the lifecycle of a node [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pod InPlace Resize Container burstable pods - extended 6 containers - various operations performed (including adding limits and requests) [MinimumKubeletVersion:1.34] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pod InPlace Resize Container burstable pods - extended resize with equivalents [MinimumKubeletVersion:1.34] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pod InPlace Resize Container resize pod via the replace endpoint [MinimumKubeletVersion:1.34] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] PodTemplates should delete a collection of pod templates [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] PodTemplates should replace a pod template [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] PodTemplates should run the lifecycle of PodTemplates [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods Extended (pod generation) Pod Generation custom-set generation on new pods and graceful delete [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods Extended Pods Set QOS Class should be set on Pods with matching resource requests and limits for memory and cpu [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should allow activeDeadlineSeconds to be updated [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should be submitted and removed [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should contain environment variables for services [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should delete a collection of pods [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should patch a pod status [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should run through the lifecycle of Pods and PodStatus [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Pods should support retrieving logs from the container over websockets [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should *not* be restarted with a /healthz http liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should *not* be restarted with a GRPC liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should *not* be restarted with a exec \"cat /tmp/health\" liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should *not* be restarted with a tcp:8080 liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should be restarted with a /healthz http liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should be restarted with a exec \"cat /tmp/health\" liveness probe [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container should have monotonically increasing restart count [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container with readiness probe should not be ready before initial delay and never restart [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Probing container with readiness probe that fails should never be ready and never restart [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] RuntimeClass should reject a Pod requesting a deleted RuntimeClass [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] RuntimeClass should reject a Pod requesting a non-existent RuntimeClass [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] RuntimeClass should schedule a Pod requesting a RuntimeClass and initialize its Overhead [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] RuntimeClass should schedule a Pod requesting a RuntimeClass without PodOverhead [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] RuntimeClass should support RuntimeClasses API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Secrets should be consumable as environment variable names variable names with various prefixes [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Secrets should be consumable from pods in env vars [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Secrets should be consumable via the environment [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Secrets should fail to create secret due to empty secret key [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Security Context When creating a container with runAsUser should run the container with uid 65534 [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Security Context When creating a pod with privileged should run the container as unprivileged when false [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Security Context should support container.SecurityContext.RunAsUser And container.SecurityContext.RunAsGroup [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Security Context should support pod.Spec.SecurityContext.RunAsUser And pod.Spec.SecurityContext.RunAsGroup [LinuxOnly] [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Security Context when creating containers with AllowPrivilegeEscalation should not allow privilege escalation when false [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Sysctls [LinuxOnly] should reject invalid sysctls [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Sysctls [LinuxOnly] should support sysctls [Environment:NotInUserNS] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Variable Expansion should allow substituting values in a container's args [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Variable Expansion should allow substituting values in a container's command [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Variable Expansion should allow substituting values in a volume subpath [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] Variable Expansion should fail substituting values in a volume subpath with absolute path [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] [DRA] CRUD Tests resource.k8s.io/v1 DeviceClass [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-node] [DRA] CRUD Tests resource.k8s.io/v1 ResourceSlice [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] LimitRange should create a LimitRange with defaults and ensure pod has those defaults applied. [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] LimitRange should list, patch and delete a LimitRange by collection [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPredicates validates resource limits of pods that are allowed to run [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPredicates validates that NodeSelector is respected if matching [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPredicates validates that NodeSelector is respected if not matching [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPredicates validates that there exists conflict between pods with same hostPort and protocol but one using 0.0.0.0 hostIP [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPreemption PreemptionExecutionPath runs ReplicaSets to verify preemption running path [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPreemption PriorityClass endpoints verify PriorityClass endpoints can be operated with different HTTP methods [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPreemption validates basic preemption works [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPreemption validates lower priority pod preemption by critical pod [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-scheduling] SchedulerPreemption validates pod disruption condition is added to the preempted pod [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] CSINodes CSI Conformance should run through the lifecycle of a csinode [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] CSIStorageCapacity should support CSIStorageCapacities API operations [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap binary data should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume as non-root [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume with defaultMode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume with mappings and Item mode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable from pods in volume with mappings as non-root [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap should be consumable in multiple volumes in the same pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] ConfigMap updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide container's cpu request [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide container's memory request [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide node allocatable (cpu) as default cpu limit if the limit is not set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide node allocatable (memory) as default memory limit if the limit is not set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should provide podname only [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should set DefaultMode on files [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should set mode on item file [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should update annotations on modification [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Downward API volume should update labels on modification [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes pod should support shared volumes between containers [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0644,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0644,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0666,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (non-root,0777,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0644,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0644,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0666,default) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes should support (root,0777,tmpfs) [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes volume on default medium should have the correct mode [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir volumes volume on tmpfs should have the correct mode [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir wrapper volumes should not cause race condition when used for configmaps [Conformance] [Serial]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] EmptyDir wrapper volumes should not conflict [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] PersistentVolumes CSI Conformance should apply changes to a pv/pvc status [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] PersistentVolumes CSI Conformance should run through the lifecycle of a PV and a PVC [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected combined should project all components that make up the projection API [Projection] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap optional updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume as non-root [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume with mappings [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume with mappings and Item mode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable from pods in volume with mappings as non-root [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected configMap should be consumable in multiple volumes in the same pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide container's cpu limit [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide container's cpu request [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide container's memory request [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide node allocatable (cpu) as default cpu limit if the limit is not set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide node allocatable (memory) as default memory limit if the limit is not set [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should provide podname only [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should set DefaultMode on files [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should set mode on item file [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should update annotations on modification [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected downwardAPI should update labels on modification [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected secret optional updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable from pods in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable from pods in volume as non-root with defaultMode and fsGroup set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable from pods in volume with defaultMode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Projected secret should be consumable in multiple volumes in a pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets optional updates should be reflected in volume [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be able to mount in a volume regardless of a different secret existing with same name in different namespace [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable from pods in volume as non-root with defaultMode and fsGroup set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable from pods in volume with defaultMode set [LinuxOnly] [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable from pods in volume with mappings [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be consumable in multiple volumes in a pod [Conformance] [NodeConformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Secrets should be immutable if `immutable` field is set [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] StorageClasses CSI Conformance should run through the lifecycle of a StorageClass [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Subpath Atomic writer volumes should support subpaths with configmap pod with mountPath of existing file [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Subpath Atomic writer volumes should support subpaths with downward pod [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] Subpath Atomic writer volumes should support subpaths with secret pod [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] VolumeAttachment Conformance should apply changes to a volumeattachment status [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] VolumeAttachment Conformance should run through the lifecycle of a VolumeAttachment [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    },
+    {
+      "name": "[sig-storage] VolumeAttributesClass [FeatureGate:VolumeAttributesClass] should run through the lifecycle of a VolumeAttributesClass [Conformance]",
+      "state": "skipped",
+      "runtime_seconds": 0.0,
+      "failure_or_skip": "skipped\n"
+    }
+  ]
+}

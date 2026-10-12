@@ -1,0 +1,14 @@
+{
+  "certified_pass": false,
+  "expected_conformance_count": 462,
+  "reported_conformance_count": 462,
+  "states": {
+    "passed": 112,
+    "skipped": 346,
+    "failed": 4
+  },
+  "missing_names": [],
+  "unexpected_names": [],
+  "duplicate_names": [],
+  "sum_serial_reported_seconds": 0.0
+}

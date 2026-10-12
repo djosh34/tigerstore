@@ -1,0 +1,4 @@
+[sig-api-machinery] Servers with support for API chunking should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Conformance] [Slow]
+[sig-node] Pods Extended (pod generation) Pod Generation issue 500 podspec updates and verify generation and observedGeneration eventually converge [MinimumKubeletVersion:1.34] [Conformance]
+[sig-storage] Projected secret optional updates should be reflected in volume [Conformance] [NodeConformance]
+[sig-storage] Secrets optional updates should be reflected in volume [Conformance] [NodeConformance]

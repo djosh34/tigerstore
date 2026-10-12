@@ -1,0 +1,13 @@
+NAMESPACE            NAME                                          READY   STATUS    RESTARTS   AGE     IP           NODE                  NOMINATED NODE   READINESS GATES
+kube-system          coredns-559f6c778d-2j8jf                      1/1     Running   0          9m26s   10.244.0.4   pre48-control-plane   <none>           <none>
+kube-system          coredns-559f6c778d-4crh5                      1/1     Running   0          9m26s   10.244.0.3   pre48-control-plane   <none>           <none>
+kube-system          kindnet-4d6r2                                 1/1     Running   0          9m22s   172.18.0.5   pre48-worker          <none>           <none>
+kube-system          kindnet-9wvfw                                 1/1     Running   0          9m22s   172.18.0.7   pre48-worker2         <none>           <none>
+kube-system          kindnet-qn6f6                                 1/1     Running   0          9m26s   172.18.0.6   pre48-control-plane   <none>           <none>
+kube-system          kube-apiserver-pre48-control-plane            1/1     Running   0          9m35s   172.18.0.6   pre48-control-plane   <none>           <none>
+kube-system          kube-controller-manager-pre48-control-plane   1/1     Running   0          9m34s   172.18.0.6   pre48-control-plane   <none>           <none>
+kube-system          kube-proxy-fmgpx                              1/1     Running   0          9m22s   172.18.0.7   pre48-worker2         <none>           <none>
+kube-system          kube-proxy-rqnks                              1/1     Running   0          9m26s   172.18.0.6   pre48-control-plane   <none>           <none>
+kube-system          kube-proxy-txnhq                              1/1     Running   0          9m22s   172.18.0.5   pre48-worker          <none>           <none>
+kube-system          kube-scheduler-pre48-control-plane            1/1     Running   0          9m35s   172.18.0.6   pre48-control-plane   <none>           <none>
+local-path-storage   local-path-provisioner-75f7fc7dc5-km4gb       1/1     Running   0          9m26s   10.244.0.2   pre48-control-plane   <none>           <none>

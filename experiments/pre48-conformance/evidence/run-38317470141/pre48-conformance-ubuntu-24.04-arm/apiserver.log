@@ -1,0 +1,257 @@
+I1012 22:35:22.849580       1 options.go:261] external host was not specified, using 172.18.0.6
+I1012 22:35:22.854075       1 server.go:151] Version: v1.37.0
+I1012 22:35:22.854114       1 server.go:153] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+E1012 22:35:23.294791       1 options.go:205] The manifest file is empty, ignoring.
+I1012 22:35:23.295219       1 shared_informer.go:503] "Waiting for caches to sync" controller="node_authorizer"
+I1012 22:35:23.315741       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:23.318933       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:23.321267       1 plugins.go:157] Loaded 15 mutating admission controller(s) successfully in the following order: NamespaceLifecycle,LimitRanger,ServiceAccount,NodeRestriction,TaintNodesByCondition,Priority,DefaultTolerationSeconds,DefaultStorageClass,StorageObjectInUseProtection,PodGroupProtection,RuntimeClass,DefaultIngressClass,PodTopologyLabels,MutatingAdmissionPolicy,MutatingAdmissionWebhook.
+I1012 22:35:23.321286       1 plugins.go:160] Loaded 15 validating admission controller(s) successfully in the following order: LimitRanger,ServiceAccount,PodSecurity,Priority,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,ClusterTrustBundleAttest,CertificateSubjectRestriction,NodeDeclaredFeatureValidator,PodResizeValidator,ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,ResourceQuota.
+I1012 22:35:23.321661       1 instance.go:244] Using reconciler: lease
+I1012 22:35:23.340348       1 handler.go:309] Adding GroupVersion apiextensions.k8s.io v1 to ResourceManager
+W1012 22:35:23.340369       1 genericapiserver.go:798] Skipping API apiextensions.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.347764       1 cidrallocator.go:198] starting ServiceCIDR Allocator Controller
+I1012 22:35:23.500209       1 handler.go:309] Adding GroupVersion  v1 to ResourceManager
+I1012 22:35:23.500458       1 apis.go:112] API group "internal.apiserver.k8s.io" is not enabled, skipping.
+I1012 22:35:23.561665       1 apis.go:112] API group "lifecycle.k8s.io" is not enabled, skipping.
+I1012 22:35:23.863694       1 handler.go:309] Adding GroupVersion authentication.k8s.io v1 to ResourceManager
+W1012 22:35:23.863727       1 genericapiserver.go:798] Skipping API authentication.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.863732       1 genericapiserver.go:798] Skipping API authentication.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.864115       1 handler.go:309] Adding GroupVersion authorization.k8s.io v1 to ResourceManager
+W1012 22:35:23.864137       1 genericapiserver.go:798] Skipping API authorization.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.864701       1 handler.go:309] Adding GroupVersion autoscaling v2 to ResourceManager
+I1012 22:35:23.865137       1 handler.go:309] Adding GroupVersion autoscaling v1 to ResourceManager
+I1012 22:35:23.866105       1 handler.go:309] Adding GroupVersion batch v1 to ResourceManager
+W1012 22:35:23.866133       1 genericapiserver.go:798] Skipping API batch/v1beta1 because it has no resources.
+I1012 22:35:23.867201       1 handler.go:309] Adding GroupVersion certificates.k8s.io v1 to ResourceManager
+W1012 22:35:23.867256       1 genericapiserver.go:798] Skipping API certificates.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.867262       1 genericapiserver.go:798] Skipping API certificates.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.867617       1 handler.go:309] Adding GroupVersion coordination.k8s.io v1 to ResourceManager
+W1012 22:35:23.867640       1 genericapiserver.go:798] Skipping API coordination.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.867644       1 genericapiserver.go:798] Skipping API coordination.k8s.io/v1alpha2 because it has no resources.
+I1012 22:35:23.867946       1 handler.go:309] Adding GroupVersion discovery.k8s.io v1 to ResourceManager
+W1012 22:35:23.867966       1 genericapiserver.go:798] Skipping API discovery.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.869532       1 handler.go:309] Adding GroupVersion networking.k8s.io v1 to ResourceManager
+W1012 22:35:23.869557       1 genericapiserver.go:798] Skipping API networking.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.869893       1 handler.go:309] Adding GroupVersion node.k8s.io v1 to ResourceManager
+W1012 22:35:23.869914       1 genericapiserver.go:798] Skipping API node.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.869918       1 genericapiserver.go:798] Skipping API node.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.870424       1 handler.go:309] Adding GroupVersion policy v1 to ResourceManager
+W1012 22:35:23.870444       1 genericapiserver.go:798] Skipping API policy/v1beta1 because it has no resources.
+I1012 22:35:23.871393       1 handler.go:309] Adding GroupVersion rbac.authorization.k8s.io v1 to ResourceManager
+W1012 22:35:23.871417       1 genericapiserver.go:798] Skipping API rbac.authorization.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.871422       1 genericapiserver.go:798] Skipping API rbac.authorization.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.871680       1 handler.go:309] Adding GroupVersion scheduling.k8s.io v1 to ResourceManager
+W1012 22:35:23.871700       1 genericapiserver.go:798] Skipping API scheduling.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.871703       1 genericapiserver.go:798] Skipping API scheduling.k8s.io/v1alpha3 because it has no resources.
+I1012 22:35:23.873115       1 handler.go:309] Adding GroupVersion storage.k8s.io v1 to ResourceManager
+W1012 22:35:23.873145       1 genericapiserver.go:798] Skipping API storage.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.873149       1 genericapiserver.go:798] Skipping API storage.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.873583       1 handler.go:309] Adding GroupVersion storagemigration.k8s.io v1 to ResourceManager
+W1012 22:35:23.873608       1 genericapiserver.go:798] Skipping API storagemigration.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.874388       1 handler.go:309] Adding GroupVersion flowcontrol.apiserver.k8s.io v1 to ResourceManager
+W1012 22:35:23.874409       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta3 because it has no resources.
+W1012 22:35:23.874414       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta2 because it has no resources.
+W1012 22:35:23.874416       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.876707       1 handler.go:309] Adding GroupVersion apps v1 to ResourceManager
+W1012 22:35:23.876729       1 genericapiserver.go:798] Skipping API apps/v1beta2 because it has no resources.
+W1012 22:35:23.876733       1 genericapiserver.go:798] Skipping API apps/v1beta1 because it has no resources.
+I1012 22:35:23.878168       1 handler.go:309] Adding GroupVersion admissionregistration.k8s.io v1 to ResourceManager
+W1012 22:35:23.878196       1 genericapiserver.go:798] Skipping API admissionregistration.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.878200       1 genericapiserver.go:798] Skipping API admissionregistration.k8s.io/v1alpha1 because it has no resources.
+I1012 22:35:23.878581       1 handler.go:309] Adding GroupVersion events.k8s.io v1 to ResourceManager
+W1012 22:35:23.878605       1 genericapiserver.go:798] Skipping API events.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:23.879978       1 handler.go:309] Adding GroupVersion resource.k8s.io v1 to ResourceManager
+W1012 22:35:23.880005       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1beta2 because it has no resources.
+W1012 22:35:23.880009       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1beta1 because it has no resources.
+W1012 22:35:23.880011       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1alpha3 because it has no resources.
+I1012 22:35:23.888761       1 handler.go:309] Adding GroupVersion apiregistration.k8s.io v1 to ResourceManager
+W1012 22:35:23.888790       1 genericapiserver.go:798] Skipping API apiregistration.k8s.io/v1beta1 because it has no resources.
+I1012 22:35:24.145875       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+I1012 22:35:24.145894       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+I1012 22:35:24.146143       1 dynamic_serving_content.go:135] "Starting controller" name="serving-cert::/etc/kubernetes/pki/apiserver.crt::/etc/kubernetes/pki/apiserver.key"
+I1012 22:35:24.146488       1 secure_serving.go:214] Serving securely on [::]:6443
+I1012 22:35:24.146545       1 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+I1012 22:35:24.146574       1 dynamic_serving_content.go:135] "Starting controller" name="aggregator-proxy-cert::/etc/kubernetes/pki/front-proxy-client.crt::/etc/kubernetes/pki/front-proxy-client.key"
+I1012 22:35:24.146598       1 controller.go:89] "Starting OpenAPI V3 AggregationController"
+I1012 22:35:24.146988       1 controller.go:116] "Deleting old lease on startup" lease="kube-system/apiserver-76cxpaguwhq7vkvgkz52fmhhdi"
+I1012 22:35:24.147126       1 controller.go:87] "Starting OpenAPI AggregationController"
+I1012 22:35:24.146583       1 apiservice_controller.go:100] Starting APIServiceRegistrationController
+I1012 22:35:24.147331       1 cache.go:32] Waiting for caches to sync for APIServiceRegistrationController controller
+I1012 22:35:24.147639       1 repairip.go:210] Starting ipallocator-repair-controller
+I1012 22:35:24.147657       1 shared_informer.go:503] "Waiting for caches to sync" controller="ipallocator-repair-controller"
+I1012 22:35:24.147848       1 controller.go:142] Starting OpenAPI controller
+I1012 22:35:24.147976       1 controller.go:127] "Starting legacy_token_tracking_controller"
+I1012 22:35:24.148005       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:24.148075       1 aggregator.go:185] waiting for initial CRD sync...
+I1012 22:35:24.148445       1 remote_available_controller.go:434] Starting RemoteAvailability controller
+I1012 22:35:24.148453       1 cache.go:32] Waiting for caches to sync for RemoteAvailability controller
+I1012 22:35:24.148641       1 controller.go:90] Starting OpenAPI V3 controller
+I1012 22:35:24.148745       1 naming_controller.go:305] Starting NamingConditionController
+I1012 22:35:24.149204       1 nonstructuralschema_controller.go:202] Starting NonStructuralSchemaConditionController
+I1012 22:35:24.149315       1 cluster_authentication_trust_controller.go:459] Starting cluster_authentication_trust_controller controller
+I1012 22:35:24.149383       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:24.149466       1 local_available_controller.go:156] Starting LocalAvailability controller
+I1012 22:35:24.149499       1 cache.go:32] Waiting for caches to sync for LocalAvailability controller
+I1012 22:35:24.147883       1 gc_controller.go:85] "Starting apiserver lease garbage collector"
+I1012 22:35:24.149639       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:24.157774       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+I1012 22:35:24.157886       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+I1012 22:35:24.149330       1 crd_finalizer.go:276] "Starting CRDFinalizer"
+I1012 22:35:24.149321       1 apiapproval_controller.go:196] Starting KubernetesAPIApprovalPolicyConformantConditionController
+I1012 22:35:24.146747       1 system_namespaces_controller.go:66] Starting system namespaces controller
+I1012 22:35:24.146757       1 storage_readiness_hook.go:70] Storage is ready for all registered resources
+I1012 22:35:24.147312       1 customresource_discovery_controller.go:294] Starting DiscoveryController
+I1012 22:35:24.146687       1 apf_controller.go:377] Starting API Priority and Fairness config controller
+I1012 22:35:24.185206       1 crdregistration_controller.go:114] Starting crd-autoregister controller
+I1012 22:35:24.185381       1 shared_informer.go:503] "Waiting for caches to sync" controller="crd-autoregister"
+I1012 22:35:24.185456       1 shared_informer.go:510] "Caches are synced" controller="crd-autoregister"
+I1012 22:35:24.185905       1 aggregator.go:187] initial CRD sync complete...
+I1012 22:35:24.185994       1 autoregister_controller.go:144] Starting autoregister controller
+I1012 22:35:24.186068       1 cache.go:32] Waiting for caches to sync for autoregister controller
+I1012 22:35:24.194990       1 default_servicecidr_controller.go:110] "Starting" controller="kubernetes-service-cidr-controller"
+I1012 22:35:24.195154       1 shared_informer.go:524] "Waiting for caches to sync"
+I1012 22:35:24.216107       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.216127       1 policy_source.go:253] refreshing policies
+I1012 22:35:24.219369       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.219384       1 policy_source.go:253] refreshing policies
+I1012 22:35:24.247592       1 cache.go:39] Caches are synced for APIServiceRegistrationController controller
+I1012 22:35:24.247639       1 handler_discovery.go:450] Starting ResourceDiscoveryManager
+I1012 22:35:24.247706       1 shared_informer.go:510] "Caches are synced" controller="ipallocator-repair-controller"
+I1012 22:35:24.248748       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.248788       1 cache.go:39] Caches are synced for RemoteAvailability controller
+I1012 22:35:24.249522       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.249695       1 cache.go:39] Caches are synced for LocalAvailability controller
+I1012 22:35:24.249736       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.259453       1 apf_controller.go:382] Running API Priority and Fairness config worker
+I1012 22:35:24.259469       1 apf_controller.go:385] Running API Priority and Fairness periodic rebalancing process
+I1012 22:35:24.259817       1 controller.go:667] quota admission added evaluator for: leases.coordination.k8s.io
+I1012 22:35:24.286330       1 cache.go:39] Caches are synced for autoregister controller
+I1012 22:35:24.295713       1 shared_informer.go:531] "Caches are synced"
+I1012 22:35:24.296263       1 default_servicecidr_controller.go:170] "Creating default ServiceCIDR" CIDRs=["10.96.0.0/16"]
+I1012 22:35:24.301006       1 shared_informer.go:510] "Caches are synced" controller="node_authorizer"
+I1012 22:35:24.301939       1 default_servicecidr_controller.go:234] "Setting default ServiceCIDR condition Ready to True"
+I1012 22:35:24.303147       1 cidrallocator.go:302] created ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1012 22:35:24.311504       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1012 22:35:25.152307       1 storage_scheduling.go:189] created PriorityClass system-node-critical with value 2000001000
+I1012 22:35:25.156016       1 storage_scheduling.go:189] created PriorityClass system-cluster-critical with value 2000000000
+I1012 22:35:25.156028       1 storage_scheduling.go:205] all system priority classes are created successfully or already exist.
+I1012 22:35:26.223120       1 controller.go:667] quota admission added evaluator for: roles.rbac.authorization.k8s.io
+I1012 22:35:26.258988       1 controller.go:667] quota admission added evaluator for: rolebindings.rbac.authorization.k8s.io
+I1012 22:35:26.356033       1 alloc.go:329] "allocated clusterIPs" service="default/kubernetes" clusterIPs={"IPv4":"10.96.0.1"}
+W1012 22:35:26.364497       1 lease.go:270] Resetting endpoints for master service "kubernetes" to [172.18.0.6]
+I1012 22:35:26.365221       1 controller.go:667] quota admission added evaluator for: endpoints
+I1012 22:35:26.368937       1 controller.go:667] quota admission added evaluator for: endpointslices.discovery.k8s.io
+I1012 22:35:27.124678       1 controller.go:667] quota admission added evaluator for: serviceaccounts
+I1012 22:35:27.128714       1 controller.go:667] quota admission added evaluator for: deployments.apps
+I1012 22:35:27.136388       1 alloc.go:329] "allocated clusterIPs" service="kube-system/kube-dns" clusterIPs={"IPv4":"10.96.0.10"}
+I1012 22:35:27.141680       1 controller.go:667] quota admission added evaluator for: daemonsets.apps
+I1012 22:35:33.438659       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1012 22:35:33.441794       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1012 22:35:33.636798       1 controller.go:667] quota admission added evaluator for: controllerrevisions.apps
+I1012 22:35:33.736688       1 controller.go:667] quota admission added evaluator for: replicasets.apps
+I1012 22:35:57.156778       1 controller.go:667] quota admission added evaluator for: statefulsets.apps
+I1012 22:35:57.200894       1 controller.go:667] quota admission added evaluator for: cronjobs.batch
+I1012 22:35:57.248380       1 controller.go:667] quota admission added evaluator for: podtemplates
+I1012 22:36:00.108038       1 controller.go:667] quota admission added evaluator for: jobs.batch
+I1012 22:36:06.241407       1 controller.go:667] quota admission added evaluator for: namespaces
+I1012 22:37:18.487677       1 handler.go:309] Adding GroupVersion mygroup.example.com v1beta1 to ResourceManager
+I1012 22:37:18.487708       1 handler.go:309] Adding GroupVersion mygroup.example.com v1 to ResourceManager
+E1012 22:37:21.011564       1 status.go:71] "Unhandled Error" err=<
+	apiserver received an error that is not an metav1.Status: &errors.errorString{s:"failed to create typed patch object (/mytest; mygroup.example.com/v1beta1, Kind=foozpw96a): errors:\n  .metadata.unknownMeta: field not declared in schema\n  .spec.template.metadata.unknownSubMeta: field not declared in schema"}: failed to create typed patch object (/mytest; mygroup.example.com/v1beta1, Kind=foozpw96a): errors:
+	  .metadata.unknownMeta: field not declared in schema
+	  .spec.template.metadata.unknownSubMeta: field not declared in schema
+ > logger="UnhandledError"
+I1012 22:37:21.016113       1 handler.go:309] Adding GroupVersion mygroup.example.com v1beta1 to ResourceManager
+I1012 22:37:21.016140       1 handler.go:309] Adding GroupVersion mygroup.example.com v1 to ResourceManager
+I1012 22:37:21.555848       1 controller.go:667] quota admission added evaluator for: ingresses.networking.k8s.io
+I1012 22:37:55.383746       1 alloc.go:329] "allocated clusterIPs" service="endpointslice-244/example-custom-endpoints" clusterIPs={"IPv4":"10.96.65.81"}
+I1012 22:38:22.428318       1 alloc.go:329] "allocated clusterIPs" service="resourcequota-7313/test-service" clusterIPs={"IPv4":"10.96.243.180"}
+I1012 22:38:22.442220       1 alloc.go:329] "allocated clusterIPs" service="resourcequota-7313/test-service-np" clusterIPs={"IPv4":"10.96.158.192"}
+I1012 22:38:38.283843       1 alloc.go:329] "allocated clusterIPs" service="webhook-3167/e2e-test-webhook" clusterIPs={"IPv4":"10.96.170.140"}
+W1012 22:38:38.300215       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.300268       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.407189       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.407261       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.507957       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.507988       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.607652       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.607686       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.707166       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.707200       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.807976       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.808007       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:38.907430       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:38.907459       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:39.007449       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:39.007545       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:39.107701       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:39.107738       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:39.207659       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": dial tcp 10.96.170.140:8443: connect: connection refused
+E1012 22:38:39.207697       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.170.140:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:38:49.309104       1 dispatcher.go:210] Failed calling webhook, failing open mutating-is-webhook-configuration-ready.k8s.io: failed calling webhook "mutating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s": context deadline exceeded
+E1012 22:38:49.309138       1 dispatcher.go:214] "Unhandled Error" err="failed calling webhook \"mutating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3167.svc:8443/always-deny?timeout=10s\": context deadline exceeded" logger="UnhandledError"
+I1012 22:40:17.227210       1 alloc.go:647] "allocated clusterIPs" service="services-911/externalname-service" clusterIPs={"IPv4":"10.96.114.148"}
+I1012 22:40:23.462404       1 handler.go:309] Adding GroupVersion crd-publish-openapi-test-multi-to-single-ver.example.com v5 to ResourceManager
+I1012 22:40:23.462434       1 handler.go:309] Adding GroupVersion crd-publish-openapi-test-multi-to-single-ver.example.com v6alpha1 to ResourceManager
+I1012 22:40:27.864249       1 handler.go:309] Adding GroupVersion crd-publish-openapi-test-multi-to-single-ver.example.com v5 to ResourceManager
+I1012 22:41:00.876871       1 alloc.go:329] "allocated clusterIPs" service="webhook-4814/e2e-test-webhook" clusterIPs={"IPv4":"10.96.216.188"}
+I1012 22:41:21.982971       1 alloc.go:329] "allocated clusterIPs" service="services-5290/test-service-qfzx9" clusterIPs={"IPv4":"10.96.141.49"}
+I1012 22:41:31.376949       1 alloc.go:329] "allocated clusterIPs" service="endpoints-3746/example-empty-selector" clusterIPs={"IPv4":"10.96.210.12"}
+I1012 22:41:41.835795       1 controller.go:667] quota admission added evaluator for: resourceclaimtemplates.resource.k8s.io
+I1012 22:41:48.056954       1 controller.go:667] quota admission added evaluator for: poddisruptionbudgets.policy
+I1012 22:41:57.745780       1 alloc.go:329] "allocated clusterIPs" service="kubectl-6139/rm2" clusterIPs={"IPv4":"10.96.166.99"}
+I1012 22:41:59.805839       1 alloc.go:329] "allocated clusterIPs" service="kubectl-6139/rm3" clusterIPs={"IPv4":"10.96.65.119"}
+I1012 22:42:13.463794       1 handler.go:309] Adding GroupVersion mygroup.example.com v1beta1 to ResourceManager
+I1012 22:42:16.244873       1 alloc.go:329] "allocated clusterIPs" service="crd-webhook-6264/e2e-test-crd-conversion-webhook" clusterIPs={"IPv4":"10.96.91.139"}
+I1012 22:42:17.261162       1 handler.go:309] Adding GroupVersion stable.example.com v1 to ResourceManager
+I1012 22:42:17.261195       1 handler.go:309] Adding GroupVersion stable.example.com v2 to ResourceManager
+I1012 22:42:19.783042       1 controller.go:667] quota admission added evaluator for: e2e-test-crd-webhook-6264-2704-crds.stable.example.com
+I1012 22:42:19.810195       1 handler.go:309] Adding GroupVersion stable.example.com v1 to ResourceManager
+I1012 22:42:19.810277       1 handler.go:309] Adding GroupVersion stable.example.com v2 to ResourceManager
+I1012 22:42:20.413606       1 controller.go:667] quota admission added evaluator for: podcertificaterequests.certificates.k8s.io
+I1012 22:42:24.132509       1 alloc.go:647] "allocated clusterIPs" service="dns-5423/dns-test-service-3" clusterIPs={"IPv4":"10.96.226.186"}
+I1012 22:42:47.630541       1 alloc.go:329] "allocated clusterIPs" service="webhook-3260/e2e-test-webhook" clusterIPs={"IPv4":"10.96.3.103"}
+W1012 22:42:48.641549       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-3260.svc:8443/always-deny?timeout=10s": dial tcp 10.96.3.103:8443: connect: connection refused
+E1012 22:42:48.641590       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-3260.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.3.103:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:42:48.753927       1 dispatcher.go:225] rejected by webhook "validating-is-webhook-configuration-ready.k8s.io": &errors.StatusError{ErrStatus:v1.Status{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ListMeta:v1.ListMeta{SelfLink:"", ResourceVersion:"", Continue:"", RemainingItemCount:(*int64)(nil), ShardInfo:(*v1.ShardInfo)(nil)}, Status:"Failure", Message:"admission webhook \"validating-is-webhook-configuration-ready.k8s.io\" denied the request: this webhook denies all requests", Reason:"", Details:(*v1.StatusDetails)(nil), Code:400}}
+W1012 22:42:50.809108       1 dispatcher.go:225] rejected by webhook "deny-attaching-pod.k8s.io": &errors.StatusError{ErrStatus:v1.Status{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ListMeta:v1.ListMeta{SelfLink:"", ResourceVersion:"", Continue:"", RemainingItemCount:(*int64)(nil), ShardInfo:(*v1.ShardInfo)(nil)}, Status:"Failure", Message:"admission webhook \"deny-attaching-pod.k8s.io\" denied the request: attaching to pod 'to-be-attached-pod' is not allowed", Reason:"", Details:(*v1.StatusDetails)(nil), Code:400}}
+W1012 22:42:50.813287       1 dispatcher.go:225] rejected by webhook "deny-attaching-pod.k8s.io": &errors.StatusError{ErrStatus:v1.Status{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ListMeta:v1.ListMeta{SelfLink:"", ResourceVersion:"", Continue:"", RemainingItemCount:(*int64)(nil), ShardInfo:(*v1.ShardInfo)(nil)}, Status:"Failure", Message:"admission webhook \"deny-attaching-pod.k8s.io\" denied the request: attaching to pod 'to-be-attached-pod' is not allowed", Reason:"", Details:(*v1.StatusDetails)(nil), Code:400}}
+I1012 22:42:50.901411       1 alloc.go:329] "allocated clusterIPs" service="services-2925/affinity-nodeport-transition" clusterIPs={"IPv4":"10.96.69.4"}
+I1012 22:43:21.288163       1 handler.go:309] Adding GroupVersion crd-publish-openapi-test-foo.example.com v1 to ResourceManager
+I1012 22:43:24.510984       1 controller.go:667] quota admission added evaluator for: e2e-test-crd-publish-openapi-8671-6718-crds.crd-publish-openapi-test-foo.example.com
+I1012 22:43:25.093697       1 handler.go:309] Adding GroupVersion crd-publish-openapi-test-foo.example.com v1 to ResourceManager
+I1012 22:43:44.325953       1 alloc.go:329] "allocated clusterIPs" service="services-9318/nodeport-service" clusterIPs={"IPv4":"10.96.7.142"}
+I1012 22:43:44.339263       1 alloc.go:329] "allocated clusterIPs" service="services-9318/externalsvc" clusterIPs={"IPv4":"10.96.209.217"}
+I1012 22:43:50.756500       1 alloc.go:329] "allocated clusterIPs" service="webhook-706/e2e-test-webhook" clusterIPs={"IPv4":"10.96.186.188"}
+W1012 22:43:51.765339       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-706.svc:8443/always-deny?timeout=10s": dial tcp 10.96.186.188:8443: connect: connection refused
+E1012 22:43:51.765376       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-706.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.186.188:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:51.876835       1 dispatcher.go:225] rejected by webhook "validating-is-webhook-configuration-ready.k8s.io": &errors.StatusError{ErrStatus:v1.Status{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ListMeta:v1.ListMeta{SelfLink:"", ResourceVersion:"", Continue:"", RemainingItemCount:(*int64)(nil), ShardInfo:(*v1.ShardInfo)(nil)}, Status:"Failure", Message:"admission webhook \"validating-is-webhook-configuration-ready.k8s.io\" denied the request: this webhook denies all requests", Reason:"", Details:(*v1.StatusDetails)(nil), Code:400}}
+W1012 22:43:51.894580       1 dispatcher.go:217] Failed calling webhook, failing closed fail-closed.k8s.io: failed calling webhook "fail-closed.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-706.svc:8443/configmaps?timeout=10s": tls: failed to verify certificate: x509: certificate signed by unknown authority
+W1012 22:43:51.898273       1 dispatcher.go:217] Failed calling webhook, failing closed fail-closed.k8s.io: failed calling webhook "fail-closed.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-706.svc:8443/configmaps?timeout=10s": tls: failed to verify certificate: x509: certificate signed by unknown authority
+W1012 22:43:51.905247       1 dispatcher.go:217] Failed calling webhook, failing closed fail-closed.k8s.io: failed calling webhook "fail-closed.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-706.svc:8443/configmaps?timeout=10s": tls: failed to verify certificate: x509: certificate signed by unknown authority
+W1012 22:43:51.919362       1 dispatcher.go:217] Failed calling webhook, failing closed fail-closed.k8s.io: failed calling webhook "fail-closed.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-706.svc:8443/configmaps?timeout=10s": service "e2e-test-webhook" not found
+I1012 22:43:54.189853       1 alloc.go:329] "allocated clusterIPs" service="webhook-6094/e2e-test-webhook" clusterIPs={"IPv4":"10.96.175.50"}
+W1012 22:43:54.202425       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.202456       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.309686       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.309727       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.410382       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.410417       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.510036       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.510074       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.609466       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.609503       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.710439       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.710475       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.809495       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.809529       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:54.910127       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:54.910164       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:55.010047       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:55.010083       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:55.110211       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:55.110269       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:55.210414       1 dispatcher.go:205] Failed calling webhook, failing open validating-is-webhook-configuration-ready.k8s.io: failed calling webhook "validating-is-webhook-configuration-ready.k8s.io": failed to call webhook: Post "https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s": dial tcp 10.96.175.50:8443: connect: connection refused
+E1012 22:43:55.210450       1 dispatcher.go:213] "Unhandled Error" err="failed calling webhook \"validating-is-webhook-configuration-ready.k8s.io\": failed to call webhook: Post \"https://e2e-test-webhook.webhook-6094.svc:8443/always-deny?timeout=10s\": dial tcp 10.96.175.50:8443: connect: connection refused" logger="UnhandledError"
+W1012 22:43:55.314346       1 dispatcher.go:225] rejected by webhook "validating-is-webhook-configuration-ready.k8s.io": &errors.StatusError{ErrStatus:v1.Status{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ListMeta:v1.ListMeta{SelfLink:"", ResourceVersion:"", Continue:"", RemainingItemCount:(*int64)(nil), ShardInfo:(*v1.ShardInfo)(nil)}, Status:"Failure", Message:"admission webhook \"validating-is-webhook-configuration-ready.k8s.io\" denied the request: this webhook denies all requests", Reason:"", Details:(*v1.StatusDetails)(nil), Code:400}}

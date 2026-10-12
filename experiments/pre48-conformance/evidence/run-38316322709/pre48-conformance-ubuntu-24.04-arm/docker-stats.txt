@@ -1,0 +1,7 @@
+CONTAINER ID   NAME                  CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O         PIDS
+5fbbd1c97d9b   pre48-worker2         1.15%     163MiB / 15.57GiB     1.02%     217MB / 2.81MB    12.3kB / 1.02GB   69
+a92fce74c57c   pre48-control-plane   5.69%     669.1MiB / 15.57GiB   4.20%     50.8MB / 64.3MB   152kB / 556MB     212
+1140738a16da   pre48-worker          1.03%     173.7MiB / 15.57GiB   1.09%     332MB / 7.04MB    16.4kB / 1.43GB   67
+9595be71d63d   external-etcd-3       3.00%     50.01MiB / 15.57GiB   0.31%     28.4MB / 33.5MB   0B / 100MB        11
+fee1139be00e   external-etcd-2       1.63%     50.3MiB / 15.57GiB    0.32%     34MB / 50.8MB     0B / 100MB        11
+80f1dae2f9cc   external-etcd-1       1.09%     50.99MiB / 15.57GiB   0.32%     28.4MB / 25.4MB   65.5kB / 101MB    11
