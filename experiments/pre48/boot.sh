@@ -9,6 +9,10 @@ start=$(date +%s.%N)
 curl -fsSL --retry 3 "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-$arch" -o "$root/bin/kind"
 curl -fsSL --retry 3 "https://dl.k8s.io/release/v1.37.0/bin/linux/$arch/kubectl" -o "$root/bin/kubectl"
 curl -fsSL --retry 3 "https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-$arch.tar.gz" -o "$root/etcd.tgz"
+curl -fsSL --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.7.2/SHA256SUMS -o "$root/etcd-SHA256SUMS"
+expected=$(awk -v file="etcd-v3.7.2-linux-$arch.tar.gz" '$2==file {print $1}' "$root/etcd-SHA256SUMS")
+printf '%s  %s\n' "$expected" "$root/etcd.tgz" | sha256sum --check
+cp "$root/etcd-SHA256SUMS" "$root/results/"
 tar -xzf "$root/etcd.tgz" -C "$root/bin" --strip-components=1 "etcd-v3.7.2-linux-$arch/etcd" "etcd-v3.7.2-linux-$arch/etcdctl"
 chmod +x "$root/bin/"*
 export PATH="$root/bin:$PATH"
@@ -87,13 +91,16 @@ boot_end=$(date +%s.%N)
 kubectl get nodes -o wide > "$root/results/nodes.txt"
 kubectl get pods -A -o wide > "$root/results/pods.txt"
 kubectl get --raw '/readyz?verbose' > "$root/results/readyz.txt"
+for n in 1 2 3; do
+  docker exec pre48-control-plane curl -fsS --cacert /etc/kubernetes/pki/external/ca.crt --cert /etc/kubernetes/pki/external/client.crt --key /etc/kubernetes/pki/external/client.key "https://external-etcd-$n:2379/version" > "$root/results/etcd-$n-version.json"
+done
 kubectl -n kube-system get cm kubeadm-config -o yaml > "$root/results/kubeadm-config.yaml"
 docker exec pre48-control-plane cat /etc/kubernetes/manifests/kube-apiserver.yaml > "$root/results/apiserver.yaml"
 docker exec pre48-control-plane test ! -e /etc/kubernetes/manifests/etcd.yaml
 # Exercise the external store through Kubernetes and inspect the raw key.
 kubectl create configmap pre48-proof --from-literal=backend=external-etcd-3.7.2
-docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "$endpoints" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key get /registry/configmaps/default/pre48-proof --count-only > "$root/results/proof-key-count.txt"
-test "$(tr -d '\r\n' < "$root/results/proof-key-count.txt")" = 1
+docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "$endpoints" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key get /registry/configmaps/default/pre48-proof --count-only -w fields > "$root/results/proof-key-count.txt"
+grep -qx '"Count" : 1' "$root/results/proof-key-count.txt"
 kubectl delete configmap pre48-proof
 python3 - "$start" "$boot_start" "$boot_end" > "$root/results/boot-timing.json" <<'PY'
 import sys,json
