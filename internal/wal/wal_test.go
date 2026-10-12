@@ -352,3 +352,32 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 		}
 	}
 }
+
+// TestCrashWhileReplacingDamagedNewestHeader crashes at each writing step
+// of the repair of a header-only newest segment whose header is damaged:
+// remove, directory sync, and the create, write and syncs of the new
+// segment. The synced log must survive every time.
+func TestCrashWhileReplacingDamagedNewestHeader(t *testing.T) {
+	for k := 1; k <= 6; k++ {
+		d := simfs.New()
+		names := segments(t, d, 2)
+		rewrite(t, d, names[len(names)-1], func(b []byte) []byte { b[0] ^= 1; return b })
+		failFrom(d, k)
+		if _, _, err := wal.Open(d); !errors.Is(err, errCrash2) {
+			t.Fatalf("k=%d: open with a fault = %v", k, err)
+		}
+		d.Fault = nil
+		d.Crash(rand.New(rand.NewPCG(uint64(k), 1)))
+		w, rec := open(t, d)
+		if len(rec.Entries) != 2 || rec.HardState.Commit != 2 {
+			t.Fatalf("k=%d: recovered %d entries and %+v", k, len(rec.Entries), rec.HardState)
+		}
+		w.Append(nil, []*raftpb.Entry{entry(3, 3, "v")})
+		if err := w.Sync(); err != nil {
+			t.Fatalf("k=%d: %v", k, err)
+		}
+		if _, rec := open(t, d); len(rec.Entries) != 3 {
+			t.Fatalf("k=%d: after an append, recovered %d entries", k, len(rec.Entries))
+		}
+	}
+}
