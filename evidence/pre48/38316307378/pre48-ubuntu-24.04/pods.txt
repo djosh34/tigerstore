@@ -1,0 +1,13 @@
+NAMESPACE            NAME                                          READY   STATUS    RESTARTS   AGE   IP           NODE                  NOMINATED NODE   READINESS GATES
+kube-system          coredns-559f6c778d-mcbs2                      1/1     Running   0          18s   10.244.0.4   pre48-control-plane   <none>           <none>
+kube-system          coredns-559f6c778d-vnwb5                      1/1     Running   0          18s   10.244.0.2   pre48-control-plane   <none>           <none>
+kube-system          kindnet-jk954                                 1/1     Running   0          18s   172.18.0.7   pre48-control-plane   <none>           <none>
+kube-system          kindnet-l2kxn                                 1/1     Running   0          13s   172.18.0.5   pre48-worker2         <none>           <none>
+kube-system          kindnet-zb2rp                                 1/1     Running   0          13s   172.18.0.6   pre48-worker          <none>           <none>
+kube-system          kube-apiserver-pre48-control-plane            1/1     Running   0          25s   172.18.0.7   pre48-control-plane   <none>           <none>
+kube-system          kube-controller-manager-pre48-control-plane   1/1     Running   0          25s   172.18.0.7   pre48-control-plane   <none>           <none>
+kube-system          kube-proxy-6jqjn                              1/1     Running   0          13s   172.18.0.6   pre48-worker          <none>           <none>
+kube-system          kube-proxy-nz2h4                              1/1     Running   0          13s   172.18.0.5   pre48-worker2         <none>           <none>
+kube-system          kube-proxy-s4tpd                              1/1     Running   0          18s   172.18.0.7   pre48-control-plane   <none>           <none>
+kube-system          kube-scheduler-pre48-control-plane            1/1     Running   0          25s   172.18.0.7   pre48-control-plane   <none>           <none>
+local-path-storage   local-path-provisioner-75f7fc7dc5-vxxx9       1/1     Running   0          18s   10.244.0.3   pre48-control-plane   <none>           <none>

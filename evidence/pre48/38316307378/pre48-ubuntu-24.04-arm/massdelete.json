@@ -1,0 +1,22 @@
+{
+  "objects": 50000,
+  "payload_bytes": 256,
+  "client_threads": 64,
+  "fill_seconds": 35.51456970400001,
+  "fill_objects_per_second": 1407.8728932021522,
+  "verified_labelled_api_count": 50000,
+  "raw_etcd_counts_before": [
+    50001,
+    50001,
+    50001
+  ],
+  "namespace_delete_request_seconds": 0.005171958999994786,
+  "namespace_gone_seconds": 137.419254951,
+  "deletion_objects_per_second": 363.85002973439674,
+  "post_delete_list_http_status": 200,
+  "raw_etcd_counts_after": [
+    0,
+    0,
+    0
+  ]
+}

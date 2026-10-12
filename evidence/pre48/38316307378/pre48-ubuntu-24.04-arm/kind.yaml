@@ -1,0 +1,23 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: /home/runner/work/tigerstore/tigerstore/.pre48/kube-certs
+    containerPath: /etc/kubernetes/pki/external
+    readOnly: true
+- role: worker
+- role: worker
+kubeadmConfigPatches:
+- |
+  apiVersion: kubeadm.k8s.io/v1beta4
+  kind: ClusterConfiguration
+  etcd:
+    external:
+      endpoints:
+      - https://external-etcd-1:2379
+      - https://external-etcd-2:2379
+      - https://external-etcd-3:2379
+      caFile: /etc/kubernetes/pki/external/ca.crt
+      certFile: /etc/kubernetes/pki/external/client.crt
+      keyFile: /etc/kubernetes/pki/external/client.key
