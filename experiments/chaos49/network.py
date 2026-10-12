@@ -2,7 +2,7 @@
 """Question: does scoped loopback netem install AND affect only peer packets?
 Runner only: sudo unshare --net python3 experiments/chaos49/network.py
 """
-import hashlib, json, socket, statistics, struct, subprocess, threading, time
+import json, socket, statistics, struct, subprocess, threading, time
 
 
 def cmd(*args):
@@ -28,6 +28,7 @@ def setup(options, reverse=False):
     tc('qdisc', 'add', 'dev', 'lo', 'root', 'handle', '1:', 'prio', 'bands', '3', 'priomap', *(['0']*16))
     tc('qdisc', 'add', 'dev', 'lo', 'parent', '1:3', 'handle', '30:', 'netem', 'limit', '10000', *options)
     pref = 1
+    expected_keys = []
     for proto in ('udp', 'tcp'):
         directions = [('127.77.0.1', '127.77.0.2', 'dst_port')]
         if reverse:
@@ -35,10 +36,21 @@ def setup(options, reverse=False):
         for src, dst, port in directions:
             tc('filter', 'add', 'dev', 'lo', 'parent', '1:', 'protocol', 'ip', 'pref', str(pref),
                'flower', 'ip_proto', proto, 'src_ip', src, 'dst_ip', dst, port, '2380', 'classid', '1:3')
+            expected_keys.append({'eth_type':'ipv4', 'ip_proto':proto, 'src_ip':src, 'dst_ip':dst, port:2380})
             pref += 1
     filters = [f for f in json.loads(tc('-j', '-s', 'filter', 'show', 'dev', 'lo', 'parent', '1:')) if 'options' in f]
     assert len(filters) == pref-1, filters
     assert all(f['options']['classid'] == '1:3' for f in filters), filters
+    assert [f['options']['keys'] for f in filters] == expected_keys, filters
+    installed = netstat()['options']
+    assert installed['limit'] == 10000, installed
+    for name in ('delay', 'loss', 'corrupt', 'reorder', 'gap'):
+        if name not in options: continue
+        value = options[options.index(name)+1]
+        if name == 'delay': assert installed['delay']['delay'] == float(value[:-2])/1000, installed
+        elif name == 'loss': assert installed['loss-random']['loss'] == float(value[:-1])/100, installed
+        elif name == 'gap': assert installed['gap'] == int(value), installed
+        else: assert installed[name][name] == float(value[:-1])/100, installed
     print(json.dumps({'installed': options, 'reverse': reverse, 'qdisc': stats(), 'filters': filters}), flush=True)
 
 
@@ -105,6 +117,8 @@ def echo_rtt(proto, port, source):
     for _ in range(20):
         now=time.monotonic_ns(); s.send(b'x'); assert s.recv(32)==b'x'; times.append((time.monotonic_ns()-now)/1e6)
     s.close(); t.join(); listener.close()
+    # Let TCP teardown finish before resetting qdisc counters for the next case.
+    if proto == 'tcp': time.sleep(.1)
     return statistics.median(times)
 
 

@@ -1,0 +1,8 @@
+Linux runnervmmprz5 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+ubuntu24
+20261004.327.1
+dmsetup	2:1.02.185-3ubuntu3.2
+e2fsprogs	1.47.0-2.4~exp1ubuntu4.1
+util-linux	2.39.3-9ubuntu6.6
+fuse3	3.14.0-5build1
+libfuse3-dev:amd64	3.14.0-5build1

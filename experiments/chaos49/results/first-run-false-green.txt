@@ -1,0 +1,7 @@
+Run https://github.com/djosh34/tigerstore/actions/runs/38315923559
+Commit 0a12c6f7b32536efa1e5f69f118d8da8582fe0f7
+Network did not pass. tc filter header entries broke our assertion. Implicit Actions bash -e plus tee hid the failed left side of the pipeline.
+Fix: explicit shell: bash, stderr captured, pipefail negative self-test, final PASS marker required; only flower entries with options count as rules.
+
+network (ubuntu-24.04-arm)	Run mkdir -p results	2026-10-12T22:18:54.2579359Z shell: /usr/bin/bash -e {0}
+network (ubuntu-24.04-arm)	Run mkdir -p results	2026-10-12T22:18:54.5306239Z AssertionError: [{'protocol': 'ip', 'pref': 1, 'kind': 'flower', 'chain': 0}, {'protocol': 'ip', 'pref': 1, 'kind': 'flower', 'chain': 0, 'options': {'handle': 1, 'classid': '1:3', 'keys': {'eth_type': 'ipv4', 'ip_proto': 'udp', 'dst_ip': '127.77.0.2', 'src_ip': '127.77.0.1', 'dst_port': 2380}, 'not_in_hw': True}}, {'protocol': 'ip', 'pref': 2, 'kind': 'flower', 'chain': 0}, {'protocol': 'ip', 'pref': 2, 'kind': 'flower', 'chain': 0, 'options': {'handle': 1, 'classid': '1:3', 'keys': {'eth_type': 'ipv4', 'ip_proto': 'tcp', 'dst_ip': '127.77.0.2', 'src_ip': '127.77.0.1', 'dst_port': 2380}, 'not_in_hw': True}}]

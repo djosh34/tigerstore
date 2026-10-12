@@ -1,0 +1,7 @@
+Runner=GitHub Actions 1000005187 arch=X64 kernel=6.17.0-1022-azure uid=1001 time=2026-10-12T22:22:01Z
+Runner=GitHub Actions 1000005187 arch=X64 kernel=6.17.0-1022-azure uid=0 time=2026-10-12T22:22:01Z
+TARGET                                                                                  SOURCE     FSTYPE OPTIONS
+/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/enospc.406gv5/mnt /dev/loop0 ext4   rw,relatime
+INSTALLED bounded loop mount=/home/runner/work/tigerstore/tigerstore/experiments/chaos49/disk/.tmp/enospc.406gv5/mnt
+FIRED real kernel ENOSPC bytes_written=26542080 errno=28
+PASS real ENOSPC and write recovery after freeing owned file

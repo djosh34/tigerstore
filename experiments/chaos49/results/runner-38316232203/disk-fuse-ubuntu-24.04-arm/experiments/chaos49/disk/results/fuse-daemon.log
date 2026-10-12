@@ -1,0 +1,2 @@
+FIRED write n=11 offset=0
+FIRED fsync errno=EIO

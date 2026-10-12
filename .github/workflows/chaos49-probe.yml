@@ -13,6 +13,29 @@ defaults:
   run:
     shell: bash
 jobs:
+  disk-wrapper:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - run: |
+          mkdir -p results
+          go version | tee results/versions.txt
+          uname -a >> results/versions.txt
+          printenv ImageOS ImageVersion >> results/versions.txt
+          bash experiments/chaos49/disk/run-demo.sh 2>&1 | tee results/wrapper.txt
+          grep -q '^PASS:' results/wrapper.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: disk-wrapper-ubuntu-24.04-arm
+          path: |
+            results
+            experiments/chaos49/disk/results
   disk:
     strategy:
       fail-fast: false
