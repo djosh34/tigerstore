@@ -32,4 +32,8 @@ jobs:
           retention-days: 90
       - name: Clean build and data output
         if: always()
-        run: rm -rf experiments/pre50/work
+        run: |
+          if [ -d experiments/pre50/work ]; then
+            chmod -R u+w experiments/pre50/work
+            rm -rf experiments/pre50/work
+          fi
