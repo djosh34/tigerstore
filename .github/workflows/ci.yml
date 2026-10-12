@@ -97,11 +97,28 @@ jobs:
           test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
           diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
 
+  # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
+  # with client certificates.
+  smoke:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcdctl v3.7.2
+        run: |
+          curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64" >> "$GITHUB_PATH"
+      - run: etcdctl version
+      - run: scripts/smoke.sh
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, determinism-lint, sim]
+    needs: [lint, build, test, determinism-lint, sim, smoke]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
