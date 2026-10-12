@@ -150,3 +150,29 @@ func TestUnsupportedHistoricalTxnRead(t *testing.T) {
 func TestZeroTimeout(t *testing.T) {
 	mustFail(t, "Linearizable", Linearizable(&history.History{}, 0), "positive timeout")
 }
+
+// Regressions for the fix checks.
+
+func TestSerializableCompactedWithoutCompaction(t *testing.T) {
+	b := newBuilder(t, "a")
+	b.put(0, "a", "1")
+	b.put(0, "a", "2")
+	read := b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2, Serializable: true}})
+	h := b.done()
+	h.Ops[read].Resp, h.Ops[read].Err = nil, errCompacted
+	mustFail(t, "Revisions", Revisions(h), "no compaction that could cause it")
+}
+
+func TestSameRevisionAcrossKeysOnlyReads(t *testing.T) {
+	b := newBuilder(t, "a")
+	put := b.put(0, "a", "nonempty")
+	b.get(1, "a")
+	b.do(1, history.Request{Range: &history.RangeRequest{Key: "a", KeysOnly: true}})
+	last := b.get(1, "a")
+	h := b.done()
+	// The client never learned that its put committed.
+	h.Ops[put].Resp, h.Ops[put].Err = nil, errUnavailable
+	mustPass(t, "Revisions", Revisions(h))
+	h.Ops[last].Resp.Range.KVs[0].Value = ""
+	mustFail(t, "Revisions", Revisions(h), "was seen as")
+}

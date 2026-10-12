@@ -252,17 +252,33 @@ func (c *revisionChecker) versions() {
 			}
 		}
 		slices.SortFunc(obs, func(a, b observation) int { return cmp.Compare(a.kv.ModRevision, b.kv.ModRevision) })
+		// Each mod revision must look the same in every observation. A
+		// keys-only observation skips only its own value.
+		var full *history.KeyValue
+		for i := range obs {
+			o := obs[i]
+			if i > 0 && o.kv.ModRevision != obs[i-1].kv.ModRevision {
+				full = nil
+			}
+			if !o.keysOnly {
+				if full == nil {
+					full = &obs[i].kv
+				} else if o.kv != *full {
+					c.fail("key %q at mod revision %d was seen as %+v and as %+v", key, o.kv.ModRevision, *full, o.kv)
+				}
+			}
+			if i > 0 && obs[i-1].kv.ModRevision == o.kv.ModRevision {
+				a, b := obs[i-1].kv, o.kv
+				a.Value, b.Value = "", ""
+				if a != b {
+					c.fail("key %q at mod revision %d was seen as %+v and as %+v", key, a.ModRevision, a, b)
+				}
+			}
+		}
 		for i := 1; i < len(obs); i++ {
 			a, b := obs[i-1].kv, obs[i].kv
 			switch {
 			case a.ModRevision == b.ModRevision:
-				// A keys-only read has no value; compare the rest.
-				if obs[i-1].keysOnly || obs[i].keysOnly {
-					a.Value, b.Value = "", ""
-				}
-				if a != b {
-					c.fail("key %q at mod revision %d was seen as %+v and as %+v", key, a.ModRevision, a, b)
-				}
 			case a.CreateRevision == b.CreateRevision:
 				if b.Version <= a.Version {
 					c.fail("key %q has version %d at revision %d and version %d at revision %d", key, a.Version, a.ModRevision, b.Version, b.ModRevision)
@@ -288,11 +304,13 @@ func (c *revisionChecker) compaction() {
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
 		rev := requestedRevision(op.Req)
-		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && (rev <= 0 || op.Req.Range.Serializable) {
-			// A lagging node may serve a serializable read below a
-			// compaction it has not applied yet.
+		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev <= 0 {
 			continue
 		}
+		// A lagging node may serve a serializable read below a
+		// compaction it has not applied yet, but no node can report a
+		// compaction nobody sent.
+		lagging := op.Req.Range != nil && op.Req.Range.Serializable
 		// covers reports whether a compaction at k makes rev compacted
 		// for this op: a range needs one above rev, a compact one at or
 		// above it.
@@ -306,7 +324,7 @@ func (c *revisionChecker) compaction() {
 			if !found {
 				c.fail("op %d (client %d) got a compacted error for revision %d, but no compaction that could cause it started before it returned", i, op.Client, rev)
 			}
-		case op.Resp != nil:
+		case op.Resp != nil && !lagging:
 			for _, j := range compacts {
 				k := &c.h.Ops[j]
 				if j != i && k.Resp != nil && k.Return < op.Call && covers(k.Req.Compact.Revision) {
