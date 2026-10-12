@@ -6,12 +6,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/kubernetes"
 	"google.golang.org/grpc"
@@ -275,9 +277,9 @@ func main() {
 	check(ttr.TTL == -1, "missing time-to-live TTL -1")
 	emit("missing-ttl", ttr)
 	// Healthy-clock expiry of two keys, plus keepalive extending a separate lease.
+	start := time.Now()
 	exp, err := c.Grant(ctx, 1)
 	must(err)
-	start := time.Now()
 	_, err = c.Put(ctx, "expire/a", "a", clientv3.WithLease(exp.ID))
 	must(err)
 	_, err = c.Put(ctx, "expire/b", "b", clientv3.WithLease(exp.ID))
@@ -340,6 +342,9 @@ func main() {
 	dr, err := c.Delete(ctx, "boundary")
 	must(err)
 	C := dr.Header.Revision
+	beforeBoundary, err := kv.Compact(ctx, &pb.CompactionRequest{Revision: C - 1, Physical: true})
+	must(err)
+	emit("compact-R-minus-1", beforeBoundary)
 	comp, err := kv.Compact(ctx, &pb.CompactionRequest{Revision: C, Physical: true})
 	must(err)
 	emit("compact", comp)
@@ -364,10 +369,35 @@ func main() {
 		}
 		bstop()
 	}
+	_, err = c.Get(ctx, "boundary", clientv3.WithRev(C-1))
+	check(errors.Is(err, rpctypes.ErrCompacted), "public Range mapped compaction error")
+	emit("client-compacted-range", map[string]any{"mapped_code": err.(rpctypes.EtcdError).Code().String(), "grpc_status_code": status.Code(err).String(), "message": err.Error()})
+	compactedCtx, compactedStop := context.WithTimeout(ctx, 2*time.Second)
+	compactedResponse := <-c.Watch(compactedCtx, "boundary", clientv3.WithRev(C-1))
+	check(compactedResponse.Canceled && errors.Is(compactedResponse.Err(), rpctypes.ErrCompacted), "public Watch mapped compaction error")
+	emit("client-compacted-watch", map[string]any{"mapped_code": compactedResponse.Err().(rpctypes.EtcdError).Code().String(), "grpc_status_code": status.Code(compactedResponse.Err()).String(), "message": compactedResponse.Err().Error()})
+	compactedStop()
 	_, err = kv.Compact(ctx, &pb.CompactionRequest{Revision: C})
 	check(status.Code(err).String() == "OutOfRange", "repeat compact error")
 	_, err = kv.Compact(ctx, &pb.CompactionRequest{Revision: C + 1})
 	check(status.Code(err).String() == "OutOfRange", "future compact error")
+	futureCtx, futureStop := context.WithTimeout(ctx, 2*time.Second)
+	futureWatch := c.Watch(futureCtx, "boundary", clientv3.WithRev(C+2), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
+	futureCreated := <-futureWatch
+	check(futureCreated.Created, "future watch is created, not rejected")
+	_, err = c.Put(ctx, "boundary", "before-target")
+	must(err)
+	select {
+	case premature := <-futureWatch:
+		check(false, fmt.Sprintf("future watch returned early: %+v", premature))
+	case <-time.After(50 * time.Millisecond):
+	}
+	_, err = c.Put(ctx, "boundary", "at-target")
+	must(err)
+	futureResponse := <-futureWatch
+	check(len(futureResponse.Events) == 1 && futureResponse.Events[0].Kv.ModRevision == C+2, "future watch starts inclusively at its target")
+	emit("future-watch", map[string]any{"requested": C + 2, "delivered_revision": futureResponse.Events[0].Kv.ModRevision, "value": string(futureResponse.Events[0].Kv.Value)})
+	futureStop()
 	statusResp, err := c.Status(ctx, endpoint)
 	must(err)
 	emit("status", statusResp)

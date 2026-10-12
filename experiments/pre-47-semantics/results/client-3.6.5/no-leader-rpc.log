@@ -1,0 +1,6 @@
+request {"body":{"key":"aGVhbHRo"},"method":"/etcdserverpb.KV/Range"}
+rpc-error {"code":"Unavailable","message":"etcdserver: no leader","method":"/etcdserverpb.KV/Range"}
+no-leader-range "etcdserver: no leader"
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"aGVhbHRo"}}},"method":"/etcdserverpb.Watch/Watch"}
+no-leader-watch "etcdserver: no leader"

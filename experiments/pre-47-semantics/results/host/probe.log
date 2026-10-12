@@ -1,15 +1,15 @@
 request {"body":{"TTL":-1},"method":"/etcdserverpb.Lease/LeaseGrant"}
-grant-min {"ID":4390623923880390149,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
-request {"body":{"ID":4390623923880390149},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+grant-min {"ID":4390623924019957765,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623924019957765},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 request {"body":{},"method":"/etcdserverpb.Lease/LeaseGrant"}
-grant-min {"ID":4390623923880390152,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
-request {"body":{"ID":4390623923880390152},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+grant-min {"ID":4390623924019957768,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623924019957768},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
-grant-min {"ID":4390623923880390155,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
-request {"body":{"ID":4390623923880390155},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+grant-min {"ID":4390623924019957771,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623924019957771},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 request {"body":{"TTL":2},"method":"/etcdserverpb.Lease/LeaseGrant"}
-grant-min {"ID":4390623923880390158,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
-request {"body":{"ID":4390623923880390158},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+grant-min {"ID":4390623924019957774,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623924019957774},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 request {"body":{"TTL":9000000001},"method":"/etcdserverpb.Lease/LeaseGrant"}
 rpc-error {"code":"OutOfRange","message":"etcdserver: too large lease TTL","method":"/etcdserverpb.Lease/LeaseGrant"}
 grant-too-large "etcdserver: too large lease TTL"
@@ -55,37 +55,37 @@ stream-request {"body":{"RequestUnion":{"ProgressRequest":{}}},"method":"/etcdse
 client-progress {"CancelReason":"","Canceled":false,"CompactRevision":0,"Created":false,"Events":null,"Header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10}}
 request {"body":{"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
 request {"body":{"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
-request {"body":{"key":"bGVhc2VzL2E=","lease":4390623923880390184,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
-request {"body":{"key":"bGVhc2VzL2I=","lease":4390623923880390184,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
-request {"body":{"key":"bGVhc2VzL2RldGFjaA==","lease":4390623923880390184,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
-request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623923880390184,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2E=","lease":4390623924019957800,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2I=","lease":4390623924019957800,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2RldGFjaA==","lease":4390623924019957800,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623924019957800,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
 request {"body":{"key":"bGVhc2VzL2RldGFjaA==","value":"ZnJlZQ=="},"method":"/etcdserverpb.KV/Put"}
-request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623923880390186,"value":"b3RoZXI="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623924019957802,"value":"b3RoZXI="},"method":"/etcdserverpb.KV/Put"}
 stream {"metadata":{"client-api-version":["3.7"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
 stream-request {"body":{"RequestUnion":{"CreateRequest":{"key":"bGVhc2VzLw==","prev_kv":true,"range_end":"bGVhc2VzMA=="}}},"method":"/etcdserverpb.Watch/Watch"}
 watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":16}}
-request {"body":{"ID":4390623923880390184},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"ID":4390623924019957800},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 revoke-events {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"leases/a","mod":17,"prev":true,"type":"DELETE","value_bytes":0,"version":0},{"create":0,"key":"leases/b","mod":17,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17},"watch_id":0}
 request {"body":{"key":"bGVhc2VzLw==","range_end":"bGVhc2VzMA=="},"method":"/etcdserverpb.KV/Range"}
 stream {"metadata":{"client-api-version":["3.7"]},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
-stream-request {"body":{"ID":4390623923880390184},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
-missing-keepalive {"ID":4390623923880390184,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
-request {"body":{"ID":4390623923880390184,"keys":true},"method":"/etcdserverpb.Lease/LeaseTimeToLive"}
-missing-ttl {"ID":4390623923880390184,"TTL":-1,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
+stream-request {"body":{"ID":4390623924019957800},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+missing-keepalive {"ID":4390623924019957800,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
+request {"body":{"ID":4390623924019957800,"keys":true},"method":"/etcdserverpb.Lease/LeaseTimeToLive"}
+missing-ttl {"ID":4390623924019957800,"TTL":-1,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
 request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
-request {"body":{"key":"ZXhwaXJlL2E=","lease":4390623923880390196,"value":"YQ=="},"method":"/etcdserverpb.KV/Put"}
-request {"body":{"key":"ZXhwaXJlL2I=","lease":4390623923880390196,"value":"Yg=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"ZXhwaXJlL2E=","lease":4390623924019957812,"value":"YQ=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"ZXhwaXJlL2I=","lease":4390623924019957812,"value":"Yg=="},"method":"/etcdserverpb.KV/Put"}
 stream {"metadata":{"client-api-version":["3.7"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
 stream-request {"body":{"RequestUnion":{"CreateRequest":{"key":"ZXhwaXJlLw==","prev_kv":true,"range_end":"ZXhwaXJlMA=="}}},"method":"/etcdserverpb.Watch/Watch"}
 watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":19}}
-expiry {"elapsed_ms":2183,"response":{"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"expire/a","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0},{"create":0,"key":"expire/b","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":20},"watch_id":0}}
+expiry {"elapsed_ms":2446,"response":{"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"expire/a","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0},{"create":0,"key":"expire/b","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":20},"watch_id":0}}
 request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
-request {"body":{"key":"a2VlcGFsaXZl","lease":4390623923880390201,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"a2VlcGFsaXZl","lease":4390623924019957817,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
 stream {"metadata":{"client-api-version":["3.7"]},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
-stream-request {"body":{"ID":4390623923880390201},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+stream-request {"body":{"ID":4390623924019957817},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
 request {"body":{"key":"a2VlcGFsaXZl"},"method":"/etcdserverpb.KV/Range"}
 keepalive-survived {"after_grant_ms":2600,"renewed_ttl":2}
-request {"body":{"ID":4390623923880390201},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"ID":4390623924019957817},"method":"/etcdserverpb.Lease/LeaseRevoke"}
 request {"body":{"success":[{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMDk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMTk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMjA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMjE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMjI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"RequestPut":{"key":"ZnJhZ21lbnQvMjM=","value":"\u003cbase64 value, 87384 characters\u003e"}}}]},"method":"/etcdserverpb.KV/Txn"}
 stream {"metadata":{"client-api-version":["3.7"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
 stream-request {"body":{"RequestUnion":{"CreateRequest":{"fragment":true,"key":"ZnJhZ21lbnQv","prev_kv":true,"range_end":"ZnJhZ21lbnQw"}}},"method":"/etcdserverpb.Watch/Watch"}
@@ -99,6 +99,8 @@ fragment-chunk {"cancel_reason":"","canceled":false,"compact_revision":0,"events
 no-fragment {"event_count":24,"fragment":false}
 request {"body":{"key":"Ym91bmRhcnk=","value":"eA=="},"method":"/etcdserverpb.KV/Put"}
 request {"body":{"key":"Ym91bmRhcnk="},"method":"/etcdserverpb.KV/DeleteRange"}
+request {"body":{"physical":true,"revision":25},"method":"/etcdserverpb.KV/Compact"}
+compact-R-minus-1 {"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
 request {"body":{"physical":true,"revision":26},"method":"/etcdserverpb.KV/Compact"}
 compact {"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
 request {"body":{"key":"Ym91bmRhcnk=","revision":25},"method":"/etcdserverpb.KV/Range"}
@@ -117,12 +119,23 @@ stream {"metadata":{"client-api-version":["3.7"],"hasleader":["true"]},"method":
 stream-request {"body":{"RequestUnion":{"CreateRequest":{"key":"Ym91bmRhcnk=","prev_kv":true,"range_end":"Ym91bmRhcno=","start_revision":26}}},"method":"/etcdserverpb.Watch/Watch"}
 watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
 watch-boundary {"requested":26,"response":{"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"boundary","mod":26,"prev":false,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26},"watch_id":0}}
+request {"body":{"key":"Ym91bmRhcnk=","revision":25},"method":"/etcdserverpb.KV/Range"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted","method":"/etcdserverpb.KV/Range"}
+client-compacted-range {"grpc_status_code":"Unknown","mapped_code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted"}
+stream {"metadata":{"client-api-version":["3.7"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"CreateRequest":{"key":"Ym91bmRhcnk=","start_revision":25}}},"method":"/etcdserverpb.Watch/Watch"}
+client-compacted-watch {"grpc_status_code":"Unknown","mapped_code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted"}
 request {"body":{"revision":26},"method":"/etcdserverpb.KV/Compact"}
 rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted","method":"/etcdserverpb.KV/Compact"}
 request {"body":{"revision":27},"method":"/etcdserverpb.KV/Compact"}
 rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision is a future revision","method":"/etcdserverpb.KV/Compact"}
+stream {"metadata":{"client-api-version":["3.7"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"CreateRequest":{"key":"Ym91bmRhcnk=","prev_kv":true,"start_revision":28}}},"method":"/etcdserverpb.Watch/Watch"}
+request {"body":{"key":"Ym91bmRhcnk=","value":"YmVmb3JlLXRhcmdldA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"Ym91bmRhcnk=","value":"YXQtdGFyZ2V0"},"method":"/etcdserverpb.KV/Put"}
+future-watch {"delivered_revision":28,"requested":28,"value":"at-target"}
 request {"body":{},"method":"/etcdserverpb.Maintenance/Status"}
-status {"dbSize":3411968,"dbSizeInUse":1646592,"dbSizeQuota":2147483648,"downgradeInfo":{},"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26},"leader":443629905751424238,"raftAppliedIndex":50,"raftIndex":50,"raftTerm":2,"storageVersion":"3.7.0","version":"3.7.2"}
+status {"dbSize":3276800,"dbSizeInUse":1646592,"dbSizeQuota":2147483648,"downgradeInfo":{},"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":28},"leader":443629905751424238,"raftAppliedIndex":53,"raftIndex":53,"raftTerm":2,"storageVersion":"3.7.0","version":"3.7.2"}
 request {"body":{"linearizable":true},"method":"/etcdserverpb.Cluster/MemberList"}
 members {"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2},"members":[{"ID":443629905751424238,"clientURLs":["https://127.0.0.1:32379"],"name":"probe","peerURLs":["http://127.0.0.1:32380"]}]}
-PASS {"compact_revision":26,"expiry_ms":2183,"fragment_chunks":2}
+PASS {"compact_revision":26,"expiry_ms":2446,"fragment_chunks":2}

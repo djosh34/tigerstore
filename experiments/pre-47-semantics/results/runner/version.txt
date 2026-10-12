@@ -1,0 +1,5 @@
+etcd Version: 3.7.2
+Git SHA: 68c065e
+Go Version: go1.26.8
+Go OS/Arch: linux/arm64
+go version go1.27.2 linux/arm64

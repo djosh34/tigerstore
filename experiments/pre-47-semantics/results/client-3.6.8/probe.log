@@ -1,0 +1,128 @@
+request {"body":{"TTL":-1},"method":"/etcdserverpb.Lease/LeaseGrant"}
+grant-min {"ID":4390623923932657925,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623923932657925},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{},"method":"/etcdserverpb.Lease/LeaseGrant"}
+grant-min {"ID":4390623923932657928,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623923932657928},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
+grant-min {"ID":4390623923932657931,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623923932657931},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"TTL":2},"method":"/etcdserverpb.Lease/LeaseGrant"}
+grant-min {"ID":4390623923932657934,"TTL":2,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":1}}
+request {"body":{"ID":4390623923932657934},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"TTL":9000000001},"method":"/etcdserverpb.Lease/LeaseGrant"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: too large lease TTL","method":"/etcdserverpb.Lease/LeaseGrant"}
+grant-too-large "etcdserver: too large lease TTL"
+request {"body":{"ID":777,"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"ID":777,"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
+rpc-error {"code":"FailedPrecondition","message":"etcdserver: lease already exists","method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"key":"bWlzc2luZy1sZWFzZQ==","lease":999999,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+rpc-error {"code":"NotFound","message":"etcdserver: requested lease not found","method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"L3JlZ2lzdHJ5L3Avaw==","limit":1},"method":"/etcdserverpb.KV/Range"}
+request {"body":{"compare":[{"TargetUnion":{},"key":"L3JlZ2lzdHJ5L3Avaw==","target":2}],"success":[{"Request":{"request_put":{"key":"L3JlZ2lzdHJ5L3Avaw==","lease":777,"value":"YQ=="}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"compare":[{"TargetUnion":{},"key":"L3JlZ2lzdHJ5L3Avaw==","target":2}],"failure":[{"Request":{"request_range":{"key":"L3JlZ2lzdHJ5L3Avaw=="}}}],"success":[{"Request":{"request_put":{"key":"L3JlZ2lzdHJ5L3Avaw==","value":"YmFk"}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"key":"L3JlZ2lzdHJ5L3Av","limit":1,"range_end":"L3JlZ2lzdHJ5L3Aw","revision":2},"method":"/etcdserverpb.KV/Range"}
+request {"body":{"count_only":true,"key":"L3JlZ2lzdHJ5L3Av","range_end":"L3JlZ2lzdHJ5L3Aw"},"method":"/etcdserverpb.KV/Range"}
+request {"body":{"key":"L3JlZ2lzdHJ5L3Av","keys_only":true,"range_end":"L3JlZ2lzdHJ5L3Aw"},"method":"/etcdserverpb.KV/Range"}
+request {"body":{"compare":[{"TargetUnion":{"mod_revision":1},"key":"L3JlZ2lzdHJ5L3Avaw==","target":2}],"failure":[{"Request":{"request_range":{"key":"L3JlZ2lzdHJ5L3Avaw=="}}}],"success":[{"Request":{"request_delete_range":{"key":"L3JlZ2lzdHJ5L3Avaw=="}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"compare":[{"TargetUnion":{"mod_revision":2},"key":"L3JlZ2lzdHJ5L3Avaw==","target":2}],"failure":[{"Request":{"request_range":{"key":"L3JlZ2lzdHJ5L3Avaw=="}}}],"success":[{"Request":{"request_delete_range":{"key":"L3JlZ2lzdHJ5L3Avaw=="}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"compare":[{"TargetUnion":{},"key":"Y29tcGFjdF9yZXZfa2V5"}],"failure":[{"Request":{"request_range":{"key":"Y29tcGFjdF9yZXZfa2V5"}}}],"success":[{"Request":{"request_put":{"key":"Y29tcGFjdF9yZXZfa2V5","value":"MA=="}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"key":"aGlzdG9yaWNhbA==","value":"YQ=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"aGlzdG9yaWNhbA=="},"method":"/etcdserverpb.KV/Range"}
+request {"body":{"key":"aGlzdG9yaWNhbA==","value":"Yg=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"aGlzdG9yaWNhbA==","revision":5},"method":"/etcdserverpb.KV/Range"}
+historical {"count":1,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":6},"kvs":[{"create_revision":5,"key":"aGlzdG9yaWNhbA==","mod_revision":5,"value":"YQ==","version":1}]}
+request {"body":{"compare":[{"TargetUnion":{},"key":"aGlzdG9yaWNhbA==","result":1,"target":2}],"success":[{"Request":{"request_range":{"key":"aGlzdG9yaWNhbA=="}}}]},"method":"/etcdserverpb.KV/Txn"}
+request {"body":{"compare":[{"TargetUnion":{"version":99},"key":"aGlzdG9yaWNhbA=="}],"failure":[{"Request":{"request_put":{"key":"ZmFpbGVkLWJyYW5jaA==","value":"eWVz"}}}]},"method":"/etcdserverpb.KV/Txn"}
+revision-shapes {"compactor":4,"failed_mutation":7,"read_only":6}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"ZXZlbnRzLw==","prev_kv":true,"progress_notify":true,"range_end":"ZXZlbnRzMA=="}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":7}}
+request {"body":{"key":"ZXZlbnRzL2E=","value":"YQ=="},"method":"/etcdserverpb.KV/Put"}
+create {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":8,"key":"events/a","mod":8,"prev":false,"type":"PUT","value_bytes":1,"version":1}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":8},"watch_id":0}
+request {"body":{"key":"ZXZlbnRzL2E=","value":"Yg=="},"method":"/etcdserverpb.KV/Put"}
+update {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":8,"key":"events/a","mod":9,"prev":true,"type":"PUT","value_bytes":1,"version":2}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":9},"watch_id":0}
+request {"body":{"key":"ZXZlbnRzL2E="},"method":"/etcdserverpb.KV/DeleteRange"}
+delete {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"events/a","mod":10,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10},"watch_id":0}
+periodic-progress {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10},"watch_id":0}
+stream-request {"body":{"RequestUnion":{"progress_request":{}}},"method":"/etcdserverpb.Watch/Watch"}
+requested-progress {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10},"watch_id":-1}
+stream-request {"body":{"RequestUnion":{"cancel_request":{}}},"method":"/etcdserverpb.Watch/Watch"}
+explicit-cancel {"cancel_reason":"","canceled":true,"compact_revision":0,"events":[],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10},"watch_id":0}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"Y2xpZW50Lw==","prev_kv":true,"progress_notify":true,"range_end":"Y2xpZW50MA==","start_revision":1}}},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"progress_request":{}}},"method":"/etcdserverpb.Watch/Watch"}
+client-progress {"Canceled":false,"CompactRevision":0,"Created":false,"Events":[],"Header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":10}}
+request {"body":{"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"TTL":10},"method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"key":"bGVhc2VzL2E=","lease":4390623923932657960,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2I=","lease":4390623923932657960,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2RldGFjaA==","lease":4390623923932657960,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623923932657960,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL2RldGFjaA==","value":"ZnJlZQ=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"bGVhc2VzL21vdmU=","lease":4390623923932657962,"value":"b3RoZXI="},"method":"/etcdserverpb.KV/Put"}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"bGVhc2VzLw==","prev_kv":true,"range_end":"bGVhc2VzMA=="}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":16}}
+request {"body":{"ID":4390623923932657960},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+revoke-events {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"leases/a","mod":17,"prev":true,"type":"DELETE","value_bytes":0,"version":0},{"create":0,"key":"leases/b","mod":17,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17},"watch_id":0}
+request {"body":{"key":"bGVhc2VzLw==","range_end":"bGVhc2VzMA=="},"method":"/etcdserverpb.KV/Range"}
+stream {"metadata":{"client-api-version":["3.6"]},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+stream-request {"body":{"ID":4390623923932657960},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+missing-keepalive {"ID":4390623923932657960,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
+request {"body":{"ID":4390623923932657960,"keys":true},"method":"/etcdserverpb.Lease/LeaseTimeToLive"}
+missing-ttl {"ID":4390623923932657960,"TTL":-1,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":17}}
+request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"key":"ZXhwaXJlL2E=","lease":4390623923932657972,"value":"YQ=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"ZXhwaXJlL2I=","lease":4390623923932657972,"value":"Yg=="},"method":"/etcdserverpb.KV/Put"}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"ZXhwaXJlLw==","prev_kv":true,"range_end":"ZXhwaXJlMA=="}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":19}}
+expiry {"elapsed_ms":2129,"response":{"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"expire/a","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0},{"create":0,"key":"expire/b","mod":20,"prev":true,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":20},"watch_id":0}}
+request {"body":{"TTL":1},"method":"/etcdserverpb.Lease/LeaseGrant"}
+request {"body":{"key":"a2VlcGFsaXZl","lease":4390623923932657977,"value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+stream {"metadata":{"client-api-version":["3.6"]},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+stream-request {"body":{"ID":4390623923932657977},"method":"/etcdserverpb.Lease/LeaseKeepAlive"}
+request {"body":{"key":"a2VlcGFsaXZl"},"method":"/etcdserverpb.KV/Range"}
+keepalive-survived {"after_grant_ms":2600,"renewed_ttl":2}
+request {"body":{"ID":4390623923932657977},"method":"/etcdserverpb.Lease/LeaseRevoke"}
+request {"body":{"success":[{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjM=","value":"\u003cbase64 value, 87384 characters\u003e"}}}]},"method":"/etcdserverpb.KV/Txn"}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"fragment":true,"key":"ZnJhZ21lbnQv","prev_kv":true,"range_end":"ZnJhZ21lbnQw"}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":23}}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"ZnJhZ21lbnQv","prev_kv":true,"range_end":"ZnJhZ21lbnQw"}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":23}}
+request {"body":{"success":[{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMDk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTM=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTQ=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTU=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTY=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTc=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTg=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMTk=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjA=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjE=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjI=","value":"\u003cbase64 value, 87384 characters\u003e"}}},{"Request":{"request_put":{"key":"ZnJhZ21lbnQvMjM=","value":"\u003cbase64 value, 87384 characters\u003e"}}}]},"method":"/etcdserverpb.KV/Txn"}
+fragment-chunk {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":23,"key":"fragment/00","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/01","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/02","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/03","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/04","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/05","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/06","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/07","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/08","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/09","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/10","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/11","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/12","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/13","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/14","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/15","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/16","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/17","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/18","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2}],"fragment":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":24},"watch_id":0}
+fragment-chunk {"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":23,"key":"fragment/19","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/20","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/21","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/22","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2},{"create":23,"key":"fragment/23","mod":24,"prev":true,"type":"PUT","value_bytes":65536,"version":2}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":24},"watch_id":0}
+no-fragment {"event_count":24,"fragment":false}
+request {"body":{"key":"Ym91bmRhcnk=","value":"eA=="},"method":"/etcdserverpb.KV/Put"}
+request {"body":{"key":"Ym91bmRhcnk="},"method":"/etcdserverpb.KV/DeleteRange"}
+request {"body":{"physical":true,"revision":26},"method":"/etcdserverpb.KV/Compact"}
+compact {"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
+request {"body":{"key":"Ym91bmRhcnk=","revision":25},"method":"/etcdserverpb.KV/Range"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted","method":"/etcdserverpb.KV/Range"}
+range-boundary {"code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted","requested":25,"response":null}
+request {"body":{"key":"Ym91bmRhcnk=","revision":26},"method":"/etcdserverpb.KV/Range"}
+range-boundary {"code":"OK","message":"","requested":26,"response":{"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}}
+request {"body":{"key":"Ym91bmRhcnk=","revision":27},"method":"/etcdserverpb.KV/Range"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision is a future revision","method":"/etcdserverpb.KV/Range"}
+range-boundary {"code":"OutOfRange","message":"etcdserver: mvcc: required revision is a future revision","requested":27,"response":null}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"Ym91bmRhcnk=","prev_kv":true,"range_end":"Ym91bmRhcno=","start_revision":25}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
+watch-boundary {"requested":25,"response":{"cancel_reason":"","canceled":true,"compact_revision":26,"events":[],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2},"watch_id":0}}
+stream {"metadata":{"client-api-version":["3.6"],"hasleader":["true"]},"method":"/etcdserverpb.Watch/Watch"}
+stream-request {"body":{"RequestUnion":{"create_request":{"key":"Ym91bmRhcnk=","prev_kv":true,"range_end":"Ym91bmRhcno=","start_revision":26}}},"method":"/etcdserverpb.Watch/Watch"}
+watch-created {"created":true,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26}}
+watch-boundary {"requested":26,"response":{"cancel_reason":"","canceled":false,"compact_revision":0,"events":[{"create":0,"key":"boundary","mod":26,"prev":false,"type":"DELETE","value_bytes":0,"version":0}],"fragment":false,"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26},"watch_id":0}}
+request {"body":{"revision":26},"method":"/etcdserverpb.KV/Compact"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision has been compacted","method":"/etcdserverpb.KV/Compact"}
+request {"body":{"revision":27},"method":"/etcdserverpb.KV/Compact"}
+rpc-error {"code":"OutOfRange","message":"etcdserver: mvcc: required revision is a future revision","method":"/etcdserverpb.KV/Compact"}
+request {"body":{},"method":"/etcdserverpb.Maintenance/Status"}
+status {"dbSize":3411968,"dbSizeInUse":1646592,"dbSizeQuota":2147483648,"downgradeInfo":{},"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2,"revision":26},"leader":443629905751424238,"raftAppliedIndex":50,"raftIndex":50,"raftTerm":2,"storageVersion":"3.7.0","version":"3.7.2"}
+request {"body":{"linearizable":true},"method":"/etcdserverpb.Cluster/MemberList"}
+members {"header":{"cluster_id":13455796455940752355,"member_id":443629905751424238,"raft_term":2},"members":[{"ID":443629905751424238,"clientURLs":["https://127.0.0.1:32379"],"name":"probe","peerURLs":["http://127.0.0.1:32380"]}]}
+PASS {"compact_revision":26,"expiry_ms":2129,"fragment_chunks":2}

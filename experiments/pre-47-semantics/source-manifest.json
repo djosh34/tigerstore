@@ -1,0 +1,606 @@
+{
+  "inspectedAt": "2026-10-12",
+  "mainDesignCommit": "91c4f974a6661ac02c2e7747781ea215353c643b",
+  "files": [
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/kubernetes/client.go",
+      "sha256": "e53dae576403d06b44e9c98d889f650bcbe8c9ca63f20172a08b91382b3ddcc3",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/kubernetes/client.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/client.go",
+      "sha256": "f81ffa367f2393e06c38cd4640cb78b11dd124a8e9d0b036acec1d94e5ba0dcb",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/client.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/ctx.go",
+      "sha256": "d2c2a9c810ffac9740dcb98c354fc3863acda28d44beba7aeabd1c0ac543b9ec",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/ctx.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/op.go",
+      "sha256": "de71060e4f97d5371610db4be3ddf6d11412838d44c5883afb972ebc7bc7fa53",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/op.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/watch.go",
+      "sha256": "db407293da0b26b366db648af09420f12e30379f2e1c7bb481e462a8d6515c59",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/watch.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/kv.go",
+      "sha256": "2618ebbdfd45b8b2d207eb2aaf311ee21ef80a298e90ab00e26b32ee5a7f08e7",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/kv.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/lease.go",
+      "sha256": "9ceda5a0579f303e9c6ffb99d36486c70d7d6c818120d0d8ca58eb375e84dab1",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/lease.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/cluster.go",
+      "sha256": "1672cfbcf2208c7eeaed7f286eec251bad9524e5303280b40d62b1b0d673df18",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/cluster.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/maintenance.go",
+      "sha256": "4fb8200a9d9a352b7b8adf1438db069f0b74d0218d4124d139eabf915c136ae2",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/maintenance.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/retry_interceptor.go",
+      "sha256": "73967b26b69aee5c991cee46978b4cdcc7c99a77035407268031848c7f082c23",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/retry_interceptor.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "client/v3/options.go",
+      "sha256": "f3586438112d4d5389eb8120bd6a06625ca9abe269ec187f6ef3b4abbf7f2f03",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/client/v3/options.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "api/etcdserverpb/rpc.proto",
+      "sha256": "d50fe7e0c2cb9d80fa6fed1b47fb5cadcda06674bef99c445adab40c24feedb2",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/api/etcdserverpb/rpc.proto"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "api/v3rpc/rpctypes/error.go",
+      "sha256": "00a1cfdeadc2852c4ca3d690bbce3fe963b46046e1485ab3abbe883865d5570d",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/api/v3rpc/rpctypes/error.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "api/v3rpc/rpctypes/md.go",
+      "sha256": "7fc895fe79417bbe4fb841d6e8f5eb363f2e39782080c671decb7d743a68deaa",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/api/v3rpc/rpctypes/md.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "api/version/version.go",
+      "sha256": "c470465643ab1d5d15133e4f4044e766459df527ffd523d7e661b3f8f20a6d81",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/api/version/version.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/lease/lessor.go",
+      "sha256": "4e36c8f8012e08c939083db06e17ad37c01fc8806390d0ec0d54567d991c6617",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/lease/lessor.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/lease/lease.go",
+      "sha256": "a87453aadafbb7caa76ea795e2e117566bfaff9b9010f25f50f95a3532d0666f",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/lease/lease.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/config/config.go",
+      "sha256": "2014d7e29b8887d8139892cb5e93782b91ef7ede1f2a90e67d5eef94f786b15c",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/config/config.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/server.go",
+      "sha256": "2313798e367fc6ae74c0a10643124ed9b6b7b1a95eedfc7929addda6f881636d",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/server.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/v3_server.go",
+      "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/v3_server.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/v3rpc/lease.go",
+      "sha256": "ef2702db19a21aa956f0b4aeb1e31450f0ee1f85bd98d6fb2787ebce687ca9c4",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/v3rpc/lease.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/v3rpc/watch.go",
+      "sha256": "f22aa5672d999c56a93c26222d280c8f02fdd660129d45e08ea6d29738358a16",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/v3rpc/watch.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/v3rpc/interceptor.go",
+      "sha256": "4c322aa6fb95133d858397374b0bee1c3bb7bb98868220554c8e531c2ab11fbd",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/v3rpc/interceptor.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/v3rpc/maintenance.go",
+      "sha256": "64cd943016ab49779fa711c54d5f1c30856b144fc7d8017dd4e05171718141f7",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/v3rpc/maintenance.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/etcdhttp/health.go",
+      "sha256": "23b5aade16da96563db9741e04ff89daf4a7f898dec554533398feda35496595",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/etcdhttp/health.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/etcdserver/api/etcdhttp/version.go",
+      "sha256": "82dce38fd7f4ccde6812c7df85cd23f01cbb8749e883fbd7b8de4cac2f4d3ce4",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/etcdserver/api/etcdhttp/version.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/storage/mvcc/kvstore.go",
+      "sha256": "fcfbdf5b7fa4e1f1c21fcf9c912751ad42b43a287329e52049170ee6c1ab4316",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/storage/mvcc/kvstore.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/storage/mvcc/kvstore_txn.go",
+      "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/storage/mvcc/kvstore_txn.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/storage/mvcc/watcher_group.go",
+      "sha256": "35764f4eb226fbc611137c1678677d69f6edddf90c41b7ed7c34b1551f2ae19e",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/storage/mvcc/watcher_group.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "server/storage/mvcc/watchable_store.go",
+      "sha256": "2462358bc843a300843977144e9f94f7b93fd242679f5c2f4c8446d5c4491c1b",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/server/storage/mvcc/watchable_store.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "etcdctl/ctlv3/command/ep_command.go",
+      "sha256": "bb3b6a65746de8df18fc59846aab946670e75979b616c85aef33ec47fae829e8",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/etcdctl/ctlv3/command/ep_command.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "etcdctl/ctlv3/command/printer.go",
+      "sha256": "ec6e07d38d84676bf0c1eb8e6c9766f54c526f8a7a2b6e14fbe82322cbd719af",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/etcdctl/ctlv3/command/printer.go"
+    },
+    {
+      "repository": "etcd-io/etcd",
+      "tag": "v3.7.2",
+      "commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "path": "etcdctl/ctlv3/command/printer_fields.go",
+      "sha256": "4f6637981f7b5efbc0746515753c9b746cdaed92ed6aff81a7f76e341f9ad691",
+      "url": "https://github.com/etcd-io/etcd/blob/68c065e562994b89e333e77b039ad066f933c586/etcdctl/ctlv3/command/printer_fields.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "go.mod",
+      "sha256": "c95da392b50af262a05200aa384bf5fc6230849f1b7a1cad1bc8441d938476a2",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/go.mod"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go",
+      "sha256": "3df7a553a7ee872caf9a9299b97c03d76670929bf86a3242d3e171f1b60a1a0f",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go",
+      "sha256": "bee9f6f4ebb8702ab0dd39a2745622dca3664cde019fdc8e19603a78856f474f",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go",
+      "sha256": "fd03deb2b3878f4e6f267b495b459178f38a8f04fd23de64abe61da9813e7510",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go",
+      "sha256": "5ecbb324b27abc3b44a2cd310bec56f8122b989a8d378a610dd9c32271fe81ec",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go",
+      "sha256": "ea4f71394b8c19d97b118e78b5820bd0d362b7fcd1ccd41c6602b2c11a0ba3c3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go",
+      "sha256": "850423534b4725ecef4cc15d5a1378a1c74d55fa8597949b63420e9d73f28ba1",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go",
+      "sha256": "f420a03e3a6c221dda0bb4ea11c96439be5770135d898166d640037261dfd8ed",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go",
+      "sha256": "83b535775fea87fce98a3a114ab4b8272af03a6de99c656df2ae51f27feab991",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "staging/src/k8s.io/apiserver/pkg/features/kube_features.go",
+      "sha256": "173dee9a6227dcf24a73b14af88948e8818f6912b2e88914826e2f7eaeb00c23",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/staging/src/k8s.io/apiserver/pkg/features/kube_features.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go",
+      "sha256": "e53dae576403d06b44e9c98d889f650bcbe8c9ca63f20172a08b91382b3ddcc3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "vendor/go.etcd.io/etcd/client/v3/ctx.go",
+      "sha256": "d2c2a9c810ffac9740dcb98c354fc3863acda28d44beba7aeabd1c0ac543b9ec",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/vendor/go.etcd.io/etcd/client/v3/ctx.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.35.0",
+      "commit": "66452049f3d692768c39c797b21b793dce80314e",
+      "path": "vendor/go.etcd.io/etcd/client/v3/op.go",
+      "sha256": "9d9c08e98f6419cc278a7f8a7608c9c813f3a8ada4d4d83724299a943c8fddc1",
+      "url": "https://github.com/kubernetes/kubernetes/blob/66452049f3d692768c39c797b21b793dce80314e/vendor/go.etcd.io/etcd/client/v3/op.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "go.mod",
+      "sha256": "f1755887675fbef54165bffffc1b27256041c98acfdeda755ff5c35febf30888",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/go.mod"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go",
+      "sha256": "0ba0e4b60853965243bee414138863bb12bf18e58b0b0a90ce4111730639ad58",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go",
+      "sha256": "dc9432e3ffe62121ff002e518db8bc376bd4c4d09b7f8b56aa5e0ab292d101fc",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go",
+      "sha256": "fd03deb2b3878f4e6f267b495b459178f38a8f04fd23de64abe61da9813e7510",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go",
+      "sha256": "5ecbb324b27abc3b44a2cd310bec56f8122b989a8d378a610dd9c32271fe81ec",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go",
+      "sha256": "ea4f71394b8c19d97b118e78b5820bd0d362b7fcd1ccd41c6602b2c11a0ba3c3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go",
+      "sha256": "411f42eea548b4e91a974b712cbdd98c89b2f7a00f4664e5d795770bb30ee2a7",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go",
+      "sha256": "f420a03e3a6c221dda0bb4ea11c96439be5770135d898166d640037261dfd8ed",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go",
+      "sha256": "af5f0bc56a2c97038be763d56c80cee4e61ea4204db19b4c100059f19fa0f64a",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "staging/src/k8s.io/apiserver/pkg/features/kube_features.go",
+      "sha256": "3d25cd549db1f33baa0c471fbfdf7dd8698d78a36f8cb729d75401f834d2831c",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/staging/src/k8s.io/apiserver/pkg/features/kube_features.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go",
+      "sha256": "e53dae576403d06b44e9c98d889f650bcbe8c9ca63f20172a08b91382b3ddcc3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "vendor/go.etcd.io/etcd/client/v3/ctx.go",
+      "sha256": "d2c2a9c810ffac9740dcb98c354fc3863acda28d44beba7aeabd1c0ac543b9ec",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/vendor/go.etcd.io/etcd/client/v3/ctx.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.36.0",
+      "commit": "ecf6decece6a6de25a57aad9ba90b6ce580f6f78",
+      "path": "vendor/go.etcd.io/etcd/client/v3/op.go",
+      "sha256": "9d9c08e98f6419cc278a7f8a7608c9c813f3a8ada4d4d83724299a943c8fddc1",
+      "url": "https://github.com/kubernetes/kubernetes/blob/ecf6decece6a6de25a57aad9ba90b6ce580f6f78/vendor/go.etcd.io/etcd/client/v3/op.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "go.mod",
+      "sha256": "264d8040f96cffa477d85798bf68c5b7c559ac5038adbc5c9905b826968c79fc",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/go.mod"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go",
+      "sha256": "924757121f7fd91454770637b8af692d287cd584d3da62eea06d9e021de2bc9a",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go",
+      "sha256": "73c50029d86e4b9869c756b629105f3505e2d787c61b2eb7d3f5f83058e1fb86",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/etcd3/watcher.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go",
+      "sha256": "fd03deb2b3878f4e6f267b495b459178f38a8f04fd23de64abe61da9813e7510",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/etcd3/compact.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go",
+      "sha256": "f5291a46d1b90022af4320eefbda944c23be080e1280ef8d8cb046e26d5cbd3c",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/etcd3/event.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go",
+      "sha256": "ea4f71394b8c19d97b118e78b5820bd0d362b7fcd1ccd41c6602b2c11a0ba3c3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/etcd3/lease_manager.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go",
+      "sha256": "d915cc2e3f7fa09c1cf045af200a7106b3c785d419f666c833cd6e8aacf986e4",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go",
+      "sha256": "f420a03e3a6c221dda0bb4ea11c96439be5770135d898166d640037261dfd8ed",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/config.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go",
+      "sha256": "cb97f25568e58b2e1a178dd6ce04c96588ea26078f3e9179c61290ef8f976aaa",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/storage/feature/feature_support_checker.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "staging/src/k8s.io/apiserver/pkg/features/kube_features.go",
+      "sha256": "3775fef767cca10e27cbe7ec2338afac5b26f58b1decbe528dc0a647f09e2e93",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/staging/src/k8s.io/apiserver/pkg/features/kube_features.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go",
+      "sha256": "e53dae576403d06b44e9c98d889f650bcbe8c9ca63f20172a08b91382b3ddcc3",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/vendor/go.etcd.io/etcd/client/v3/kubernetes/client.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "vendor/go.etcd.io/etcd/client/v3/ctx.go",
+      "sha256": "d2c2a9c810ffac9740dcb98c354fc3863acda28d44beba7aeabd1c0ac543b9ec",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/vendor/go.etcd.io/etcd/client/v3/ctx.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "vendor/go.etcd.io/etcd/client/v3/op.go",
+      "sha256": "de71060e4f97d5371610db4be3ddf6d11412838d44c5883afb972ebc7bc7fa53",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/vendor/go.etcd.io/etcd/client/v3/op.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "cmd/kubeadm/app/preflight/checks.go",
+      "sha256": "9fa26388e986a0806ad18cc01735e0d987aa5ec464947ea2e582a178a65145a8",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/cmd/kubeadm/app/preflight/checks.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "cmd/kubeadm/app/constants/constants.go",
+      "sha256": "bf2834117f8ba167c3b8da742fefd33d37cc52a2598471de15bc22651edc31e2",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/cmd/kubeadm/app/constants/constants.go"
+    },
+    {
+      "repository": "kubernetes/kubernetes",
+      "tag": "v1.37.1",
+      "commit": "f78e722310e50bcaca9276be22276d9e91d91308",
+      "path": "cmd/kubeadm/app/apis/kubeadm/v1beta4/defaults.go",
+      "sha256": "60901efb6add425ef8a7a8cdec21fb192c77c544cb24078620b700619fd55246",
+      "url": "https://github.com/kubernetes/kubernetes/blob/f78e722310e50bcaca9276be22276d9e91d91308/cmd/kubeadm/app/apis/kubeadm/v1beta4/defaults.go"
+    }
+  ]
+}
