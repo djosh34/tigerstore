@@ -273,11 +273,8 @@ func size(m *raftpb.Message) int64 {
 // which carry whole write batches. Everything else (heartbeats, votes,
 // ReadIndex and their responses) goes ahead of them.
 func isData(m *raftpb.Message) bool {
-	switch m.GetType() {
-	case raftpb.MsgApp, raftpb.MsgSnap, raftpb.MsgProp:
-		return true
-	}
-	return false
+	t := m.GetType()
+	return t == raftpb.MsgApp || t == raftpb.MsgSnap || t == raftpb.MsgProp
 }
 
 func (s *sender) send(m *raftpb.Message) {
