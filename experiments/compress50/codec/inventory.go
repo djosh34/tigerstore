@@ -6,11 +6,13 @@ import (
 	"strconv"
 )
 
-type statKey struct{ split, resource, format, bin string }
-type byteStats struct {
-	count, keys, values int64
-	min, max            int
-}
+type (
+	statKey   struct{ split, resource, format, bin string }
+	byteStats struct {
+		count, keys, values int64
+		min, max            int
+	}
+)
 
 func inventory(w *csv.Writer, rs []record) error {
 	stats := make(map[statKey]byteStats)

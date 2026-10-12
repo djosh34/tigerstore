@@ -33,6 +33,7 @@ func fixture(t *testing.T, n int) []record {
 	}
 	return rs
 }
+
 func testDictionary(t *testing.T) []byte {
 	t.Helper()
 	rs := fixture(t, 200)
@@ -44,6 +45,7 @@ func testDictionary(t *testing.T) []byte {
 	}
 	return b
 }
+
 func TestCodecRoundtrips(t *testing.T) {
 	dictionary := testDictionary(t)
 	random := make([]byte, 10240)
@@ -73,6 +75,7 @@ func TestCodecRoundtrips(t *testing.T) {
 		}
 	}
 }
+
 func TestLoadAndSplit(t *testing.T) {
 	a, b := fixture(t, 400), fixture(t, 400)
 	if !reflect.DeepEqual(a, b) {
@@ -111,6 +114,7 @@ func TestLoadAndSplit(t *testing.T) {
 		}
 	}
 }
+
 func TestResourcePrivacy(t *testing.T) {
 	for key, want := range map[string]string{"/registry/secrets/private-namespace/private-name": "secrets", "/registry/SENSITIVE/private-name": "other", "/SENSITIVE/key": "other", "/registry/apiregistration.k8s.io/apiservices/private-name": "apiservices", "/registry/services/endpoints/private-name": "endpoints"} {
 		if got := resource([]byte(key)); got != want {
@@ -118,6 +122,7 @@ func TestResourcePrivacy(t *testing.T) {
 		}
 	}
 }
+
 func TestBinsAndSynthetic(t *testing.T) {
 	for n, want := range map[int]string{0: "empty", 895: "1_to_895", 896: "near_1KiB_896_to_1152", 1024: "near_1KiB_896_to_1152", 1152: "near_1KiB_896_to_1152", 1153: "1153_to_9215", 9216: "near_10KiB_9216_to_11264", 10240: "near_10KiB_9216_to_11264", 11264: "near_10KiB_9216_to_11264", 11265: "11265_plus"} {
 		if sizeBin(n) != want {
@@ -137,6 +142,7 @@ func TestBinsAndSynthetic(t *testing.T) {
 		t.Fatal("format classification mismatch")
 	}
 }
+
 func TestPacking(t *testing.T) {
 	rs := fixture(t, 70)
 	for _, batch := range []int{16, 64, 256} {
@@ -167,6 +173,7 @@ func TestPacking(t *testing.T) {
 		}
 	}
 }
+
 func TestTimedWholePassesAndCSV(t *testing.T) {
 	rs := fixture(t, 70)
 	inputs, err := pack(rs, 16, "shuffled")
@@ -177,7 +184,11 @@ func TestTimedWholePassesAndCSV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.close()
+	defer func() {
+		if err := c.close(); err != nil {
+			t.Fatal("close codec failed")
+		}
+	}()
 	var compressed [][]byte
 	values := int64(0)
 	for _, in := range inputs {
@@ -218,6 +229,7 @@ func TestTimedWholePassesAndCSV(t *testing.T) {
 		}
 	}
 }
+
 func TestInventoryIsAggregate(t *testing.T) {
 	rs := fixture(t, 30)
 	rs = append(rs, record{Key: []byte("/registry/SENSITIVE_KEY/SENSITIVE_NAME"), Value: []byte("SENSITIVE_VALUE"), resource: "other", format: "raw_other", bin: "1_to_895"})

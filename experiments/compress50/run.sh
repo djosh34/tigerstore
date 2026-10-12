@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ulimit -c 0
 cd "$(dirname "$0")"
 DEADLINE=1791928800
 if (( $(date -u +%s) >= DEADLINE )); then echo 'Deadline reached'; exit 1; fi
@@ -63,4 +64,4 @@ go version -m "$PRIVATE/compressbench" >> "$OUT/environment.txt"
 CPU=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
 printf 'Compression CPU: %s; GOMAXPROCS=1; cluster deleted before timings\n' "$CPU" >> "$OUT/environment.txt"
 # Interface supplied by the benchmark module.
-GOMAXPROCS=1 taskset -c "$CPU" "$PRIVATE/compressbench" -input "$PRIVATE/dump.json" -out "$OUT"
+GOMAXPROCS=1 taskset -c "$CPU" timeout --kill-after=2s 235s "$PRIVATE/compressbench" -input "$PRIVATE/dump.json" -out "$OUT"

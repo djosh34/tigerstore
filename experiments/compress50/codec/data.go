@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -27,23 +28,23 @@ func load(r io.Reader) ([]record, error) {
 	}
 	d := json.NewDecoder(r)
 	if err := d.Decode(&dump); err != nil {
-		return nil, fmt.Errorf("invalid etcdctl JSON or base64")
+		return nil, errors.New("invalid etcdctl JSON or base64")
 	}
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("unexpected content after dump")
+		return nil, errors.New("unexpected content after dump")
 	}
 	if len(dump.KVs) == 0 {
-		return nil, fmt.Errorf("dump contains no kvs")
+		return nil, errors.New("dump contains no kvs")
 	}
 	out := make([]record, 0, len(dump.KVs))
 	seen := make(map[string]bool)
 	for _, kv := range dump.KVs {
 		if len(kv.Key) == 0 {
-			return nil, fmt.Errorf("dump contains an empty key")
+			return nil, errors.New("dump contains an empty key")
 		}
 		if seen[string(kv.Key)] {
-			return nil, fmt.Errorf("dump contains duplicate keys")
+			return nil, errors.New("dump contains duplicate keys")
 		}
 		seen[string(kv.Key)] = true
 		h := sha256.Sum256(kv.Key)
@@ -53,16 +54,19 @@ func load(r io.Reader) ([]record, error) {
 	return out, nil
 }
 
-var knownResources = tokenSet("pods podtemplates minions nodes namespaces secrets configmaps serviceaccounts services endpoints endpointslices deployments replicasets replicationcontrollers daemonsets statefulsets controllerrevisions jobs cronjobs events leases persistentvolumes persistentvolumeclaims storageclasses volumeattachments csinodes csidrivers csistoragecapacities resourcequotas limitranges horizontalpodautoscalers poddisruptionbudgets ingresses ingressclasses networkpolicies roles rolebindings clusterroles clusterrolebindings customresourcedefinitions apiservices priorityclasses runtimeclasses mutatingwebhookconfigurations validatingwebhookconfigurations validatingadmissionpolicies validatingadmissionpolicybindings flowcontrol flowSchemas flowschemas prioritylevelconfigurations certificatesigningrequests resourceclaims resourceclaimtemplates resourceslices deviceclasses")
-var knownGroups = tokenSet("apps batch coordination.k8s.io discovery.k8s.io networking.k8s.io storage.k8s.io rbac.authorization.k8s.io apiextensions.k8s.io apiregistration.k8s.io scheduling.k8s.io node.k8s.io admissionregistration.k8s.io flowcontrol.apiserver.k8s.io certificates.k8s.io resource.k8s.io autoscaling policy")
+var (
+	knownResources = tokenSet("pods podtemplates minions nodes namespaces secrets configmaps serviceaccounts services endpoints endpointslices deployments replicasets replicationcontrollers daemonsets statefulsets controllerrevisions jobs cronjobs events leases persistentvolumes persistentvolumeclaims storageclasses volumeattachments csinodes csidrivers csistoragecapacities resourcequotas limitranges horizontalpodautoscalers poddisruptionbudgets ingresses ingressclasses networkpolicies roles rolebindings clusterroles clusterrolebindings customresourcedefinitions apiservices priorityclasses runtimeclasses mutatingwebhookconfigurations validatingwebhookconfigurations validatingadmissionpolicies validatingadmissionpolicybindings flowcontrol flowSchemas flowschemas prioritylevelconfigurations certificatesigningrequests resourceclaims resourceclaimtemplates resourceslices deviceclasses")
+	knownGroups    = tokenSet("apps batch coordination.k8s.io discovery.k8s.io networking.k8s.io storage.k8s.io rbac.authorization.k8s.io apiextensions.k8s.io apiregistration.k8s.io scheduling.k8s.io node.k8s.io admissionregistration.k8s.io flowcontrol.apiserver.k8s.io certificates.k8s.io resource.k8s.io autoscaling policy")
+)
 
 func tokenSet(s string) map[string]bool {
 	m := make(map[string]bool)
-	for _, v := range strings.Fields(s) {
+	for v := range strings.FieldsSeq(s) {
 		m[v] = true
 	}
 	return m
 }
+
 func resource(k []byte) string {
 	p := strings.Split(string(k), "/")
 	if len(p) < 3 || p[1] != "registry" {
@@ -80,6 +84,7 @@ func resource(k []byte) string {
 	// Never copy an unknown key segment into output.
 	return "other"
 }
+
 func format(v []byte) string {
 	if bytes.HasPrefix(v, []byte{'k', '8', 's', 0}) {
 		return "kubernetes_protobuf"
@@ -89,6 +94,7 @@ func format(v []byte) string {
 	}
 	return "raw_other"
 }
+
 func sizeBin(n int) string {
 	switch {
 	case n == 0:
@@ -105,6 +111,7 @@ func sizeBin(n int) string {
 		return "11265_plus"
 	}
 }
+
 func filter(rs []record, pred func(record) bool) []record {
 	var out []record
 	for _, r := range rs {
@@ -114,6 +121,7 @@ func filter(rs []record, pred func(record) bool) []record {
 	}
 	return out
 }
+
 func synthetic(n int, repeated bool) []record {
 	rng := rand.New(rand.NewSource(int64(n)))
 	out := make([]record, 256)
@@ -155,7 +163,7 @@ func pack(rs []record, batch int, order string) ([]input, error) {
 			return bytes.Compare(items[i].Key, items[j].Key) < 0
 		})
 	default:
-		return nil, fmt.Errorf("unknown batch order")
+		return nil, errors.New("unknown batch order")
 	}
 	var out []input
 	for start := 0; start < len(items); start += batch {
@@ -163,7 +171,7 @@ func pack(rs []record, batch int, order string) ([]input, error) {
 		var buf []byte
 		for _, r := range items[start:end] {
 			if uint64(len(r.Value)) > math.MaxUint32 {
-				return nil, fmt.Errorf("value exceeds u32 framing limit")
+				return nil, errors.New("value exceeds u32 framing limit")
 			}
 			buf = binary.LittleEndian.AppendUint32(buf, uint32(len(r.Value)))
 			buf = append(buf, r.Value...)
@@ -172,20 +180,21 @@ func pack(rs []record, batch int, order string) ([]input, error) {
 	}
 	return out, nil
 }
+
 func validateFrames(data []byte, count int) error {
-	for i := 0; i < count; i++ {
+	for range count {
 		if len(data) < 4 {
-			return fmt.Errorf("short length frame")
+			return errors.New("short length frame")
 		}
 		n := uint64(binary.LittleEndian.Uint32(data))
 		data = data[4:]
 		if n > uint64(len(data)) {
-			return fmt.Errorf("short value frame")
+			return errors.New("short value frame")
 		}
 		data = data[int(n):]
 	}
 	if len(data) != 0 {
-		return fmt.Errorf("trailing frame bytes")
+		return errors.New("trailing frame bytes")
 	}
 	return nil
 }

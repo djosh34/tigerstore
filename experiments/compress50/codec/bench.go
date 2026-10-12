@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
-	"fmt"
+	"errors"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -29,7 +29,7 @@ var sink int
 func timed(c *codec, inputs []input, compressed [][]byte, encode bool, duration time.Duration, deadline time.Time) (metrics, error) {
 	var m metrics
 	if time.Now().Add(duration).After(deadline) {
-		return m, fmt.Errorf("benchmark budget exhausted")
+		return m, errors.New("benchmark budget exhausted")
 	}
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -48,7 +48,7 @@ func timed(c *codec, inputs []input, compressed [][]byte, encode bool, duration 
 			out, err = c.decode(compressed[ix])
 		}
 		if err != nil {
-			return m, fmt.Errorf("codec failed during timing")
+			return m, errors.New("codec failed during timing")
 		}
 		sink ^= len(out)
 		m.operations++
@@ -58,13 +58,14 @@ func timed(c *codec, inputs []input, compressed [][]byte, encode bool, duration 
 		if (i+1)%len(inputs) == 0 {
 			now := time.Now()
 			if now.After(deadline) {
-				return m, fmt.Errorf("benchmark budget exhausted")
+				return m, errors.New("benchmark budget exhausted")
 			}
 			if !now.Before(stop) {
 				break
 			}
 		}
 	}
+	runtime.KeepAlive(sink)
 	m.wall = time.Since(start).Nanoseconds()
 	cpu1, err := cpuNS()
 	if err != nil {
@@ -90,24 +91,25 @@ var benchHeader = []string{"dataset", "codec", "level", "dictionary_bytes", "bat
 func appendMetrics(row []string, m metrics) []string {
 	return append(row, num(m.operations), num(m.values), ratio(m.wall, m.values), ratio(m.cpu, m.values), ratio(m.wall, m.operations), ratio(m.cpu, m.operations), decimal(float64(m.allocs)/float64(m.operations)), decimal(float64(m.allocBytes)/float64(m.operations)))
 }
+
 func benchmark(w *csv.Writer, dataset string, inputs []input, c *codec, batch int, order string, duration time.Duration, deadline time.Time) error {
 	var values, raw, framed, compressedBytes int64
 	compressed := make([][]byte, len(inputs))
 	for i, in := range inputs {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("benchmark budget exhausted during validation")
+			return errors.New("benchmark budget exhausted during validation")
 		}
 		encoded, err := c.encode(in.data)
 		if err != nil {
-			return fmt.Errorf("encode failed during validation")
+			return errors.New("encode failed during validation")
 		}
 		compressed[i] = bytes.Clone(encoded)
 		decoded, err := c.decode(encoded)
 		if err != nil {
-			return fmt.Errorf("decode failed during validation")
+			return errors.New("decode failed during validation")
 		}
 		if !bytes.Equal(in.data, decoded) {
-			return fmt.Errorf("roundtrip mismatch")
+			return errors.New("roundtrip mismatch")
 		}
 		if batch > 1 {
 			if err := validateFrames(decoded, in.values); err != nil {

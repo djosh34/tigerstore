@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,9 +30,9 @@ type writerFile struct {
 }
 
 func output(dir, name string, header []string) (*writerFile, error) {
-	f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create aggregate output")
+		return nil, errors.New("cannot create aggregate output")
 	}
 	w := csv.NewWriter(f)
 	if err := w.Write(header); err != nil {
@@ -40,6 +41,7 @@ func output(dir, name string, header []string) (*writerFile, error) {
 	}
 	return &writerFile{f, w}, nil
 }
+
 func (w *writerFile) close() error {
 	w.w.Flush()
 	err := w.w.Error()
@@ -73,15 +75,16 @@ func trainingSamples(train []record) ([][]byte, int) {
 	}
 	return samples, total
 }
+
 func run(inputPath, outDir string, duration time.Duration) (retErr error) {
 	if runtime.GOMAXPROCS(0) != 1 {
-		return fmt.Errorf("set GOMAXPROCS=1 outside the executable and pin its CPU with taskset")
+		return errors.New("set GOMAXPROCS=1 outside the executable and pin its CPU with taskset")
 	}
 	start := time.Now()
 	deadline := start.Add(230 * time.Second)
 	f, err := os.Open(inputPath)
 	if err != nil {
-		return fmt.Errorf("cannot open input")
+		return errors.New("cannot open input")
 	}
 	records, err := load(f)
 	closeErr := f.Close()
@@ -89,10 +92,10 @@ func run(inputPath, outDir string, duration time.Duration) (retErr error) {
 		return err
 	}
 	if closeErr != nil {
-		return fmt.Errorf("cannot close input")
+		return errors.New("cannot close input")
 	}
-	if err := os.MkdirAll(outDir, 0700); err != nil {
-		return fmt.Errorf("cannot create output directory")
+	if err := os.MkdirAll(outDir, 0o700); err != nil {
+		return errors.New("cannot create output directory")
 	}
 	var files []*writerFile
 	defer func() {
@@ -161,7 +164,7 @@ func run(inputPath, outDir string, duration time.Duration) (retErr error) {
 	}{{"zstd", 1}, {"zstd", 3}, {"lz4", 0}, {"snappy", 0}} {
 		c, err := newCodec(spec.name, spec.level, nil)
 		if err != nil {
-			return fmt.Errorf("codec initialization failed")
+			return errors.New("codec initialization failed")
 		}
 		codecs = append(codecs, c)
 	}
@@ -174,7 +177,7 @@ func run(inputPath, outDir string, duration time.Duration) (retErr error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("benchmark budget exhausted before training")
+			return errors.New("benchmark budget exhausted before training")
 		}
 		cpu0, err := cpuNS()
 		if err != nil {
@@ -207,7 +210,7 @@ func run(inputPath, outDir string, duration time.Duration) (retErr error) {
 		}
 		c, err := newCodec("zstd", level, dictionary)
 		if err != nil {
-			return fmt.Errorf("trained dictionary codec initialization failed")
+			return errors.New("trained dictionary codec initialization failed")
 		}
 		codecs = append(codecs, c)
 	}

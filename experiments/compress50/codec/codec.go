@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 
 	"github.com/klauspost/compress/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -41,6 +41,7 @@ func newCodec(name string, level int, dictionary []byte) (*codec, error) {
 	}
 	return c, nil
 }
+
 func (c *codec) close() error {
 	if c.zd != nil {
 		c.zd.Close()
@@ -50,12 +51,14 @@ func (c *codec) close() error {
 	}
 	return nil
 }
+
 func resize(b []byte, n int) []byte {
 	if cap(b) < n {
 		return make([]byte, n)
 	}
 	return b[:n]
 }
+
 func (c *codec) encode(src []byte) ([]byte, error) {
 	switch c.name {
 	case "zstd":
@@ -66,7 +69,7 @@ func (c *codec) encode(src []byte) ([]byte, error) {
 		// LZ4 blocks alone cannot represent incompressible data or its raw length.
 		// This wrapper stores u32 original length, then a 0=raw/1=compressed tag.
 		if uint64(len(src)) > uint64(^uint32(0)) {
-			return nil, fmt.Errorf("LZ4 input exceeds u32 limit")
+			return nil, errors.New("LZ4 input exceeds u32 limit")
 		}
 		c.enc = resize(c.enc, 5+lz4.CompressBlockBound(len(src)))
 		binary.LittleEndian.PutUint32(c.enc, uint32(len(src)))
@@ -83,10 +86,11 @@ func (c *codec) encode(src []byte) ([]byte, error) {
 			c.enc = c.enc[:5+n]
 		}
 	default:
-		return nil, fmt.Errorf("unknown codec")
+		return nil, errors.New("unknown codec")
 	}
 	return c.enc, nil
 }
+
 func (c *codec) decode(src []byte) ([]byte, error) {
 	var err error
 	switch c.name {
@@ -96,27 +100,27 @@ func (c *codec) decode(src []byte) ([]byte, error) {
 		c.dec, err = snappy.Decode(c.dec[:cap(c.dec)], src)
 	case "lz4":
 		if len(src) < 5 {
-			return nil, fmt.Errorf("short LZ4 wrapper")
+			return nil, errors.New("short LZ4 wrapper")
 		}
 		n := int(binary.LittleEndian.Uint32(src))
 		c.dec = resize(c.dec, n)
 		switch src[4] {
 		case 0:
 			if len(src)-5 != n {
-				return nil, fmt.Errorf("bad raw LZ4 length")
+				return nil, errors.New("bad raw LZ4 length")
 			}
 			copy(c.dec, src[5:])
 		case 1:
 			var got int
 			got, err = lz4.UncompressBlock(src[5:], c.dec)
 			if err == nil && got != n {
-				err = fmt.Errorf("bad LZ4 decoded length")
+				err = errors.New("bad LZ4 decoded length")
 			}
 		default:
-			return nil, fmt.Errorf("bad LZ4 tag")
+			return nil, errors.New("bad LZ4 tag")
 		}
 	default:
-		return nil, fmt.Errorf("unknown codec")
+		return nil, errors.New("unknown codec")
 	}
 	return c.dec, err
 }
