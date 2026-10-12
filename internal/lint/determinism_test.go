@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,6 +26,13 @@ var corePackages = []string{
 	"internal/wal",
 }
 
+const module = "github.com/djosh34/tigerstore"
+
+// isCore reports whether a package path inside the module is a core
+// package. Core packages may only import each other: the rest of the
+// module does I/O.
+func isCore(rel string) bool { return slices.Contains(corePackages, rel) }
+
 // forbiddenImports reach the clock, the operating system, other goroutines
 // or a random source the simulator does not control.
 var forbiddenImports = map[string]string{
@@ -42,8 +50,13 @@ var forbiddenImports = map[string]string{
 	"sync":                  "the core is single-threaded and takes no locks",
 	"sync/atomic":           "the core is single-threaded and takes no locks",
 	"unsafe":                "the core must not depend on memory layout",
+	"path/filepath":         "do I/O through an adapter",
+	"plugin":                "the core must not load code",
 	"golang.org/x/sys/unix": "do I/O through an adapter",
 }
+
+// allowedLog are the log names that do not write anywhere by themselves.
+var allowedLog = map[string]bool{"New": true, "Logger": true}
 
 // seededRand are the math/rand/v2 names that do not touch the global
 // generator.
@@ -58,12 +71,24 @@ func violations(fset *token.FileSet, f *ast.File) []string {
 	report := func(n ast.Node, msg string) {
 		out = append(out, fmt.Sprintf("%s: %s", fset.Position(n.Pos()), msg))
 	}
-	randName := ""
+	randName, logName := "", ""
 	for _, imp := range f.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
 			report(imp, err.Error())
 			continue
+		}
+		if imp.Name != nil && imp.Name.Name == "." {
+			report(imp, fmt.Sprintf("dot-imports %s, which hides what it uses", path))
+		}
+		if rest, ok := strings.CutPrefix(path, module+"/"); ok && !isCore(rest) {
+			report(imp, fmt.Sprintf("imports %s, which is not a core package", path))
+		}
+		if path == "log" {
+			logName = "log"
+			if imp.Name != nil {
+				logName = imp.Name.Name
+			}
 		}
 		if why, bad := forbiddenImports[path]; bad || strings.HasPrefix(path, "net/") || strings.HasPrefix(path, "golang.org/x/sys/") {
 			if why == "" {
@@ -71,7 +96,7 @@ func violations(fset *token.FileSet, f *ast.File) []string {
 			}
 			report(imp, fmt.Sprintf("imports %s: %s", path, why))
 		}
-		if path == "math/rand/v2" {
+		if path == "math/rand/v2" && (imp.Name == nil || imp.Name.Name != ".") {
 			randName = "rand"
 			if imp.Name != nil {
 				randName = imp.Name.Name
@@ -83,8 +108,15 @@ func violations(fset *token.FileSet, f *ast.File) []string {
 		case *ast.GoStmt:
 			report(n, "starts a goroutine")
 		case *ast.SelectorExpr:
-			if id, ok := n.X.(*ast.Ident); ok && randName != "" && id.Name == randName && !seededRand[n.Sel.Name] {
+			id, ok := n.X.(*ast.Ident)
+			if !ok {
+				break
+			}
+			if randName != "" && id.Name == randName && !seededRand[n.Sel.Name] {
 				report(n, fmt.Sprintf("uses the global generator %s.%s", id.Name, n.Sel.Name))
+			}
+			if logName != "" && id.Name == logName && !allowedLog[n.Sel.Name] {
+				report(n, fmt.Sprintf("uses %s.%s, which writes to standard error", id.Name, n.Sel.Name))
 			}
 		}
 		return true
@@ -128,9 +160,15 @@ func TestLintCatchesViolations(t *testing.T) {
 	src := `package bad
 
 import (
+	"log"
 	"math/rand/v2"
+	. "math/rand/v2"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/osfs"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 var mu sync.Mutex
@@ -140,6 +178,12 @@ func f() {
 	_ = time.Now()
 	_ = rand.IntN(3)
 	_ = rand.New(rand.NewPCG(1, 2))
+	_ = log.New(nil, "", 0)
+	log.Printf("x")
+	_, _ = filepath.Glob("*")
+	_, _ = osfs.New("x")
+	_ = Uint64()
+	var _ wal.FS
 }
 `
 	fset := token.NewFileSet()
@@ -148,7 +192,12 @@ func f() {
 		t.Fatal(err)
 	}
 	got := violations(fset, f)
-	for _, want := range []string{"imports sync", "imports time", "starts a goroutine", "global generator rand.IntN"} {
+	want := []string{
+		"imports sync", "imports time", "starts a goroutine", "global generator rand.IntN",
+		"log.Printf", "imports path/filepath", "internal/osfs, which is not a core package",
+		"dot-imports math/rand/v2",
+	}
+	for _, want := range want {
 		found := false
 		for _, v := range got {
 			found = found || strings.Contains(v, want)
@@ -157,7 +206,7 @@ func f() {
 			t.Errorf("violation %q not reported; got %v", want, got)
 		}
 	}
-	if len(got) != 4 {
-		t.Errorf("got %d violations, want 4: %v", len(got), got)
+	if len(got) != len(want) {
+		t.Errorf("got %d violations, want %d: %v", len(got), len(want), got)
 	}
 }

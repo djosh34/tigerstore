@@ -20,6 +20,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -66,7 +67,9 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
 // *pb.DeleteRangeRequest or *pb.TxnRequest. ID is chosen by the driver and
-// comes back in the Reply; it must be unique among waiting requests.
+// comes back in the Reply. It must never repeat within one run of the
+// node: a write that timed out can still commit later, and its entry
+// carries its ID.
 type Request struct {
 	ID uint64
 	Op proto.Message
@@ -219,8 +222,14 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
+	n.retryReads(false)
+}
+
+// retryReads asks again for the read index of batches that have none,
+// after readRetryTicks or at once.
+func (n *Node) retryReads(now bool) {
 	for _, b := range n.readBatches {
-		if b.index == 0 && n.now-b.sent >= readRetryTicks {
+		if b.index == 0 && (now || n.now-b.sent >= readRetryTicks) {
 			b.sent = n.now
 			n.rn.ReadIndex(readCtx(n.cfg.Boot, b.ctx))
 		}
@@ -287,13 +296,16 @@ func check(op proto.Message) error {
 	return fmt.Errorf("core: unknown request type %T", op)
 }
 
+// queueWrite adds a write to the next entry. A write that would take the
+// entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	n.waiting[p.req.ID] = p
-	n.proposals = append(n.proposals, p)
-	n.propBytes += proto.Size(p.req.Op)
-	if n.propBytes >= n.cfg.MaxBatchBytes {
+	size := proto.Size(p.req.Op)
+	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
+	n.waiting[p.req.ID] = p
+	n.proposals = append(n.proposals, p)
+	n.propBytes += size
 }
 
 // expire fails requests whose deadline passed.
@@ -413,6 +425,11 @@ func (n *Node) stop() {
 
 func (n *Node) handleReady(rd raft.Ready) {
 	if rd.SoftState != nil {
+		if rd.Lead != n.leader && rd.Lead != raft.None {
+			// A term change clears Raft's pending read requests, so ask the
+			// new leader at once instead of waiting for the retry.
+			n.retryReads(true)
+		}
 		n.leader = rd.Lead
 	}
 	if rd.HardState != nil {
@@ -584,6 +601,12 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	return resp, nil
 }
 
+// isAnswer reports whether an error from the index answers the request.
+// The index only returns etcd's gRPC errors for requests it rejects
+// (unknown lease, missing key for ignore_value, a compacted or future
+// revision); they leave the index unchanged and every replica gives the
+// same answer. Anything else is a bug.
 func isAnswer(err error) bool {
-	return errors.Is(err, rpctypes.ErrGRPCLeaseNotFound) || errors.Is(err, rpctypes.ErrGRPCKeyNotFound)
+	_, ok := status.FromError(err)
+	return ok
 }

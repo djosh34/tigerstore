@@ -10,7 +10,6 @@
 package sim
 
 import (
-	"container/heap"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -43,7 +42,9 @@ type Config struct {
 	// Duration is the length of the phase with faults.
 	Duration int64
 	// Heal is the fault-free phase after it. Clients keep running in it,
-	// and every call that starts LiveAfter into it must succeed.
+	// and every call that starts LiveAfter into it must succeed. Nodes
+	// restarted at healing need up to two election timeouts (2 s) to elect
+	// a leader; at 1 s, seed 126 fails with "no leader".
 	Heal      int64
 	LiveAfter int64
 	// Clients is the number of clients. Each has one call in flight.
@@ -77,7 +78,7 @@ func DefaultConfig(seed uint64) Config {
 		Seed:          seed,
 		Duration:      20 * Second,
 		Heal:          10 * Second,
-		LiveAfter:     4 * Second,
+		LiveAfter:     2 * Second,
 		Clients:       6,
 		ClientTimeout: 3 * Second,
 		Faults: Faults{
@@ -120,27 +121,52 @@ type event struct {
 	err  error
 }
 
+// queue is a binary min-heap of events by time, then sequence number.
 type queue []*event
 
-func (q queue) Len() int { return len(q) }
-func (q queue) Less(i, j int) bool {
+func (q queue) less(i, j int) bool {
 	if q[i].at != q[j].at {
 		return q[i].at < q[j].at
 	}
 	return q[i].seq < q[j].seq
 }
-func (q queue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
-func (q *queue) Push(x any) {
-	if e, ok := x.(*event); ok {
-		*q = append(*q, e)
+
+func (q *queue) push(e *event) {
+	*q = append(*q, e)
+	h := *q
+	for i := len(h) - 1; i > 0; {
+		p := (i - 1) / 2
+		if !h.less(i, p) {
+			break
+		}
+		h[i], h[p] = h[p], h[i]
+		i = p
 	}
 }
 
-func (q *queue) Pop() any {
-	old := *q
-	e := old[len(old)-1]
-	*q = old[:len(old)-1]
-	return e
+func (q *queue) pop() *event {
+	h := *q
+	top := h[0]
+	last := len(h) - 1
+	h[0] = h[last]
+	h[last] = nil
+	h = h[:last]
+	for i := 0; ; {
+		l, r, m := 2*i+1, 2*i+2, i
+		if l < len(h) && h.less(l, m) {
+			m = l
+		}
+		if r < len(h) && h.less(r, m) {
+			m = r
+		}
+		if m == i {
+			break
+		}
+		h[i], h[m] = h[m], h[i]
+		i = m
+	}
+	*q = h
+	return top
 }
 
 type node struct {
@@ -243,8 +269,8 @@ func Run(cfg Config) (*Result, error) {
 	s.push(&event{at: s.healAt, kind: evHeal})
 
 	for len(s.q) > 0 && s.err == nil {
-		e, ok := heap.Pop(&s.q).(*event)
-		if !ok || e.at > s.endAt {
+		e := s.q.pop()
+		if e.at > s.endAt {
 			break
 		}
 		s.now = e.at
@@ -265,7 +291,7 @@ func Run(cfg Config) (*Result, error) {
 func (s *Sim) push(e *event) {
 	s.seq++
 	e.seq = s.seq
-	heap.Push(&s.q, e)
+	s.q.push(e)
 }
 
 // exp draws an exponential delay with the given mean.
