@@ -1,0 +1,29 @@
+name: exp-pre-48-rangestream
+on:
+  push:
+    branches: [exp/pre-48-storage]
+    paths:
+      - 'experiments/pre-48-rangestream/**'
+      - '.github/workflows/exp-pre-48-rangestream.yml'
+permissions:
+  contents: read
+jobs:
+  rangestream:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: experiments/pre-48-rangestream/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: rangestream-${{ github.run_attempt }}
+          path: experiments/pre-48-rangestream/.work/evidence/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Delete build output
+        if: always()
+        run: |
+          root="$GITHUB_WORKSPACE/experiments/pre-48-rangestream/.work"
+          if [ -d "$root/cache" ]; then chmod -R u+w "$root/cache"; fi
+          rm -rf "$root/tmp" "$root/cache" "$root/tools"
