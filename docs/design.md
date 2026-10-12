@@ -6,7 +6,7 @@ This file is the current design. It starts from the merged starting design ([#32
 
 ## Status
 
-Built so far: the Go module, a `tigerstore` command that exits with an error, and CI with lint, build and test. Everything below is the design that the next pull requests build.
+Built so far: the Go module, a `tigerstore` command that exits with an error, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`) and the simulated disk (`internal/simfs`). The section "What is built" describes them. Everything else is the design that the next pull requests build.
 
 ## Fixed by the owner
 
@@ -72,7 +72,16 @@ The batch byte cap and the peer window size are open for measurement.
 
 ## Node-to-node transport
 
-Between tigerstore nodes no gRPC or protobuf is required. Only the client-facing API stays etcd gRPC. Any transport is allowed if it is fast and encrypted, for example AES-GCM messages over UDP, QUIC, or framed TCP with TLS. The architect picks by measurement.
+Decided in the [design change on #47](https://github.com/djosh34/tigerstore/issues/47): node-to-node traffic is framed TLS 1.3 over TCP. There is one connection per directed peer pair. Length-prefixed frames carry packed Raft messages, with no gRPC or protobuf framing between nodes. The transport sits behind a small interface, so the tournament in #50 and #52 can try others.
+
+Evidence: a loopback experiment where TLS won every batched case and raw AES-GCM over UDP led only at 1 KiB with batch 1, by 8%, within noise; an Astra second opinion agreed. Both measured loopback with one outstanding batch. They pick a default, not batch sizes or in-flight windows.
+
+Rules that come with it:
+
+- Per peer, frame bytes and queued bytes are capped. Control messages (heartbeats, votes, ReadIndex) go between data frames. The peer writers are not the committer.
+- A stalled connection hits a write deadline, is dropped and is reported to Raft as unreachable. It never blocks the committer.
+- Snapshots stream in bounded chunks to temporary storage and install only when complete and validated, through the durable install path. A separate snapshot connection is allowed if control traffic still starves.
+- The codec keeps every Raft field, including the ReadIndex context and snapshot membership. A socket write is never a durable acknowledgement.
 
 ## Storage and recovery
 
@@ -83,6 +92,42 @@ Between tigerstore nodes no gRPC or protobuf is required. Only the client-facing
 - Segment cleaning runs only below the compaction revision. It copies live data, syncs it, installs and syncs a new recovery root, and only then deletes the old segment. It keeps everything that outstanding roots, replay and readers need.
 - The index is one arena B+tree with live subtree counts. A key-to-slot hash next to it is an experiment, judged by total bytes per key and core time.
 - Compression is an experiment, judged by the ratio on a real Kubernetes dump, the CPU cost and the read latency.
+
+### What is built
+
+**MVCC index.** `internal/mvcc` is the key index of one node. A Google B-tree maps each key to all its versions, oldest first. A version holds the mod revision (main and sub), create revision, version, lease and value. A tombstone is a version with version 0. Range, Put, DeleteRange and Txn follow etcd v3.7.2 rule by rule, including the quirks: a request that changes nothing keeps the revision, Count ignores the revision filters, the limit goes into the scan only with the default order, compares and checks read the state before the transaction, reads inside a transaction see its earlier writes, and nested transaction responses carry an empty header. The validation that etcd does before a request enters the log (empty key, sort options, too many operations, duplicate keys across nested transactions) is `mvcc.Check*`, and errors are etcd's own `rpctypes` values. After each write, `Store.Changes` lists the changed keys, and `Change.Event` builds the watch event with or without the previous value. `Store.Hash` hashes the whole state so that the simulator can compare replicas.
+
+Values are slices that the index keeps without copying. Today the apply step copies them out of the protobuf decode of the Raft entry, so a value sits in memory twice, once in the log entry and once in the index. Pointing the index straight into the entry bytes is the next step for memory (see Seams).
+
+The B-tree stands in for the arena B+tree with live subtree counts. Count walks every key in the range, which took 61 ms at 1M keys in the [10M-key experiment](https://github.com/djosh34/tigerstore/issues/47); the B+tree with subtree counts replaces it.
+
+**Raft log on disk.** `internal/wal` is the only durable copy of the data. The log is a sequence of segment files of 64 MiB. Each segment starts with a header of a magic string, its sequence number and the crc that its first record chains from. A record is `u32 length | u32 crc | u8 type | payload`, with two types: an entry (term, index, entry type, data) and a hard state (term, vote, commit). The crc is CRC-32C over the type and payload, seeded with the crc of the record before it, so a stale or misplaced record does not verify.
+
+An entry record replaces every entry at or after its index. A truncated Raft suffix and its replacement therefore reach the disk in the same write and the same fsync, before any later acknowledgement.
+
+`WAL.Append` only encodes into a buffer. `WAL.Sync` writes the buffer with one write and one fsync, so whoever calls it decides the group commit: the node driver drains every queued append, then syncs once. A failed fsync is never retried; the node stops.
+
+A new segment gets its header written and synced before its directory entry is synced and before any record goes in. So after a crash, a segment either has its full header or holds nothing else.
+
+Recovery (`wal.Open`) first checks that the segment names are consecutive, then reads the segments in order. In the newest segment, a record that does not verify starts a torn tail. If the next record does not verify either, chained from the bad record's stored crc or from its computed one, the write was never synced and never acknowledged, so recovery truncates the tail and syncs. A newest segment that holds no more than a damaged header is removed. Everything else is `wal.ErrCorrupt`, and the node refuses to start without changing any file:
+
+- a damaged record in an older segment;
+- a damaged record (body, type or stored crc) followed by a record that verifies;
+- a damaged header with records after it, a file name that does not match its header, or a gap in the segment sequence or crc chain;
+- an entry that leaves a gap or does not start the log at index 1;
+- a commit index past the last entry.
+
+The second rule can also fence a node after a crash in which the disk wrote a later sector of the last write but not an earlier one. Refusing to start is the safe answer there: cutting the tail could roll back a synced vote.
+
+Known limits: damage to a record's length field misframes everything after it and looks like a torn tail, and so does damage to the last synced record. A disk that lies about fsync can lose a synced tail the same way. Recovery cuts the log silently in these cases; they are outside the guarantee until records carry redundant headers.
+
+The WAL does no I/O of its own. It goes through `wal.FS`, a directory with List, Create, Open, Remove and SyncDir, and files with ReadAll, Write (append), Truncate and Sync. `internal/osfs` implements it on the local file system. `internal/simfs` implements it in memory for the simulator.
+
+**Simulated disk.** `simfs.Disk` keeps volatile and durable state per file and per directory. Write and Truncate change the volatile content; Sync makes it durable. Create and Remove change the volatile directory; SyncDir makes it durable. `Crash` keeps the durable state plus a random prefix of each file's unsynced appends, and one time in four turns the last kept bytes into garbage, like a torn sector. `Erase` empties the disk for the erase-one-disk checks. A `Fault` hook runs before every operation and can fail it, which is where ENOSPC, EIO and stalled fsyncs come in.
+
+The WAL crash test runs 500 seeds of random appends, suffix replacements and crashes, including crashes between the write and the fsync of one sync, and repeated crashes at the first writing operations of recovery (truncate and sync of a torn tail). A separate test crashes at each of the six writing steps of replacing a damaged header-only newest segment (remove, directory sync, and the create, write and syncs of the new segment). After each crash, recovery must return the synced log plus a prefix of the unsynced records. The test fails if recovery skips the torn-tail truncation or the crc check. Separate tests damage the body, type and stored crc of a record in the middle of the newest segment and the header of the newest segment, and remove a middle segment, also right before an empty newest one; each must give `ErrCorrupt` and leave the files alone.
+
+`osfs.New` creates the data directory and its missing parents, and on every start syncs the directory and every ancestor up to the root, so a setup that crashed halfway is finished by the next start.
 
 ## Testing
 
@@ -118,10 +163,18 @@ The fault proxy on every link, tc netem, SIGKILL, SIGSTOP, CPU throttling and a 
 
 The first measurement is the full harness cost per seed on `ubuntu-24.04-arm`, capped at 256 MiB per simulator worker. PR, nightly and release campaigns are sized from that. A failing seed becomes a shrunk schedule and a named scenario test that fails on the bad commit.
 
+## Seams for later pieces
+
+Later pieces plug in here without reshaping what exists.
+
+- **Values point into the log.** The index stores value slices without copying. A decoder that leaves the value bytes inside the Raft entry (protowire instead of `proto.Unmarshal`) removes the second copy without touching the index.
+- **Compaction and segment cleaning.** `Store.CompactRev` already gates Range and Txn reads with `ErrCompacted`. Compaction drops versions below the revision from each key's list. Segment cleaning removes old segments with `FS.Remove` and `FS.SyncDir`. Recovery accepts a first segment with any sequence number, because its header carries the crc it chains from, but it still requires the log to start at index 1. Cleaning therefore needs the recovery root first: a synced checkpoint that names the first index the log must start at.
+- **Leases.** `Store.LeaseExists` decides whether a Put with a lease is accepted. Until the lessor exists it is nil, and every lease is unknown.
+- **Disk faults.** `simfs.Disk.Fault` can fail any operation on any file. Slow and stalled fsync are a delay in the simulator's scheduling of the completion, not a disk property.
+
 ## Open for the architect
 
 - How the committer prepares responses before commit: which node executes a batch, and when, so that the prepared revisions and results match the committed order.
-- The node-to-node transport.
 - The scope of a custom client TLS, gRPC and HTTP/2 path. grpc-go stays the compatibility reference, and the custom path stops growing if it does not clearly beat grpc-go.
 - The hash index, fuzzy checkpoints, compression, and the batch byte cap.
 
