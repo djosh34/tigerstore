@@ -125,6 +125,135 @@ func TestDamagedSealedSegmentIsCorrupt(t *testing.T) {
 	}
 }
 
+// rewrite replaces a file's synced content, like damage on disk.
+func rewrite(t *testing.T, d *simfs.Disk, name string, change func([]byte) []byte) {
+	t.Helper()
+	f, err := d.Open(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := f.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = change(data)
+	if err := f.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// segments writes n synced batches of one entry and a hard state, one
+// segment each, and returns the segment names.
+func segments(t *testing.T, d *simfs.Disk, n uint64) []string {
+	t.Helper()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	for i := uint64(1); i <= n; i++ {
+		w.Append(&wal.HardState{Term: i, Vote: 1, Commit: i}, []*raftpb.Entry{entry(i, i, "v")})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return names
+}
+
+func wantCorrupt(t *testing.T, d *simfs.Disk) {
+	t.Helper()
+	before, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, rec, err := wal.Open(d); !errors.Is(err, wal.ErrCorrupt) {
+		t.Fatalf("open = %v with %d entries and %+v, want ErrCorrupt", err, len(rec.Entries), rec.HardState)
+	}
+	after, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(before) != fmt.Sprint(after) {
+		t.Fatalf("open of a corrupt log changed the files from %v to %v", before, after)
+	}
+}
+
+func TestMissingSegmentIsCorrupt(t *testing.T) {
+	d := simfs.New()
+	names := segments(t, d, 3)
+	if err := d.Remove(names[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SyncDir(); err != nil {
+		t.Fatal(err)
+	}
+	wantCorrupt(t, d)
+}
+
+func TestDamagedNewestHeaderIsCorrupt(t *testing.T) {
+	d := simfs.New()
+	segments(t, d, 4)
+	// Put a record into the empty newest segment that rotation left.
+	w, _ := open(t, d)
+	w.Append(&wal.HardState{Term: 5, Vote: 1, Commit: 5}, []*raftpb.Entry{entry(5, 5, "v")})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newest := names[len(names)-1]
+	rewrite(t, d, newest, func(b []byte) []byte {
+		b[len("tigerwal")+8] ^= 1 // the chain crc in the header
+		return b
+	})
+	wantCorrupt(t, d)
+}
+
+func TestDamagedRecordBeforeValidOneIsCorrupt(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	for i := uint64(1); i <= 5; i++ {
+		w.Append(&wal.HardState{Term: i, Vote: 1, Commit: i}, []*raftpb.Entry{entry(i, i, "value")})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewrite(t, d, names[0], func(b []byte) []byte {
+		// The second record is the first hard state, right after the
+		// header and the first entry record of 9+17+5 bytes.
+		b[20+31+9+3] ^= 0x40
+		return b
+	})
+	wantCorrupt(t, d)
+}
+
+var errCrash2 = errors.New("crash in recovery")
+
+// failFrom fails every disk operation from the k-th on.
+func failFrom(d *simfs.Disk, k int) {
+	n := 0
+	d.Fault = func(simfs.Op, string) error {
+		n++
+		if n >= k {
+			return errCrash2
+		}
+		return nil
+	}
+}
+
 // TestCrashKeepsSyncedEntries crashes at random points with torn tails.
 // Recovery must return the synced log plus a prefix of the unsynced
 // records, and leave a log that accepts appends.
@@ -158,6 +287,15 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 					d.Fault = nil
 				}
 				d.Crash(rng)
+				// Sometimes crash again in the middle of recovery.
+				for rng.IntN(2) == 0 {
+					failFrom(d, 1+rng.IntN(8))
+					if _, _, err := wal.Open(d); err != nil && !errors.Is(err, errCrash2) {
+						t.Fatalf("seed %d: open during crash: %v", seed, err)
+					}
+					d.Fault = nil
+					d.Crash(rng)
+				}
 				var rec *wal.Recovered
 				w, rec = open(t, d)
 				w.SetSegmentBytes(int64(64 + rng.IntN(512)))

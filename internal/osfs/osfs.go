@@ -5,6 +5,7 @@ package osfs
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -16,13 +17,29 @@ type Dir struct{ path string }
 
 var _ wal.FS = Dir{}
 
-// New creates the directory if needed and makes its creation durable.
+// New creates the directory and any missing parents, and syncs the parent
+// of each directory it created so that the path survives a crash.
 func New(path string) (Dir, error) {
+	path = filepath.Clean(path)
+	var created []string
+	for p := path; ; p = filepath.Dir(p) {
+		if _, err := os.Stat(p); err == nil {
+			break
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return Dir{}, err
+		}
+		created = append(created, p)
+		if filepath.Dir(p) == p {
+			break
+		}
+	}
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return Dir{}, err
 	}
-	if err := syncPath(filepath.Dir(path)); err != nil {
-		return Dir{}, err
+	for _, p := range created {
+		if err := syncPath(filepath.Dir(p)); err != nil {
+			return Dir{}, err
+		}
 	}
 	return Dir{path: path}, nil
 }

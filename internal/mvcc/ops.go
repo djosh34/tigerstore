@@ -2,7 +2,7 @@ package mvcc
 
 import (
 	"bytes"
-	"errors"
+	"math"
 	"sort"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -12,10 +12,6 @@ import (
 
 // The rules below follow etcd v3.7.2 (server/etcdserver/txn and
 // server/storage/mvcc) so that responses match etcd byte for byte.
-
-// errBadTxnPath means a transaction did not match its own compare results,
-// which only a bug can cause.
-var errBadTxnPath = errors.New("mvcc: transaction path does not match the request")
 
 // writer applies one request. Its changes get main revision begin+1.
 type writer struct {
@@ -69,7 +65,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	// revision filters. It decides the default order before it turns a NONE
 	// order with a non-key target into ASCEND.
 	pushLimit := int64(0)
-	if r.Limit > 0 && IsDefaultOrdering(r.SortTarget, r.SortOrder) && !hasRevisionFilters(r) {
+	if r.Limit > 0 && r.Limit < math.MaxInt64 && IsDefaultOrdering(r.SortTarget, r.SortOrder) && !hasRevisionFilters(r) {
 		pushLimit = r.Limit + 1
 	}
 	var kvs []*mvccpb.KeyValue
@@ -95,8 +91,14 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 		resp.More = true
 	}
 	if r.KeysOnly {
+		// Without a sort on values, etcd reads only the key index, which
+		// has no lease.
+		fast := r.SortTarget != pb.RangeRequest_VALUE
 		for _, kv := range kvs {
 			kv.Value = nil
+			if fast {
+				kv.Lease = 0
+			}
 		}
 	}
 	resp.Kvs = kvs
@@ -276,15 +278,16 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
 }
 
 // Txn runs a transaction. Compares and checks read the state before the
-// transaction; reads inside it see its own earlier writes.
+// transaction; reads inside it see its own earlier writes. An error after
+// checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	w := s.start()
 	path := w.compareToPath(r)
 	if _, err := w.checkTxn(r, path); err != nil {
 		return nil, err
 	}
-	resp, _ := newTxnResp(r, path)
-	if _, err := w.executeTxn(r, path, resp); err != nil {
+	resp, _, err := w.executeTxn(r, path)
+	if err != nil {
 		return nil, err
 	}
 	resp.Header = header(w.cur())
@@ -421,7 +424,10 @@ func (w *writer) checkRange(r *pb.RangeRequest) error {
 	return nil
 }
 
-func newTxnResp(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int) {
+// executeTxn runs the chosen branch and returns its response and the
+// number of nested transactions in it. Nested responses keep an empty
+// header, as in etcd.
+func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int, error) {
 	ops := branch(r, path[0])
 	resp := &pb.TxnResponse{
 		Header:    &pb.ResponseHeader{},
@@ -430,61 +436,28 @@ func newTxnResp(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int) {
 	}
 	n := 0
 	for i, op := range ops {
-		switch t := op.Request.(type) {
-		case *pb.RequestOp_RequestRange:
-			resp.Responses[i] = &pb.ResponseOp{Response: &pb.ResponseOp_ResponseRange{}}
-		case *pb.RequestOp_RequestPut:
-			resp.Responses[i] = &pb.ResponseOp{Response: &pb.ResponseOp_ResponsePut{}}
-		case *pb.RequestOp_RequestDeleteRange:
-			resp.Responses[i] = &pb.ResponseOp{Response: &pb.ResponseOp_ResponseDeleteRange{}}
-		case *pb.RequestOp_RequestTxn:
-			sub, subN := newTxnResp(t.RequestTxn, path[1:])
-			resp.Responses[i] = &pb.ResponseOp{Response: &pb.ResponseOp_ResponseTxn{ResponseTxn: sub}}
-			path = path[1+subN:]
-			n += subN + 1
-		}
-	}
-	return resp, n
-}
-
-func (w *writer) executeTxn(r *pb.TxnRequest, path []bool, resp *pb.TxnResponse) (int, error) {
-	n := 0
-	for i, op := range branch(r, path[0]) {
+		var out pb.ResponseOp
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
 			rr, err := w.rangeKeys(t.RequestRange)
 			if err != nil {
-				return 0, err
+				return nil, 0, err
 			}
-			out, ok := resp.Responses[i].Response.(*pb.ResponseOp_ResponseRange)
-			if !ok {
-				return 0, errBadTxnPath
-			}
-			out.ResponseRange = rr
+			out.Response = &pb.ResponseOp_ResponseRange{ResponseRange: rr}
 		case *pb.RequestOp_RequestPut:
-			out, ok := resp.Responses[i].Response.(*pb.ResponseOp_ResponsePut)
-			if !ok {
-				return 0, errBadTxnPath
-			}
-			out.ResponsePut = w.put(t.RequestPut)
+			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: w.put(t.RequestPut)}
 		case *pb.RequestOp_RequestDeleteRange:
-			out, ok := resp.Responses[i].Response.(*pb.ResponseOp_ResponseDeleteRange)
-			if !ok {
-				return 0, errBadTxnPath
-			}
-			out.ResponseDeleteRange = w.deleteRange(t.RequestDeleteRange)
+			out.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: w.deleteRange(t.RequestDeleteRange)}
 		case *pb.RequestOp_RequestTxn:
-			out, ok := resp.Responses[i].Response.(*pb.ResponseOp_ResponseTxn)
-			if !ok {
-				return 0, errBadTxnPath
-			}
-			sub, err := w.executeTxn(t.RequestTxn, path[1:], out.ResponseTxn)
+			sub, subN, err := w.executeTxn(t.RequestTxn, path[1:])
 			if err != nil {
-				return 0, err
+				return nil, 0, err
 			}
-			n += sub + 1
-			path = path[sub+1:]
+			out.Response = &pb.ResponseOp_ResponseTxn{ResponseTxn: sub}
+			n += subN + 1
+			path = path[subN+1:]
 		}
+		resp.Responses[i] = &out
 	}
-	return n, nil
+	return resp, n, nil
 }

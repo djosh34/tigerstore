@@ -49,7 +49,7 @@ func CheckDelete(r *pb.DeleteRangeRequest) error {
 // CheckTxn validates a transaction, including that no two writes in it
 // touch the same key.
 func CheckTxn(r *pb.TxnRequest) error {
-	if err := checkTxn(r, MaxTxnOps); err != nil {
+	if err := validateTxn(r, MaxTxnOps); err != nil {
 		return err
 	}
 	if _, _, err := checkIntervals(r.Success); err != nil {
@@ -59,7 +59,7 @@ func CheckTxn(r *pb.TxnRequest) error {
 	return err
 }
 
-func checkTxn(r *pb.TxnRequest, maxOps int) error {
+func validateTxn(r *pb.TxnRequest, maxOps int) error {
 	opc := max(len(r.Compare), len(r.Success), len(r.Failure))
 	if opc > maxOps {
 		return rpctypes.ErrGRPCTooManyOps
@@ -71,7 +71,7 @@ func checkTxn(r *pb.TxnRequest, maxOps int) error {
 	}
 	for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
 		for _, op := range ops {
-			if err := checkRequestOp(op, maxOps-opc); err != nil {
+			if err := validateRequestOp(op, maxOps-opc); err != nil {
 				return err
 			}
 		}
@@ -79,7 +79,7 @@ func checkTxn(r *pb.TxnRequest, maxOps int) error {
 	return nil
 }
 
-func checkRequestOp(op *pb.RequestOp, maxOps int) error {
+func validateRequestOp(op *pb.RequestOp, maxOps int) error {
 	switch t := op.Request.(type) {
 	case *pb.RequestOp_RequestRange:
 		return CheckRange(t.RequestRange)
@@ -88,7 +88,7 @@ func checkRequestOp(op *pb.RequestOp, maxOps int) error {
 	case *pb.RequestOp_RequestDeleteRange:
 		return CheckDelete(t.RequestDeleteRange)
 	case *pb.RequestOp_RequestTxn:
-		return checkTxn(t.RequestTxn, maxOps)
+		return validateTxn(t.RequestTxn, maxOps)
 	}
 	// etcd answers an empty operation with "key not found".
 	return rpctypes.ErrGRPCKeyNotFound

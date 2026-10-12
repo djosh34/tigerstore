@@ -129,17 +129,20 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			return nil, nil, errors.Join(err, f.Close())
 		}
 		seq, crc, ok := parseHeader(data)
+		ok = ok && name == segmentName(seq)
 		// The first segment may start anywhere once old segments are
 		// cleaned; every later one continues the sequence and the crc chain.
 		if ok && i > 0 {
 			ok = seq == w.seq+1 && crc == w.crc
 		}
 		if !ok {
-			if !last {
-				return nil, nil, errors.Join(fmt.Errorf("%w: bad header in %s", ErrCorrupt, name), f.Close())
+			// newSegment syncs the header before the directory entry and
+			// before any record, so only a newest segment with nothing
+			// after its header can have a header that never reached the
+			// disk. Anything else is damage or a lost segment.
+			if !last || len(data) > headerSize {
+				return nil, nil, errors.Join(fmt.Errorf("%w: bad header or missing segment before %s", ErrCorrupt, name), f.Close())
 			}
-			// The newest segment was created but its header never reached
-			// the disk, so it holds nothing that was synced.
 			if err := errors.Join(f.Close(), fs.Remove(name), fs.SyncDir()); err != nil {
 				return nil, nil, err
 			}
@@ -205,6 +208,9 @@ func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
 		}
 		body := data[off+8 : end]
 		if crc32.Update(w.crc, castagnoli, body) != sum {
+			if verifiesAfter(data, end, sum) {
+				return int64(off), fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
+			}
 			return int64(off), nil
 		}
 		if err := w.apply(body[0], body[1:], rec); err != nil {
@@ -214,6 +220,24 @@ func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
 		off = end
 	}
 	return int64(off), nil
+}
+
+// verifiesAfter reports whether a whole record starts at off and verifies
+// when chained from crc, the stored crc of the record before it. A torn
+// write leaves garbage up to the end of the file, so a valid record after a
+// bad one means the bad one was damaged after it was written. This can also
+// fence a node after a crash whose disk persisted a later sector of the
+// last write but not an earlier one; refusing to start is the safe answer.
+func verifiesAfter(data []byte, off int, crc uint32) bool {
+	if len(data)-off < recHdrSize {
+		return false
+	}
+	n := int(binary.LittleEndian.Uint32(data[off:]))
+	end := off + recHdrSize + n
+	if end > len(data) {
+		return false
+	}
+	return crc32.Update(crc, castagnoli, data[off+8:end]) == binary.LittleEndian.Uint32(data[off+4:])
 }
 
 func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
@@ -253,21 +277,29 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 	return nil
 }
 
-// newSegment starts the next segment and makes its name durable. Its header
-// is written with the next sync.
+// newSegment starts the next segment. It syncs the header before the
+// directory entry, so a segment that survives a crash always has its
+// header.
 func (w *WAL) newSegment() error {
-	w.seq++
-	f, err := w.fs.Create(segmentName(w.seq))
+	seq := w.seq + 1
+	f, err := w.fs.Create(segmentName(seq))
 	if err != nil {
 		return err
+	}
+	hdr := make([]byte, 0, headerSize)
+	hdr = append(hdr, magic...)
+	hdr = binary.LittleEndian.AppendUint64(hdr, seq)
+	hdr = binary.LittleEndian.AppendUint32(hdr, w.crc)
+	if _, err := f.Write(hdr); err != nil {
+		return errors.Join(err, f.Close())
+	}
+	if err := f.Sync(); err != nil {
+		return errors.Join(err, f.Close())
 	}
 	if err := w.fs.SyncDir(); err != nil {
 		return errors.Join(err, f.Close())
 	}
-	w.seg, w.size = f, 0
-	w.buf = append(w.buf, magic...)
-	w.buf = binary.LittleEndian.AppendUint64(w.buf, w.seq)
-	w.buf = binary.LittleEndian.AppendUint32(w.buf, w.crc)
+	w.seq, w.seg, w.size = seq, f, int64(headerSize)
 	return nil
 }
 
@@ -342,12 +374,7 @@ func (w *WAL) Sync() error {
 	if err := w.seg.Close(); err != nil {
 		return err
 	}
-	if err := w.newSegment(); err != nil {
-		return err
-	}
-	// Write the header now so that an empty newest segment is never left
-	// without one.
-	return w.Sync()
+	return w.newSegment()
 }
 
 // SetSegmentBytes changes the size after which a new segment starts. Tests
