@@ -45,8 +45,8 @@ def raw_count(namespace):
         output = subprocess.check_output(['docker', 'exec', f'external-etcd-{n}', '/bin-etcd/etcdctl',
             '--endpoints', f'https://external-etcd-{n}:2379', '--cacert', '/certs/ca.crt',
             '--cert', '/certs/client.crt', '--key', '/certs/client.key', 'get',
-            f'/registry/configmaps/{namespace}/', '--prefix', '--count-only'])
-        result.append(int(output.strip()))
+            f'/registry/configmaps/{namespace}/', '--prefix', '--count-only', '-w', 'fields'])
+        result.append(int(next(line.split(b':', 1)[1] for line in output.splitlines() if line.startswith(b'"Count"'))))
     return result
 
 
