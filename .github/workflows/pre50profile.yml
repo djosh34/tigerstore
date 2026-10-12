@@ -1,0 +1,25 @@
+name: pre50 profile experiment
+on:
+  push:
+    branches: [exp/pre-50-profile]
+    paths:
+      - 'experiments/pre50profile/**'
+      - 'cmd/tigerstore/**'
+      - '.github/workflows/pre50profile.yml'
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: timeout --kill-after=5s 800s bash experiments/pre50profile/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: pre50-profile-${{ github.run_id }}
+          path: evidence/pre50profile/raw
