@@ -1,0 +1,1 @@
+Fresh REPS=1 baseline has throughput=100; leftover rep 2 has throughput=10000. Original glob-derived rate: 5000

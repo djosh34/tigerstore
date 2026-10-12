@@ -1,0 +1,10 @@
+a etcd node exited; logs:
+==> /home/joshazimullah.linux/work_mounts/scratch/pre-50-bench/loadgen-review/startup-fixture/n1.log <==
+
+==> /home/joshazimullah.linux/work_mounts/scratch/pre-50-bench/loadgen-review/startup-fixture/n2.log <==
+
+==> /home/joshazimullah.linux/work_mounts/scratch/pre-50-bench/loadgen-review/startup-fixture/n3.log <==
+startup exit status: 1
+node 1 no longer running
+node 2 still present after failed start; killing owned test process 3510169
+node 3 still present after failed start; killing owned test process 3510170

@@ -1,0 +1,267 @@
+[
+  {
+    "layout": "leader2",
+    "rep": 1,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 37.97525924299998,
+    "benchmark_requests_sec": 7917.376182179283,
+    "server_cpu_us_per_op": [
+      188.66666666666666,
+      36.166666666666664,
+      35.93333333333333
+    ],
+    "before": [
+      {
+        "ticks": 340,
+        "starttime": 90363
+      },
+      {
+        "ticks": 63,
+        "starttime": 90367
+      },
+      {
+        "ticks": 62,
+        "starttime": 90367
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6000,
+        "starttime": 90363
+      },
+      {
+        "ticks": 1148,
+        "starttime": 90367
+      },
+      {
+        "ticks": 1140,
+        "starttime": 90367
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 260.76666666666665,
+    "mean_ms": 32.2390259759426,
+    "p50_ms": 27.820484,
+    "p99_ms": 91.35661300000001,
+    "p99.9_ms": 194.78578299999998,
+    "generator_cpu_us_per_op": 51.733333333333334
+  },
+  {
+    "layout": "leader2",
+    "rep": 2,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 36.20780852099995,
+    "benchmark_requests_sec": 8295.938447119941,
+    "server_cpu_us_per_op": [
+      187.4,
+      35.7,
+      35.733333333333334
+    ],
+    "before": [
+      {
+        "ticks": 354,
+        "starttime": 95498
+      },
+      {
+        "ticks": 67,
+        "starttime": 95498
+      },
+      {
+        "ticks": 64,
+        "starttime": 95498
+      }
+    ],
+    "after": [
+      {
+        "ticks": 5976,
+        "starttime": 95498
+      },
+      {
+        "ticks": 1138,
+        "starttime": 95498
+      },
+      {
+        "ticks": 1136,
+        "starttime": 95498
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 258.83333333333337,
+    "mean_ms": 30.749398216963186,
+    "p50_ms": 27.215139999999998,
+    "p99_ms": 64.953397,
+    "p99.9_ms": 133.903921,
+    "generator_cpu_us_per_op": 51.9
+  },
+  {
+    "layout": "leader2",
+    "rep": 3,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 35.85154804199999,
+    "benchmark_requests_sec": 8381.28706352912,
+    "server_cpu_us_per_op": [
+      187.83333333333334,
+      35.3,
+      35.53333333333333
+    ],
+    "before": [
+      {
+        "ticks": 342,
+        "starttime": 100303
+      },
+      {
+        "ticks": 64,
+        "starttime": 100303
+      },
+      {
+        "ticks": 62,
+        "starttime": 100303
+      }
+    ],
+    "after": [
+      {
+        "ticks": 5977,
+        "starttime": 100303
+      },
+      {
+        "ticks": 1123,
+        "starttime": 100303
+      },
+      {
+        "ticks": 1128,
+        "starttime": 100303
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 258.6666666666667,
+    "mean_ms": 30.453618419280467,
+    "p50_ms": 27.345684,
+    "p99_ms": 60.18553,
+    "p99.9_ms": 75.513442,
+    "generator_cpu_us_per_op": 51.43333333333333
+  },
+  {
+    "layout": "leader2",
+    "rep": 4,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 35.617536187999804,
+    "benchmark_requests_sec": 8435.838777747453,
+    "server_cpu_us_per_op": [
+      187.96666666666667,
+      35.53333333333333,
+      35.3
+    ],
+    "before": [
+      {
+        "ticks": 339,
+        "starttime": 105026
+      },
+      {
+        "ticks": 61,
+        "starttime": 105026
+      },
+      {
+        "ticks": 62,
+        "starttime": 105026
+      }
+    ],
+    "after": [
+      {
+        "ticks": 5978,
+        "starttime": 105026
+      },
+      {
+        "ticks": 1127,
+        "starttime": 105026
+      },
+      {
+        "ticks": 1121,
+        "starttime": 105026
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 258.8,
+    "mean_ms": 30.259180838236627,
+    "p50_ms": 27.121783,
+    "p99_ms": 59.864115000000005,
+    "p99.9_ms": 72.479072,
+    "generator_cpu_us_per_op": 51.633333333333326
+  },
+  {
+    "layout": "leader2",
+    "rep": 5,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 35.35457807900002,
+    "benchmark_requests_sec": 8497.11684644093,
+    "server_cpu_us_per_op": [
+      186.93333333333334,
+      35.4,
+      35.46666666666667
+    ],
+    "before": [
+      {
+        "ticks": 340,
+        "starttime": 109742
+      },
+      {
+        "ticks": 64,
+        "starttime": 109742
+      },
+      {
+        "ticks": 63,
+        "starttime": 109742
+      }
+    ],
+    "after": [
+      {
+        "ticks": 5948,
+        "starttime": 109742
+      },
+      {
+        "ticks": 1126,
+        "starttime": 109742
+      },
+      {
+        "ticks": 1127,
+        "starttime": 109742
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 257.8,
+    "mean_ms": 30.036758231822727,
+    "p50_ms": 26.840992,
+    "p99_ms": 59.759847,
+    "p99.9_ms": 68.60682999999999,
+    "generator_cpu_us_per_op": 51.5
+  }
+]

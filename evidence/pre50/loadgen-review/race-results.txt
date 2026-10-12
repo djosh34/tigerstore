@@ -1,0 +1,66 @@
+=== RUN   TestFakeServerOK
+--- PASS: TestFakeServerOK (0.37s)
+=== RUN   TestFakeServerFlowControl
+--- PASS: TestFakeServerFlowControl (0.57s)
+=== RUN   TestFakeServerOpenLoop
+--- PASS: TestFakeServerOpenLoop (0.57s)
+=== RUN   TestFakeServerErrors
+--- PASS: TestFakeServerErrors (0.50s)
+=== RUN   TestFakeServerPings
+--- PASS: TestFakeServerPings (1.06s)
+=== RUN   TestEtcdWorkloads
+    etcd_test.go:74: needs etcd
+--- SKIP: TestEtcdWorkloads (0.00s)
+=== RUN   TestEtcdCASDetectsStaleRevision
+    etcd_test.go:120: needs etcd
+--- SKIP: TestEtcdCASDetectsStaleRevision (0.00s)
+=== RUN   TestEtcdServerError
+    etcd_test.go:164: needs etcd
+--- SKIP: TestEtcdServerError (0.00s)
+=== RUN   TestHistBuckets
+--- PASS: TestHistBuckets (0.00s)
+=== RUN   TestHistQuantiles
+--- PASS: TestHistQuantiles (0.07s)
+=== RUN   TestReviewUnaryCardinality
+    review_test.go:12: /empty accepted as success: ops=7 acked=7 errors=map[]
+    review_test.go:12: /double accepted as success: ops=7 acked=7 errors=map[]
+--- PASS: TestReviewUnaryCardinality (0.37s)
+=== RUN   TestReviewTailAccounting
+    review_test.go:44: 200ms response delay, 100ms window, rate=50: ops=0 acked=6 unsent=0 latency_count=0 p99=0 errors=map[]
+--- PASS: TestReviewTailAccounting (0.36s)
+=== RUN   TestReviewClosedLoopStartsEarly
+    review_test.go:70: closed-loop request completed 195.07574ms before scheduled start; acked=1
+--- PASS: TestReviewClosedLoopStartsEarly (0.07s)
+=== RUN   TestReviewCPUFailureHasEmptyErrorMap
+    review_test.go:83: missing server PID: run_error=server CPU: open /proc/999999999/stat: no such file or directory ops=7 JSON_errors=map[] server_cpu_us_per_op=0
+--- PASS: TestReviewCPUFailureHasEmptyErrorMap (0.22s)
+=== RUN   TestReviewNonfiniteRateAccepted
+    review_test.go:92: -rate NaN accepted: NaN, error=<nil>
+    review_test.go:92: -rate +Inf accepted: +Inf, error=<nil>
+--- PASS: TestReviewNonfiniteRateAccepted (0.00s)
+=== RUN   TestPaddedRevision
+--- PASS: TestPaddedRevision (0.00s)
+=== RUN   TestCASTemplate
+--- PASS: TestCASTemplate (0.00s)
+=== RUN   TestTooLargeRequest
+--- PASS: TestTooLargeRequest (0.00s)
+=== RUN   TestPrefixEnd
+--- PASS: TestPrefixEnd (0.00s)
+=== RUN   TestKeys
+--- PASS: TestKeys (0.90s)
+PASS
+ok  	github.com/djosh34/tigerstore/cmd/loadgen	6.092s
+=== RUN   TestReviewInvalidRunIncluded
+    review_test.go:24: report accepts failed run without error warning or checking rate:
+        | Benchmark | Store | Max ops/s | p50 / p99 ms at max | Server CPU us/op at max | Open-loop ops/s | p50 / p99 / p99.9 ms open loop | Server CPU us/op open loop | Runs |
+        |---|---|---|---|---|---|---|---|---|
+        | put-1k | etcd | - | - / - | - | 1,234 (1,234 to 1,234) | 0.00 / 0.00 / 0.00 | 0.0 | 0 + 1 |
+        
+        Medians of the runs; throughput shows the lowest and highest run in brackets. Open loop offers half of etcd's median max throughput, with latency counted from each request's scheduled send time.
+        
+        | Benchmark | Store | Server cores per node at max | Generator CPU us/op at max | Open-loop arrivals left unsent |
+        |---|---|---|---|---|
+        | put-1k | etcd | - | - | 0 |
+--- PASS: TestReviewInvalidRunIncluded (0.00s)
+PASS
+ok  	github.com/djosh34/tigerstore/cmd/benchreport	1.022s

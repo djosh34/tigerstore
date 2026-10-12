@@ -1,0 +1,14 @@
+First run 38315892754, isolated cleanup failure. Excerpts from the job log.
+
+2026-10-12T22:26:03.8580420Z ##[group]Run rm -rf experiments/pre50/work
+2026-10-12T22:26:03.8714202Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/query.go': Permission denied
+2026-10-12T22:26:03.8715328Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/BUILD.bazel': Permission denied
+2026-10-12T22:26:03.8717000Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/marshal_jsonpb.go': Permission denied
+2026-10-12T22:26:04.3422287Z ##[error]Process completed with exit code 1.
+First run 38315892754, leader2 cleanup failure. Excerpts from the job log.
+
+2026-10-12T22:23:16.1076340Z ##[group]Run rm -rf experiments/pre50/work
+2026-10-12T22:23:16.1207862Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/query.go': Permission denied
+2026-10-12T22:23:16.1209084Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/BUILD.bazel': Permission denied
+2026-10-12T22:23:16.1210081Z rm: cannot remove 'experiments/pre50/work/mod/github.com/grpc-ecosystem/grpc-gateway/v2@v2.29.0/runtime/marshal_jsonpb.go': Permission denied
+2026-10-12T22:23:17.5333807Z ##[error]Process completed with exit code 1.

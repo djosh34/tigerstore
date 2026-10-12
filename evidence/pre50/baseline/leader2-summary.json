@@ -1,0 +1,432 @@
+[
+  {
+    "layout": "leader2",
+    "rep": 1,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 36.317577743000015,
+    "benchmark_requests_sec": 8277.95552920853,
+    "server_cpu_us_per_op": [
+      192.8,
+      34.53333333333333,
+      35.06666666666667
+    ],
+    "before": [
+      {
+        "ticks": 345,
+        "starttime": 54021
+      },
+      {
+        "ticks": 60,
+        "starttime": 54023
+      },
+      {
+        "ticks": 59,
+        "starttime": 54023
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6129,
+        "starttime": 54021
+      },
+      {
+        "ticks": 1096,
+        "starttime": 54023
+      },
+      {
+        "ticks": 1111,
+        "starttime": 54023
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 262.40000000000003,
+    "mean_ms": 30.856956953756132,
+    "p50_ms": 25.493415,
+    "p99_ms": 90.38995700000001,
+    "p99.9_ms": 313.841441,
+    "generator_cpu_us_per_op": 49.43333333333333,
+    "server_occupied_cores": [
+      1.592617228200146,
+      0.28526131542450744,
+      0.2896668955855038
+    ],
+    "prometheus_cpu_us_per_op": [
+      192.86666666666667,
+      34.56666666666667,
+      35.06666666666667
+    ],
+    "leader_changes_during_window": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "wal": [
+      {
+        "observations": 24611.0,
+        "writes_per_observation": 12.189671285197676,
+        "mean_wall_us": 467.4453720287673
+      },
+      {
+        "observations": 5333.0,
+        "writes_per_observation": 56.2535158447403,
+        "mean_wall_us": 1646.2883092068244
+      },
+      {
+        "observations": 5582.0,
+        "writes_per_observation": 53.744177714080976,
+        "mean_wall_us": 1590.3038102830515
+      }
+    ],
+    "leader_revision_delta": 300000
+  },
+  {
+    "layout": "leader2",
+    "rep": 2,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 33.226999374,
+    "benchmark_requests_sec": 9041.335571535283,
+    "server_cpu_us_per_op": [
+      191.93333333333334,
+      34.666666666666664,
+      34.266666666666666
+    ],
+    "before": [
+      {
+        "ticks": 343,
+        "starttime": 58919
+      },
+      {
+        "ticks": 61,
+        "starttime": 58920
+      },
+      {
+        "ticks": 62,
+        "starttime": 58920
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6101,
+        "starttime": 58919
+      },
+      {
+        "ticks": 1101,
+        "starttime": 58920
+      },
+      {
+        "ticks": 1090,
+        "starttime": 58920
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 260.8666666666667,
+    "mean_ms": 28.222030539204102,
+    "p50_ms": 24.89939,
+    "p99_ms": 56.518198999999996,
+    "p99.9_ms": 68.509811,
+    "generator_cpu_us_per_op": 49.03333333333333,
+    "server_occupied_cores": [
+      1.7329280730975702,
+      0.3129984710006032,
+      0.3093869501813654
+    ],
+    "prometheus_cpu_us_per_op": [
+      191.93333333333334,
+      34.666666666666664,
+      34.3
+    ],
+    "leader_changes_during_window": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "wal": [
+      {
+        "observations": 26364.0,
+        "writes_per_observation": 11.37915339098771,
+        "mean_wall_us": 320.8057381277494
+      },
+      {
+        "observations": 5533.0,
+        "writes_per_observation": 54.220133742996566,
+        "mean_wall_us": 1158.064604915958
+      },
+      {
+        "observations": 5418.0,
+        "writes_per_observation": 55.370985603543744,
+        "mean_wall_us": 1154.4653170911802
+      }
+    ],
+    "leader_revision_delta": 300000
+  },
+  {
+    "layout": "leader2",
+    "rep": 3,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 33.487978835000035,
+    "benchmark_requests_sec": 8968.994913941171,
+    "server_cpu_us_per_op": [
+      192.96666666666667,
+      35.03333333333333,
+      34.233333333333334
+    ],
+    "before": [
+      {
+        "ticks": 349,
+        "starttime": 63387
+      },
+      {
+        "ticks": 61,
+        "starttime": 63387
+      },
+      {
+        "ticks": 60,
+        "starttime": 63387
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6138,
+        "starttime": 63387
+      },
+      {
+        "ticks": 1112,
+        "starttime": 63387
+      },
+      {
+        "ticks": 1087,
+        "starttime": 63387
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 262.23333333333335,
+    "mean_ms": 28.45807048386051,
+    "p50_ms": 25.091789,
+    "p99_ms": 56.590795,
+    "p99.9_ms": 67.99405999999999,
+    "generator_cpu_us_per_op": 49.93333333333333,
+    "server_occupied_cores": [
+      1.7286800223218053,
+      0.31384396328557906,
+      0.30667721245888646
+    ],
+    "prometheus_cpu_us_per_op": [
+      192.96666666666667,
+      35.03333333333333,
+      34.43333333333333
+    ],
+    "leader_changes_during_window": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "wal": [
+      {
+        "observations": 26034.0,
+        "writes_per_observation": 11.523392486748099,
+        "mean_wall_us": 346.15914411923194
+      },
+      {
+        "observations": 5603.0,
+        "writes_per_observation": 53.54274495805819,
+        "mean_wall_us": 1176.7096769587683
+      },
+      {
+        "observations": 5383.0,
+        "writes_per_observation": 55.73100501579045,
+        "mean_wall_us": 1155.366913802709
+      }
+    ],
+    "leader_revision_delta": 300000
+  },
+  {
+    "layout": "leader2",
+    "rep": 4,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 33.39495435599997,
+    "benchmark_requests_sec": 8997.708589814198,
+    "server_cpu_us_per_op": [
+      192.53333333333333,
+      35.1,
+      34.43333333333333
+    ],
+    "before": [
+      {
+        "ticks": 351,
+        "starttime": 67890
+      },
+      {
+        "ticks": 65,
+        "starttime": 67890
+      },
+      {
+        "ticks": 63,
+        "starttime": 67890
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6127,
+        "starttime": 67890
+      },
+      {
+        "ticks": 1118,
+        "starttime": 67890
+      },
+      {
+        "ticks": 1096,
+        "starttime": 67890
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 262.06666666666666,
+    "mean_ms": 28.37223123210604,
+    "p50_ms": 24.940292,
+    "p99_ms": 57.439974,
+    "p99.9_ms": 70.949764,
+    "generator_cpu_us_per_op": 49.36666666666667,
+    "server_occupied_cores": [
+      1.7296026035628473,
+      0.3153170951439886,
+      0.30932816646129174
+    ],
+    "prometheus_cpu_us_per_op": [
+      192.53333333333336,
+      35.1,
+      34.43333333333333
+    ],
+    "leader_changes_during_window": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "wal": [
+      {
+        "observations": 26261.0,
+        "writes_per_observation": 11.423784318952059,
+        "mean_wall_us": 335.6148106698135
+      },
+      {
+        "observations": 5513.0,
+        "writes_per_observation": 54.41683294032287,
+        "mean_wall_us": 1195.9016725920596
+      },
+      {
+        "observations": 5266.0,
+        "writes_per_observation": 56.969236612229395,
+        "mean_wall_us": 1232.9494530953232
+      }
+    ],
+    "leader_revision_delta": 300000
+  },
+  {
+    "layout": "leader2",
+    "rep": 5,
+    "successful_operations": 300000,
+    "cpu_window_seconds": 33.33509822899998,
+    "benchmark_requests_sec": 9010.841102422211,
+    "server_cpu_us_per_op": [
+      194.53333333333333,
+      34.5,
+      35.166666666666664
+    ],
+    "before": [
+      {
+        "ticks": 351,
+        "starttime": 72567
+      },
+      {
+        "ticks": 64,
+        "starttime": 72567
+      },
+      {
+        "ticks": 61,
+        "starttime": 72567
+      }
+    ],
+    "after": [
+      {
+        "ticks": 6187,
+        "starttime": 72567
+      },
+      {
+        "ticks": 1099,
+        "starttime": 72567
+      },
+      {
+        "ticks": 1116,
+        "starttime": 72567
+      }
+    ],
+    "CLK_TCK": 100,
+    "cpus": [
+      "0,1",
+      "2",
+      "2"
+    ],
+    "generator_cpu": "3",
+    "server_total_cpu_us_per_op": 264.2,
+    "mean_ms": 28.33004870395276,
+    "p50_ms": 24.712566,
+    "p99_ms": 58.277702,
+    "p99.9_ms": 70.072575,
+    "generator_cpu_us_per_op": 49.7,
+    "server_occupied_cores": [
+      1.750707305527887,
+      0.3104835608672658,
+      0.31648324320286514
+    ],
+    "prometheus_cpu_us_per_op": [
+      194.56666666666666,
+      34.53333333333333,
+      35.2
+    ],
+    "leader_changes_during_window": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "wal": [
+      {
+        "observations": 26993.0,
+        "writes_per_observation": 11.113992516578373,
+        "mean_wall_us": 299.32166361649433
+      },
+      {
+        "observations": 5489.0,
+        "writes_per_observation": 54.65476407360175,
+        "mean_wall_us": 1137.2224401530334
+      },
+      {
+        "observations": 5702.0,
+        "writes_per_observation": 52.6131182041389,
+        "mean_wall_us": 1131.9907979656255
+      }
+    ],
+    "leader_revision_delta": 300000
+  }
+]
