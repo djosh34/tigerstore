@@ -1,0 +1,12 @@
+=== RUN   TestRawManyStreams
+--- PASS: TestRawManyStreams (0.24s)
+=== RUN   TestRawFragmentationAndFlowControl
+--- PASS: TestRawFragmentationAndFlowControl (0.14s)
+=== RUN   TestRawWatchAndCancel
+--- PASS: TestRawWatchAndCancel (0.05s)
+=== RUN   TestLeanGenerator
+--- PASS: TestLeanGenerator (0.17s)
+=== RUN   TestRawUnimplemented
+--- PASS: TestRawUnimplemented (0.02s)
+PASS
+ok  	tigerstore-grpc-experiment	1.672s

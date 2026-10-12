@@ -1,0 +1,32 @@
+=== RUN   TestRawManyStreams
+--- PASS: TestRawManyStreams (0.07s)
+=== RUN   TestRawFragmentationAndFlowControl
+--- PASS: TestRawFragmentationAndFlowControl (0.03s)
+=== RUN   TestRawWatchAndCancel
+--- PASS: TestRawWatchAndCancel (0.02s)
+=== RUN   TestLeanGenerator
+--- PASS: TestLeanGenerator (0.17s)
+=== RUN   TestRawUnimplemented
+--- PASS: TestRawUnimplemented (0.01s)
+=== RUN   TestRawManyStreams
+--- PASS: TestRawManyStreams (0.06s)
+=== RUN   TestRawFragmentationAndFlowControl
+--- PASS: TestRawFragmentationAndFlowControl (0.03s)
+=== RUN   TestRawWatchAndCancel
+--- PASS: TestRawWatchAndCancel (0.02s)
+=== RUN   TestLeanGenerator
+--- PASS: TestLeanGenerator (0.17s)
+=== RUN   TestRawUnimplemented
+--- PASS: TestRawUnimplemented (0.01s)
+=== RUN   TestRawManyStreams
+--- PASS: TestRawManyStreams (0.06s)
+=== RUN   TestRawFragmentationAndFlowControl
+--- PASS: TestRawFragmentationAndFlowControl (0.03s)
+=== RUN   TestRawWatchAndCancel
+--- PASS: TestRawWatchAndCancel (0.02s)
+=== RUN   TestLeanGenerator
+--- PASS: TestLeanGenerator (0.17s)
+=== RUN   TestRawUnimplemented
+--- PASS: TestRawUnimplemented (0.01s)
+PASS
+ok  	tigerstore-grpc-experiment	0.893s

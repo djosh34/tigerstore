@@ -1,0 +1,28 @@
+clientv3 Put, Range, Watch create and update with prev_kv passed, revision 3
+OK
+OK
+OK
+OK
+clientv3 Put, Range, Watch create and update with prev_kv passed, revision 3
+OK
+OK
+OK
+OK
+clientv3 Put, Range, Watch create and update with prev_kv passed, revision 3
+OK
+OK
+OK
+OK
+clientv3 Put, Range, Watch create and update with prev_kv passed, revision 3
+OK
+OK
+OK
+OK
+grpc-default /home/joshazimullah.linux/work_mounts/scratch/pre-47-grpc/.tmp/etcd-v3.7.2-linux-arm64/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":5,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":5,"version":2,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":4,"version":1,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false,"CancelReason":""}
+grpc-default /usr/local/bin/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":7,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":7,"version":4,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":6,"version":3,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false}
+grpc-tuned /home/joshazimullah.linux/work_mounts/scratch/pre-47-grpc/.tmp/etcd-v3.7.2-linux-arm64/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":5,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":5,"version":2,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":4,"version":1,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false,"CancelReason":""}
+grpc-tuned /usr/local/bin/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":7,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":7,"version":4,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":6,"version":3,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false}
+handler /home/joshazimullah.linux/work_mounts/scratch/pre-47-grpc/.tmp/etcd-v3.7.2-linux-arm64/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":5,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":5,"version":2,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":4,"version":1,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false,"CancelReason":""}
+handler /usr/local/bin/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":7,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":7,"version":4,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":6,"version":3,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false}
+raw /home/joshazimullah.linux/work_mounts/scratch/pre-47-grpc/.tmp/etcd-v3.7.2-linux-arm64/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":5,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":5,"version":2,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":4,"version":1,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false,"CancelReason":""}
+raw /usr/local/bin/etcdctl Put Range Watch passed: {"Header":{"cluster_id":1,"member_id":1,"revision":7,"raft_term":1},"Events":[{"kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":7,"version":4,"value":"YWZ0ZXI="},"prev_kv":{"key":"Y2xpLWtleQ==","create_revision":4,"mod_revision":6,"version":3,"value":"YmVmb3Jl"}}],"CompactRevision":0,"Canceled":false,"Created":false}
