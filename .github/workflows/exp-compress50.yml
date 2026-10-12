@@ -1,0 +1,29 @@
+name: Compression dump experiment
+on:
+  push:
+    branches: [exp/pre-50-compress]
+    paths:
+      - 'experiments/compress50/**'
+      - '.github/workflows/exp-compress50.yml'
+permissions:
+  contents: read
+jobs:
+  compression:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Create, churn, dump and measure
+        run: timeout 780 bash experiments/compress50/run.sh
+      - name: Upload aggregate data only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compression-results
+          path: experiments/compress50/results/
+          retention-days: 7
+          if-no-files-found: error
