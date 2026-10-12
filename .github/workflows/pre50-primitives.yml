@@ -1,0 +1,55 @@
+name: pre50 request costs
+on:
+  push:
+    branches: [exp/pre50-primitives]
+    paths:
+      - experiments/pre50-primitives/**
+      - .github/workflows/pre50-primitives.yml
+permissions:
+  contents: read
+concurrency:
+  group: pre50-primitives
+  cancel-in-progress: false
+jobs:
+  costs:
+    if: github.ref == 'refs/heads/exp/pre50-primitives'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+      GOMAXPROCS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check deadline and enable guest write barriers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          mkdir -p experiments/pre50-primitives/.run/results
+          {
+            date -u --iso-8601=seconds
+            findmnt -T "$PWD" -o SOURCE,TARGET,FSTYPE,OPTIONS
+            echo 'sudo mount -o remount,barrier=1 /'
+            sudo mount -o remount,barrier=1 /
+            findmnt -T "$PWD" -o SOURCE,TARGET,FSTYPE,OPTIONS
+          } | tee experiments/pre50-primitives/.run/results/barriers.txt
+          test "$(findmnt -T "$PWD" -n -o FSTYPE)" = ext4
+          ! findmnt -T "$PWD" -n -o OPTIONS | grep -Eq '(^|,)(nobarrier|barrier=0)(,|$)'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Run single-core costs
+        shell: bash
+        run: timeout 660 bash experiments/pre50-primitives/run.sh
+      - name: Upload raw evidence and exact source
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: pre50-primitives-arm64
+          path: |
+            experiments/pre50-primitives/.run/results
+            experiments/pre50-primitives/.run/source
+          if-no-files-found: error
+          retention-days: 90
+          include-hidden-files: true
