@@ -1,0 +1,592 @@
+{
+  "arena-random": {
+    "index_B_key": 47.8036424,
+    "total_B_key": 131.2711144,
+    "scan_heap_MB": 0.066128,
+    "GC_wall_ms": 1.206252,
+    "GC_cpu_ms": 0.1561240000000001,
+    "GC_STW_us": 9.083,
+    "operations": {
+      "get": {
+        "ns_op": 925.456635,
+        "min_ns_op": 903.315775,
+        "max_ns_op": 954.87668,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss": {
+        "ns_op": 901.897025,
+        "min_ns_op": 881.74804,
+        "max_ns_op": 905.682395,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4": {
+        "ns_op": 1436.96259,
+        "min_ns_op": 1431.24007,
+        "max_ns_op": 1477.99605,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100": {
+        "ns_op": 1627.61135,
+        "min_ns_op": 1601.4779,
+        "max_ns_op": 1697.31775,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000": {
+        "ns_op": 1533.55265,
+        "min_ns_op": 1463.3379,
+        "max_ns_op": 1934.51015,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m": {
+        "ns_op": 305.42,
+        "min_ns_op": 302.92,
+        "max_ns_op": 487.5,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000": {
+        "ns_op": 15844.966,
+        "min_ns_op": 15829.3405,
+        "max_ns_op": 15931.1535,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_overwrite": {
+        "ns_op": 1272.488452,
+        "min_ns_op": 1191.319325,
+        "max_ns_op": 1455.86827,
+        "alloc_B_op": 62.914848,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "first_range_after_writes": {
+        "ns_op": 5125,
+        "min_ns_op": 5125,
+        "max_ns_op": 5125,
+        "alloc_B_op": 88.0,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "get_after_overwrites": {
+        "ns_op": 902.925725,
+        "min_ns_op": 895.32299,
+        "max_ns_op": 971.795935,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss_after_overwrites": {
+        "ns_op": 886.189625,
+        "min_ns_op": 878.605855,
+        "max_ns_op": 981.31013,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4_after_overwrites": {
+        "ns_op": 1444.411155,
+        "min_ns_op": 1436.05967,
+        "max_ns_op": 1496.580895,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100_after_overwrites": {
+        "ns_op": 1623.14465,
+        "min_ns_op": 1617.3738,
+        "max_ns_op": 1701.16985,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000_after_overwrites": {
+        "ns_op": 1468.63165,
+        "min_ns_op": 1461.9337,
+        "max_ns_op": 1587.1362,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m_after_overwrites": {
+        "ns_op": 310,
+        "min_ns_op": 309.58,
+        "max_ns_op": 463.33,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000_after_overwrites": {
+        "ns_op": 32510.0175,
+        "min_ns_op": 31902.5575,
+        "max_ns_op": 33383.083,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_create": {
+        "ns_op": 1071.88541,
+        "min_ns_op": 1047.122,
+        "max_ns_op": 1126.9118,
+        "alloc_B_op": 83.88896,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      }
+    }
+  },
+  "slice": {
+    "index_B_key": 84.0003112,
+    "total_B_key": 167.4677832,
+    "scan_heap_MB": 240.036168,
+    "GC_wall_ms": 99.633977,
+    "GC_cpu_ms": 82.69684,
+    "GC_STW_us": 11.833,
+    "operations": {
+      "get": {
+        "ns_op": 1421.377125,
+        "min_ns_op": 1416.210235,
+        "max_ns_op": 1427.5511,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss": {
+        "ns_op": 1454.436605,
+        "min_ns_op": 1410.953965,
+        "max_ns_op": 1483.78648,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4": {
+        "ns_op": 2015.22001,
+        "min_ns_op": 1930.304745,
+        "max_ns_op": 2074.686235,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100": {
+        "ns_op": 2096.8815,
+        "min_ns_op": 2086.7627,
+        "max_ns_op": 2111.65655,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000": {
+        "ns_op": 2189.73805,
+        "min_ns_op": 2175.5297,
+        "max_ns_op": 2325.6072,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m": {
+        "ns_op": 182.08,
+        "min_ns_op": 181.67,
+        "max_ns_op": 284.16,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000": {
+        "ns_op": 11719.9945,
+        "min_ns_op": 11537.9525,
+        "max_ns_op": 11945.7665,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_overwrite": {
+        "ns_op": 5651.513389,
+        "min_ns_op": 3945.783505,
+        "max_ns_op": 7902.51288,
+        "alloc_B_op": 4581.932448,
+        "GC_cycles": 2,
+        "GC_cpu_ms": 363.43787699999996
+      },
+      "first_range_after_writes": {
+        "ns_op": 7472065,
+        "min_ns_op": 7472065,
+        "max_ns_op": 7472065,
+        "alloc_B_op": 184.0,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "get_after_overwrites": {
+        "ns_op": 1248.885755,
+        "min_ns_op": 1233.284875,
+        "max_ns_op": 1444.637195,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss_after_overwrites": {
+        "ns_op": 1499.49174,
+        "min_ns_op": 1458.305365,
+        "max_ns_op": 1551.16982,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4_after_overwrites": {
+        "ns_op": 2109.56676,
+        "min_ns_op": 2099.904855,
+        "max_ns_op": 2191.354305,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100_after_overwrites": {
+        "ns_op": 3295.00815,
+        "min_ns_op": 3267.76435,
+        "max_ns_op": 3326.0645,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000_after_overwrites": {
+        "ns_op": 4992.2676,
+        "min_ns_op": 4961.12165,
+        "max_ns_op": 5112.5388,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m_after_overwrites": {
+        "ns_op": 2333581.83,
+        "min_ns_op": 2327984.31,
+        "max_ns_op": 2375622.38,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000_after_overwrites": {
+        "ns_op": 33043.3735,
+        "min_ns_op": 32578.226,
+        "max_ns_op": 35750.736,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_create": {
+        "ns_op": 3354.38293,
+        "min_ns_op": 65.75025,
+        "max_ns_op": 7717.5469,
+        "alloc_B_op": 5688.368,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      }
+    },
+    "buffer": {
+      "flushes": 19,
+      "max_flush_ms": 515.746852,
+      "pending": 0,
+      "stage": "buffer"
+    }
+  },
+  "btree-random": {
+    "index_B_key": 92.6424032,
+    "total_B_key": 176.1098752,
+    "scan_heap_MB": 362.805096,
+    "GC_wall_ms": 527.680348,
+    "GC_cpu_ms": 488.596099,
+    "GC_STW_us": 18.834,
+    "operations": {
+      "get": {
+        "ns_op": 1938.674145,
+        "min_ns_op": 1910.14593,
+        "max_ns_op": 2240.799045,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss": {
+        "ns_op": 1897.221935,
+        "min_ns_op": 1886.628985,
+        "max_ns_op": 1908.62364,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4": {
+        "ns_op": 2557.078775,
+        "min_ns_op": 2529.18348,
+        "max_ns_op": 2600.3112,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100": {
+        "ns_op": 5634.6967,
+        "min_ns_op": 5588.70485,
+        "max_ns_op": 5734.4949,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000": {
+        "ns_op": 40866.13735,
+        "min_ns_op": 40158.46225,
+        "max_ns_op": 44117.63705,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m": {
+        "ns_op": 37132248.67,
+        "min_ns_op": 36905645.47,
+        "max_ns_op": 37752507.68,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000": {
+        "ns_op": 49087.5275,
+        "min_ns_op": 47469.1265,
+        "max_ns_op": 51310.9305,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_overwrite": {
+        "ns_op": 2230.87364,
+        "min_ns_op": 2128.40557,
+        "max_ns_op": 2456.060755,
+        "alloc_B_op": 65.474464,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "first_range_after_writes": {
+        "ns_op": 9417,
+        "min_ns_op": 9417,
+        "max_ns_op": 9417,
+        "alloc_B_op": 88.0,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "get_after_overwrites": {
+        "ns_op": 1792.23265,
+        "min_ns_op": 1782.404285,
+        "max_ns_op": 1810.251665,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss_after_overwrites": {
+        "ns_op": 1855.57097,
+        "min_ns_op": 1829.82089,
+        "max_ns_op": 2002.122055,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4_after_overwrites": {
+        "ns_op": 2539.95393,
+        "min_ns_op": 2512.306135,
+        "max_ns_op": 2574.471535,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100_after_overwrites": {
+        "ns_op": 5722.4365,
+        "min_ns_op": 5674.58845,
+        "max_ns_op": 6152.792,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000_after_overwrites": {
+        "ns_op": 41537.82275,
+        "min_ns_op": 40795.67255,
+        "max_ns_op": 42162.9622,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m_after_overwrites": {
+        "ns_op": 37927119.05,
+        "min_ns_op": 37693824.16,
+        "max_ns_op": 39056325.48,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000_after_overwrites": {
+        "ns_op": 64113.72,
+        "min_ns_op": 63300.6965,
+        "max_ns_op": 66778.853,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_create": {
+        "ns_op": 2028.66754,
+        "min_ns_op": 1972.029,
+        "max_ns_op": 2125.00035,
+        "alloc_B_op": 87.3456,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      }
+    }
+  },
+  "arena-bulk": {
+    "index_B_key": 44.4481992,
+    "total_B_key": 127.9156712,
+    "scan_heap_MB": 0.066128,
+    "GC_wall_ms": 1.18142,
+    "GC_cpu_ms": 0.10016599999999984,
+    "GC_STW_us": 4.25,
+    "operations": {
+      "get": {
+        "ns_op": 882.471075,
+        "min_ns_op": 872.23896,
+        "max_ns_op": 908.19574,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss": {
+        "ns_op": 869.064785,
+        "min_ns_op": 855.990365,
+        "max_ns_op": 884.833585,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4": {
+        "ns_op": 1496.675275,
+        "min_ns_op": 1459.001615,
+        "max_ns_op": 1539.664365,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100": {
+        "ns_op": 1484.13375,
+        "min_ns_op": 1448.83575,
+        "max_ns_op": 1565.04445,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000": {
+        "ns_op": 1689.40525,
+        "min_ns_op": 1615.52585,
+        "max_ns_op": 1807.67225,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m": {
+        "ns_op": 298.75,
+        "min_ns_op": 297.5,
+        "max_ns_op": 486.25,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000": {
+        "ns_op": 15013.38,
+        "min_ns_op": 14652.025,
+        "max_ns_op": 15093.2135,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_overwrite": {
+        "ns_op": 1422.480253,
+        "min_ns_op": 1380.01158,
+        "max_ns_op": 1457.35182,
+        "alloc_B_op": 62.914848,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "first_range_after_writes": {
+        "ns_op": 4625,
+        "min_ns_op": 4625,
+        "max_ns_op": 4625,
+        "alloc_B_op": 88.0,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "get_after_overwrites": {
+        "ns_op": 1008.361675,
+        "min_ns_op": 1002.986865,
+        "max_ns_op": 1075.23584,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "miss_after_overwrites": {
+        "ns_op": 990.745575,
+        "min_ns_op": 977.645745,
+        "max_ns_op": 1026.318395,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "mvcc_hot4_after_overwrites": {
+        "ns_op": 1727.46828,
+        "min_ns_op": 1503.656545,
+        "max_ns_op": 1781.50616,
+        "alloc_B_op": 0.00024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "prefix_limit100_after_overwrites": {
+        "ns_op": 1820.54315,
+        "min_ns_op": 1699.3074,
+        "max_ns_op": 1941.5373,
+        "alloc_B_op": 40.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_ns1000_after_overwrites": {
+        "ns_op": 1493.45675,
+        "min_ns_op": 1473.5108,
+        "max_ns_op": 1655.74475,
+        "alloc_B_op": 0.0024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "count_resource1m_after_overwrites": {
+        "ns_op": 314.58,
+        "min_ns_op": 306.66,
+        "max_ns_op": 465,
+        "alloc_B_op": 0.48,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "historical_count_ns1000_after_overwrites": {
+        "ns_op": 31370.618,
+        "min_ns_op": 29686.5295,
+        "max_ns_op": 34245.0855,
+        "alloc_B_op": 40.024,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      },
+      "put_create": {
+        "ns_op": 1026.73526,
+        "min_ns_op": 983.95305,
+        "max_ns_op": 1094.78255,
+        "alloc_B_op": 41.94592,
+        "GC_cycles": 0,
+        "GC_cpu_ms": 0
+      }
+    }
+  }
+}
