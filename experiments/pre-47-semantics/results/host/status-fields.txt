@@ -1,0 +1,18 @@
+"ClusterID" : 13455796455940752355
+"MemberID" : 443629905751424238
+"Revision" : 26
+"RaftTerm" : 2
+"Version" : "3.7.2"
+"StorageVersion" : "3.7.0"
+"DBSize" : 3411968
+"DBSizeInUse" : 1646592
+"DBSizeQuota" : 2147483648
+"Leader" : 443629905751424238
+"IsLearner" : false
+"RaftIndex" : 50
+"RaftAppliedIndex" : 50
+"Errors" : []
+"Endpoint" : "https://127.0.0.1:32379"
+"DowngradeTargetVersion" : ""
+"DowngradeEnabled" : false
+
