@@ -49,7 +49,7 @@ func run() error {
 		return err
 	}
 	go func() { _, _ = io.Copy(io.Discard, r) }()
-	c, err := clientv3.New(clientv3.Config{Endpoints: []string{strings.TrimSpace(ep)}, DialTimeout: 10 * time.Second})
+	c, err := clientv3.New(clientv3.Config{Endpoints: []string{strings.TrimSpace(ep)}, DialTimeout: 10 * time.Second, MaxCallRecvMsgSize: 32 * 1024 * 1024})
 	if err != nil {
 		return err
 	}
