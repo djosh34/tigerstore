@@ -17,8 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        clients: [64, 256]
-        mode: [primary, profile]
+        include:
+          - {clients: 64, mode: primary}
+          - {clients: 256, mode: primary}
+          - {clients: 256, mode: profile}
     steps:
       - name: Deadline gate
         id: deadline
@@ -36,13 +38,14 @@ jobs:
         if: steps.deadline.outputs.open == 'true'
         with:
           go-version-file: go.mod
-      - name: Main and etcd with the lean generator
+      - name: Main, patches and etcd with the lean generator
         if: steps.deadline.outputs.open == 'true'
         env:
           CLIENTS: ${{ matrix.clients }}
           MODE: ${{ matrix.mode }}
           GENERATOR: lean
           TOTAL_PUTS: 60000
+          PROFILE_VARIANT: peer
         run: |
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           timeout --kill-after=5s 780s bash experiments/pre50next/run.sh
@@ -94,3 +97,48 @@ jobs:
         with:
           name: pre50next-lean-checks-${{ github.run_id }}
           path: evidence/pre50next/lean-checks
+  patch-checks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {variant: wake, ref: 66625cd9502e64526f0cf3bbd339e5bde9c68564}
+          - {variant: peer, ref: 8963bb646e98642772971e542f0156aa80e7403b}
+    steps:
+      - name: Deadline gate
+        id: deadline
+        run: |
+          if [[ $(( $(date -u +%s) + 480 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
+            echo 'open=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'open=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-go@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          go-version-file: go.mod
+      - name: Patch race checks
+        if: steps.deadline.outputs.open == 'true'
+        env:
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: |
+          set -o pipefail
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p evidence/checks
+          git rev-parse HEAD | tee evidence/checks/source.txt
+          go version | tee evidence/checks/go.txt
+          timeout --kill-after=5s 360s go test -race -short -parallel 2 -count=1 -timeout 5m \
+            ./internal/peer ./internal/server ./internal/node ./internal/core ./internal/wal ./internal/lint \
+            2>&1 | tee evidence/checks/tests.txt
+      - uses: actions/upload-artifact@v6
+        if: always() && steps.deadline.outputs.open == 'true'
+        with:
+          name: pre50next-${{ matrix.variant }}-checks-${{ github.run_id }}
+          path: evidence/checks

@@ -1,64 +1,75 @@
-# PR80 baseline and profiles
+# Next speed experiments
 
-Throwaway experiment only. Nothing here is intended to merge. Parent owns patch selection, attribution and the final report.
+Throwaway code only. Nothing here is intended to merge. The source checkout contains the experiment tools; `refs.json`, not that checkout's engine code, selects the server sources built from `git archive`.
 
-`refs.json` pins PR80 at `396bced923ee47540e89e1e2ca1053ecde5673ce`. It also records bench68 `32ceb80`, frontend `b66573f`, wholebatch `c7c39ac` and profile `1d90dce` provenance. The generator is copied unchanged from frontend `b66573f`, including its controller barriers. Replica application and etcd post-WAL.Save fences come from bench68/frontend. Warmup size, measured cohort and retained observations follow the latest wholebatch experiment.
+The architect requested a lean-generator follow-up after the first measurements. The current baseline is main `aa9d9b6eea79c73f12fe0153aefa809841967e88`, including PRs 75 to 79 and the test-only PR 85. PR 80 was still open when this baseline was selected at 12:10 UTC. The earlier cohort pinned its then-open head `396bced923ee47540e89e1e2ca1053ecde5673ce`.
 
-## Runner launch after review
+## Cohorts
 
-Push the reviewed commit to `exp/pre-50-next` or `exp/pre-50-next-harness`. The initial push-only workflow created four free `ubuntu-24.04-arm` jobs, primary/profile at 64/256 clients. The confirmation workflow runs 12-second primary comparisons at both client counts, plus paired baseline/peer profiles at 256 clients and the focused race checks. Each has a 14-minute limit and a 780-second script timeout. It checks the absolute deadline before starting commands and HTTP requests. Clusters need at least 90 seconds left before the deadline. No manual dispatch, tags, PRs or merge steps.
+| Harness commit | Generator and purpose |
+| --- | --- |
+| `dd08f1ad3313356772075606c3da97f343a4dd74` | grpc-go baseline and three-node profiles of pinned PR80. |
+| `568da4d98fb77b06dbb5032d56c9fe65f055cbf9` | grpc-go screen of conditional writer wakes, peer ciphertext buffering and their combination. |
+| `4abf26eb4a28e60b037d2d7aee6ea6badbb1ec3b` | Longer grpc-go peer-buffer comparisons and matched profiles. |
+| `c3cc3d9` | Current-main baseline with the lean generator. Later commits select the patched sources in `refs.json`. |
 
-Primary jobs alternate baseline/stock etcd v3.7.2 order over five repetitions. Fresh cluster per window, leader CPU0, followers CPU1/2, generator CPU3. Servers have GOMAXPROCS=2; generator has one. Both stores use client and peer certificate-authenticated TLS, safe persistence, ext4 barriers and the same data mount. Etcd has an 8 GiB quota. Each cluster gets 4,096 seed Puts, 8,000 warmup Puts, then 30,000 measured Puts by default. `WINDOW_SECONDS=12` replaces that fixed count with a 12-second arrival window through drain for confirmation. Workload is leader-only closed-loop Put, 4,096 Kubernetes-shaped keys, independent deterministic 1 KiB values, 16 grpc-go connections. No live HTTP health traffic, delay, compression, watches or compaction in the measured workload. HTTP/1.1 and HTTP/2 health/version checks run before seed/warmup.
+The grpc-go client is copied unchanged from frontend `b66573f`, including its controller barriers. The lean client adapts `experiments/grpc/lean.go` from `exp/pre-47-grpc` at `d2408301966b99471bfed06d4c2dc1cd1e5af462`. Its README lists changes and limits. It retains the reader/owner model, warmed HPACK blocks and pre-encoded requests. It adds the existing controller barriers, exact finite totals, strict response/revision checks and bounded I/O. It uses this repository's dependencies, including x/net v0.58.0 rather than the source experiment's v0.61.0.
 
-Profile jobs run five repetitions of baseline control, etcd control, and baseline profile on the same VM, reversing the order every second repetition. All use separate 12-second arrival workloads through drain. Each profiled baseline captures the leader and both followers concurrently for 15 seconds. No stock-etcd CPU profiles or candidate profiles ran in the first round. With `PROFILE_VARIANT=peer`, each repetition instead runs baseline-profile, etcd-control and peer-profile, reversing the order on even repetitions. Both Tigerstore variants get the same three-node CPU capture. No mutex, block or allocation profiler runs alongside CPU capture. Normal runtime allocation sampling remains unchanged. Debug HTTP has a dedicated ServeMux and listener, so the new custom client frontend does not route profile requests.
+The lean client sends no per-Put `grpc-timeout` metadata. The grpc-go client creates a timeout context for every Put. Arrival batching, headers, client implementation and source commit differ between cohorts. Do not attribute their difference solely to freeing generator CPU.
 
-The profile denominator is completed Puts. The 15-second capture includes about 0.5 seconds of lead, drain, debug/fence requests and idle tail around the 12-second arrival window. `profile-window.json` records each node's HTTP bounds, the load bounds and operation count. Reject capture if drain exceeds a profile's response bound. These HTTP bounds approximate sampler bounds, not exact profiler start times. Before attribution, `experiments/next50/check_profiles.py` verifies that the actual pprof sampler timestamps enclose the generator window.
+## Workload and placement
 
-## Artifacts
+Free `ubuntu-24.04-arm` only for `run.sh`. Each job verifies ext4 barriers after remounting the disposable runner. Leader CPU0, followers CPU1/2, generator and controller CPU3. Each server has GOMAXPROCS=2, including etcd. The generator has one. Client and peer certificate-authenticated TLS remain enabled. Etcd v3.7.2 uses its safe persistence defaults and an 8 GiB quota.
 
-Each artifact is named `pre50next-{primary|profile}-c{64|256}-<run-id>` and contains:
+Each fresh cluster receives 4,096 seed Puts and 8,000 warmup Puts, then a one-second pause. Primary lean measurements use 60,000 Puts. Earlier grpc-go screens used 30,000. `TOTAL_PUTS` selects either count. `WINDOW_SECONDS=12` selects a duration cohort instead. Every job runs five repetitions with the stores sequentially on the same VM and reverses the order on even repetitions.
 
-- `binaries.tar.gz`, reusable ARM binaries plus a SHA-256 manifest and matching symbol binaries.
-- Full instrumented source archives, source refs, overlay templates/diff, versions, binary hashes, mount evidence and exact build/download argv.
-- `commands.json`, exact server/generator argv and relevant process environment, plus debug HTTP requests.
-- Per-window Put/warmup/seed metrics, status/term/affinity checks, replica fences, allocation/sync snapshots, `/proc/PID/io` and RSS observations.
-- Allocation objects/bytes, GC CPU for Tigerstore, and retained heap/RSS after eight quiet seconds. Tigerstore retained heap forces GC; stock etcd retained heap does not, so they are not equal-GC comparisons.
+Workload is leader-only, closed-loop Put over 4,096 Kubernetes-shaped keys and independently SHA-derived 1 KiB values. There are 16 connections and 64 or 256 outstanding calls in total. No live health traffic, injected delay, compression, watches or compaction runs during the measured window. HTTP/1.1 and HTTP/2 health/version smoke checks precede seed and warmup.
 
-Profiles use `profile/c64/1-baseline-profile/n<node>-cpu.pb.gz`, with `n<node>-cpu-raw.txt`, `n<node>-cpu-top-flat.txt` and `n<node>-cpu-top-cumulative.txt`. Node IDs are zero-based. `placement.json` maps them to leader/follower roles. `profile-manifest.json` is a JSON list with clients, variant, rep, role, operations and raw path relative to that artifact root, for the parent's independent `experiments/next50/attribute.py`.
+The generator parks before and after the worker interval. The controller fences all replicas before reading allocation, disk and I/O counters. Etcd additionally waits for the post-WAL.Save committed gauge before taking a fresh scrape. CPU uses the narrower worker interval through drain. Generator CPU is always reported separately.
 
-CPU uses the generator's worker interval through drain. Allocation, disk and process-I/O snapshots bracket the wider all-replica-fenced interval, so they include fixed observation overhead and trailing follower work. Tigerstore counts completed file Write/Sync calls and excludes directory syncs. Etcd counts WAL sync observations, mostly fdatasync, including rotation-related directory syncs. It archives backend commits separately. `/proc/PID/io` syscr/syscw are syscall counts, not proof of physical I/O. Replicas share one disk and failure domain. Guest barriers do not prove physical power-loss protection.
+## Profiles
 
-Offline summaries need only Python:
+Default profile jobs alternate baseline-control, etcd-control and baseline-profile for five repetitions. Each uses a 12-second arrival window through drain. Profiled baseline clusters capture the leader and both followers for 15 seconds, with about half a second of lead and the remaining time for drain and idle tail.
 
-```sh
-python3 experiments/pre50next/summarize.py <artifact-root>
-python3 experiments/pre50next/profile_manifest.py <artifact-root>
-```
+`PROFILE_VARIANT=peer` instead selects baseline-profile, etcd-control and peer-profile in each repetition. Both Tigerstore sources get the same capture. Raw/top pprof output uses the matching executable for each profile. There is no mutex, block or allocation profiler alongside CPU capture. Ordinary runtime heap sampling remains enabled.
 
-## Host launch, parent gated
+`profile-window.json` records HTTP bounds. `experiments/next50/check_profiles.py` checks the actual timestamps in each pprof protobuf against the generator's start and elapsed time. A profile must enclose the entire worker interval. Attribution divides sampled CPU nanoseconds by completed Puts. Inclusive categories overlap; the separate ordered execution-context partition sums to total CPU. Profiles contain fixed observation overhead and idle margins.
 
-Do not use `run.sh` on the host. Download a primary runner artifact, extract `binaries.tar.gz` into a dedicated directory, and keep `binaries.json` beside the executables. No local Go command is needed. The parent first gates host memory and removes other heavy work. GOMEMLIMIT is a per-process soft limit, not an aggregate 2 GiB host limit.
+## Commands
 
-From this checkout, before the deadline:
+Only on a disposable ARM runner before `2026-10-13T22:00:00Z`:
 
 ```sh
-mkdir -p evidence/pre50next/host-bin
-# Download/extract the reviewed primary artifact first.
-tar xzf <artifact-root>/binaries.tar.gz -C evidence/pre50next/host-bin
-HOST=1 CLIENTS=64 MODE=primary \
-  BIN_DIR="$PWD/evidence/pre50next/host-bin" \
-  python3 experiments/pre50next/run.py
-HOST=1 CLIENTS=256 MODE=primary \
-  BIN_DIR="$PWD/evidence/pre50next/host-bin" \
-  python3 experiments/pre50next/run.py
-python3 experiments/pre50next/summarize.py evidence/pre50next/host/c64
-python3 experiments/pre50next/summarize.py evidence/pre50next/host/c256
+GENERATOR=lean CLIENTS=64 MODE=primary TOTAL_PUTS=60000 \
+  timeout --kill-after=5s 780s bash experiments/pre50next/run.sh
+GENERATOR=lean CLIENTS=256 MODE=profile \
+  timeout --kill-after=5s 780s bash experiments/pre50next/run.sh
 ```
 
-HOST verifies every executable checksum and the pinned base SHA, runs only one baseline/etcd repetition per client count, and refuses profiles. Leader gets CPUs0/1, followers2/3 and4/5, generator CPU6. All processes receive GOFLAGS=-p=2, GOMEMLIMIT=2GiB, GOMAXPROCS=2. It does not remount or build. It records the existing mount, generates fresh dev certificates and deletes only its fresh cluster data. Results are labelled host results and cannot be substituted for runner results. Fresh output directories are required for reruns.
+The script exports `GOFLAGS=-p=2 GOMEMLIMIT=2GiB`. Tests use `-parallel 2`. Workflow jobs reserve their full time limit before the absolute deadline. Commands and HTTP requests also check the deadline. The workflow only runs on `exp/pre-50-next`, with no tags, PRs or merge steps.
 
-## Later patch comparisons
+Offline, for an extracted artifact root:
 
-Leave `base` pinned unless the parent explicitly changes it. Add up to three candidate entries such as `{"name":"peer-buffer","ref":"<40-character-commit-sha>"}` to `refs.json` and push the experiment branch. Primary jobs build each immutable source with the same observation-only overlay and run it sequentially with baseline/etcd for five repetitions. Profile jobs also build the selected `PROFILE_VARIANT`, if set, and use each profile's matching symbol binary. No experimental selector environment is inherited by servers. Later matrix changes belong to the parent.
+```sh
+python3 experiments/pre50next/summarize.py ROOT
+python3 experiments/pre50next/profile_manifest.py ROOT
+python3 experiments/next50/check_profiles.py ROOT > ROOT/sampler-bounds.json
+python3 experiments/next50/attribute.py ROOT/profile-manifest.json > ROOT/attribution.json
+python3 experiments/next50/compare.py ROOT > ROOT/paired-changes.json
+```
 
-The overlay inserts one debug startup call and file-call counters only. Core, Raft, WAL ordering, transport and acknowledgement behavior remain unchanged. No new crash-durability proof or Kubernetes compatibility claim follows from these workload checks.
+The last three commands apply only to their relevant profile or candidate-comparison roots. Summaries reject incomplete scheduled cohorts. Paired changes compare the same repetition on the same VM, not separate runner medians.
+
+## Host runs
+
+`HOST=1` calls `run.py` directly with downloaded ARM binaries. It never builds or remounts. The parent checks memory first and puts the entire benchmark process tree under a 1 GiB `memory.max` limit with swap disabled, leaving room for the agent within the task's 2 GiB budget. GOFLAGS and GOMEMLIMIT still have the required values. All local tests use `-parallel 2` and separate hard memory limits.
+
+Leader gets CPUs0/1, followers2/3 and4/5, generator CPU6. All processes receive GOMAXPROCS=2. One baseline/etcd repetition runs at each client count. `BIN_DIR` contains the downloaded binaries and `binaries.json`; hashes and baseline source must match. `WORK_DIR` can select an owned data directory on the host's existing XFS mount. Certificates and cluster data are deleted afterward. Results are labelled host results, not runner results or an isolated scaling test.
+
+## Evidence and limits
+
+Runner artifacts contain setup commands, server/client argv, source refs, complete observation overlays, instrumented source archives, binary hashes, raw JSON/Prometheus counters, affinities, replica fences, logs and profiles. All selected executable hashes are checked before use. Public evidence archives may omit redundant primary executable bundles. Matching profile executables and the host's reusable binary bundle remain archived.
+
+Allocation, disk and `/proc/PID/io` snapshots span a wider interval than CPU. `syscr/syscw` include observation traffic and background work. They do not include fsync or represent physical I/O. Tigerstore counters count completed file Write/Sync calls and exclude directory syncs. Etcd counts WAL histogram observations, including rotation-related directory syncs, and records backend commits separately. Forced-GC retained heap is available only for Tigerstore. Retained observations run after eight quiet seconds, outside the measured and profiled intervals.
+
+The observation overlay adds a private debug listener and counting wrappers only. Each wrapper calls the original file operation once and preserves its result. All sources retain real persistence, peer TLS, ordered Raft storage responses and committed-apply acknowledgements. Three runner replicas share one disk and failure domain. Guest barriers do not prove physical power-loss protection. These Put checks do not prove crash durability, capacity, Kubernetes compatibility, open-loop latency or production performance.
