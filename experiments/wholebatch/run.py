@@ -80,6 +80,7 @@ def cluster(variant, label):
                 env['TIGERSTORE_FRONTEND'] = variant['frontend']
             if variant['batch_mode']:
                 env['TIGERSTORE_BATCH_MODE'] = variant['batch_mode']
+                env['TIGERSTORE_BATCH_STATS'] = '1'
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
             check_time()
