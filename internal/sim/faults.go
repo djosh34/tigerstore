@@ -252,6 +252,27 @@ func sameCommitted(ents, final []*raftpb.Entry, applied uint64) error {
 	return nil
 }
 
+// coldRestartMore bounds the extra seconds a cold restart may run until
+// its two nodes agree.
+const coldRestartMore = 10
+
+// converged reports whether the nodes that are not fenced have applied the
+// same entries.
+func converged(nodes []*node) bool {
+	var first *node
+	for _, n := range nodes {
+		if n.fenced {
+			continue
+		}
+		if first == nil {
+			first = n
+		} else if n.core.Applied() != first.core.Applied() {
+			return false
+		}
+	}
+	return true
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold,
 // and returns their applied log.
@@ -274,6 +295,18 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
 	}
 	if err := r.loop(); err != nil {
 		return nil, err
+	}
+	// The leader may have proposed a lease expiry just before the end, so
+	// the follower has yet to learn that it committed. Run on until the
+	// two agree, for at most coldRestartMore more seconds.
+	for range coldRestartMore {
+		if converged(r.nodes) {
+			break
+		}
+		r.endAt += Second
+		if err := r.loop(); err != nil {
+			return nil, err
+		}
 	}
 	var first *node
 	for _, n := range r.nodes {

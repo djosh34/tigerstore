@@ -525,11 +525,10 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 
 // loop runs events until the end.
 func (s *Sim) loop() error {
-	for len(s.q) > 0 && s.err == nil {
+	// The first event past the end stays queued, so a later call can go
+	// on from where this one stopped.
+	for len(s.q) > 0 && s.err == nil && s.q[0].at <= s.endAt {
 		e := s.q.pop()
-		if e.at > s.endAt {
-			break
-		}
 		s.now = e.at
 		s.stats.Events++
 		s.mix(uint64(e.at), uint64(e.kind), uint64(e.node), uint64(e.from))
