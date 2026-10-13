@@ -71,9 +71,11 @@ func TestHTTP1HealthAndVersion(t *testing.T) {
 // request spans many frames and the response waits on the client's flow
 // control; a request above the limit fails like grpc-go's.
 func TestLargeValues(t *testing.T) {
-	// 1.5 MiB writes make fsyncs slow on a shared runner; with 10 ms ticks
-	// the leader's commit watchdog (three election timeouts, 300 ms)
-	// stopped it in CI. 50 ms ticks give it 1.5 s.
+	// With 10 ms ticks the leader's commit watchdog (three election
+	// timeouts, 300 ms) stopped the leader in CI during these 1.5 MiB
+	// writes. Why an entry waited that long is not known; slow fsyncs on
+	// a shared runner are a guess. 50 ms ticks give it 1.5 s, still
+	// faster than the 100 ms of a real node.
 	c := newClusterWith(t, func(c *cluster) { c.tick = 50 * time.Millisecond })
 	cert, _, _, err := c.ca.Issue("client", 91)
 	if err != nil {
