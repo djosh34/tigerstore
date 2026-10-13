@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // linkProxy forwards one directed peer link. stall makes the connections
@@ -151,7 +150,9 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	before := proxy.accepted.Load()
 	proxy.stall()
 
-	bound := 10 * time.Duration(core.DefaultConfig(1, nil).ElectionTicks) * c.tick
+	// Well under the peer's 5 s write deadline, so a leader held up by the
+	// stalled link fails here.
+	bound := time.Second
 	value := bytes.Repeat([]byte("v"), 64<<10)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0
