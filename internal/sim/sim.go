@@ -224,9 +224,12 @@ type Sim struct {
 
 	clients  []*client
 	watchers []*watchClient
-	history  []*Record
-	stats    Stats
-	err      error
+	// expiredAt is when a lease first expired on any node.
+	expiredAt    map[int64]int64
+	expiredOrder []int64
+	history      []*Record
+	stats        Stats
+	err          error
 }
 
 // Stats counts what happened in a run.
@@ -260,11 +263,12 @@ type Result struct {
 // rule.
 func Run(cfg Config) (*Result, error) {
 	s := &Sim{
-		cfg:    cfg,
-		rng:    rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
-		trace:  fnv.New64a(),
-		healAt: cfg.Duration,
-		stopAt: cfg.Duration + cfg.Heal,
+		cfg:       cfg,
+		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+		trace:     fnv.New64a(),
+		expiredAt: map[int64]int64{},
+		healAt:    cfg.Duration,
+		stopAt:    cfg.Duration + cfg.Heal,
 	}
 	// After the clients stop, give the cluster time to settle: leases
 	// still expire for up to leaseGrace, and the watch events of the last
@@ -447,6 +451,12 @@ func (s *Sim) process(n *node) {
 	}
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
+	}
+	for _, id := range eff.Expired {
+		if _, seen := s.expiredAt[id]; !seen {
+			s.expiredAt[id] = s.now
+			s.expiredOrder = append(s.expiredOrder, id)
+		}
 	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)

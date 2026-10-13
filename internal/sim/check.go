@@ -56,10 +56,11 @@ func (s *Sim) check(res *Result) error {
 	// The cluster compacts, so the checks read history from a model: the
 	// committed log replayed without compactions. It must end in the
 	// cluster's state.
-	model, err := replay(res.Log)
+	model, log, err := replay(res.Log)
 	if err != nil {
 		return err
 	}
+	res.Log = log
 	if err := sameLatest(model, final); err != nil {
 		return err
 	}
@@ -460,18 +461,31 @@ func isRejection(err error) bool {
 }
 
 // replay applies the committed log to a fresh state, without compactions,
-// so every revision stays readable. Lease expiry is in the log as revokes.
-func replay(log []proto.Message) (*mvcc.Store, error) {
-	st := core.NewState(2)
+// so every revision stays readable. It returns the log as the checkers
+// read it: an expiry that applied becomes the LeaseRevoke it amounts to,
+// and one that no longer applied, because a keepalive came first, is left
+// out.
+func replay(log []proto.Message) (*mvcc.Store, []proto.Message, error) {
+	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)))
+	var out []proto.Message
 	for i, op := range log {
+		e, expiry := op.(*pb.LeaseCheckpoint)
 		if _, ok := op.(*pb.CompactionRequest); ok {
+			out = append(out, op)
 			continue
 		}
-		if _, err := st.Apply(op); err != nil && !isRejection(err) {
-			return nil, fmt.Errorf("replaying log write %d: %w", i, err)
+		resp, err := st.Apply(op)
+		if err != nil && !isRejection(err) {
+			return nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
+		}
+		switch {
+		case !expiry:
+			out = append(out, op)
+		case resp != nil:
+			out = append(out, &pb.LeaseRevokeRequest{ID: e.ID})
 		}
 	}
-	return st.Store(), nil
+	return st.Store(), out, nil
 }
 
 // sameLatest checks that two stores are at the same revision with the same
@@ -499,8 +513,30 @@ func sameLatest(a, b *mvcc.Store) error {
 const leaseGrace = 8 * Second
 
 // checkLeasesExpire requires every lease still granted at the end to have
-// been granted or kept alive within leaseGrace, so leases do expire.
+// been granted or kept alive within leaseGrace, so leases do expire, and
+// no lease to expire before its TTL ran out since its last successful
+// grant or renewal, less one tick of the leader's clock.
 func (s *Sim) checkLeasesExpire(res *Result) error {
+	renewed := map[int64]int64{}
+	ttl := map[int64]int64{}
+	for _, r := range res.History {
+		switch resp := r.Resp.(type) {
+		case *pb.LeaseGrantResponse:
+			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			ttl[resp.ID] = resp.TTL
+		case *pb.LeaseKeepAliveResponse:
+			if resp.TTL > 0 {
+				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			}
+		}
+	}
+	for _, id := range s.expiredOrder {
+		at := s.expiredAt[id]
+		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-TickTime {
+			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
+				id, ttl[id], at/Millisecond, t/Millisecond)
+		}
+	}
 	last := map[int64]int64{}
 	for _, r := range res.History {
 		switch req := r.req.(type) {
