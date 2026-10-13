@@ -149,3 +149,42 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		}
 	}
 }
+
+// TestAllLinkMasks holds each of the 64 sets of directed links between the
+// three nodes for 3 virtual seconds, from 2 s on, with no other fault,
+// then heals. Every rule and checker must hold, and the cluster must serve
+// again 2 s after healing.
+func TestAllLinkMasks(t *testing.T) {
+	for mask := range uint64(64) {
+		cfg := DefaultConfig(1000 + mask)
+		cfg.Faults = Faults{HoldMask: mask, HoldMaskAt: 2 * Second}
+		cfg.Duration = 5 * Second
+		cfg.Heal = 5 * Second
+		cfg.Clients = 4
+		cfg.NoLeases = true
+		res := run(t, cfg)
+		checkers(t, res)
+		h, err := res.Checkable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := check.Linearizable(h, time.Minute); err != nil {
+			t.Fatalf("mask %06b: linearizability: %v", mask, err)
+		}
+	}
+}
+
+// TestSwitchingLinks switches to a random set of directed links about
+// every 300 ms for 10 virtual seconds, then heals.
+func TestSwitchingLinks(t *testing.T) {
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(2000 + seed)
+		cfg.Faults = Faults{SwitchEvery: 300 * Millisecond}
+		cfg.Duration = 10 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		if res.Stats.LinkChanges < 10 {
+			t.Fatalf("seed %d switched only %d times", seed, res.Stats.LinkChanges)
+		}
+	}
+}

@@ -90,6 +90,24 @@ type Faults struct {
 	Corrupt bool
 	// Checkpoint takes the erase-one-disk checkpoint during the faults.
 	Checkpoint bool
+	// LinkStallEvery is the mean time between stalls of 0.5 to 2 s on one
+	// directed link: everything on it waits, in order.
+	LinkStallEvery int64
+	// PauseEvery is the mean time between process pauses of 0.2 to 2 s.
+	PauseEvery int64
+	// DriftPerMille is the most a node's clock runs fast or slow, per
+	// mille; ClockJumpEvery the mean time between forward clock jumps of
+	// up to 3 ticks on one node. Together they are the declared clock
+	// envelope, which the lease lower bound allows for.
+	DriftPerMille  int64
+	ClockJumpEvery int64
+	// SwitchEvery, if set, switches between random link masks that often
+	// during the faults, instead of LinkEvery's slower changes.
+	SwitchEvery int64
+	// HoldMask, if HoldMaskAt is set, sets the link mask at that time and
+	// keeps it until healing.
+	HoldMask   uint64
+	HoldMaskAt int64
 }
 
 // DefaultConfig is a run of 20 virtual seconds with crashes, link changes,
@@ -113,6 +131,11 @@ func DefaultConfig(seed uint64) Config {
 			StallEvery:     8 * Second,
 			Corrupt:        true,
 			Checkpoint:     true,
+
+			LinkStallEvery: 4 * Second,
+			PauseEvery:     6 * Second,
+			DriftPerMille:  50,
+			ClockJumpEvery: 6 * Second,
 		},
 	}
 }
@@ -129,6 +152,10 @@ const (
 	evDiskFault
 	evStall
 	evCheckpoint
+	evLinkStall
+	evPause
+	evClockJump
+	evSwitch
 	evRestart
 	evLinks
 	evHeal
@@ -226,6 +253,11 @@ type node struct {
 	nextStream uint64
 	streams    map[uint64]*watchClient
 
+	// tickEvery is this node's tick interval, off by up to the clock drift;
+	// pausedUntil holds the whole process back.
+	tickEvery, pausedUntil int64
+	pauses                 [][2]int64
+	lastJump               int64
 	// stallUntil holds back disk writes until then; stalls keeps every
 	// stall window, for the liveness rule.
 	stallUntil int64
@@ -239,6 +271,11 @@ type link struct {
 	up    bool
 	epoch uint64
 	last  int64
+	// base and jitter give the link's own delay, so links differ and one
+	// direction can be much slower than the other; stallUntil holds
+	// everything on the link back, like a stalled TCP stream.
+	base, jitter int64
+	stallUntil   int64
 }
 
 // Sim is one run.
@@ -281,6 +318,8 @@ type Stats struct {
 	// that found their disk damaged, and ColdRestarts the erase-one-disk
 	// restarts checked.
 	DiskFaults, StalledStops, Fenced, ColdRestarts int
+	// Pauses counts process pauses.
+	Pauses int
 }
 
 // Result is the outcome of a run.
@@ -325,6 +364,7 @@ func Run(cfg Config) (*Result, error) {
 		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evLinksOnce})
 	}
 	s.scheduleDiskFaults()
+	s.scheduleNetFaults()
 	if cfg.StallLeaderAt > 0 {
 		s.push(&event{at: cfg.StallLeaderAt, kind: evStall, gen: 1})
 	}
@@ -356,10 +396,8 @@ func newSim(cfg Config) *Sim {
 	s.links = make([][]link, 3)
 	for i := range s.links {
 		s.links[i] = make([]link, 3)
-		for j := range s.links[i] {
-			s.links[i][j].up = true
-		}
 	}
+	s.setLinks(1<<6 - 1)
 	return s
 }
 
@@ -416,6 +454,13 @@ func (s *Sim) fail(format string, args ...any) {
 }
 
 func (s *Sim) handle(e *event) {
+	if n := s.target(e); n != nil && n.pausedUntil > s.now {
+		// A paused process sees nothing until it resumes; then it gets
+		// everything at once, in order.
+		e.at = n.pausedUntil
+		s.push(e)
+		return
+	}
 	switch e.kind {
 	case evTick:
 		n := s.nodes[e.node]
@@ -424,7 +469,7 @@ func (s *Sim) handle(e *event) {
 		}
 		n.core.Tick()
 		s.process(n)
-		s.push(&event{at: s.now + TickTime, kind: evTick, node: n.idx, gen: n.gen})
+		s.push(&event{at: s.now + n.tickEvery, kind: evTick, node: n.idx, gen: n.gen})
 	case evDeliver:
 		s.deliver(e)
 	case evDiskDone:
@@ -442,6 +487,14 @@ func (s *Sim) handle(e *event) {
 		s.injectStall(e.gen == 1)
 	case evCheckpoint:
 		s.takeCheckpoint()
+	case evLinkStall:
+		s.stallLink()
+	case evPause:
+		s.pause()
+	case evClockJump:
+		s.jumpClock()
+	case evSwitch:
+		s.switchLinks(e.gen)
 	case evRestart:
 		n := s.nodes[e.node]
 		if !n.up && n.gen == e.gen {
@@ -512,6 +565,10 @@ func (s *Sim) start(n *node) error {
 	}
 	n.gen++
 	n.log, n.core, n.up = w, c, true
+	n.tickEvery = TickTime
+	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
+		n.tickEvery += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
+	}
 	n.diskQ, n.diskBusy = nil, false
 	s.mix(0xb007, uint64(n.idx), uint64(len(rec.Entries)), rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
@@ -612,10 +669,13 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 		return
 	}
 	delay := 20*Microsecond + s.rng.Int64N(200*Microsecond)
-	if s.cfg.Faults.MaxDelay > 0 && !s.healed && s.rng.IntN(10) == 0 {
-		delay = s.rng.Int64N(s.cfg.Faults.MaxDelay) + 1
+	if !s.healed {
+		delay = l.base + s.rng.Int64N(l.jitter+1)
+		if s.cfg.Faults.MaxDelay > 0 && s.rng.IntN(10) == 0 {
+			delay = s.rng.Int64N(s.cfg.Faults.MaxDelay) + 1
+		}
 	}
-	at := max(s.now+delay, l.last)
+	at := max(s.now+delay, l.last, l.stallUntil)
 	l.last = at
 	s.push(&event{at: at, kind: evDeliver, node: to, from: from.idx, gen: l.epoch, data: b})
 }
@@ -711,8 +771,8 @@ func (s *Sim) changeLinks() {
 func (s *Sim) setLinks(mask uint64) {
 	s.mix(0x11, mask)
 	k := 0
-	for i := range s.nodes {
-		for j := range s.nodes {
+	for i := range s.links {
+		for j := range s.links[i] {
 			if i == j {
 				continue
 			}
@@ -722,6 +782,11 @@ func (s *Sim) setLinks(mask uint64) {
 				l.epoch++
 			}
 			l.up = up
+			// Each change draws new delays per link: a base of 20 us to
+			// 2 ms and jitter up to the base, so delays switch and differ
+			// by direction.
+			l.base = 20*Microsecond + s.rng.Int64N(2*Millisecond)
+			l.jitter = s.rng.Int64N(l.base + 1)
 			k++
 		}
 	}
@@ -730,7 +795,13 @@ func (s *Sim) setLinks(mask uint64) {
 func (s *Sim) heal() {
 	s.healed = true
 	s.setLinks(1<<6 - 1)
+	for i := range s.links {
+		for j := range s.links[i] {
+			s.links[i][j].stallUntil = 0
+		}
+	}
 	for _, n := range s.nodes {
+		n.pausedUntil = 0
 		if n.stallUntil > s.now && len(n.stalls) > 0 {
 			n.stalls[len(n.stalls)-1][1] = s.now
 		}
