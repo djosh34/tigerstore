@@ -91,7 +91,7 @@ def summarize(root):
     for r in rows:
         if r['store'] not in ('rpc', 'admit', 'full'):
             continue
-        baselines = ['main', 'etcd', 'native']
+        baselines = ['main', 'etcd', 'native', 'native-tuned', 'extra']
         previous_stage = {'admit': 'rpc', 'full': 'admit'}.get(r['store'])
         if previous_stage:
             baselines.append(previous_stage)
