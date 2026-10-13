@@ -1,0 +1,3481 @@
+{
+  "runs": [
+    {
+      "run_id": "38430785949",
+      "attempts": 8,
+      "controllers": 8,
+      "passed": 0,
+      "operations": 171,
+      "histories": 8,
+      "verdicts": 32,
+      "checker_passes": 16
+    },
+    {
+      "run_id": "38431403716",
+      "attempts": 8,
+      "controllers": 8,
+      "passed": 6,
+      "operations": 2691,
+      "histories": 26,
+      "verdicts": 104,
+      "checker_passes": 96
+    },
+    {
+      "run_id": "38432244287",
+      "attempts": 24,
+      "controllers": 24,
+      "passed": 24,
+      "operations": 3637,
+      "histories": 96,
+      "verdicts": 384,
+      "checker_passes": 384
+    }
+  ],
+  "by_product": {
+    "etcd": {
+      "attempts": 20,
+      "passed": 14,
+      "operations": 3117,
+      "histories": 62,
+      "verdicts": 248,
+      "checker_passes": 232
+    },
+    "tigerstore": {
+      "attempts": 20,
+      "passed": 16,
+      "operations": 3382,
+      "histories": 68,
+      "verdicts": 272,
+      "checker_passes": 264
+    }
+  },
+  "cpu": [
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "10000 100000",
+      "nr_throttled_delta": 13,
+      "throttled_usec_delta": 779743,
+      "cpu_seconds": 0.212255,
+      "wall_seconds": 8.00151684699999
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "5000 100000",
+      "nr_throttled_delta": 49,
+      "throttled_usec_delta": 8388239,
+      "cpu_seconds": 0.279723,
+      "wall_seconds": 8.00154324799999
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "10000 100000",
+      "nr_throttled_delta": 2,
+      "throttled_usec_delta": 23853,
+      "cpu_seconds": 0.092343,
+      "wall_seconds": 8.001418579000003
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "5000 100000",
+      "nr_throttled_delta": 22,
+      "throttled_usec_delta": 2241059,
+      "cpu_seconds": 0.136676,
+      "wall_seconds": 8.001541472000014
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "10000 100000",
+      "nr_throttled_delta": 28,
+      "throttled_usec_delta": 3036899,
+      "cpu_seconds": 0.346834,
+      "wall_seconds": 8.00164070800001
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "5000 100000",
+      "nr_throttled_delta": 64,
+      "throttled_usec_delta": 11243522,
+      "cpu_seconds": 0.323823,
+      "wall_seconds": 8.001477753999993
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "10000 100000",
+      "nr_throttled_delta": 10,
+      "throttled_usec_delta": 1162899,
+      "cpu_seconds": 0.161923,
+      "wall_seconds": 8.001800922000001
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "cpu_max": "5000 100000",
+      "nr_throttled_delta": 34,
+      "throttled_usec_delta": 5565965,
+      "cpu_seconds": 0.19562,
+      "wall_seconds": 8.002222404999998
+    }
+  ],
+  "clock": [
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.013428328,
+          "monotonic_seconds": 3.013453033,
+          "server_clock_hits": 1210
+        },
+        "2": {
+          "wall_seconds": 3.012892814,
+          "monotonic_seconds": 3.01287142,
+          "server_clock_hits": 1245
+        },
+        "3": {
+          "wall_seconds": 3603.01286834,
+          "monotonic_seconds": 3.012783594,
+          "server_clock_hits": 1573
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 2.867222645,
+          "monotonic_seconds": 2.867191156,
+          "server_clock_hits": 1178
+        },
+        "2": {
+          "wall_seconds": 2.864912485,
+          "monotonic_seconds": 2.86492327,
+          "server_clock_hits": 1156
+        },
+        "3": {
+          "wall_seconds": -3597.13156597,
+          "monotonic_seconds": 2.86836594,
+          "server_clock_hits": 1591
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "fault": "clock-zero-control",
+      "node": 1,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.017885032,
+          "monotonic_seconds": 3.017431628,
+          "server_clock_hits": 293
+        },
+        "2": {
+          "wall_seconds": 3.017778021,
+          "monotonic_seconds": 3.017726118,
+          "server_clock_hits": 183
+        },
+        "3": {
+          "wall_seconds": 3.017942363,
+          "monotonic_seconds": 3.0177437,
+          "server_clock_hits": 174
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-forward",
+      "node": 1,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3603.015627619,
+          "monotonic_seconds": 3.015659332,
+          "server_clock_hits": 646
+        },
+        "2": {
+          "wall_seconds": 3.015227717,
+          "monotonic_seconds": 3.015313008,
+          "server_clock_hits": 427
+        },
+        "3": {
+          "wall_seconds": 3.016005736,
+          "monotonic_seconds": 3.016164222,
+          "server_clock_hits": 416
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-backward",
+      "node": 1,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": -3597.185693125,
+          "monotonic_seconds": 2.814317748,
+          "server_clock_hits": 638
+        },
+        "2": {
+          "wall_seconds": 2.845998562,
+          "monotonic_seconds": 2.846008586,
+          "server_clock_hits": 429
+        },
+        "3": {
+          "wall_seconds": 2.84408947,
+          "monotonic_seconds": 2.84407199,
+          "server_clock_hits": 416
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.0278342,
+          "monotonic_seconds": 3.027806547,
+          "server_clock_hits": 1183
+        },
+        "2": {
+          "wall_seconds": 3.027397296,
+          "monotonic_seconds": 3.027339891,
+          "server_clock_hits": 1198
+        },
+        "3": {
+          "wall_seconds": 3603.024699963,
+          "monotonic_seconds": 3.024759495,
+          "server_clock_hits": 1579
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.022389856,
+          "monotonic_seconds": 3.021220958,
+          "server_clock_hits": 1170
+        },
+        "2": {
+          "wall_seconds": 3.022674818,
+          "monotonic_seconds": 3.022668616,
+          "server_clock_hits": 1148
+        },
+        "3": {
+          "wall_seconds": -3596.975606259,
+          "monotonic_seconds": 3.023035589,
+          "server_clock_hits": 1619
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "fault": "clock-zero-control",
+      "node": 1,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.016459282,
+          "monotonic_seconds": 3.016289518,
+          "server_clock_hits": 301
+        },
+        "2": {
+          "wall_seconds": 3.017194202,
+          "monotonic_seconds": 3.017164658,
+          "server_clock_hits": 218
+        },
+        "3": {
+          "wall_seconds": 3.016042524,
+          "monotonic_seconds": 3.01628768,
+          "server_clock_hits": 201
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-forward",
+      "node": 1,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3603.02134358,
+          "monotonic_seconds": 3.021596043,
+          "server_clock_hits": 629
+        },
+        "2": {
+          "wall_seconds": 3.020663258,
+          "monotonic_seconds": 3.020574594,
+          "server_clock_hits": 417
+        },
+        "3": {
+          "wall_seconds": 3.022909367,
+          "monotonic_seconds": 3.02257323,
+          "server_clock_hits": 403
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "fault": "clock-backward",
+      "node": 1,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": -3596.977949294,
+          "monotonic_seconds": 3.022122389,
+          "server_clock_hits": 637
+        },
+        "2": {
+          "wall_seconds": 3.019771277,
+          "monotonic_seconds": 3.019757041,
+          "server_clock_hits": 442
+        },
+        "3": {
+          "wall_seconds": 3.019520307,
+          "monotonic_seconds": 3.019496692,
+          "server_clock_hits": 418
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-zero-control",
+      "node": 3,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.027058624,
+          "monotonic_seconds": 3.027045112,
+          "server_clock_hits": 1324
+        },
+        "2": {
+          "wall_seconds": 3.219148791,
+          "monotonic_seconds": 3.219156087,
+          "server_clock_hits": 1217
+        },
+        "3": {
+          "wall_seconds": 3.218225784,
+          "monotonic_seconds": 3.218277885,
+          "server_clock_hits": 2764
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 2,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.018298783,
+          "monotonic_seconds": 3.018177571,
+          "server_clock_hits": 1294
+        },
+        "2": {
+          "wall_seconds": 3603.016711028,
+          "monotonic_seconds": 3.016734284,
+          "server_clock_hits": 1172
+        },
+        "3": {
+          "wall_seconds": 3.015313791,
+          "monotonic_seconds": 3.015338552,
+          "server_clock_hits": 2453
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 2,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.217734197,
+          "monotonic_seconds": 3.217725189,
+          "server_clock_hits": 1452
+        },
+        "2": {
+          "wall_seconds": -3596.78034795,
+          "monotonic_seconds": 3.218996485,
+          "server_clock_hits": 1347
+        },
+        "3": {
+          "wall_seconds": 3.217007398,
+          "monotonic_seconds": 3.216884377,
+          "server_clock_hits": 2733
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 1,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3603.016197142,
+          "monotonic_seconds": 3.016171165,
+          "server_clock_hits": 3404
+        },
+        "2": {
+          "wall_seconds": 3.018161158,
+          "monotonic_seconds": 3.018150598,
+          "server_clock_hits": 1184
+        },
+        "3": {
+          "wall_seconds": 3.017807202,
+          "monotonic_seconds": 3.017658589,
+          "server_clock_hits": 1211
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 1,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": -3596.982078122,
+          "monotonic_seconds": 3.017897141,
+          "server_clock_hits": 2396
+        },
+        "2": {
+          "wall_seconds": 3.01865332,
+          "monotonic_seconds": 3.0186508,
+          "server_clock_hits": 1448
+        },
+        "3": {
+          "wall_seconds": 3.017648036,
+          "monotonic_seconds": 3.01759445,
+          "server_clock_hits": 1622
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-zero-control",
+      "node": 1,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.031315903,
+          "monotonic_seconds": 3.031284454,
+          "server_clock_hits": 266
+        },
+        "2": {
+          "wall_seconds": 3.021756196,
+          "monotonic_seconds": 3.021744068,
+          "server_clock_hits": 175
+        },
+        "3": {
+          "wall_seconds": 3.022037727,
+          "monotonic_seconds": 3.022057703,
+          "server_clock_hits": 181
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.017249017,
+          "monotonic_seconds": 3.016174725,
+          "server_clock_hits": 260
+        },
+        "2": {
+          "wall_seconds": 3.015861113,
+          "monotonic_seconds": 3.015530006,
+          "server_clock_hits": 175
+        },
+        "3": {
+          "wall_seconds": 3603.015577099,
+          "monotonic_seconds": 3.01460273,
+          "server_clock_hits": 170
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.013311208,
+          "monotonic_seconds": 3.013301562,
+          "server_clock_hits": 267
+        },
+        "2": {
+          "wall_seconds": 3.01520446,
+          "monotonic_seconds": 3.015138033,
+          "server_clock_hits": 180
+        },
+        "3": {
+          "wall_seconds": -3596.985442002,
+          "monotonic_seconds": 3.01468923,
+          "server_clock_hits": 178
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 1,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3603.015966879,
+          "monotonic_seconds": 3.015909126,
+          "server_clock_hits": 265
+        },
+        "2": {
+          "wall_seconds": 3.015704527,
+          "monotonic_seconds": 3.015822778,
+          "server_clock_hits": 177
+        },
+        "3": {
+          "wall_seconds": 3.015913054,
+          "monotonic_seconds": 3.015912022,
+          "server_clock_hits": 174
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 1,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": -3596.984148811,
+          "monotonic_seconds": 3.015839357,
+          "server_clock_hits": 260
+        },
+        "2": {
+          "wall_seconds": 3.016368664,
+          "monotonic_seconds": 3.016305021,
+          "server_clock_hits": 172
+        },
+        "3": {
+          "wall_seconds": 3.016518093,
+          "monotonic_seconds": 3.016387832,
+          "server_clock_hits": 162
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-zero-control",
+      "node": 3,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.018873285,
+          "monotonic_seconds": 3.018992655,
+          "server_clock_hits": 1294
+        },
+        "2": {
+          "wall_seconds": 3.017675408,
+          "monotonic_seconds": 3.0178174,
+          "server_clock_hits": 1158
+        },
+        "3": {
+          "wall_seconds": 3.016036359,
+          "monotonic_seconds": 3.016038702,
+          "server_clock_hits": 2563
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.224851491,
+          "monotonic_seconds": 3.224850159,
+          "server_clock_hits": 1311
+        },
+        "2": {
+          "wall_seconds": 3.223678957,
+          "monotonic_seconds": 3.22346149,
+          "server_clock_hits": 2483
+        },
+        "3": {
+          "wall_seconds": 3603.222417127,
+          "monotonic_seconds": 3.222200357,
+          "server_clock_hits": 1283
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.01893265,
+          "monotonic_seconds": 3.018864678,
+          "server_clock_hits": 1485
+        },
+        "2": {
+          "wall_seconds": 3.021700491,
+          "monotonic_seconds": 3.021614762,
+          "server_clock_hits": 2360
+        },
+        "3": {
+          "wall_seconds": -3596.981742732,
+          "monotonic_seconds": 3.018140102,
+          "server_clock_hits": 1367
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.020768694,
+          "monotonic_seconds": 3.020771079,
+          "server_clock_hits": 1401
+        },
+        "2": {
+          "wall_seconds": 3.020784243,
+          "monotonic_seconds": 3.020759246,
+          "server_clock_hits": 1219
+        },
+        "3": {
+          "wall_seconds": 3603.018718392,
+          "monotonic_seconds": 3.018701241,
+          "server_clock_hits": 2468
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.02419495,
+          "monotonic_seconds": 3.024369157,
+          "server_clock_hits": 1696
+        },
+        "2": {
+          "wall_seconds": 3.020939663,
+          "monotonic_seconds": 3.020951596,
+          "server_clock_hits": 1345
+        },
+        "3": {
+          "wall_seconds": -3596.978687825,
+          "monotonic_seconds": 3.021274448,
+          "server_clock_hits": 2083
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-zero-control",
+      "node": 2,
+      "offset_seconds": 0,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.014085797,
+          "monotonic_seconds": 3.01410713,
+          "server_clock_hits": 169
+        },
+        "2": {
+          "wall_seconds": 3.017151307,
+          "monotonic_seconds": 3.017166369,
+          "server_clock_hits": 264
+        },
+        "3": {
+          "wall_seconds": 3.014417212,
+          "monotonic_seconds": 3.014414047,
+          "server_clock_hits": 169
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 3,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 2.869436564,
+          "monotonic_seconds": 2.967062312,
+          "server_clock_hits": 293
+        },
+        "2": {
+          "wall_seconds": 3.025283566,
+          "monotonic_seconds": 3.025289648,
+          "server_clock_hits": 199
+        },
+        "3": {
+          "wall_seconds": 3602.869923002,
+          "monotonic_seconds": 2.967623382,
+          "server_clock_hits": 189
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 3,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3.015529647,
+          "monotonic_seconds": 3.015151254,
+          "server_clock_hits": 265
+        },
+        "2": {
+          "wall_seconds": 2.814807943,
+          "monotonic_seconds": 2.814804758,
+          "server_clock_hits": 188
+        },
+        "3": {
+          "wall_seconds": -3596.985123762,
+          "monotonic_seconds": 3.01486457,
+          "server_clock_hits": 166
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-forward",
+      "node": 1,
+      "offset_seconds": 3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": 3603.016686176,
+          "monotonic_seconds": 3.016473869,
+          "server_clock_hits": 263
+        },
+        "2": {
+          "wall_seconds": 3.016174519,
+          "monotonic_seconds": 3.016185974,
+          "server_clock_hits": 176
+        },
+        "3": {
+          "wall_seconds": 3.01658738,
+          "monotonic_seconds": 3.016396274,
+          "server_clock_hits": 172
+        }
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "fault": "clock-backward",
+      "node": 1,
+      "offset_seconds": -3600,
+      "nodes": {
+        "1": {
+          "wall_seconds": -3596.985075609,
+          "monotonic_seconds": 3.01489297,
+          "server_clock_hits": 262
+        },
+        "2": {
+          "wall_seconds": 3.014402579,
+          "monotonic_seconds": 3.014353717,
+          "server_clock_hits": 178
+        },
+        "3": {
+          "wall_seconds": 3.014708214,
+          "monotonic_seconds": 3.014565041,
+          "server_clock_hits": 161
+        }
+      }
+    }
+  ],
+  "admissions": [
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": -10,
+      "largest_put_value_bytes": 1572810,
+      "strict_framed_bytes": 1572854,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": -9,
+      "largest_put_value_bytes": 1572811,
+      "strict_framed_bytes": 1572855,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 0,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 1,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "client": 2,
+      "extra_bytes": 0,
+      "largest_put_value_bytes": 1572820,
+      "strict_framed_bytes": 1572864,
+      "one_more_byte_rejected": true
+    }
+  ],
+  "payloads": [
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 4,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 36,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 14,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762
+      ],
+      "successful_near_limit_mutations": {
+        "put": 2,
+        "txn": 1
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 33,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 4,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 33,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 14,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762
+      ],
+      "successful_near_limit_mutations": {
+        "put": 2,
+        "txn": 1
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 33,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 4,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 606,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 131,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 29,
+        "txn": 21
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 606,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 4,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 606,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "role": "leader",
+      "operations": 131,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 29,
+        "txn": 21
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1024,
+      "near_limit": false,
+      "role": "leader",
+      "operations": 603,
+      "exact_1_5_MiB_definite_rejections": 0,
+      "successful_workload_put_value_bytes": [],
+      "successful_workload_txn_value_bytes": [],
+      "successful_near_limit_mutations": {
+        "put": 0,
+        "txn": 0
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 152,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 25
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 29
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 29
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 147,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 19,
+        "txn": 27
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 29
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 29
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 151,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 28
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 152,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 25
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 152,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-arm-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04-arm",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 150,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 21,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 28
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 152,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 25
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 151,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 25
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 27
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-etcd-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "etcd",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 147,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572810,
+        1572811
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572752,
+        1572753,
+        1572754,
+        1572755
+      ],
+      "successful_near_limit_mutations": {
+        "put": 19,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 153,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 28
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "follower",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 150,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 28
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 151,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 28
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "follower",
+      "quota": 10,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 151,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 26
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 152,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 22,
+        "txn": 27
+      }
+    },
+    {
+      "artifact": "clocks-ubuntu-24.04-tigerstore-signals-leader-150-1",
+      "runner": "ubuntu-24.04",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "role": "leader",
+      "quota": 5,
+      "seed": 150,
+      "rep": 1,
+      "duration": 40,
+      "value_size": 1572864,
+      "near_limit": true,
+      "operations": 149,
+      "exact_1_5_MiB_definite_rejections": 3,
+      "successful_workload_put_value_bytes": [
+        1572820
+      ],
+      "successful_workload_txn_value_bytes": [
+        1572762,
+        1572764
+      ],
+      "successful_near_limit_mutations": {
+        "put": 21,
+        "txn": 27
+      }
+    }
+  ],
+  "checker_timeouts": 0,
+  "synthetic_missing_verdicts": 0,
+  "max_linearizable_seconds": 0.027448902
+}
