@@ -94,6 +94,9 @@ func TestGrayFsyncRecoveryBound(t *testing.T) {
 	}
 }
 
+// TestGrayAppendRecoveryBound checks that the append drop which ends the
+// guaranteed gray period after healing starts the liveness rule, and that
+// later healthy time does not move it.
 func TestGrayAppendRecoveryBound(t *testing.T) {
 	cfg := DefaultConfig(1)
 	s := newSim(cfg)

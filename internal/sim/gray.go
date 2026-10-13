@@ -82,6 +82,7 @@ func (s *Sim) switchGray() {
 	s.push(&event{at: min(s.grayEnd, s.now+Second+s.rng.Int64N(2*Second)), kind: evGraySwitch})
 }
 
+// endGray ends the gray period, and with it the gray network fault.
 func (s *Sim) endGray() {
 	if s.gray != nil {
 		s.grayFaultEnded()
@@ -89,8 +90,9 @@ func (s *Sim) endGray() {
 	s.gray, s.grayOnce = nil, false
 }
 
-// grayFaultEnded records only fault effects that actually survived healing.
-// A canceled disk completion from a crashed node never reaches this path.
+// grayFaultEnded records the end of a gray fault effect. Only one that
+// outlasted healing moves the start of the liveness rule. A crashed
+// node's canceled fsync never gets here.
 func (s *Sim) grayFaultEnded() {
 	if s.healed && s.now > s.healAt {
 		s.grayHealedAt = max(s.grayHealedAt, s.now)

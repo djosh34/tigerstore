@@ -620,13 +620,12 @@ func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
 	}
-	// The guaranteed gray period can still drop an append after healAt.
-	// A gray fsync already in flight can also finish later, even after
-	// that drop. It holds up durable term/vote changes and their peer
-	// messages, so a higher term can reach a new leader only then and
-	// force another election. Count recovery from the last of these
-	// actual fault effects, not while the gray disk is still slow
-	// (seed 745672193). Healthy fsyncs and later elections never move it.
+	// A gray fault can outlast healing: the guaranteed gray period drops
+	// an append after it, and a gray fsync in flight finishes when it
+	// finishes. Until then the node's term and vote changes and the peer
+	// messages behind them are held, so a higher term can reach the new
+	// leader late and cost another election (seed 745672193). Recovery
+	// counts from the later of healing and the last such effect.
 	t := max(s.healAt, s.grayHealedAt) + s.cfg.LiveAfter
 	if len(s.live()) < len(s.nodes) {
 		// With a node fenced, every election needs both others. One with
