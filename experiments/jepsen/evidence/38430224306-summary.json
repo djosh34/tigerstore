@@ -120,6 +120,7 @@
       ":start-partition": 18,
       ":stop-partition": 20
     },
+    "max_observed_drop_packets": 50,
     "status": "pass"
   },
   {
@@ -161,6 +162,7 @@
       ":start-partition": 18,
       ":stop-partition": 18
     },
+    "max_observed_drop_packets": 81,
     "status": "pass"
   }
 ]

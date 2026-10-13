@@ -9,15 +9,16 @@ Throwaway branch `exp/jepsen`. No product changes. See `REPORT.md` for measured 
 - Latest `jepsen-io/etcd` at checkout: `b47cc401f27bfb7c28afd9ac088b5f0dca4501b8`, dated 2026-04-17. Its project uses Jepsen 0.3.11 and jetcd 0.8.5.
 - Jepsen's linked community Docker setup: `nurturenature/jepsen-docker` at `4b5707813a0a24966082ae4fd2dd223da447e499`. `run.sh` pins the image digests used by the first successful control. The project dependency selects Jepsen 0.3.11, not the newer version preinstalled in the image.
 - Go 1.27.2 builds tigerstore on the runner with `GOFLAGS=-p=2 GOMEMLIMIT=2GiB CGO_ENABLED=0`.
+- The control image uses OpenJDK 25.0.4.1 and Leiningen 2.12.0. The upstream Antithesis dependency resolved to `0.1.0-20260116.160922-21`, with SDK 1.4.4.
 
 The runner has one control container and three database containers on its private Docker bridge. Run one case on a GitHub-hosted `ubuntu-24.04` runner, never on the agent host:
 
 ```sh
-bash experiments/jepsen/run.sh etcd register partition 90
-bash experiments/jepsen/run.sh tigerstore register partition 90
+bash experiments/jepsen/run.sh etcd register partition 90 10
+bash experiments/jepsen/run.sh tigerstore register partition 90 10
 ```
 
-Run the etcd case before its tigerstore counterpart. Replace `register` with `set`, `append`, or `watch`; replace `partition` with `none`, `kill`, or `pause`. The script rejects starts after 2026-10-13T22:00:00Z. A maintained CI job must replace that experiment deadline with its own execution policy.
+Run the etcd case before its tigerstore counterpart. The fifth argument is upstream's `--ops-per-key`, default 200. Final register kill/partition runs use 10 after 200- and 50-operation histories exhausted the checker. The original inconclusive results remain in the report. Replace `register` with `set`, `append`, or `watch` and use 200; replace `partition` with `none`, `kill`, or `pause`. The script rejects starts after 2026-10-13T22:00:00Z. A maintained CI job must replace that experiment deadline with its own execution policy.
 
 Inside the control container, each case uses:
 
@@ -25,7 +26,7 @@ Inside the control container, each case uses:
 lein run test --nodes n1,n2,n3 --username root \
   --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 \
   --workload register --nemesis partition --concurrency 2n \
-  --rate 30 --time-limit 90 --nemesis-interval 5
+  --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 10
 ```
 
 The `--version 3.7.2` argument also appears on tigerstore tests because this is upstream's test naming option. `STORE=tigerstore` selects the tigerstore binary; `server.sha256`, the workflow matrix, and the build SHA identify the actual server. This does not mean tigerstore is etcd v3.7.2.
@@ -36,9 +37,9 @@ The `--version 3.7.2` argument also appears on tigerstore tests because this is 
 
 The DB adapter copies the chosen server into `/opt/etcd/etcd`. Keeping that process name preserves upstream's kill/pause targets. Both stores use plain client gRPC on port 2379 and mutually authenticated peer TLS on port 2380. Each fresh job generates its own test CA. Tigerstore cannot use plaintext peer links.
 
-The adapter uses the supported flags for each binary. It omits upstream's obsolete `--enable-v2` flag for etcd 3.7.2. It resolves primary status through the client port, since upstream's `member-status` calls the peer port. Workloads, clients, checkers, fault generators, and nemesis implementations remain unchanged. The 72 GiB JVM heap limit becomes 4 GiB to fit the free runner.
+The adapter uses the supported flags for each binary. It omits upstream's obsolete `--enable-v2` flag for etcd 3.7.2. It resolves primary status through the client port, since upstream's `member-status` calls the peer port. After the first set tests exposed an early-start problem, DB setup also waits for a successful linearizable read. MemberList alone can succeed before a leader exists, while SetClient's initial put does not retry. The readiness read changes no keys. Both stores use this readiness check in the later register/set comparison. Workloads, clients, checkers, fault generators, and nemesis implementations remain unchanged. The 72 GiB JVM heap limit becomes 4 GiB to fit the free runner.
 
-The compose file drops n4/n5 and pins images. An observer samples process states and `iptables-save -c` once per loop on each DB container. `summarize.py` checks saved Jepsen verdicts and requires observed DROP rules, stopped processes, or replacement PIDs for the selected faults. It also requires corresponding completed fault and healing operations. Run it offline with `edn_format==0.7.5` installed:
+The compose file drops n4/n5 and pins images. An observer samples process states and `iptables-save -c` once per loop on each DB container. `summarize.py` checks saved Jepsen verdicts and requires observed DROP rules with positive packet counters, stopped processes, or replacement PIDs for the selected faults. It also requires corresponding completed fault and healing operations. Run it offline with `edn_format==0.7.5` installed:
 
 ```sh
 python3 experiments/jepsen/summarize.py path/to/artifact

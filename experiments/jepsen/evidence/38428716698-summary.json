@@ -124,6 +124,7 @@
       ":start-partition": 22,
       ":stop-partition": 22
     },
+    "max_observed_drop_packets": 18,
     "status": "fail"
   },
   {

@@ -64,8 +64,12 @@ def summarize(root):
             result['coverage_errors'].append('No completed partition')
         if not any(e.get(K('value')) == K('network-healed') for e in nemeses):
             result['coverage_errors'].append('No completed partition healing')
-        if not re.search(r'^.*-A .* -j DROP', observations, re.M):
+        drop_hits = [int(n) for n in re.findall(r'^\[(\d+):\d+\] -A .* -j DROP', observations, re.M)]
+        result['max_observed_drop_packets'] = max(drop_hits, default=0)
+        if not drop_hits:
             result['coverage_errors'].append('Observer never saw a DROP rule')
+        elif not any(drop_hits):
+            result['coverage_errors'].append('Observed DROP rules had no packet hits')
     if 'pause' in faults:
         if not applied('pause'):
             result['coverage_errors'].append('No completed nonempty pause')

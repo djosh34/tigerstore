@@ -2,7 +2,7 @@
 
 Source-only audit, 2026-10-13. No builds, test execution, subagents, or GitHub comments. This audit does not verify tigerstore's API implementation or the parent's Jepsen control run.
 
-The annotated `v3.7.2` tag resolves to commit [`68c065e562994b89e333e77b039ad066f933c586`](https://github.com/etcd-io/etcd/tree/68c065e562994b89e333e77b039ad066f933c586/tests/robustness). All source links below pin that commit. Local `tag.json`, `tag-object.json`, `tree.json`, and `source-manifest.json` record the provenance. All 64 downloaded source files match their Git blob hashes.
+The annotated `v3.7.2` tag resolves to commit [`68c065e562994b89e333e77b039ad066f933c586`](https://github.com/etcd-io/etcd/tree/68c065e562994b89e333e77b039ad066f933c586/tests/robustness). All source links below pin that commit. The retained [`evidence/robustness/`](evidence/robustness/) files `tag.json`, `tag-object.json`, `tree.json`, and `source-manifest.json` record the provenance. All 64 downloaded source files match their Git blob hashes.
 
 ## Decision
 
