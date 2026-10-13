@@ -103,6 +103,9 @@ type Request struct {
 	ID  uint64
 	Op  proto.Message
 	Put Put
+	// Wire, if set, is Op in the client's encoding, decoded with
+	// UnmarshalAlias. It goes into the Raft entry as it is.
+	Wire []byte
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -422,7 +425,7 @@ func (n *Node) submit(r Request, p *pending) {
 			// replica applies the same one, as in etcd.
 			g := proto.CloneOf(op)
 			g.ID = n.newLeaseID()
-			p.req.Op = g
+			p.req.Op, p.req.Wire = g, nil
 		}
 		n.queueWrite(p)
 	default:
@@ -513,7 +516,10 @@ const batchFraming = 4*binary.MaxVarintLen64 + 1
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
 	size := len(p.req.Put.Wire) + batchFraming
-	if p.req.Op != nil {
+	switch {
+	case p.req.Wire != nil:
+		size = len(p.req.Wire) + batchFraming
+	case p.req.Op != nil:
 		size = proto.Size(p.req.Op) + batchFraming
 	}
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
@@ -862,7 +868,8 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			if err != nil {
 				return err
 			}
-			if err := proto.Unmarshal(b, op); err != nil {
+			// The op's values are slices of the entry, the one copy.
+			if err := DecodeAlias(b, op); err != nil {
 				return fmt.Errorf("%w: %w", errBadBatch, err)
 			}
 			resp, err := n.applyOp(op)

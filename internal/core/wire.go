@@ -54,7 +54,6 @@ func ParsePut(b []byte) (Put, error) {
 		if n < 0 || num > protowire.MaxValidNumber {
 			return Put{}, errBadPut
 		}
-		tag := n
 		b = b[n:]
 		switch {
 		case typ == protowire.BytesType && (num == 1 || num == 2):
@@ -92,7 +91,8 @@ func ParsePut(b []byte) (Put, error) {
 			if n < 0 {
 				return Put{}, errBadPut
 			}
-			p.unknown += tag + n
+			// protobuf re-encodes the tag minimally.
+			p.unknown += protowire.SizeTag(num) + n
 			b = b[n:]
 		}
 	}
