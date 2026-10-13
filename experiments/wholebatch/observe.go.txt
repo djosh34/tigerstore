@@ -1,0 +1,49 @@
+package main
+
+// Experiment-only debug endpoints, injected into each archived Tigerstore build.
+import (
+	"encoding/json"
+	"log"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"runtime"
+
+	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/osfs"
+)
+
+func pre50Observe(n *node.Node) error {
+	addr := os.Getenv("PRE50_DEBUG")
+	if addr == "" {
+		return nil
+	}
+	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader(), "gomaxprocs": uint64(runtime.GOMAXPROCS(0))}); err != nil {
+			log.Printf("debug leader: %v", err)
+		}
+	})
+	http.HandleFunc("/debug/disk", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(osfs.Pre50Stats()); err != nil {
+			log.Printf("debug disk: %v", err)
+		}
+	})
+	http.HandleFunc("/debug/alloc", func(w http.ResponseWriter, r *http.Request) {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		if err := json.NewEncoder(w).Encode(map[string]uint64{"mallocs": m.Mallocs, "bytes": m.TotalAlloc}); err != nil {
+			log.Printf("debug alloc: %v", err)
+		}
+	})
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := http.Serve(ln, nil); err != nil {
+			log.Printf("debug HTTP: %v", err)
+		}
+	}()
+	return nil
+}
