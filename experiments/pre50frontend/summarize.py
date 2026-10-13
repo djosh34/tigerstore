@@ -70,7 +70,7 @@ def main():
     modes = {r['mode'] for r in rows}
     assert len(modes) == 1
     stores = sorted({r['store'] for r in rows})
-    assert (stores == ['a', 'b', 'c', 'etcd']) if modes == {'primary'} else (len(stores) == 2 and 'etcd' in stores)
+    assert stores == ['a', 'etcd'], 'architect requested only main and stock etcd'
     summaries = []
     identity = ('mode', 'clients', 'store', 'cpu_profiled')
     for store in stores:

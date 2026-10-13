@@ -1,0 +1,5 @@
+{
+  "exit_code": 1,
+  "stdout": "",
+  "stderr": "{\"level\":\"warn\",\"ts\":\"2026-10-13T07:39:19.697199Z\",\"logger\":\"etcd-client\",\"caller\":\"v3/retry_interceptor.go:68\",\"msg\":\"retrying of unary invoker failed\",\"target\":\"etcd-endpoints://0x55ba8cac6c00/127.0.0.1:2379\",\"peer\":\"Peer{Addr: '127.0.0.1:2379', LocalAddr: '127.0.0.1:53288', AuthInfo: 'tls'}\",\"method\":\"/etcdserverpb.Maintenance/Alarm\",\"attempt\":0,\"error\":\"rpc error: code = Unimplemented desc = method Alarm not implemented\"}\nError: rpc error: code = Unimplemented desc = method Alarm not implemented\n"
+}

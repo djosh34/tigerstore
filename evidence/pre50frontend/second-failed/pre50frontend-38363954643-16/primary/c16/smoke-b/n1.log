@@ -1,0 +1,2 @@
+tigerstore 2026/10/13 07:39:20.803522 node n1 (raft ID 2) serving clients on https://127.0.0.1:2479, peers on 127.0.0.1:2480
+2026/10/13 07:39:22 http2: received GOAWAY [FrameHeader GOAWAY len=66], starting graceful shutdown

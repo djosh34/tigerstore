@@ -13,13 +13,10 @@ HERE = Path(__file__).resolve().parent
 
 class HarnessTests(unittest.TestCase):
     def test_orders(self):
-        schedule = list(run.orders(['a', 'b', 'c', 'etcd']))
-        self.assertEqual(len(schedule), 5)
-        self.assertEqual(schedule[0], (1, ['a', 'b', 'c', 'etcd']))
-        self.assertEqual(schedule[1], (2, ['a', 'etcd', 'c', 'b']))
-        for _, cohort in schedule:
-            self.assertEqual(set(cohort), {'a', 'b', 'c', 'etcd'})
-        self.assertEqual(len(list(run.orders(['c', 'etcd']))), 5)
+        schedule = list(run.orders(['a', 'etcd']))
+        self.assertEqual(schedule, [(1, ['a', 'etcd']), (2, ['etcd', 'a']),
+                                    (3, ['a', 'etcd']), (4, ['etcd', 'a']),
+                                    (5, ['a', 'etcd'])])
 
     def test_metrics(self):
         m = run.metrics('# HELP ignored\ngo_memstats_mallocs_total 123\nwith_labels{x="y"} 8\n')

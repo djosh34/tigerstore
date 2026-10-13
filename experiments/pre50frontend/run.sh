@@ -32,7 +32,7 @@ OUT=$EXPERIMENT/results/$MODE/c$CLIENTS
 mkdir -p "$OUT" "$PRIVATE/bin"
 trap 'rm -rf "$PRIVATE"' EXIT
 check_time
-for ref in "$BASE" "$NATIVE_REF" "$TUNED_REF"; do
+for ref in "$BASE"; do
   if ! git cat-file -e "$ref^{commit}"; then
     check_time
     git fetch --no-tags origin "$ref"
@@ -40,14 +40,10 @@ for ref in "$BASE" "$NATIVE_REF" "$TUNED_REF"; do
   [[ $(git rev-parse "$ref^{commit}") == "$ref" ]]
   git merge-base --is-ancestor "$BASE" "$ref"
 done
-# This experiment changes frontend code, not the durability path or node driver.
-for ref in "$NATIVE_REF" "$TUNED_REF"; do
-  git diff --exit-code "$BASE" "$ref" -- internal/core internal/node internal/wal internal/osfs internal/peer
-  git diff "$BASE" "$ref" > "$OUT/variant-$ref.diff"
-done
-python3 - "$OUT/sources.json" "$BASE" "$NATIVE_REF" "$TUNED_REF" "$(git rev-parse HEAD)" <<'PY'
+# Architect stopped native variants before any measured windows completed.
+python3 - "$OUT/sources.json" "$BASE" "$(git rev-parse HEAD)" <<'PY'
 import json, sys
-json.dump(dict(zip(['a','b','c','experiment'], sys.argv[2:])), open(sys.argv[1],'w'), indent=2)
+json.dump(dict(zip(['a','experiment'], sys.argv[2:])), open(sys.argv[1],'w'), indent=2)
 PY
 {
   date -u +%FT%TZ
@@ -72,9 +68,9 @@ curl --fail --location --retry 3 --max-time 90 -o "$PRIVATE/etcd.tar.gz" https:/
 tar -xzf "$PRIVATE/etcd.tar.gz" -C "$PRIVATE"
 cp "$PRIVATE/etcd-v3.7.2-linux-arm64/etcd" "$PRIVATE/etcd-v3.7.2-linux-arm64/etcdctl" "$PRIVATE/bin/"
 printf '%s  %s\n' 17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d "$PRIVATE/bin/etcd" | sha256sum -c -
-refs=("$BASE" "$NATIVE_REF" "$TUNED_REF")
-variants=(a b c)
-for i in 0 1 2; do
+refs=("$BASE")
+variants=(a)
+for i in 0; do
   check_time
   source=$PRIVATE/${variants[$i]}-source
   mkdir -p "$source"
@@ -95,7 +91,7 @@ go test ./experiments/pre50frontend/load -parallel 2 -count=1
   "$PRIVATE/bin/etcd" --version
   "$PRIVATE/bin/etcdctl" version
   sha256sum "$PRIVATE/bin/"* "$PRIVATE/etcd.tar.gz" "$EXPERIMENT/observability.patch"
-  for variant in a b c load; do
+  for variant in a load; do
     check_time
     go version -m "$PRIVATE/bin/$variant"
   done

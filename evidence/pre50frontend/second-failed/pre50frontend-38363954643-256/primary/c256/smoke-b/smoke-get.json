@@ -1,0 +1,18 @@
+{
+  "header": {
+    "cluster_id": 2279782166811683998,
+    "member_id": 3,
+    "revision": 3,
+    "raft_term": 1
+  },
+  "kvs": [
+    {
+      "key": "L3ByZTUwLXNtb2tl",
+      "create_revision": 2,
+      "mod_revision": 3,
+      "version": 2,
+      "value": "c2Vjb25k"
+    }
+  ],
+  "count": 1
+}

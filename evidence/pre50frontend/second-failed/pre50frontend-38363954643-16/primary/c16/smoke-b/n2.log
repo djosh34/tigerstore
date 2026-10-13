@@ -1,0 +1,3 @@
+tigerstore 2026/10/13 07:39:20.803874 node n2 (raft ID 3) serving clients on https://127.0.0.1:2579, peers on 127.0.0.1:2580
+tigerstore 2026/10/13 07:39:23.625340 peer: receive from 127.0.0.1:57958: EOF
+tigerstore 2026/10/13 07:39:23.625427 peer: receive from 127.0.0.1:57968: EOF

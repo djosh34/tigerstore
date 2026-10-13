@@ -1,0 +1,6 @@
+{
+  "exit_code": 1,
+  "stdout": "[{\"endpoint\":\"https://127.0.0.1:2479\",\"health\":false,\"took\":\"3.036762ms\",\"error\":\"Unable to fetch the alarm list\"}]\n",
+  "stderr": "{\"level\":\"warn\",\"ts\":\"2026-10-13T07:39:20.711387Z\",\"logger\":\"client\",\"caller\":\"v3/retry_interceptor.go:68\",\"msg\":\"retrying of unary invoker failed\",\"target\":\"etcd-endpoints://0x470dcd00ac00/127.0.0.1:2479\",\"peer\":\"Peer{Addr: '127.0.0.1:2479', LocalAddr: '127.0.0.1:47954', AuthInfo: 'tls'}\",\"method\":\"/etcdserverpb.Maintenance/Alarm\",\"attempt\":0,\"error\":\"rpc error: code = Unimplemented desc = method Alarm not implemented\"}\nError: unhealthy cluster\n",
+  "compatible": false
+}

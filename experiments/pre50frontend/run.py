@@ -31,7 +31,11 @@ def check_time():
 def run(args, **kwargs):
     check_time()
     COMMANDS.append([str(x) for x in args])
-    return sp.run(args, check=True, text=True, timeout=kwargs.pop('timeout', 20), **kwargs)
+    try:
+        return sp.run(args, check=True, text=True, timeout=kwargs.pop('timeout', 20), **kwargs)
+    except sp.CalledProcessError as err:
+        print(f'command failed: {args}\nstdout: {err.stdout}\nstderr: {err.stderr}', flush=True)
+        raise
 
 
 def spawn(args, **kwargs):
@@ -58,8 +62,7 @@ def ctl(index, *args):
 
 def orders(stores, repetitions=5):
     for rep in range(repetitions):
-        rotated = stores[rep % len(stores):] + stores[:rep % len(stores)]
-        yield rep + 1, rotated if rep % 2 == 0 else list(reversed(rotated))
+        yield rep + 1, stores if rep % 2 == 0 else list(reversed(stores))
 
 
 def metrics(text):
@@ -176,7 +179,7 @@ def smoke(leader, dest):
                 watch.communicate()
     for flag, expected in [('--http1.1', '1.1'), ('--http2', '2')]:
         for path in ('/version', '/health'):
-            response = run(['curl', flag, '--fail', '--silent', '--show-error', '--max-time', '10',
+            response = run(['curl', flag, '--verbose', '--fail', '--silent', '--show-error', '--max-time', '10',
                             '--cacert', CERT/'ca.pem', '--cert', CERT/'client.pem', '--key', CERT/'client-key.pem',
                             '--write-out', '\\n%{http_version}', endpoint+path], capture_output=True)
             body, version = response.stdout.rsplit('\n', 1)
@@ -215,6 +218,8 @@ def cluster(store, label, profile=False, smoke_only=False):
                          '--listen-metrics-urls', f'http://127.0.0.1:{6060+i}',
                          '--logger', 'zap', '--log-level', 'warn']
             env = os.environ | {'GOMAXPROCS': '2', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}'}
+            if MODE == 'smoke':
+                env['GODEBUG'] = 'http2debug=2'
             log = (dest/f'n{i}.log').open('w')
             handles.append(log)
             procs.append(spawn(args, stdout=log, stderr=log, env=env))
@@ -403,13 +408,12 @@ def main():
     assert WORKERS in (16, 64, 256) and MODE in ('primary', 'profile', 'smoke')
     OUT.mkdir(parents=True, exist_ok=True)
     if MODE == 'smoke':
-        cluster('b', 'smoke-b', smoke_only=True)
+        cluster('a', 'smoke-a', smoke_only=True)
         return
     if MODE == 'primary':
         cluster('a', 'smoke-a', smoke_only=True)
-        cluster('b', 'smoke-b', smoke_only=True)
-    stores = ['a', 'b', 'c', 'etcd'] if MODE == 'primary' else [SELECTED, 'etcd']
-    assert MODE != 'profile' or SELECTED in ('a', 'b', 'c'), 'choose winner after primary results'
+    stores = ['a', 'etcd']
+    assert MODE != 'profile' or SELECTED == 'a', 'architect narrowed profiling to main'
     schedule = list(orders(stores))
     save(OUT/'schedule.json', schedule)
     for rep, cohort in schedule:

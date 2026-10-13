@@ -1,0 +1,4 @@
+=== RUN   TestNativeCurlHTTP2
+--- PASS: TestNativeCurlHTTP2 (0.01s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/server	0.017s
