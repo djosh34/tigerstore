@@ -344,19 +344,15 @@ func (r *run) revoke(do string, id int64) {
 	r.record(do, res, err)
 }
 
-// watch opens a watch, receives until the server cancels it or one second
-// passed, and records everything that arrived. The events are recorded as
-// one list, since how the server batches them into responses may differ.
-// The headers of the created and canceled responses are recorded. Every
-// other response must keep the created watch ID and have a header revision
-// that does not go back and covers its events; breaks are recorded as
-// problems.
 // watch creates one watch and records what it delivers until the server
-// confirms it has sent everything: after each response, the client asks
-// for progress, and a progress notification marks the end, since the
-// server sends one only for a watch that is caught up. A watch that ends
+// confirms it has sent everything: the client asks for progress every
+// 100 ms, and a progress notification marks the end, since the server
+// sends one only for a watch that is caught up. A watch that ends
 // another way, such as a compaction cancel, ends there. Not reaching the
-// end within 10 s fails the step.
+// end within 10 s fails the step. The events are recorded as one list,
+// since how the server batches them into responses may differ. Every
+// response must keep the created watch ID and have a header revision that
+// does not go back and covers its events; breaks are recorded as problems.
 //
 // Neither etcd nor tigerstore answers a progress request while a watch
 // starts above the current revision. Such a watch can deliver nothing
@@ -405,19 +401,34 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 	}()
 	var id, header int64
 	ahead := false
+	// A server ignores a progress request while the watch catches up, so
+	// the client asks again every 100 ms; only the answer ends the step.
+	ask := time.NewTicker(100 * time.Millisecond)
+	defer ask.Stop()
 	for !res.Canceled {
 		var quiet <-chan time.Time
 		if ahead {
 			quiet = time.After(500 * time.Millisecond)
 		}
 		var resp *pb.WatchResponse
-		select {
-		case got := <-recvs:
-			if got.err != nil {
-				r.t.Fatalf("%s: no progress notification to end the watch: %v", do, got.err)
+	wait:
+		for {
+			select {
+			case got := <-recvs:
+				if got.err != nil {
+					r.t.Fatalf("%s: no progress notification to end the watch: %v", do, got.err)
+				}
+				resp = got.resp
+				break wait
+			case <-ask.C:
+				if res.Created && !ahead {
+					if err := stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}); err != nil {
+						r.t.Fatalf("%s: %v", do, err)
+					}
+				}
+			case <-quiet:
+				break wait
 			}
-			resp = got.resp
-		case <-quiet:
 		}
 		if resp == nil {
 			break
