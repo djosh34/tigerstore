@@ -1,0 +1,86 @@
+[
+  {
+    "artifact": "correct-round1-etcd-signals-49-1",
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 12,
+    "operations": 927,
+    "successful_operations": 923,
+    "ambiguous_operations": 4,
+    "target": 488,
+    "watches": 3,
+    "controller_seconds": 80.203875726,
+    "operation_span_seconds": 72.811523905,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-tigerstore-signals-49-1",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 923,
+    "successful_operations": 920,
+    "ambiguous_operations": 3,
+    "target": 486,
+    "watches": 3,
+    "controller_seconds": 79.811744253,
+    "operation_span_seconds": 72.810731974,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  }
+]

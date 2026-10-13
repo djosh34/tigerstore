@@ -82,6 +82,7 @@ jobs:
           REP: ${{ matrix.rep }}
           DURATION: ${{ matrix.duration }}
           VALUE_SIZE: ${{ matrix.value_size || 1024 }}
+          DISK_MIB: ${{ matrix.disk_mib || 128 }}
           PAUSE_SECONDS: ${{ matrix.pause_seconds || 1.5 }}
           KILL_SECONDS: ${{ matrix.kill_seconds || 1.2 }}
           NETEM_ROLE: ${{ matrix.netem_role || 'follower' }}
@@ -91,7 +92,7 @@ jobs:
           sudo -E python3 experiments/correct-round1/runner.py \
             --target "$TARGET" --scenario "$SCENARIO" \
             --server "$PWD/bin/$TARGET" --client "$PWD/bin/chaos-client" \
-            --out "$PWD/evidence/run" --seed "$SEED" --repetition "$REP" --duration "$DURATION" --value-size "$VALUE_SIZE" \
+            --out "$PWD/evidence/run" --seed "$SEED" --repetition "$REP" --duration "$DURATION" --value-size "$VALUE_SIZE" --disk-mib "$DISK_MIB" \
             --pause-seconds "$PAUSE_SECONDS" --kill-seconds "$KILL_SECONDS" \
             --netem-role "$NETEM_ROLE" --netem-hold-seconds "$NETEM_HOLD_SECONDS" \
             2>&1 | tee evidence/controller.log
