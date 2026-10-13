@@ -96,9 +96,11 @@ func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message,
 	return st, nil
 }
 
-// alarm answers Maintenance.Alarm. Tigerstore raises no alarms: it has no
-// space quota, a full or failing disk stops the node, and a corrupt log
-// keeps it from starting, so no node runs with NOSPACE or CORRUPT. A GET
+// alarm answers Maintenance.Alarm. Tigerstore raises no alarms: it does
+// not enforce the space quota that Status reports, and it has no hash
+// check between members, so it never raises NOSPACE or CORRUPT. A full or
+// failing disk stops the node instead, and a corrupt log keeps it from
+// starting. A GET
 // lists none, and a DEACTIVATE, or an ACTIVATE of NONE, finds nothing to
 // change, as etcd v3.7.2 answers when no alarm is active. etcd passes
 // every alarm request through Raft, so the answer is linearizable and its
