@@ -305,6 +305,10 @@ def once(kind, rep, rate=None):
 def main():
     OUT.mkdir(exist_ok=True)
     targets = os.environ.get('TARGETS', 'tigerstore etcd').split()
+    if not re.fullmatch(r'(put-(1k|10k)|range-1k|list-1k)-(leader|balanced)-(c[1-9][0-9]*|open)', CASE):
+        raise ValueError('invalid workload-size-ingress-mode case')
+    if os.environ.get('PROFILE','none') not in ['none','cpu','trace']:
+        raise ValueError('profile must be none, cpu or trace')
     rates = json.loads(os.environ.get('RATES', '{}'))
     mode = CASE.split('-')[-1]
     if mode == 'open':
