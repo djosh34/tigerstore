@@ -29,6 +29,10 @@
 #   REPS        repetitions (default 5)
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
+#   PROFILE     if 1, after the measured runs, one more max run per target
+#               records the leader with perf over the measurement window
+#               only, into <out dir>/profiles: the perf data and a report
+#               of the hottest functions. These runs are not measured.
 set -euo pipefail
 
 bench=$1
@@ -85,13 +89,27 @@ order() {
 }
 
 # once <target> <mode> <rep> <loadgen flags...>
+# With profile set to a path prefix, the run is profiled instead of
+# measured: its result goes to <profile>.loadgen, not with the others.
 once() {
 	local target=$1 mode=$2 rep=$3
 	shift 3
 	local dir=$data/$target
+	local result=$out/$bench/$target-$mode-$rep.json perf=() perfpid=
 	"$here/cluster.sh" stop "$dir"
 	"$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
-	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
+	if [ -n "$profile" ]; then
+		result=$profile.loadgen
+		rm -f "$dir.ctl"
+		mkfifo "$dir.ctl"
+		# Off until the generator turns it on for the measurement window.
+		taskset -c "${layout[0]}" perf record -D -1 --control "fifo:$dir.ctl" -F 999 -g \
+			-p "$(cut -d, -f1 "$dir/pids")" -o "$profile.data" 2>"$profile.log" &
+		perfpid=$!
+		perf=(-perf-ctl "$dir.ctl")
+	else
+		cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
+	fi
 	local status=0
 	taskset -c "${layout[0]}" "$loadgen" \
 		-endpoints "$(cat "$dir/leader")" \
@@ -104,8 +122,14 @@ once() {
 		-warmup "$warmup" \
 		-duration "$duration" \
 		-seed "$rep" \
-		-out "$out/$bench/$target-$mode-$rep.json" \
+		-out "$result" \
+		"${perf[@]}" \
 		"$@" || status=$?
+	if [ -n "$perfpid" ]; then
+		kill -INT "$perfpid"
+		wait "$perfpid" || status=$?
+		rm -f "$dir.ctl"
+	fi
 	if [ "$status" -eq 0 ]; then
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
@@ -120,6 +144,7 @@ if [ -e "$out/$bench" ]; then
 	exit 2
 fi
 mkdir -p "$out/$bench"
+profile=
 # A run that fails stops the benchmark: its result is invalid, and a
 # comparison without it would be wrong.
 if [[ " ${modes[*]} " == *" max "* ]]; then
@@ -145,5 +170,14 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 		for target in $(order "$rep"); do
 			once "$target" rate "$rep" -keys "$keys" -rate "$rate"
 		done
+	done
+fi
+
+if [ "${PROFILE:-}" = 1 ]; then
+	mkdir -p "$out/profiles"
+	for target in "${targets[@]}"; do
+		profile=$out/profiles/$bench-$target
+		once "$target" max 1 -keys "$keys"
+		perf report -i "$profile.data" --stdio --no-children --sort symbol -g none --percent-limit 0.3 >"$profile.txt" 2>/dev/null
 	done
 fi

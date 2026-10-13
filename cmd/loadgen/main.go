@@ -31,6 +31,7 @@ type config struct {
 	streams   int
 	rate      float64
 	warmup    time.Duration
+	perfCtl   string
 	duration  time.Duration
 	watchers  int
 	pids      []int
@@ -59,6 +60,7 @@ func parseFlags(args []string) (config, error) {
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
+	fs.StringVar(&cfg.perfCtl, "perf-ctl", "", "perf record's control FIFO: the generator turns the profile on for the measurement window only")
 	fs.StringVar(&cfg.out, "out", "", "write the JSON result to this file instead of stdout")
 	fs.StringVar(&cfg.cacert, "cacert", "", "CA certificate of the servers; with it, connections use TLS 1.3")
 	fs.StringVar(&cfg.cert, "cert", "", "client certificate for TLS")
@@ -329,6 +331,14 @@ func run(cfg config) (*result, error) {
 		w.stats.winStart, w.stats.winStop = t1, t2
 	}
 
+	var ctl *os.File
+	if cfg.perfCtl != "" {
+		var err error
+		if ctl, err = os.OpenFile(cfg.perfCtl, os.O_WRONLY, 0); err != nil {
+			return nil, err
+		}
+		defer ctl.Close() //nolint:errcheck // a FIFO with nothing buffered
+	}
 	var samples [2]cpuSample
 	var sampleErr error
 	var sampler sync.WaitGroup
@@ -341,6 +351,12 @@ func run(cfg config) (*result, error) {
 				return
 			}
 			samples[i] = s
+			if ctl != nil {
+				if _, err := ctl.WriteString([...]string{"enable\n", "disable\n"}[i]); err != nil {
+					sampleErr = fmt.Errorf("perf control: %w", err)
+					return
+				}
+			}
 		}
 	})
 	perConn := cfg.rate / float64(cfg.conns)

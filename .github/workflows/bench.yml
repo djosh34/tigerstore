@@ -22,6 +22,10 @@ on:
       reps:
         description: repetitions
         default: "5"
+      profile:
+        description: after the measured runs, profile each target's leader with perf in one more max run
+        type: boolean
+        default: false
 
 jobs:
   plan:
@@ -72,6 +76,13 @@ jobs:
           done
           cat commits.txt
       - run: scripts/dev-certs.sh certs
+      - name: Install perf
+        if: inputs.profile
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq "linux-tools-$(uname -r)" linux-tools-common
+          sudo sysctl -w kernel.perf_event_paranoid=-1 kernel.kptr_restrict=0
+          perf --version
       - name: Turn disk write barriers on and record the runner
         env:
           LAYOUT: 3 0 1 2
@@ -106,6 +117,7 @@ jobs:
           LAYOUT: 3 0 1 2
           MODES: ${{ inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '5' }}
+          PROFILE: ${{ inputs.profile && '1' || '' }}
         run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
       # A failed run leaves no comparison: the report would be over the
       # runs that survived. The raw results are uploaded either way.
@@ -114,6 +126,13 @@ jobs:
           {
             cat results/runner.md
             bin/benchreport results
+            for f in results/profiles/*.txt; do
+              [ -e "$f" ] || continue
+              echo "## Profile of the leader: $(basename "$f" .txt)"
+              echo '```'
+              grep -v '^#' "$f" | grep -v '^$' | head -40
+              echo '```'
+            done
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         if: always()
