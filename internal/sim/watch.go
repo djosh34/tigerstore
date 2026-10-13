@@ -144,7 +144,8 @@ func (w *watchClient) create(n *node, gen uint64) {
 // watchResponse routes a response from a node to its client, in order.
 func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
 	w, ok := n.streams[r.Stream]
-	if !ok && n.closing[r.Stream] {
+	if !ok && (n.closing[r.Stream] || n.grayStreams[r.Stream]) {
+		// Gone, or the gray client's, which never reads.
 		return
 	}
 	if !ok {

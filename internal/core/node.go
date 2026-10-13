@@ -37,6 +37,15 @@ var ErrDiskStalled = errors.New("core: the leader's disk stalled; stopping so th
 // StallTicks is how many election timeouts a leader's append may take.
 const StallTicks = 2
 
+// ErrCommitStalled stops a leader whose own entries have not committed for
+// CommitStallTicks election timeouts.
+var ErrCommitStalled = errors.New("core: the leader's entries stopped committing; stopping so that another node can lead")
+
+// CommitStallTicks is how many election timeouts a leader's entry may wait
+// to commit. It is above StallTicks, so a stalled local disk is caught
+// first, and above what the healthy pair needs.
+const CommitStallTicks = 3
+
 // MaxRequestBytes is etcd's default --max-request-bytes.
 const MaxRequestBytes = 1536 * 1024
 
@@ -171,6 +180,9 @@ type Node struct {
 	// went to disk, oldest first; appends finish in order. If the oldest
 	// gets too old on the leader, its disk is stalled and it fences itself.
 	appending []int64
+	// uncommitted holds the last index and the tick of each local append
+	// with entries since this node became leader, until they commit.
+	uncommitted []proposedAt
 	// ownIndex is the last index of the append that carries the leader's
 	// last batch of writes, and durable the last index on disk. While
 	// ownIndex is ahead, new writes wait. awaitOwn marks that the next
@@ -298,6 +310,13 @@ func (n *Node) Tick() {
 		// never elect a replacement. It stops instead; the healthy pair
 		// elects, and a restart brings it back from its log.
 		n.fail(ErrDiskStalled)
+		return
+	}
+	if n.isLeader && n.commitStalled() {
+		// The same for a gray leader whose heartbeats get through but
+		// whose appends do not: Raft's quorum check sees a live quorum,
+		// yet nothing commits.
+		n.fail(ErrCommitStalled)
 		return
 	}
 	n.retryReads(false)
@@ -617,6 +636,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// A batch from an earlier leadership may have been replaced
 			// and never reach the disk; wait for nothing from it.
 			n.ownIndex, n.awaitOwn = 0, false
+			n.uncommitted = nil
 			n.leadershipChanged()
 		}
 		if rd.Lead != n.leader && rd.Lead != raft.None {
@@ -657,6 +677,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.out.Persist = append(n.out.Persist, job)
 			if len(job.Entries) > 0 {
 				n.appending = append(n.appending, n.now)
+				if n.isLeader {
+					n.uncommitted = append(n.uncommitted, proposedAt{job.Entries[len(job.Entries)-1].GetIndex(), n.now})
+				}
 			}
 			if len(job.Entries) > 0 && n.awaitOwn {
 				n.ownIndex = job.Entries[len(job.Entries)-1].GetIndex()
@@ -824,6 +847,25 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 func isAnswer(err error) bool {
 	_, ok := status.FromError(err)
 	return ok
+}
+
+// proposedAt is the last index of a leader's append and the tick it began.
+type proposedAt struct {
+	index uint64
+	at    int64
+}
+
+// commitStalled drops the leader's appends that have committed and reports
+// whether the oldest one left has waited CommitStallTicks election
+// timeouts.
+func (n *Node) commitStalled() bool {
+	commit := n.rn.BasicStatus().GetCommit()
+	i := 0
+	for i < len(n.uncommitted) && n.uncommitted[i].index <= commit {
+		i++
+	}
+	n.uncommitted = n.uncommitted[i:]
+	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= CommitStallTicks*int64(n.cfg.ElectionTicks)
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet

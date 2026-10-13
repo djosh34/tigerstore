@@ -118,16 +118,6 @@ func (s *Sim) diskFailed(n *node, err error) {
 		return
 	}
 	s.stats.DiskFaults++
-	if s.healed {
-		// The guaranteed fault fired after healing. The liveness rule
-		// starts once the node is back (check.go); the clients keep going
-		// for 3 s more than that, so the rule has calls to check.
-		s.lateFaultAt = s.now
-		if live := s.liveFrom() + 3*Second; live > s.stopAt {
-			s.endAt += live - s.stopAt
-			s.stopAt = live
-		}
-	}
 	n.disk.Fault = nil
 	if planted.On("B11") && errors.Is(err, simfs.ErrIO) && n.diskBusy {
 		// Planted: carry on as if the sync worked. diskBusy is set only
@@ -144,6 +134,19 @@ func (s *Sim) diskFailed(n *node, err error) {
 
 // stopNode stops a node like a crash and restarts it later from its disk.
 func (s *Sim) stopNode(n *node) {
+	if s.healed && s.now <= s.healAt+s.cfg.LiveAfter {
+		// The guaranteed disk fault fired after healing, or a watchdog
+		// whose wait began before it. The liveness rule starts once the
+		// node is back (check.go); the clients keep going for 3 s more
+		// than that, so the rule has calls to check. Only a stop in the
+		// first LiveAfter of healing counts, so the bound stays fixed: a
+		// node that keeps stopping later fails the rule.
+		s.lateStopAt = s.now
+		if live := s.liveFrom() + 3*Second; live > s.stopAt {
+			s.endAt += live - s.stopAt
+			s.stopAt = live
+		}
+	}
 	s.crash(n)
 	s.push(&event{at: s.now + 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)), kind: evRestart, node: n.idx, gen: n.gen})
 }
@@ -154,7 +157,7 @@ var flipPayload func(*Sim, *node) bool
 // maybeCorrupt damages the synced bytes of a node that just crashed, at
 // most once per run and only if no node is damaged yet, so a quorum stays.
 func (s *Sim) maybeCorrupt(n *node) {
-	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(5) != 0 {
+	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(2) != 0 {
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {

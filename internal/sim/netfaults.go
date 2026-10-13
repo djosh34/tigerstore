@@ -1,6 +1,9 @@
 package sim
 
-import "slices"
+import (
+	"cmp"
+	"slices"
+)
 
 func (s *Sim) scheduleNetFaults() {
 	f := s.cfg.Faults
@@ -42,7 +45,7 @@ func (s *Sim) retry(e *event, done bool) {
 
 // target is the node an event happens on, or nil.
 func (s *Sim) target(e *event) *node {
-	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd}, e.kind) {
+	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd, evGrayCreate}, e.kind) {
 		return s.nodes[e.node]
 	}
 	return nil
@@ -65,6 +68,7 @@ func (s *Sim) stallLink() bool {
 	from, to := s.randomLink()
 	l := &s.links[from][to]
 	l.stallUntil = max(l.stallUntil, min(s.now+500*Millisecond+s.rng.Int64N(1500*Millisecond), s.healAt))
+	s.holdLink(from, to)
 	s.stats.LinkStalls++
 	s.mix(0x5a, uint64(from), uint64(to), uint64(l.stallUntil))
 	return true
@@ -196,4 +200,31 @@ const halfOpenTimeout = 5 * Second
 type halfOpenLink struct {
 	from, to   int
 	start, end int64
+}
+
+// holdLink moves what is on a stalled link to the end of the stall, in
+// the order it was sent, one nanosecond apart, so that no message can
+// overtake another; new messages on the link come after them (send).
+func (s *Sim) holdLink(from, to int) {
+	l := &s.links[from][to]
+	var held []*event
+	for _, e := range s.q {
+		if e.kind == evDeliver && e.from == from && e.node == to {
+			held = append(held, e)
+		}
+	}
+	slices.SortFunc(held, func(a, b *event) int { return cmp.Compare(a.number, b.number) })
+	at := l.stallUntil
+	for _, e := range held {
+		at = max(at, e.at)
+		e.at = at
+		at++
+	}
+	l.last = max(l.last, at)
+	slices.SortFunc(s.q, func(a, b *event) int {
+		if a.at != b.at {
+			return cmp.Compare(a.at, b.at)
+		}
+		return cmp.Compare(a.seq, b.seq)
+	})
 }
