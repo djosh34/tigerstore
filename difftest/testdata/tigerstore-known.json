@@ -1,0 +1,472 @@
+{
+  "compact-above-current/compact at R+1": {
+    "do": "compact at R+1",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-at-current/compact at R": {
+    "do": "compact at R",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-at-current/compact at R again": {
+    "do": "compact at R again",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-at-current/range a at 1": {
+    "do": "range a at 1",
+    "code": "OK",
+    "result": {
+      "revision": 3,
+      "kvs": [
+        {
+          "key": "a",
+          "value": "1",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      ],
+      "count": 1
+    }
+  },
+  "compact-at-current/range a at 2": {
+    "do": "range a at 2",
+    "code": "OK",
+    "result": {
+      "revision": 3,
+      "kvs": [
+        {
+          "key": "a",
+          "value": "2",
+          "create": 1,
+          "mod": 2,
+          "version": 2
+        }
+      ],
+      "count": 1
+    }
+  },
+  "compact-at-current/watch a from 1 with prev_kv": {
+    "do": "watch a from 1 with prev_kv",
+    "code": "OK",
+    "result": {
+      "created": true,
+      "createdRevision": 3,
+      "events": [
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        }
+      ]
+    }
+  },
+  "compact-at-current/watch a from 2 with prev_kv": {
+    "do": "watch a from 2 with prev_kv",
+    "code": "OK",
+    "result": {
+      "created": true,
+      "createdRevision": 3,
+      "events": [
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        }
+      ]
+    }
+  },
+  "compact-below-current/compact at R-1": {
+    "do": "compact at R-1",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-below-current/compact at R-1 again": {
+    "do": "compact at R-1 again",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-below-current/compact at R-2": {
+    "do": "compact at R-2",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-below-current/range a at 1": {
+    "do": "range a at 1",
+    "code": "OK",
+    "result": {
+      "revision": 3,
+      "kvs": [
+        {
+          "key": "a",
+          "value": "1",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      ],
+      "count": 1
+    }
+  },
+  "compact-below-current/watch a from 1 with prev_kv": {
+    "do": "watch a from 1 with prev_kv",
+    "code": "OK",
+    "result": {
+      "created": true,
+      "createdRevision": 3,
+      "events": [
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        }
+      ]
+    }
+  },
+  "compact-physical/physical compact at R-1": {
+    "do": "physical compact at R-1",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "compact-physical/range a at 1": {
+    "do": "range a at 1",
+    "code": "OK",
+    "result": {
+      "revision": 3,
+      "kvs": [
+        {
+          "key": "a",
+          "value": "1",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      ],
+      "count": 1
+    }
+  },
+  "compact-physical/watch a from 1 with prev_kv": {
+    "do": "watch a from 1 with prev_kv",
+    "code": "OK",
+    "result": {
+      "created": true,
+      "createdRevision": 3,
+      "events": [
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        },
+        {
+          "type": "PUT",
+          "kv": {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          },
+          "prevKV": {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        }
+      ]
+    }
+  },
+  "error-codes/compact at 2": {
+    "do": "compact at 2",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "error-codes/compact at revision -1": {
+    "do": "compact at revision -1",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "error-codes/compact at revision 0": {
+    "do": "compact at revision 0",
+    "code": "Unimplemented",
+    "message": "method Compact not implemented"
+  },
+  "error-codes/txn with a historical range at a compacted revision": {
+    "do": "txn with a historical range at a compacted revision",
+    "code": "OK",
+    "result": {
+      "revision": 3,
+      "succeeded": true,
+      "ops": [
+        {
+          "range": {
+            "revision": 3,
+            "kvs": [
+              {
+                "key": "k",
+                "value": "v",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            ],
+            "count": 1
+          }
+        }
+      ]
+    }
+  },
+  "leases/grant a lease for no keys": {
+    "do": "grant a lease for no keys",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant the same ID again": {
+    "do": "grant the same ID again",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant with a TTL of 0": {
+    "do": "grant with a TTL of 0",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant with a TTL of 1 s": {
+    "do": "grant with a TTL of 1 s",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant with a TTL of 9000000001 s": {
+    "do": "grant with a TTL of 9000000001 s",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant with a negative ID": {
+    "do": "grant with a negative ID",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/grant with an explicit ID": {
+    "do": "grant with an explicit ID",
+    "code": "Unimplemented",
+    "message": "method LeaseGrant not implemented"
+  },
+  "leases/put ignore_lease on k": {
+    "do": "put ignore_lease on k",
+    "code": "InvalidArgument",
+    "message": "etcdserver: key not found"
+  },
+  "leases/put j with the lease": {
+    "do": "put j with the lease",
+    "code": "NotFound",
+    "message": "etcdserver: requested lease not found"
+  },
+  "leases/put j without a lease": {
+    "do": "put j without a lease",
+    "code": "OK",
+    "result": {
+      "revision": 1
+    }
+  },
+  "leases/put k with the lease": {
+    "do": "put k with the lease",
+    "code": "NotFound",
+    "message": "etcdserver: requested lease not found"
+  },
+  "leases/range keys": {
+    "do": "range keys",
+    "code": "OK",
+    "result": {
+      "revision": 1,
+      "kvs": [
+        {
+          "key": "j",
+          "value": "w",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      ],
+      "count": 1
+    }
+  },
+  "leases/range keys after the revoke": {
+    "do": "range keys after the revoke",
+    "code": "OK",
+    "result": {
+      "revision": 1,
+      "kvs": [
+        {
+          "key": "j",
+          "value": "w",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      ],
+      "count": 1
+    }
+  },
+  "leases/revoke a lease without keys": {
+    "do": "revoke a lease without keys",
+    "code": "Unimplemented",
+    "message": "method LeaseRevoke not implemented"
+  },
+  "leases/revoke lease 0": {
+    "do": "revoke lease 0",
+    "code": "Unimplemented",
+    "message": "method LeaseRevoke not implemented"
+  },
+  "leases/revoke the lease": {
+    "do": "revoke the lease",
+    "code": "Unimplemented",
+    "message": "method LeaseRevoke not implemented"
+  },
+  "leases/revoke the lease again": {
+    "do": "revoke the lease again",
+    "code": "Unimplemented",
+    "message": "method LeaseRevoke not implemented"
+  },
+  "max-request-size/largest put value for a key of 39 bytes": {
+    "do": "largest put value for a key of 39 bytes",
+    "code": "OK",
+    "result": 1572819
+  },
+  "max-request-size/largest txn put value for a key of 39 bytes": {
+    "do": "largest txn put value for a key of 39 bytes",
+    "code": "OK",
+    "result": 1572811
+  }
+}
