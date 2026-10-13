@@ -90,7 +90,15 @@ type Store struct {
 
 	// changes collects the changes of the request being applied.
 	changes []Change
+
+	counts Counts
 }
+
+// Counts are the operations a store has seen, for etcd's metrics
+// etcd_mvcc_put_total, etcd_mvcc_delete_total and etcd_mvcc_range_total:
+// every put, delete range and range the store runs, also inside
+// transactions.
+type Counts struct{ Puts, Deletes, Ranges int64 }
 
 // New returns an empty store at revision 1, the revision etcd starts at.
 func New() *Store {
@@ -102,6 +110,9 @@ func New() *Store {
 		compactRev: -1,
 	}
 }
+
+// Counts returns the operations the store has seen.
+func (s *Store) Counts() Counts { return s.counts }
 
 // Rev is the current revision.
 func (s *Store) Rev() int64 { return s.rev }

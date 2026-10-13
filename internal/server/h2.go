@@ -50,12 +50,14 @@ const (
 // owns the Framer's write side. mu guards everything they share with each
 // other and with the handlers.
 type conn struct {
-	s   *Server
-	nc  net.Conn
-	raw net.Conn // nc without TLS, closed to abort a stuck write
-	fr  *http2.Framer
-	br  *bufio.Reader
-	bw  *bufio.Writer
+	s *Server
+	// metrics are s.metrics; nil for connections in tests.
+	metrics *metrics
+	nc      net.Conn
+	raw     net.Conn // nc without TLS, closed to abort a stuck write
+	fr      *http2.Framer
+	br      *bufio.Reader
+	bw      *bufio.Writer
 	// cluster and member go in every response header.
 	cluster, member uint64
 
@@ -117,7 +119,7 @@ type ctrlFrame struct {
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: s.metrics,
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
@@ -565,6 +567,9 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]
+		if st.rpc != nil {
+			c.metrics.started(st.rpc)
+		}
 	} else {
 		st.httpMethod, st.httpPath = h.method, h.path
 		if st.httpPath == "" {

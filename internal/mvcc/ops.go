@@ -105,6 +105,7 @@ func (res *RangeResult) Response() *pb.RangeResponse {
 }
 
 func (w *writer) rangeResult(r *pb.RangeRequest) (RangeResult, error) {
+	w.s.counts.Ranges++
 	cur := w.cur()
 	at := r.Revision
 	if at <= 0 {
@@ -305,6 +306,7 @@ func (w *writer) add(k *keyIndex, v version) {
 
 // put writes one key and returns its previous version if p asks for it.
 func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
+	w.s.counts.Puts++
 	var prevKV *mvccpb.KeyValue
 	k, prev := w.latest(p.Key)
 	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}
@@ -341,6 +343,7 @@ func (s *Store) DeleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse, 
 }
 
 func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
+	w.s.counts.Deletes++
 	resp := &pb.DeleteRangeResponse{}
 	var del []*keyIndex
 	w.s.ascend(d.Key, d.RangeEnd, func(k *keyIndex) bool {

@@ -44,8 +44,9 @@ const stopGrace = time.Second
 
 // Server serves one node's client port.
 type Server struct {
-	n   *node.Node
-	cfg Config
+	n       *node.Node
+	cfg     Config
+	metrics *metrics
 	// cluster and member go in every response header.
 	cluster, member uint64
 
@@ -76,7 +77,7 @@ func New(n *node.Node, cfg Config) *Server {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{n: n, cfg: cfg, cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
+	return &Server{n: n, cfg: cfg, metrics: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
 }
 
 // Serve accepts clients on ln until Stop.

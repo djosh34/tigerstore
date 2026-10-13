@@ -129,6 +129,7 @@ func (st *stream) receive(d []byte) error {
 		if len(st.msg) < cap(st.msg) {
 			return nil
 		}
+		st.c.metrics.messageIn(5 + len(st.msg))
 		st.deliver(st.msg)
 		st.msg, st.hdrN = nil, 0
 	}
@@ -280,6 +281,7 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 		st.out = make([]outItem, 0, 3)
 	}
 	if msg != nil {
+		st.c.metrics.messageOut(len(msg))
 		if !st.headersQueued {
 			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
 			st.headersQueued = true
@@ -294,6 +296,13 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 		st.queued = 0
 	}
 	if end {
+		if st.rpc != nil {
+			code := codes.OK
+			if s != nil {
+				code = s.Code()
+			}
+			st.c.metrics.handled(st.rpc, code)
+		}
 		var block []byte
 		switch {
 		case !st.headersQueued:
