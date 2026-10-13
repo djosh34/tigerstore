@@ -54,8 +54,9 @@ type KV struct {
 	CreateRevision, ModRevision, Version, Lease int64
 }
 
-// RangeResult is a range's answer without its header: the revision it
-// read at, the keys, their count and whether more were left out.
+// RangeResult is a range's answer without its header: the store's
+// revision, for the header, the keys, their count and whether more were
+// left out.
 type RangeResult struct {
 	Rev   int64
 	KVs   []KV
@@ -160,6 +161,8 @@ func (w *writer) rangeResult(r *pb.RangeRequest) (RangeResult, error) {
 	return res, nil
 }
 
+// IsDefaultOrdering reports whether a range returns keys in the order the
+// index holds them.
 func IsDefaultOrdering(t pb.RangeRequest_SortTarget, o pb.RangeRequest_SortOrder) bool {
 	return o == pb.RangeRequest_NONE || (t == pb.RangeRequest_KEY && o == pb.RangeRequest_ASCEND)
 }

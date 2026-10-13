@@ -460,10 +460,11 @@ func (w *watchLoad) done(_ *stream, _ int64, err error) {
 	w.stats.errs["watch: "+err.Error()]++
 }
 
-// listLoad lists one namespace a page at a time, as kube-apiserver lists
-// a resource in a namespace: a range over the namespace's prefix with a
-// limit. Its answers must hold the namespace's key count, a full page of
-// its keys in order, and values of the size put.
+// listLoad lists the first page of one namespace, as kube-apiserver
+// starts a list of a resource in a namespace: a range over the
+// namespace's prefix with a limit. It does not page further. Its answers
+// must hold the namespace's key count, a full page of its keys in order,
+// values of the size put, and "more" exactly when keys were left out.
 type listLoad struct {
 	base
 	page      int
@@ -512,12 +513,14 @@ func (w *listLoad) message(st *stream, m []byte) error {
 	ns := st.slot
 	var count uint64
 	var last []byte
-	kvs := 0
+	kvs, more := 0, false
 	err := fields(m, func(num protowire.Number, v uint64, b []byte) error {
 		//exhaustive:ignore // the default case handles the rest
 		switch num {
 		case rangeCount:
 			count = v
+		case rangeMore:
+			more = v != 0
 		case rangeKVs:
 			kvs++
 			key, err := bytesField(b, kvKey)
@@ -543,8 +546,9 @@ func (w *listLoad) message(st *stream, m []byte) error {
 		return err
 	}
 	want := w.inNamespace(ns)
-	if int(count) != want || kvs != min(w.page, want) {
-		return fmt.Errorf("list of namespace %d returned count %d with %d keys, want %d with %d", ns, count, kvs, want, min(w.page, want))
+	if int(count) != want || kvs != min(w.page, want) || more != (want > w.page) {
+		return fmt.Errorf("list of namespace %d returned count %d with %d keys and more %v, want %d with %d and more %v",
+			ns, count, kvs, more, want, min(w.page, want), want > w.page)
 	}
 	return nil
 }

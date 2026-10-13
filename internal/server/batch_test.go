@@ -11,6 +11,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"golang.org/x/net/http2/hpack"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -182,7 +184,10 @@ func TestRangeReplyEncoding(t *testing.T) {
 			res.KVs = append(res.KVs, kv)
 		}
 		cluster, member, term := uint64(i), r.Uint64(), r.Uint64N(3)
-		got := appendRangeReply(nil, cluster, member, term, &res)
+		got, err := appendRangeReply(cluster, member, term, &res)
+		if err != nil {
+			t.Fatal(err)
+		}
 		resp := res.Response()
 		resp.Header.ClusterId, resp.Header.MemberId, resp.Header.RaftTerm = cluster, member, term
 		body, err := proto.MarshalOptions{Deterministic: true}.Marshal(resp)
@@ -194,5 +199,18 @@ func TestRangeReplyEncoding(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Fatalf("case %d:\n got %x\nwant %x", i, got, want)
 		}
+	}
+}
+
+// TestRangeReplyTooLarge checks that an answer over gRPC's 2 GiB message
+// limit fails as grpc-go fails it, before anything is allocated.
+func TestRangeReplyTooLarge(t *testing.T) {
+	v := make([]byte, 1<<20)
+	res := mvcc.RangeResult{KVs: make([]mvcc.KV, 2049)}
+	for i := range res.KVs {
+		res.KVs[i] = mvcc.KV{Key: []byte("k"), Value: v}
+	}
+	if _, err := appendRangeReply(1, 2, 3, &res); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("an answer over 2 GiB: %v", err)
 	}
 }

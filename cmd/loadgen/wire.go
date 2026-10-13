@@ -46,6 +46,7 @@ const (
 	txnResponses     = 3
 	opResponsePut    = 2 // ResponseOp
 	rangeKVs         = 2 // RangeResponse
+	rangeMore        = 3
 	rangeCount       = 4
 	delDeleted       = 2 // DeleteRangeResponse
 	watchCreated     = 3 // WatchResponse

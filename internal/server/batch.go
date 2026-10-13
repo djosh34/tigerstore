@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/binary"
+	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -201,16 +202,22 @@ type completed struct {
 	next  *completed
 }
 
-// replyEstimate is the size counted for a reply that has no message, an
-// error.
+// replyEstimate is the size counted for a reply that is an error or a
+// put in wire form.
 const replyEstimate = 64
 
-// estimate is the size a reply will take once encoded.
+// estimate is the size a reply will take once encoded. A range answer
+// counts its header at its largest.
 func estimate(cp *node.Completion) int64 {
-	if cp.Resp == nil {
+	switch {
+	case cp.Err != nil:
 		return replyEstimate
+	case cp.Resp != nil:
+		return int64(proto.Size(cp.Resp))
+	case cp.Tag.(*stream).rpc.compact:
+		return 5 + int64(rangeReplySize(math.MaxUint64, math.MaxUint64, cp.Term, &cp.Range))
 	}
-	return int64(proto.Size(cp.Resp))
+	return replyEstimate
 }
 
 // Complete takes replies from the node's committer. It pushes them onto a
@@ -282,7 +289,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 					f.msg = msg
 				}
 			case f.st.rpc.compact && cp.Resp == nil:
-				f.msg = appendRangeReply(nil, c.s.n.ClusterID(), c.s.n.ID(), cp.Term, &cp.Range)
+				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
@@ -333,7 +340,7 @@ func (c *conn) nodeStopped() {
 func (c *conn) appendPutReply(b []byte, r *core.Reply) ([]byte, error) {
 	start := len(b)
 	b = append(b, 0, 0, 0, 0, 0)
-	b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)
+	b, err := appendPutResponse(b, c.cluster, c.member, r.Rev, r.Term, r.PrevKv)
 	if err != nil {
 		return b[:start], status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
 	}
@@ -381,12 +388,10 @@ func headerSize(cluster, member uint64, rev int64, term uint64) int {
 	return n
 }
 
-// appendRangeReply appends the gRPC message of a RangeResponse built from
-// the index's values: the value bytes are copied once, here, into the
-// reply, with no KeyValue message per key.
-func appendRangeReply(b []byte, cluster, member uint64, term uint64, res *mvcc.RangeResult) []byte {
-	hs := headerSize(cluster, member, res.Rev, term)
-	size := 1 + protowire.SizeBytes(hs)
+// rangeReplySize is the size of the RangeResponse appendRangeReply
+// encodes.
+func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) int {
+	size := 1 + protowire.SizeBytes(headerSize(cluster, member, res.Rev, term))
 	for i := range res.KVs {
 		size += 1 + protowire.SizeBytes(kvSize(&res.KVs[i]))
 	}
@@ -396,9 +401,18 @@ func appendRangeReply(b []byte, cluster, member uint64, term uint64, res *mvcc.R
 	if res.Count != 0 {
 		size += 1 + protowire.SizeVarint(uint64(res.Count))
 	}
-	if b == nil {
-		b = make([]byte, 0, 5+size)
+	return size
+}
+
+// appendRangeReply encodes the gRPC message of a RangeResponse built from
+// the index's values: the value bytes are copied once, here, into the
+// reply, with no KeyValue message per key.
+func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
+	size := rangeReplySize(cluster, member, term, res)
+	if size > 1<<31-1 {
+		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 	}
+	b := make([]byte, 0, 5+size)
 	b = append(b, 0)
 	b = binary.BigEndian.AppendUint32(b, uint32(size))
 	b = appendHeader(b, cluster, member, res.Rev, term)
@@ -416,7 +430,7 @@ func appendRangeReply(b []byte, cluster, member uint64, term uint64, res *mvcc.R
 		b = protowire.AppendTag(b, 4, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(res.Count))
 	}
-	return b
+	return b, nil
 }
 
 // kvSize is the size of a KeyValue message; fields at their zero value
