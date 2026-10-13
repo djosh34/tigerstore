@@ -36,6 +36,8 @@ type stream struct {
 	// Reader only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int
+	// reqSize is the size of a request the reader handed to the node.
+	reqSize int
 
 	// done is set once the server has queued the end of the stream; what
 	// the client still sends is dropped.
@@ -60,7 +62,8 @@ type stream struct {
 	queued        int  // message bytes in out
 	listed        bool // in c.ready
 	headersQueued bool
-	inflight      int  // request bytes the node holds; see conn.inflight
+	held          int  // bytes the call holds; see maxHeld
+	atNode        bool // the node has the request and has not answered
 	ended         bool // the writer took the end of the stream
 	reset         bool // the stream or connection is gone; output is dropped
 }

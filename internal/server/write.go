@@ -36,11 +36,7 @@ func (c *conn) writeLoop() error {
 	var hdr []byte
 	nodeDone := c.s.n.Done()
 	for {
-		c.mu.Lock()
-		comps := c.completions
-		c.completions = nil
-		c.mu.Unlock()
-		if comps != nil {
+		if comps := c.takeCompletions(); comps != nil {
 			c.complete(comps)
 		}
 		c.mu.Lock()
@@ -194,6 +190,7 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	if st.deadline != nil {
 		st.deadline.Stop()
 	}
+	c.releaseLocked(st)
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}

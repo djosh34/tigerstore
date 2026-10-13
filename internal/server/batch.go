@@ -2,6 +2,7 @@ package server
 
 import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -15,9 +16,15 @@ const (
 	// out of buffered frames.
 	maxBatchOps   = 256
 	maxBatchBytes = 4 << 20
-	// maxInflight bounds the request bytes of one connection that the node
-	// has not answered yet. Above it, the reader stops reading.
-	maxInflight = 64 << 20
+	// maxHeld bounds the bytes that the calls of one connection hold:
+	// requests the node has not answered and replies not yet sent. Above
+	// it, the connection's receive window is not credited back, so the
+	// client stops sending until replies go out. The reader keeps reading
+	// pings, resets and window updates.
+	maxHeld = 64 << 20
+	// callCost is what a call holds besides its request and reply bytes,
+	// so that empty requests count too.
+	callCost = 512
 )
 
 // opBatch is the requests the reader decoded since it last handed a batch
@@ -44,20 +51,18 @@ func (c *conn) admit(st *stream) {
 		st.finish(err)
 		return
 	}
-	size := len(st.body)
+	st.reqSize = len(st.body)
 	st.body = nil
-	c.mu.Lock()
-	st.inflight = size
-	c.inflight += size
-	c.mu.Unlock()
 	c.batch.ops = append(c.batch.ops, op)
 	c.batch.tags = append(c.batch.tags, st)
-	c.batch.bytes += size
+	c.batch.bytes += st.reqSize
 }
 
 // batchDue reports whether the reader should hand its batch to the node
-// now: it is full, or the next frame is not buffered yet, so reading it
-// could wait for the client. There is no timer.
+// before it reads the next frame: the batch is full, or reading the next
+// frame could wait for the client, because it is not buffered whole or
+// starts a header block that continues in later frames. There is no
+// timer.
 func (c *conn) batchDue() bool {
 	b := &c.batch
 	if len(b.ops) == 0 {
@@ -66,73 +71,86 @@ func (c *conn) batchDue() bool {
 	if len(b.ops) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
 		return true
 	}
-	h, err := c.br.Peek(frameHeaderLen)
-	if err != nil {
+	// Peek cannot fail: the header is buffered.
+	h, _ := c.br.Peek(frameHeaderLen)
+	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
+	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
 		return true
 	}
-	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
 	return c.br.Buffered() < frameHeaderLen+n
 }
 
-// flush hands the batch to the node, then waits while too many request
-// bytes of this connection are unanswered. It fails only when the
-// connection closed.
+// flush hands the batch to the node. It never waits for the node's
+// replies; the held bytes bound a connection through flow control.
 func (c *conn) flush() error {
 	b := c.batch
 	c.batch = opBatch{}
-	if err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c); err != nil {
-		if c.ctx.Err() != nil {
-			return err
-		}
-		for _, tag := range b.tags {
-			c.release(tag.(*stream))
-			tag.(*stream).finish(toStatus(err))
-		}
+	c.mu.Lock()
+	for _, tag := range b.tags {
+		st := tag.(*stream)
+		st.atNode = true
+		c.holdLocked(st, st.reqSize+callCost)
+	}
+	c.mu.Unlock()
+	err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c)
+	if err == nil {
 		return nil
 	}
-	for {
-		c.mu.Lock()
-		over := c.inflight > maxInflight
-		c.mu.Unlock()
-		if !over {
-			return nil
-		}
-		select {
-		case <-c.room:
-		case <-c.ctx.Done():
-			return c.ctx.Err()
-		}
+	if c.ctx.Err() != nil {
+		return err
 	}
-}
-
-// release ends the node's hold on a stream's request bytes.
-func (c *conn) release(st *stream) {
+	// The node stopped; it takes no more requests.
 	c.mu.Lock()
-	c.releaseLocked(st)
+	for _, tag := range b.tags {
+		tag.(*stream).atNode = false
+	}
 	c.mu.Unlock()
+	for _, tag := range b.tags {
+		tag.(*stream).finish(toStatus(err))
+	}
+	return nil
 }
 
+// holdLocked adds n bytes to what a call holds. c.mu is held.
+func (c *conn) holdLocked(st *stream, n int) {
+	st.held += n
+	c.held += n
+}
+
+// releaseLocked frees what a call held once it ended, and credits back
+// the connection's receive window if that waited for it. c.mu is held.
 func (c *conn) releaseLocked(st *stream) {
-	if st.inflight == 0 {
-		return
-	}
-	c.inflight -= st.inflight
-	st.inflight = 0
-	select {
-	case c.room <- struct{}{}:
-	default:
+	c.held -= st.held
+	st.held = 0
+	c.creditLocked()
+}
+
+// creditLocked sends a connection window update once enough was received
+// and the connection's calls hold less than maxHeld. c.mu is held.
+func (c *conn) creditLocked() {
+	if c.recvCredit >= connWindow/4 && c.held <= maxHeld {
+		c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
+		c.recvCredit = 0
 	}
 }
 
-// Complete takes replies from the node's committer. It only queues them;
-// the writer encodes them.
+// Complete takes replies from the node's committer. It only queues them,
+// under a lock of their own that nothing holds for long; the writer
+// encodes them.
 func (c *conn) Complete(cs []node.Completion) {
-	c.mu.Lock()
-	if !c.closed {
-		c.completions = append(c.completions, cs)
-	}
-	c.mu.Unlock()
+	c.compMu.Lock()
+	c.completions = append(c.completions, cs)
+	c.compMu.Unlock()
 	c.signal()
+}
+
+// takeCompletions returns the replies the node queued.
+func (c *conn) takeCompletions() [][]node.Completion {
+	c.compMu.Lock()
+	defer c.compMu.Unlock()
+	cs := c.completions
+	c.completions = nil
+	return cs
 }
 
 // finished is one encoded reply, or an error, for a stream.
@@ -157,10 +175,17 @@ func (c *conn) complete(batches [][]node.Completion) {
 	}
 	c.mu.Lock()
 	for _, f := range out {
-		c.releaseLocked(f.st)
-		if f.st.done.Swap(true) {
+		f.st.atNode = false
+		if f.st.reset {
+			// The client reset the call; its reply is dropped.
+			c.releaseLocked(f.st)
 			continue
 		}
+		if f.st.done.Swap(true) {
+			// Ended already, at its deadline; endStream releases it.
+			continue
+		}
+		c.holdLocked(f.st, len(f.msg))
 		var s *status.Status
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
@@ -170,14 +195,18 @@ func (c *conn) complete(batches [][]node.Completion) {
 	c.mu.Unlock()
 }
 
-// nodeStopped fails every call the node holds once it stopped; the node
-// answers nothing after that.
+// nodeStopped fails every call the node still holds once it stopped. The
+// node's last replies came in Complete calls before it stopped, so they
+// are encoded first.
 func (c *conn) nodeStopped() {
+	if cs := c.takeCompletions(); cs != nil {
+		c.complete(cs)
+	}
 	c.mu.Lock()
 	var held []*stream
 	for _, st := range c.streams {
-		if st.inflight > 0 {
-			c.releaseLocked(st)
+		if st.atNode {
+			st.atNode = false
 			held = append(held, st)
 		}
 	}

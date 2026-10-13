@@ -62,9 +62,8 @@ type conn struct {
 	wake   chan struct{} // the writer has work; capacity 1
 
 	// Reader only.
-	maxID      uint32 // highest client stream ID seen
-	recvCredit int    // connection bytes received and not yet credited back
-	batch      opBatch
+	maxID uint32 // highest client stream ID seen
+	batch opBatch
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -75,12 +74,15 @@ type conn struct {
 	maxFrame  int         // the client's largest frame payload
 	closed    bool
 	goingAway bool
-	// completions are replies from the node for the writer to encode.
+	// recvCredit is connection bytes received and not yet credited back.
+	recvCredit int
+	// held is the bytes the connection's calls hold; see maxHeld.
+	held int
+
+	// compMu guards completions, the replies from the node for the writer
+	// to encode. The node's committer takes it, so nothing holds it long.
+	compMu      sync.Mutex
 	completions [][]node.Completion
-	// inflight is the request bytes the node holds; room is signaled when
-	// it shrinks (capacity 1).
-	inflight int
-	room     chan struct{}
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -109,7 +111,6 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
-		room:     make(chan struct{}, 1),
 		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
 		sendWin:  65535,
@@ -240,6 +241,13 @@ func (c *conn) readLoop() error {
 		return err
 	}
 	for {
+		// Every path back here, stream errors included, hands over a due
+		// batch before a read that may wait.
+		if c.batchDue() {
+			if err := c.flush(); err != nil {
+				return err
+			}
+		}
 		f, err := c.fr.ReadFrame()
 		if err != nil {
 			if se, ok := errors.AsType[http2.StreamError](err); ok {
@@ -250,11 +258,6 @@ func (c *conn) readLoop() error {
 		}
 		if err := c.onFrame(f); err != nil {
 			return err
-		}
-		if c.batchDue() {
-			if err := c.flush(); err != nil {
-				return err
-			}
 		}
 	}
 }
@@ -339,6 +342,11 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		if st.deadline != nil {
 			st.deadline.Stop()
 		}
+		// A call the node still runs keeps its request bytes until its
+		// reply comes and is dropped.
+		if !st.atNode {
+			c.releaseLocked(st)
+		}
 		st.out = nil
 		st.queued = 0
 	}
@@ -353,13 +361,13 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 }
 
 // credit counts n received connection bytes and credits them back in
-// batches.
+// batches, unless the connection's calls hold too much.
 func (c *conn) credit(n int) {
+	c.mu.Lock()
 	c.recvCredit += n
-	if c.recvCredit >= connWindow/4 {
-		c.queueCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
-		c.recvCredit = 0
-	}
+	c.creditLocked()
+	c.mu.Unlock()
+	c.signal()
 }
 
 func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {

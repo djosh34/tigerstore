@@ -172,8 +172,17 @@ type waiter struct {
 // reply channel per request. tags[i] comes back with the reply to ops[i]
 // through to.Complete. It waits while the inbox is full, which slows down
 // the client connection; it fails only if ctx ends or the node stopped,
-// and then none of the requests was taken.
+// and then none of the requests was taken. A batch handed over as the
+// node stops may never be answered: the caller fails such requests once
+// Done is closed.
 func (n *Node) SubmitBatch(ctx context.Context, ops []proto.Message, tags []any, to Completer) error {
+	select {
+	case <-n.done:
+		// put could still win the race for a free inbox, and nobody reads
+		// it any more.
+		return rpctypes.ErrGRPCStopped
+	default:
+	}
 	k := uint64(len(ops))
 	b := &batch{first: n.nextID.Add(k) - k + 1, ops: ops, tags: tags, to: to}
 	return n.put(ctx, input{batch: b})
