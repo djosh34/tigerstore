@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,6 +33,27 @@ func TestReport(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "| put-1k | main | 1,000") {
 		t.Fatalf("report:\n%s", b.String())
+	}
+}
+
+func TestReportSpreads(t *testing.T) {
+	dir := t.TempDir()
+	for i, n := range []int{30, 10, 20} {
+		for _, mode := range []string{"max", "rate"} {
+			write(t, dir, fmt.Sprintf("etcd-%s-%d.json", mode, i+1), fmt.Sprintf(`{"valid":true,"throughput":%d,"offered_rate":100,"server_cpu_us_per_op":%d,"client_cpu_us_per_op":%d,"server_cores_by_node":[%d],"latency_us":{"mean":%d,"p50":%d,"p90":%d,"p99":%d,"p999":%d,"max":%d}}`, n, n, n, n, n*1000, n*1000, n*1000, n*1000, n*1000, n*1000))
+		}
+	}
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"10 / 20 / 30", "10.0 / 20.0 / 30.0", "10.00 / 20.00 / 30.00", "| rate |", "3 + 3"} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %s in report:\n%s", want, b.String())
+		}
+	}
+	if got := num(runs{{Throughput: 10}, {Throughput: 30}}, func(r result) float64 { return r.Throughput }, "%.0f"); got != "10 / 20 / 30" {
+		t.Fatal(got)
 	}
 }
 
