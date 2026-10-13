@@ -364,6 +364,20 @@ func (n *Node) Unreachable(id uint64) {
 // Submit hands the node a client request. The reply comes in a later
 // Effects.
 func (n *Node) Submit(r Request) {
+	n.submit(r, &pending{})
+}
+
+// SubmitAll hands the node several client requests, with one allocation
+// for their bookkeeping.
+func (n *Node) SubmitAll(rs []Request) {
+	ps := make([]pending, len(rs))
+	for i := range rs {
+		n.submit(rs[i], &ps[i])
+	}
+}
+
+// submit takes a request; p is its zero bookkeeping record.
+func (n *Node) submit(r Request, p *pending) {
 	if n.err != nil {
 		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
 		return
@@ -373,7 +387,7 @@ func (n *Node) Submit(r Request) {
 			n.reply(r.ID, nil, err)
 			return
 		}
-		p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
 		return
@@ -382,7 +396,7 @@ func (n *Node) Submit(r Request) {
 		n.reply(r.ID, nil, err)
 		return
 	}
-	p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
 	switch op := r.Op.(type) {
 	case *pb.RangeRequest:
 		if op.Serializable || planted.On("B01a") {

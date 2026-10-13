@@ -180,14 +180,22 @@ type finished struct {
 // complete encodes the replies the node handed over and queues them on
 // their streams, taking the lock once.
 func (c *conn) complete(batches [][]node.Completion) {
-	var out []finished
+	n := 0
+	for _, cs := range batches {
+		n += len(cs)
+	}
+	out := make([]finished, 0, n)
+	// Put replies share one buffer; each is a clipped slice of it.
+	replies := make([]byte, 0, n*(5+putResponseSize))
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
 			switch {
 			case f.err != nil:
 			case f.st.rpc.wirePut:
-				f.msg, f.err = c.putResponse(&cp.Reply)
+				start := len(replies)
+				replies, f.err = c.appendPutReply(replies, &cp.Reply)
+				f.msg = replies[start:len(replies):len(replies)]
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
@@ -237,15 +245,16 @@ func (c *conn) nodeStopped() {
 	}
 }
 
-// putResponse encodes the response to a put in wire form, without
-// building a protobuf message.
-func (c *conn) putResponse(r *core.Reply) ([]byte, error) {
-	b := make([]byte, 5, 5+putResponseSize)
+// appendPutReply appends the gRPC message of the response to a put in
+// wire form, without building a protobuf message.
+func (c *conn) appendPutReply(b []byte, r *core.Reply) ([]byte, error) {
+	start := len(b)
+	b = append(b, 0, 0, 0, 0, 0)
 	b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
+		return b[:start], status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
 	}
-	binary.BigEndian.PutUint32(b[1:5], uint32(len(b)-5))
+	binary.BigEndian.PutUint32(b[start+1:start+5], uint32(len(b)-start-5))
 	return b, nil
 }
 

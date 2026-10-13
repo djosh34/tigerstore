@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
@@ -64,6 +65,10 @@ type conn struct {
 	// Reader only.
 	maxID uint32 // highest client stream ID seen
 	batch opBatch
+	// hdec decodes header blocks into hdr, the headers of the block being
+	// read, with no allocation for fields from the HPACK tables.
+	hdec *hpack.Decoder
+	hdr  reqHeaders
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -118,7 +123,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		maxFrame: 16384,
 	}
 	c.fr = http2.NewFramer(c.bw, c.br)
-	c.fr.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
+	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
 		ctrlFrame{kind: ctrlWindowUpdate, val: connWindow - 65535})
@@ -264,8 +269,11 @@ func (c *conn) readLoop() error {
 
 func (c *conn) onFrame(f http2.Frame) error {
 	switch f := f.(type) {
-	case *http2.MetaHeadersFrame:
-		return c.onHeaders(f)
+	case *http2.HeadersFrame:
+		c.hdr = reqHeaders{id: f.StreamID, ended: f.StreamEnded()}
+		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
+	case *http2.ContinuationFrame:
+		return c.headerFragment(f.HeaderBlockFragment(), f.HeadersEnded())
 	case *http2.DataFrame:
 		return c.onData(f)
 	case *http2.WindowUpdateFrame:
@@ -370,13 +378,109 @@ func (c *conn) credit(n int) {
 	c.signal()
 }
 
-func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
-	id := f.StreamID
+// reqHeaders is what the server reads from a request's header block.
+type reqHeaders struct {
+	id                        uint32
+	ended                     bool // the HEADERS frame had END_STREAM
+	method, path, contentType string
+	timeout                   time.Duration
+	hasTimeout, needLeader    bool
+	size                      int
+	regular                   bool // a regular field came; pseudo-fields must come first
+	bad                       bool // a field broke HTTP/2's rules
+}
+
+// maxHeaderList bounds the decoded size of one header block, as
+// SETTINGS_MAX_HEADER_LIST_SIZE would.
+const maxHeaderList = 1 << 20
+
+// headerFragment decodes part of a header block. The Framer checks that
+// CONTINUATION frames follow their HEADERS frame.
+func (c *conn) headerFragment(b []byte, last bool) error {
+	if _, err := c.hdec.Write(b); err != nil {
+		return http2.ConnectionError(http2.ErrCodeCompression)
+	}
+	if !last {
+		return nil
+	}
+	if err := c.hdec.Close(); err != nil {
+		return http2.ConnectionError(http2.ErrCodeCompression)
+	}
+	h := &c.hdr
+	if h.bad {
+		if h.id > c.maxID && h.id%2 == 1 {
+			c.mu.Lock()
+			c.maxID = h.id
+			c.mu.Unlock()
+		}
+		c.resetStream(h.id, http2.ErrCodeProtocol)
+		return nil
+	}
+	return c.onHeaders(h)
+}
+
+// onField takes one decoded header field. The hpack decoder state must
+// stay in step with the client's even for a field that breaks the rules,
+// so a bad field only marks the block.
+func (c *conn) onField(f hpack.HeaderField) {
+	h := &c.hdr
+	h.size += int(f.Size())
+	if h.size > maxHeaderList || !httpguts.ValidHeaderFieldValue(f.Value) {
+		h.bad = true
+		return
+	}
+	if strings.HasPrefix(f.Name, ":") {
+		if h.regular {
+			h.bad = true
+		}
+		switch f.Name {
+		case ":method":
+			h.method = f.Value
+		case ":path":
+			h.path = f.Value
+		case ":scheme", ":authority":
+		default:
+			h.bad = true
+		}
+		return
+	}
+	h.regular = true
+	if !validFieldName(f.Name) {
+		h.bad = true
+		return
+	}
+	switch f.Name {
+	case "content-type":
+		h.contentType = f.Value
+	case "grpc-timeout":
+		h.timeout, h.hasTimeout = parseTimeout(f.Value)
+	case "hasleader":
+		h.needLeader = h.needLeader || f.Value == "true"
+	}
+}
+
+// validFieldName reports whether name is a lowercase HTTP token, as
+// HTTP/2 requires of regular field names.
+func validFieldName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		ch := name[i]
+		if ch >= 'A' && ch <= 'Z' || !httpguts.IsTokenRune(rune(ch)) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *conn) onHeaders(h *reqHeaders) error {
+	id := h.id
 	if id%2 == 0 || id <= c.maxID {
 		c.mu.Lock()
 		st := c.streams[id]
 		c.mu.Unlock()
-		if st != nil && f.StreamEnded() && !st.inEOF {
+		if st != nil && h.ended && !st.inEOF {
 			// Trailers from the client end its side of the stream.
 			return c.onEnd(st)
 		}
@@ -394,10 +498,10 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 		c.resetStream(id, http2.ErrCodeRefusedStream)
 		return nil
 	}
-	st := c.newStream(id, f)
+	st := c.newStream(h)
 	if st.rpc == nil && st.httpPath == "" {
 		// gRPC to an unknown method; its error is already queued.
-		if f.StreamEnded() {
+		if h.ended {
 			return c.onEnd(st)
 		}
 		return nil
@@ -405,31 +509,15 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 	if st.rpc != nil && st.rpc.stream != nil {
 		go c.runStream(st)
 	}
-	if f.StreamEnded() {
+	if h.ended {
 		return c.onEnd(st)
 	}
 	return nil
 }
 
-func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
-	var timeout time.Duration
-	hasTimeout := false
-	var contentType, method, path string
-	needLeader := false
-	for _, h := range f.Fields {
-		switch h.Name {
-		case ":method":
-			method = h.Value
-		case ":path":
-			path = h.Value
-		case "content-type":
-			contentType = h.Value
-		case "grpc-timeout":
-			timeout, hasTimeout = parseTimeout(h.Value)
-		case "hasleader":
-			needLeader = needLeader || h.Value == "true"
-		}
-	}
+func (c *conn) newStream(h *reqHeaders) *stream {
+	id, timeout, hasTimeout := h.id, h.timeout, h.hasTimeout
+	method, path, contentType, needLeader := h.method, h.path, h.contentType, h.needLeader
 	st := &stream{c: c, id: id, needLeader: needLeader}
 	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
 	if grpc {
