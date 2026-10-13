@@ -1,0 +1,13 @@
+store,rep,arch,tigerstore_ref,experiment_ref,exit,total_seconds,directory,workload_passed
+etcd,1,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,285.6443452835083,../runs/38422256112/kube-burner-ubuntu-24.04-arm-etcd-1/etcd-ARM64-1,True
+etcd,2,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,284.43704104423523,../runs/38422256112/kube-burner-ubuntu-24.04-arm-etcd-2/etcd-ARM64-2,True
+etcd,3,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,289.11881852149963,../runs/38422256112/kube-burner-ubuntu-24.04-arm-etcd-3/etcd-ARM64-3,True
+tigerstore,1,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,304.23636054992676,../runs/38422256112/kube-burner-ubuntu-24.04-arm-tigerstore-1/tigerstore-ARM64-1,True
+tigerstore,2,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,304.10321283340454,../runs/38422256112/kube-burner-ubuntu-24.04-arm-tigerstore-2/tigerstore-ARM64-2,True
+tigerstore,3,ARM64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,296.7556552886963,../runs/38422256112/kube-burner-ubuntu-24.04-arm-tigerstore-3/tigerstore-ARM64-3,True
+etcd,1,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,294.97819995880127,../runs/38422256112/kube-burner-ubuntu-24.04-etcd-1/etcd-X64-1,True
+etcd,2,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,297.1867446899414,../runs/38422256112/kube-burner-ubuntu-24.04-etcd-2/etcd-X64-2,True
+etcd,3,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,289.3032166957855,../runs/38422256112/kube-burner-ubuntu-24.04-etcd-3/etcd-X64-3,True
+tigerstore,1,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,308.8838722705841,../runs/38422256112/kube-burner-ubuntu-24.04-tigerstore-1/tigerstore-X64-1,True
+tigerstore,2,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,318.5092566013336,../runs/38422256112/kube-burner-ubuntu-24.04-tigerstore-2/tigerstore-X64-2,True
+tigerstore,3,X64,90870876b6459334c7eddd67c0f9d184267f2eba,292f36bfdcbb16aa2aa3d68e6a71ca46b8da97b9,0,314.76454424858093,../runs/38422256112/kube-burner-ubuntu-24.04-tigerstore-3/tigerstore-X64-3,True

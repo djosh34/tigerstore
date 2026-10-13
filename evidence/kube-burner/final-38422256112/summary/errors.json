@@ -1,0 +1,304 @@
+[
+  {
+    "store": "etcd",
+    "arch": "ARM64",
+    "rep": 1,
+    "workload_failures": 0,
+    "workload_error_records": 23,
+    "api_response_errors": {
+      "403": 28.0,
+      "404": 90.0,
+      "409": 63.0,
+      "422": 0.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 1998,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-b527afa771c7.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-a4d49ed956ee.stderr": 85,
+      "diagnostics/burner-control-plane-kube-scheduler-66bd39bc2558.stderr": 45,
+      "diagnostics/burner-control-plane-kubelet.stdout": 529,
+      "diagnostics/burner-worker-kubelet.stdout": 516,
+      "diagnostics/burner-worker2-kubelet.stdout": 750,
+      "diagnostics/external-etcd-1.stderr": 11,
+      "diagnostics/external-etcd-2.stderr": 14,
+      "diagnostics/external-etcd-3.stderr": 11
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "etcd",
+    "arch": "ARM64",
+    "rep": 2,
+    "workload_failures": 0,
+    "workload_error_records": 20,
+    "api_response_errors": {
+      "403": 23.0,
+      "404": 85.0,
+      "409": 63.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2007,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-4cde25b7f0f2.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-f6864e216e34.stderr": 93,
+      "diagnostics/burner-control-plane-kube-scheduler-2f775e58e810.stderr": 45,
+      "diagnostics/burner-control-plane-kubelet.stdout": 506,
+      "diagnostics/burner-worker-kubelet.stdout": 545,
+      "diagnostics/burner-worker2-kubelet.stdout": 723,
+      "diagnostics/external-etcd-1.stderr": 17,
+      "diagnostics/external-etcd-2.stderr": 17,
+      "diagnostics/external-etcd-3.stderr": 24
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "etcd",
+    "arch": "ARM64",
+    "rep": 3,
+    "workload_failures": 0,
+    "workload_error_records": 22,
+    "api_response_errors": {
+      "403": 26.0,
+      "404": 96.0,
+      "409": 70.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2045,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-e2d7e58aaf53.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-422631b9b422.stderr": 94,
+      "diagnostics/burner-control-plane-kube-scheduler-565ea81d71b6.stderr": 45,
+      "diagnostics/burner-control-plane-kubelet.stdout": 517,
+      "diagnostics/burner-worker-kubelet.stdout": 760,
+      "diagnostics/burner-worker2-kubelet.stdout": 537,
+      "diagnostics/external-etcd-1.stderr": 15,
+      "diagnostics/external-etcd-2.stderr": 17,
+      "diagnostics/external-etcd-3.stderr": 23
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "tigerstore",
+    "arch": "ARM64",
+    "rep": 1,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 27.0,
+      "404": 97.0,
+      "409": 66.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2163,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-897189309e8b.stderr": 36,
+      "diagnostics/burner-control-plane-kube-controller-manager-81fa3ba19371.stderr": 107,
+      "diagnostics/burner-control-plane-kube-scheduler-b707b592a980.stderr": 37,
+      "diagnostics/burner-control-plane-kubelet.stdout": 562,
+      "diagnostics/burner-worker-kubelet.stdout": 705,
+      "diagnostics/burner-worker2-kubelet.stdout": 713,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  },
+  {
+    "store": "tigerstore",
+    "arch": "ARM64",
+    "rep": 2,
+    "workload_failures": 0,
+    "workload_error_records": 22,
+    "api_response_errors": {
+      "403": 27.0,
+      "404": 89.0,
+      "409": 74.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2183,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-2a8e3ae7f5ae.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-c46d12774d1d.stderr": 90,
+      "diagnostics/burner-control-plane-kube-scheduler-ae1a32bc5db6.stderr": 45,
+      "diagnostics/burner-control-plane-kubelet.stdout": 517,
+      "diagnostics/burner-worker-kubelet.stdout": 839,
+      "diagnostics/burner-worker2-kubelet.stdout": 652,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  },
+  {
+    "store": "tigerstore",
+    "arch": "ARM64",
+    "rep": 3,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 24.0,
+      "404": 97.0,
+      "409": 64.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 1990,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-b4b40677a912.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-f68b97c2af3b.stderr": 72,
+      "diagnostics/burner-control-plane-kube-scheduler-501b7387587d.stderr": 37,
+      "diagnostics/burner-control-plane-kubelet.stdout": 309,
+      "diagnostics/burner-worker-kubelet.stdout": 844,
+      "diagnostics/burner-worker2-kubelet.stdout": 688,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  },
+  {
+    "store": "etcd",
+    "arch": "X64",
+    "rep": 1,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 24.0,
+      "404": 96.0,
+      "409": 79.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2186,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-3dbbcde303f4.stderr": 36,
+      "diagnostics/burner-control-plane-kube-controller-manager-3ad8cc51c09b.stderr": 125,
+      "diagnostics/burner-control-plane-kube-scheduler-cc5710c02892.stderr": 35,
+      "diagnostics/burner-control-plane-kubelet.stdout": 399,
+      "diagnostics/burner-worker-kubelet.stdout": 943,
+      "diagnostics/burner-worker2-kubelet.stdout": 604,
+      "diagnostics/external-etcd-1.stderr": 17,
+      "diagnostics/external-etcd-2.stderr": 17,
+      "diagnostics/external-etcd-3.stderr": 10
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "etcd",
+    "arch": "X64",
+    "rep": 2,
+    "workload_failures": 0,
+    "workload_error_records": 23,
+    "api_response_errors": {
+      "403": 26.0,
+      "404": 91.0,
+      "409": 82.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2286,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-eba749297b8c.stderr": 36,
+      "diagnostics/burner-control-plane-kube-controller-manager-3a33acbeeeae.stderr": 151,
+      "diagnostics/burner-control-plane-kube-scheduler-7530fa532f8d.stderr": 35,
+      "diagnostics/burner-control-plane-kubelet.stdout": 613,
+      "diagnostics/burner-worker-kubelet.stdout": 593,
+      "diagnostics/burner-worker2-kubelet.stdout": 761,
+      "diagnostics/external-etcd-1.stderr": 32,
+      "diagnostics/external-etcd-2.stderr": 28,
+      "diagnostics/external-etcd-3.stderr": 37
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "etcd",
+    "arch": "X64",
+    "rep": 3,
+    "workload_failures": 0,
+    "workload_error_records": 25,
+    "api_response_errors": {
+      "403": 23.0,
+      "404": 126.0,
+      "409": 85.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2371,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-8fdd2b565092.stderr": 38,
+      "diagnostics/burner-control-plane-kube-controller-manager-5854cd10ab2d.stderr": 137,
+      "diagnostics/burner-control-plane-kube-scheduler-a426bb48b6a8.stderr": 35,
+      "diagnostics/burner-control-plane-kubelet.stdout": 452,
+      "diagnostics/burner-worker-kubelet.stdout": 519,
+      "diagnostics/burner-worker2-kubelet.stdout": 542,
+      "diagnostics/external-etcd-1.stderr": 202,
+      "diagnostics/external-etcd-2.stderr": 222,
+      "diagnostics/external-etcd-3.stderr": 224
+    },
+    "endpoint_health_exit": 0
+  },
+  {
+    "store": "tigerstore",
+    "arch": "X64",
+    "rep": 1,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 25.0,
+      "404": 89.0,
+      "409": 80.0,
+      "422": 0.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2340,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-8fc82d4cc1ee.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-94cadd0630c8.stderr": 139,
+      "diagnostics/burner-control-plane-kube-scheduler-b3ac68bfd9d6.stderr": 30,
+      "diagnostics/burner-control-plane-kubelet.stdout": 525,
+      "diagnostics/burner-worker-kubelet.stdout": 755,
+      "diagnostics/burner-worker2-kubelet.stdout": 851,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  },
+  {
+    "store": "tigerstore",
+    "arch": "X64",
+    "rep": 2,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 28.0,
+      "404": 94.0,
+      "409": 82.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 2205,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-277f9c638422.stderr": 38,
+      "diagnostics/burner-control-plane-kube-controller-manager-42e82f5dfdd8.stderr": 110,
+      "diagnostics/burner-control-plane-kube-scheduler-bdeedaa4bb9a.stderr": 36,
+      "diagnostics/burner-control-plane-kubelet.stdout": 542,
+      "diagnostics/burner-worker-kubelet.stdout": 720,
+      "diagnostics/burner-worker2-kubelet.stdout": 756,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  },
+  {
+    "store": "tigerstore",
+    "arch": "X64",
+    "rep": 3,
+    "workload_failures": 0,
+    "workload_error_records": 21,
+    "api_response_errors": {
+      "403": 25.0,
+      "404": 82.0,
+      "409": 73.0,
+      "500": 0.0
+    },
+    "logged_warning_error_lines": 1651,
+    "files": {
+      "diagnostics/burner-control-plane-kube-apiserver-68d7dc7d837e.stderr": 37,
+      "diagnostics/burner-control-plane-kube-controller-manager-533a930d602e.stderr": 128,
+      "diagnostics/burner-control-plane-kube-scheduler-89ed6e56d870.stderr": 32,
+      "diagnostics/burner-control-plane-kubelet.stdout": 394,
+      "diagnostics/burner-worker-kubelet.stdout": 533,
+      "diagnostics/burner-worker2-kubelet.stdout": 524,
+      "endpoint-health.stderr": 3
+    },
+    "endpoint_health_exit": 1
+  }
+]

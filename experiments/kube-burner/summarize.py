@@ -76,8 +76,18 @@ def summarize(root, out):
         number('errors.observed', workload.get('errorCount'), 'records')
         number('errors.workload', workload.get('workloadFailureCount'), 'records')
         metrics('total', load(directory / 'metrics.json'))
+        previous_inventory = 0
         for phase in workload['phases']:
             name = phase['name']
+            inventory = phase.get('runOwnedCounts')
+            if inventory is not None:
+                total = sum(inventory.values())
+                number(name + '.live_inventory', total, 'objects in tracked kinds')
+                if name in {'mixed', 'node'}:
+                    number(name + '.net_live_creation_rate', (total - previous_inventory) / phase['workloadSeconds'], 'objects/s')
+                if name == 'delete' and total == 0:
+                    number(name + '.verified_deletion_rate', previous_inventory / phase['workloadSeconds'], 'objects/s')
+                previous_inventory = total
             number(name + '.duration', phase['workloadSeconds'], 's')
             number(name + '.exit', phase['returncode'], 'exit code')
             metrics(name, load(directory / 'workload' / name / 'diff.json'))
