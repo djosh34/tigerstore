@@ -103,6 +103,8 @@ type Request struct {
 	ID  uint64
 	Op  proto.Message
 	Put Put
+	// Workspace is optional transient storage for the wire-Put experiment.
+	Workspace *Workspace
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -130,10 +132,11 @@ type PersistJob struct {
 
 // Effects is what the core asks its driver to do.
 type Effects struct {
-	Persist []PersistJob
-	Send    []*raftpb.Message
-	Replies []Reply
-	Watch   []WatchResponse
+	Persist        []PersistJob
+	Send           []*raftpb.Message
+	Replies        []Reply
+	ManagedReplies *Workspace
+	Watch          []WatchResponse
 	// Expired lists the leases that expired as this node applied the log.
 	// Drivers may log them; the simulator checks their timing.
 	Expired []int64
@@ -213,8 +216,9 @@ type Node struct {
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
-	out Effects
-	err error
+	out                 Effects
+	err                 error
+	allocationWorkspace bool
 }
 
 // New starts a node from what its log recovered.
@@ -365,15 +369,22 @@ func (n *Node) Unreachable(id uint64) {
 // Effects.
 func (n *Node) Submit(r Request) {
 	if n.err != nil {
-		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
+		n.answerRequest(r, Reply{ID: r.ID, Err: rpctypes.ErrGRPCStopped})
 		return
 	}
 	if r.Op == nil {
 		if err := checkPut(&r.Put); err != nil {
-			n.reply(r.ID, nil, err)
+			n.answerRequest(r, Reply{ID: r.ID, Err: err})
 			return
 		}
-		p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		var p *pending
+		if r.Workspace != nil {
+			n.allocationWorkspace = true
+			p = &r.Workspace.p
+			*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		} else {
+			p = &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		}
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
 		return
@@ -525,12 +536,18 @@ func (n *Node) expire() {
 		}
 		n.finish(p, nil, rpctypes.ErrGRPCTimeout)
 	}
-	n.timeouts = n.timeouts[i:]
+	if n.allocationWorkspace {
+		copy(n.timeouts, n.timeouts[i:])
+		clear(n.timeouts[len(n.timeouts)-i:])
+		n.timeouts = n.timeouts[:len(n.timeouts)-i]
+	} else {
+		n.timeouts = n.timeouts[i:]
+	}
 }
 
 func (n *Node) finish(p *pending, resp proto.Message, err error) {
 	if n.settle(p) {
-		n.reply(p.req.ID, resp, err)
+		n.answerRequest(p.req, Reply{ID: p.req.ID, Resp: resp, Err: err})
 	}
 }
 
@@ -560,6 +577,9 @@ func (n *Node) propose() {
 	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
 	size := n.propBytes
 	n.proposals, n.propBytes = nil, 0
+	if n.allocationWorkspace {
+		defer func() { clear(props); n.proposals = props[:0] }()
+	}
 	if len(props) == 0 {
 		return
 	}
@@ -665,6 +685,7 @@ func (n *Node) Process() (Effects, error) {
 	if n.err != nil {
 		n.stop()
 	}
+	n.retireManaged()
 	out := n.out
 	n.out = Effects{}
 	return out, n.err
@@ -902,7 +923,7 @@ func (n *Node) applyPut(b []byte, p *pending) error {
 		return nil
 	}
 	if n.settle(p) {
-		n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
+		n.answerRequest(p.req, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
 	}
 	return nil
 }

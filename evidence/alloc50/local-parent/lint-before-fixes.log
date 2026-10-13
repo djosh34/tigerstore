@@ -1,0 +1,20 @@
+internal/server/allocation_workspace_test.go:29:67: embedlit: embedded field type can be removed from struct literal (modernize)
+	return &http2.MetaHeadersFrame{HeadersFrame: &http2.HeadersFrame{FrameHeader: http2.FrameHeader{StreamID: id}}, Fields: fields}
+	                                                                 ^
+internal/server/allocation_workspace_test.go:44:8: rangeint: for loop can be modernized using range over int (modernize)
+			for i := 0; i < allocationQuota; i++ {
+			    ^
+internal/server/allocation.go:327:12: QF1011: could omit type int from declaration; it will be inferred from the right-hand side (staticcheck)
+	var block int = -1
+	          ^
+internal/server/allocation_workspace_test.go:24:35: allocationHeaders - timeout always receives "" (unparam)
+func allocationHeaders(id uint32, timeout string) *http2.MetaHeadersFrame {
+                                  ^
+internal/server/allocation.go:54:6: type allocationBudgetCheck is unused (unused)
+type allocationBudgetCheck [allocationBudget - allocationStartupBytes]struct{}
+     ^
+5 issues:
+* modernize: 2
+* staticcheck: 1
+* unparam: 1
+* unused: 1

@@ -1,0 +1,5 @@
+internal/server/allocation.go:1: : # github.com/djosh34/tigerstore/internal/server [github.com/djosh34/tigerstore/internal/server.test]
+internal/server/allocation_workspace_test.go:29:80: missing type in composite literal (typecheck)
+package server
+1 issues:
+* typecheck: 1

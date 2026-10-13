@@ -1,0 +1,77 @@
+name: Allocation strategy paired ARM experiment
+on:
+  push:
+    branches: [exp/50-alloc]
+    paths:
+      - '.github/workflows/alloc50.yml'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'experiments/**'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lifetime-race:
+    if: github.ref == 'refs/heads/exp/50-alloc'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Managed workspace, timer, frame, shutdown and value lifetimes
+        env:
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: |
+          set -euo pipefail
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p evidence/alloc50/lifetime-race
+          git rev-parse HEAD > evidence/alloc50/lifetime-race/source.txt
+          go version > evidence/alloc50/lifetime-race/go-version.txt
+          # Server tests already loop base/ring/arena; core/node tests exercise
+          # managed workspaces directly. One test command, no mode matrix.
+          timeout --kill-after=5s 800s go test -race -short -count=1 -parallel 2 \
+            -run '^TestAllocation(Workspace|Shutdown|ValueLifetimes)' \
+            ./internal/server ./internal/node ./internal/core \
+            2>&1 | tee evidence/alloc50/lifetime-race/tests.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: alloc50-lifetime-race
+          path: evidence/alloc50/lifetime-race
+          retention-days: 14
+  paired:
+    needs: lifetime-race
+    if: github.ref == 'refs/heads/exp/50-alloc'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        clients: [64, 256]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Five paired pristine base, ring and arena repetitions, then diagnostics
+        env:
+          CLIENTS: ${{ matrix.clients }}
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: timeout --kill-after=5s 820s bash experiments/alloc50/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: alloc50-${{ matrix.clients }}
+          path: evidence/alloc50
+          retention-days: 14

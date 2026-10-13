@@ -143,6 +143,47 @@ func TestAllocationPath(t *testing.T) {
 	}
 }
 
+// TestAllocationValueLifetimes catches reuse of a request body or stream slot
+// while any historical value still references it. Each overwrite has distinct
+// bytes; constant-value throughput workloads cannot catch that corruption.
+func TestAllocationValueLifetimes(t *testing.T) {
+	for _, mode := range []string{"base", "ring", "arena"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("TIGER_ALLOC_STRATEGY", mode)
+			c := newCluster(t)
+			cert, _, _, err := c.ca.Issue("lifetime-client", 192)
+			if err != nil {
+				t.Fatal(err)
+			}
+			kv := c.client(1, cert)
+			type version struct {
+				key, value []byte
+				rev        int64
+			}
+			var versions []version
+			for i := range 96 {
+				key := fmt.Appendf(nil, "/alloc50/lifetime/%d", i%8)
+				value := bytes.Repeat([]byte{byte(i + 1)}, 1024+i%17)
+				r := retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+					return kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
+				})
+				versions = append(versions, version{key: key, value: value, rev: r.Header.Revision})
+			}
+			for id := uint64(1); id <= 3; id++ {
+				client := c.client(id, cert)
+				for _, v := range versions {
+					r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+						return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
+					})
+					if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
+						t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
+					}
+				}
+			}
+		})
+	}
+}
+
 type allocClient struct {
 	conn        *tls.Conn
 	first, next []byte

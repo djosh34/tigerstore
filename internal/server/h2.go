@@ -62,8 +62,14 @@ type conn struct {
 	wake   chan struct{} // the writer has work; capacity 1
 
 	// Reader only.
-	maxID uint32 // highest client stream ID seen
-	batch opBatch
+	maxID                    uint32 // highest client stream ID seen
+	batch                    opBatch
+	managedHead, managedTail *stream
+	managedCount             int
+	managedBytes             int
+	arena                    int // -1 means no current HEADERS-started arena
+	allocSlots, allocBytes   int
+	allocHead                *allocSlot
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -81,8 +87,10 @@ type conn struct {
 
 	// compMu guards completions, the replies from the node for the writer
 	// to encode. The node's committer takes it, so nothing holds it long.
-	compMu      sync.Mutex
-	completions [][]node.Completion
+	compMu             sync.Mutex
+	completions        [][]node.Completion
+	compHead, compTail *allocSlot
+	completionClosed   bool
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -116,6 +124,11 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		sendWin:  65535,
 		initWin:  65535,
 		maxFrame: 16384,
+		arena:    -1,
+	}
+	if s.alloc != nil {
+		c.streams = make(map[uint32]*stream, allocationQuota)
+		c.ready = make([]*stream, 0, allocationQuota)
 	}
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.fr.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
@@ -152,13 +165,31 @@ func (c *conn) serve() {
 // it never waits for a client that stopped reading.
 func (c *conn) close() {
 	c.once.Do(func() {
+		c.compMu.Lock()
+		c.completionClosed = true
+		comps := c.compHead
+		c.compHead, c.compTail = nil, nil
+		c.compMu.Unlock()
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
 			st.reset = true
 		}
+		for slot := c.allocHead; slot != nil; {
+			next := slot.next
+			st := &slot.st
+			st.reset = true
+			delete(c.streams, st.id)
+			slot.mapRef = false
+			st.listed = false
+			st.out = nil
+			c.stopDeadlineLocked(st)
+			c.retireSlotLocked(slot)
+			slot = next
+		}
 		c.ready = nil
 		c.mu.Unlock()
+		c.dropManagedCompletions(comps)
 		c.cancel()
 		_ = c.raw.Close()
 	})
@@ -216,6 +247,9 @@ func (c *conn) addCtrl(f ctrlFrame) {
 }
 
 func (c *conn) readLoop() error {
+	if c.s.alloc != nil {
+		defer c.readerDone()
+	}
 	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return err
 	}
@@ -247,6 +281,11 @@ func (c *conn) readLoop() error {
 			if err := c.flush(); err != nil {
 				return err
 			}
+		}
+		if c.s.alloc != nil && c.br.Buffered() < frameHeaderLen {
+			c.mu.Lock()
+			c.sealArenaLocked()
+			c.mu.Unlock()
 		}
 		f, err := c.fr.ReadFrame()
 		if err != nil {
@@ -336,11 +375,16 @@ func (c *conn) onWindowUpdate(f *http2.WindowUpdateFrame) error {
 func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	c.mu.Lock()
 	st := c.streams[id]
+	if st != nil && st.slot != nil {
+		st.slot.readerRefs++
+	}
+	defer c.releaseReader(st)
 	if st != nil {
 		delete(c.streams, id)
 		st.reset = true
-		if st.deadline != nil {
-			st.deadline.Stop()
+		c.stopDeadlineLocked(st)
+		if st.slot != nil {
+			st.slot.mapRef = false
 		}
 		// A call the node still runs keeps its request bytes until its
 		// reply comes and is dropped.
@@ -349,6 +393,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		}
 		st.out = nil
 		st.queued = 0
+		if st.slot != nil {
+			c.retireSlotLocked(st.slot)
+		}
 	}
 	if code != 0 {
 		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
@@ -375,7 +422,11 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 	if id%2 == 0 || id <= c.maxID {
 		c.mu.Lock()
 		st := c.streams[id]
+		if st != nil && st.slot != nil {
+			st.slot.readerRefs++
+		}
 		c.mu.Unlock()
+		defer c.releaseReader(st)
 		if st != nil && f.StreamEnded() && !st.inEOF {
 			// Trailers from the client end its side of the stream.
 			return c.onEnd(st)
@@ -395,6 +446,11 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 		return nil
 	}
 	st := c.newStream(id, f)
+	if st == nil {
+		c.resetStream(id, http2.ErrCodeRefusedStream)
+		return nil
+	}
+	defer c.releaseReader(st)
 	if st.rpc == nil && st.httpPath == "" {
 		// gRPC to an unknown method; its error is already queued.
 		if f.StreamEnded() {
@@ -430,10 +486,32 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 			needLeader = needLeader || h.Value == "true"
 		}
 	}
-	st := &stream{c: c, id: id, needLeader: needLeader}
 	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
+	var st *stream
+	if c.s.alloc != nil && grpc && methods[path] != nil && methods[path].wirePut {
+		c.mu.Lock()
+		if !c.closed {
+			st = c.acquireSlot()
+			if st != nil {
+				st.id, st.needLeader, st.rpc = id, needLeader, methods[path]
+			}
+		}
+		c.mu.Unlock()
+		if st == nil {
+			return nil
+		}
+	} else {
+		st = &stream{c: c, id: id, needLeader: needLeader}
+		if c.s.alloc != nil {
+			c.s.alloc.mu.Lock()
+			c.s.alloc.unmanagedRPC++
+			c.s.alloc.mu.Unlock()
+		}
+	}
 	if grpc {
-		st.rpc = methods[path]
+		if st.slot == nil {
+			st.rpc = methods[path]
+		}
 	} else {
 		st.httpMethod, st.httpPath = method, path
 		if st.httpPath == "" {
@@ -451,10 +529,21 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
-	c.streams[id] = st
-	if grpc && hasTimeout {
+	if !c.closed {
+		c.streams[id] = st
+	} else if st.slot != nil {
+		st.slot.mapRef = false
+		st.reset = true
+	}
+	if grpc && hasTimeout && !c.closed {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.
+		if st.slot != nil {
+			st.slot.timerRef = true
+			c.s.alloc.mu.Lock()
+			c.s.alloc.timerAllocations++
+			c.s.alloc.mu.Unlock()
+		}
 		st.deadline = time.AfterFunc(timeout, st.expire)
 	}
 	c.mu.Unlock()
@@ -468,6 +557,10 @@ func (c *conn) onData(f *http2.DataFrame) error {
 	c.credit(int(f.Length))
 	c.mu.Lock()
 	st := c.streams[f.StreamID]
+	if st != nil && st.slot != nil {
+		st.slot.readerRefs++
+	}
+	defer c.releaseReader(st)
 	var halfClosed, overflow bool
 	if st != nil {
 		halfClosed = st.inEOF
@@ -509,6 +602,9 @@ func (c *conn) onEnd(st *stream) error {
 	st.inEOF = true
 	if st.ended {
 		delete(c.streams, st.id)
+		if st.slot != nil {
+			st.slot.mapRef = false
+		}
 	}
 	c.mu.Unlock()
 	select {
@@ -567,7 +663,8 @@ func parseTimeout(v string) (time.Duration, bool) {
 var (
 	grpcHeaders = headerBlock(
 		hpack.HeaderField{Name: ":status", Value: "200"},
-		hpack.HeaderField{Name: "content-type", Value: "application/grpc"})
+		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
+	)
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 

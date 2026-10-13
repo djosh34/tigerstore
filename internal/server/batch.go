@@ -70,6 +70,10 @@ func (c *conn) admit(st *stream) {
 	}
 	st.reqSize = len(st.body)
 	st.body = nil
+	if st.slot != nil {
+		c.queueManaged(st, req)
+		return
+	}
 	c.batch.reqs = append(c.batch.reqs, req)
 	c.batch.tags = append(c.batch.tags, st)
 	c.batch.bytes += st.reqSize
@@ -82,10 +86,10 @@ func (c *conn) admit(st *stream) {
 // timer.
 func (c *conn) batchDue() bool {
 	b := &c.batch
-	if len(b.reqs) == 0 {
+	if len(b.reqs) == 0 && c.managedCount == 0 {
 		return false
 	}
-	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+	if len(b.reqs)+c.managedCount >= maxBatchOps || b.bytes+c.managedBytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
 		return true
 	}
 	// Peek cannot fail: the header is buffered.
@@ -100,6 +104,14 @@ func (c *conn) batchDue() bool {
 // flush hands the batch to the node. It never waits for the node's
 // replies; the held bytes bound a connection through flow control.
 func (c *conn) flush() error {
+	if c.s.alloc != nil {
+		if err := c.flushManaged(); err != nil {
+			return err
+		}
+	}
+	if len(c.batch.reqs) == 0 {
+		return nil
+	}
 	b := c.batch
 	c.batch = opBatch{}
 	c.mu.Lock()
@@ -220,6 +232,11 @@ func (c *conn) complete(batches [][]node.Completion) {
 // node's last replies came in Complete calls before it stopped, so they
 // are encoded first.
 func (c *conn) nodeStopped() {
+	if c.s.alloc != nil {
+		if head := c.takeManagedCompletions(); head != nil {
+			c.completeManaged(head)
+		}
+	}
 	if cs := c.takeCompletions(); cs != nil {
 		c.complete(cs)
 	}

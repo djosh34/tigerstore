@@ -18,8 +18,9 @@ import (
 
 // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
 type stream struct {
-	c  *conn
-	id uint32
+	c    *conn
+	id   uint32
+	slot *allocSlot // optional bounded transient workspace
 	// ctx ends with the call: done, reset, timed out or connection
 	// closed. Calls that the node runs have none.
 	ctx        context.Context
@@ -119,7 +120,15 @@ func (st *stream) receive(d []byte) error {
 			if size > maxRecvMsg {
 				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, maxRecvMsg)
 			}
-			st.msg = make([]byte, 0, size)
+			if st.slot != nil {
+				var err error
+				st.msg, err = st.managedBody(int(size))
+				if err != nil {
+					return err
+				}
+			} else {
+				st.msg = make([]byte, 0, size)
+			}
 		}
 		n := min(len(d), cap(st.msg)-len(st.msg))
 		st.msg = append(st.msg, d[:n]...)
@@ -377,6 +386,13 @@ func (st *stream) expire() {
 	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
 	if st.cancel != nil {
 		st.cancel()
+	}
+	if st.slot != nil {
+		c := st.c
+		c.mu.Lock()
+		st.slot.timerRef = false
+		c.retireSlotLocked(st.slot)
+		c.mu.Unlock()
 	}
 }
 

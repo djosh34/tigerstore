@@ -1,0 +1,49 @@
+# Allocation strategy experiment (throwaway; not production)
+
+## Sources and invocation
+
+- Pristine base: **0d406cb09aa99dea7ef1488476d6ebc6b032a6b8** (`0d406cbbc` does not resolve).
+- Candidate: workflow's immutable checked-out `${github.sha}`, recorded in every job.
+- Copied harness: `git archive 0f82f687e5a21fa6265e508866f07dc3fffeaae9 experiments/bench75 | tar -x` from `exp/bench-75`. `verify-harness.py` verifies all nine copied files byte-for-byte. The timed generator is **unchanged**.
+- The base binary comes from a fresh `git archive` of the base SHA, never from the experiment's default mode. Both archived trees receive the **identical** observation source and hook. Source manifests, original main files, hook patches, candidate production-source diff, Go/module identities and binary SHA256s are artifacts. Ring and arena use the same experiment binary with `TIGER_ALLOC_STRATEGY=ring|arena`; an unset-mode experiment diagnostic checks the default independently.
+
+Only on a fresh GitHub `ubuntu-24.04-arm` runner, before **2026-10-13T22:00:00Z**:
+
+```sh
+CLIENTS=64 bash experiments/alloc50/run.sh
+# Separate job: CLIENTS=256. No local benchmarks.
+python3 experiments/alloc50/summarize.py evidence/alloc50
+```
+
+Workflow `.github/workflows/alloc50.yml` accepts source/workflow pushes only to `exp/50-alloc` (not evidence-only archival commits), and dispatch jobs also require that exact branch. A dedicated free ARM `lifetime-race` job first runs only `^TestAllocation(Workspace|Shutdown|ValueLifetimes)` under `-race -short -count=1 -parallel 2`, using the tests' existing mode loops and one package-batch command. Both paired jobs depend on its success, so race instrumentation never overlaps measurement. Race logs and source identity are separate artifacts; no race run occurs locally. Two paired jobs each run all three variants sequentially on the same allocated VM. Five repetitions alternate `base,ring,arena` and `arena,ring,base`. No profiling overlaps timing. Job limit 15 minutes; script/driver bounded by 820/650 seconds. Deadline checks precede starting commands and clusters; cleanup is still allowed after the deadline.
+
+## Matched timed workload and validity
+
+The bench75 generator uses the generated protobuf/grpc-go client, 16 established client-certificate TLS 1.3 connections, leader-only closed-loop Puts, independent deterministic 1KiB values, and 4096 Kubernetes-shaped overwrite keys. Fresh clusters get 4096 seed, 20000 warmup and **60000 successful timed Puts**. The leader is pinned to CPU0, followers CPU1/2, generator CPU3. `GOMAXPROCS=1` is passed to all processes; tigerstore's existing minimum gives **two** Go processors per server, checked explicitly; the generator stays at one. No watches, compaction, injected delay or compression during timing.
+
+Client and peer certificate-authenticated TLS flags, election discovery, role pinning, all-replica applied/revision/term fences, process start identities and every-thread affinity checks are inherited from bench75. Data resides on the runner's ext4 filesystem remounted with `barrier=1`; the script records the mount and rejects `nobarrier`/`barrier=0`. Guest barriers and fsync do **not** prove physical power-loss protection. All three replicas share a VM and disk.
+
+The generator rejects RPC errors, incorrect counts, response/revision/term mismatches and process changes. The driver requires exactly 60000 successes, no errors, identical terms before/after, unchanged leader, expected Go processors, live processes and affinity. Summary rejects missing variants, duplicate/missing repetitions and failed diagnostics. Invalid raw evidence remains uploaded but is not a result.
+
+CPU is process user+system `/proc/PID/stat` delta divided by successful Puts; the generator's own interval covers execution and drain, not later replica fences. Allocation objects/bytes and GC CPU are whole-leader runtime counter deltas over a slightly wider bracketing interval, not handler-only attribution. GC CPU share is estimated GC CPU divided by estimated runtime non-idle CPU, **not** GC pause time or `/proc` CPU share. Throughput and p99 are medians of five independent per-run statistics, never pooled percentiles. The unchanged generator does not retain every latency sample. A saturated generator or short window limits conclusions; these are not capacity or open-loop latency claims.
+
+## Retention and profiles, separate from timing
+
+Each timed window ends before replica fencing and the leader's `/debug/retained` call. That endpoint forces GC and records heap allocated/object/in-use/reserved bytes and optional allocator gauges. Forced-GC retained heap is reported separately from the unforced heap snapshot in timed counters; it includes live MVCC/log history, runtime and connection state. It is **not** all transient workspace or proof of a zero-allocation runtime.
+
+Fresh separate profile clusters warm up normally, then set a process-start diagnostic allocation sampling rate of **1** and run exactly **2000 sequential successful Puts**. Before/after allocation profiles each force two GCs to flush delayed accounting. The exact successful count, sample rate, and matching binary are recorded in `profile-cohort.json`; profiler-run throughput is not added to primary medians. The unchanged load generator's runtime-metric counters bracket the actual operation window independently. Profile blocks/objects need not equal runtime malloc counts because the tiny allocator can pack several small objects in a block; do not sum profile rows or equate profile block totals with `Mallocs`.
+
+Artifacts retain both raw profiles and symbol binaries, plus `go tool pprof -base=<before> -sample_index=alloc_space|alloc_objects|inuse_space|inuse_objects <binary> <after>` text and proto deltas. Allocation attribution views additionally ignore only identified observation stacks (`runtime/pprof`, `main.bench75Observe`, `net/http.`). Raw deltas remain available: before-profile serialization itself appears after the baseline snapshot and must not be attributed to Put. GC/background accounting and observation overhead still mean a profile delta is not an exact census of just 2000 RPCs.
+
+## Separate size and stalled-reader diagnostics
+
+Fresh case clusters run the same valid Put cohort outside primary summaries, then execute `cases` (also on CPU3):
+
+1. Build the canonical `InternalRaftRequest` with etcd's request-header sizing ID `1<<63`; determine the largest value whose entire request is 1536KiB. Verify just-below and equal-request-boundary Puts and exact byte roundtrips; reject the next byte and **exact 1536KiB value payload** with `request too large`. After each rejected Put, verify the previous accepted value was not changed. A 1536KiB payload is **not** a legal 1536KiB request because keys, protobuf framing and request header also count.
+2. Open raw mTLS HTTP/2 with `INITIAL_WINDOW_SIZE=0`, read and ACK only handshake SETTINGS/window credit, then stop all reply reads and updates. Submit **4096 valid 1KiB Puts** on distinct streams, with their DATA bytes explicitly checked against the server's advertised stream and connection credit. No flow-control violations or HTTP/2 floods are needed. Unsent replies retain prototype managed slots; an independent healthy TLS connection must complete **1536 Puts** while the slow connection remains open. Capture forced-GC/allocator snapshots before, three stalled phases, and after closing the slow connection; verify healthy values, replica completion/term, process liveness and affinities.
+
+`cases.json` retains sizes, errors/revisions, successful healthy counts and snapshots. The optional `Server.AllocationStats() map[string]uint64` interface is absent on pristine base and mandatory for prototypes. Checks require the expected mode (0/1/2), actual stalled occupancy at least `per_connection_slots`, quota refusal (`denied_count` grows), stable held slots/bytes in the last two stalled phases, held/peak slots and bytes within declared budgets, zero fallback allocations, and release to no more than before-slow occupancy within five seconds after close. Healthy Puts alone are not sufficient saturation evidence. Implemented budgets are 4096 slots, 256 capacity units / 8MiB per connection, and 64MiB globally; the recorded gauges, not these prose values, determine validity. Ring uses a circular 4096-slot queue; arena uses 512 preseeded pooled eight-slot regions, so `held_slots` counts reserved capacity, not necessarily active streams. Both strategies pay startup allocation costs rather than obtaining a lazy-heap advantage. The byte budget includes a conservative 8MiB driver list/map reserve, also exposed as `driver_reserve_bytes`; `held_bytes` includes this baseline reserve. Recovery therefore compares against the before-slow baseline, never against zero. `fallback_allocations` counts only explicit managed-Put heap fallback (none is implemented), not the known generic RPC/debug allocations still included in whole-leader runtime counters. Additional `per_connection_bytes`, `timer_allocations` and `unmanaged_rpc_count` gauges are preserved in raw snapshots without being mislabeled as managed fallback. This case covers isolation between connections, not same-connection fairness or every cancellation/leadership/retransmission lifetime.
+
+## Local checks
+
+With the parent's explicitly granted Go slot: `GOFLAGS=-p=2 GOMEMLIMIT=2GiB go test -short -parallel 2 ./experiments/bench75/load ./experiments/alloc50/cases` and `go vet` for those packages passed. Unit tests cover canonical request-boundary overhead and the slow-case send-credit budget. Shell syntax/Python compilation and exact copied-harness verification passed. No local benchmark, broad test, race campaign, commit or push is performed by this harness worker. Parent owns `internal/server/allocation_path_test.go`; the prototype worker owns production Go.

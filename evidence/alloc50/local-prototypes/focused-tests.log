@@ -1,0 +1,12 @@
+=== base focused correctness ===
+ok  	github.com/djosh34/tigerstore/internal/core	0.005s
+ok  	github.com/djosh34/tigerstore/internal/node	0.009s
+ok  	github.com/djosh34/tigerstore/internal/server	4.868s
+=== ring focused correctness ===
+ok  	github.com/djosh34/tigerstore/internal/core	0.005s
+ok  	github.com/djosh34/tigerstore/internal/node	0.010s
+ok  	github.com/djosh34/tigerstore/internal/server	4.998s
+=== arena focused correctness ===
+ok  	github.com/djosh34/tigerstore/internal/core	0.006s
+ok  	github.com/djosh34/tigerstore/internal/node	0.010s
+ok  	github.com/djosh34/tigerstore/internal/server	4.981s

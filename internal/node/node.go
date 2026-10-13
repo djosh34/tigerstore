@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -42,15 +43,18 @@ type Config struct {
 
 // input is one event for the committer from a client or a peer.
 type input struct {
-	req         *request
-	batch       *batch
-	msg         *raftpb.Message
-	unreachable uint64
-	watchOpen   *WatchStream
-	watchReq    *pb.WatchRequest
-	watchClose  bool
-	stream      uint64
-	status      chan *pb.StatusResponse
+	req          *request
+	batch        *batch
+	managed      ManagedBatch
+	managedFirst uint64
+	direct       DirectCompleter
+	msg          *raftpb.Message
+	unreachable  uint64
+	watchOpen    *WatchStream
+	watchReq     *pb.WatchRequest
+	watchClose   bool
+	stream       uint64
+	status       chan *pb.StatusResponse
 }
 
 // watchQueue is how many responses a watch stream may fall behind before
@@ -161,9 +165,10 @@ type batch struct {
 // waiter is who waits for the reply to a request: a Do call, or a
 // completer with its tag.
 type waiter struct {
-	reply chan core.Reply
-	to    Completer
-	tag   any
+	reply  chan core.Reply
+	to     Completer
+	tag    any
+	direct DirectCompleter
 }
 
 // SubmitBatch hands the committer every request in reqs with one inbox
@@ -189,14 +194,16 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 
 // Node is a running node.
 type Node struct {
-	cfg       Config
-	core      *core.Node
-	wal       *wal.WAL
-	inbox     chan input
-	persistQ  chan []core.PersistJob
-	persisted chan persistDone
-	nextID    atomic.Uint64
-	done      chan struct{}
+	cfg         Config
+	core        *core.Node
+	wal         *wal.WAL
+	inbox       chan input
+	persistQ    chan []core.PersistJob
+	persisted   chan persistDone
+	nextID      atomic.Uint64
+	done        chan struct{}
+	managedStop chan struct{}
+	managedMu   sync.RWMutex
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
@@ -217,14 +224,18 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, errors.Join(err, w.Close())
 	}
+	if strategy := os.Getenv("TIGER_ALLOC_STRATEGY"); strategy == "ring" || strategy == "arena" {
+		c.EnableAllocationWorkspace(4096)
+	}
 	return &Node{
-		cfg:       cfg,
-		core:      c,
-		wal:       w,
-		inbox:     make(chan input, 8192),
-		persistQ:  make(chan []core.PersistJob, maxBacklog),
-		persisted: make(chan persistDone, 1),
-		done:      make(chan struct{}),
+		cfg:         cfg,
+		core:        c,
+		wal:         w,
+		inbox:       make(chan input, 8192),
+		persistQ:    make(chan []core.PersistJob, maxBacklog),
+		persisted:   make(chan persistDone, 1),
+		done:        make(chan struct{}),
+		managedStop: make(chan struct{}),
 	}, nil
 }
 
@@ -304,6 +315,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
 	waiters := map[uint64]waiter{}
+	if strategy := os.Getenv("TIGER_ALLOC_STRATEGY"); strategy == "ring" || strategy == "arena" {
+		waiters = make(map[uint64]waiter, 4096)
+	}
+	defer n.shutdownManaged(waiters)
 	var groups []completions
 	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
@@ -353,6 +368,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
+		completeManaged(eff.ManagedReplies, waiters)
 		groups = completeAll(eff.Replies, waiters, groups, groupOf)
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
@@ -417,6 +433,15 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 
 func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
 	switch {
+	case in.managed != nil:
+		id := in.managedFirst
+		for b := in.managed; b != nil; b = b.NextManagedRequest() {
+			r, tag := b.ManagedRequest()
+			r.ID = id
+			id++
+			waiters[r.ID] = waiter{direct: in.direct, tag: tag}
+			n.core.Submit(r)
+		}
 	case in.batch != nil:
 		b := in.batch
 		for i := range b.reqs {

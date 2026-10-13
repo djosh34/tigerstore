@@ -12,6 +12,7 @@ type wframe struct {
 	flags http2.Flags
 	id    uint32
 	b     []byte
+	owner *allocSlot // payload storage pinned through Flush (including abort)
 	ctrl  *ctrlFrame // set for frames other than HEADERS and DATA
 }
 
@@ -34,8 +35,18 @@ func (c *conn) writeLoop() error {
 	var frames []wframe
 	var ctrl []ctrlFrame
 	var hdr []byte
+	if c.s.alloc != nil {
+		frames = make([]wframe, 0, 4*allocationQuota)
+		hdr = make([]byte, 0, frameHeaderLen)
+	}
+	defer func() { c.retireFrames(frames) }()
 	nodeDone := c.s.n.Done()
 	for {
+		if c.s.alloc != nil {
+			if head := c.takeManagedCompletions(); head != nil {
+				c.completeManaged(head)
+			}
+		}
 		if comps := c.takeCompletions(); comps != nil {
 			c.complete(comps)
 		}
@@ -69,7 +80,7 @@ func (c *conn) writeLoop() error {
 				return err
 			}
 		}
-		for i, f := range frames {
+		for _, f := range frames {
 			if f.ctrl != nil {
 				if err := c.writeCtrl(f.ctrl); err != nil {
 					return err
@@ -79,12 +90,13 @@ func (c *conn) writeLoop() error {
 				_, _ = c.bw.Write(hdr)
 				_, _ = c.bw.Write(f.b)
 			}
-			frames[i] = wframe{}
 		}
 		// bufio.Writer keeps the first write error and returns it here.
 		if err := c.bw.Flush(); err != nil {
 			return err
 		}
+		c.retireFrames(frames)
+		frames = frames[:0]
 		if drained {
 			return nil
 		}
@@ -110,6 +122,9 @@ func (c *conn) take(frames []wframe) []wframe {
 				kept = append(kept, st)
 			} else {
 				st.listed = false
+				if st.slot != nil {
+					c.retireSlotLocked(st.slot)
+				}
 			}
 		}
 		clear(c.ready[len(kept):])
@@ -138,9 +153,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 		it := &st.out[0]
 		switch it.kind {
 		case outHeaders:
-			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders, id: st.id, b: it.b})
+			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders, id: st.id, b: it.b, owner: c.frameOwner(st)})
 		case outTrailers:
-			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders | http2.FlagHeadersEndStream, id: st.id, b: it.b})
+			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders | http2.FlagHeadersEndStream, id: st.id, b: it.b, owner: c.frameOwner(st)})
 			frames = c.endStream(st, frames)
 		case outData:
 			for len(it.b) > 0 || it.end {
@@ -156,7 +171,7 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				if last && it.end {
 					flags = http2.FlagDataEndStream
 				}
-				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n]})
+				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n], owner: c.frameOwner(st)})
 				it.b = it.b[n:]
 				c.sendWin -= int64(n)
 				st.sendWin -= int64(n)
@@ -182,14 +197,15 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	st.ended = true
 	delete(c.streams, st.id)
+	if st.slot != nil {
+		st.slot.mapRef = false
+	}
 	if st.cancel != nil {
 		// Calls that ended without a handler, such as unknown methods,
 		// release their context here.
 		st.cancel()
 	}
-	if st.deadline != nil {
-		st.deadline.Stop()
-	}
+	c.stopDeadlineLocked(st)
 	c.releaseLocked(st)
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
@@ -202,7 +218,8 @@ func (c *conn) writeCtrl(f *ctrlFrame) error {
 	case ctrlSettings:
 		return c.fr.WriteSettings(
 			http2.Setting{ID: http2.SettingMaxConcurrentStreams, Val: maxStreams},
-			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow})
+			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow},
+		)
 	case ctrlSettingsAck:
 		return c.fr.WriteSettingsAck()
 	case ctrlPingAck:

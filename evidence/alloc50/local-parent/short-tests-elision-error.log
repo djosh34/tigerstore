@@ -1,0 +1,9 @@
+ok  	github.com/djosh34/tigerstore/internal/core	0.024s
+# github.com/djosh34/tigerstore/internal/server [github.com/djosh34/tigerstore/internal/server.test]
+internal/server/allocation_workspace_test.go:29:80: missing type in composite literal
+ok  	github.com/djosh34/tigerstore/internal/node	0.146s
+FAIL	github.com/djosh34/tigerstore/internal/server [build failed]
+ok  	github.com/djosh34/tigerstore/experiments/alloc50/cases	0.006s
+ok  	github.com/djosh34/tigerstore/experiments/bench75/load	0.005s
+ok  	github.com/djosh34/tigerstore/internal/lint	0.013s
+FAIL
