@@ -63,9 +63,11 @@ func (c *conn) admit(st *stream) {
 		}
 		req.Put = put
 	} else {
-		req.Op = st.rpc.op()
-		if err := unmarshal(st.body, req.Op); err != nil {
-			st.finish(err)
+		// The request's fields are slices of its body, which goes into
+		// the Raft entry as it is if the request is a write.
+		req.Op, req.Wire = st.rpc.op(), st.body
+		if err := core.UnmarshalAlias(st.body, req.Op); err != nil {
+			st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
 			return
 		}
 	}
