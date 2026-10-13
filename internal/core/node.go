@@ -142,6 +142,9 @@ type Node struct {
 	leader   uint64
 	isLeader bool
 	leaseSeq uint64
+	// appending counts the local appends with entries that are on their way
+	// to disk. While the leader has one, it holds new proposals.
+	appending int
 	waiting  map[uint64]*pending // writes by request ID
 	timeouts []*pending          // every waiting request in deadline order
 
@@ -482,6 +485,9 @@ func (n *Node) Persisted(job PersistJob) {
 	for _, e := range job.Entries {
 		n.logBytes += wal.EntryRecordBytes(e)
 	}
+	if len(job.Entries) > 0 {
+		n.appending--
+	}
 	n.deliver(job.msg.GetResponses())
 }
 
@@ -504,7 +510,14 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 // stopped; the effects are still valid and carry its last replies.
 func (n *Node) Process() (Effects, error) {
 	if n.err == nil {
-		n.propose()
+		// Self-clocked batching: while the leader's own append is on its
+		// way to disk, writes wait and join one entry, which goes out when
+		// the append is durable. Nothing else waits, and with no append in
+		// flight a write goes out at once, so one client sees no delay.
+		// The byte cap still sends a full entry early (queueWrite).
+		if !n.isLeader || n.appending == 0 {
+			n.propose()
+		}
 		n.requestReads()
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
@@ -558,6 +571,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
 			}
 			n.out.Persist = append(n.out.Persist, job)
+			if len(job.Entries) > 0 {
+				n.appending++
+			}
 		case raft.LocalApplyThread:
 			if err := n.apply(m.Entries); err != nil {
 				n.fail(err)

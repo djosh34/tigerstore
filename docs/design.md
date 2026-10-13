@@ -37,7 +37,7 @@ While a batch is being replicated and synced, its responses and watch events are
 
 ### Batching
 
-Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
+Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The core does this itself: while the leader has an append with entries on its way to disk, `Process` holds new writes, and when that append is durable the next `Process` sends all of them as one entry. The byte cap (`MaxBatchBytes`, 4 MiB) sends a full entry early. Appends with only a hard state, such as a moved commit index, hold nothing, so a single client never waits for an extra fsync. Followers forward at once. Heartbeats, votes, ReadIndex, replies and watch events never wait. On the disk side, the driver writes every queued append job with one write and one fsync. The profiling pre-work on #50 found the leader at 1.8 writes per fsync before this, because each turn proposed what had arrived since the last turn, usually one write. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
 
 Symbols:
 
