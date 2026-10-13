@@ -54,6 +54,8 @@ The `chaos` job in CI runs `cmd/chaos` on three `ubuntu-24.04-arm` runners with 
 5. It heals every fault, stops the random calls, and waits until all three nodes name one leader and report one revision. Then it waits 8 s, longer than the server's 7 s request timeout, writes barriers, reads the final state from every node as the target revision, and waits until every watch reports progress through the target.
 6. It stops the nodes and reads the committed log from private copies of their WALs; the committed prefixes must agree. It runs `check.Linearizable`, `check.Watches`, `check.Durable` and `check.Revisions` on the history. Each checker also fails if the history has no log, no watches, or a target where the log does not end, or if the coverage floor is missed: both CAS outcomes, a multi-key delete, watch puts, deletes and previous values, and successful calls from every client.
 
+Before Porcupine runs, the linearizability input leaves out ambiguous writes that did not take effect: those whose request the committed log holds no more often than successful calls sent it. Porcupine keeps an ambiguous write open until the end of the history, and in the first CI run two seeds, each with 66 to 79 ambiguous calls, timed out after 60 s; with this rule they check in 2 ms. Leaving out an ambiguous call can only make the check stricter. The other three checkers get the whole history.
+
 | Fault | What the run does | Evidence that it took effect |
 | --- | --- | --- |
 | `sigkill-leader`, `sigkill-follower` | SIGKILL, restart after the hold | The wait status says the process was killed by SIGKILL; the restart has a new pid |
@@ -77,7 +79,7 @@ Each run writes its evidence to `<out>/seed-<seed>/`, pass or fail: `config.json
     go build -o /tmp/tigerstore ./cmd/tigerstore
     go run ./cmd/chaos -tigerstore /tmp/tigerstore -seed <seed>
 
-and `-faults` runs a subset. A seed fixes the schedule, the proxies' choices for each connection and the workload's calls. It does not fix kernel timing or the order of connections, so a rerun injects the same faults in the same order but does not repeat the interleaving.
+and `-faults` runs a subset. `go run ./cmd/chaos -check <dir>/history.json` reruns only the checkers on a saved history. A seed fixes the schedule, the proxies' choices for each connection and the workload's calls. It does not fix kernel timing or the order of connections, so a rerun injects the same faults in the same order but does not repeat the interleaving.
 
 Not covered yet; these are later pieces of #49:
 

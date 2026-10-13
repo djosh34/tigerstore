@@ -48,7 +48,7 @@ type config struct {
 
 func main() {
 	var c config
-	var faults string
+	var faults, recheck string
 	flag.Uint64Var(&c.Seed, "seed", 0, "seed of the schedule, the proxies and the workload (required)")
 	flag.StringVar(&c.Out, "out", "chaos-out", "directory for evidence; the run writes to <out>/seed-<seed>")
 	flag.StringVar(&c.Tigerstore, "tigerstore", "", "tigerstore binary (required)")
@@ -58,7 +58,11 @@ func main() {
 	flag.DurationVar(&c.WatchTimeout, "watch-timeout", 20*time.Second, "time for watches to reach the final revision")
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
 	flag.DurationVar(&c.CheckerTimeout, "checker-timeout", time.Minute, "linearizability checker timeout")
+	flag.StringVar(&recheck, "check", "", "only rerun the checkers on this saved history.json, writing results next to it")
 	flag.Parse()
+	if recheck != "" {
+		os.Exit(checkSaved(recheck, c.CheckerTimeout))
+	}
 	c.Faults = strings.Split(faults, ",")
 	if c.Seed == 0 || c.Tigerstore == "" || flag.NArg() != 0 {
 		flag.Usage()
@@ -226,13 +230,15 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 	missing = errors.Join(missing, h.Validate())
 	cov, covErr := coverage(h)
 	missing = errors.Join(missing, covErr, save(filepath.Join(dir, "coverage.json"), cov))
+	lin, pruned := withoutLostWrites(h)
+	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
 	var results []checkerResult
 	var errs []error
 	for _, ch := range []struct {
 		name string
 		fn   func() error
 	}{
-		{"Linearizable", func() error { return check.Linearizable(h, timeout) }},
+		{"Linearizable", func() error { return check.Linearizable(lin, timeout) }},
 		{"Watches", func() error { return check.Watches(h) }},
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},
@@ -248,4 +254,65 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		results = append(results, res)
 	}
 	return errors.Join(append(errs, save(filepath.Join(dir, "checks.json"), results))...)
+}
+
+// withoutLostWrites returns a copy of h without the ambiguous writes that
+// never took effect, and how many it left out. Porcupine must keep an
+// ambiguous write open until the end of the history, and with a few dozen
+// of them its search did not finish in a minute.
+//
+// A write took effect only if it is in the committed log, and the log
+// holds every write that succeeded (Durable checks that). So when the log
+// holds a request no more often than successful calls sent it, no
+// ambiguous call with that request took effect. Most workload writes carry
+// a value no other call sends, which makes this exact for them. Leaving
+// out an ambiguous call is safe whatever the log says: it can only make
+// the check stricter, as a read that saw the call's effect then fails.
+func withoutLostWrites(h *history.History) (*history.History, int) {
+	key := func(q history.Request) string {
+		b, err := json.Marshal(q)
+		if err != nil {
+			return fmt.Sprint(q)
+		}
+		return string(b)
+	}
+	inLog := map[string]int{}
+	for _, q := range h.Log {
+		inLog[key(q)]++
+	}
+	for _, op := range h.Ops {
+		if op.Err == nil && op.Req.Mutates() {
+			inLog[key(op.Req)]--
+		}
+	}
+	out := *h
+	out.Ops = nil
+	pruned := 0
+	for _, op := range h.Ops {
+		if op.Err != nil && op.Err.Ambiguous && op.Req.Mutates() && inLog[key(op.Req)] <= 0 {
+			pruned++
+			continue
+		}
+		out.Ops = append(out.Ops, op)
+	}
+	return &out, pruned
+}
+
+// checkSaved reruns the checkers on a history a run saved.
+func checkSaved(path string, timeout time.Duration) int {
+	b, err := os.ReadFile(path)
+	h := new(history.History)
+	if err == nil {
+		err = json.Unmarshal(b, h)
+	}
+	logf := func(format string, args ...any) { _, _ = fmt.Fprintf(os.Stdout, format+"\n", args...) }
+	if err == nil {
+		err = runChecks(h, timeout, filepath.Dir(path), logf)
+	}
+	if err != nil {
+		logf("FAIL %s: %v", path, err)
+		return 1
+	}
+	logf("PASS %s", path)
+	return 0
 }
