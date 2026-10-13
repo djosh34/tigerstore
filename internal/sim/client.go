@@ -172,8 +172,21 @@ func (c *client) request() proto.Message {
 		return &pb.RangeRequest{Key: key(k), Serializable: true}
 	case p < 96:
 		// Compact a little behind the newest revision seen, as the
-		// Kubernetes compactor does; it may be compacted or ahead already.
-		return &pb.CompactionRequest{Revision: max(1, c.rev-int64(s.rng.IntN(30))), Physical: s.rng.IntN(2) == 0}
+		// Kubernetes compactor does, or half the time exactly where a
+		// disconnected watch will resume, the boundary where etcd's rules change. It
+		// may be compacted or ahead already.
+		rev := max(1, c.rev-int64(s.rng.IntN(30)))
+		var waiting []*watchClient
+		for _, w := range s.watchers {
+			if !w.open && w.next > 0 {
+				waiting = append(waiting, w)
+			}
+		}
+		if len(waiting) > 0 && s.rng.IntN(2) == 0 {
+			// A watch that is between streams resumes at next.
+			rev = waiting[s.rng.IntN(len(waiting))].next
+		}
+		return &pb.CompactionRequest{Revision: rev, Physical: s.rng.IntN(2) == 0}
 	default:
 		rev := c.mods[k]
 		if rev == 0 {

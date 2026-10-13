@@ -70,8 +70,8 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 }
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
-// *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is chosen by the driver and
-// comes back in the Reply. It must never repeat within one run of the
+// *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is
+// chosen by the driver and comes back in the Reply. It must never repeat within one run of the
 // node: a write that timed out can still commit later, and its entry
 // carries its ID.
 type Request struct {
@@ -311,7 +311,8 @@ func (n *Node) Submit(r Request) {
 // v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
 // made from the low 16 bits of the member ID. When bit 15 of the member ID
 // is set, the ID is a 10-byte varint, etcd's strictest case, which this
-// matches to the byte; for other members etcd accepts one byte more.
+// matches to the byte; for other members etcd accepts one or more bytes
+// more.
 const sizeRequestID = 1 << 63
 
 // check validates a request like etcd's gRPC layer, then limits the size of

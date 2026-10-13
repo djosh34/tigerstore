@@ -9,8 +9,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -86,7 +85,7 @@ func (s *Sim) check(res *Result) error {
 		if r.Call < s.healAt+s.cfg.LiveAfter {
 			continue
 		}
-		if r.Err != nil && (r.Ambiguous || !isAnswer(r.Err)) {
+		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
 			return fmt.Errorf("liveness: client %d call at %d ms, %d ms after healing, failed: %w",
 				r.Client, r.Call/Millisecond, (r.Call-s.healAt)/Millisecond, r.Err)
 		}
@@ -447,11 +446,12 @@ func checkLog(res *Result) error {
 	return nil
 }
 
-// isAnswer reports whether an error is the server's definite answer to the
-// request, such as a compacted revision, rather than unavailability.
-func isAnswer(err error) bool {
-	c := status.Code(err)
-	return c == codes.InvalidArgument || c == codes.OutOfRange || c == codes.NotFound || c == codes.FailedPrecondition
+// isRejection reports whether an error is one of the answers the
+// simulated clients can get for a request the cluster handled: a compacted
+// or future revision. Anything else, such as "not leader", is
+// unavailability.
+func isRejection(err error) bool {
+	return errors.Is(err, rpctypes.ErrGRPCCompacted) || errors.Is(err, rpctypes.ErrGRPCFutureRev)
 }
 
 // replay applies the committed log to a fresh store, without compactions,
@@ -472,7 +472,7 @@ func replay(log []proto.Message) (*mvcc.Store, error) {
 		default:
 			return nil, fmt.Errorf("log write %d has unknown type %T", i, op)
 		}
-		if err != nil && !isAnswer(err) {
+		if err != nil && !isRejection(err) {
 			return nil, fmt.Errorf("replaying log write %d: %w", i, err)
 		}
 	}
