@@ -43,6 +43,7 @@ var methods = map[string]*method{
 	"/etcdserverpb.Watch/Watch":           {stream: (*Server).watch},
 	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
 	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
+	"/etcdserverpb.Maintenance/Alarm":     {unary: alarm},
 }
 
 // services are etcd's gRPC services; their other methods are not
@@ -93,6 +94,30 @@ func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message,
 		return nil, toStatus(err)
 	}
 	return st, nil
+}
+
+// alarm answers Maintenance.Alarm. Tigerstore raises no alarms: it has no
+// space quota, a full or failing disk stops the node, and a corrupt log
+// keeps it from starting, so no node runs with NOSPACE or CORRUPT. A GET
+// lists none, and a DEACTIVATE, or an ACTIVATE of NONE, finds nothing to
+// change, as etcd v3.7.2 answers when no alarm is active. etcd passes
+// every alarm request through Raft, so the answer is linearizable and its
+// header carries the revision: here a linearizable read gives both.
+// Activating NOSPACE or CORRUPT by hand, which would refuse writes, is
+// not supported.
+func alarm(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+	var r pb.AlarmRequest
+	if err := unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	if r.Action == pb.AlarmRequest_ACTIVATE && r.Alarm != pb.AlarmType_NONE {
+		return nil, status.Errorf(codes.Unimplemented, "tigerstore does not support activating alarm %v", r.Alarm)
+	}
+	resp, err := s.n.Do(ctx, &pb.RangeRequest{Key: []byte{0}, CountOnly: true})
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return &pb.AlarmResponse{Header: resp.(*pb.RangeResponse).Header}, nil
 }
 
 // toStatus turns context errors into the status etcd returns for them.
