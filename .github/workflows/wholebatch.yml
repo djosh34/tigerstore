@@ -44,11 +44,12 @@ jobs:
           GOMEMLIMIT: 2GiB
           CANDIDATE_REF: ${{ inputs.candidate_ref }}
         run: |
+          set -euo pipefail
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           if [[ -n ${CANDIDATE_REF:-} ]]; then git checkout --detach "$CANDIDATE_REF"; fi
           mkdir -p evidence/wholebatch-correctness
           git rev-parse HEAD > evidence/wholebatch-correctness/source.txt
-          go test -race -count=1 -parallel 2 -timeout 5m ./internal/batchcmd ./internal/batchfront ./internal/core ./internal/node 2>&1 | tee evidence/wholebatch-correctness/test.log
+          go test -race -count=1 -parallel 2 -timeout 5m ./internal/batchcmd ./internal/batchfront ./internal/core ./internal/node ./internal/lint 2>&1 | tee evidence/wholebatch-correctness/test.log
       - uses: actions/upload-artifact@v6
         if: always() && steps.deadline.outputs.open == 'true'
         with:
