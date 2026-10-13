@@ -75,7 +75,9 @@ func run() error {
 		nodes = append(nodes, cmd)
 		go func() { exited <- cmd.Wait() }()
 	}
-	fmt.Fprintln(os.Stdout, strings.Join(endpoints, ","))
+	if _, err := fmt.Fprintln(os.Stdout, strings.Join(endpoints, ",")); err != nil {
+		return errors.Join(err, stop(nodes, exited, len(nodes)))
+	}
 	select {
 	case <-sigs:
 		return stop(nodes, exited, len(nodes))
