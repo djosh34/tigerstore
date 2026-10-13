@@ -1,0 +1,13 @@
+diff --git a/cmd/tigerstore/main.go b/cmd/tigerstore/main.go
+--- a/cmd/tigerstore/main.go
++++ b/cmd/tigerstore/main.go
+@@ -213,6 +213,9 @@
+ 	if err != nil {
+ 		return err
+ 	}
++	if err := pre50Observe(n); err != nil {
++		return err
++	}
+ 	t, err := peer.Start(peer.Config{
+ 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
+ 		Certificate: peerCert, CA: peerCA,

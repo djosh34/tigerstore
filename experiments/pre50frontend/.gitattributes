@@ -1,0 +1,2 @@
+# Unified Go diffs use a context space before a tab.
+observability.patch -whitespace

@@ -1,0 +1,55 @@
+name: pre50 frontend experiment
+on:
+  push:
+    branches: [exp/pre-50-frontend]
+    paths:
+      - 'experiments/pre50frontend/**'
+      - '.github/workflows/pre50frontend.yml'
+  workflow_dispatch:
+    inputs:
+      native_ref:
+        description: Immutable native variant SHA, overrides refs.json
+        type: string
+      tuned_ref:
+        description: Immutable native+tuned SHA, overrides refs.json
+        type: string
+      mode:
+        description: Override committed mode
+        type: choice
+        options: ['', primary, profile, smoke]
+      selected_variant:
+        description: Profile winner after primary results
+        type: choice
+        options: ['', a, b, c]
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        clients: [16, 64, 256]
+    env:
+      CLIENTS: ${{ matrix.clients }}
+      NATIVE_REF: ${{ inputs.native_ref }}
+      TUNED_REF: ${{ inputs.tuned_ref }}
+      MODE: ${{ inputs.mode }}
+      SELECTED_VARIANT: ${{ inputs.selected_variant }}
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build and run matched cohorts
+        run: timeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: pre50frontend-${{ github.run_id }}-${{ matrix.clients }}
+          path: experiments/pre50frontend/results/
