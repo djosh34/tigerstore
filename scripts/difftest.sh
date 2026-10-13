@@ -9,8 +9,11 @@
 #                                     the steps it does not match yet
 #
 # ETCD is the etcd v3.7.2 binary, etcd on PATH by default. etcd runs on fixed
-# ports, because its member ID comes from its URLs and the largest accepted
-# request depends on the length of request IDs made from it.
+# ports, because its member ID comes from its peer URL and the largest
+# accepted request depends on the length of request IDs made from it. Like
+# tigerstore, it serves clients over TLS with --client-cert-auth: etcd then
+# puts the client certificate's name into every write's header, and the size
+# limit counts it (#99).
 set -euo pipefail
 server=${1:?usage: scripts/difftest.sh etcd|tigerstore [record]}
 record=${2:-}
@@ -57,12 +60,17 @@ etcd)
 			exit 1
 		fi
 	done
+	scripts/dev-certs.sh "$work/certs" >/dev/null
 	"$etcd" --name diff --data-dir "$work/etcd" \
-		--listen-client-urls http://127.0.0.1:23790 --advertise-client-urls http://127.0.0.1:23790 \
+		--listen-client-urls https://127.0.0.1:23790 --advertise-client-urls https://127.0.0.1:23790 \
+		--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
+		--trusted-ca-file "$work/certs/ca.pem" --client-cert-auth \
 		--listen-peer-urls http://127.0.0.1:23800 --initial-advertise-peer-urls http://127.0.0.1:23800 \
 		--initial-cluster diff=http://127.0.0.1:23800 --log-level warn >"$work/etcd.log" 2>&1 &
 	echo $! >"$work/etcd.pid"
-	TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 go test "${args[@]}" ||
+	TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 \
+		TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
+		go test "${args[@]}" ||
 		{ tail -50 "$work/etcd.log"; exit 1; }
 	alive
 	;;

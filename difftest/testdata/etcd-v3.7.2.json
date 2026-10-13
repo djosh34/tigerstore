@@ -2060,36 +2060,36 @@
   ],
   "max-request-size": [
     {
-      "do": "largest put value for a key of 39 bytes",
+      "do": "largest put value for a key of 37 bytes",
       "code": "OK",
-      "result": 1572801
+      "result": 1572793
     },
     {
-      "do": "put one byte below of the largest size",
+      "do": "put one byte below of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 1
       }
     },
     {
-      "do": "put exactly of the largest size",
+      "do": "put exactly of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 2
       }
     },
     {
-      "do": "put one byte above of the largest size",
+      "do": "put one byte above of the largest size, key of 37 bytes",
       "code": "InvalidArgument",
       "message": "etcdserver: request is too large"
     },
     {
-      "do": "largest txn put value for a key of 39 bytes",
+      "do": "largest txn put value for a key of 37 bytes",
       "code": "OK",
-      "result": 1572793
+      "result": 1572785
     },
     {
-      "do": "txn put one byte below of the largest size",
+      "do": "txn put one byte below of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 1,
@@ -2103,7 +2103,7 @@
       }
     },
     {
-      "do": "txn put exactly of the largest size",
+      "do": "txn put exactly of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 2,
@@ -2117,7 +2117,193 @@
       }
     },
     {
-      "do": "txn put one byte above of the largest size",
+      "do": "txn put one byte above of the largest size, key of 37 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572791
+    },
+    {
+      "do": "put one byte below of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 39 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572783
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 39 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 136 bytes",
+      "code": "OK",
+      "result": 1572693
+    },
+    {
+      "do": "put one byte below of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 136 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 136 bytes",
+      "code": "OK",
+      "result": 1572685
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 136 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 3036 bytes",
+      "code": "OK",
+      "result": 1569793
+    },
+    {
+      "do": "put one byte below of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 3036 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 3036 bytes",
+      "code": "OK",
+      "result": 1569785
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 3036 bytes",
       "code": "InvalidArgument",
       "message": "etcdserver: request is too large"
     }

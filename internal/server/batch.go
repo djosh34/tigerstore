@@ -56,7 +56,12 @@ func (c *conn) admit(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	req := core.Request{Compact: st.rpc.compact}
+	req := core.Request{Compact: st.rpc.compact, Caller: c.caller}
+	if st.gateway {
+		// etcd's AuthInfoFromTLS ignores the certificate of a request
+		// from its gRPC gateway.
+		req.Caller = core.Caller{}
+	}
 	if st.rpc.wirePut {
 		// The put stays in its wire form; the node copies it into the
 		// Raft entry as it is.
