@@ -1,0 +1,558 @@
+[
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 4,
+    "target": 0,
+    "faults": {},
+    "controller_seconds": 3.291232417,
+    "failures": [
+      "workload exited before required fault completed"
+    ],
+    "coverage": [
+      {
+        "ops": 4,
+        "Put": 0,
+        "TxnSuccess": 0,
+        "TxnFailure": 0,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 0,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 0,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 0,
+        "per_client_success": {},
+        "last_success_ns": {}
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": true,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 4,
+    "synthetic_missing_verdicts": 0,
+    "operations": 36,
+    "target": 18,
+    "faults": {},
+    "controller_seconds": 13.906774025,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 36,
+        "Put": 8,
+        "TxnSuccess": 6,
+        "TxnFailure": 7,
+        "Delete": 6,
+        "MultiDelete": 1,
+        "Range": 9,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 42,
+        "WatchDeletes": 12,
+        "WatchPrevKV": 33,
+        "per_client_success": {
+          "0": 10,
+          "1": 10,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 10,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 2011664556,
+          "1": 2010991761,
+          "10": 10219194074,
+          "11": 10219813344,
+          "12": 10220621514,
+          "2": 2011765157,
+          "20": 10215699701,
+          "21": 10216883189,
+          "22": 10218294430
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 14,
+    "target": 5,
+    "faults": {},
+    "controller_seconds": 12.075084596,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 14,
+        "Put": 3,
+        "TxnSuccess": 1,
+        "TxnFailure": 3,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 3,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 12,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 3,
+        "per_client_success": {
+          "0": 1,
+          "1": 1,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 1,
+          "20": 1,
+          "21": 1,
+          "22": 1,
+          "33": 1
+        },
+        "last_success_ns": {
+          "0": 1137359173,
+          "1": 1087623781,
+          "10": 10092877420,
+          "11": 10101226913,
+          "12": 10108164348,
+          "2": 1124622089,
+          "20": 10075546408,
+          "21": 10080136689,
+          "22": 10084545638,
+          "33": 49273408
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": true,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 4,
+    "synthetic_missing_verdicts": 0,
+    "operations": 33,
+    "target": 17,
+    "faults": {},
+    "controller_seconds": 12.501124081,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 33,
+        "Put": 7,
+        "TxnSuccess": 6,
+        "TxnFailure": 7,
+        "Delete": 5,
+        "MultiDelete": 1,
+        "Range": 8,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 39,
+        "WatchDeletes": 12,
+        "WatchPrevKV": 33,
+        "per_client_success": {
+          "0": 9,
+          "1": 9,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 9,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 1808932664,
+          "1": 1808738668,
+          "10": 10018782933,
+          "11": 10019109922,
+          "12": 10019586933,
+          "2": 1808859005,
+          "20": 10016459545,
+          "21": 10017136160,
+          "22": 10018324585
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 4,
+    "target": 0,
+    "faults": {},
+    "controller_seconds": 3.548075374,
+    "failures": [
+      "workload exited before required fault completed"
+    ],
+    "coverage": [
+      {
+        "ops": 4,
+        "Put": 0,
+        "TxnSuccess": 0,
+        "TxnFailure": 0,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 0,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 0,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 0,
+        "per_client_success": {},
+        "last_success_ns": {}
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": true,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 4,
+    "synthetic_missing_verdicts": 0,
+    "operations": 33,
+    "target": 17,
+    "faults": {},
+    "controller_seconds": 13.155071045,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 33,
+        "Put": 7,
+        "TxnSuccess": 6,
+        "TxnFailure": 7,
+        "Delete": 5,
+        "MultiDelete": 1,
+        "Range": 8,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 39,
+        "WatchDeletes": 12,
+        "WatchPrevKV": 33,
+        "per_client_success": {
+          "0": 9,
+          "1": 9,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 9,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 1813235366,
+          "1": 1812550913,
+          "10": 10022147331,
+          "11": 10022920549,
+          "12": 10023553935,
+          "2": 1811980585,
+          "20": 10018256605,
+          "21": 10019415623,
+          "22": 10020989685
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 14,
+    "target": 5,
+    "faults": {},
+    "controller_seconds": 12.023264763,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 14,
+        "Put": 3,
+        "TxnSuccess": 1,
+        "TxnFailure": 3,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 3,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 12,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 3,
+        "per_client_success": {
+          "0": 1,
+          "1": 1,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 1,
+          "20": 1,
+          "21": 1,
+          "22": 1,
+          "33": 1
+        },
+        "last_success_ns": {
+          "0": 1075940951,
+          "1": 1067429166,
+          "10": 10061963813,
+          "11": 10071264357,
+          "12": 10080301913,
+          "2": 1061289520,
+          "20": 10045977824,
+          "21": 10050359337,
+          "22": 10054019461,
+          "33": 34049606
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "19861fd62ef16a85007b799a648a57f885f92e5f",
+      "run_id": "38430785949",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": true,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 4,
+    "synthetic_missing_verdicts": 0,
+    "operations": 33,
+    "target": 17,
+    "faults": {},
+    "controller_seconds": 11.672457864,
+    "failures": [
+      "'Controller' object has no attribute 'clock_fault'"
+    ],
+    "coverage": [
+      {
+        "ops": 33,
+        "Put": 7,
+        "TxnSuccess": 6,
+        "TxnFailure": 7,
+        "Delete": 5,
+        "MultiDelete": 1,
+        "Range": 8,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 39,
+        "WatchDeletes": 12,
+        "WatchPrevKV": 33,
+        "per_client_success": {
+          "0": 9,
+          "1": 9,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 9,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 1810307820,
+          "1": 1811138113,
+          "10": 10014108255,
+          "11": 10014679200,
+          "12": 10015169681,
+          "2": 1810890946,
+          "20": 10011293878,
+          "21": 10012352118,
+          "22": 10013729109
+        }
+      }
+    ]
+  }
+]

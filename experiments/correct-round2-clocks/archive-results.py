@@ -39,7 +39,7 @@ for artifact in sorted(a.source.glob('clocks-*')):
     result=load(run/'result.json',{})
     offline=load(run/'offline-results.json',[])
     receipt=load(run/'workload/receipt.json',{})
-    reports=[r for path in run.glob('check-*.json') for r in load(path,[])]
+    reports=[r for path in run.glob('check-*.json') if not path.name.endswith('.coverage.json') for r in load(path,[])]
     covs=[load(path,{}) for path in run.glob('check-*.json.coverage.json')]
     reached=(run/'faults.json').exists()
     summary={'artifact':artifact.name,'attempt':attempt,'reached_controller':reached,
