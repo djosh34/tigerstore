@@ -167,6 +167,104 @@ func TestMemoryLargeResponseClassAndCap(t *testing.T) {
 	}
 }
 
+func TestMemoryHealthyMultiplexedClients(t *testing.T) {
+	for _, mode := range []string{"ring", "pool"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("TIGERSTORE_BATCH_MEMORY", mode)
+			n := startNode(t)
+			s, err := New(n, server.Config{}, "full")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- s.Serve(ln) }()
+			t.Cleanup(func() {
+				if err := s.Stop(); err != nil {
+					t.Error(err)
+				}
+				if err := <-done; err != nil {
+					t.Error(err)
+				}
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			connections := make([]*grpc.ClientConn, 16)
+			for i := range connections {
+				cc, err := grpc.NewClient(ln.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				connections[i] = cc
+				t.Cleanup(func() {
+					if err := cc.Close(); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			value := make([]byte, 1024)
+			for round := range 2 {
+				var wg sync.WaitGroup
+				for i := range 256 {
+					wg.Go(func() {
+						_, err := pb.NewKVClient(connections[i%16]).Put(ctx, &pb.PutRequest{Key: []byte{byte(round + 1), byte(i)}, Value: value})
+						if err != nil {
+							t.Error(err)
+						}
+					})
+				}
+				wg.Wait()
+			}
+			st := s.MemoryStats()
+			if st.Input.Rejected != 0 || st.Output.Rejected != 0 || st.AdmissionRejected != 0 || st.ReplyRejected != 0 {
+				t.Fatalf("healthy clients exhausted banks: %+v", st)
+			}
+		})
+	}
+}
+
+func TestMemoryUnsubmittedReaderFailure(t *testing.T) {
+	for _, mode := range []string{"ring", "pool"} {
+		t.Run(mode, func(t *testing.T) {
+			c, _ := memoryConn(t, mode)
+			c.start(1)
+			c.receive(1, 1024)
+			if _, ok := c.receiveBuffer(1, nil, 1024); !ok {
+				t.Fatal("buffer")
+			}
+			var a admission
+			if !c.prepareAdmission(&a, 1) {
+				t.Fatal("descriptors")
+			}
+			a.tags = append(a.tags, 1)
+			c.admit(1)
+			// A framing error ends the reader before flush. There will be no
+			// core completion for this prepared, but unsent, command.
+			c.readerCleanup(&a)
+			if c.s.MemoryStats().Input.InUseBytes != 0 || len(c.budgets) != 0 {
+				t.Fatal("unsent batch leaked")
+			}
+			var held []*batchmem.Arena
+			for {
+				x := c.s.memory.admissions.Acquire(0)
+				if x == nil {
+					break
+				}
+				held = append(held, x)
+			}
+			if len(held) != memorySlots {
+				t.Fatal("unsent descriptors leaked")
+			}
+			for _, x := range held {
+				x.Release()
+			}
+		})
+	}
+}
+
 func TestMemoryLargeValueAndRepeatedConnections(t *testing.T) {
 	for _, mode := range []string{"ring", "pool"} {
 		t.Run(mode, func(t *testing.T) {
