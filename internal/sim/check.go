@@ -613,14 +613,19 @@ func (s *Sim) checkWatchersFreed() error {
 	return nil
 }
 
-// liveFrom is when the liveness rule starts: LiveAfter after healing, 2 s
-// more with a node fenced, or Config.LiveFrom. If a node stopped after healing, it restarts within
-// MaxDown and then gets the same time.
+// liveFrom gives the cluster LiveAfter to recover after the faults end,
+// plus 2 s with a node fenced, or uses Config.LiveFrom. A stopped node
+// restarts within MaxDown and then gets the same recovery time.
 func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
 	}
-	t := s.healAt + s.cfg.LiveAfter
+	// A gray fsync in flight at healing finishes when it finishes, up to
+	// 3 s later. Until then its node's term and vote changes and the peer
+	// messages behind them are held, so a higher term can reach the new
+	// leader late and cost another election (seed 745672193). Recovery
+	// counts from the later of healing and the last such fsync.
+	t := max(s.healAt, s.grayHealedAt) + s.cfg.LiveAfter
 	if len(s.live()) < len(s.nodes) {
 		// With a node fenced, every election needs both others. One with
 		// the longer log and one with the higher term reject each other's
@@ -632,4 +637,13 @@ func (s *Sim) liveFrom() int64 {
 		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
 	}
 	return t
+}
+
+// extendLiveness keeps clients running for at least 3 s under the rule.
+// Moving its start must not remove the calls that check recovery.
+func (s *Sim) extendLiveness() {
+	if stop := s.liveFrom() + 3*Second; stop > s.stopAt {
+		s.endAt += stop - s.stopAt
+		s.stopAt = stop
+	}
 }
