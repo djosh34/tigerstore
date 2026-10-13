@@ -165,6 +165,11 @@ func (w *watchClient) receive(e *event) {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
+		if n := s.nodes[w.node]; n.up && n.gen == w.gen {
+			delete(n.streams, w.stream)
+			n.core.CloseWatchStream(w.stream)
+			s.process(n)
+		}
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
 		w.start, w.next, w.events, w.responses, w.open = 0, 0, nil, nil, false
 		s.push(&event{at: s.now + s.clientLatency(), kind: evWatchOpen, watch: w})
