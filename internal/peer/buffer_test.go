@@ -500,7 +500,7 @@ func TestOutboundDialHandshakeTimeoutAndCancellation(t *testing.T) {
 				}
 				t.Fatalf("stalled TLS handshake = %v, %v", c, err)
 			}
-			want := error(context.DeadlineExceeded)
+			want := context.DeadlineExceeded
 			bound := dialTimeout + 2*time.Second
 			if cancelEarly {
 				want, bound = context.Canceled, 2*time.Second
