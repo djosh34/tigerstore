@@ -23,7 +23,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	}
 	checkers(t, a)
 	if a.grayHealedAt < cfg.Duration+2700*Millisecond || a.grayHealedAt > cfg.Duration+2702*Millisecond {
-		t.Fatalf("last gray fault effect at %d ms, want the fsync at 22701 ms", a.grayHealedAt/Millisecond)
+		t.Fatalf("last gray fsync at %d ms, want the fsync at 22701 ms", a.grayHealedAt/Millisecond)
 	}
 	calls := 0
 	for _, r := range a.History {
@@ -38,7 +38,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	if calls < 50 {
 		t.Fatalf("only %d calls after the final election", calls)
 	}
-	t.Logf("last gray fault effect at %d ms; %d definite answers from 24200 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
+	t.Logf("last gray fsync at %d ms; %d definite answers from 24200 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
 }
 
 // TestGrayFsyncRecoveryBound checks the disk completion path, including a
@@ -74,7 +74,7 @@ func TestGrayFsyncRecoveryBound(t *testing.T) {
 				t.Fatal("fsync did not retain its gray fault marker")
 			}
 			s.now, s.healed = s.healAt, true
-			s.endGray()
+			s.gray, s.grayOnce = nil, false
 			if tc.crash {
 				s.crash(n)
 			}
@@ -95,8 +95,8 @@ func TestGrayFsyncRecoveryBound(t *testing.T) {
 }
 
 // TestGrayAppendRecoveryBound checks that the append drop which ends the
-// guaranteed gray period after healing starts the liveness rule, and that
-// later healthy time does not move it.
+// guaranteed gray period after healing does not move the liveness rule:
+// that drop can come only after an election, which the rule must bound.
 func TestGrayAppendRecoveryBound(t *testing.T) {
 	cfg := DefaultConfig(1)
 	s := newSim(cfg)
@@ -110,13 +110,7 @@ func TestGrayAppendRecoveryBound(t *testing.T) {
 	if s.gray != nil || s.grayOnce || !s.grayDropped || s.stats.GrayNodes != 1 {
 		t.Fatal("guaranteed gray period did not end on its first append drop")
 	}
-	want := s.now + cfg.LiveAfter
-	if got := s.liveFrom(); got != want {
+	if got, want := s.liveFrom(), s.healAt+cfg.LiveAfter; got != want {
 		t.Fatalf("liveness starts at %d, want %d", got, want)
-	}
-	// Later healthy work does not move the recorded fault end.
-	s.now += 10 * Second
-	if got := s.liveFrom(); got != want {
-		t.Fatalf("healthy time moved the liveness bound to %d", got)
 	}
 }

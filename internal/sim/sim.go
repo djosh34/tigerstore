@@ -44,9 +44,9 @@ type Config struct {
 	// Duration is the length of the phase with faults.
 	Duration int64
 	// Heal is how long clients run after scheduled healing. The liveness
-	// rule allows LiveAfter for recovery once fault effects end. Gray
-	// faults and a deferred disk failure can outlast scheduled healing;
-	// those extend the client phase if needed. Nodes restarted at healing
+	// rule allows LiveAfter for recovery after healing. A gray fsync in
+	// flight at healing and a deferred disk failure can start it later;
+	// they extend the client phase if needed. Nodes restarted at healing
 	// need up to two election timeouts (2 s) to elect a leader; at 1 s,
 	// seed 126 fails with "no leader".
 	Heal      int64
@@ -395,8 +395,8 @@ type Sim struct {
 	grayDropped, grayOnce bool
 	// grayStays keeps the gray period on the leader it started on.
 	grayStays bool
-	// grayHealedAt is when the last gray fault effect after healing ended:
-	// either the guaranteed append drop or an already-slowed fsync.
+	// grayHealedAt is when the last gray fsync that outlasted healing
+	// ended.
 	grayHealedAt int64
 	// recoveryDue crashes the next node that writes entries before it
 	// syncs them, until a recovery crashed.
@@ -453,7 +453,8 @@ type Result struct {
 	StallStops, CommitStops []int64
 	// grayNode is the index of the last gray node, for tests.
 	grayNode int
-	// grayHealedAt is the last gray fault completion, for tests.
+	// grayHealedAt is when the last gray fsync after healing ended, for
+	// tests.
 	grayHealedAt int64
 	halfOpens    []halfOpenLink
 	// FinalRev is the revision of the converged cluster at the end.
@@ -925,7 +926,7 @@ func (s *Sim) diskDone(e *event) {
 	}
 	n.diskBusy = false
 	if e.grayDisk {
-		s.grayFaultEnded()
+		s.graySyncEnded()
 	}
 	n.inflight, n.replaceFrom = nil, 0
 	for _, j := range e.jobs {
@@ -964,7 +965,7 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 		}
 		if s.healed {
 			// The guaranteed gray period, which waited for this.
-			s.endGray()
+			s.gray, s.grayOnce = nil, false
 		}
 		return
 	}
@@ -1134,7 +1135,7 @@ func (s *Sim) setLinks(mask uint64) {
 func (s *Sim) heal() {
 	s.healed = true
 	if !s.grayOnce || s.grayDropped {
-		s.endGray()
+		s.gray, s.grayOnce = nil, false
 	}
 	if s.grayCl != nil {
 		// Closes its stream and stops.
