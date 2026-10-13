@@ -34,7 +34,7 @@ type outboundConn struct {
 	records *recordConn
 }
 
-func (c *outboundConn) Close() error { return c.records.Conn.Close() }
+func (c *outboundConn) Close() error { return c.records.Close() }
 
 // flush writes every record left by the plaintext writer's Flush. Its
 // failure ends the connection even though TLS already accepted the bytes.
