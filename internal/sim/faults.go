@@ -1,29 +1,23 @@
 package sim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"google.golang.org/protobuf/proto"
+	"go.etcd.io/raft/v3/raftpb"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
-
-// corruptTail is how far from the end of a file damage stays. Damage in
-// the last record of the newest segment looks the same as a torn write,
-// which the log cuts off; that is outside the guarantee (see the WAL's
-// known limits in docs/design.md).
-const corruptTail = 64 << 10
 
 func (s *Sim) scheduleDiskFaults() {
 	f := s.cfg.Faults
 	if f.DiskErrorEvery > 0 {
 		s.push(&event{at: s.exp(f.DiskErrorEvery), kind: evDiskFault})
-		// One fault at a uniform time, so that no run goes without.
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration), kind: evDiskFault, gen: 1})
+		// One fault early enough to fire before healing, so that no run
+		// goes without; TestSeeds checks that one did.
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*9/10), kind: evDiskFaultOnce})
 	}
 	if f.StallEvery > 0 {
 		s.push(&event{at: s.exp(f.StallEvery), kind: evStall})
@@ -48,59 +42,62 @@ func (s *Sim) upNode() *node {
 }
 
 // injectDiskFault makes the next write or sync of a node fail: EIO on a
-// sync, EIO on a write, or a short write with ENOSPC.
-func (s *Sim) injectDiskFault(once bool) {
+// sync, EIO on a write, or a short write with ENOSPC. It reports whether
+// a node was up to take it.
+func (s *Sim) injectDiskFault() bool {
+	if s.healed {
+		return false
+	}
+	n := s.upNode()
+	if n == nil {
+		return false
+	}
+	kind := s.rng.IntN(3)
+	s.mix(0xdf, uint64(n.idx), uint64(kind))
+	switch kind {
+	case 0, 1:
+		target := simfs.OpSync
+		if kind == 1 {
+			target = simfs.OpWrite
+		}
+		d := n.disk
+		d.Fault = func(op simfs.Op, _ string) error {
+			if op != target {
+				return nil
+			}
+			d.Fault = nil
+			return simfs.ErrIO
+		}
+	case 2:
+		n.disk.ShortWrite(s.rng)
+	}
+	return true
+}
+
+// injectStall holds back a random node's disk writes for 1.5 to 4 s.
+func (s *Sim) injectStall() {
 	if s.healed {
 		return
 	}
 	if n := s.upNode(); n != nil {
-		kind := s.rng.IntN(3)
-		s.mix(0xdf, uint64(n.idx), uint64(kind))
-		switch kind {
-		case 0, 1:
-			target := simfs.OpSync
-			if kind == 1 {
-				target = simfs.OpWrite
-			}
-			d := n.disk
-			d.Fault = func(op simfs.Op, _ string) error {
-				if op != target {
-					return nil
-				}
-				d.Fault = nil
-				return simfs.ErrIO
-			}
-		case 2:
-			n.disk.ShortWrite(s.rng)
-		}
+		s.stall(n, s.now+1500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
-	if !once {
-		s.push(&event{at: s.exp(s.cfg.Faults.DiskErrorEvery), kind: evDiskFault})
+	s.push(&event{at: s.exp(s.cfg.Faults.StallEvery), kind: evStall})
+}
+
+// stallLeader holds back the leader's disk writes until healing.
+func (s *Sim) stallLeader() {
+	for _, n := range s.nodes {
+		if n.up && n.core.Leader() == n.id {
+			s.stall(n, s.healAt)
+		}
 	}
 }
 
-// injectStall holds back a node's disk writes for 1.5 to 4 s, or, for
-// the scripted stall, the leader's until healing.
-func (s *Sim) injectStall(leader bool) {
-	if s.healed {
-		return
-	}
-	if leader {
-		for _, n := range s.nodes {
-			if n.up && n.core.Leader() == n.id {
-				n.stallUntil = s.healAt
-				n.stalls = append(n.stalls, [2]int64{s.now, n.stallUntil})
-				s.mix(0x57, uint64(n.idx), uint64(n.stallUntil))
-			}
-		}
-		return
-	}
-	if n := s.upNode(); n != nil {
-		n.stallUntil = s.now + 1500*Millisecond + s.rng.Int64N(2500*Millisecond)
-		n.stalls = append(n.stalls, [2]int64{s.now, n.stallUntil})
-		s.mix(0x57, uint64(n.idx), uint64(n.stallUntil))
-	}
-	s.push(&event{at: s.exp(s.cfg.Faults.StallEvery), kind: evStall})
+func (s *Sim) stall(n *node, until int64) {
+	n.stallUntil = until
+	n.stalls = append(n.stalls, [2]int64{s.now, until})
+	s.mix(0x57, uint64(n.idx), uint64(until))
 }
 
 // diskFailed handles a failed write or sync. Only injected faults may
@@ -133,46 +130,48 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	if n.disk.Corrupt(s.rng, corruptTail) {
+	if n.disk.Corrupt(s.rng) {
 		n.corrupted = true
 		s.mix(0xc0, uint64(n.idx))
 	}
 }
 
-// checkpoint is a copy of every disk as a power cut would leave it, and
-// the time it was taken.
+// checkpoint is a copy of every disk as a power cut would leave it, the
+// time it was taken, and the highest index any node had applied by then.
 type checkpoint struct {
-	at    int64
-	disks []*simfs.Disk
-	bad   []bool
+	at      int64
+	applied uint64
+	disks   []*simfs.Disk
+	bad     []bool
 }
 
-func (s *Sim) takeCheckpoint() {
-	c := &checkpoint{at: s.now}
+func (s *Sim) newCheckpoint() *checkpoint {
+	c := &checkpoint{at: s.now, applied: s.applied}
 	for _, n := range s.nodes {
 		c.disks = append(c.disks, n.disk.Durable())
 		c.bad = append(c.bad, n.corrupted)
 	}
-	s.checkpoints = append(s.checkpoints, c)
+	return c
+}
+
+func (s *Sim) takeCheckpoint() {
+	s.checkpoints = append(s.checkpoints, s.newCheckpoint())
 }
 
 // checkColdRestarts erases each node's disk in turn at every checkpoint
-// and at the end, cold-starts the other two alone, and requires every
-// write acknowledged before the checkpoint in their log. That is the
-// guarantee that an acknowledged write survives the loss of one node.
+// and at the end, and cold-starts the other two alone. Every entry applied
+// anywhere by the checkpoint is committed, so the two must apply at least
+// as far, and every such entry must be the one in the final log. An
+// acknowledged write was applied before it was answered, so this covers
+// every acknowledged write, delete, lease change and its revision. That
+// is the guarantee that an acknowledged write survives the loss of one
+// node.
 func (s *Sim) checkColdRestarts(res *Result) error {
-	end := &checkpoint{at: s.endAt}
-	for _, n := range s.nodes {
-		end.disks = append(end.disks, n.disk.Durable())
-		end.bad = append(end.bad, n.corrupted)
+	final, err := s.live()[0].core.AppliedEntries()
+	if err != nil {
+		return err
 	}
-	for _, c := range append(slices.Clone(s.checkpoints), end) {
-		var acked []string
-		for _, r := range res.History {
-			if r.Err == nil && r.Return < c.at {
-				acked = append(acked, putValues(r.req)...)
-			}
-		}
+	for _, c := range append(slices.Clone(s.checkpoints), s.newCheckpoint()) {
 		for erased := range c.disks {
 			skip := false
 			for i, bad := range c.bad {
@@ -182,20 +181,12 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 			if skip {
 				continue
 			}
-			log, err := s.coldRestart(c, erased)
+			ents, err := s.coldRestart(c, erased)
+			if err == nil {
+				err = sameCommitted(ents, final, c.applied)
+			}
 			if err != nil {
 				return fmt.Errorf("erasing node %d at %d ms: %w", erased+1, c.at/Millisecond, err)
-			}
-			have := map[string]bool{}
-			for _, op := range log {
-				for _, v := range putValues(op) {
-					have[v] = true
-				}
-			}
-			for _, v := range acked {
-				if !have[v] {
-					return fmt.Errorf("erasing node %d at %d ms loses the acknowledged write of %q", erased+1, c.at/Millisecond, v)
-				}
 			}
 			res.Stats.ColdRestarts++
 		}
@@ -203,10 +194,25 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	return nil
 }
 
+// sameCommitted checks that ents reach index applied and match the final
+// log up to it.
+func sameCommitted(ents, final []*raftpb.Entry, applied uint64) error {
+	if uint64(len(ents)) < applied {
+		return fmt.Errorf("the two left apply %d entries, but %d were applied before", len(ents), applied)
+	}
+	for i := range applied {
+		a, b := ents[i], final[i]
+		if a.GetIndex() != i+1 || a.GetTerm() != b.GetTerm() || !bytes.Equal(a.GetData(), b.GetData()) {
+			return fmt.Errorf("entry %d differs from the final log: term %d, want %d", i+1, a.GetTerm(), b.GetTerm())
+		}
+	}
+	return nil
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold,
-// and returns their committed log.
-func (s *Sim) coldRestart(c *checkpoint, erased int) ([]proto.Message, error) {
+// and returns their applied log.
+func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
 	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0})
 	r.endAt = 6 * Second
 	r.healed = true
@@ -239,28 +245,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) ([]proto.Message, error) {
 			return nil, fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", first.core.Applied(), n.core.Applied())
 		}
 	}
-	ents, err := first.core.AppliedEntries()
-	if err != nil {
-		return nil, err
-	}
-	var log []proto.Message
-	for _, e := range ents {
-		if len(e.GetData()) == 0 {
-			continue
-		}
-		if err := core.DecodeBatch(e.GetData(), func(_, _, _ uint64, op proto.Message) error {
-			if _, ok := op.(*pb.PutRequest); ok {
-				log = append(log, op)
-			}
-			if _, ok := op.(*pb.TxnRequest); ok {
-				log = append(log, op)
-			}
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-	}
-	return log, nil
+	return first.core.AppliedEntries()
 }
 
 // stalledAt reports whether a node's disk was stalled at a time. A node

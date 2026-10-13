@@ -150,7 +150,9 @@ const (
 	evCrashOnce
 	evLinksOnce
 	evDiskFault
+	evDiskFaultOnce
 	evStall
+	evStallLeader
 	evCheckpoint
 	evLinkStall
 	evPause
@@ -262,6 +264,8 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// syncing is the event that ends the disk write in flight.
+	syncing *event
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
@@ -298,9 +302,12 @@ type Sim struct {
 	expiredAt    map[int64]int64
 	expiredOrder []int64
 	checkpoints  []*checkpoint
-	history      []*Record
-	stats        Stats
-	err          error
+	// applied is the highest index any node has applied.
+	applied    uint64
+	stallStops []int64
+	history    []*Record
+	stats      Stats
+	err        error
 }
 
 // Stats counts what happened in a run.
@@ -331,6 +338,8 @@ type Result struct {
 	Log     []proto.Message
 	Watches []WatchResult
 	Stats   Stats
+	// StallStops are the times leaders stopped on a stalled disk.
+	StallStops []int64
 	// FinalRev is the revision of the converged cluster at the end.
 	FinalRev int64
 	// Clients is the number of request clients.
@@ -366,13 +375,13 @@ func Run(cfg Config) (*Result, error) {
 	s.scheduleDiskFaults()
 	s.scheduleNetFaults()
 	if cfg.StallLeaderAt > 0 {
-		s.push(&event{at: cfg.StallLeaderAt, kind: evStall, gen: 1})
+		s.push(&event{at: cfg.StallLeaderAt, kind: evStallLeader})
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 	if err := s.loop(); err != nil {
 		return nil, err
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, Clients: cfg.Clients}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
@@ -482,9 +491,18 @@ func (s *Sim) handle(e *event) {
 	case evCrashOnce:
 		s.crashRandom()
 	case evDiskFault:
-		s.injectDiskFault(e.gen == 1)
+		s.injectDiskFault()
+		if !s.healed {
+			s.push(&event{at: s.exp(s.cfg.Faults.DiskErrorEvery), kind: evDiskFault})
+		}
+	case evDiskFaultOnce:
+		if !s.injectDiskFault() && !s.healed {
+			s.push(&event{at: s.now + 100*Millisecond, kind: evDiskFaultOnce})
+		}
 	case evStall:
-		s.injectStall(e.gen == 1)
+		s.injectStall()
+	case evStallLeader:
+		s.stallLeader()
 	case evCheckpoint:
 		s.takeCheckpoint()
 	case evLinkStall:
@@ -539,9 +557,22 @@ func (s *Sim) start(n *node) error {
 		return nil
 	}
 	w, rec, err := wal.Open(n.disk)
+	if errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace) {
+		// An injected fault hit recovery, which can write: a failed boot.
+		// The node tries again later from what its disk holds.
+		s.stats.DiskFaults++
+		n.disk.ClearFaults()
+		n.disk.Crash(s.rng)
+		s.mix(0xfb, uint64(n.idx))
+		s.push(&event{at: s.now + 1 + s.rng.Int64N(Second), kind: evRestart, node: n.idx, gen: n.gen})
+		return nil
+	}
 	if n.corrupted {
 		// The disk was damaged on purpose; the node must notice and stay
 		// down, as an operator would replace the disk.
+		if err == nil {
+			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
+		}
 		if !errors.Is(err, wal.ErrCorrupt) {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
@@ -553,7 +584,9 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	w.SetSegmentBytes(256 << 10)
+	// Small segments, so that most of the log is in sealed ones, where
+	// any damage is detectable.
+	w.SetSegmentBytes(32 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
 	// Progress notifications every 2 s instead of 10 minutes, so runs see
@@ -569,7 +602,7 @@ func (s *Sim) start(n *node) error {
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
 		n.tickEvery += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
 	}
-	n.diskQ, n.diskBusy = nil, false
+	n.diskQ, n.diskBusy, n.syncing = nil, false, nil
 	s.mix(0xb007, uint64(n.idx), uint64(len(rec.Entries)), rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
 	s.process(n)
@@ -595,8 +628,10 @@ func (s *Sim) process(n *node) {
 			s.expiredOrder = append(s.expiredOrder, id)
 		}
 	}
+	s.applied = max(s.applied, n.core.Applied())
 	if errors.Is(err, core.ErrDiskStalled) {
 		s.stats.StalledStops++
+		s.stallStops = append(s.stallStops, s.now)
 		s.stopNode(n)
 		return
 	}
@@ -628,14 +663,16 @@ func (s *Sim) startDisk(n *node) {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
 	lat = max(lat, n.stallUntil-s.now)
-	s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs})
+	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs}
+	s.push(n.syncing)
 }
 
 func (s *Sim) diskDone(e *event) {
 	n := s.nodes[e.node]
-	if !n.up || n.gen != e.gen {
+	if !n.up || n.gen != e.gen || n.syncing != e {
 		return
 	}
+	n.syncing = nil
 	if err := n.log.Sync(); err != nil {
 		s.diskFailed(n, err)
 		return
@@ -804,6 +841,13 @@ func (s *Sim) heal() {
 		n.pausedUntil = 0
 		if n.stallUntil > s.now && len(n.stalls) > 0 {
 			n.stalls[len(n.stalls)-1][1] = s.now
+			if n.syncing != nil {
+				// The stalled write finishes now instead.
+				e := *n.syncing
+				e.at = s.now + 50*Microsecond + s.rng.Int64N(950*Microsecond)
+				n.syncing = &e
+				s.push(n.syncing)
+			}
 		}
 		n.stallUntil = 0
 		n.disk.ClearFaults()

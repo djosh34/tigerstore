@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -34,7 +35,18 @@ type flags struct {
 	peerCertFile, peerKeyFile, peerCAFile     string
 }
 
+// minProcs is the fewest Go processors tigerstore runs with, even on one
+// CPU or with GOMAXPROCS=1. An fsync blocks in a system call that keeps its
+// processor; with only one, the goroutines that take in requests, send to
+// peers and release replies all wait for the disk, and the leader writes
+// about one request per fsync. The batch256 pre-work on #47 measured 1.2
+// writes per fsync with one processor and 53 with two on the same CPU.
+const minProcs = 2
+
 func main() {
+	if runtime.GOMAXPROCS(0) < minProcs {
+		runtime.GOMAXPROCS(minProcs)
+	}
 	logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
 	if err := run(os.Args[1:], logger); err != nil {
 		logger.Printf("error: %v", err)
