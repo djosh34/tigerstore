@@ -13,7 +13,11 @@ Each benchmark job archives and builds these sources, then runs five repetitions
 - Exact main baseline `eb8a20eda7b1436e3319b924753469f2d8c0ee99`.
 - Stock etcd v3.7.2, with its ARM64 binary SHA-256 checked.
 - One candidate binary with `TIGERSTORE_FRONTEND=wholebatch` and `TIGERSTORE_BATCH_MODE=rpc`, `admit` and `full`.
-- An optional extra source selected by `EXTRA_BASELINE_REF`, with `EXTRA_BASELINE_FRONTEND=native` by default. Set the frontend explicitly if the native experiment uses another selector. This does not replace exact main or etcd.
+- Native frontend `2d4052e96939b12fd68f0252dfd1154127cdf7c6`, labelled `native`.
+- Tuned native frontend `78db0c56fe2b051b651bbfa3f1aed03ca3724b9c`, labelled `native-tuned`.
+- An optional additional source selected by `EXTRA_BASELINE_REF`, labelled `extra`, with `EXTRA_BASELINE_FRONTEND=native` by default. Set the frontend explicitly if this additional experiment uses another selector. This does not replace the seven default targets.
+
+Both pinned native refs select native unconditionally, so the runner leaves their frontend environment unset. It fetches both pinned commits before building them. All seven default targets run five times in each client-count job.
 
 For the on-push path, set repository variables `WHOLEBATCH_EXTRA_BASELINE_REF` and `WHOLEBATCH_EXTRA_BASELINE_FRONTEND` before the parent's push if a best native candidate has appeared in #74. For a registered workflow, dispatch inputs `candidate_ref`, `extra_baseline_ref` and `extra_baseline_frontend` provide the same options. Refs resolve to commits in `variants.json`. Empty candidate ref means workflow checkout HEAD. All experiment code and the generator come from the workflow checkout, not the optional extra ref.
 
@@ -53,4 +57,4 @@ After downloading benchmark artifacts into their `c16`, `c64` and `c256` directo
 python3 experiments/wholebatch/summarize.py /absolute/path/to/wholebatch
 ```
 
-The same command accepts one `cCLIENTS` directory. It writes `runs.csv`, `summary.csv`, `paired.csv` and `summary.md`. Medians are independent per metric over five repetitions. `paired.csv` divides each candidate metric by its main, etcd or optional native metric from the same repetition. It also contains the stage comparisons `admit/rpc` and `full/admit`. The report gives the median of the five per-repetition stage ratios for throughput, total server CPU/op, allocations/op, bytes/op, p95 and p99. No ratio of independent medians is presented as a paired result. Job summaries include the median throughput, p50/p95/p99, per-node CPU/op, allocations/op, bytes/op and Puts/fsync.
+The same command accepts one `cCLIENTS` directory. It writes `runs.csv`, `summary.csv`, `paired.csv` and `summary.md`. Medians are independent per metric over five repetitions. `paired.csv` divides each candidate metric by its main, etcd, native, native-tuned or optional extra metric from the same repetition. It also contains the stage comparisons `admit/rpc` and `full/admit`. The report gives the median of the five per-repetition stage ratios for throughput, total server CPU/op, allocations/op, bytes/op, p95 and p99. No ratio of independent medians is presented as a paired result. Job summaries include the median throughput, p50/p95/p99, per-node CPU/op, allocations/op, bytes/op and Puts/fsync.

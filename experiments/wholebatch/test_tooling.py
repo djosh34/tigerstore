@@ -30,7 +30,7 @@ class ToolingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as tmp:
             root = Path(tmp)/'c16'
             root.mkdir()
-            names = ('main', 'etcd', 'rpc', 'admit', 'full')
+            names = ('main', 'etcd', 'native', 'native-tuned', 'rpc', 'admit', 'full')
             variants = [dict(name=n, ref=n) for n in names]
             (root/'variants.json').write_text(json.dumps(variants))
             for rep in range(1, 6):
@@ -56,11 +56,12 @@ class ToolingTest(unittest.TestCase):
             self.assertIn('p95_ms', (root/'runs.csv').read_text())
             with (root/'paired.csv').open() as f:
                 pairs = list(csv.DictReader(f))
-            for candidate, baseline in (('admit', 'rpc'), ('full', 'admit')):
+            for candidate, baseline in (('admit', 'rpc'), ('full', 'admit'), ('full', 'native'), ('full', 'native-tuned')):
                 selected = [p for p in pairs if p['candidate'] == candidate and p['baseline'] == baseline]
                 self.assertEqual(len(selected), 5)
                 self.assertTrue(all(float(p['ops_s_ratio']) == 1 for p in selected))
-                self.assertIn(f'{candidate}/{baseline}', (root/'summary.md').read_text())
+                if baseline in ('rpc', 'admit'):
+                    self.assertIn(f'{candidate}/{baseline}', (root/'summary.md').read_text())
             (root/'5-full/put.json').unlink()
             with self.assertRaises(AssertionError), contextlib.redirect_stdout(io.StringIO()):
                 summarize(root)

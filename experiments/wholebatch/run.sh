@@ -5,6 +5,10 @@ check_time
 # Never remount or run a measurement on the agent host.
 [[ ${GITHUB_ACTIONS:-false} == true && $(uname -m) == aarch64 ]]
 BASELINE=eb8a20eda7b1436e3319b924753469f2d8c0ee99
+NATIVE=2d4052e96939b12fd68f0252dfd1154127cdf7c6
+TUNED=78db0c56fe2b051b651bbfa3f1aed03ca3724b9c
+check_time
+git fetch --no-tags origin "$NATIVE" "$TUNED"
 CANDIDATE=$(git rev-parse "${CANDIDATE_REF:-HEAD}^{commit}")
 EXTRA=${EXTRA_BASELINE_REF:-}
 if [[ -n $EXTRA ]]; then EXTRA=$(git rev-parse "$EXTRA^{commit}"); fi
@@ -13,23 +17,25 @@ PRIVATE=$RUNNER_TEMP/wholebatch
 mkdir -p "$OUT" "$PRIVATE/bin" "$PRIVATE/baseline" "$PRIVATE/candidate"
 trap 'rm -rf "$PRIVATE"' EXIT
 export GOFLAGS=-p=2 GOMEMLIMIT=2GiB
-export CANDIDATE EXTRA BASELINE OUT
+export CANDIDATE EXTRA BASELINE NATIVE TUNED OUT
 python3 - <<'PY'
 import json, os
 from pathlib import Path
 variants = [dict(name='main', binary='baseline', ref=os.environ['BASELINE'], frontend='', batch_mode=''),
-            dict(name='etcd', binary='etcd', ref='v3.7.2', frontend='', batch_mode='')]
+            dict(name='etcd', binary='etcd', ref='v3.7.2', frontend='', batch_mode=''),
+            dict(name='native', binary='native', ref=os.environ['NATIVE'], frontend='', batch_mode=''),
+            dict(name='native-tuned', binary='native-tuned', ref=os.environ['TUNED'], frontend='', batch_mode='')]
 for mode in ('rpc', 'admit', 'full'):
     variants.append(dict(name=mode, binary='candidate', ref=os.environ['CANDIDATE'], frontend='wholebatch', batch_mode=mode))
 if os.environ['EXTRA']:
-    variants.insert(1, dict(name='native', binary='native', ref=os.environ['EXTRA'],
+    variants.insert(1, dict(name='extra', binary='extra', ref=os.environ['EXTRA'],
                            frontend=os.environ.get('EXTRA_BASELINE_FRONTEND', 'native'), batch_mode=''))
 Path(os.environ['OUT'], 'variants.json').write_text(json.dumps(variants, indent=2))
 PY
 {
  date -u +%FT%TZ
  git rev-parse HEAD
- printf 'main %s\ncandidate %s\nextra %s\n' "$BASELINE" "$CANDIDATE" "$EXTRA"
+ printf 'main %s\ncandidate %s\nnative %s\nnative-tuned %s\nextra %s\n' "$BASELINE" "$CANDIDATE" "$NATIVE" "$TUNED" "$EXTRA"
  sha256sum experiments/wholebatch/{instrument.py,observe.go.txt,osfs.go.txt,load/*.go}
  uname -a
  lscpu
@@ -55,14 +61,18 @@ git status --short > "$OUT/build-status.txt"
 check_time
 git archive "$BASELINE" | tar -x -C "$PRIVATE/baseline"
 git archive "$CANDIDATE" | tar -x -C "$PRIVATE/candidate"
-declare -A refs=([baseline]="$BASELINE" [candidate]="$CANDIDATE" [native]="$EXTRA")
-sources=(baseline candidate)
+declare -A refs=([baseline]="$BASELINE" [candidate]="$CANDIDATE" [native]="$NATIVE" [native-tuned]="$TUNED" [extra]="$EXTRA")
+sources=(baseline candidate native native-tuned)
+for source in native native-tuned; do
+ mkdir -p "$PRIVATE/$source"
+ git archive "${refs[$source]}" | tar -x -C "$PRIVATE/$source"
+done
 mkdir -p "$OUT/instrumentation"
 cp experiments/wholebatch/{instrument.py,observe.go.txt,osfs.go.txt} "$OUT/instrumentation/"
 if [[ -n $EXTRA ]]; then
- mkdir -p "$PRIVATE/native"
- git archive "$EXTRA" | tar -x -C "$PRIVATE/native"
- sources+=(native)
+ mkdir -p "$PRIVATE/extra"
+ git archive "$EXTRA" | tar -x -C "$PRIVATE/extra"
+ sources+=(extra)
 fi
 for source in "${sources[@]}"; do
  check_time
