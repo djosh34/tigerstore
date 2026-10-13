@@ -36,9 +36,7 @@ func (c *conn) writeLoop() error {
 	var hdr []byte
 	nodeDone := c.s.n.Done()
 	for {
-		if comps := c.takeCompletions(); comps != nil {
-			c.complete(comps)
-		}
+		c.completeWaiting()
 		c.mu.Lock()
 		ctrl = append(ctrl[:0], c.ctrl...)
 		clear(c.ctrl)
