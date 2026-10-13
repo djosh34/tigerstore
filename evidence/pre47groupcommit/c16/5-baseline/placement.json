@@ -1,0 +1,23 @@
+{
+  "leader_index": 1,
+  "node_order": [
+    1,
+    0,
+    2
+  ],
+  "pids": "6648,6647,6649",
+  "status_before": [
+    {
+      "id": 1,
+      "leader": 2
+    },
+    {
+      "id": 2,
+      "leader": 2
+    },
+    {
+      "id": 3,
+      "leader": 2
+    }
+  ]
+}

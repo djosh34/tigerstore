@@ -1,0 +1,4 @@
+ok  	github.com/djosh34/tigerstore/internal/node	1.031s
+ok  	github.com/djosh34/tigerstore/internal/core	0.069s
+ok  	github.com/djosh34/tigerstore/internal/wal	0.355s
+ok  	github.com/djosh34/tigerstore/internal/server	1.282s

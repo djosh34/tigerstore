@@ -1,0 +1,11 @@
+=== RUN   TestCommittedUnstableDoesNotApply
+    contracts_test.go:108: commit advanced to 2, but apply waited for append response; Ready immediately consumed pending work
+--- PASS: TestCommittedUnstableDoesNotApply (0.00s)
+=== RUN   TestEmptyAppendResponseAfterTermChangeUnblocksApply
+    contracts_test.go:137: old completion was ignored; exact response on entry-free append was necessary
+--- PASS: TestEmptyAppendResponseAfterTermChangeUnblocksApply (0.00s)
+=== RUN   TestReadyEntriesRemainReadOnlyAcrossSuffixReplacement
+    contracts_test.go:155: accepted Ready entries survive later suffix replacement, but remain shared read-only objects
+--- PASS: TestReadyEntriesRemainReadOnlyAcrossSuffixReplacement (0.00s)
+PASS
+ok  	github.com/djosh34/tigerstore/audit	0.002s

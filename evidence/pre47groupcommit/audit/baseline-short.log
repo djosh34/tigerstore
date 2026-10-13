@@ -1,0 +1,4 @@
+ok  	github.com/djosh34/tigerstore/internal/core	0.023s
+ok  	github.com/djosh34/tigerstore/internal/wal	0.123s
+ok  	github.com/djosh34/tigerstore/internal/simfs	0.012s
+ok  	github.com/djosh34/tigerstore/internal/sim	1.558s

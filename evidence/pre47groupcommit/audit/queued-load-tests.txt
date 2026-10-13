@@ -1,0 +1,16 @@
+Tue Oct 13 01:18:35 AM UTC 2026
+fad17fe3fe64c73075da484c773f4859bc4e8e18
+=== RUN   TestGroupFollowsQueuedLoad
+=== RUN   TestGroupFollowsQueuedLoad/16
+    groupcommit_test.go:46: held arrivals=16, next physical group requests=16
+=== RUN   TestGroupFollowsQueuedLoad/64
+    groupcommit_test.go:46: held arrivals=64, next physical group requests=64
+=== RUN   TestGroupFollowsQueuedLoad/256
+    groupcommit_test.go:46: held arrivals=256, next physical group requests=256
+--- PASS: TestGroupFollowsQueuedLoad (0.00s)
+    --- PASS: TestGroupFollowsQueuedLoad/16 (0.00s)
+    --- PASS: TestGroupFollowsQueuedLoad/64 (0.00s)
+    --- PASS: TestGroupFollowsQueuedLoad/256 (0.00s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/node	0.019s
+ok  	github.com/djosh34/tigerstore/internal/node	1.458s

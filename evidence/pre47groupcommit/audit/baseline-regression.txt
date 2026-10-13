@@ -1,0 +1,14 @@
+Tue Oct 13 01:04:24 AM UTC 2026
+Baseline 81053bcc driver with candidate node_test.go; expected failure
+--- FAIL: TestAppendCompletionBatchesAndFailure (0.00s)
+    --- FAIL: TestAppendCompletionBatchesAndFailure/complete (0.00s)
+        node_test.go:162: ack or next append before durability
+    --- FAIL: TestAppendCompletionBatchesAndFailure/error (0.00s)
+        node_test.go:162: ack or next append before durability
+--- FAIL: TestFollowerHoldsReadyThroughAppend (0.00s)
+    node_test.go:243: follower append or ack before durability
+--- FAIL: TestPersistCoalescesHardStateAndReplacesSuffix (0.00s)
+    node_test.go:327: hard-state records = 2, want one
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/node	0.016s
+FAIL
