@@ -1,0 +1,13 @@
+{
+  "source": "Parent message received 2026-10-13 during finalization",
+  "complete_archives": 96,
+  "passing_cases": 80,
+  "failed_cases": 16,
+  "history_variants": 384,
+  "checker_verdicts": 1536,
+  "passing_verdicts": 1472,
+  "timeout_verdicts": 64,
+  "all_manifest_hash_and_length_checks_passed": true,
+  "independent_fault_probe_payload_chunk_metadata_and_installed_to_healed_overlap_checks_passed": 288,
+  "further_tests_requested": false
+}

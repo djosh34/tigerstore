@@ -1,0 +1,90 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-350-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        }
+      },
+      "job_status": "success",
+      "run_id": "38469549517",
+      "run_attempt": "1",
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb"
+    },
+    "reached_controller": true,
+    "passed": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "checker_timeout_verdicts": 0,
+    "diagnostic_checker_invocations": 0,
+    "operations": 693,
+    "successful_operations": 677,
+    "ambiguous_operations": 16,
+    "target": 136,
+    "watches": 3,
+    "controller_seconds": 58.843192488,
+    "faults": {
+      "partition-old-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-new-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null
+  }
+]

@@ -102,6 +102,12 @@ def main():
             checks = [result for p in sorted((folder/'run').glob('check-*.json.gz'))
                       if not p.name.endswith('.coverage.json.gz') for result in load(p)]
             failed = [result for result in checks if not result['passed']]
+            coverage_path = folder / 'run/check-original.json.coverage.json.gz'
+            coverage = load(coverage_path) if coverage_path.exists() else {}
+            successful_clients = coverage.get('per_client_success', {})
+            recorded_lists = sum(successful_clients.get(str(client), 0) for client in (60000, 60001, 60002))
+            if run.name != '38468658463':
+                require(recorded_lists > 0, 'freshness campaign omitted completed LIST operations')
             manifest = json.loads((folder/'manifest.json').read_text())
             # Rehash small assertion/fault/checker inputs. Large raw histories
             # remain compressed, with their original uncompressed SHA256s.
@@ -117,6 +123,9 @@ def main():
             cases.append({'run': run.name, 'case': case, 'tooling': attempt['tooling'],
                           'passed': passed, 'controller_pass': summary['controller_pass'],
                           'operations': summary['operations'], 'history_variants': summary['history_variants'],
+                          'list_freshness_in_whole_history': run.name != '38468658463',
+                          'recorded_linearizable_lists': recorded_lists,
+                          'acknowledged_dataset_mutations': successful_clients.get('50001', 0),
                           'verdicts': len(checks), 'passing_verdicts': sum(row['passed'] for row in checks),
                           'timeout_verdicts': summary['checker_timeout_verdicts'],
                           'failed_verdicts': failed, 'fault_probes': probes, 'probe_errors': errors,
@@ -128,6 +137,8 @@ def main():
                        'failed': sum(not row['passed'] for row in rows),
                        'operations': sum(row['operations'] for row in rows),
                        'verdicts': sum(row['verdicts'] for row in rows),
+                       'recorded_linearizable_lists': sum(row['recorded_linearizable_lists'] for row in rows),
+                       'history_variants': sum(row['history_variants'] for row in rows),
                        'passing_verdicts': sum(row['passing_verdicts'] for row in rows),
                        'timeout_verdicts': sum(row['timeout_verdicts'] for row in rows),
                        'fault_probes': sum(len(row['fault_probes']) for row in rows),

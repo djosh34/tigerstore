@@ -6,6 +6,8 @@
       "failed": 10,
       "operations": 27945,
       "verdicts": 512,
+      "recorded_linearizable_lists": 0,
+      "history_variants": 128,
       "passing_verdicts": 472,
       "timeout_verdicts": 40,
       "fault_probes": 96,
@@ -22,14 +24,16 @@
       }
     },
     "38468977502": {
-      "cases": 30,
-      "passed": 26,
-      "failed": 4,
-      "operations": 62963,
-      "verdicts": 480,
-      "passing_verdicts": 464,
-      "timeout_verdicts": 16,
-      "fault_probes": 90,
+      "cases": 32,
+      "passed": 27,
+      "failed": 5,
+      "operations": 67061,
+      "verdicts": 512,
+      "recorded_linearizable_lists": 38999,
+      "history_variants": 128,
+      "passing_verdicts": 492,
+      "timeout_verdicts": 20,
+      "fault_probes": 96,
       "probe_errors": 0,
       "by_target": {
         "tigerstore": {
@@ -37,8 +41,31 @@
           "passed": 14
         },
         "etcd": {
-          "cases": 14,
-          "passed": 12
+          "cases": 16,
+          "passed": 13
+        }
+      }
+    },
+    "38469549517": {
+      "cases": 32,
+      "passed": 31,
+      "failed": 1,
+      "operations": 22530,
+      "verdicts": 512,
+      "recorded_linearizable_lists": 15673,
+      "history_variants": 128,
+      "passing_verdicts": 508,
+      "timeout_verdicts": 4,
+      "fault_probes": 96,
+      "probe_errors": 0,
+      "by_target": {
+        "tigerstore": {
+          "cases": 16,
+          "passed": 16
+        },
+        "etcd": {
+          "cases": 16,
+          "passed": 15
         }
       }
     }
@@ -64,6 +91,9 @@
       "controller_pass": true,
       "operations": 843,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 186,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -136,6 +166,9 @@
       "controller_pass": true,
       "operations": 840,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 185,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -208,6 +241,9 @@
       "controller_pass": true,
       "operations": 867,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 202,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -273,6 +309,9 @@
       "controller_pass": true,
       "operations": 861,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 194,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -363,6 +402,9 @@
       "controller_pass": true,
       "operations": 890,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 205,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -423,6 +465,9 @@
       "controller_pass": true,
       "operations": 911,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -458,6 +503,9 @@
       "controller_pass": true,
       "operations": 863,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -499,6 +547,9 @@
       "controller_pass": true,
       "operations": 884,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 204,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -540,6 +591,9 @@
       "controller_pass": true,
       "operations": 870,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 200,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -587,6 +641,9 @@
       "controller_pass": true,
       "operations": 868,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 196,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -659,6 +716,9 @@
       "controller_pass": true,
       "operations": 881,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 202,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -724,6 +784,9 @@
       "controller_pass": true,
       "operations": 820,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 184,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -789,6 +852,9 @@
       "controller_pass": true,
       "operations": 905,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -824,6 +890,9 @@
       "controller_pass": true,
       "operations": 904,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -859,6 +928,9 @@
       "controller_pass": true,
       "operations": 878,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -925,6 +997,9 @@
       "controller_pass": true,
       "operations": 863,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 192,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -966,6 +1041,9 @@
       "controller_pass": true,
       "operations": 854,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 195,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -1038,6 +1116,9 @@
       "controller_pass": true,
       "operations": 867,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -1110,6 +1191,9 @@
       "controller_pass": true,
       "operations": 871,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 200,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1175,6 +1259,9 @@
       "controller_pass": true,
       "operations": 823,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 186,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -1265,6 +1352,9 @@
       "controller_pass": true,
       "operations": 893,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 204,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1300,6 +1390,9 @@
       "controller_pass": true,
       "operations": 902,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 206,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1335,6 +1428,9 @@
       "controller_pass": true,
       "operations": 871,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1376,6 +1472,9 @@
       "controller_pass": true,
       "operations": 877,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 200,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1417,6 +1516,9 @@
       "controller_pass": true,
       "operations": 864,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1464,6 +1566,9 @@
       "controller_pass": true,
       "operations": 867,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 196,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1511,6 +1616,9 @@
       "controller_pass": true,
       "operations": 869,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 200,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1576,6 +1684,9 @@
       "controller_pass": true,
       "operations": 873,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 202,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1641,6 +1752,9 @@
       "controller_pass": true,
       "operations": 905,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 208,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1676,6 +1790,9 @@
       "controller_pass": true,
       "operations": 896,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1711,6 +1828,9 @@
       "controller_pass": true,
       "operations": 886,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1752,6 +1872,9 @@
       "controller_pass": true,
       "operations": 879,
       "history_variants": 4,
+      "list_freshness_in_whole_history": false,
+      "recorded_linearizable_lists": 0,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -1803,6 +1926,131 @@
       "case": {
         "runner": "ubuntu-24.04-arm",
         "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2038,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1170,
+      "acknowledged_dataset_mutations": 196,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 2060,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1194,
+      "acknowledged_dataset_mutations": 199,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2056 operations timed out after 30s",
+          "seconds": 30.008511247
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2056 operations timed out after 30s",
+          "seconds": 30.001246678
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2056 operations timed out after 30s",
+          "seconds": 30.007707848
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2056 operations timed out after 30s",
+          "seconds": 30.006111557
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
         "scenario": "flapping",
         "seed": 250,
         "rep": 1,
@@ -1818,6 +2066,9 @@
       "controller_pass": true,
       "operations": 1921,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1101,
+      "acknowledged_dataset_mutations": 186,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -1908,6 +2159,9 @@
       "controller_pass": true,
       "operations": 2128,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1248,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -1973,6 +2227,9 @@
       "controller_pass": true,
       "operations": 2152,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1249,
+      "acknowledged_dataset_mutations": 206,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2008,6 +2265,9 @@
       "controller_pass": true,
       "operations": 2147,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1247,
+      "acknowledged_dataset_mutations": 206,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2043,6 +2303,9 @@
       "controller_pass": true,
       "operations": 2081,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1211,
+      "acknowledged_dataset_mutations": 206,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2084,6 +2347,9 @@
       "controller_pass": true,
       "operations": 2106,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1218,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2125,6 +2391,9 @@
       "controller_pass": true,
       "operations": 2081,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1209,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2172,6 +2441,9 @@
       "controller_pass": true,
       "operations": 2076,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1204,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2219,6 +2491,9 @@
       "controller_pass": true,
       "operations": 2137,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1260,
+      "acknowledged_dataset_mutations": 206,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2284,6 +2559,9 @@
       "controller_pass": true,
       "operations": 2059,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1219,
+      "acknowledged_dataset_mutations": 196,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2349,6 +2627,9 @@
       "controller_pass": true,
       "operations": 2172,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1267,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2384,6 +2665,9 @@
       "controller_pass": true,
       "operations": 2160,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1264,
+      "acknowledged_dataset_mutations": 208,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2419,6 +2703,9 @@
       "controller_pass": true,
       "operations": 2088,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1209,
+      "acknowledged_dataset_mutations": 199,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2460,6 +2747,9 @@
       "controller_pass": true,
       "operations": 2085,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1207,
+      "acknowledged_dataset_mutations": 198,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2501,6 +2791,9 @@
       "controller_pass": true,
       "operations": 2046,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1185,
+      "acknowledged_dataset_mutations": 197,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2548,6 +2841,9 @@
       "controller_pass": true,
       "operations": 2051,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1177,
+      "acknowledged_dataset_mutations": 198,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2595,6 +2891,9 @@
       "controller_pass": true,
       "operations": 2012,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1162,
+      "acknowledged_dataset_mutations": 186,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -2685,6 +2984,9 @@
       "controller_pass": true,
       "operations": 2101,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1243,
+      "acknowledged_dataset_mutations": 193,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2750,6 +3052,9 @@
       "controller_pass": true,
       "operations": 2101,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1207,
+      "acknowledged_dataset_mutations": 205,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2785,6 +3090,9 @@
       "controller_pass": true,
       "operations": 2166,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1263,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2820,6 +3128,9 @@
       "controller_pass": true,
       "operations": 2103,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1230,
+      "acknowledged_dataset_mutations": 203,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2861,6 +3172,9 @@
       "controller_pass": true,
       "operations": 2112,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1232,
+      "acknowledged_dataset_mutations": 205,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -2902,6 +3216,9 @@
       "controller_pass": true,
       "operations": 2023,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1152,
+      "acknowledged_dataset_mutations": 192,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -2974,6 +3291,9 @@
       "controller_pass": true,
       "operations": 2058,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1192,
+      "acknowledged_dataset_mutations": 197,
       "verdicts": 16,
       "passing_verdicts": 12,
       "timeout_verdicts": 4,
@@ -3046,6 +3366,9 @@
       "controller_pass": true,
       "operations": 2132,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1260,
+      "acknowledged_dataset_mutations": 202,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3111,6 +3434,9 @@
       "controller_pass": true,
       "operations": 2145,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1272,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3176,6 +3502,9 @@
       "controller_pass": true,
       "operations": 2160,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1255,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3211,6 +3540,9 @@
       "controller_pass": true,
       "operations": 2171,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1266,
+      "acknowledged_dataset_mutations": 207,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3246,6 +3578,9 @@
       "controller_pass": true,
       "operations": 2090,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1210,
+      "acknowledged_dataset_mutations": 200,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3287,6 +3622,9 @@
       "controller_pass": true,
       "operations": 2099,
       "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 1216,
+      "acknowledged_dataset_mutations": 201,
       "verdicts": 16,
       "passing_verdicts": 16,
       "timeout_verdicts": 0,
@@ -3303,6 +3641,1631 @@
           "chunks": 3,
           "watch_responses": 3,
           "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 687,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 475,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 695,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 482,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 715,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 503,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 36
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 693,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 477,
+      "acknowledged_dataset_mutations": 43,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 38
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 721,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 508,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 720 operations timed out after 30s",
+          "seconds": 30.001315829
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 720 operations timed out after 30s",
+          "seconds": 30.052086965
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 720 operations timed out after 30s",
+          "seconds": 30.003150605
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 720 operations timed out after 30s",
+          "seconds": 30.00239089
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 719,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 506,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 717,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 501,
+      "acknowledged_dataset_mutations": 43,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 709,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 493,
+      "acknowledged_dataset_mutations": 42,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 696,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 481,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 663,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 451,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 675,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 464,
+      "acknowledged_dataset_mutations": 37,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 739,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 522,
+      "acknowledged_dataset_mutations": 43,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 38
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 722,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 509,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 725,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 507,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 700,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 483,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 694,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 482,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 691,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 476,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 676,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 462,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 690,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 476,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 702,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 489,
+      "acknowledged_dataset_mutations": 38,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 36
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 36
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 719,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 502,
+      "acknowledged_dataset_mutations": 42,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 718,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 503,
+      "acknowledged_dataset_mutations": 40,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 700,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 486,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 693,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 477,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 694,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 480,
+      "acknowledged_dataset_mutations": 42,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 680,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 468,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 729,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 516,
+      "acknowledged_dataset_mutations": 42,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 38
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 739,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 521,
+      "acknowledged_dataset_mutations": 43,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 34
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 35
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 37
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 38
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 723,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 507,
+      "acknowledged_dataset_mutations": 41,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 719,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 502,
+      "acknowledged_dataset_mutations": 42,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 350,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 693,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 482,
+      "acknowledged_dataset_mutations": 39,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38469549517",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 351,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "6a5634c6e8dd8739c6fcd0e75ccb2932528e7bbb",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 694,
+      "history_variants": 4,
+      "list_freshness_in_whole_history": true,
+      "recorded_linearizable_lists": 482,
+      "acknowledged_dataset_mutations": 38,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 33
         }
       ],
       "probe_errors": [],

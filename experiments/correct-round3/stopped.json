@@ -1,0 +1,8 @@
+{
+  "testing_stopped": true,
+  "last_job_completed_utc": "2026-10-13T21:26:27Z",
+  "workflow_id": 383672753,
+  "workflow_state": "disabled_manually",
+  "new_tests_planned": false,
+  "confirmed_product_failures": 0
+}

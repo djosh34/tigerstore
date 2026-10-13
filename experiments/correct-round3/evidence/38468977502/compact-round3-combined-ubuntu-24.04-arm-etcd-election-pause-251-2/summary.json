@@ -1,0 +1,96 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-251-2",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38468977502",
+      "run_attempt": "1",
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 12,
+    "checker_timeout_verdicts": 4,
+    "diagnostic_checker_invocations": 0,
+    "operations": 2060,
+    "successful_operations": 2033,
+    "ambiguous_operations": 27,
+    "target": 554,
+    "watches": 3,
+    "controller_seconds": 59.344250659,
+    "faults": {
+      "election-peer-cut": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-old-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "pause-election": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null
+  }
+]
