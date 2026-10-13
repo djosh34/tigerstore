@@ -16,7 +16,7 @@ var Bugs = map[string]string{
 	"B06b": "a watcher gets the first event of every write twice",
 	"B06c": "watch events of updates and deletes lose their previous value",
 	"B06d": "a progress notification goes out before the events it covers",
-	"B07":  "a watch created from a past revision starts one revision early",
+	"B07":  "a new watch starts one revision early",
 	"B08":  "compaction drops the tombstone at the compaction revision",
 	"B09a": "each changed key of a write gets its own main revision",
 	"B09b": "a key created again after a delete keeps its old version and create revision",

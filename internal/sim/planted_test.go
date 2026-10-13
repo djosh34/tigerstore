@@ -5,26 +5,29 @@ package sim
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/cryptotest"
 
-	"github.com/djosh34/tigerstore/check"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
 
 // plantedCase is how a planted bug must be caught: within seeds runs of
-// cfg, by a simulator rule, by one of the independent checkers, or by
-// extra. The seed budgets are the semantics pre-work's on #47.
+// cfg, by a failure whose message matches want, the assertion the
+// semantics pre-work on #47 names for it. Any other failure fails the
+// test, so a bug cannot pass on an unrelated check or a crash. extra adds
+// an assertion of the case's own. Each cfg also runs in the plain tests
+// (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
 type plantedCase struct {
 	seeds int
 	cfg   func(seed uint64) Config
+	want  string
 	extra func(*Result) error
 }
 
@@ -37,41 +40,45 @@ func stalledLeaderConfig(seed uint64) Config {
 	return cfg
 }
 
+const (
+	// A read older than a write that returned before it started.
+	staleRead = `before it started|linearizab`
+	// An acknowledged append that recovery or a cold restart lost.
+	lostAppend = `reported \d+ durable|erasing node \d+`
+	// A watch that broke the watch rules.
+	badWatch = `watch \d+`
+	// A read or the replayed log that disagrees with the model.
+	badState = `call at \d+ ms|replaying the committed log`
+	// Recovery refused a log it wrote itself.
+	refused = `cannot recover its log`
+)
+
 var plantedCases = map[string]plantedCase{
-	"B01a": {seeds: 64, cfg: DefaultConfig},
-	"B01b": {seeds: 64, cfg: DefaultConfig},
-	"B02":  {seeds: 128, cfg: DefaultConfig},
-	"B03":  {seeds: 128, cfg: DefaultConfig},
-	"B04a": {seeds: 256, cfg: DefaultConfig},
-	"B04b": {seeds: 256, cfg: DefaultConfig},
-	"B06a": {seeds: 32, cfg: DefaultConfig},
-	"B06b": {seeds: 32, cfg: DefaultConfig},
-	"B06c": {seeds: 32, cfg: DefaultConfig},
-	"B06d": {seeds: 32, cfg: DefaultConfig},
-	"B07":  {seeds: 64, cfg: DefaultConfig},
-	"B08":  {seeds: 32, cfg: DefaultConfig},
-	"B09a": {seeds: 16, cfg: DefaultConfig},
-	"B09b": {seeds: 16, cfg: DefaultConfig},
-	"B10":  {seeds: 64, cfg: DefaultConfig},
-	"B11":  {seeds: 64, cfg: DefaultConfig},
-	"B12":  {seeds: 256, cfg: DefaultConfig},
-	"B15":  {seeds: 16, cfg: DefaultConfig},
-	"B17": {seeds: 64, cfg: stalledLeaderConfig, extra: func(r *Result) error {
-		if r.Stats.StalledStops == 0 {
+	"B01a": {seeds: 64, cfg: DefaultConfig, want: staleRead},
+	"B01b": {seeds: 64, cfg: DefaultConfig, want: staleRead},
+	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
+	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
+	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
+	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend},
+	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
+	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
+	"B06c": {seeds: 32, cfg: DefaultConfig, want: badWatch},
+	"B06d": {seeds: 32, cfg: DefaultConfig, want: `watch \d+ got an event at revision \d+ after one at`},
+	"B07":  {seeds: 64, cfg: DefaultConfig, want: badWatch},
+	"B08":  {seeds: 32, cfg: DefaultConfig, want: badWatch},
+	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
+	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
+	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states`},
+	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
+	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused},
+	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
+	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader`, extra: func(r *Result) error {
+		if len(r.StallStops) == 0 {
 			return errors.New("the stalled leader never fenced itself")
 		}
 		return nil
 	}},
-	"B18": {seeds: 16, cfg: DefaultConfig},
-}
-
-// independent runs the checkers of package check on a run.
-func independent(res *Result) error {
-	h, err := res.Checkable()
-	if err != nil {
-		return err
-	}
-	return errors.Join(check.Durable(h), check.Revisions(h), check.Watches(h))
+	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
 }
 
 // TestPlantedInventory requires a case for every planted bug.
@@ -117,34 +124,31 @@ func TestPlanted(t *testing.T) {
 	if !ok {
 		t.Fatalf("unknown planted bug %q", name)
 	}
+	want := regexp.MustCompile(c.want)
 	planted.Active = name
 	t.Cleanup(func() { planted.Active = "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
-		cryptotest.SetGlobalRandom(t, seed)
-		res, err := runCatching(c.cfg(seed))
-		if err == nil {
-			err = independent(res)
-		}
-		if err == nil && c.extra != nil {
-			err = c.extra(res)
-		}
-		if err != nil {
+		caught := false
+		if !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
+			cryptotest.SetGlobalRandom(t, seed)
+			res, err := Run(c.cfg(seed))
+			if err == nil {
+				err = independent(res)
+			}
+			if err == nil && c.extra != nil {
+				err = c.extra(res)
+			}
+			if err == nil {
+				return
+			}
+			if !want.MatchString(err.Error()) {
+				t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
+			}
+			caught = true
 			t.Logf("%s (%s) caught by seed %d: %v", name, planted.Bugs[name], seed, err)
+		}) || caught {
 			return
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
-}
-
-// runCatching runs a seed and turns a panic into an error. A planted bug
-// can break Raft's own invariants, and Raft then panics, which stops a
-// real node too: that counts as caught. Only planted runs do this.
-func runCatching(cfg Config) (res *Result, err error) {
-	defer func() {
-		//nolint:forbidigo // A panic of a planted run is the bug being caught; see above.
-		if p := recover(); p != nil {
-			err = fmt.Errorf("seed %d panicked: %v", cfg.Seed, p)
-		}
-	}()
-	return Run(cfg)
 }

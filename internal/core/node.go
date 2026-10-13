@@ -582,6 +582,15 @@ func (n *Node) Process() (Effects, error) {
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
 		}
+		if planted.On("B06d") {
+			// Planted: a progress notification at the current revision
+			// goes out ahead of the events it covers.
+			for _, w := range n.watchers {
+				if !w.dead && w.progress && len(w.pending) > 0 {
+					n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id})
+				}
+			}
+		}
 		n.flushWatches()
 	}
 	if n.err != nil {

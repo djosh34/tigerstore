@@ -80,18 +80,15 @@ func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
 
 // WAL appends to the newest segment.
 type WAL struct {
-	fs    FS
-	seg   File
-	seq   uint64
-	size  int64
-	crc   uint32
-	last  uint64
-	buf   []byte
-	dirty bool
-	// lastStart is where the last valid record of the newest segment
-	// started during recovery.
-	lastStart int
-	maxSize   int64
+	fs      FS
+	seg     File
+	seq     uint64
+	size    int64
+	crc     uint32
+	last    uint64
+	buf     []byte
+	dirty   bool
+	maxSize int64
 }
 
 // HardState is the Raft hard state.
@@ -168,7 +165,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			break
 		}
 		w.seq, w.crc = seq, crc
-		good, err := w.replay(data, rec)
+		good, lastStart, err := w.replay(data, rec)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
 		}
@@ -178,8 +175,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			// A torn tail: the write was never synced, so nothing in it was
 			// acknowledged.
-			if planted.On("B04b") && w.lastStart > 0 {
-				good = int64(w.lastStart)
+			if planted.On("B04b") && lastStart > 0 {
+				// Planted: the repair also cuts the last synced record, and
+				// recovery starts over on what is left.
+				if err := errors.Join(f.Truncate(lastStart), f.Sync(), f.Close()); err != nil {
+					return nil, nil, err
+				}
+				return Open(fs)
 			}
 			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
 				return nil, nil, errors.Join(err, f.Close())
@@ -216,35 +218,37 @@ func parseHeader(data []byte) (seq uint64, crc uint32, ok bool) {
 // replay applies the records of one segment to rec and returns the length
 // of the valid prefix. A record that does not verify ends the prefix. A
 // record that verifies but does not fit the log is an error.
-func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
+// replay applies the records of one segment and returns where its valid
+// records end and where the last of them starts.
+func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err error) {
 	off := headerSize
 	for off < len(data) {
 		if len(data)-off < recHdrSize {
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		n := int(binary.LittleEndian.Uint32(data[off:]))
 		sum := binary.LittleEndian.Uint32(data[off+4:])
 		end := off + recHdrSize + n
 		if end > len(data) {
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		body := data[off+8 : end]
 		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !planted.On("B04a") {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
 			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
-				return int64(off), fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
+				return int64(off), lastStart, fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
 			}
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		if err := w.apply(body[0], body[1:], rec); err != nil {
-			return int64(off), err
+			return int64(off), lastStart, err
 		}
-		w.lastStart = off
+		lastStart = int64(off)
 		w.crc = sum
 		off = end
 	}
-	return int64(off), nil
+	return int64(off), lastStart, nil
 }
 
 // verifiesAfter reports whether a whole record starts at off and verifies

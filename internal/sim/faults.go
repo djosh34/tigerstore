@@ -134,7 +134,7 @@ func (s *Sim) diskFailed(n *node, err error) {
 		// once the write is done, so this is a failed sync.
 		n.diskBusy = false
 		for _, j := range n.inflight {
-			n.core.Persisted(j)
+			s.persisted(n, j)
 		}
 		s.process(n)
 		return
