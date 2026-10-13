@@ -130,6 +130,12 @@ type result struct {
 	ServerCores        []float64        `json:"server_cores_by_node"`
 	ClientCPUUsPerOp   float64          `json:"client_cpu_us_per_op"`
 	ClientCores        float64          `json:"client_cores"`
+	CPUWindowS         float64          `json:"cpu_window_s"`
+	MachineCPUSeconds  float64          `json:"machine_cpu_seconds"`
+	MachineCores       float64          `json:"machine_cores"`
+	MachineBusyPct     float64          `json:"machine_busy_pct"`
+	MachineIOWaitPct   float64          `json:"machine_iowait_pct"`
+	MachineStealPct    float64          `json:"machine_steal_pct"`
 	Errors             map[string]int64 `json:"errors"`
 }
 
@@ -613,6 +619,15 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	self := samples[1].self - samples[0].self
 	res.ClientCPUUsPerOp = perOp(self, res.Ops)
 	res.ClientCores = self.Seconds() / elapsed.Seconds()
+	res.CPUWindowS = elapsed.Seconds()
+	res.MachineCPUSeconds = float64(samples[1].machine.busy-samples[0].machine.busy) / userHZ
+	res.MachineCores = res.MachineCPUSeconds / elapsed.Seconds()
+	totalTicks := float64(samples[1].machine.total - samples[0].machine.total)
+	if totalTicks > 0 {
+		res.MachineBusyPct = 100 * float64(samples[1].machine.busy-samples[0].machine.busy) / totalTicks
+		res.MachineIOWaitPct = 100 * float64(samples[1].machine.iowait-samples[0].machine.iowait) / totalTicks
+		res.MachineStealPct = 100 * float64(samples[1].machine.steal-samples[0].machine.steal) / totalTicks
+	}
 	if res.Watch != nil {
 		res.Watch.ServerCPUUsPerEvent = perOp(total, res.Watch.Events)
 	}

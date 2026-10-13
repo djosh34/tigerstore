@@ -65,7 +65,9 @@ place() {
 	done
 	local placed=""
 	for i in 0 1 2; do
-		taskset -apc "${cpus[i]}" "${pid[order[i]]}" >/dev/null
+		if [ "${NO_PIN:-0}" != 1 ]; then
+			taskset -apc "${cpus[i]}" "${pid[order[i]]}" >/dev/null
+		fi
 		placed+="${placed:+,}${pid[order[i]]}"
 	done
 	echo "$leader" >"$dir/leader"
@@ -115,7 +117,9 @@ start() {
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
 				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth)
 		fi
-		taskset -c "${cpus[i - 1]}" "$bin" \
+		local launch=()
+		if [ "${NO_PIN:-0}" != 1 ]; then launch=(taskset -c "${cpus[i - 1]}"); fi
+		"${launch[@]}" "$bin" \
 			--name "n$i" \
 			--data-dir "$dir/n$i" \
 			--listen-client-urls "$client" \

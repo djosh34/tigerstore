@@ -1,0 +1,79 @@
+name: multicore experiment
+on:
+  workflow_dispatch:
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, ubuntu-24.04]
+        workload: [put, txn, range]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Check deadline and install stock etcd
+        run: |
+          test "$(date -u +%s)" -lt 1791928800
+          arch=$(uname -m)
+          case "$arch" in
+            aarch64) arch=arm64; sha=5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7 ;;
+            x86_64) arch=amd64; sha=3a3679bc51a4ee9d30bccea1da7cd4fe62c6fc1d2ca1255068d2c53bf3026135 ;;
+            *) exit 1 ;;
+          esac
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" "https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-$arch.tar.gz"
+          echo "$sha  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          mkdir bin results
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-$arch/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-$arch/etcdctl" bin/
+      - name: Build main server and PR 86 generator with machine CPU counters
+        env:
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: |
+          go test -short ./cmd/loadgen
+          go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/tigerstore ./cmd/tigerstore
+          git diff 36eda3cd -- cmd/tigerstore internal go.mod go.sum > results/server-diff.txt
+          test ! -s results/server-diff.txt
+      - run: scripts/dev-certs.sh certs
+      - name: Enable barriers and record runner
+        run: |
+          sudo mount -o remount,barrier=1 /
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          test "$(nproc)" = 4
+          {
+            date -u +%FT%TZ
+            lscpu
+            free -b
+            findmnt -T "$RUNNER_TEMP" -o SOURCE,FSTYPE,OPTIONS
+            uname -a
+            go version
+            bin/etcd --version
+            sha256sum bin/*
+            echo 'server main 36eda3cd; experiment:'
+            git rev-parse HEAD
+            echo 'No GOMAXPROCS, GOMEMLIMIT, CPU pinning or CPU quota. 8 connections with 8/32/128 slots, 64/256/1024 closed-loop clients. 3s warmup, 10s window, 3 repetitions, alternating store order.'
+            echo 'Three nodes, client and peer mTLS; 8 GiB quota as bench/, default etcd persistence; fresh data per run; generator targets leader.'
+            cat /proc/self/cgroup
+            grep Cpus_allowed_list /proc/self/status
+            cat /sys/fs/cgroup/cpu.max || true
+          } > results/runner.txt
+      - name: Measure
+        env:
+          WORKLOADS: ${{ matrix.workload }}
+        run: DATA="$RUNNER_TEMP/multicore-data" bench/multicore.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: multicore-${{ matrix.os }}-${{ matrix.workload }}
+          path: results
+      - name: Remove build output and cluster data
+        if: always()
+        run: rm -rf bin certs "$RUNNER_TEMP/multicore-data" "$RUNNER_TEMP/etcd.tgz" "$RUNNER_TEMP"/etcd-v3.7.2-linux-*; go clean -cache -testcache

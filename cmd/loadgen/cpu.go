@@ -55,6 +55,39 @@ type cpuSample struct {
 	at      int64
 	servers []time.Duration
 	self    time.Duration
+	machine machineCPU
+}
+
+type machineCPU struct {
+	busy, total, iowait, steal int64
+}
+
+// machineCPUTicks samples the aggregate CPU line. Guest time is already
+// included in user/nice. Busy excludes idle, iowait and stolen time.
+func machineCPUTicks() (machineCPU, error) {
+	b, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return machineCPU{}, err
+	}
+	line, _, _ := bytes.Cut(b, []byte("\n"))
+	f := bytes.Fields(line)
+	if len(f) < 9 || string(f[0]) != "cpu" {
+		return machineCPU{}, fmt.Errorf("malformed /proc/stat")
+	}
+	var ticks [8]int64
+	for i := range ticks {
+		ticks[i], err = strconv.ParseInt(string(f[i+1]), 10, 64)
+		if err != nil {
+			return machineCPU{}, err
+		}
+	}
+	var m machineCPU
+	for _, t := range ticks {
+		m.total += t
+	}
+	m.busy = ticks[0] + ticks[1] + ticks[2] + ticks[5] + ticks[6]
+	m.iowait, m.steal = ticks[4], ticks[7]
+	return m, nil
 }
 
 func sampleCPU(pids []int) (cpuSample, error) {
@@ -68,5 +101,9 @@ func sampleCPU(pids []int) (cpuSample, error) {
 	}
 	var err error
 	s.self, err = selfCPU()
+	if err != nil {
+		return s, err
+	}
+	s.machine, err = machineCPUTicks()
 	return s, err
 }
