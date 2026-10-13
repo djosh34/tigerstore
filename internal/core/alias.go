@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"math"
+	"slices"
 	"unicode/utf8"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -147,8 +148,8 @@ func scalar(b []byte, typ protowire.Type, fd protoreflect.FieldDescriptor) (prot
 			}
 			return protoreflect.ValueOfString(string(x)), n, nil
 		}
-		return protoreflect.ValueOfBytes(x[:len(x):len(x)]), n, nil
-	default:
+		return protoreflect.ValueOfBytes(slices.Clip(x)), n, nil
+	case protowire.StartGroupType, protowire.EndGroupType:
 		return protoreflect.Value{}, 0, errBadMessage
 	}
 	if n < 0 {
@@ -175,6 +176,8 @@ func scalar(b []byte, typ protowire.Type, fd protoreflect.FieldDescriptor) (prot
 		return protoreflect.ValueOfFloat32(math.Float32frombits(uint32(v))), n, nil
 	case protoreflect.DoubleKind:
 		return protoreflect.ValueOfFloat64(math.Float64frombits(v)), n, nil
+	case protoreflect.StringKind, protoreflect.BytesKind, protoreflect.MessageKind, protoreflect.GroupKind:
+		// These never come as a number; wireTypeFits keeps them out.
 	}
 	return protoreflect.Value{}, 0, errBadMessage
 }

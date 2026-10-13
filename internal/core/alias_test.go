@@ -63,8 +63,9 @@ func randomTxn(r *rand.Rand, depth int) *pb.TxnRequest {
 	return t
 }
 
-// TestUnmarshalAliasMatchesProtobuf decodes random transactions, and
-// concatenations of two, which protobuf merges, with unmarshalAlias and
+// TestUnmarshalAliasMatchesProtobuf decodes random transactions,
+// concatenations of two, which protobuf merges, and ones with unknown and
+// mistyped fields with unmarshalAlias and
 // proto.Unmarshal, and requires the same message, also on every
 // truncation, which must fail in both or neither.
 func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
@@ -81,6 +82,11 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 				t.Fatal(err)
 			}
 			in = append(append([]byte{}, a...), b...)
+		}
+		if i%3 == 2 {
+			// An unknown field 7, and field 1 (compare) as a varint, which
+			// protobuf keeps as unknown too.
+			in = append(append([]byte{}, in...), 0x3a, 2, 'u', 'v', 0x08, 0x05)
 		}
 		for _, cut := range []int{len(in), r.IntN(len(in) + 1)} {
 			want, got := &pb.TxnRequest{}, &pb.TxnRequest{}
@@ -106,7 +112,11 @@ func TestUnmarshalAliasShares(t *testing.T) {
 	if err := UnmarshalAlias(in, got); err != nil {
 		t.Fatal(err)
 	}
-	copy(in[bytes.Index(in, []byte("value")):], "VALUE")
+	i := bytes.Index(in, []byte("value"))
+	if i < 0 {
+		t.Fatal("the encoding does not hold the value")
+	}
+	copy(in[i:], "VALUE")
 	if v := got.Success[0].GetRequestPut().Value; string(v) != "VALUE" || cap(v) != len(v) {
 		t.Fatalf("value %q with capacity %d is not a clipped slice of the input", v, cap(v))
 	}
