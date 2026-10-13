@@ -114,6 +114,7 @@ func (c *conn) flush() error {
 		b.reqs[keep], b.tags[keep] = b.reqs[i], tag
 		keep++
 		c.chargeLocked(&st.reqHeld, st.reqSize+callCost)
+		c.atNode[st] = struct{}{}
 	}
 	c.mu.Unlock()
 	clear(b.reqs[keep:])
@@ -132,7 +133,7 @@ func (c *conn) flush() error {
 	// The node stopped; it takes no more requests.
 	c.mu.Lock()
 	for _, tag := range b.tags {
-		c.releaseLocked(&tag.(*stream).reqHeld)
+		c.releaseReqLocked(tag.(*stream))
 	}
 	c.mu.Unlock()
 	for _, tag := range b.tags {
@@ -160,27 +161,52 @@ func (c *conn) releaseLocked(charge *int) {
 	c.creditLocked()
 }
 
+// releaseReqLocked frees a call's request charge once the node answered
+// or stopped. c.mu is held.
+func (c *conn) releaseReqLocked(st *stream) {
+	delete(c.atNode, st)
+	c.releaseLocked(&st.reqHeld)
+}
+
 // creditLocked sends a connection window update once enough was received
-// and the connection's calls hold less than maxHeld. c.mu is held.
+// and the connection's calls, and the replies waiting for the writer,
+// hold less than maxHeld. c.mu is held.
 func (c *conn) creditLocked() {
-	if c.recvCredit >= connWindow/4 && c.held <= maxHeld {
+	if c.recvCredit >= connWindow/4 && c.held+int(c.waitingReplies.Load()) <= maxHeld {
 		c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
 		c.recvCredit = 0
 	}
 }
 
 // completed is one Complete call's replies in a list the committer pushes
-// onto without a lock.
+// onto without a lock, with an estimate of their encoded size.
 type completed struct {
-	cs   []node.Completion
-	next *completed
+	cs    []node.Completion
+	bytes int64
+	next  *completed
+}
+
+// replyEstimate is the size counted for a reply that has no message, an
+// error.
+const replyEstimate = 64
+
+// estimate is the size a reply will take once encoded.
+func estimate(cp *node.Completion) int64 {
+	if cp.Resp == nil {
+		return replyEstimate
+	}
+	return int64(proto.Size(cp.Resp))
 }
 
 // Complete takes replies from the node's committer. It pushes them onto a
-// lock-free list, so the committer never waits, and wakes the writer,
-// which encodes them. Until then each call's request charge covers it.
+// lock-free list, so the committer never waits, counts their size against
+// the connection's budget, and wakes the writer, which encodes them.
 func (c *conn) Complete(cs []node.Completion) {
 	n := &completed{cs: cs}
+	for i := range cs {
+		n.bytes += estimate(&cs[i])
+	}
+	c.waitingReplies.Add(n.bytes)
 	for {
 		n.next = c.completions.Load()
 		if c.completions.CompareAndSwap(n.next, n) {
@@ -195,6 +221,8 @@ func (c *conn) takeCompletions() [][]node.Completion {
 	var out [][]node.Completion
 	for n := c.completions.Swap(nil); n != nil; n = n.next {
 		out = append(out, n.cs)
+		// complete charges each reply to its call from here on.
+		c.waitingReplies.Add(-n.bytes)
 	}
 	slices.Reverse(out)
 	return out
@@ -226,7 +254,7 @@ func (c *conn) complete(batches [][]node.Completion) {
 	}
 	c.mu.Lock()
 	for _, f := range out {
-		c.releaseLocked(&f.st.reqHeld)
+		c.releaseReqLocked(f.st)
 		if f.st.reset || f.st.done.Swap(true) {
 			// Reset by the client or ended at its deadline: the reply is
 			// dropped.
@@ -250,12 +278,12 @@ func (c *conn) nodeStopped() {
 		c.complete(cs)
 	}
 	c.mu.Lock()
+	// The node answers none of these; calls that ended meanwhile, at a
+	// deadline or a reset, still had their request charge.
 	var held []*stream
-	for _, st := range c.streams {
-		if st.reqHeld > 0 {
-			c.releaseLocked(&st.reqHeld)
-			held = append(held, st)
-		}
+	for st := range c.atNode {
+		c.releaseReqLocked(st)
+		held = append(held, st)
 	}
 	c.mu.Unlock()
 	for _, st := range held {

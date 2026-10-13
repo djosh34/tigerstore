@@ -79,8 +79,12 @@ type conn struct {
 	// held is the bytes the connection's calls hold; see maxHeld.
 	held int
 
-	// completions are the replies from the node for the writer to encode.
-	completions atomic.Pointer[completed]
+	// completions are the replies from the node for the writer to encode,
+	// and waitingReplies their estimated size.
+	completions    atomic.Pointer[completed]
+	waitingReplies atomic.Int64
+	// atNode is the calls the node has and has not answered.
+	atNode map[*stream]struct{}
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -111,6 +115,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		wake:     make(chan struct{}, 1),
 		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
+		atNode:   map[*stream]struct{}{},
 		sendWin:  65535,
 		initWin:  65535,
 		maxFrame: 16384,
@@ -450,6 +455,13 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
+	if c.closed {
+		// The connection closed while the reader decoded these headers:
+		// the stream is dead from the start and arms no timer.
+		st.reset = true
+		c.mu.Unlock()
+		return st
+	}
 	c.streams[id] = st
 	if grpc && hasTimeout {
 		// The deadline ends the call whether or not its request is
