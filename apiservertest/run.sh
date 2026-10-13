@@ -42,7 +42,7 @@ fi
 # Compile every test binary first, so that linking does not compete with
 # the first tests for the disk and the CPU.
 go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing >/dev/null
-go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log" | grep -E -- '^(--- |ok|FAIL|panic)|^\s+--- FAIL'
+go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log"
 # #48 allows no skipped test.
 if grep -q -- '--- SKIP' "$work/test-$version.log"; then
 	echo "a test was skipped:" >&2
