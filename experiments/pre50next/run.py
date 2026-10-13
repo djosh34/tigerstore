@@ -17,6 +17,7 @@ HOST = os.environ.get('HOST') == '1'
 WORKERS = int(os.environ.get('CLIENTS', '64'))
 MODE = os.environ.get('MODE', 'primary')
 WINDOW_SECONDS = int(os.environ.get('WINDOW_SECONDS', '0'))
+TOTAL_PUTS = int(os.environ.get('TOTAL_PUTS', '30000'))
 PROFILE_VARIANT = os.environ.get('PROFILE_VARIANT', '')
 OUT = Path(os.environ.get('OUT', ROOT / f'evidence/pre50next/{"host" if HOST else MODE}/c{WORKERS}')).resolve()
 TMP = Path(os.environ.get('WORK_DIR', OUT / 'private')).resolve()
@@ -275,7 +276,7 @@ def cluster(store, label, profile=False):
         barrier = data / 'barrier'
         barrier.mkdir()
         seconds = 12 if MODE == 'profile' else WINDOW_SECONDS
-        args = load_args('put', 0 if seconds else 30000)+['-barrier-dir', barrier]
+        args = load_args('put', 0 if seconds else TOTAL_PUTS)+['-barrier-dir', barrier]
         if seconds:
             args += ['-duration', f'{seconds}s']
         gen = spawn(args, env=gen_env, stdout=sp.PIPE, stderr=sp.PIPE, text=True)
@@ -329,7 +330,7 @@ def cluster(store, label, profile=False):
                 pool.shutdown(wait=True)
         result = json.loads((dest / 'put.json').read_text())
         assert result['valid'] and not result['errors'] and len(result['terms']) == 1
-        assert result['successes'] > 0 if seconds else result['successes'] == 30000
+        assert result['successes'] > 0 if seconds else result['successes'] == TOTAL_PUTS
         assert revision == result['revision_after']
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}
         assert len(result['cpu_us_op']) == 4
@@ -394,6 +395,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     refs = json.loads((ROOT / 'experiments/pre50next/refs.json').read_text())
     assert 0 <= WINDOW_SECONDS <= 12
+    assert TOTAL_PUTS in (30000, 60000)
     assert not HOST or WINDOW_SECONDS == 0
     plan = list(schedule(refs['candidates'], MODE, HOST, PROFILE_VARIANT))
     # Never overwrite or combine independent runs.

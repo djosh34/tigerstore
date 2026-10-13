@@ -7,6 +7,10 @@ check_time
 [[ ${CLIENTS:?} == 64 || $CLIENTS == 256 ]]
 [[ ${MODE:-primary} == primary || ${MODE:-primary} == profile ]]
 export MODE=${MODE:-primary}
+export GENERATOR=${GENERATOR:-grpc}
+[[ $GENERATOR == grpc || $GENERATOR == lean ]]
+LOAD_PACKAGE=./experiments/pre50next/load
+if [[ $GENERATOR == lean ]]; then LOAD_PACKAGE=./experiments/pre50next/leanload; fi
 export GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOMAXPROCS=2
 export OUT=$PWD/evidence/pre50next/$MODE/c$CLIENTS
 export WORK_DIR=$RUNNER_TEMP/pre50next-$MODE-c$CLIENTS-${GITHUB_RUN_ATTEMPT:-1}
@@ -46,7 +50,7 @@ git status --short > "$OUT/build-status.txt"
 cp experiments/pre50next/refs.json "$OUT/refs.json"
 mkdir "$OUT/instrumentation"
 cp experiments/pre50next/{instrument.py,observe.go.txt,osfs.go.txt} "$OUT/instrumentation/"
-sha256sum experiments/pre50next/{instrument.py,observe.go.txt,osfs.go.txt,run.py,run.sh,load/*.go} > "$OUT/harness-sha256.txt"
+sha256sum experiments/pre50next/{instrument.py,observe.go.txt,osfs.go.txt,run.py,run.sh} "$LOAD_PACKAGE/"*.go > "$OUT/harness-sha256.txt"
 python3 - <<'PY' > "$WORK_DIR/build-refs.tsv"
 import json, os, re
 refs = json.load(open('experiments/pre50next/refs.json'))
@@ -74,15 +78,15 @@ done < "$WORK_DIR/build-refs.tsv"
 check_time
 PYTHONDONTWRITEBYTECODE=1 python3 experiments/pre50next/test_harness.py
 check_time
-go test -short -parallel 2 -timeout 1m ./experiments/pre50next/load
+go test -short -parallel 2 -timeout 2m "$LOAD_PACKAGE"
 check_time
-go build -o "$BIN_DIR/load" ./experiments/pre50next/load
+go build -o "$BIN_DIR/load" "$LOAD_PACKAGE"
 python3 - <<'PY'
 import hashlib, json, os
 from pathlib import Path
 refs = json.load(open('experiments/pre50next/refs.json'))
 bin = Path(os.environ['BIN_DIR'])
-manifest = dict(base=refs['base'], candidates=refs['candidates'],
+manifest = dict(base=refs['base'], candidates=refs['candidates'], generator=os.environ['GENERATOR'],
                 harness=os.popen('git rev-parse HEAD').read().strip(),
                 sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in bin.iterdir()})
 (bin/'binaries.json').write_text(json.dumps(manifest, indent=2)+'\n')

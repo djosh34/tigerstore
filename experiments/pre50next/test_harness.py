@@ -75,7 +75,8 @@ class HarnessTests(unittest.TestCase):
         for token in ('const keyspace = 4096', 'make([]byte, 1024)', '"barrier-dir"', '"drained", "release"'):
             self.assertIn(token, text)
         refs = json.loads((HERE / 'refs.json').read_text())
-        self.assertEqual(refs['base'], '396bced923ee47540e89e1e2ca1053ecde5673ce')
+        self.assertEqual(refs['base'], 'aa9d9b6eea79c73f12fe0153aefa809841967e88')
+        self.assertEqual(refs['provenance']['lean_generator'], 'd2408301966b99471bfed06d4c2dc1cd1e5af462')
         self.assertEqual(refs['provenance']['bench68'], '32ceb80fb36fd4229c2e2e7594b40da197fe4eaf')
 
 

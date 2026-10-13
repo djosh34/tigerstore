@@ -1,7 +1,7 @@
 name: pre50next experiment
 on:
   push:
-    branches: [exp/pre-50-next, exp/pre-50-next-harness]
+    branches: [exp/pre-50-next]
     paths:
       - experiments/pre50next/**
       - .github/workflows/pre50next.yml
@@ -17,18 +17,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - clients: 64
-            mode: primary
-          - clients: 256
-            mode: primary
-          - clients: 256
-            mode: profile
+        clients: [64, 256]
+        mode: [primary, profile]
     steps:
       - name: Deadline gate
         id: deadline
         run: |
-          # Reserve the full job limit so later Actions steps cannot start past the deadline.
           if [[ $(( $(date -u +%s) + 840 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
             echo 'open=false' >> "$GITHUB_OUTPUT"
           else
@@ -42,13 +36,13 @@ jobs:
         if: steps.deadline.outputs.open == 'true'
         with:
           go-version-file: go.mod
-      - name: Baseline and etcd, separate profile controls
+      - name: Main and etcd with the lean generator
         if: steps.deadline.outputs.open == 'true'
         env:
           CLIENTS: ${{ matrix.clients }}
           MODE: ${{ matrix.mode }}
-          WINDOW_SECONDS: 12
-          PROFILE_VARIANT: peer
+          GENERATOR: lean
+          TOTAL_PUTS: 60000
         run: |
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           timeout --kill-after=5s 780s bash experiments/pre50next/run.sh
@@ -63,27 +57,25 @@ jobs:
         run: |
           report=evidence/pre50next/${{ matrix.mode }}/c${{ matrix.clients }}/summary.md
           if [[ -f $report ]]; then printf '%s\n' "$(<"$report")" >> "$GITHUB_STEP_SUMMARY"; fi
-  checks:
+  lean-checks:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - name: Deadline gate
         id: deadline
         run: |
-          if [[ $(( $(date -u +%s) + 720 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
+          if [[ $(( $(date -u +%s) + 480 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
             echo 'open=false' >> "$GITHUB_OUTPUT"
           else
             echo 'open=true' >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v7
         if: steps.deadline.outputs.open == 'true'
-        with:
-          ref: d937be176f8712ec9c3209d6850955c3786a50a5
       - uses: actions/setup-go@v7
         if: steps.deadline.outputs.open == 'true'
         with:
           go-version-file: go.mod
-      - name: Focused race and persistence checks on both patches
+      - name: Lean client race checks
         if: steps.deadline.outputs.open == 'true'
         env:
           GOFLAGS: -p=2
@@ -91,14 +83,14 @@ jobs:
         run: |
           set -o pipefail
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
-          mkdir -p evidence/pre50next/checks
-          git rev-parse HEAD | tee evidence/pre50next/checks/source.txt
-          go version | tee evidence/pre50next/checks/go.txt
-          timeout --kill-after=5s 600s go test -race -short -parallel 2 -count=1 -timeout 8m \
-            ./internal/peer ./internal/server ./internal/node ./internal/core ./internal/wal ./internal/lint \
-            2>&1 | tee evidence/pre50next/checks/tests.txt
+          mkdir -p evidence/pre50next/lean-checks
+          git rev-parse HEAD | tee evidence/pre50next/lean-checks/source.txt
+          go version | tee evidence/pre50next/lean-checks/go.txt
+          timeout --kill-after=5s 360s go test -race -short -parallel 2 -count=1 -timeout 5m \
+            ./experiments/pre50next/leanload \
+            2>&1 | tee evidence/pre50next/lean-checks/tests.txt
       - uses: actions/upload-artifact@v6
         if: always() && steps.deadline.outputs.open == 'true'
         with:
-          name: pre50next-checks-${{ github.run_id }}
-          path: evidence/pre50next/checks
+          name: pre50next-lean-checks-${{ github.run_id }}
+          path: evidence/pre50next/lean-checks
