@@ -125,11 +125,12 @@ func stalledPeerIsDropped(t *testing.T) error {
 	if err != nil {
 		return err
 	}
-	addr1, addr2 := freeAddr(t), freeAddr(t)
-	b := start(t, 2, map[uint64]string{1: addr1, 2: addr2}, c2, ca.Pool)
+	addrs, lns := listeners(t, 1, 2)
+	addr1, addr2 := addrs[1], addrs[2]
+	b := start(t, 2, lns[2], map[uint64]string{1: addr1, 2: addr2}, c2, ca.Pool)
 	defer b.t.Close() //nolint:errcheck // closing a test transport
 	proxy := newStallProxy(t, addr2)
-	a := start(t, 1, map[uint64]string{1: addr1, 2: proxy.ln.Addr().String()}, c1, ca.Pool)
+	a := start(t, 1, lns[1], map[uint64]string{1: addr1, 2: proxy.ln.Addr().String()}, c1, ca.Pool)
 	defer a.t.Close() //nolint:errcheck // closing a test transport
 
 	a.t.Send(msg(1, "before"))
