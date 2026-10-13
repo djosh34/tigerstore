@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HOST = os.environ.get('HOST') == '1'
 WORKERS = int(os.environ.get('CLIENTS', '64'))
 MODE = os.environ.get('MODE', 'primary')
+WINDOW_SECONDS = int(os.environ.get('WINDOW_SECONDS', '0'))
+PROFILE_VARIANT = os.environ.get('PROFILE_VARIANT', '')
 OUT = Path(os.environ.get('OUT', ROOT / f'evidence/pre50next/{"host" if HOST else MODE}/c{WORKERS}')).resolve()
 TMP = Path(os.environ.get('WORK_DIR', OUT / 'private')).resolve()
 BIN = Path(os.environ.get('BIN_DIR', TMP / 'bin')).resolve()
@@ -116,13 +118,18 @@ def wait_file(path, proc, seconds=25):
         time.sleep(.005)
 
 
-def schedule(candidates, mode, host):
+def schedule(candidates, mode, host, profile_variant=''):
     assert mode in ('primary', 'profile')
     assert not host or mode == 'primary', 'HOST permits baseline only, no profiles'
     for rep in range(1, 2 if host else 6):
         if mode == 'profile':
-            cohort = [('baseline', 'baseline-control', False), ('etcd', 'etcd-control', False),
-                      ('baseline', 'baseline-profile', True)]
+            if profile_variant:
+                assert profile_variant in {c['name'] for c in candidates}
+                cohort = [('baseline', 'baseline-profile', True), ('etcd', 'etcd-control', False),
+                          (profile_variant, profile_variant+'-profile', True)]
+            else:
+                cohort = [('baseline', 'baseline-control', False), ('etcd', 'etcd-control', False),
+                          ('baseline', 'baseline-profile', True)]
         else:
             cohort = [('baseline', 'baseline', False), ('etcd', 'etcd', False)]
             if not host:
@@ -267,9 +274,10 @@ def cluster(store, label, profile=False):
         warmup = json.loads((dest / 'warmup.json').read_text())
         barrier = data / 'barrier'
         barrier.mkdir()
-        args = load_args('put', 0 if MODE == 'profile' else 30000)+['-barrier-dir', barrier]
-        if MODE == 'profile':
-            args += ['-duration', '12s']
+        seconds = 12 if MODE == 'profile' else WINDOW_SECONDS
+        args = load_args('put', 0 if seconds else 30000)+['-barrier-dir', barrier]
+        if seconds:
+            args += ['-duration', f'{seconds}s']
         gen = spawn(args, env=gen_env, stdout=sp.PIPE, stderr=sp.PIPE, text=True)
         wait_file(barrier / 'ready', gen)
         save(dest / 'generator-affinities-before.json', generator_affinity(gen))
@@ -321,7 +329,7 @@ def cluster(store, label, profile=False):
                 pool.shutdown(wait=True)
         result = json.loads((dest / 'put.json').read_text())
         assert result['valid'] and not result['errors'] and len(result['terms']) == 1
-        assert result['successes'] == 30000 if MODE == 'primary' else result['successes'] > 0
+        assert result['successes'] > 0 if seconds else result['successes'] == 30000
         assert revision == result['revision_after']
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}
         assert len(result['cpu_us_op']) == 4
@@ -336,7 +344,7 @@ def cluster(store, label, profile=False):
         save(dest / 'status-after.json', after_status)
         save(dest / 'affinities-after.json', affinities(procs, order))
         if profile:
-            capture.update({'operations': result['successes'], 'generator_elapsed_s': result['elapsed_s'],
+            capture.update({'binary': store, 'operations': result['successes'], 'generator_elapsed_s': result['elapsed_s'],
                             'caveat': 'Divide sampled CPU by completed Puts, not by profile duration. HTTP bounds approximate sampler bounds. The 15s capture includes 0.5s idle lead, drain, fences, debug calls and idle tail around a 12s arrival window.'})
             for bounds in capture['nodes'].values():
                 bounds['estimated_idle_lead_s'] = capture['barrier_start_monotonic']-bounds['request_start_monotonic']
@@ -371,8 +379,8 @@ def verify_binaries(refs):
     manifest = json.loads((BIN / 'binaries.json').read_text())
     assert manifest['base'] == refs['base'], 'downloaded base does not match refs.json'
     required = ['baseline', 'etcd', 'etcdctl', 'load']
-    if not HOST and MODE == 'primary':
-        required += [c['name'] for c in refs['candidates']]
+    if not HOST:
+        required += [c['name'] for c in refs['candidates'] if MODE == 'primary' or c['name'] == PROFILE_VARIANT]
     for name in required:
         assert hashlib.sha256((BIN / name).read_bytes()).hexdigest() == manifest['sha256'][name], name
     save(OUT / 'binaries.json', manifest)
@@ -385,7 +393,9 @@ def main():
     assert not HOST or MODE == 'primary', 'host profiles forbidden'
     OUT.mkdir(parents=True, exist_ok=True)
     refs = json.loads((ROOT / 'experiments/pre50next/refs.json').read_text())
-    plan = list(schedule(refs['candidates'], MODE, HOST))
+    assert 0 <= WINDOW_SECONDS <= 12
+    assert not HOST or WINDOW_SECONDS == 0
+    plan = list(schedule(refs['candidates'], MODE, HOST, PROFILE_VARIANT))
     # Never overwrite or combine independent runs.
     assert not any((OUT / f'{rep}-{label}').exists() for rep, cohort in plan for _, label, _ in cohort)
     verify_binaries(refs)

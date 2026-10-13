@@ -50,8 +50,13 @@ def bounds(data):
 
 def check(root):
     manifest = json.loads((root / "profile-manifest.json").read_text())
-    if len(manifest) != 15:
-        raise ValueError(f"expected five profiles of each of three nodes, got {len(manifest)}")
+    schedule = json.loads((root / "schedule.json").read_text())
+    expected = {(rep, label, role) for rep, cohort in schedule
+                for _, label, profiled in cohort if profiled
+                for role in ("leader", "follower1", "follower2")}
+    observed = {(r["rep"], r["variant"], r["role"]) for r in manifest}
+    if observed != expected or len(manifest) != len(expected):
+        raise ValueError("incomplete profile cohort")
     records = []
     for record in manifest:
         folder = (root / record["raw"]).parent

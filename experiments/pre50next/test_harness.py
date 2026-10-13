@@ -33,6 +33,14 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(sum(p for _, cohort in profiles for _, _, p in cohort), 5)
         self.assertTrue(all(len(cohort) == 3 for _, cohort in profiles))
 
+    def test_candidate_profile_schedule(self):
+        profiles = list(runner.schedule([{'name': 'peer'}], 'profile', False, 'peer'))
+        self.assertEqual(len(profiles), 5)
+        self.assertEqual(sum(p for _, cohort in profiles for _, _, p in cohort), 10)
+        self.assertEqual(profiles[0][1], [('baseline', 'baseline-profile', True), ('etcd', 'etcd-control', False), ('peer', 'peer-profile', True)])
+        with self.assertRaises(AssertionError):
+            list(runner.schedule([], 'profile', False, 'missing'))
+
     def test_host_restrictions(self):
         host = list(runner.schedule([{'name': 'patch'}], 'primary', True))
         self.assertEqual(len(host), 1)

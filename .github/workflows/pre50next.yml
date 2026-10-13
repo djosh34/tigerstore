@@ -17,8 +17,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        clients: [64, 256]
-        mode: [primary]
+        include:
+          - clients: 64
+            mode: primary
+          - clients: 256
+            mode: primary
+          - clients: 256
+            mode: profile
     steps:
       - name: Deadline gate
         id: deadline
@@ -42,6 +47,8 @@ jobs:
         env:
           CLIENTS: ${{ matrix.clients }}
           MODE: ${{ matrix.mode }}
+          WINDOW_SECONDS: 12
+          PROFILE_VARIANT: peer
         run: |
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           timeout --kill-after=5s 780s bash experiments/pre50next/run.sh

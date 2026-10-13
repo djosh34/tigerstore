@@ -51,9 +51,9 @@ python3 - <<'PY' > "$WORK_DIR/build-refs.tsv"
 import json, os, re
 refs = json.load(open('experiments/pre50next/refs.json'))
 items = [('baseline', refs['base'])]
-if os.environ['MODE'] == 'primary':
-    assert len(refs['candidates']) <= 3
-    items += [(c['name'], c['ref']) for c in refs['candidates']]
+assert len(refs['candidates']) <= 3
+items += [(c['name'], c['ref']) for c in refs['candidates']
+          if os.environ['MODE'] == 'primary' or c['name'] == os.environ.get('PROFILE_VARIANT')]
 seen = {'etcd', 'etcdctl', 'load'}
 for name, ref in items:
     assert re.fullmatch(r'[a-z][a-z0-9_-]*', name) and name not in seen
@@ -104,6 +104,7 @@ python3 experiments/pre50next/run.py
 while IFS= read -r -d '' profile; do
  check_time
  stem=${profile%-cpu.pb.gz}
+ binary=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("binary", "baseline"))' "$(dirname "$profile")/profile-window.json")
  for kind in raw top-flat top-cumulative; do
   check_time
   case $kind in
@@ -111,7 +112,7 @@ while IFS= read -r -d '' profile; do
    top-flat) args=(-top);;
    top-cumulative) args=(-top -cum);;
   esac
-  go tool pprof "${args[@]}" "$BIN_DIR/baseline" "$profile" > "$stem-cpu-$kind.txt"
+  go tool pprof "${args[@]}" "$BIN_DIR/$binary" "$profile" > "$stem-cpu-$kind.txt"
  done
 done < <(find "$OUT" -name '*-cpu.pb.gz' -print0)
 check_time

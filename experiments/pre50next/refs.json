@@ -1,9 +1,7 @@
 {
   "base": "396bced923ee47540e89e1e2ca1053ecde5673ce",
   "candidates": [
-    {"name": "wake", "ref": "30544e072dafd562ca89a101f05a9d2c706aaa77"},
-    {"name": "peer", "ref": "fe6fadb747743a77ebeafe575eb4a8877e356e56"},
-    {"name": "both", "ref": "d937be176f8712ec9c3209d6850955c3786a50a5"}
+    {"name": "peer", "ref": "fe6fadb747743a77ebeafe575eb4a8877e356e56"}
   ],
   "provenance": {
     "bench68": "32ceb80fb36fd4229c2e2e7594b40da197fe4eaf",
