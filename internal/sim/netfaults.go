@@ -64,7 +64,7 @@ func (s *Sim) stallLink() bool {
 	}
 	from, to := s.randomLink()
 	l := &s.links[from][to]
-	l.stallUntil = max(l.stallUntil, s.now+500*Millisecond+s.rng.Int64N(1500*Millisecond))
+	l.stallUntil = max(l.stallUntil, min(s.now+500*Millisecond+s.rng.Int64N(1500*Millisecond), s.healAt))
 	s.stats.LinkStalls++
 	s.mix(0x5a, uint64(from), uint64(to), uint64(l.stallUntil))
 	return true
@@ -83,7 +83,7 @@ func (s *Sim) pause() bool {
 	}
 	// A second pause can only make the first one longer, so that what is
 	// held keeps its place ahead of what comes later.
-	n.pausedUntil = max(n.pausedUntil, s.now+200*Millisecond+s.rng.Int64N(1800*Millisecond))
+	n.pausedUntil = max(n.pausedUntil, min(s.now+200*Millisecond+s.rng.Int64N(1800*Millisecond), s.healAt))
 	s.stats.Pauses++
 	s.mix(0x9a, uint64(n.idx), uint64(n.pausedUntil))
 	s.push(&event{at: n.pausedUntil, kind: evResume, node: n.idx})

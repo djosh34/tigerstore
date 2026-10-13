@@ -630,7 +630,7 @@ func (s *Sim) handle(e *event) {
 	case evWatchResponse:
 		e.watch.receive(e)
 	case evWatchBroken:
-		e.watch.broken()
+		e.watch.broken(e)
 	case evWatchDrop:
 		e.watch.drop()
 	}
@@ -924,7 +924,7 @@ func (s *Sim) crash(n *node) {
 	n.reqs = map[uint64]*clientOp{}
 	for _, w := range s.watchers {
 		if w.open && w.node == n.idx && w.gen == n.gen {
-			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w})
+			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w, stream: w.stream, gen: w.gen})
 		}
 	}
 	n.streams = map[uint64]*watchClient{}
@@ -985,9 +985,9 @@ func (s *Sim) setLinks(mask uint64) {
 func (s *Sim) heal() {
 	s.healed = true
 	s.setLinks(1<<6 - 1)
-	// Link stalls and pauses end on their own, within 2 s, before the
-	// liveness rule starts; ending them early would let new messages
-	// overtake held ones. Half-open links end now.
+	// Link stalls and pauses end by healing, as they are cut to it, and
+	// ending them here would let new messages overtake held ones.
+	// Half-open links end now.
 	for i := range s.links {
 		for j := range s.links[i] {
 			s.links[i][j].halfOpenUntil = 0
