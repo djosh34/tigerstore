@@ -362,21 +362,17 @@ func (s *sender) run() {
 	}
 }
 
-func (s *sender) dial(ctx context.Context) (net.Conn, error) {
+func (s *sender) dial(ctx context.Context) (*outboundConn, error) {
 	host, _, err := net.SplitHostPort(s.addr)
 	if err != nil {
 		return nil, err
 	}
-	d := &tls.Dialer{
-		NetDialer: &net.Dialer{Timeout: dialTimeout},
-		Config: &tls.Config{
-			Certificates: []tls.Certificate{s.t.cfg.Certificate},
-			RootCAs:      s.t.cfg.CA,
-			ServerName:   host,
-			MinVersion:   tls.VersionTLS13,
-		},
-	}
-	c, err := d.DialContext(ctx, "tcp", s.addr)
+	c, err := dialOutbound(ctx, s.addr, &tls.Config{
+		Certificates: []tls.Certificate{s.t.cfg.Certificate},
+		RootCAs:      s.t.cfg.CA,
+		ServerName:   host,
+		MinVersion:   tls.VersionTLS13,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +383,7 @@ func (s *sender) dial(ctx context.Context) (net.Conn, error) {
 }
 
 // write sends frames until the connection fails or the transport closes.
-func (s *sender) write(ctx context.Context, c net.Conn) error {
+func (s *sender) write(ctx context.Context, c *outboundConn) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
 	var hdr [8]byte
 	binary.BigEndian.PutUint64(hdr[:], s.t.cfg.ID)
@@ -401,6 +397,11 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 	for {
 		if !s.pending() {
 			if err := w.Flush(); err != nil {
+				return err
+			}
+			// TLS accepts ciphertext into its lower buffer. Flush that too
+			// before waiting, including a lone frame or the initial ID.
+			if err := c.flush(); err != nil {
 				return err
 			}
 		}
