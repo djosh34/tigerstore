@@ -3,9 +3,7 @@ package server
 import (
 	"net"
 	"testing"
-
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/hpack"
+	"time"
 )
 
 // TestStreamAfterClose decodes a call's headers after its connection
@@ -15,18 +13,10 @@ func TestStreamAfterClose(t *testing.T) {
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	c := newConn(&Server{}, a, a)
 	c.close()
-	hf := &http2.HeadersFrame{}
-	hf.StreamID = 1
-	f := &http2.MetaHeadersFrame{
-		HeadersFrame: hf,
-		Fields: []hpack.HeaderField{
-			{Name: ":method", Value: "POST"},
-			{Name: ":path", Value: "/etcdserverpb.KV/Put"},
-			{Name: "content-type", Value: "application/grpc"},
-			{Name: "grpc-timeout", Value: "1H"},
-		},
-	}
-	st := c.newStream(1, f)
+	st := c.newStream(&reqHeaders{
+		id: 1, method: "POST", path: "/etcdserverpb.KV/Put", contentType: "application/grpc",
+		timeout: time.Hour, hasTimeout: true,
+	})
 	if !st.reset || st.deadline != nil || len(c.streams) != 0 {
 		t.Fatalf("stream after close: reset %v, timer %v, %d streams", st.reset, st.deadline != nil, len(c.streams))
 	}
