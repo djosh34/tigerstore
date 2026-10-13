@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -57,7 +58,11 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 
 	var tripped, unsupported atomic.Bool
 	m := porcupine.Model{
-		Init: func() any { return states{newState(keys)} },
+		Init: func() any {
+			s := newState(keys)
+			s.sum = s.fingerprint()
+			return states{s}
+		},
 		Step: func(st, in, out any) (bool, any) {
 			if tripped.Load() {
 				return false, nil
@@ -150,15 +155,21 @@ func keysOf(reqs []history.Request) []string {
 
 // states is the set of states the store may be in, as in upstream's
 // non-deterministic model: an ambiguous mutation forks every state into one
-// where it took effect and one where it did not.
+// where it took effect and one where it did not. It is sorted by
+// fingerprint, so two different sets usually differ in their first
+// fingerprints. Porcupine compares such sets for every cached step.
 type states []*state
+
+// same reports whether a and b are the same state, checking the cheap
+// fingerprint first.
+func same(a, b *state) bool { return a.sum == b.sum && a.equal(b) }
 
 // step returns the states after one op, and whether the model met a request
 // it does not support.
 func (ss states) step(in input, out output) (states, bool) {
 	next := make(states, 0, len(ss))
 	add := func(s *state) {
-		if !slices.ContainsFunc(next, s.equal) {
+		if !slices.ContainsFunc(next, func(x *state) bool { return same(x, s) }) {
 			next = append(next, s)
 		}
 	}
@@ -166,6 +177,7 @@ func (ss states) step(in input, out output) (states, bool) {
 	for _, s := range ss {
 		n := s.clone()
 		o := n.step(in.req, false)
+		n.sum = n.fingerprint()
 		unsupported = unsupported || o.err == errUnsupported
 		switch {
 		case out.err != nil && out.err.Ambiguous:
@@ -183,6 +195,7 @@ func (ss states) step(in input, out output) (states, bool) {
 			add(n)
 		}
 	}
+	slices.SortFunc(next, func(a, b *state) int { return cmp.Compare(a.sum, b.sum) })
 	return next, unsupported
 }
 
@@ -190,8 +203,13 @@ func (ss states) equal(o states) bool {
 	if len(ss) != len(o) {
 		return false
 	}
+	for i := range ss {
+		if ss[i].sum != o[i].sum {
+			return false
+		}
+	}
 	for _, s := range ss {
-		if !slices.ContainsFunc(o, s.equal) {
+		if !slices.ContainsFunc(o, func(x *state) bool { return same(x, s) }) {
 			return false
 		}
 	}
