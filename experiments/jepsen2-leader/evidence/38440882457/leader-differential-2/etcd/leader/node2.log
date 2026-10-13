@@ -1,0 +1,7 @@
+{"level":"warn","ts":"2026-10-13T17:43:21.756896Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-13T17:43:21.757031Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-13T17:43:23.858742Z","caller":"auth/store.go:1137","msg":"simple token is not cryptographically signed"}
+{"level":"warn","ts":"2026-10-13T17:43:30.093232Z","caller":"rafthttp/probing_status.go:68","msg":"prober detected unhealthy status","round-tripper-name":"ROUND_TRIPPER_SNAPSHOT","remote-peer-id":"3d9102c3eb62e1c0","rtt":"0s"}
+{"level":"warn","ts":"2026-10-13T17:43:30.093331Z","caller":"rafthttp/probing_status.go:68","msg":"prober detected unhealthy status","round-tripper-name":"ROUND_TRIPPER_RAFT_MESSAGE","remote-peer-id":"3d9102c3eb62e1c0","rtt":"0s"}
+{"level":"warn","ts":"2026-10-13T17:43:30.093345Z","caller":"rafthttp/probing_status.go:68","msg":"prober detected unhealthy status","round-tripper-name":"ROUND_TRIPPER_SNAPSHOT","remote-peer-id":"d0e14d1c9d8b1ce9","rtt":"0s"}
+{"level":"warn","ts":"2026-10-13T17:43:30.093369Z","caller":"rafthttp/probing_status.go:68","msg":"prober detected unhealthy status","round-tripper-name":"ROUND_TRIPPER_RAFT_MESSAGE","remote-peer-id":"d0e14d1c9d8b1ce9","rtt":"0s"}

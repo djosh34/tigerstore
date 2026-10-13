@@ -1,0 +1,2404 @@
+{
+  "quantile_method": "nearest rank, ceil(p*n), integer elapsed milliseconds",
+  "cases": [
+    {
+      "store": "etcd",
+      "role": "follower",
+      "repetition": "1",
+      "history": "leader-differential-1/etcd/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "etcd",
+      "role": "leader",
+      "repetition": "1",
+      "history": "leader-differential-1/etcd/leader/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "follower",
+      "repetition": "1",
+      "history": "leader-differential-1/tigerstore/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "leader",
+      "repetition": "1",
+      "history": "leader-differential-1/tigerstore/leader/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "etcd",
+      "role": "follower",
+      "repetition": "2",
+      "history": "leader-differential-2/etcd/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "etcd",
+      "role": "leader",
+      "repetition": "2",
+      "history": "leader-differential-2/etcd/leader/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "follower",
+      "repetition": "2",
+      "history": "leader-differential-2/tigerstore/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "leader",
+      "repetition": "2",
+      "history": "leader-differential-2/tigerstore/leader/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "etcd",
+      "role": "follower",
+      "repetition": "3",
+      "history": "leader-differential-3/etcd/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "etcd",
+      "role": "leader",
+      "repetition": "3",
+      "history": "leader-differential-3/etcd/leader/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "follower",
+      "repetition": "3",
+      "history": "leader-differential-3/tigerstore/follower/history.jsonl",
+      "passed": true
+    },
+    {
+      "store": "tigerstore",
+      "role": "leader",
+      "repetition": "3",
+      "history": "leader-differential-3/tigerstore/leader/history.jsonl",
+      "passed": true
+    }
+  ],
+  "unary": [
+    {
+      "store": "etcd",
+      "label": "acked_across_heal_read",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "heal_linearizable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 9,
+        "min": 12,
+        "p50": 455,
+        "p95": 1000,
+        "p99": 1000,
+        "max": 1000,
+        "samples": [
+          12,
+          16,
+          21,
+          247,
+          455,
+          650,
+          1000,
+          1000,
+          1000
+        ]
+      },
+      "codes": {
+        "OK": 6,
+        "DeadlineExceeded": 3
+      },
+      "errors": {
+        "<nil>": 6,
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 3
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "healed_contents",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "healthy_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 18,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 18
+      },
+      "errors": {
+        "<nil>": 18
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_linearizable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 1000,
+        "p50": 1000,
+        "p95": 1000,
+        "p99": 1000,
+        "max": 1000,
+        "samples": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1000
+        ]
+      },
+      "codes": {
+        "DeadlineExceeded": 6
+      },
+      "errors": {
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_linearizable_range",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_memberlist",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_memberlist",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 1000,
+        "p50": 1000,
+        "p95": 1001,
+        "p99": 1001,
+        "max": 1001,
+        "samples": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1001
+        ]
+      },
+      "codes": {
+        "DeadlineExceeded": 6
+      },
+      "errors": {
+        "rpc error: code = DeadlineExceeded desc = stream terminated by RST_STREAM with error code: CANCEL": 1,
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 5
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_put",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_serializable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_serializable_range",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_status",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_txn",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 1000,
+        "p50": 1000,
+        "p95": 1000,
+        "p99": 1000,
+        "max": 1000,
+        "samples": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1000
+        ]
+      },
+      "codes": {
+        "DeadlineExceeded": 6
+      },
+      "errors": {
+        "rpc error: code = DeadlineExceeded desc = stream terminated by RST_STREAM with error code: CANCEL": 1,
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 5
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "leaderless_txn",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "loss_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 478,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 17,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          17
+        ]
+      },
+      "codes": {
+        "OK": 478
+      },
+      "errors": {
+        "<nil>": 478
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "put_across_heal",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 313,
+        "p50": 320,
+        "p95": 1972,
+        "p99": 1972,
+        "max": 1972,
+        "samples": [
+          313,
+          317,
+          320,
+          1569,
+          1776,
+          1972
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "seed_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          1,
+          1,
+          1
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "etcd",
+      "label": "sentinel_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "heal_linearizable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 8,
+        "min": 0,
+        "p50": 65,
+        "p95": 1000,
+        "p99": 1000,
+        "max": 1000,
+        "samples": [
+          0,
+          0,
+          0,
+          65,
+          71,
+          977,
+          1000,
+          1000
+        ]
+      },
+      "codes": {
+        "OK": 6,
+        "DeadlineExceeded": 2
+      },
+      "errors": {
+        "<nil>": 6,
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 2
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "healed_contents",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "healthy_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 18,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 18
+      },
+      "errors": {
+        "<nil>": 18
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_linearizable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 1000,
+        "p50": 1000,
+        "p95": 1000,
+        "p99": 1000,
+        "max": 1000,
+        "samples": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1000
+        ]
+      },
+      "codes": {
+        "DeadlineExceeded": 6
+      },
+      "errors": {
+        "rpc error: code = DeadlineExceeded desc = context deadline exceeded": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_linearizable_range",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_memberlist",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_memberlist",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_put",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_serializable_range",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_serializable_range",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_status",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_txn",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "leaderless_txn",
+      "require_leader": true,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "loss_status",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 489,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "OK": 489
+      },
+      "errors": {
+        "<nil>": 489
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "put_across_heal",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "codes": {
+        "Unavailable": 6
+      },
+      "errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "seed_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    },
+    {
+      "store": "tigerstore",
+      "label": "sentinel_put",
+      "require_leader": false,
+      "duration_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "codes": {
+        "OK": 6
+      },
+      "errors": {
+        "<nil>": 6
+      }
+    }
+  ],
+  "watches": [
+    {
+      "store": "etcd",
+      "name": "existing_plain",
+      "n": 6,
+      "created": 6,
+      "sentinel": 6,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "etcd",
+      "name": "existing_required",
+      "n": 6,
+      "created": 6,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Unavailable": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      },
+      "terminal_after_verdict": 0,
+      "terminal_from_start_ms": {
+        "n": 6,
+        "min": 3911,
+        "p50": 3982,
+        "p95": 3994,
+        "p99": 3994,
+        "max": 3994,
+        "samples": [
+          3911,
+          3974,
+          3982,
+          3985,
+          3990,
+          3994
+        ]
+      },
+      "terminal_from_leaderless_ms": {
+        "n": 6,
+        "min": 2001,
+        "p50": 2078,
+        "p95": 2698,
+        "p99": 2698,
+        "max": 2698,
+        "samples": [
+          2001,
+          2015,
+          2078,
+          2393,
+          2696,
+          2698
+        ]
+      }
+    },
+    {
+      "store": "etcd",
+      "name": "healed_required",
+      "n": 6,
+      "created": 6,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "etcd",
+      "name": "leaderless_plain",
+      "n": 6,
+      "created": 6,
+      "sentinel": 6,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "etcd",
+      "name": "leaderless_required",
+      "n": 6,
+      "created": 0,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Unavailable": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      },
+      "terminal_after_verdict": 0,
+      "terminal_from_start_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "terminal_from_leaderless_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "store": "tigerstore",
+      "name": "existing_plain",
+      "n": 6,
+      "created": 6,
+      "sentinel": 6,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "tigerstore",
+      "name": "existing_required",
+      "n": 6,
+      "created": 6,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Unavailable": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      },
+      "terminal_after_verdict": 0,
+      "terminal_from_start_ms": {
+        "n": 6,
+        "min": 3001,
+        "p50": 4001,
+        "p95": 4001,
+        "p99": 4001,
+        "max": 4001,
+        "samples": [
+          3001,
+          4001,
+          4001,
+          4001,
+          4001,
+          4001
+        ]
+      },
+      "terminal_from_leaderless_ms": {
+        "n": 6,
+        "min": 1991,
+        "p50": 2006,
+        "p95": 2792,
+        "p99": 2792,
+        "max": 2792,
+        "samples": [
+          1991,
+          1995,
+          2006,
+          2006,
+          2099,
+          2792
+        ]
+      }
+    },
+    {
+      "store": "tigerstore",
+      "name": "healed_required",
+      "n": 6,
+      "created": 6,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "tigerstore",
+      "name": "leaderless_plain",
+      "n": 6,
+      "created": 6,
+      "sentinel": 6,
+      "terminal_codes": {
+        "Canceled": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Canceled desc = context canceled": 6
+      },
+      "terminal_after_verdict": 6
+    },
+    {
+      "store": "tigerstore",
+      "name": "leaderless_required",
+      "n": 6,
+      "created": 0,
+      "sentinel": 0,
+      "terminal_codes": {
+        "Unavailable": 6
+      },
+      "terminal_errors": {
+        "rpc error: code = Unavailable desc = etcdserver: no leader": 6
+      },
+      "terminal_after_verdict": 0,
+      "terminal_from_start_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          1
+        ]
+      },
+      "terminal_from_leaderless_ms": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          1
+        ]
+      }
+    }
+  ]
+}

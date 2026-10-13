@@ -1,0 +1,5 @@
+tigerstore 2026/10/13 17:43:45.749037 node n1 (raft ID 1) serving clients on http://127.0.0.1:12379, peers on 127.0.0.1:12380
+tigerstore 2026/10/13 17:43:46.749506 leader is 0 at term 1
+tigerstore 2026/10/13 17:43:46.749950 leader is 3 at term 1
+tigerstore 2026/10/13 17:43:47.749964 leader is 0 at term 1
+tigerstore 2026/10/13 17:43:50.061660 leader is 3 at term 1

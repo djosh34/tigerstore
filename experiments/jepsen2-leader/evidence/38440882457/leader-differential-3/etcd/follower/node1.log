@@ -1,0 +1,5 @@
+{"level":"warn","ts":"2026-10-13T17:43:32.269484Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-13T17:43:32.269830Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+{"level":"warn","ts":"2026-10-13T17:43:34.294617Z","caller":"auth/store.go:1137","msg":"simple token is not cryptographically signed"}
+{"level":"warn","ts":"2026-10-13T17:43:39.136416Z","caller":"etcdserver/raft.go:389","msg":"leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk","to":"d0e14d1c9d8b1ce9","heartbeat-interval":"100ms","expected-duration":"200ms","exceeded-duration":"4.342110562s"}
+{"level":"warn","ts":"2026-10-13T17:43:39.136460Z","caller":"etcdserver/raft.go:389","msg":"leader failed to send out heartbeat on time; took too long, leader is overloaded likely from slow disk","to":"d0131f1f5803d43","heartbeat-interval":"100ms","expected-duration":"200ms","exceeded-duration":"4.342155817s"}
