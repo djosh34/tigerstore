@@ -147,7 +147,7 @@ func New(cfg Config) (*Node, error) {
 		core:      c,
 		wal:       w,
 		inbox:     make(chan input, 8192),
-		persistQ:  make(chan []core.PersistJob, maxBacklog),
+		persistQ:  make(chan []core.PersistJob, 1),
 		persisted: make(chan persistDone, 1),
 		done:      make(chan struct{}),
 	}, nil
@@ -201,10 +201,11 @@ func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) 
 	}
 }
 
-// maxBacklog is the number of persist batches that may wait for the disk.
-// Beyond it the committer stops taking new inputs, but it keeps ticking
-// and taking finished disk writes.
-const maxBacklog = 64
+// maxDeferred bounds client requests held during an append by count, not
+// bytes. One Process may produce several capped entries for one fsync;
+// MaxBatchBytes is not a physical group size limit. At the count limit the
+// inbox backpressures clients and peers, but ticks and completions still run.
+const maxDeferred = 8192
 
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
@@ -226,26 +227,35 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
 	waiters := map[uint64]chan core.Reply{}
-	var backlog [][]core.PersistJob
+	var next []core.PersistJob
+	var deferred []*request
+	inflight := false
 	streams := map[uint64]*WatchStream{}
 	for {
 		inbox := n.inbox
-		if len(backlog) >= maxBacklog {
+		if len(deferred) >= maxDeferred {
 			inbox = nil
 		}
 		var toDisk chan<- []core.PersistJob
-		var next []core.PersistJob
-		if len(backlog) > 0 {
-			toDisk, next = n.persistQ, backlog[0]
+		if len(next) > 0 {
+			toDisk = n.persistQ
 		}
 		select {
 		case in := <-inbox:
-			n.handle(in, waiters, streams)
+			if inflight && in.req != nil {
+				deferred = append(deferred, in.req)
+			} else {
+				n.handle(in, waiters, streams)
+			}
 		drain:
-			for range 4096 {
+			for i := 0; i < 4096 && len(deferred) < maxDeferred; i++ {
 				select {
 				case in := <-n.inbox:
-					n.handle(in, waiters, streams)
+					if inflight && in.req != nil {
+						deferred = append(deferred, in.req)
+					} else {
+						n.handle(in, waiters, streams)
+					}
 				default:
 					break drain
 				}
@@ -257,18 +267,31 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 			}
+			inflight = false
+			for _, r := range deferred {
+				n.handle(input{req: r}, waiters, streams)
+			}
+			clear(deferred)
+			deferred = deferred[:0]
 		case toDisk <- next:
-			backlog[0] = nil
-			backlog = backlog[1:]
+			next = nil
 			continue
 		case <-ticker.C:
 			n.core.Tick()
 		case <-ctx.Done():
 			return nil
 		}
+		// Do not take a Ready until the previous append is durable. Requests
+		// stay outside the core too: Submit can propose at the byte cap.
+		// This also holds control messages, apply and leader observations;
+		// a long disk stall can delay heartbeats and trigger an election.
+		if inflight {
+			continue
+		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
-			backlog = append(backlog, eff.Persist)
+			next = eff.Persist
+			inflight = true
 		}
 		for _, m := range eff.Send {
 			t.Send(m)
@@ -330,9 +353,10 @@ type persistDone struct {
 	err  error
 }
 
-// persist writes every queued job, syncs once, and reports the jobs back
-// on their own channel, so it never waits for the committer's inbox. A
-// failed write or sync stops the node; it is never retried.
+// persist writes one group, syncs once, and reports the jobs back on their
+// own channel. Only the final hard state is needed, since no response is
+// released until the whole group is durable. Entry order must not change:
+// an append can replace a previous job's suffix. A failure is never retried.
 func (n *Node) persist(ctx context.Context) {
 	for {
 		var jobs []core.PersistJob
@@ -341,18 +365,14 @@ func (n *Node) persist(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
-	more:
-		for {
-			select {
-			case js := <-n.persistQ:
-				jobs = append(jobs, js...)
-			default:
-				break more
+		var hs *wal.HardState
+		for _, j := range jobs {
+			n.wal.Append(nil, j.Entries)
+			if j.HardState != nil {
+				hs = j.HardState
 			}
 		}
-		for _, j := range jobs {
-			n.wal.Append(j.HardState, j.Entries)
-		}
+		n.wal.Append(hs, nil)
 		done := persistDone{jobs: jobs}
 		if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
