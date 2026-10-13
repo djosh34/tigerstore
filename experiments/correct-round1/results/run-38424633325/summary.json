@@ -1,0 +1,362 @@
+[
+  {
+    "artifact": "correct-round1-etcd-disk-49-3",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 976,
+    "successful_operations": 975,
+    "ambiguous_operations": 1,
+    "target": 494,
+    "watches": 3,
+    "controller_seconds": 80.880988878,
+    "operation_span_seconds": 72.808727333,
+    "faults": {
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-etcd-disk-49-4",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 977,
+    "successful_operations": 977,
+    "ambiguous_operations": 0,
+    "target": 516,
+    "watches": 3,
+    "controller_seconds": 77.770221011,
+    "operation_span_seconds": 72.81152818,
+    "faults": {
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-etcd-mixed-52-2",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 1598,
+    "successful_operations": 1581,
+    "ambiguous_operations": 17,
+    "target": 846,
+    "watches": 3,
+    "controller_seconds": 135.383528537,
+    "operation_span_seconds": 127.815507295,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-loss": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-delay": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-reorder": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-etcd-mixed-52-3",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 1636,
+    "successful_operations": 1624,
+    "ambiguous_operations": 12,
+    "target": 863,
+    "watches": 3,
+    "controller_seconds": 134.536132156,
+    "operation_span_seconds": 127.81438547,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-loss": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-delay": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-reorder": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-tigerstore-disk-49-3",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 976,
+    "successful_operations": 976,
+    "ambiguous_operations": 0,
+    "target": 500,
+    "watches": 3,
+    "controller_seconds": 80.097776254,
+    "operation_span_seconds": 72.814400575,
+    "faults": {
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-tigerstore-disk-49-4",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 972,
+    "successful_operations": 971,
+    "ambiguous_operations": 1,
+    "target": 514,
+    "watches": 3,
+    "controller_seconds": 78.998431666,
+    "operation_span_seconds": 72.808194403,
+    "faults": {
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-tigerstore-mixed-52-2",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 1644,
+    "successful_operations": 1608,
+    "ambiguous_operations": 36,
+    "target": 894,
+    "watches": 3,
+    "controller_seconds": 134.104704176,
+    "operation_span_seconds": 127.808566177,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-loss": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-delay": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-reorder": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  },
+  {
+    "artifact": "correct-round1-tigerstore-mixed-52-3",
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "operations": 1618,
+    "successful_operations": 1582,
+    "ambiguous_operations": 36,
+    "target": 836,
+    "watches": 3,
+    "controller_seconds": 135.204669189,
+    "operation_span_seconds": 127.808679668,
+    "faults": {
+      "kill-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "stop-follower": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-loss": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-delay": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "netem-reorder": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "failures": []
+  }
+]

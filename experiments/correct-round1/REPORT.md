@@ -4,6 +4,28 @@ Reliability tests only. Product code is unchanged. The throwaway branch is `exp/
 
 The first campaigns built main commit `90870876b6459334c7eddd67c0f9d184267f2eba`. The runner built that exact commit in a detached checkout, separately from the test tooling. Every server and fault ran on a free `ubuntu-24.04-arm` GitHub runner. No server or fault ran on the development host.
 
+## Results
+
+The real-process cases ran from 2026-10-13 15:21:53Z to 15:47:43Z. There were 29 cases, with 39 minutes 35 seconds of aggregate controller runtime across concurrent runners. Successful cases drove traffic for 65 to 120 seconds and took 77.8 to 135.4 seconds including setup and cold recovery.
+
+| Run | Tooling commit | Cases | Passed | Failed | Recorded operations | Disk-set histories |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| [38421292600](https://github.com/djosh34/tigerstore/actions/runs/38421292600) | `91e8a5f` | 2 | 1 | 1 | 1,850 | 8 |
+| [38422574256](https://github.com/djosh34/tigerstore/actions/runs/38422574256) | `3acbf5f` | 9 | 4 | 5 | 5,094 | 21 |
+| [38423748484](https://github.com/djosh34/tigerstore/actions/runs/38423748484) | `a9f85da` | 10 | 9 | 1 | 10,318 | 37 |
+| [38424633325](https://github.com/djosh34/tigerstore/actions/runs/38424633325) | `acb8ebf` | 8 | 8 | 0 | 10,397 | 32 |
+| Total | | 29 | 22 | 7 | 27,659 | 98 |
+
+Tigerstore ran 18 cases, of which 14 passed, with 17,669 operations and 179 ambiguous outcomes. Etcd v3.7.2 ran 11 cases, of which eight passed, with 9,990 operations and 60 ambiguous outcomes. No ambiguous mutation was silently discarded.
+
+All 29 client histories were checked. Original and available cold-recovery logs produced 98 history variants and 392 checker verdicts. There were 376 passing verdicts and 16 failed verdicts. The failures came from the initial incomplete etcd commit-prefix oracle and the incomplete histories left by failed disk setup. All seven failed cases remain counted as failures. No checker timed out. The slowest linearizability check took 15.819 ms, below its 30-second limit.
+
+Across the 22 fully passing cases, verified fault counts were 13 leader kills, 13 follower kills, 13 leader pauses, 13 follower pauses, 12 packet-loss periods, 12 delay periods, 12 reordering periods, and 13 server ENOSPC events with recovery. Signals used 1.2- or four-second kill intervals and 1.5- or four-second pauses. Netem used 25% packet loss, five-ms delay, and ten-ms delay with 100% reordering and gap two. Longer cases selected the leader's peer listener and held netem for five seconds after its canaries.
+
+The final eight cases all passed. They repeated disk seed 49 twice and combined-fault seed 52 twice on each product, with matching 256-MiB filesystems and one-KiB values. Earlier passing tigerstore cases also used 128-MiB filesystems. Each passing case checked its original disks and all three independent cold-surviving pairs.
+
+No product correctness failure was confirmed. No bug issue was filed. The failed test-tool cases and their evidence are described below; they are not green runs. The repository's unit tests for the throwaway controller and offline client also ran on the final runner jobs.
+
 ## Workload and checks
 
 Each case starts three real server processes with client and peer TLS. Three stock etcd clientv3 v3.7.2 clients each use one pinned member. They issue Put, MOD/VERSION CAS Txn, single-key and multi-key DeleteRange, and linearizable Range over six shared keys. Three prefix watches request previous values and resume across member restarts. Values identify their originating client operation. Unary mutations have one client attempt, and errors remain ambiguous when commitment is unknown.
@@ -20,7 +42,7 @@ The client decodes command batches separately from the product's command decoder
 
 - SIGKILL targets both the current leader and a follower. `waitpid` must report signal 9. Restarts must become ready.
 - SIGSTOP targets both roles. `waitpid`, every task's stopped state and unchanged CPU counters prove the pause. SIGCONT must produce a continued wait status and resumed tasks.
-- Packet loss, delay and reordering use `tc netem` in a private network namespace. Peer listeners use `127.77.0.N:2380`; clients use `127.78.0.N:2379`. Selectors account for initiators that do not bind their source address. Effective parameters, exact filters, TCP peer counters, positive UDP canaries and excluded negative canaries must all agree. Delay is per selected packet direction, not an RTT claim.
+- Packet loss, delay and reordering use `tc netem` in a private network namespace. Peer listeners use `127.77.0.N:2380`; clients use `127.78.0.N:2379`. Selectors account for initiators that do not bind their source address. They select traffic to a node's peer listener and replies from that listener, not every separately initiated outbound connection of that node. Effective parameters, exact filters, TCP peer counters, positive UDP canaries and excluded negative canaries must all agree. Delay is per selected packet direction, not an RTT claim.
 - Disk tests use a bounded ext4 loop filesystem with no reserved blocks. The controller fills it to numeric ENOSPC, requires the actual server to report ENOSPC and exit, frees space, verifies a real write and fsync, and restarts the node. A filler error alone does not count as an exercised server fault.
 
 Every fault records requested, installed, exercised and healed phases. A seed fixes client choices and controller choices, not kernel scheduling or the kernel's random packet-loss decisions.
