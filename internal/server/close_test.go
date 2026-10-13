@@ -15,8 +15,10 @@ func TestStreamAfterClose(t *testing.T) {
 	defer b.Close() //nolint:errcheck // closing a test pipe
 	c := newConn(&Server{}, a, a)
 	c.close()
+	hf := &http2.HeadersFrame{}
+	hf.StreamID = 1
 	f := &http2.MetaHeadersFrame{
-		HeadersFrame: &http2.HeadersFrame{FrameHeader: http2.FrameHeader{StreamID: 1}},
+		HeadersFrame: hf,
 		Fields: []hpack.HeaderField{
 			{Name: ":method", Value: "POST"},
 			{Name: ":path", Value: "/etcdserverpb.KV/Put"},
