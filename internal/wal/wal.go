@@ -233,7 +233,10 @@ func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err er
 			return int64(off), lastStart, nil
 		}
 		body := data[off+8 : end]
-		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !planted.On("B04a") && !(planted.On("B04c") && w.decodes(body)) {
+		// Planted: B04a skips the check; B04c skips it for a record that
+		// still decodes.
+		skip := planted.On("B04a") || (planted.On("B04c") && w.decodes(body))
+		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !skip {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
 			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
