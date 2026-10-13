@@ -34,6 +34,8 @@ type cluster struct {
 	running   map[uint64]*running
 	// via, if set, is the address node from dials to reach node to.
 	via map[[2]uint64]string
+	// tick is the Raft tick, 10 ms unless setup changes it.
+	tick time.Duration
 }
 
 type running struct {
@@ -59,7 +61,7 @@ func newClusterWith(t *testing.T, setup func(*cluster)) *cluster {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &cluster{t: t, ca: ca, peerAddrs: map[uint64]string{}, dirs: map[uint64]string{}, running: map[uint64]*running{}}
+	c := &cluster{t: t, ca: ca, peerAddrs: map[uint64]string{}, dirs: map[uint64]string{}, running: map[uint64]*running{}, tick: 10 * time.Millisecond}
 	for id := uint64(1); id <= 3; id++ {
 		c.peerAddrs[id] = freeAddr(t)
 		c.dirs[id] = t.TempDir()
@@ -84,7 +86,7 @@ func (c *cluster) start(id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: 10 * time.Millisecond, Logf: t.Logf})
+	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: c.tick, Logf: t.Logf})
 	if err != nil {
 		t.Fatal(err)
 	}
