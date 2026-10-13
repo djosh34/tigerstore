@@ -22,7 +22,8 @@ type config struct {
 	seed                                                                              uint64
 	clients, rate, keys, valueSize                                                    int
 	statusOnly                                                                        bool
-	burstArm, burstRelease, burstReady                                                string
+	burstArm, burstRelease, burstReady, burstHealed                                   string
+	interval                                                                          time.Duration
 	burstWrites                                                                       int
 }
 
@@ -68,6 +69,8 @@ func runCLI() error {
 	f.StringVar(&c.burstRelease, "burst-release-file", "", "controller releases all burst workers after fault installation")
 	f.StringVar(&c.burstReady, "burst-ready-file", "", "all workers ready marker")
 	f.IntVar(&c.burstWrites, "burst-writes", 0, "unpaced sequential puts per client in the bounded burst, 0..16")
+	f.StringVar(&c.burstHealed, "burst-healed-file", "", "after burst, read only until controller heals the disk")
+	f.DurationVar(&c.interval, "interval", 0, "paced per-client interval; zero uses rate")
 	f.IntVar(&c.rate, "rate", 5, "maximum operations per second per client")
 	f.IntVar(&c.keys, "keys", 6, "hot keys, 2 to 8")
 	f.IntVar(&c.valueSize, "value-size", 1024, "mutation value bytes")

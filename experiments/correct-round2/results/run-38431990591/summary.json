@@ -1,0 +1,343 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431990591",
+      "run_attempt": "1",
+      "tooling": "bda8ac37aa26b40e74afc9e473c042b0705f741c"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 32,
+    "checker_passes": 16,
+    "checker_timeout_verdicts": 0,
+    "operations": 631,
+    "successful_operations": 585,
+    "ambiguous_operations": 46,
+    "target": 244,
+    "watches": 3,
+    "controller_seconds": 55.512108823,
+    "faults": {
+      "one-way-partition": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null,
+    "diagnostic_checker_invocations": 4
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431990591",
+      "run_attempt": "1",
+      "tooling": "bda8ac37aa26b40e74afc9e473c042b0705f741c"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 32,
+    "checker_passes": 12,
+    "checker_timeout_verdicts": 4,
+    "operations": 628,
+    "successful_operations": 571,
+    "ambiguous_operations": 57,
+    "target": 231,
+    "watches": 3,
+    "controller_seconds": 54.47393775,
+    "faults": {
+      "partition-old-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "kill-new-leader": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null,
+    "diagnostic_checker_invocations": 4
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-149-2",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 149,
+        "rep": 2,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431990591",
+      "run_attempt": "1",
+      "tooling": "bda8ac37aa26b40e74afc9e473c042b0705f741c"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "recorded_client_histories": 1,
+    "history_variants": 1,
+    "checker_verdicts": 8,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 133,
+    "successful_operations": 98,
+    "ambiguous_operations": 35,
+    "target": 0,
+    "watches": 3,
+    "controller_seconds": 24.694151184,
+    "faults": {
+      "kill-old-leader": [
+        "exercised",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [
+      "kill-old-leader/healed",
+      "pause-election/requested",
+      "pause-election/installed",
+      "pause-election/exercised",
+      "pause-election/healed"
+    ],
+    "failures": [
+      "no observed leaderless election interval; missing fault hit"
+    ],
+    "no_history_reason": null,
+    "diagnostic_checker_invocations": 1
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-heavy-disk-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "heavy-disk",
+        "seed": 149,
+        "rep": 1,
+        "duration": 30,
+        "clients": 256,
+        "rate": 1,
+        "keys": 2,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431990591",
+      "run_attempt": "1",
+      "tooling": "bda8ac37aa26b40e74afc9e473c042b0705f741c"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 32,
+    "checker_passes": 12,
+    "checker_timeout_verdicts": 4,
+    "operations": 9669,
+    "successful_operations": 8818,
+    "ambiguous_operations": 851,
+    "target": 4440,
+    "watches": 3,
+    "controller_seconds": 45.210662145,
+    "faults": {
+      "disk-enospc": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null,
+    "diagnostic_checker_invocations": 4
+  }
+]

@@ -53,7 +53,7 @@ def main():
                    ['requested', 'installed', 'exercised', 'healed'] if phase not in fault.get('faults', {}).get(name, {})]
         timeout_verdicts = sum('timed out' in row.get('error', '').lower() or
                                'deadline' in row.get('error', '').lower() for row in verdicts)
-        histories = list(run.glob('history-*.json'))
+        histories = [path for path in run.glob('history-*.json') if not path.name.endswith('.oracle.json')]
         reached = (run / 'faults.json').exists()
         passed = (reached and result.get('controller_pass', False) and not missing and
                   len(offline) > 0 and all(row['returncode'] == 0 for row in offline) and
@@ -67,6 +67,7 @@ def main():
             'history_variants': len(histories) or int(any(row['oracle'] == 'raw-fallback' for row in offline)),
             'checker_verdicts': len(verdicts), 'checker_passes': sum(row['passed'] for row in verdicts),
             'checker_timeout_verdicts': timeout_verdicts,
+            'diagnostic_checker_invocations': sum(row['mode'] == 'check' and row['oracle'].endswith('.oracle') for row in offline),
             'operations': len(ops), 'successful_operations': sum('resp' in op for op in ops),
             'ambiguous_operations': sum(op.get('err', {}).get('ambiguous', False) for op in ops),
             'target': history.get('target', 0), 'watches': len(history.get('watches', []) or []),

@@ -297,6 +297,12 @@ func workload(c config) (err error) {
 	if c.clients < 3 || c.clients > 256 || len(csv(c.endpoints)) != 3 || c.rate < 1 || c.rate > 50 || c.keys < 2 || c.keys > 8 || c.duration <= 0 || c.watchTimeout <= 0 || c.quiet < 0 || c.valueSize < 1 || c.valueSize > 1024*1024 {
 		return errors.New("require 3..256 clients, 3 endpoints, rate 1..50, keys 2..8 and positive duration/watch-timeout")
 	}
+	if c.interval < 0 {
+		return errors.New("interval cannot be negative")
+	}
+	if c.interval == 0 {
+		c.interval = time.Second / time.Duration(c.rate)
+	}
 	if c.burstWrites < 0 || c.burstWrites > 16 || (c.burstWrites > 0 && (c.burstArm == "" || c.burstRelease == "" || c.burstReady == "")) {
 		return errors.New("burst requires 0..16 puts per client and arm/release/ready paths")
 	}
@@ -314,7 +320,7 @@ func workload(c config) (err error) {
 		if err != nil {
 			rc.Failure = err.Error()
 		}
-		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics), save(filepath.Join(c.out, "traffic.json"), map[string]any{"clients": c.clients, "per_client_rate": c.rate, "peak_in_flight": r.peakFlight, "burst_writes_per_client": c.burstWrites, "burst_clients_ready": gate.ready, "burst_clients_complete": gate.complete}))
+		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics), save(filepath.Join(c.out, "traffic.json"), map[string]any{"utc_origin_ns": r.origin.UnixNano(), "clients": c.clients, "per_client_rate": float64(time.Second) / float64(c.interval), "interval_ns": int64(c.interval), "peak_in_flight": r.peakFlight, "burst_writes_per_client": c.burstWrites, "burst_clients_ready": gate.ready, "burst_clients_complete": gate.complete}))
 	}()
 	members := map[uint64]bool{}
 	for _, cl := range cs {
@@ -352,18 +358,22 @@ func workload(c config) (err error) {
 		go func(i int, cl *clientv3.Client) {
 			defer workers.Done()
 			rng := rand.New(rand.NewPCG(c.seed, uint64(i+1)))
-			tick := time.NewTicker(time.Second / time.Duration(c.rate))
+			tick := time.NewTicker(c.interval)
 			defer tick.Stop()
 			mods := map[string]int64{}
 			versions := map[string]int64{}
 			seq := 0
 			burstDone := false
+			firstCall := true
 			for {
-				select {
-				case <-stopCtx.Done():
-					return
-				case <-tick.C:
+				if !firstCall {
+					select {
+					case <-stopCtx.Done():
+						return
+					case <-tick.C:
+					}
 				}
+				firstCall = false
 				if c.stop != "" {
 					if _, e := os.Stat(c.stop); e == nil {
 						return
@@ -403,7 +413,20 @@ func workload(c config) (err error) {
 				identity := fmt.Sprintf("s%d-c%d-o%d:", c.seed, i, seq)
 				value := identity + strings.Repeat("x", max(0, c.valueSize-len(identity)))
 				var q history.Request
-				switch rng.IntN(5) {
+				shape := rng.IntN(5)
+				if burstDone && c.burstHealed != "" {
+					healed, e := fileExists(c.burstHealed)
+					if e != nil {
+						r.mu.Lock()
+						r.errs = append(r.errs, e)
+						r.mu.Unlock()
+						return
+					}
+					if !healed {
+						shape = 4 // Reads at a failed leader avoid additional ambiguous writes.
+					}
+				}
+				switch shape {
 				case 0:
 					q.Put = &history.PutRequest{Key: key, Value: value, PrevKV: true}
 				case 1, 2:

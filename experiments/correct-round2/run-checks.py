@@ -57,6 +57,8 @@ def main():
     # Include converter outputs retained from an interrupted earlier stage.
     known = {path for _, path in histories}
     for path in sorted(a.out.glob('history-*.json')):
+        if path.name.endswith('.oracle.json'):
+            continue  # Converter node metadata is not an operation history.
         if path not in known:
             histories.append((path.stem.removeprefix('history-'), path))
     if not raw.exists():

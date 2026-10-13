@@ -31,6 +31,8 @@ class Tools(unittest.TestCase):
             def fake(command, results, oracle, mode):
                 calls.append(command)
                 results.append({'oracle': oracle, 'mode': mode, 'returncode': 1})
+                if mode == 'log':
+                    Path(command[command.index('--out')+1]+'.oracle.json').write_text('[]')
                 if mode == 'check':
                     Path(command[command.index('--out')+1]).write_text(json.dumps([
                         {'name': n, 'passed': False} for n in ['Watches', 'Durable', 'Revisions', 'Linearizable']]))

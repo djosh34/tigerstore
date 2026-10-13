@@ -743,6 +743,7 @@ class Controller:
                                              max(.1, self.end - time.monotonic())))
         self.event('workload-finish', returncode=code)
         require(code == 0, f'workload failed: see {self.out / "workload.log"}')
+        self.workload_finished()
         self.inspect([1, 2, 3], self.out / 'pre-kill-inspect.json')
         evidence = self.reap_all()
         self.preserve_original(evidence)
@@ -752,6 +753,9 @@ class Controller:
         require(not missing, f'missing required fault evidence: {missing}')
         require(len(self.oracles) == 4, 'not all cold recovery sets completed')
         self.event('controller-pass', note='four offline checkers must still run for every oracles.json set')
+
+    def workload_finished(self):
+        pass
 
     def run_faults(self):
         if self.a.scenario in ('signals', 'mixed'):

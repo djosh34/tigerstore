@@ -1,6 +1,6 @@
 ...
 ----------------------------------------------------------------------
-Ran 3 tests in 0.009s
+Ran 3 tests in 0.007s
 
 OK
 [
@@ -19,6 +19,7 @@ OK
     "checker_verdicts": 0,
     "checker_passes": 0,
     "checker_timeout_verdicts": 0,
+    "diagnostic_checker_invocations": 0,
     "operations": 0,
     "successful_operations": 0,
     "ambiguous_operations": 0,

@@ -16,7 +16,7 @@ class Controller(base.Controller):
         super().__init__(args)
         self.required = {
             'partition-kill': ['partition-old-leader', 'kill-new-leader'],
-            'election-pause': ['kill-old-leader', 'pause-election'],
+            'election-pause': ['election-peer-cut', 'kill-old-leader', 'pause-election'],
             'heavy-disk': ['disk-enospc'],
             'one-way': ['one-way-partition'],
             'flapping': [f'flap-{i}' for i in range(6)],
@@ -157,6 +157,9 @@ class Controller(base.Controller):
     def election_pause(self):
         old, state = self.role_node('leader')
         pair = [i for i in self.nodes if i != old]
+        i = self.rng.choice(pair)
+        self.cut('election-peer-cut', i)
+        self.prove_cut('election-peer-cut', i)
         self.kill_named('kill-old-leader', old, status=state)
         # Catch the leaderless interval using Status only. A linearizable read
         # would wait for the election and erase the timing evidence.
@@ -169,7 +172,6 @@ class Controller(base.Controller):
                 break
             self.sleep(.01, require_workload=True)
         base.require(leaderless is not None, 'no observed leaderless election interval; missing fault hit')
-        i = self.rng.choice(pair)
         p = self.nodes[i]['p']
         self.phase('pause-election', 'requested', node=i, pid=p.pid,
                    leaderless_status=leaderless, old_leader_dead=True,
@@ -191,6 +193,7 @@ class Controller(base.Controller):
         os.kill(p.pid, signal.SIGCONT)
         continued = self.wait_status(p, os.WCONTINUED, os.WIFCONTINUED)
         self.start_node(old)
+        self.heal_cut('election-peer-cut', i, ready=False)
         status = self.ready()
         self.phase('pause-election', 'healed', continued=continued, status=status)
         self.phase('kill-old-leader', 'healed', new_pid=self.nodes[old]['p'].pid, status=status)
@@ -221,7 +224,8 @@ class Controller(base.Controller):
         return ['--burst-arm-file', str(self.out / 'burst.arm'),
                 '--burst-release-file', str(self.out / 'burst.release'),
                 '--burst-ready-file', str(self.out / 'burst-ready.json'),
-                '--burst-writes', '8']
+                '--burst-writes', '1', '--interval', '3s',
+                '--burst-healed-file', str(self.out / 'disk.healed')]
 
     def arm_burst(self):
         (self.out / 'burst.arm').write_text('arm all 256 clients\n')
@@ -230,7 +234,7 @@ class Controller(base.Controller):
             marker = self.out / 'burst-ready.json'
             if marker.exists():
                 ready = json.loads(marker.read_text())
-                base.require(ready['clients_ready'] == 256 and ready['writes_per_client'] == 8,
+                base.require(ready['clients_ready'] == 256 and ready['writes_per_client'] == 1,
                              f'incomplete heavy-load barrier: {ready}')
                 self.event('burst-ready', marker=ready)
                 return
@@ -240,8 +244,8 @@ class Controller(base.Controller):
     def disk_installed(self):
         if self.a.scenario == 'heavy-disk':
             (self.out / 'burst.release').write_text('ENOSPC installed, release 256 writers\n')
-            self.event('burst-released', clients=256, sequential_puts_per_client=8,
-                       total_unpaced_puts=2048, installed_fault=self.faults['disk-enospc']['installed'])
+            self.event('burst-released', clients=256, sequential_puts_per_client=1,
+                       total_unpaced_puts=256, installed_fault=self.faults['disk-enospc']['installed'])
 
     def run_faults(self):
         self.event('round2-workload', clients=self.a.clients, per_client_rate=self.a.rate,
@@ -258,6 +262,8 @@ class Controller(base.Controller):
             self.event('disk-leader-selected', node=self.disk_node, status=state)
             self.arm_burst()
             self.disk_fault()
+            (self.out / 'disk.healed').write_text('server ENOSPC healed and all nodes ready\n')
+            self.event('disk-healed-marker')
         elif self.a.scenario == 'one-way':
             i, _ = self.role_node('leader')
             name = 'one-way-partition'
@@ -275,6 +281,22 @@ class Controller(base.Controller):
                 self.heal_cut(name, i, ready=False)
                 self.sleep(.3, require_workload=True)
             self.ready()
+
+    def workload_finished(self):
+        traffic = json.loads((self.out / 'workload/traffic.json').read_text())
+        history = json.loads((self.out / 'workload/history.json').read_text())
+        healed = max(phases['healed']['monotonic_ns'] for phases in self.faults.values())
+        controller_utc_ns = int(base.dt.datetime.fromisoformat(self.utc_origin).timestamp()*1e9)
+        bound = controller_utc_ns + healed + 10_000_000_000 - traffic['utc_origin_ns']
+        late = [op for op in history['ops'] if op['client'] < self.a.clients and op['call'] >= bound]
+        successful = {op['client'] for op in late if 'resp' in op}
+        errors = [op for op in late if 'err' in op]
+        self.event('post-heal-liveness', grace_seconds=10, request_timeout_seconds=2,
+                   late_operations=len(late), successful_clients=len(successful),
+                   missing_clients=sorted(set(range(self.a.clients))-successful),
+                   failed_late_operations=len(errors), traffic=traffic)
+        base.require(len(successful) == self.a.clients and not errors,
+                     f'post-heal liveness failed: {len(successful)}/{self.a.clients} clients progressed, {len(errors)} late errors')
 
     def cleanup(self):
         errors = []
