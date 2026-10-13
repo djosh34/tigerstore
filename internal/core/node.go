@@ -10,6 +10,7 @@
 package core
 
 import (
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,6 +77,10 @@ type Config struct {
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
+	// CommitStallElections is how many election timeouts a leader's entry
+	// may wait to commit before the leader stops; 0 means
+	// CommitStallTicks. Tests set it lower to catch shorter stalls.
+	CommitStallElections int
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -972,7 +977,7 @@ type proposedAt struct {
 }
 
 // commitStalled drops the leader's appends that have committed and reports
-// whether the oldest one left has waited CommitStallTicks election
+// whether the oldest one left has waited CommitStallElections election
 // timeouts.
 func (n *Node) commitStalled() bool {
 	commit := n.rn.BasicStatus().GetCommit()
@@ -981,7 +986,8 @@ func (n *Node) commitStalled() bool {
 		i++
 	}
 	n.uncommitted = n.uncommitted[i:]
-	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= CommitStallTicks*int64(n.cfg.ElectionTicks)
+	limit := int64(cmp.Or(n.cfg.CommitStallElections, CommitStallTicks)) * int64(n.cfg.ElectionTicks)
+	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet

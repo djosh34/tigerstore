@@ -394,7 +394,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				close(ws.done)
 			}
 		}
-		n.leader.Store(n.core.Leader())
+		if l := n.core.Leader(); l != n.leader.Load() {
+			n.logf("leader is %d at term %d", l, n.core.Term())
+			n.leader.Store(l)
+		}
 		if err != nil {
 			return err
 		}
@@ -496,12 +499,21 @@ func (n *Node) persist(ctx context.Context) {
 				break more
 			}
 		}
+		start := time.Now()
+		entries, bytes := 0, 0
 		for _, j := range jobs {
 			n.wal.Append(j.HardState, j.Entries)
+			entries += len(j.Entries)
+			for _, e := range j.Entries {
+				bytes += len(e.Data)
+			}
 		}
 		done := persistDone{jobs: jobs}
 		if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
+		}
+		if d := time.Since(start); d > n.cfg.Tick {
+			n.logf("slow write to the log: %d entries, %d bytes in %v", entries, bytes, d)
 		}
 		select {
 		case n.persisted <- done:

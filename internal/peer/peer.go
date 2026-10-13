@@ -70,8 +70,12 @@ const (
 	dataQueue    = 4096
 
 	writeTimeout = 5 * time.Second
-	dialTimeout  = 3 * time.Second
-	ioBuffer     = 256 << 10
+	// slowQueue is how long a message may wait in its queue before the
+	// wait is logged: a real node's tick. Waits are logged at most once a
+	// second per peer.
+	slowQueue   = 100 * time.Millisecond
+	dialTimeout = 3 * time.Second
+	ioBuffer    = 256 << 10
 )
 
 // TCP is the transport over TLS on TCP.
@@ -116,8 +120,8 @@ func Start(cfg Config) (*TCP, error) {
 			t:    t,
 			id:   id,
 			addr: addr,
-			ctrl: make(chan *raftpb.Message, controlQueue),
-			data: make(chan *raftpb.Message, dataQueue),
+			ctrl: make(chan queued, controlQueue),
+			data: make(chan queued, dataQueue),
 		}
 		t.senders[id] = s
 		t.wg.Go(s.run)
@@ -260,10 +264,21 @@ type sender struct {
 	t    *TCP
 	id   uint64
 	addr string
-	ctrl chan *raftpb.Message
-	data chan *raftpb.Message
+	ctrl chan queued
+	data chan queued
 	// ctrlBytes and dataBytes are the estimated bytes in each queue.
 	ctrlBytes, dataBytes atomic.Int64
+	// Writer only: messages that waited longer than slowQueue since the
+	// last report, the longest wait among them, and the report's time.
+	slow       int
+	slowest    time.Duration
+	slowReport time.Time
+}
+
+// queued is a message in a sender's queue and when it was queued.
+type queued struct {
+	m  *raftpb.Message
+	at time.Time
 }
 
 // size estimates the bytes a message keeps queued: its entries, context
@@ -301,7 +316,7 @@ func (s *sender) send(m *raftpb.Message) {
 		return
 	}
 	select {
-	case q <- m:
+	case q <- queued{m, time.Now()}:
 	default:
 		budget.Add(-n)
 		s.t.cfg.Unreachable(s.id)
@@ -311,22 +326,42 @@ func (s *sender) send(m *raftpb.Message) {
 // next returns the next message, control messages first, and whether the
 // queues hold more right now.
 func (s *sender) next(ctx context.Context) (*raftpb.Message, bool) {
+	var q queued
 	select {
-	case m := <-s.ctrl:
-		s.ctrlBytes.Add(-size(m))
-		return m, true
+	case q = <-s.ctrl:
+		s.ctrlBytes.Add(-size(q.m))
 	default:
+		select {
+		case q = <-s.ctrl:
+			s.ctrlBytes.Add(-size(q.m))
+		case q = <-s.data:
+			s.dataBytes.Add(-size(q.m))
+		case <-ctx.Done():
+			return nil, false
+		}
 	}
-	select {
-	case m := <-s.ctrl:
-		s.ctrlBytes.Add(-size(m))
-		return m, true
-	case m := <-s.data:
-		s.dataBytes.Add(-size(m))
-		return m, true
-	case <-ctx.Done():
-		return nil, false
+	s.waited(q)
+	return q.m, true
+}
+
+// waited logs messages that waited long in their queue, at most once a
+// second, with the longest wait, so that a stall on a link can be told
+// apart from a slow disk or a slow committer.
+func (s *sender) waited(q queued) {
+	d := time.Since(q.at)
+	if d <= slowQueue {
+		return
 	}
+	s.slow++
+	if d > s.slowest {
+		s.slowest = d
+	}
+	if time.Since(s.slowReport) < time.Second {
+		return
+	}
+	s.t.logf("peer: %d messages to %d waited over %v in their queue, the longest %v; the last a %s of %d bytes",
+		s.slow, s.id, slowQueue, s.slowest, q.m.GetType(), size(q.m))
+	s.slow, s.slowest, s.slowReport = 0, 0, time.Now()
 }
 
 func (s *sender) pending() bool { return len(s.ctrl) > 0 || len(s.data) > 0 }
@@ -335,10 +370,10 @@ func (s *sender) pending() bool { return len(s.ctrl) > 0 || len(s.data) > 0 }
 func (s *sender) drop() {
 	for {
 		select {
-		case m := <-s.ctrl:
-			s.ctrlBytes.Add(-size(m))
-		case m := <-s.data:
-			s.dataBytes.Add(-size(m))
+		case q := <-s.ctrl:
+			s.ctrlBytes.Add(-size(q.m))
+		case q := <-s.data:
+			s.dataBytes.Add(-size(q.m))
 		default:
 			s.t.cfg.Unreachable(s.id)
 			return
