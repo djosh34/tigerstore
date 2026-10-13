@@ -91,6 +91,10 @@ func (s *Sim) startWatchers() {
 // resumes up to 2 s later, so the next stream catches up on history.
 func (w *watchClient) drop() {
 	s := w.sim
+	if s.now >= s.stopAt {
+		// Watches stay open once the clients stop, so they reach the end.
+		return
+	}
 	if w.open {
 		n := s.nodes[w.node]
 		if n.up && n.gen == w.gen {
@@ -101,9 +105,7 @@ func (w *watchClient) drop() {
 		w.open = false
 		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
 	}
-	if s.now < s.stopAt {
-		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
-	}
+	s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
 }
 
 // openWatch picks a node and sends the create request.
