@@ -13,17 +13,38 @@ import (
 	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
-func freeAddr(t *testing.T) string {
+// listen listens on addr, or on a free port if addr is empty. The tests
+// hand the open listener to the transport, so no other process can take
+// the port in between; a port that a closed transport just released can
+// be busy for a moment, so it retries for a while.
+func listen(t *testing.T, addr string) net.Listener {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	if addr == "" {
+		addr = "127.0.0.1:0"
 	}
-	addr := ln.Addr().String()
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	return addr
+}
+
+// listeners listens on a free port for each ID and returns the addresses
+// and the listeners.
+func listeners(t *testing.T, ids ...uint64) (map[uint64]string, map[uint64]net.Listener) {
+	t.Helper()
+	addrs, lns := map[uint64]string{}, map[uint64]net.Listener{}
+	for _, id := range ids {
+		lns[id] = listen(t, "")
+		addrs[id] = lns[id].Addr().String()
+	}
+	return addrs, lns
 }
 
 type end struct {
@@ -32,7 +53,9 @@ type end struct {
 	unreachable atomic.Int64
 }
 
-func start(t *testing.T, id uint64, addrs map[uint64]string, cert tls.Certificate, pool *x509.CertPool) *end {
+// start starts node id on ln, or on a new listener on its address if ln
+// is nil.
+func start(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string, cert tls.Certificate, pool *x509.CertPool) *end {
 	t.Helper()
 	e := &end{got: make(chan *raftpb.Message, 1000)}
 	peers := map[uint64]string{}
@@ -41,8 +64,11 @@ func start(t *testing.T, id uint64, addrs map[uint64]string, cert tls.Certificat
 			peers[pid] = a
 		}
 	}
+	if ln == nil {
+		ln = listen(t, addrs[id])
+	}
 	tr, err := Start(Config{
-		ID: id, Listen: addrs[id], Peers: peers, Certificate: cert, CA: pool,
+		ID: id, Listener: ln, Peers: peers, Certificate: cert, CA: pool,
 		Deliver:     func(m *raftpb.Message) { e.got <- m },
 		Unreachable: func(uint64) { e.unreachable.Add(1) },
 		Logf:        t.Logf,
@@ -90,9 +116,9 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 		}
 		certs[id] = c
 	}
-	addrs := map[uint64]string{1: freeAddr(t), 2: freeAddr(t)}
-	a := start(t, 1, addrs, certs[1], ca.Pool)
-	b := start(t, 2, addrs, certs[2], ca.Pool)
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	b := start(t, 2, lns[2], addrs, certs[2], ca.Pool)
 	defer func() {
 		if err := a.t.Close(); err != nil {
 			t.Error(err)
@@ -122,7 +148,7 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 	}
 
 	// Node 2 comes back on the same address and gets new messages.
-	b = start(t, 2, addrs, certs[2], ca.Pool)
+	b = start(t, 2, nil, addrs, certs[2], ca.Pool)
 	defer func() {
 		if err := b.t.Close(); err != nil {
 			t.Error(err)
@@ -159,9 +185,9 @@ func TestRejectsOtherCA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	addrs := map[uint64]string{1: freeAddr(t), 2: freeAddr(t)}
-	a := start(t, 1, addrs, bad, ca.Pool)
-	b := start(t, 2, addrs, good, ca.Pool)
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, bad, ca.Pool)
+	b := start(t, 2, lns[2], addrs, good, ca.Pool)
 	defer func() {
 		if err := a.t.Close(); err != nil {
 			t.Error(err)
