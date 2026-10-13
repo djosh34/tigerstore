@@ -9,7 +9,7 @@
 //	TIGERSTORE                      the tigerstore binary
 //	STORAGE_TEST_CERTS              certificates made by scripts/dev-certs.sh
 //	STORAGE_TEST_DATA_DIR           a fresh directory for the nodes' data
-//	STORAGE_TEST_PROGRESS_INTERVAL  the watch progress interval, 0s for the default
+//	STORAGE_TEST_PROGRESS_INTERVAL  the watch progress interval, 0s for the default (10 minutes)
 package main
 
 import (
@@ -64,11 +64,13 @@ func run() error {
 			"--peer-cert-file", filepath.Join(certs, name+".pem"), "--peer-key-file", filepath.Join(certs, name+"-key.pem"),
 			"--peer-trusted-ca-file", filepath.Join(certs, "ca.pem"),
 		}
-		if iv := os.Getenv("STORAGE_TEST_PROGRESS_INTERVAL"); iv != "" && iv != "0s" {
+		if iv := os.Getenv("STORAGE_TEST_PROGRESS_INTERVAL"); iv != "" {
 			args = append(args, "--watch-progress-notify-interval", iv)
 		}
 		cmd := exec.Command(bin, args...)
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+		// A node must not outlive a factory that is killed.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 		if err := cmd.Start(); err != nil {
 			return errors.Join(err, stop(nodes, exited, len(nodes)))
 		}

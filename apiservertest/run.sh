@@ -7,8 +7,9 @@
 # It builds tigerstore and the factory, makes certificates, copies the
 # module from the module cache, replaces its embedded-etcd test server
 # with the adapter (apiservertest/prepare) and runs the tests of
-# pkg/storage/etcd3 and pkg/storage/testing unchanged. WORK keeps the
-# copy and the logs (default: a temporary directory).
+# pkg/storage/etcd3 and pkg/storage/testing unchanged, and fails if one is
+# skipped. WORK keeps the copy and the test output (default: a temporary
+# directory).
 set -euo pipefail
 
 version=${1:?usage: apiservertest/run.sh <version> [go test flags...]}
@@ -20,7 +21,7 @@ work=$(cd "$work" && pwd)
 
 go build -o "$work/tigerstore" "$repo/cmd/tigerstore"
 go build -o "$work/factory" "$repo/apiservertest/factory"
-"$repo/scripts/dev-certs.sh" "$work/certs" >/dev/null 2>&1
+"$repo/scripts/dev-certs.sh" "$work/certs" >/dev/null
 
 dir=$(cd "$repo" && go mod download -json "k8s.io/apiserver@$version" | jq -r .Dir)
 module="$work/apiserver-$version"
@@ -38,4 +39,13 @@ if go list -deps -test ./pkg/storage/etcd3/... ./pkg/storage/testing | grep -q '
 	echo "the storage tests still import go.etcd.io/etcd/server/v3" >&2
 	exit 1
 fi
-go test -count=1 -timeout=20m "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing
+# Compile every test binary first, so that linking does not compete with
+# the first tests for the disk and the CPU.
+go test -count=1 -run '^$' ./pkg/storage/etcd3/... ./pkg/storage/testing >/dev/null
+go test -count=1 -timeout=20m -v "$@" ./pkg/storage/etcd3/... ./pkg/storage/testing | tee "$work/test-$version.log" | grep -E -- '^(--- |ok|FAIL|panic)|^\s+--- FAIL'
+# #48 allows no skipped test.
+if grep -q -- '--- SKIP' "$work/test-$version.log"; then
+	echo "a test was skipped:" >&2
+	grep -- '--- SKIP' "$work/test-$version.log" >&2
+	exit 1
+fi

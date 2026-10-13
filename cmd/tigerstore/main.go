@@ -214,7 +214,10 @@ func run(args []string, logger *log.Logger) error {
 	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
 	ccfg := core.DefaultConfig(self.id, ids)
 	ccfg.ClusterID = h.Sum64()
-	ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
+	// As in etcd, an interval of 0 or less keeps the default.
+	if f.progressInterval > 0 {
+		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
+	}
 	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
 	if err != nil {
 		return err
