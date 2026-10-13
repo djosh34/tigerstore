@@ -22,9 +22,12 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/batchcmd"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -125,6 +128,7 @@ type Effects struct {
 // pending is a request that waits for its entry to apply or for a read
 // index.
 type pending struct {
+	command  *batchcmd.Command
 	req      Request
 	deadline int64
 	done     bool
@@ -380,6 +384,55 @@ func (n *Node) Submit(r Request) {
 	n.timeouts = append(n.timeouts, p)
 }
 
+// SubmitBatch admits a batch of immutable wire-backed commands. IDs must not
+// repeat within this boot and are baseID+i. The caller may release the original
+// bodies only after the core encodes or finishes every command, not after this
+// method returns. Each successful write still replies only after durable apply.
+func (n *Node) SubmitBatch(baseID uint64, commands []batchcmd.Command) {
+	// One allocation owns this admission's pending records and descriptors.
+	// Clearing a descriptor releases its bytes even if another pending record
+	// keeps the allocation alive. Legacy pending records gain only a pointer.
+	ps := make([]struct {
+		pending pending
+		command batchcmd.Command
+	}, len(commands))
+	headerSize := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})
+	for i, c := range commands {
+		id := baseID + uint64(i)
+		if n.err != nil {
+			n.reply(id, nil, rpctypes.ErrGRPCStopped)
+			continue
+		}
+		if !c.Valid() {
+			n.reply(id, nil, status.Error(codes.InvalidArgument, "core: invalid batch command"))
+			continue
+		}
+		// Put and Txn are one-byte tags plus their length-delimited body.
+		if !c.ReadOnly() && headerSize+1+protowire.SizeBytes(c.Size()) > MaxRequestBytes {
+			n.reply(id, nil, rpctypes.ErrGRPCRequestTooLarge)
+			continue
+		}
+		ps[i].command = c
+		p := &ps[i].pending
+		*p = pending{command: &ps[i].command, req: Request{ID: id}, deadline: n.now + int64(n.cfg.RequestTicks)}
+		if c.ReadOnly() {
+			// Reads retain typed requests until ReadIndex finishes. They do not
+			// enter the value log and cannot retain a receive buffer afterward.
+			p.req.Op = c.Legacy()
+			*p.command = batchcmd.Command{}
+			p.command = nil
+			if c.Serializable() {
+				n.serveRead(p)
+				continue
+			}
+			n.reads = append(n.reads, p)
+		} else {
+			n.queueWrite(p)
+		}
+		n.timeouts = append(n.timeouts, p)
+	}
+}
+
 // sizeRequestID stands in for etcd's request ID when sizing a write. etcd
 // v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
 // made from the low 16 bits of the member ID. When bit 15 of the member ID
@@ -444,7 +497,12 @@ const batchFraming = 4*binary.MaxVarintLen64 + 1
 // queueWrite adds a write to the next entry. A write that would take the
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	size := proto.Size(p.req.Op) + batchFraming
+	size := batchFraming
+	if p.command != nil {
+		size += len(p.command.Body())
+	} else {
+		size += proto.Size(p.req.Op)
+	}
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
@@ -474,12 +532,23 @@ func (n *Node) finish(p *pending, resp proto.Message, err error) {
 		return
 	}
 	p.done = true
+	// Completed metadata may stay in the timeout queue. It must not pin
+	// descriptor bodies or typed read requests until the deadline passes.
+	p.releaseRequest()
 	if p.req.ID == 0 {
 		// An internal write, such as a lease expiry; no client waits.
 		return
 	}
 	delete(n.waiting, p.req.ID)
 	n.reply(p.req.ID, resp, err)
+}
+
+func (p *pending) releaseRequest() {
+	if p.command != nil {
+		*p.command = batchcmd.Command{}
+		p.command = nil
+	}
+	p.req.Op = nil
 }
 
 func (n *Node) reply(id uint64, resp proto.Message, err error) {
@@ -496,6 +565,11 @@ func (n *Node) propose() {
 		return
 	}
 	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props)
+	// The immutable entry now owns the wire bytes. No request receive body
+	// may be pinned by pending bookkeeping, even when Raft drops the entry.
+	for _, p := range props {
+		p.releaseRequest()
+	}
 	if err != nil {
 		n.fail(err)
 		return
