@@ -127,11 +127,31 @@ def cluster(store, label):
                     assert 'etcd_disk_wal_fsync_duration_seconds_count' in result[-1], metrics
             return result
 
+        def applied_fence(revision, phase):
+            # Async raft never applies locally unstable entries. This proves
+            # every replica has stored this cohort before the sync snapshot.
+            # The fence is outside the existing generator's CPU window.
+            until = time.monotonic()+15
+            while True:
+                headers = [ctl(i, 'get', '/registry/pods/ns-000/pod-00000000', '--consistency=s')['header'] for i in order]
+                observed = [h['revision'] for h in headers]
+                if all(r == revision for r in observed):
+                    (dest/f'{phase}-fence.json').write_text(json.dumps({'expected':revision,'headers':headers}))
+                    return [h['raft_term'] for h in headers]
+                if time.monotonic() >= until:
+                    raise RuntimeError(f'catch-up failed: {revision}, {observed}')
+                time.sleep(.02)
+
         load('seed',4096,workers=64)
         load('warmup',20000)
         time.sleep(1)
+        warmup = json.loads((dest/'warmup.json').read_text())
+        terms_before = applied_fence(warmup['revision_after'], 'before')
         before = disk('before')
         load('put',60000)
+        result = json.loads((dest/'put.json').read_text())
+        terms_after = applied_fence(result['revision_after'], 'after')
+        assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
         after_disk = disk('after')
         (dest/'disk.json').write_text(json.dumps({'before':before,'after':after_disk},indent=2))
         if store != 'etcd':
