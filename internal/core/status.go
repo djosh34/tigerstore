@@ -2,7 +2,6 @@ package core
 
 import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/raft/v3/raftpb"
 )
 
 // The versions tigerstore reports, as etcd v3.7.2 does in Maintenance.Status
@@ -16,17 +15,18 @@ const (
 // QuotaBytes is etcd's default --quota-backend-bytes.
 const QuotaBytes = 2 << 30
 
-// recordBytes estimates the bytes one entry takes in the WAL: the record
-// header, the entry header and the data.
-func recordBytes(e *raftpb.Entry) int64 { return 9 + 17 + int64(len(e.GetData())) }
-
 // Status answers Maintenance.Status from this node's state. DbSize is the
 // size of the log, which is all the node stores; it is never 0, because
 // etcdctl divides by it.
 func (n *Node) Status() *pb.StatusResponse {
 	st := n.rn.BasicStatus()
+	// Header and body take the term from one snapshot; etcdctl prints one
+	// or the other depending on the output format.
+	h := n.watchHeader()
+	h.RaftTerm = st.GetTerm()
 	resp := &pb.StatusResponse{
-		Header:           n.watchHeader(),
+		Header:           h,
+		DowngradeInfo:    &pb.DowngradeInfo{},
 		Version:          ServerVersion,
 		StorageVersion:   StorageVersion,
 		DbSize:           max(n.logBytes, 1),

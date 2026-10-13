@@ -375,3 +375,37 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 		t.Fatalf("/version without a quorum = %d", code)
 	}
 }
+
+// TestManyStreamsOnOneConnection opens more watch streams on one
+// connection than net/http's default HTTP/2 limit of 250; kube-apiserver
+// runs many watches over one connection.
+func TestManyStreamsOnOneConnection(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 96)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(c.running[1].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() //nolint:errcheck // closing a test client
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	wc := pb.NewWatchClient(conn)
+	for i := range 300 {
+		ws, err := wc.Watch(ctx)
+		if err != nil {
+			t.Fatalf("stream %d: %v", i, err)
+		}
+		if err := ws.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("a")}}}); err != nil {
+			t.Fatalf("stream %d: %v", i, err)
+		}
+		r, err := ws.Recv()
+		if err != nil || !r.Created {
+			t.Fatalf("stream %d: %v %v", i, r, err)
+		}
+	}
+}

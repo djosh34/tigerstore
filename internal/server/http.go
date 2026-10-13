@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -15,8 +16,9 @@ import (
 // The HTTP endpoints share the client port with gRPC, as in etcd v3.7.2
 // (server/etcdserver/api/etcdhttp). kubeadm's preflight reads /version.
 
-// healthTimeout bounds the read that /health makes.
-const healthTimeout = 5 * time.Second
+// healthTimeout bounds the read that /health makes: etcd's request
+// timeout, 5 s plus two election timeouts of 1 s.
+const healthTimeout = 7 * time.Second
 
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
@@ -49,7 +51,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
 	defer cancel()
 	if _, err := s.n.Do(ctx, &pb.RangeRequest{Key: []byte("health"), KeysOnly: true, Limit: 1, Serializable: serializable}); err != nil {
-		http.Error(w, `{"health":"false","reason":"RANGE ERROR:`+err.Error()+`"}`, http.StatusServiceUnavailable)
+		// etcd reports its internal error text, without gRPC's wrapper.
+		msg := err.Error()
+		if st, ok := status.FromError(err); ok {
+			msg = st.Message()
+		}
+		http.Error(w, `{"health":"false","reason":"RANGE ERROR:`+msg+`"}`, http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
