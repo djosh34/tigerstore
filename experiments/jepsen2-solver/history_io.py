@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from edn_format import Keyword, loads_all
+from edn_format import Keyword, Symbol, loads_all
 from edn_format.immutable_dict import ImmutableDict
 from edn_format.immutable_list import ImmutableList
 
@@ -11,6 +11,11 @@ from edn_format.immutable_list import ImmutableList
 def normal(x):
     if isinstance(x, Keyword):
         return x.name
+    if isinstance(x, Symbol):
+        return {'edn_symbol': str(x)}
+    if isinstance(x, (set, frozenset)):
+        values = [normal(v) for v in x]
+        return {'edn_set': sorted(values, key=canonical)}
     if isinstance(x, (dict, ImmutableDict)):
         return {normal(k): normal(v) for k, v in x.items()}
     if isinstance(x, (list, tuple, ImmutableList)):
@@ -18,6 +23,23 @@ def normal(x):
     if x is None or isinstance(x, (str, int, float, bool)):
         return x
     raise ValueError(f'Unsupported EDN object: {x!r}')
+
+
+def canonical(x):
+    """Stable ordering for metadata sets, also implemented by the JVM verifier."""
+    if x is None:
+        return 'nil'
+    if isinstance(x, bool):
+        return str(x).lower()
+    if isinstance(x, str):
+        return 's' + x
+    if isinstance(x, (int, float)):
+        return 'n' + str(x)
+    if isinstance(x, list):
+        return '[' + '|'.join(canonical(v) for v in x) + ']'
+    if isinstance(x, dict):
+        return '{' + '|'.join(k + '=' + canonical(x[k]) for k in sorted(x)) + '}'
+    raise TypeError(type(x))
 
 
 def read_events(path):

@@ -83,6 +83,11 @@ jobs:
           with (p/'selftest-clojure.log').open('w') as f:
             subprocess.run(['java','-Xmx512m','-cp',cp,'clojure.main','-m','offline.verify',*args],stdout=f,stderr=subprocess.STDOUT,timeout=120,check=True)
           assert all(pathlib.Path(args[i]).exists() for i in range(3,len(args),4))
+          assert datetime.datetime.now(datetime.timezone.utc)<datetime.datetime.fromisoformat('2026-10-13T22:00:00+00:00')
+          bad=json.loads((p/'selftest/clojure-reject-args.json').read_text())
+          with (p/'selftest-clojure-reject.log').open('w') as f:
+            subprocess.run(['java','-Xmx512m','-cp',cp,'clojure.main','-m','offline.verify','reject',*bad],stdout=f,stderr=subprocess.STDOUT,timeout=60,check=True)
+          assert not any(pathlib.Path(bad[i]).exists() for i in range(3,len(bad),4))
           PY
       - name: Extract authenticated full evidence
         env:

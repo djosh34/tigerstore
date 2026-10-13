@@ -24,4 +24,21 @@ The pinned upstream source is `jepsen-io/etcd` commit `b47cc401f27bfb7c28afd9ac0
 
 The isolated branch is `exp/jepsen2-solver`; tooling is published under `experiments/jepsen2-solver`. Its Actions workflow runs one job per original history and starts with case 0 key 3. Python and Z3 solve only on those runners. No database containers, product builds, or host JVMs are needed.
 
-Runner commands and evidence links will be recorded in `published.json` and `EVIDENCE.md` after dispatch.
+On an Actions runner after installing the workflow's pinned dependencies and resolving `lein classpath`:
+
+```sh
+python experiments/jepsen2-solver/prepare.py experiments/jepsen/evidence saved
+python experiments/jepsen2-solver/run-case.py --saved saved --case 0 \
+  --classpath solver-results/classpath.txt --out solver-results/case
+
+# A fresh full history, with or without saved independent files.
+python experiments/jepsen2-solver/run-case.py --full INPUT/history.edn \
+  --independent INPUT/independent --classpath solver-results/classpath.txt \
+  --out solver-results/fresh
+```
+
+For a repository fresh archive, dispatch `.github/workflows/jepsen2-solver.yml` with `fresh_archive`, its explicit `fresh_sha256`, and `cases` as a JSON array of extracted case IDs. Archive case IDs follow sorted full-history member paths. Only full histories, original results, and independent history/results files are extracted. Missing projections are generated from the complete full history; existing projections must compare exactly. The archive manifest distinguishes retained from generated files.
+
+EDN sets and symbols in nemesis/error metadata use explicit JSON tags in witnesses. They do not affect register state. Both readers check the complete normalized projection against the retained EDN, and the original file hashes remain part of every witness.
+
+`published.json` records the commit. `EVIDENCE.md` records runner and witness artifact links.

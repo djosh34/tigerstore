@@ -21,8 +21,21 @@
     (.digest (MessageDigest/getInstance "SHA-256")
       (Files/readAllBytes (Paths/get path (make-array String 0))))))
 
+(defn canonical [x]
+  (cond (nil? x) "nil"
+        (boolean? x) (str x)
+        (string? x) (str "s" x)
+        (number? x) (str "n" x)
+        (sequential? x) (str "[" (str/join "|" (map canonical x)) "]")
+        (map? x) (str "{" (str/join "|"
+                           (for [[k v] (sort-by (comp name key) x)]
+                             (str (name k) "=" (canonical v)))) "}")
+        :else (throw (ex-info "Unsupported canonical metadata" {:value x}))))
+
 (defn normalized [x]
   (cond (keyword? x) (name x)
+        (symbol? x) {:edn_symbol (str x)}
+        (set? x) {:edn_set (vec (sort-by canonical (map normalized x)))}
         (map? x) (into {} (map (fn [[k v]] [(if (string? k) (keyword k) k) (normalized v)]) x))
         (sequential? x) (mapv normalized x)
         :else x))
@@ -136,10 +149,19 @@
     (println (pr-str result))))
 
 (defn -main [& args]
-  (let [rc (try
+  (let [reject? (= "reject" (first args))
+        args (if reject? (rest args) args)
+        rc (try
              (assert (and (seq args) (zero? (mod (count args) 4)))
-                     "Arguments: FULL SAVED WITNESS.edn OUT.edn, repeatable")
-             (doseq [group (partition 4 args)] (apply verify-one group))
+                     "Arguments: optional reject, then FULL SAVED WITNESS.edn OUT.edn, repeatable")
+             (doseq [group (partition 4 args)]
+               (if reject?
+                 (let [rejected? (try (apply verify-one group) false
+                                     (catch AssertionError _ true))]
+                   (assert rejected? "Invalid witness was accepted")
+                   (assert (not (.exists (io/file (last group)))))
+                   (println "Invalid witness rejected" (nth group 2)))
+                 (apply verify-one group)))
              0
              (catch Throwable t (.printStackTrace t) 2))]
     (shutdown-agents)

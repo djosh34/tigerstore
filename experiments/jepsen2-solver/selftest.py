@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Runner-only regression and exhaustive small-history differential tests."""
+import copy
 import itertools
 import json
 from pathlib import Path
@@ -65,6 +66,8 @@ def brute(calls):
 def fixed():
     w1 = pair(0, 'write', [None, 1], [1, 1])
     return [
+        ('metadata-set-symbol', w1 + pair(1, 'write', [None, 2], [None, 2], 'info', 'SYMBOL_SENTINEL')
+             + pair(2, 'read', [None, None], [1, 1]), True),
         ('empty-read', pair(0, 'read', [None, None], [0, None]), True),
         ('write-read', w1 + pair(1, 'read', [None, None], [1, 1]), True),
         ('read-wildcards', w1 + pair(1, 'read', [None, None], [None, None]), True),
@@ -131,9 +134,14 @@ def main(root):
         directory.mkdir()
         full = directory / 'full.edn'
         saved = directory / 'independent.edn'
-        full.write_text(raw_edn(events))
         saved_events = [dict(e, value=e['value'][1]) for e in events]
-        saved.write_text(raw_edn(saved_events))
+        full_text, saved_text = raw_edn(events), raw_edn(saved_events)
+        if name == 'metadata-set-symbol':
+            nemesis = '{:process :nemesis :type :info :f :partition :value #{#{"n1" "n2"} #{"n3"}}}\n'
+            full_text = nemesis + full_text.replace('"SYMBOL_SENTINEL"', 'io.netty.channel.StacklessClosedChannelException')
+            saved_text = nemesis + saved_text.replace('"SYMBOL_SENTINEL"', 'io.netty.channel.StacklessClosedChannelException')
+        full.write_text(full_text)
+        saved.write_text(saved_text)
         _, _, calls, _ = prepare(full, saved, 0)
         exact = brute(calls)
         if expected is not None:
@@ -154,10 +162,46 @@ def main(root):
                 from fractions import Fraction
                 assert Fraction(late['time']) > late['complete_pos']
         reports.append({'test': name, 'expected_sat': exact, 'result': result['solver_result']})
+    # Reject coverage, state, time, and optional-completion tampering in both
+    # validators. Each candidate starts from a separately accepted witness.
+    negatives = []
+    for name in ('omit-success', 'bad-state', 'bad-time', 'reversed-order', 'missing-operation', 'omit-required-info'):
+        original = root / ('required-no-leader' if name == 'omit-required-info' else 'write-read')
+        w = copy.deepcopy(json.loads((original / 'witness.json').read_text()))
+        included = [o for o in w['operations'] if o['decision'] == 'included']
+        target = next(o for o in included if o['status'] == 'info') if name == 'omit-required-info' else included[0]
+        if name in ('omit-success', 'omit-required-info'):
+            target['decision'] = 'omitted'
+            for k in ('time', 'state_after', 'model_version'):
+                target.pop(k)
+            w['order'].remove(target['id'])
+        elif name == 'bad-state':
+            target['state_after']['value'] = 999
+        elif name == 'bad-time':
+            target['time'] = str(target['invoke_pos'])
+        elif name == 'reversed-order':
+            w['order'].reverse()
+        elif name == 'missing-operation':
+            w['operations'].remove(target)
+            w['order'].remove(target['id'])
+        dest = root / ('reject-' + name)
+        dest.mkdir()
+        (dest / 'witness.json').write_text(json.dumps(w, indent=2) + '\n')
+        (dest / 'witness.edn').write_text(write_edn(w) + '\n')
+        rejected = False
+        try:
+            verify(original / 'full.edn', original / 'independent.edn', dest / 'witness.json')
+        except AssertionError:
+            rejected = True
+        assert rejected, name
+        negatives += [str(original / 'full.edn'), str(original / 'independent.edn'),
+                      str(dest / 'witness.edn'), str(dest / 'should-not-exist.edn')]
     # Run all exact-model replays in one small JVM, without any search.
     (root / 'clojure-args.json').write_text(json.dumps(clojure_args))
+    (root / 'clojure-reject-args.json').write_text(json.dumps(negatives))
     (root / 'summary.json').write_text(json.dumps({'valid': True, 'tests': reports,
-        'differential_cases': 80, 'exact_model_sat_witnesses': len(clojure_args) // 4}, indent=2) + '\n')
+        'differential_cases': 80, 'negative_verifier_cases': len(negatives) // 4,
+        'exact_model_sat_witnesses': len(clojure_args) // 4}, indent=2) + '\n')
     print(f'{len(tests)} solver/brute tests passed; {len(clojure_args)//4} witnesses await exact Clojure replay')
 
 
