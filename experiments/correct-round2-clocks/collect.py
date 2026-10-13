@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download compact evidence, or archive one legacy full artifact at a time."""
+"""Download compact evidence, or stream selected legacy ZIP members without extraction."""
 import argparse
 import gzip
 import hashlib
@@ -11,7 +11,8 @@ import tempfile
 
 p=argparse.ArgumentParser()
 p.add_argument('run_id')
-p.add_argument('--legacy-full',action='store_true')
+p.add_argument('--legacy-zip', '--legacy-full', dest='legacy_full', action='store_true',
+               help='stream legacy raw artifact ZIP members directly into gzip; never extract disks')
 a=p.parse_args()
 base=Path(__file__).resolve().parent
 out=base/'results'/f'run-{a.run_id}'
