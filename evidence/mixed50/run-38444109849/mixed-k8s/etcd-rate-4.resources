@@ -1,0 +1,9 @@
+target=etcd mode=rate rep=4
+    PID COMMAND           RSS    VSZ
+   6512 etcd            2139248 12117872
+   6513 etcd            1989316 12117680
+   6514 etcd            2433556 12253548
+               total        used        free      shared  buff/cache   available
+Mem:     16722046976  4127551488  4122279936    53706752  8905195520 12594495488
+Swap:     3221221376      159744  3221061632
+8129902065	/home/runner/work/_temp/bench-data/etcd

@@ -1,0 +1,9 @@
+target=candidate mode=rate rep=3
+    PID COMMAND           RSS    VSZ
+   6118 candidate       2543604 4509640
+   6119 candidate       2513748 4445312
+   6120 candidate       2656464 4657744
+               total        used        free      shared  buff/cache   available
+Mem:     16722046976  9299091456  2130006016    53563392  5700620288  7422955520
+Swap:     3221221376      159744  3221061632
+4648816061	/home/runner/work/_temp/bench-data/candidate
