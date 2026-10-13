@@ -193,8 +193,8 @@ func (c *client) request() proto.Message {
 	case p < 99:
 		// Compact a little behind the newest revision seen, as the
 		// Kubernetes compactor does, or half the time exactly where a
-		// disconnected watch will resume, the boundary where etcd's rules change. It
-		// may be compacted or ahead already.
+		// disconnected watch will resume, the boundary where etcd's rules
+		// change. It may be compacted or ahead already.
 		rev := max(1, c.rev-int64(s.rng.IntN(30)))
 		var waiting []*watchClient
 		for _, w := range s.watchers {
