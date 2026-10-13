@@ -246,9 +246,8 @@ jobs:
           path: ${{ runner.temp }}/chaos-out
           retention-days: 30
 
-  # The chaos job must be able to fail: with a planted bug built in, a run
-  # must end with the checker that bug breaks failing on a complete
-  # history. B01a serves linearizable reads like serializable ones (a stale
+  # The chaos job must be able to fail: with a planted bug built in, the
+  # checker that bug breaks must report its own finding. B01a serves linearizable reads like serializable ones (a stale
   # read), B06c drops previous values from watch events, B09a gives each
   # key of a write its own revision. Seeds are fixed.
   chaos-planted:
@@ -284,8 +283,9 @@ jobs:
               echo "seed $seed passed with the bug built in"
               continue
             fi
-            # Caught only if the named checker failed on a complete history.
-            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.passed | not) and ((.error // "") | startswith("incomplete history") | not))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
+            # Caught only if the named checker itself found the bug, not
+            # only a shared precondition such as the coverage floor.
+            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "")' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
               echo "seed $seed: $CHECKER caught it"
               caught=1
             else

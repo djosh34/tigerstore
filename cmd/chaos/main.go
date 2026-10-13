@@ -211,10 +211,14 @@ func run(c config, dir string) (err error) {
 }
 
 type checkerResult struct {
-	Name    string  `json:"name"`
-	Passed  bool    `json:"passed"`
-	Error   string  `json:"error,omitempty"`
-	Seconds float64 `json:"seconds"`
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Error  string `json:"error,omitempty"`
+	// CheckerError is the checker's own finding, without the shared
+	// preconditions (coverage floor, target fence, validation) that Error
+	// also holds.
+	CheckerError string  `json:"checker_error,omitempty"`
+	Seconds      float64 `json:"seconds"`
 }
 
 // runChecks runs the four checkers of package check on h. Each one fails
@@ -245,8 +249,12 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		{"Revisions", func() error { return check.Revisions(h) }},
 	} {
 		start := time.Now()
-		err := errors.Join(missing, ch.fn())
+		own := ch.fn()
+		err := errors.Join(missing, own)
 		res := checkerResult{Name: ch.name, Passed: err == nil, Seconds: time.Since(start).Seconds()}
+		if own != nil {
+			res.CheckerError = own.Error()
+		}
 		if err != nil {
 			res.Error = err.Error()
 			errs = append(errs, fmt.Errorf("%s: %w", ch.name, err))
