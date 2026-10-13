@@ -134,11 +134,13 @@ func (s *Sim) diskFailed(n *node, err error) {
 
 // stopNode stops a node like a crash and restarts it later from its disk.
 func (s *Sim) stopNode(n *node) {
-	if s.healed {
+	if s.healed && s.now <= s.healAt+s.cfg.LiveAfter {
 		// The guaranteed disk fault fired after healing, or a watchdog
 		// whose wait began before it. The liveness rule starts once the
 		// node is back (check.go); the clients keep going for 3 s more
-		// than that, so the rule has calls to check.
+		// than that, so the rule has calls to check. Only a stop in the
+		// first LiveAfter of healing counts, so the bound stays fixed: a
+		// node that keeps stopping later fails the rule.
 		s.lateStopAt = s.now
 		if live := s.liveFrom() + 3*Second; live > s.stopAt {
 			s.endAt += live - s.stopAt
