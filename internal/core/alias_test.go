@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -119,5 +120,43 @@ func TestUnmarshalAliasShares(t *testing.T) {
 	copy(in[i:], "VALUE")
 	if v := got.Success[0].GetRequestPut().Value; string(v) != "VALUE" || cap(v) != len(v) {
 		t.Fatalf("value %q with capacity %d is not a clipped slice of the input", v, cap(v))
+	}
+}
+
+// TestUnmarshalAliasDepth checks protobuf's recursion limit on nested
+// transactions on both sides of the limit, also when a later oneof
+// member replaces the deep chain.
+func TestUnmarshalAliasDepth(t *testing.T) {
+	nested := func(levels int) *pb.TxnRequest {
+		t := &pb.TxnRequest{}
+		for range levels {
+			t = &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestTxn{RequestTxn: t}}}}
+		}
+		return t
+	}
+	for levels := 4990; levels <= 5010; levels++ {
+		in, err := proto.Marshal(nested(levels))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The same chain inside a RequestOp whose request a later put
+		// replaces.
+		op, err := proto.Marshal(&pb.RequestOp{Request: &pb.RequestOp_RequestTxn{RequestTxn: nested(levels)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		put, err := proto.Marshal(&pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("k")}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		replaced := protowire.AppendTag(nil, 2, protowire.BytesType)
+		replaced = protowire.AppendBytes(replaced, append(op, put...))
+		for _, b := range [][]byte{in, replaced} {
+			wantErr := proto.Unmarshal(b, &pb.TxnRequest{})
+			err := UnmarshalAlias(b, &pb.TxnRequest{})
+			if (err != nil) != (wantErr != nil) {
+				t.Fatalf("%d levels: UnmarshalAlias error %v, protobuf error %v", levels, err, wantErr)
+			}
+		}
 	}
 }

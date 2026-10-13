@@ -18,10 +18,16 @@ var errBadMessage = errors.New("core: malformed protobuf message")
 // must never change afterwards. The index keeps such slices, so a
 // transaction's values stay in its Raft entry, the one copy of them.
 func UnmarshalAlias(b []byte, m proto.Message) error {
-	return decodeAlias(b, m.ProtoReflect())
+	// The top message counts as one level, as in protobuf.
+	return decodeAlias(b, m.ProtoReflect(), protowire.DefaultRecursionLimit-1)
 }
 
-func decodeAlias(b []byte, m protoreflect.Message) error {
+// errTooDeep is protobuf's error for messages nested past its limit.
+var errTooDeep = errors.New("core: exceeded maximum recursion depth")
+
+// decodeAlias decodes into m; depth is how many more levels of nested
+// messages may follow, protobuf's recursion limit.
+func decodeAlias(b []byte, m protoreflect.Message, depth int) error {
 	fields := m.Descriptor().Fields()
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
@@ -42,7 +48,7 @@ func decodeAlias(b []byte, m protoreflect.Message) error {
 			b = b[n:]
 			continue
 		}
-		n, err := decodeField(b, typ, m, fd)
+		n, err := decodeField(b, typ, m, fd, depth)
 		if err != nil {
 			return err
 		}
@@ -76,9 +82,15 @@ func kindWireType(k protoreflect.Kind) protowire.Type {
 }
 
 // decodeField decodes one field value and returns the bytes it took.
-func decodeField(b []byte, typ protowire.Type, m protoreflect.Message, fd protoreflect.FieldDescriptor) (int, error) {
+func decodeField(b []byte, typ protowire.Type, m protoreflect.Message, fd protoreflect.FieldDescriptor, depth int) (int, error) {
 	switch {
+	case fd.IsMap() || fd.Kind() == protoreflect.GroupKind:
+		// None of etcd's requests have them.
+		return 0, errBadMessage
 	case fd.Kind() == protoreflect.MessageKind:
+		if depth <= 0 {
+			return 0, errTooDeep
+		}
 		v, n := protowire.ConsumeBytes(b)
 		if n < 0 {
 			return 0, errBadMessage
@@ -91,10 +103,7 @@ func decodeField(b []byte, typ protowire.Type, m protoreflect.Message, fd protor
 			// so does a oneof member; another member replaces it.
 			sub = m.Mutable(fd).Message()
 		}
-		return n, decodeAlias(v, sub)
-	case fd.IsMap() || fd.Kind() == protoreflect.GroupKind:
-		// None of etcd's requests have them.
-		return 0, errBadMessage
+		return n, decodeAlias(v, sub, depth-1)
 	case fd.IsList() && typ == protowire.BytesType && kindWireType(fd.Kind()) != protowire.BytesType:
 		v, n := protowire.ConsumeBytes(b)
 		if n < 0 {
