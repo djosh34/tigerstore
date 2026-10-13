@@ -1,7 +1,0 @@
-{
-  "kind": "etcd",
-  "leader": "127.0.0.1:40010",
-  "term": "2",
-  "pids_leader_first": "5893,5894,5895",
-  "cpus_leader_first": "0 1 2"
-}
