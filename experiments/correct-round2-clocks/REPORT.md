@@ -15,7 +15,7 @@ Tigerstore had 20 attempts, 16 passed, 3,382 operations, 68 history sets and 272
 
 Every recorded history invoked all four repository checkers: `Linearizable`, `Watches`, `Durable` and `Revisions`. There were 24 failed verdicts, zero repository checker timeouts and zero synthetic missing verdicts. The slowest linearizability check took 27.449 ms. Missing fault hits remain failed runs even when their available histories pass.
 
-All 24 final cases passed on `ubuntu-24.04-arm` and `ubuntu-24.04`. Each product and architecture got a 5% leader CPU quota, a 10% follower CPU quota, leader and follower clock jumps, a zero-offset traced control, and leader/follower SIGKILL and SIGSTOP schedules. Every passing case independently cold-started each surviving pair and checked its full terminal values and revisions. The owner stopped further passing-case repetitions after this campaign.
+All 24 final cases passed on `ubuntu-24.04-arm` and `ubuntu-24.04`. Each product and architecture got a 5% leader CPU quota, a 10% follower CPU quota, leader and follower clock jumps, a zero-offset traced control, and leader/follower SIGKILL and SIGSTOP schedules. Every passing case independently cold-started each surviving pair and checked its full terminal values and revisions. Testing stopped after this campaign.
 
 ## Exact request sizes
 
