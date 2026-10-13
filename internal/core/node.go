@@ -114,6 +114,9 @@ type Request struct {
 	// Compact asks for a range's answer as Reply.Range, which the driver
 	// encodes itself, instead of a RangeResponse message.
 	Compact bool
+	// Chunk asks for a range as one chunk of a RangeStream
+	// (mvcc.Store.RangeChunk): no count beyond the limit.
+	Chunk bool
 	// Caller is the client as etcd's size limit for writes sees it.
 	Caller Caller
 }
@@ -866,7 +869,11 @@ func (n *Node) serveRead(p *pending) {
 			return
 		}
 		var r *pb.RangeResponse
-		r, err = n.kv.Range(op)
+		if p.req.Chunk {
+			r, err = n.kv.RangeChunk(op)
+		} else {
+			r, err = n.kv.Range(op)
+		}
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r

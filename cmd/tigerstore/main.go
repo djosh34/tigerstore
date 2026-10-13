@@ -33,6 +33,7 @@ type flags struct {
 	certFile, keyFile, caFile                 string
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
+	progressInterval                          time.Duration
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -43,6 +44,9 @@ type flags struct {
 // about one request per fsync. The batch256 pre-work on #47 measured 1.2
 // writes per fsync with one processor and 53 with two on the same CPU.
 const minProcs = 2
+
+// tick is a node's Raft tick.
+const tick = 100 * time.Millisecond
 
 func main() {
 	if runtime.GOMAXPROCS(0) < minProcs {
@@ -72,6 +76,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -209,7 +214,11 @@ func run(args []string, logger *log.Logger) error {
 	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
 	ccfg := core.DefaultConfig(self.id, ids)
 	ccfg.ClusterID = h.Sum64()
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: 100 * time.Millisecond, Logf: logger.Printf})
+	// As in etcd, an interval of 0 or less keeps the default.
+	if f.progressInterval > 0 {
+		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
+	}
+	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
 	if err != nil {
 		return err
 	}

@@ -88,6 +88,8 @@ type outItem struct {
 	kind outKind
 	b    []byte
 	end  bool // for data: END_STREAM
+	// started: the writer sent part of it, so it must be sent whole.
+	started bool
 }
 
 var (
@@ -300,11 +302,20 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 		st.out = append(st.out, outItem{kind: outData, b: msg})
 		st.queued += len(msg)
 	}
-	if end && s != nil && st.rpc != nil && st.rpc.stream != nil {
-		// A stream that fails drops the replies its client has not taken
-		// yet, so the status goes out without waiting for them.
-		st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData })
+	if end && s != nil && st.rpc != nil && st.rpc.stream != nil && !st.rpc.serverStream {
+		// A watch or keepalive stream that fails drops the replies its
+		// client has not taken yet, so the status goes out without waiting
+		// for them; a reply partly sent is finished first, so the message
+		// framing stays whole. A server stream keeps them: grpc-go sends
+		// every message Send took before the status, as etcd's RangeStream
+		// does before a compaction error.
+		st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData && !it.started })
 		st.queued = 0
+		for _, it := range st.out {
+			if it.kind == outData {
+				st.queued += len(it.b)
+			}
+		}
 	}
 	if end {
 		var block []byte
