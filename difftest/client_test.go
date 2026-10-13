@@ -268,10 +268,13 @@ func (r *run) txn(do string, req *pb.TxnRequest) {
 	var res any
 	if err == nil {
 		type opResult struct {
-			Range   *rangeResult `json:"range,omitempty"`
-			PrevKV  *kv          `json:"prevKV,omitempty"`
-			Put     bool         `json:"put,omitempty"`
-			Deleted *int64       `json:"deleted,omitempty"`
+			Range *rangeResult `json:"range,omitempty"`
+			// Revision is the header revision of a put or delete
+			// result, zero when the server sends no header.
+			Revision int64  `json:"revision,omitempty"`
+			PrevKV   *kv    `json:"prevKV,omitempty"`
+			Put      bool   `json:"put,omitempty"`
+			Deleted  *int64 `json:"deleted,omitempty"`
 		}
 		var ops []opResult
 		for _, o := range resp.Responses {
@@ -279,10 +282,10 @@ func (r *run) txn(do string, req *pb.TxnRequest) {
 			case *pb.ResponseOp_ResponseRange:
 				ops = append(ops, opResult{Range: r.rangeResult(x.ResponseRange)})
 			case *pb.ResponseOp_ResponsePut:
-				ops = append(ops, opResult{Put: true, PrevKV: r.kv(x.ResponsePut.PrevKv)})
+				ops = append(ops, opResult{Put: true, Revision: r.rel(x.ResponsePut.GetHeader().GetRevision()), PrevKV: r.kv(x.ResponsePut.PrevKv)})
 			case *pb.ResponseOp_ResponseDeleteRange:
 				d := x.ResponseDeleteRange.Deleted
-				ops = append(ops, opResult{Deleted: &d})
+				ops = append(ops, opResult{Revision: r.rel(x.ResponseDeleteRange.GetHeader().GetRevision()), Deleted: &d})
 			default:
 				r.t.Fatalf("%s: unexpected txn response %T", do, x)
 			}
@@ -314,11 +317,14 @@ func (r *run) grant(do string, id, ttl int64) int64 {
 	var res any
 	if err == nil {
 		res = struct {
-			Revision int64  `json:"revision"`
-			Lease    int64  `json:"lease"`
-			TTL      int64  `json:"ttl"`
-			Error    string `json:"error,omitempty"`
-		}{r.rel(resp.Header.Revision), r.lease(resp.ID), resp.TTL, resp.Error}
+			Revision int64 `json:"revision"`
+			Lease    int64 `json:"lease"`
+			// AsAsked says whether a grant with an explicit ID got
+			// that ID, since lease numbers hide the ID itself.
+			AsAsked bool   `json:"asAsked,omitempty"`
+			TTL     int64  `json:"ttl"`
+			Error   string `json:"error,omitempty"`
+		}{r.rel(resp.Header.Revision), r.lease(resp.ID), id != 0 && resp.ID == id, resp.TTL, resp.Error}
 	}
 	r.record(do, res, err)
 	if err != nil {
@@ -342,6 +348,10 @@ func (r *run) revoke(do string, id int64) {
 // watch opens a watch, receives until the server cancels it or one second
 // passed, and records everything that arrived. The events are recorded as
 // one list, since how the server batches them into responses may differ.
+// The headers of the created and canceled responses are recorded. Every
+// other response must keep the created watch ID and have a header revision
+// that does not go back and covers its events; breaks are recorded as
+// problems.
 func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 	r.t.Helper()
 	ctx, cancel := context.WithTimeout(r.ctx, time.Second)
@@ -359,12 +369,16 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 		PrevKV *kv    `json:"prevKV,omitempty"`
 	}
 	var res struct {
-		Created         bool    `json:"created"`
-		Canceled        bool    `json:"canceled,omitempty"`
-		CompactRevision int64   `json:"compactRevision,omitempty"`
-		CancelReason    string  `json:"cancelReason,omitempty"`
-		Events          []event `json:"events,omitempty"`
+		Created         bool     `json:"created"`
+		CreatedRevision int64    `json:"createdRevision,omitempty"`
+		Canceled        bool     `json:"canceled,omitempty"`
+		CancelRevision  int64    `json:"cancelRevision,omitempty"`
+		CompactRevision int64    `json:"compactRevision,omitempty"`
+		CancelReason    string   `json:"cancelReason,omitempty"`
+		Events          []event  `json:"events,omitempty"`
+		Problems        []string `json:"problems,omitempty"`
 	}
+	var id, header int64
 	for !res.Canceled {
 		resp, err := stream.Recv()
 		if status.Code(err) == codes.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
@@ -372,6 +386,32 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 		}
 		if err != nil {
 			r.t.Fatalf("%s: %v", do, err)
+		}
+		problem := func(format string, args ...any) {
+			res.Problems = append(res.Problems, fmt.Sprintf(format, args...))
+		}
+		switch {
+		case resp.Created && !res.Created:
+			id = resp.WatchId
+			res.CreatedRevision = r.rel(resp.Header.GetRevision())
+		case !res.Created:
+			problem("a response came before the created response")
+		case resp.WatchId != id:
+			problem("watch ID %d after created ID %d", resp.WatchId, id)
+		}
+		if resp.Canceled {
+			res.CancelRevision = r.rel(resp.Header.GetRevision())
+		} else {
+			rev := resp.Header.GetRevision()
+			if rev < header {
+				problem("header revision %d after %d", r.rel(rev), r.rel(header))
+			}
+			header = max(header, rev)
+			for _, e := range resp.Events {
+				if e.Kv.ModRevision > rev {
+					problem("event at %d in a response with header revision %d", r.rel(e.Kv.ModRevision), r.rel(rev))
+				}
+			}
 		}
 		res.Created = res.Created || resp.Created
 		res.Canceled = res.Canceled || resp.Canceled

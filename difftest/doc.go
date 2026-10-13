@@ -14,8 +14,11 @@
 // Two lists in boundaries_test.go say where tigerstore may differ. stricter
 // holds the watch steps where etcd sends an update without its previous
 // value, which Kubernetes rejects; tigerstore must not copy that. expectedFail
-// holds the steps tigerstore does not match yet, each with an issue. A listed
-// step that starts to match fails the test until it is removed from the list.
+// holds the steps tigerstore does not match yet, each with an issue.
+// testdata/tigerstore-known.json holds tigerstore's answer to each of them,
+// and a listed step must give exactly that answer. `scripts/difftest.sh
+// tigerstore record` writes that file again. A listed step that starts to
+// match etcd fails the test until it is removed from the list.
 //
 // TIGERSTORE_DIFF_SERVER (etcd or tigerstore) and TIGERSTORE_DIFF_ENDPOINT are
 // required. For a TLS endpoint, set TIGERSTORE_DIFF_CA, TIGERSTORE_DIFF_CERT

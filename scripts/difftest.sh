@@ -2,8 +2,11 @@
 # Runs the differential tests in difftest/ against a fresh server.
 #
 #   scripts/difftest.sh etcd          single-node etcd v3.7.2
-#   scripts/difftest.sh etcd record   the same, and rewrites the recorded answers
+#   scripts/difftest.sh etcd record   the same, and rewrites etcd's recorded answers
 #   scripts/difftest.sh tigerstore    3-node tigerstore built from this checkout
+#   scripts/difftest.sh tigerstore record
+#                                     the same, and rewrites tigerstore's answers to
+#                                     the steps it does not match yet
 #
 # ETCD is the etcd v3.7.2 binary, etcd on PATH by default. etcd runs on fixed
 # ports, because its member ID comes from its URLs and the largest accepted
@@ -26,6 +29,18 @@ stop() {
 trap stop EXIT
 # in_use reports whether something listens on a local port.
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+# alive fails unless every server this script started still runs, so the
+# tests cannot have talked to another process that held the port.
+alive() {
+	local f
+	for f in "$work"/*.pid "$work"/data/*.pid; do
+		[ -e "$f" ] || continue
+		if ! kill -0 "$(cat "$f")" 2>/dev/null; then
+			echo "the server of $f exited during the tests"
+			exit 1
+		fi
+	done
+}
 args=(-count=1 -tags difftest ./difftest)
 [ "$record" = record ] && args+=(-record)
 
@@ -49,6 +64,7 @@ etcd)
 	echo $! >"$work/etcd.pid"
 	TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 go test "${args[@]}" ||
 		{ tail -50 "$work/etcd.log"; exit 1; }
+	alive
 	;;
 tigerstore)
 	go build -o "$work/tigerstore" ./cmd/tigerstore
@@ -65,6 +81,7 @@ tigerstore)
 		TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 		go test "${args[@]}" ||
 		{ for f in "$work"/data/*.log; do echo "== $f"; tail -30 "$f"; done; exit 1; }
+	alive
 	;;
 *)
 	echo "unknown server $server"

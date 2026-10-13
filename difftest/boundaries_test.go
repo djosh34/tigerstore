@@ -15,9 +15,12 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
-var recordFlag = flag.Bool("record", false, "write the endpoint's answers to "+goldenFile+" instead of comparing")
+var recordFlag = flag.Bool("record", false, "write etcd's answers to "+goldenFile+", or tigerstore's answers to its expected failures to "+knownFile+", instead of comparing")
 
-const goldenFile = "testdata/etcd-v3.7.2.json"
+const (
+	goldenFile = "testdata/etcd-v3.7.2.json"
+	knownFile  = "testdata/tigerstore-known.json"
+)
 
 // cases run in this order, because compaction is global: each case only
 // compacts above the revisions of the cases before it.
@@ -44,16 +47,16 @@ var cases = []struct {
 // TIGERSTORE_DIFF_SERVER is etcd.
 var stricter = map[string][]string{
 	"compact-below-current/watch a from 2 with prev_kv": {
-		`{"created":true,"events":[{"type":"PUT","kv":{"key":"a","value":"2","create":1,"mod":2,"version":2},"prevKV":{"key":"a","value":"1","create":1,"mod":1,"version":1}},{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
-		`{"created":true,"canceled":true,"compactRevision":2}`,
+		`{"created":true,"createdRevision":3,"events":[{"type":"PUT","kv":{"key":"a","value":"2","create":1,"mod":2,"version":2},"prevKV":{"key":"a","value":"1","create":1,"mod":1,"version":1}},{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
+		`{"created":true,"createdRevision":3,"canceled":true,"compactRevision":2}`,
 	},
 	"compact-physical/watch a from 2 with prev_kv": {
-		`{"created":true,"events":[{"type":"PUT","kv":{"key":"a","value":"2","create":1,"mod":2,"version":2},"prevKV":{"key":"a","value":"1","create":1,"mod":1,"version":1}},{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
-		`{"created":true,"canceled":true,"compactRevision":2}`,
+		`{"created":true,"createdRevision":3,"events":[{"type":"PUT","kv":{"key":"a","value":"2","create":1,"mod":2,"version":2},"prevKV":{"key":"a","value":"1","create":1,"mod":1,"version":1}},{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
+		`{"created":true,"createdRevision":3,"canceled":true,"compactRevision":2}`,
 	},
 	"compact-at-current/watch a from 3 with prev_kv": {
-		`{"created":true,"events":[{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
-		`{"created":true,"canceled":true,"compactRevision":3}`,
+		`{"created":true,"createdRevision":3,"events":[{"type":"PUT","kv":{"key":"a","value":"3","create":1,"mod":3,"version":3},"prevKV":{"key":"a","value":"2","create":1,"mod":2,"version":2}}]}`,
+		`{"created":true,"createdRevision":3,"canceled":true,"compactRevision":3}`,
 	},
 }
 
@@ -64,8 +67,9 @@ const (
 )
 
 // expectedFail lists the steps where tigerstore differs from etcd v3.7.2
-// today, by case, with the reason. They still run. A listed step that
-// matches etcd fails the test, so the list shrinks as the core grows.
+// today, by case, with the reason. They still run, and each must give the
+// answer recorded for it in knownFile. A listed step that matches etcd fails
+// the test, so the list shrinks as the core grows.
 var expectedFail = map[string]struct {
 	reason string
 	steps  []string
@@ -74,7 +78,7 @@ var expectedFail = map[string]struct {
 	"compact-at-current":    {issueCompaction, []string{"compact at R", "range a at 1", "range a at 2", "watch a from 1 with prev_kv", "watch a from 2 with prev_kv", "compact at R again"}},
 	"compact-above-current": {issueCompaction, []string{"compact at R+1"}},
 	"compact-physical":      {issueCompaction, []string{"physical compact at R-1", "range a at 1", "watch a from 1 with prev_kv"}},
-	"error-codes":           {issueCompaction, []string{"txn with a historical range at a compacted revision", "compact at revision 0", "compact at revision -1"}},
+	"error-codes":           {issueCompaction, []string{"compact at 2", "txn with a historical range at a compacted revision", "compact at revision 0", "compact at revision -1"}},
 	"leases": {issueLeases, []string{
 		"grant with an explicit ID", "grant the same ID again", "grant with a TTL of 1 s", "grant with a TTL of 9000000001 s",
 		"grant with a TTL of 0", "grant with a negative ID", "put k with the lease", "put j with the lease", "put j without a lease",
@@ -98,7 +102,7 @@ func server(t *testing.T) string {
 // v3.7.2 answered with want.
 func allowed(srv, name string, want, got step) bool {
 	alts, ok := stricter[name+"/"+want.Do]
-	if !ok || srv == "etcd" && sameStep(want, got) {
+	if !ok || srv == "etcd" {
 		return sameStep(want, got)
 	}
 	for _, alt := range alts {
@@ -112,7 +116,7 @@ func allowed(srv, name string, want, got step) bool {
 func TestBoundaries(t *testing.T) {
 	srv := server(t)
 	c := dial(t)
-	if *recordFlag {
+	if *recordFlag && srv == "etcd" {
 		st, err := c.maint.Status(t.Context(), &pb.StatusRequest{})
 		if err != nil {
 			t.Fatal(err)
@@ -126,50 +130,49 @@ func TestBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string][]step{}
-	var order []string
 	for _, cs := range cases {
 		r := newRun(t, c, start.Header.Revision, cs.name)
 		cs.run(r)
 		got[cs.name] = r.steps
-		order = append(order, cs.name)
 	}
 	if *recordFlag {
-		var buf bytes.Buffer
-		buf.WriteString("{\n")
-		for i, name := range order {
-			b, err := json.MarshalIndent(got[name], "  ", "  ")
-			if err != nil {
-				t.Fatal(err)
-			}
-			fmt.Fprintf(&buf, "  %q: %s", name, b)
-			if i < len(order)-1 {
-				buf.WriteString(",")
-			}
-			buf.WriteString("\n")
+		if srv == "etcd" {
+			writeJSON(t, goldenFile, got)
+			return
 		}
-		buf.WriteString("}\n")
-		if err := os.WriteFile(goldenFile, buf.Bytes(), 0o644); err != nil {
-			t.Fatal(err)
+		// tigerstore's answers to the steps it does not match yet.
+		known := map[string]step{}
+		for name, steps := range got {
+			for _, s := range steps {
+				if slices.Contains(expectedFail[name].steps, s.Do) {
+					known[name+"/"+s.Do] = s
+				}
+			}
 		}
+		writeJSON(t, knownFile, known)
 		return
 	}
-	data, err := os.ReadFile(goldenFile)
-	if err != nil {
-		t.Fatal(err)
-	}
 	want := map[string][]step{}
-	if err := json.Unmarshal(data, &want); err != nil {
-		t.Fatal(err)
-	}
+	readJSON(t, goldenFile, &want)
 	if len(want) != len(cases) {
 		t.Errorf("%s has %d cases, the test has %d", goldenFile, len(want), len(cases))
 	}
-	for name, known := range expectedFail {
-		for _, do := range known.steps {
+	known := map[string]step{}
+	readJSON(t, knownFile, &known)
+	listed := 0
+	for name, ef := range expectedFail {
+		for _, do := range ef.steps {
+			listed++
 			if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
 				t.Errorf("expectedFail names %s step %q, which %s does not have", name, do, goldenFile)
 			}
+			if _, ok := known[name+"/"+do]; !ok {
+				t.Errorf("expectedFail names %s step %q, which %s does not have", name, do, knownFile)
+			}
 		}
+	}
+	if len(known) != listed {
+		t.Errorf("%s has %d steps, expectedFail lists %d", knownFile, len(known), listed)
 	}
 	for k := range stricter {
 		name, do, _ := strings.Cut(k, "/")
@@ -177,19 +180,26 @@ func TestBoundaries(t *testing.T) {
 			t.Errorf("stricter names %q, which %s does not have", k, goldenFile)
 		}
 	}
-	for _, name := range order {
+	for _, cs := range cases {
+		name := cs.name
 		w, g := want[name], got[name]
 		if len(w) != len(g) {
 			t.Errorf("%s: %d steps, etcd v3.7.2 had %d", name, len(g), len(w))
 		}
-		known := expectedFail[name]
+		ef := expectedFail[name]
 		for i := range min(len(w), len(g)) {
 			ok := allowed(srv, name, w[i], g[i])
-			if srv == "tigerstore" && slices.Contains(known.steps, w[i].Do) {
-				if ok {
-					t.Errorf("%s step %d %q now matches etcd v3.7.2; remove it from expectedFail", name, i, w[i].Do)
-				} else {
-					t.Logf("expected failure, %s: %s step %d %q:\n got  %s\n want %s", known.reason, name, i, g[i].Do, show(g[i]), show(w[i]))
+			if srv == "tigerstore" && slices.Contains(ef.steps, w[i].Do) {
+				// The step must still give the answer recorded for it,
+				// so an unrelated change cannot hide behind the list.
+				k := known[name+"/"+w[i].Do]
+				switch {
+				case ok:
+					t.Errorf("%s step %d %q now matches etcd v3.7.2; remove it from expectedFail and %s", name, i, w[i].Do, knownFile)
+				case !sameStep(k, g[i]):
+					t.Errorf("%s step %d %q is an expected failure (%s), but its answer changed:\n got      %s\n recorded %s\n etcd     %s", name, i, g[i].Do, ef.reason, show(g[i]), show(k), show(w[i]))
+				default:
+					t.Logf("expected failure, %s: %s step %d %q:\n got  %s\n want %s", ef.reason, name, i, g[i].Do, show(g[i]), show(w[i]))
 				}
 				continue
 			}
@@ -197,6 +207,28 @@ func TestBoundaries(t *testing.T) {
 				t.Errorf("%s step %d %q:\n got  %s\n want %s", name, i, g[i].Do, show(g[i]), show(w[i]))
 			}
 		}
+	}
+}
+
+func writeJSON(t *testing.T, path string, v any) {
+	t.Helper()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readJSON(t *testing.T, path string, v any) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		t.Fatalf("%s: %v", path, err)
 	}
 }
 
@@ -355,6 +387,7 @@ func errorCodes(r *run) {
 	r.put("put ignore_lease on a missing key", &pb.PutRequest{Key: r.key("missing"), IgnoreLease: true})
 	r.put("put ignore_value with a value", &pb.PutRequest{Key: k, Value: []byte("v"), IgnoreValue: true})
 	r.put("put ignore_value on k", &pb.PutRequest{Key: k, IgnoreValue: true})
+	r.compact("compact at 2", r.abs(2), false)
 	r.txn("txn putting one key twice", &pb.TxnRequest{Success: []*pb.RequestOp{putOp(k, "1"), putOp(k, "2")}})
 	r.txn("txn putting and deleting one key", &pb.TxnRequest{Success: []*pb.RequestOp{putOp(k, "1"), deleteOp(k)}})
 	r.txn("txn reading one key twice", &pb.TxnRequest{Success: []*pb.RequestOp{getOp(k), getOp(k)}})
@@ -368,7 +401,7 @@ func errorCodes(r *run) {
 	r.txn("txn with 128 operations", &pb.TxnRequest{Success: many(128)})
 	r.txn("txn with 129 operations", &pb.TxnRequest{Success: many(129)})
 	r.txn("txn with 129 operations in the branch not taken", &pb.TxnRequest{Compare: []*pb.Compare{modEquals(k, 0)}, Success: many(129)})
-	r.txn("txn with a historical range at a compacted revision", &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: k, Revision: 1}}}}})
+	r.txn("txn with a historical range at a compacted revision", &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: k, Revision: r.abs(1)}}}}})
 	r.compact("compact at revision 0", 0, false)
 	r.compact("compact at revision -1", -1, false)
 }
