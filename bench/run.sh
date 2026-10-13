@@ -14,7 +14,12 @@
 #
 # Each repetition runs every target once, in TARGETS order on odd
 # repetitions and reversed on even ones, so drift on the runner does not
-# favour one target. The generator drives the leader only.
+# favour one target. Mixed drives all three endpoints; others use the leader.
+# mixed-k8s uses the Kubernetes 1.37 dump sizes, not a fixed byte size.
+# Its mix is get/list/update/create/delete = 25/10/40/15/10, plus watches
+# on each resource. MIX overrides it. With rate only, MIXED_RATE defaults
+# to 500 arrivals/s, fixed for every target. With max, rate is half etcd's
+# median max as for the other workloads.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -48,6 +53,10 @@ workload=${bench%-*}
 case ${bench##*-} in
 1k) size=1024 ;;
 10k) size=10240 ;;
+k8s)
+	if [ "$workload" != mixed ]; then echo "k8s size needs mixed" >&2; exit 2; fi
+	size=1024 # ignored by mixed; values come from the dump table
+	;;
 *)
 	echo "unknown size in $bench" >&2
 	exit 2
@@ -70,6 +79,14 @@ keys=10000 warmup=3s duration=10s
 # Each answer is about half a megabyte, so at max only 2 connections × 16
 # streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
 concurrency=()
+if [ "$workload" = mixed ]; then
+	keys=1000000
+	concurrency=(-conns 6 -streams 16 -mix "${MIX:-25,10,40,15,10}")
+	# ~1.47 GB values per replica before log/index overhead. Three nodes
+	# run sequentially by target, never concurrently across targets. Keep
+	# growing-log churn short on the 16 GB runner, without resizing values.
+	export BENCH_GOMEMLIMIT=3GiB
+fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)
@@ -103,9 +120,10 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 	"$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
 	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
-	local status=0
+	local status=0 endpoint_file=leader
+	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
 	taskset -c "${layout[0]}" "$loadgen" \
-		-endpoints "$(cat "$dir/leader")" \
+		-endpoints "$(cat "$dir/$endpoint_file")" \
 		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
 		-pids "$(cat "$dir/pids")" \
 		-label "$target" \
@@ -148,7 +166,14 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	if [[ " ${targets[*]} " != *" etcd "* ]]; then
 		ref=${targets[0]}
 	fi
-	rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "$out/$bench/$ref"-max-*.json)
+	if [[ " ${modes[*]} " == *" max "* ]]; then
+		rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "$out/$bench/$ref"-max-*.json)
+	elif [ "$workload" = mixed ]; then
+		rate=${MIXED_RATE:-500}
+	else
+		echo "rate-only needs max results, except mixed-k8s with its fixed rate" >&2
+		exit 2
+	fi
 	if [ "$workload" = delete ]; then
 		keys=$(awk -v r="$rate" -v w="${warmup%s}" -v d="${duration%s}" 'BEGIN { print int(r * (w + d) * 1.2) + 10000 }')
 	fi

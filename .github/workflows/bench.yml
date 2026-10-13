@@ -14,10 +14,10 @@ on:
         description: tigerstore ref to compare against
         default: main
       benchmarks:
-        description: space-separated <workload>-<size> (workload put, txn, delete, range, list or watch; size 1k or 10k)
-        default: put-1k txn-1k
+        description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, or mixed-k8s (Kubernetes 1.37 dump sizes)
+        default: put-1k txn-1k mixed-k8s
       modes:
-        description: max (every stream busy), rate (open loop at half of etcd's max), or both
+        description: max, rate (half etcd max, or fixed 500/s for rate-only mixed-k8s), or both
         default: max rate
       reps:
         description: repetitions
@@ -31,7 +31,7 @@ jobs:
     steps:
       - id: plan
         env:
-          BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k' }}
+          BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k mixed-k8s' }}
         run: echo "benchmarks=$(jq -cn --arg b "$BENCHMARKS" '$b | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
 
   bench:
@@ -94,6 +94,7 @@ jobs:
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
+            echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn, dump-derived sizes, all endpoints, default mix 25/10/40/15/10 plus resource watches; 3 GiB Go memory target per server"
             echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
@@ -120,3 +121,4 @@ jobs:
         with:
           name: bench-${{ matrix.bench }}
           path: results
+          retention-days: 30
