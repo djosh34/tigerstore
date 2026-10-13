@@ -154,7 +154,7 @@ def once(kind, rep, rate=None):
     parts = CASE.split('-')
     workload, size_name, ingress, mode = parts[:4]
     size = 1024 if size_name == '1k' else 10240
-    concurrency = int(mode[1:]) if mode.startswith('c') else int(os.environ.get('OPEN_CONCURRENCY', '4096'))
+    concurrency = int(mode[1:]) if mode.startswith('c') else int(os.environ.get('OPEN_CONCURRENCY', '256' if workload == 'list' else '4096'))
     label = f'{kind}-{rep}' + (f'-r{rate}' if rate else '')
     dst = OUT / CASE / label
     dst.mkdir(parents=True)
@@ -182,7 +182,8 @@ def once(kind, rep, rate=None):
                 '-label', kind, '-workload', workload, '-value-size', str(size),
                 '-keys', '1000' if workload == 'list' else '4096', '-conns', '18',
                 '-concurrency', str(concurrency), '-warmup', WARMUP, '-duration', DURATION,
-                '-seed', str(rep), '-barrier-prefix', barrier, '-out', dst/'load.json', '-drain', '30s']
+                '-seed', str(rep), '-barrier-prefix', barrier, '-out', dst/'load.json', '-drain', '30s',
+                '-max-response-bytes', '2097152']
         if ingress == 'balanced':
             argv += ['-balance', 'round-robin']
         if rate is not None:
