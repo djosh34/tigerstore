@@ -190,7 +190,7 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	if st.deadline != nil {
 		st.deadline.Stop()
 	}
-	c.releaseLocked(st)
+	c.releaseLocked(&st.replyHeld)
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}
