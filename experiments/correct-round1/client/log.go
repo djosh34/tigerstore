@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -75,6 +77,46 @@ func generateLog(c config) error {
 	canonical, err := committedPrefix(nodes)
 	if err != nil {
 		return err
+	}
+	type nodeEvidence struct {
+		Dir              string            `json:"dir"`
+		Commit           uint64            `json:"commit"`
+		Last             uint64            `json:"last"`
+		FirstUncommitted uint64            `json:"first_uncommitted,omitempty"`
+		TailSHA256       string            `json:"tail_sha256,omitempty"`
+		TailRequests     []history.Request `json:"tail_requests,omitempty"`
+		TailDecodeError  string            `json:"tail_decode_error,omitempty"`
+	}
+	var evidence []nodeEvidence
+	for _, n := range nodes {
+		item := nodeEvidence{Dir: n.dir, Commit: n.commit, Last: uint64(len(n.entries))}
+		if n.commit < uint64(len(n.entries)) {
+			tail := n.entries[n.commit]
+			item.FirstUncommitted = tail.GetIndex()
+			item.TailSHA256 = fmt.Sprintf("%x", sha256.Sum256(tail.Data))
+			var e error
+			if len(tail.Data) > 0 && tail.GetType() == raftpb.EntryNormal {
+				if c.backend == "etcd" {
+					item.TailRequests, e = decodeEtcd(tail.Data)
+				} else {
+					item.TailRequests, e = decodeTigerBatch(tail.Data)
+				}
+			}
+			if e != nil {
+				item.TailDecodeError = e.Error()
+			}
+		}
+		evidence = append(evidence, item)
+	}
+	if err = save(c.out+".oracle.json", evidence); err != nil {
+		return err
+	}
+	for _, n := range evidence {
+		b, e := json.Marshal(n)
+		if e != nil {
+			return e
+		}
+		fmt.Println(string(b))
 	}
 	h := new(history.History)
 	if err = load(c.history, h); err != nil {

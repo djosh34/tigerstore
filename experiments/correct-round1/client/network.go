@@ -88,9 +88,11 @@ func networkStatus(c config) (err error) {
 	defer func() { err = errors.Join(err, closeClients(cs)) }()
 	var nodes []nodeStatus
 	var errs []error
+	overall, stopStatus := context.WithTimeout(context.Background(), 2*c.requestTimeout)
+	defer stopStatus()
 	for i, cl := range cs {
 		n := nodeStatus{Endpoint: csv(c.endpoints)[i]}
-		ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+		ctx, cancel := context.WithTimeout(overall, c.requestTimeout)
 		st, e := cl.Status(ctx, n.Endpoint)
 		cancel()
 		if e == nil {
@@ -102,7 +104,7 @@ func networkStatus(c config) (err error) {
 			}
 		}
 		if e == nil {
-			ctx, cancel = context.WithTimeout(context.Background(), c.requestTimeout)
+			ctx, cancel = context.WithTimeout(overall, c.requestTimeout)
 			_, e = cl.Get(clientv3.WithRequireLeader(ctx), "\x00", clientv3.WithFromKey())
 			cancel()
 		}
@@ -432,6 +434,16 @@ func workload(c config) (err error) {
 	// Give requests whose clients timed out longer than the server's 7s timeout.
 	// The offline replay must still end exactly at the captured target.
 	time.Sleep(c.quiet)
+	// A successful write-shaped failed CAS appends a Raft entry without a KV
+	// revision. Later barriers advance persisted HardState.Commit past the last
+	// KV mutation. Every attempt remains part of the checked client history.
+	for i, cl := range cs {
+		q := history.Request{Txn: &history.TxnRequest{Compare: []history.Compare{{Key: prefix + "k0", Target: history.TargetVersion, Result: history.Equal, Number: -1}}, Success: []history.TxnOp{{Put: &history.PutRequest{Key: prefix + "k0", Value: fmt.Sprintf("barrier-%d", i), PrevKV: true}}}, Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: prefix + "k0"}}}}}
+		barrier := r.call(cl, 20+i, q, c.requestTimeout)
+		if barrier.Resp == nil || barrier.Resp.Txn.Succeeded {
+			err = errors.Join(err, fmt.Errorf("terminal no-revision barrier failed on endpoint %d", i))
+		}
+	}
 	var terminal history.Op
 	for i, cl := range cs {
 		observed := r.call(cl, 10+i, history.Request{Range: &history.RangeRequest{Key: "\x00", End: history.AllKeys}}, c.requestTimeout)
@@ -472,13 +484,13 @@ func workload(c config) (err error) {
 				err = errors.New("watches did not report progress through terminal target")
 				break
 			}
-			for _, cl := range cs {
+			for i, cl := range cs {
 				ctx, cancel := context.WithTimeout(clientv3.WithRequireLeader(context.Background()), max(time.Millisecond, min(c.requestTimeout, time.Until(finish))))
 				e := cl.RequestProgress(ctx)
 				cancel()
 				if e != nil {
 					r.mu.Lock()
-					r.diagnostics = append(r.diagnostics, watchDiagnostic{Client: 100, Response: history.WatchResponse{Time: r.now()}, Error: "progress request: " + e.Error()})
+					r.diagnostics = append(r.diagnostics, watchDiagnostic{Client: 100 + i, Response: history.WatchResponse{Time: r.now()}, Error: "progress request: " + e.Error()})
 					if !transientWatch(e) {
 						r.errs = append(r.errs, e)
 					}
