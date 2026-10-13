@@ -120,7 +120,19 @@ def cluster(store, label):
                 if store != 'etcd':
                     result.append(json.loads(http(6060+i, '/debug/disk')))
                 else:
-                    text = http(6060+i, '/metrics').decode()
+                    # etcd applies before its WAL.Save completes. Its committed
+                    # gauge, unlike endpoint status, updates only after Save.
+                    target = ctl(i, 'endpoint', 'status')[0]['Status']['raftIndex']
+                    until = time.monotonic()+15
+                    while True:
+                        text = http(6060+i, '/metrics').decode()
+                        committed = float(re.search(r'^etcd_server_proposals_committed_total ([^\n]+)$', text, re.M)[1])
+                        if committed >= target:
+                            break
+                        if time.monotonic() >= until:
+                            raise RuntimeError(f'WAL.Save fence failed: {target}, {committed}')
+                        time.sleep(.02)
+                    (dest/f'n{i}-{phase}-wal-fence.json').write_text(json.dumps({'target_raft_index':target,'post_save_commit_gauge':committed}))
                     (dest/f'n{i}-{phase}.prom').write_text(text)
                     metrics = dict(re.findall(r'^(etcd_disk_(?:wal_fsync_duration_seconds|backend_commit_duration_seconds)_(?:count|sum)) ([^\n]+)$', text, re.M))
                     result.append({k:float(v) for k,v in metrics.items()})
@@ -128,9 +140,9 @@ def cluster(store, label):
             return result
 
         def applied_fence(revision, phase):
-            # Async raft never applies locally unstable entries. This proves
-            # every replica has stored this cohort before the sync snapshot.
-            # The fence is outside the existing generator's CPU window.
+            # Require every replica to apply the cohort. Tigerstore async raft
+            # cannot apply unstable entries; etcd needs the post-Save fence in
+            # disk() too. Both fences are outside the generator's CPU window.
             until = time.monotonic()+15
             while True:
                 headers = [ctl(i, 'get', '/registry/pods/ns-000/pod-00000000', '--consistency=s')['header'] for i in order]
