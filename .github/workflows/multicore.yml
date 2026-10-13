@@ -62,7 +62,7 @@ jobs:
             sha256sum bin/*
             echo 'server main 36eda3cd; experiment:'
             git rev-parse HEAD
-            echo 'No GOMAXPROCS, GOMEMLIMIT, CPU pinning or CPU quota. 8 connections with 8/32/128 slots, 64/256/1024 closed-loop clients. 3s warmup, 10s window, 3 repetitions, alternating store order.'
+            echo 'No GOMAXPROCS, GOMEMLIMIT, CPU pinning or CPU quota. Supplementary scaling probe: 8 connections with 128/512/1024 slots, 1024/4096/8192 closed-loop clients. 3s warmup, 10s window, 3 repetitions, alternating store order.'
             echo 'Three nodes, client and peer mTLS; 8 GiB quota as bench/, default etcd persistence; fresh data per run; generator targets leader.'
             cat /proc/self/cgroup
             grep Cpus_allowed_list /proc/self/status
@@ -71,11 +71,12 @@ jobs:
       - name: Measure
         env:
           WORKLOADS: ${{ matrix.workload }}
+          CLIENTS: 1024 4096 8192
         run: DATA="$RUNNER_TEMP/multicore-data" bench/multicore.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: multicore-${{ matrix.os }}-${{ matrix.workload }}
+          name: scaling-${{ matrix.os }}-${{ matrix.workload }}
           path: results
       - name: Remove build output and cluster data
         if: always()
