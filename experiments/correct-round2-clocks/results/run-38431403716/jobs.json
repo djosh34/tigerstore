@@ -1,0 +1,1126 @@
+[
+  {
+    "id": 115414231202,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zloog",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414231202",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414231202",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:32:55Z",
+    "started_at": "2026-10-13T16:33:03Z",
+    "completed_at": "2026-10-13T16:33:08Z",
+    "name": "plan",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:33:04Z",
+        "completed_at": "2026-10-13T16:33:05Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:33:05Z",
+        "completed_at": "2026-10-13T16:33:05Z"
+      },
+      {
+        "name": "Run test \"$(date -u +%s)\" -lt \"$(date -u -d 2026-10-13T22:00:00Z +%s)\"",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:33:05Z",
+        "completed_at": "2026-10-13T16:33:05Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:33:05Z",
+        "completed_at": "2026-10-13T16:33:05Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:33:05Z",
+        "completed_at": "2026-10-13T16:33:05Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414231202",
+    "labels": [
+      "ubuntu-24.04-arm"
+    ],
+    "runner_id": 1000011279,
+    "runner_name": "GitHub Actions 1000011279",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414341883,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsY-w",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414341883",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414341883",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:33:16Z",
+    "completed_at": "2026-10-13T16:35:09Z",
+    "name": "faults (ubuntu-24.04-arm, etcd, clock, 149, 1, 40, 1024, false, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:33:16Z",
+        "completed_at": "2026-10-13T16:33:18Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:33:18Z",
+        "completed_at": "2026-10-13T16:33:28Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:33:28Z",
+        "completed_at": "2026-10-13T16:33:37Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:33:37Z",
+        "completed_at": "2026-10-13T16:34:00Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:34:00Z",
+        "completed_at": "2026-10-13T16:34:01Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:34:01Z",
+        "completed_at": "2026-10-13T16:34:01Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:34:01Z",
+        "completed_at": "2026-10-13T16:34:56Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:34:56Z",
+        "completed_at": "2026-10-13T16:34:56Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:34:56Z",
+        "completed_at": "2026-10-13T16:34:56Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:34:56Z",
+        "completed_at": "2026-10-13T16:35:05Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:35:05Z",
+        "completed_at": "2026-10-13T16:35:06Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:35:06Z",
+        "completed_at": "2026-10-13T16:35:06Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:35:06Z",
+        "completed_at": "2026-10-13T16:35:06Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414341883",
+    "labels": [
+      "ubuntu-24.04-arm"
+    ],
+    "runner_id": 1000011290,
+    "runner_name": "GitHub Actions 1000011290",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414341888,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZAA",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414341888",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414341888",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:33:14Z",
+    "completed_at": "2026-10-13T16:34:55Z",
+    "name": "faults (ubuntu-24.04-arm, tigerstore, clock, 149, 1, 40, 1024, false, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:33:15Z",
+        "completed_at": "2026-10-13T16:33:16Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:33:16Z",
+        "completed_at": "2026-10-13T16:33:25Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:33:25Z",
+        "completed_at": "2026-10-13T16:33:32Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:33:32Z",
+        "completed_at": "2026-10-13T16:33:56Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:33:56Z",
+        "completed_at": "2026-10-13T16:33:57Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:33:57Z",
+        "completed_at": "2026-10-13T16:33:57Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:33:57Z",
+        "completed_at": "2026-10-13T16:34:52Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:34:52Z",
+        "completed_at": "2026-10-13T16:34:52Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:34:52Z",
+        "completed_at": "2026-10-13T16:34:52Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:34:52Z",
+        "completed_at": "2026-10-13T16:34:53Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:34:53Z",
+        "completed_at": "2026-10-13T16:34:53Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:34:53Z",
+        "completed_at": "2026-10-13T16:34:53Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:34:54Z",
+        "completed_at": "2026-10-13T16:34:54Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414341888",
+    "labels": [
+      "ubuntu-24.04-arm"
+    ],
+    "runner_id": 1000011288,
+    "runner_name": "GitHub Actions 1000011288",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414341927,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZJw",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414341927",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414341927",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:34:58Z",
+    "completed_at": "2026-10-13T16:37:32Z",
+    "name": "faults (ubuntu-24.04, tigerstore, clock-control, 149, 1, 40, 1572864, true, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:34:58Z",
+        "completed_at": "2026-10-13T16:35:01Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:35:01Z",
+        "completed_at": "2026-10-13T16:35:12Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:35:12Z",
+        "completed_at": "2026-10-13T16:35:25Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:35:25Z",
+        "completed_at": "2026-10-13T16:35:39Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:35:39Z",
+        "completed_at": "2026-10-13T16:35:40Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:35:40Z",
+        "completed_at": "2026-10-13T16:35:40Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:35:40Z",
+        "completed_at": "2026-10-13T16:36:43Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:36:43Z",
+        "completed_at": "2026-10-13T16:37:06Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:37:06Z",
+        "completed_at": "2026-10-13T16:37:07Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:37:07Z",
+        "completed_at": "2026-10-13T16:37:28Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:37:28Z",
+        "completed_at": "2026-10-13T16:37:28Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:37:28Z",
+        "completed_at": "2026-10-13T16:37:28Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:37:28Z",
+        "completed_at": "2026-10-13T16:37:28Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414341927",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": 1000011303,
+    "runner_name": "GitHub Actions 1000011303",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414341959,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZRw",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414341959",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414341959",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:33:15Z",
+    "completed_at": "2026-10-13T16:35:58Z",
+    "name": "faults (ubuntu-24.04-arm, tigerstore, clock-control, 149, 1, 40, 1572864, true, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:33:16Z",
+        "completed_at": "2026-10-13T16:33:17Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:33:17Z",
+        "completed_at": "2026-10-13T16:33:26Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:33:26Z",
+        "completed_at": "2026-10-13T16:33:34Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:33:34Z",
+        "completed_at": "2026-10-13T16:33:58Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:33:58Z",
+        "completed_at": "2026-10-13T16:33:58Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:33:58Z",
+        "completed_at": "2026-10-13T16:33:58Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:33:58Z",
+        "completed_at": "2026-10-13T16:35:00Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:35:00Z",
+        "completed_at": "2026-10-13T16:35:29Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:35:29Z",
+        "completed_at": "2026-10-13T16:35:29Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:35:29Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414341959",
+    "labels": [
+      "ubuntu-24.04-arm"
+    ],
+    "runner_id": 1000011291,
+    "runner_name": "GitHub Actions 1000011291",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414342018,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZgg",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414342018",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414342018",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:35:14Z",
+    "completed_at": "2026-10-13T16:37:53Z",
+    "name": "faults (ubuntu-24.04, etcd, clock, 149, 1, 40, 1024, false, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:35:15Z",
+        "completed_at": "2026-10-13T16:35:16Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:35:16Z",
+        "completed_at": "2026-10-13T16:35:27Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:35:27Z",
+        "completed_at": "2026-10-13T16:35:39Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:35:39Z",
+        "completed_at": "2026-10-13T16:36:38Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:36:38Z",
+        "completed_at": "2026-10-13T16:36:39Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:36:39Z",
+        "completed_at": "2026-10-13T16:36:39Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:36:39Z",
+        "completed_at": "2026-10-13T16:37:38Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:37:38Z",
+        "completed_at": "2026-10-13T16:37:38Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:37:38Z",
+        "completed_at": "2026-10-13T16:37:38Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:37:38Z",
+        "completed_at": "2026-10-13T16:37:49Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:37:49Z",
+        "completed_at": "2026-10-13T16:37:49Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:37:49Z",
+        "completed_at": "2026-10-13T16:37:50Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:37:50Z",
+        "completed_at": "2026-10-13T16:37:50Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414342018",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": 1000011305,
+    "runner_name": "GitHub Actions 1000011305",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414342029,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZjQ",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414342029",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414342029",
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:36:00Z",
+    "completed_at": "2026-10-13T16:36:48Z",
+    "name": "faults (ubuntu-24.04, etcd, clock-control, 149, 1, 40, 1572864, true, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:36:01Z",
+        "completed_at": "2026-10-13T16:36:03Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:36:03Z",
+        "completed_at": "2026-10-13T16:36:15Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:36:15Z",
+        "completed_at": "2026-10-13T16:36:24Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:36:24Z",
+        "completed_at": "2026-10-13T16:36:36Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:36:36Z",
+        "completed_at": "2026-10-13T16:36:37Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:36:37Z",
+        "completed_at": "2026-10-13T16:36:37Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 7,
+        "started_at": "2026-10-13T16:36:37Z",
+        "completed_at": "2026-10-13T16:36:41Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 8,
+        "started_at": "2026-10-13T16:36:41Z",
+        "completed_at": "2026-10-13T16:36:41Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:36:41Z",
+        "completed_at": "2026-10-13T16:36:41Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:36:41Z",
+        "completed_at": "2026-10-13T16:36:45Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 19,
+        "started_at": "2026-10-13T16:36:45Z",
+        "completed_at": "2026-10-13T16:36:45Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:36:45Z",
+        "completed_at": "2026-10-13T16:36:45Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:36:45Z",
+        "completed_at": "2026-10-13T16:36:45Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414342029",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": 1000011308,
+    "runner_name": "GitHub Actions 1000011308",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414342046,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZng",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414342046",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414342046",
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:33:17Z",
+    "completed_at": "2026-10-13T16:34:12Z",
+    "name": "faults (ubuntu-24.04-arm, etcd, clock-control, 149, 1, 40, 1572864, true, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:33:18Z",
+        "completed_at": "2026-10-13T16:33:18Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:33:18Z",
+        "completed_at": "2026-10-13T16:33:28Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:33:28Z",
+        "completed_at": "2026-10-13T16:33:35Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:33:35Z",
+        "completed_at": "2026-10-13T16:34:01Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:34:01Z",
+        "completed_at": "2026-10-13T16:34:01Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:34:01Z",
+        "completed_at": "2026-10-13T16:34:01Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 7,
+        "started_at": "2026-10-13T16:34:01Z",
+        "completed_at": "2026-10-13T16:34:05Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 8,
+        "started_at": "2026-10-13T16:34:05Z",
+        "completed_at": "2026-10-13T16:34:05Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:34:05Z",
+        "completed_at": "2026-10-13T16:34:05Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:34:05Z",
+        "completed_at": "2026-10-13T16:34:10Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "skipped",
+        "number": 19,
+        "started_at": "2026-10-13T16:34:10Z",
+        "completed_at": "2026-10-13T16:34:10Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:34:10Z",
+        "completed_at": "2026-10-13T16:34:10Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:34:10Z",
+        "completed_at": "2026-10-13T16:34:10Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414342046",
+    "labels": [
+      "ubuntu-24.04-arm"
+    ],
+    "runner_id": 1000011292,
+    "runner_name": "GitHub Actions 1000011292",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  },
+  {
+    "id": 115414342141,
+    "run_id": 38431403716,
+    "workflow_name": "Correctness round 2 clocks",
+    "head_branch": "exp/correct-round2-clocks",
+    "run_url": "https://api.github.com/repos/djosh34/tigerstore/actions/runs/38431403716",
+    "run_attempt": 1,
+    "node_id": "CR_kwDOVGREgM8AAAAa3zsZ_Q",
+    "head_sha": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/jobs/115414342141",
+    "html_url": "https://github.com/djosh34/tigerstore/actions/runs/38431403716/job/115414342141",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-13T16:33:09Z",
+    "started_at": "2026-10-13T16:34:17Z",
+    "completed_at": "2026-10-13T16:35:59Z",
+    "name": "faults (ubuntu-24.04, tigerstore, clock, 149, 1, 40, 1024, false, leader)",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-13T16:34:18Z",
+        "completed_at": "2026-10-13T16:34:19Z"
+      },
+      {
+        "name": "Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-13T16:34:19Z",
+        "completed_at": "2026-10-13T16:34:27Z"
+      },
+      {
+        "name": "Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-13T16:34:27Z",
+        "completed_at": "2026-10-13T16:34:39Z"
+      },
+      {
+        "name": "Build pinned product and test tools",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-13T16:34:39Z",
+        "completed_at": "2026-10-13T16:34:57Z"
+      },
+      {
+        "name": "Install stock etcd v3.7.2",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-13T16:34:57Z",
+        "completed_at": "2026-10-13T16:34:58Z"
+      },
+      {
+        "name": "Record runner and disk barriers",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-13T16:34:58Z",
+        "completed_at": "2026-10-13T16:34:58Z"
+      },
+      {
+        "name": "Run faults",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-13T16:34:58Z",
+        "completed_at": "2026-10-13T16:35:53Z"
+      },
+      {
+        "name": "Run every checker including on failed histories",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-13T16:35:53Z",
+        "completed_at": "2026-10-13T16:35:54Z"
+      },
+      {
+        "name": "Preserve attempt metadata",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-13T16:35:54Z",
+        "completed_at": "2026-10-13T16:35:54Z"
+      },
+      {
+        "name": "Run actions/upload-artifact@v6",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-13T16:35:54Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Post Run actions/setup-go@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Post Run actions/checkout@v7",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-10-13T16:35:56Z",
+        "completed_at": "2026-10-13T16:35:56Z"
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/djosh34/tigerstore/check-runs/115414342141",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": 1000011295,
+    "runner_name": "GitHub Actions 1000011295",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  }
+]

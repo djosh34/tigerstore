@@ -24,17 +24,20 @@ jobs=api(f'actions/runs/{a.run_id}/jobs?per_page=100')['jobs']
 artifacts=api(f'actions/runs/{a.run_id}/artifacts?per_page=100')['artifacts']
 prefix='clocks-' if a.legacy_full else 'compact-clocks-'
 summaries=[]
+(base/'.downloads').mkdir(exist_ok=True)
 for art in artifacts:
     if not art['name'].startswith(prefix):continue
     name=art['name'] if a.legacy_full else art['name'][8:]
     with tempfile.TemporaryDirectory(dir=base/'.downloads') as temp:
         root=Path(temp)
-        dest=root/name if a.legacy_full else root
-        subprocess.run(['gh','run','download',a.run_id,'-n',art['name'],'-D',str(dest)],check=True)
         if a.legacy_full:
-            subprocess.run(['python3',str(base/'archive-results.py'),str(root),str(out)],check=True,stdout=subprocess.DEVNULL)
+            zipped=root/'artifact.zip'
+            with zipped.open('wb') as stream:
+                subprocess.run(['gh','api',f"repos/djosh34/tigerstore/actions/artifacts/{art['id']}/zip"],stdout=stream,check=True)
+            subprocess.run(['python3',str(base/'archive-zip.py'),str(zipped),name,str(out)],check=True)
             summaries+=json.loads((out/'summary.json').read_text())
         else:
+            subprocess.run(['gh','run','download',a.run_id,'-n',art['name'],'-D',str(root)],check=True)
             shutil.copytree(root/name,out/name,dirs_exist_ok=True)
             summaries+=json.loads((root/'summary.json').read_text())
     target=out/name

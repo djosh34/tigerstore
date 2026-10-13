@@ -1,0 +1,612 @@
+[
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 4,
+    "target": 0,
+    "faults": {},
+    "controller_seconds": 3.612324223,
+    "failures": [
+      "workload exited before required fault completed"
+    ],
+    "coverage": [
+      {
+        "ops": 4,
+        "Put": 0,
+        "TxnSuccess": 0,
+        "TxnFailure": 0,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 0,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 0,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 0,
+        "per_client_success": {},
+        "last_success_ns": {}
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 606,
+    "target": 317,
+    "faults": {
+      "clock-forward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "clock-backward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 54.776049333,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 606,
+        "Put": 130,
+        "TxnSuccess": 110,
+        "TxnFailure": 118,
+        "Delete": 122,
+        "MultiDelete": 22,
+        "Range": 126,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 720,
+        "WatchDeletes": 294,
+        "WatchPrevKV": 711,
+        "per_client_success": {
+          "0": 200,
+          "1": 200,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 200,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 40051487740,
+          "1": 40052142882,
+          "10": 48091670565,
+          "11": 48098798327,
+          "12": 48104233959,
+          "2": 40043693764,
+          "20": 48066979415,
+          "21": 48076023962,
+          "22": 48084590477
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 131,
+    "target": 65,
+    "faults": {
+      "clock-zero-control": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 61.541743954,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 131,
+        "Put": 30,
+        "TxnSuccess": 21,
+        "TxnFailure": 23,
+        "Delete": 22,
+        "MultiDelete": 3,
+        "Range": 31,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 153,
+        "WatchDeletes": 48,
+        "WatchPrevKV": 144,
+        "per_client_success": {
+          "0": 40,
+          "1": 40,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 40,
+          "20": 1,
+          "21": 1,
+          "22": 1,
+          "33": 1
+        },
+        "last_success_ns": {
+          "0": 40159055062,
+          "1": 40170574372,
+          "10": 48238459891,
+          "11": 48262472109,
+          "12": 48289014029,
+          "2": 40139684165,
+          "20": 48190193291,
+          "21": 48202142775,
+          "22": 48215511450,
+          "33": 89540155
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 606,
+    "target": 323,
+    "faults": {
+      "clock-forward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "clock-backward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 54.50544878,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 606,
+        "Put": 130,
+        "TxnSuccess": 112,
+        "TxnFailure": 116,
+        "Delete": 122,
+        "MultiDelete": 18,
+        "Range": 126,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 726,
+        "WatchDeletes": 294,
+        "WatchPrevKV": 720,
+        "per_client_success": {
+          "0": 200,
+          "1": 200,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 200,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 40026086058,
+          "1": 40028826291,
+          "10": 48053015688,
+          "11": 48057076754,
+          "12": 48061085948,
+          "2": 40031288683,
+          "20": 48037932325,
+          "21": 48044309676,
+          "22": 48050216165
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "failure",
+      "controller_outcome": "failure",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "synthetic_missing_verdicts": 0,
+    "operations": 4,
+    "target": 0,
+    "faults": {},
+    "controller_seconds": 3.957108268,
+    "failures": [
+      "workload exited before required fault completed"
+    ],
+    "coverage": [
+      {
+        "ops": 4,
+        "Put": 0,
+        "TxnSuccess": 0,
+        "TxnFailure": 0,
+        "Delete": 0,
+        "MultiDelete": 0,
+        "Range": 0,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 0,
+        "WatchDeletes": 0,
+        "WatchPrevKV": 0,
+        "per_client_success": {},
+        "last_success_ns": {}
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 606,
+    "target": 316,
+    "faults": {
+      "clock-forward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "clock-backward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 58.356840096,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 606,
+        "Put": 130,
+        "TxnSuccess": 109,
+        "TxnFailure": 119,
+        "Delete": 122,
+        "MultiDelete": 22,
+        "Range": 126,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 717,
+        "WatchDeletes": 294,
+        "WatchPrevKV": 708,
+        "per_client_success": {
+          "0": 200,
+          "1": 200,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 200,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 40074668944,
+          "1": 40077854307,
+          "10": 48134721057,
+          "11": 48146972559,
+          "12": 48157081327,
+          "2": 40067221056,
+          "20": 48094715105,
+          "21": 48109814590,
+          "22": 48122274280
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "clock-control",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1572864,
+        "near_limit": true,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 131,
+    "target": 65,
+    "faults": {
+      "clock-zero-control": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 63.202212102,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 131,
+        "Put": 30,
+        "TxnSuccess": 21,
+        "TxnFailure": 23,
+        "Delete": 22,
+        "MultiDelete": 3,
+        "Range": 31,
+        "Ambiguous": 0,
+        "DefiniteErrors": 4,
+        "WatchPuts": 153,
+        "WatchDeletes": 48,
+        "WatchPrevKV": 144,
+        "per_client_success": {
+          "0": 40,
+          "1": 40,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 40,
+          "20": 1,
+          "21": 1,
+          "22": 1,
+          "33": 1
+        },
+        "last_success_ns": {
+          "0": 40181602447,
+          "1": 40327571021,
+          "10": 48470002736,
+          "11": 48493387129,
+          "12": 48516598436,
+          "2": 40173935752,
+          "20": 48348536268,
+          "21": 48418929280,
+          "22": 48447251251,
+          "33": 123593045
+        }
+      }
+    ]
+  },
+  {
+    "artifact": "clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "clock",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "value_size": 1024,
+        "near_limit": false,
+        "role": "leader"
+      },
+      "job_status": "success",
+      "controller_outcome": "success",
+      "tooling": "2fe9e28d8dde0c7ef1eb96fa297fd2e6dc98ef9f",
+      "run_id": "38431403716",
+      "product": "5d964228952d6983ba273bc2e6813770aad796c6"
+    },
+    "reached_controller": true,
+    "recorded_history": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "synthetic_missing_verdicts": 0,
+    "operations": 603,
+    "target": 320,
+    "faults": {
+      "clock-forward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "clock-backward": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "controller_seconds": 55.148631797,
+    "failures": [],
+    "coverage": [
+      {
+        "ops": 603,
+        "Put": 129,
+        "TxnSuccess": 113,
+        "TxnFailure": 114,
+        "Delete": 121,
+        "MultiDelete": 19,
+        "Range": 126,
+        "Ambiguous": 0,
+        "DefiniteErrors": 0,
+        "WatchPuts": 726,
+        "WatchDeletes": 288,
+        "WatchPrevKV": 717,
+        "per_client_success": {
+          "0": 199,
+          "1": 199,
+          "10": 1,
+          "11": 1,
+          "12": 1,
+          "2": 199,
+          "20": 1,
+          "21": 1,
+          "22": 1
+        },
+        "last_success_ns": {
+          "0": 39843321878,
+          "1": 39846577138,
+          "10": 48063490412,
+          "11": 48069425264,
+          "12": 48075596777,
+          "2": 39849276469,
+          "20": 48043508375,
+          "21": 48051663842,
+          "22": 48059533126
+        }
+      }
+    ]
+  }
+]
