@@ -1,11 +1,12 @@
 """Pure controller tests. No process signals, mounts, packets, or fault runs."""
 import argparse
+import errno
 import json
 from pathlib import Path
 import signal
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, mock_open, patch
 
 import runner
 
@@ -174,6 +175,42 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(self.c.oracles), 2)
         self.assertEqual(self.c.oracles[1]['name'], 'cold-missing-n1')
         self.assertEqual(self.c.nodes, {})
+
+    def test_filler_tracks_partial_writes_and_fsync_enospc(self):
+        stream = Mock()
+        stream.write.side_effect = [2048, OSError(errno.ENOSPC, 'full')]
+        stream.fileno.return_value = 123
+        with patch.object(runner.os, 'fsync', side_effect=OSError(errno.ENOSPC, 'full')):
+            proof = self.c.fill_until_enospc(stream, 4096)
+        self.assertEqual(proof['bytes_written'], 2048)
+        self.assertEqual(proof['write_errno'], errno.ENOSPC)
+        self.assertEqual(proof['fsync_errno'], errno.ENOSPC)
+        self.assertEqual(proof['chunk_size'], 4096)
+
+    def test_filler_rejects_non_enospc(self):
+        stream = Mock()
+        stream.write.side_effect = OSError(errno.EIO, 'I/O error')
+        with self.assertRaisesRegex(RuntimeError, 'without ENOSPC'):
+            self.c.fill_until_enospc(stream, 4096)
+
+    def test_free_probe_retries_enospc_until_sync_and_free_blocks(self):
+        self.c.disk_mount = self.c.out / 'mount'
+        self.c.cmd = Mock(return_value=Mock(returncode=0, stderr=''))
+        self.c.sleep = Mock()
+        opened = mock_open()
+        opened.return_value.write.side_effect = [OSError(errno.ENOSPC, 'full'), 16]
+        with patch.object(Path, 'open', opened):
+            with patch.object(runner.os, 'fsync'):
+                with patch.object(runner.os, 'statvfs', side_effect=[
+                    Mock(f_bavail=0, f_frsize=4096), Mock(f_bavail=64, f_frsize=4096)]):
+                    attempts = self.c.verify_freed_disk()
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[0]['probe_errno'], errno.ENOSPC)
+        self.assertTrue(attempts[1]['probe_write_fsync'])
+        self.assertEqual(attempts[1]['available_bytes'], 64 * 4096)
+        self.assertEqual(self.c.cmd.call_count, 2)
+        for call in self.c.cmd.call_args_list:
+            self.assertEqual(call.args[0], ['sync', '-f', self.c.disk_mount])
 
     def test_deadline_blocks_new_case(self):
         with patch.object(runner, 'deadline_seconds', return_value=-1):

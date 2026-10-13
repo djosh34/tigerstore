@@ -375,6 +375,58 @@ class Controller:
         self.event('disk-setup', node=self.disk_node, loop=self.loop, image=str(image),
                    bytes=self.a.disk_mib * 1024 * 1024, mount=actual)
 
+    def fill_until_enospc(self, stream, chunk_size):
+        written = 0
+        block = b'F' * chunk_size
+        while True:
+            self.guard()
+            try:
+                count = stream.write(block)
+                require(count is not None and 0 < count <= chunk_size,
+                        f'invalid filler write count: {count}')
+                written += count
+            except OSError as exc:
+                require(exc.errno == errno.ENOSPC, f'filler failed without ENOSPC: {exc}')
+                write_errno = exc.errno
+                break
+        fsync_errno = None
+        try:
+            os.fsync(stream.fileno())
+        except OSError as exc:
+            require(exc.errno == errno.ENOSPC, f'filler fsync failed without ENOSPC: {exc}')
+            fsync_errno = exc.errno
+        return {'chunk_size': chunk_size, 'bytes_written': written,
+                'write_errno': write_errno, 'fsync_errno': fsync_errno,
+                'monotonic_ns': self.now()}
+
+    def verify_freed_disk(self, timeout=10):
+        attempts = []
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            self.guard()
+            sync = self.cmd(['sync', '-f', self.disk_mount], timeout=3, check=False)
+            require(sync.returncode == 0 or 'no space left on device' in sync.stderr.lower(),
+                    f'filesystem sync failed unexpectedly: {sync.stderr}')
+            attempt = {'sync_returncode': sync.returncode, 'sync_stderr': sync.stderr,
+                       'monotonic_ns': self.now()}
+            try:
+                with (self.disk_mount / 'freed-probe').open('wb', buffering=0) as stream:
+                    require(stream.write(b'works-after-free') == 16, 'short healed write')
+                    os.fsync(stream.fileno())
+            except OSError as exc:
+                require(exc.errno == errno.ENOSPC, f'healed disk probe failed unexpectedly: {exc}')
+                attempt['probe_errno'] = exc.errno
+            else:
+                attempt['probe_write_fsync'] = True
+            space = os.statvfs(self.disk_mount)
+            attempt['available_bytes'] = space.f_bavail * space.f_frsize
+            attempts.append(attempt)
+            if attempt.get('probe_write_fsync') and attempt['available_bytes'] > 0:
+                return attempts
+            self.sleep(.2, require_workload=True)
+        self.event('disk-free-verification-failed', attempts=attempts)
+        raise RuntimeError('ext4 did not permit a synced write with free blocks after unlink within 10s')
+
     def disk_fault(self):
         self.guard()
         self.sleep(.25, require_workload=True)
@@ -384,17 +436,14 @@ class Controller:
         self.phase(name, 'requested', node=i, pid=node['p'].pid,
                    generation=node['generation'], data_dir=str(self.data[i]))
         filler = self.disk_mount / 'filler'
-        written = 0
-        caught = None
+        fills = []
         with filler.open('wb', buffering=0) as stream:
-            while True:
-                self.guard()
-                try:
-                    written += stream.write(b'F' * (1024 * 1024))
-                except OSError as exc:
-                    require(exc.errno == errno.ENOSPC, f'filler failed without ENOSPC: {exc}')
-                    caught = exc.errno
-                    break
+            # A failed MiB allocation can leave blocks that still accept a small WAL
+            # append. Exhaust 4KiB allocations too, including after fsync resolves
+            # delayed allocation and journal reservations.
+            for chunk_size in [1024 * 1024, 4096, 4096]:
+                fills.append(self.fill_until_enospc(stream, chunk_size))
+        written = sum(x['bytes_written'] for x in fills)
         space = os.statvfs(self.disk_mount)
         probe = self.disk_mount / 'no-space-probe'
         try:
@@ -406,8 +455,8 @@ class Controller:
             probe_errno = exc.errno
         else:
             raise RuntimeError('filled ext4 still accepted 4096-byte probe')
-        self.phase(name, 'installed', filler_bytes=written, filler_errno=caught,
-                   probe_errno=probe_errno, blocks_available=space.f_bavail,
+        self.phase(name, 'installed', filler_bytes=written, filler_errno=errno.ENOSPC,
+                   fill_passes=fills, probe_errno=probe_errno, blocks_available=space.f_bavail,
                    filesystem=self.cmd(['findmnt', '--json', '--target', self.disk_mount]).stdout)
         # Controller ENOSPC is not proof of a server fault. Require the stock node to
         # exit with its own disk error while the recorded client keeps writing.
@@ -421,13 +470,12 @@ class Controller:
                    server_log_tail=log[-6000:])
         filler.unlink()
         probe.unlink(missing_ok=True)
-        with (self.disk_mount / 'freed-probe').open('wb', buffering=0) as stream:
-            require(stream.write(b'works-after-free') == 16, 'short healed write')
-            os.fsync(stream.fileno())
+        free_attempts = self.verify_freed_disk()
         self.start_node(i)
         status = self.ready()
         self.phase(name, 'healed', available_bytes=os.statvfs(self.disk_mount).f_bavail * space.f_frsize,
-                   new_pid=self.nodes[i]['p'].pid, write_fsync=True, status=status)
+                   free_attempts=free_attempts, new_pid=self.nodes[i]['p'].pid,
+                   write_fsync=True, status=status)
 
     def tc(self, *args, **kw):
         return self.cmd(['tc', *args], **kw)
