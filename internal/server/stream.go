@@ -236,7 +236,10 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 	c := st.c
 	for {
 		c.mu.Lock()
-		if st.reset || c.closed {
+		// After the end of the stream, which a deadline or a lost leader
+		// can queue while the handler still runs, only the end itself
+		// may be queued, never more messages.
+		if st.reset || c.closed || (!end && st.done.Load()) {
 			c.mu.Unlock()
 			return errStreamGone
 		}
