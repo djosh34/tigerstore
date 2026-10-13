@@ -86,16 +86,26 @@ func (c *conn) batchDue() bool {
 	if len(b.reqs) == 0 {
 		return false
 	}
-	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes {
 		return true
+	}
+	return !c.nextFrameBuffered()
+}
+
+// nextFrameBuffered reports whether the next frame can be read without
+// going to the socket: it is buffered whole and does not start a header
+// block that continues in later frames.
+func (c *conn) nextFrameBuffered() bool {
+	if c.br.Buffered() < frameHeaderLen {
+		return false
 	}
 	// Peek cannot fail: the header is buffered.
 	h, _ := c.br.Peek(frameHeaderLen)
 	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
 	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
-		return true
+		return false
 	}
-	return c.br.Buffered() < frameHeaderLen+n
+	return c.br.Buffered() >= frameHeaderLen+n
 }
 
 // flush hands the batch to the node. It never waits for the node's
@@ -125,6 +135,7 @@ func (c *conn) flush() error {
 	}
 	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
 	if err == nil {
+		c.untaken = true
 		return nil
 	}
 	if c.ctx.Err() != nil {
@@ -196,6 +207,38 @@ func estimate(cp *node.Completion) int64 {
 		return replyEstimate
 	}
 	return int64(proto.Size(cp.Resp))
+}
+
+// Taken reports that the committer took the connection's last batch.
+func (c *conn) Taken() {
+	select {
+	case c.taken <- struct{}{}:
+	default:
+	}
+}
+
+// awaitTaken waits, before a read that would go to the socket, until the
+// committer took the reader's last batch. Requests that arrive meanwhile
+// then come in with one read, and with the next batch, instead of one
+// read each: the reader reads at most once per committer turn, clocked by
+// the committer as the batches are, with no timer. Frames already
+// buffered are read without waiting.
+func (c *conn) awaitTaken() error {
+	if !c.untaken || c.nextFrameBuffered() {
+		return nil
+	}
+	select {
+	case <-c.taken:
+		c.untaken = false
+		return nil
+	case <-c.s.n.Done():
+		// A stopped node takes nothing more; the reader goes on, and the
+		// writer fails the calls the node held.
+		c.untaken = false
+		return nil
+	case <-c.ctx.Done():
+		return c.ctx.Err()
+	}
 }
 
 // Complete takes replies from the node's committer. It pushes them onto a

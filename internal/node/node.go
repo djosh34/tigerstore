@@ -154,6 +154,10 @@ type request struct {
 // must not block.
 type Completer interface {
 	Complete([]Completion)
+	// Taken reports that the committer took a batch the completer
+	// submitted. It is called on the committer goroutine and must not
+	// block.
+	Taken()
 }
 
 // Completion is the reply to one request of a batch.
@@ -446,6 +450,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 			waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}
 		}
 		n.core.SubmitAll(b.reqs)
+		b.to.Taken()
 	case in.status != nil:
 		in.status <- n.core.Status()
 	case in.watchOpen != nil:

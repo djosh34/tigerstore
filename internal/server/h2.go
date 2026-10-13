@@ -65,6 +65,10 @@ type conn struct {
 	// Reader only.
 	maxID uint32 // highest client stream ID seen
 	batch opBatch
+	// untaken is set while the committer has not taken the last batch;
+	// taken is signaled when it does (capacity 1).
+	untaken bool
+	taken   chan struct{}
 	// hdec decodes header blocks into hdr, the headers of the block being
 	// read, with no allocation for fields from the HPACK tables.
 	hdec *hpack.Decoder
@@ -118,6 +122,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
+		taken:    make(chan struct{}, 1),
 		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
 		atNode:   map[*stream]struct{}{},
@@ -259,6 +264,9 @@ func (c *conn) readLoop() error {
 			if err := c.flush(); err != nil {
 				return err
 			}
+		}
+		if err := c.awaitTaken(); err != nil {
+			return err
 		}
 		fh, err := c.fr.ReadFrameHeader()
 		if err != nil {
