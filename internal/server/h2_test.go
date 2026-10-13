@@ -135,6 +135,12 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 		t.Fatalf("MemberList: %v %v", ms, err)
 	}
 
+	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
+	ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(lctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Without a quorum, a write waits until its deadline, and a call that
 	// requires a leader fails at once once the leader is gone.
 	c.running[2].stop()
@@ -148,7 +154,6 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 	if status.Code(err) != codes.DeadlineExceeded || time.Since(start) > 3*time.Second {
 		t.Fatalf("put without a quorum: %v after %v", err, time.Since(start))
 	}
-	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		ctx, cancel := context.WithTimeout(lctx, time.Second)
@@ -161,6 +166,11 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 			t.Fatalf("range that requires a leader without one: %v", err)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	// The keepalive stream that requires a leader ends too, as etcd's
+	// stream interceptor ends it.
+	if _, err := ka.Recv(); !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+		t.Fatalf("keepalive stream without a leader: %v", err)
 	}
 }
 
@@ -271,20 +281,24 @@ func TestRawFrames(t *testing.T) {
 	must(fr.WritePing(false, [8]byte{1, 2, 3}))
 	var hb bytes.Buffer
 	enc := hpack.NewEncoder(&hb)
-	call := func(id uint32, path string, req proto.Message) {
+	headers := func(id uint32, path string, extra ...hpack.HeaderField) {
 		t.Helper()
 		hb.Reset()
-		for _, f := range []hpack.HeaderField{
+		for _, f := range append([]hpack.HeaderField{
 			{Name: ":method", Value: "POST"},
 			{Name: ":scheme", Value: "https"},
 			{Name: ":path", Value: path},
 			{Name: ":authority", Value: "localhost"},
 			{Name: "content-type", Value: "application/grpc"},
 			{Name: "te", Value: "trailers"},
-		} {
+		}, extra...) {
 			must(enc.WriteField(f))
 		}
 		must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: id, BlockFragment: hb.Bytes(), EndHeaders: true}))
+	}
+	call := func(id uint32, path string, req proto.Message) {
+		t.Helper()
+		headers(id, path)
 		b, err := proto.Marshal(req)
 		must(err)
 		must(fr.WriteData(id, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
@@ -293,10 +307,16 @@ func TestRawFrames(t *testing.T) {
 	must(fr.WriteRSTStream(1, http2.ErrCodeCancel))
 	call(3, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("2")})
 	call(5, "/etcdserverpb.KV/RangeStream", &pb.RangeRequest{Key: []byte("raw")})
+	// A second end of the same stream is a stream error, not a second put.
+	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
+	must(fr.WriteData(7, true, nil))
+	// A call whose request never completes still ends at its deadline.
+	headers(9, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "grpc-timeout", Value: "100m"})
 
 	var settings, pinged bool
 	statuses := map[uint32]string{}
-	for len(statuses) < 2 || !settings || !pinged {
+	reset7 := false
+	for statuses[3] == "" || statuses[5] == "" || statuses[9] == "" || (statuses[7] == "" && !reset7) || !settings || !pinged {
 		f, err := fr.ReadFrame()
 		must(err)
 		switch f := f.(type) {
@@ -307,6 +327,8 @@ func TestRawFrames(t *testing.T) {
 			}
 		case *http2.PingFrame:
 			pinged = f.IsAck() && f.Data == [8]byte{1, 2, 3}
+		case *http2.RSTStreamFrame:
+			reset7 = reset7 || f.StreamID == 7
 		case *http2.MetaHeadersFrame:
 			if v := f.PseudoValue("status"); v != "" && v != "200" {
 				t.Fatalf("stream %d: HTTP status %s", f.StreamID, v)
@@ -318,8 +340,62 @@ func TestRawFrames(t *testing.T) {
 			}
 		}
 	}
-	if statuses[3] != "0" || statuses[5] != "12" {
+	if statuses[3] != "0" || statuses[5] != "12" || statuses[9] != "4" {
 		t.Fatalf("grpc-status by stream: %v", statuses)
+	}
+	// The reset may have come before the put reached the node, so the
+	// put may or may not have happened, but never twice.
+	time.Sleep(200 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	r, err := kv.Range(ctx, &pb.RangeRequest{Key: []byte("once")})
+	if err != nil || len(r.Kvs) > 1 || (len(r.Kvs) == 1 && r.Kvs[0].Version != 1) {
+		t.Fatalf("key written by one put: %v %v", r, err)
+	}
+
+	// A finished put goes to the node even when the next frame is a bad
+	// header block or one that continues in a later frame.
+	waitStatus := func(id uint32) string {
+		t.Helper()
+		for {
+			f, err := fr.ReadFrame()
+			must(err)
+			if h, ok := f.(*http2.MetaHeadersFrame); ok && h.StreamID == id {
+				for _, hf := range h.RegularFields() {
+					if hf.Name == "grpc-status" {
+						return hf.Value
+					}
+				}
+			}
+		}
+	}
+	call(11, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("1")})
+	headers(13, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "X-Upper", Value: "bad"})
+	if got := waitStatus(11); got != "0" {
+		t.Fatalf("put before a bad header block: grpc-status %s", got)
+	}
+	call(15, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("2")})
+	hb.Reset()
+	must(enc.WriteField(hpack.HeaderField{Name: ":method", Value: "POST"}))
+	must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 17, BlockFragment: hb.Bytes()}))
+	if got := waitStatus(15); got != "0" {
+		t.Fatalf("put before a continued header block: grpc-status %s", got)
+	}
+	hb.Reset()
+	for _, f := range []hpack.HeaderField{
+		{Name: ":scheme", Value: "https"},
+		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
+		{Name: ":authority", Value: "localhost"},
+		{Name: "content-type", Value: "application/grpc"},
+	} {
+		must(enc.WriteField(f))
+	}
+	must(fr.WriteContinuation(17, true, hb.Bytes()))
+	b, err := proto.Marshal(&pb.PutRequest{Key: []byte("next"), Value: []byte("3")})
+	must(err)
+	must(fr.WriteData(17, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
+	if got := waitStatus(17); got != "0" {
+		t.Fatalf("put with a continued header block: grpc-status %s", got)
 	}
 
 	// Stopping the server sends GOAWAY before the connection closes.
@@ -331,7 +407,7 @@ func TestRawFrames(t *testing.T) {
 			t.Fatalf("connection closed without GOAWAY: %v", err)
 		}
 		if ga, ok := f.(*http2.GoAwayFrame); ok {
-			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 5 {
+			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 17 {
 				t.Fatalf("GOAWAY %v", ga)
 			}
 			break
@@ -340,7 +416,8 @@ func TestRawFrames(t *testing.T) {
 }
 
 // TestNodeStopsUnderLoad stops a node while a connection has calls
-// waiting on it: every call gets an answer, none hangs.
+// waiting on it and keeps sending new ones as it stops: every call gets
+// an answer, none hangs.
 func TestNodeStopsUnderLoad(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 89)
@@ -359,23 +436,30 @@ func TestNodeStopsUnderLoad(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
-	errs := make(chan error, 50)
 	for range 50 {
 		wg.Go(func() {
-			_, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
-			errs <- err
+			// Waiting calls first, then a stream of reads and writes
+			// that runs into the stop.
+			for i := 0; ; i++ {
+				var err error
+				if i%2 == 0 {
+					_, err = kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
+				} else {
+					_, err = kv.Range(ctx, &pb.RangeRequest{Key: []byte("a"), Serializable: true})
+				}
+				if err == nil {
+					continue
+				}
+				if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+					t.Errorf("call while the node stopped: %v", err)
+				}
+				if errors.Is(err, rpctypes.ErrGRPCStopped) || ctx.Err() != nil {
+					return
+				}
+			}
 		})
 	}
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	c.running[1].stopNode()
 	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
-			t.Fatalf("put while the node stopped: %v", err)
-		}
-	}
-	if ctx.Err() != nil {
-		t.Fatal("calls hung after the node stopped")
-	}
 }
