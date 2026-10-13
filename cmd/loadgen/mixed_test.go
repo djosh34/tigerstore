@@ -169,6 +169,22 @@ func TestMixedMix(t *testing.T) {
 	}
 }
 
+func TestMixedArrivalScheduleReset(t *testing.T) {
+	for _, preloadArrivals := range []int{10, 1000} {
+		wk := newWorker(nil, 17)
+		for range preloadArrivals {
+			_ = wk.gap(300)
+		}
+		wk.arrivals = newArrivalRNG(17)
+		fresh := newWorker(nil, 17)
+		for range 100 {
+			if wk.gap(500) != fresh.gap(500) {
+				t.Fatal("preload completion changed the measurement schedule")
+			}
+		}
+	}
+}
+
 func TestMixedRateFlags(t *testing.T) {
 	for _, flag := range []string{"-rate", "-preload-rate"} {
 		for _, v := range []string{"NaN", "Inf", "-1"} {

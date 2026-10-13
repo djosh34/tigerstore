@@ -850,7 +850,10 @@ func runMixed(cfg config) (*result, error) {
 	ledger.mu.Lock()
 	ledger.start, ledger.stop = t1, t2
 	ledger.mu.Unlock()
-	for _, wk := range workers {
+	for i, wk := range workers {
+		// The preload's finish time must not change the measured arrival
+		// schedule. All targets get the same schedule for this seed.
+		wk.arrivals = newArrivalRNG(cfg.seed + uint64(i))
 		wk.stats = stats{winStart: t1, winStop: t2, errs: make(map[string]int64)}
 	}
 	var samples [2]cpuSample

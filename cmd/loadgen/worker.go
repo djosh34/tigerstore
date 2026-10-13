@@ -37,9 +37,13 @@ func newWorker(c *conn, seed uint64) *worker {
 	return &worker{
 		c:        c,
 		rng:      rand.New(rand.NewPCG(seed, 0x6c6f616467656e)),
-		arrivals: rand.New(rand.NewPCG(seed, 0x6172726976616c)),
+		arrivals: newArrivalRNG(seed),
 		stats:    stats{errs: make(map[string]int64)},
 	}
+}
+
+func newArrivalRNG(seed uint64) *rand.Rand {
+	return rand.New(rand.NewPCG(seed, 0x6172726976616c))
 }
 
 // run sends the requests of l for phase p and waits for them to finish.
