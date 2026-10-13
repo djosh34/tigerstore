@@ -23,7 +23,8 @@ func startEtcd(t *testing.T) (string, int) {
 	}
 	client, peer := freePort(t), freePort(t)
 	dir := t.TempDir()
-	cmd := exec.Command(bin,
+	cmd := exec.Command(
+		bin,
 		"--name", "n1",
 		"--data-dir", filepath.Join(dir, "data"),
 		"--listen-client-urls", "http://"+client,
@@ -86,9 +87,15 @@ func TestEtcdWorkloads(t *testing.T) {
 		{"range", 10240, 300},
 		{"list", 1024, 0},
 		{"watch", 1024, 2000},
+		{"mixed", 1024, 500},
+		{"mixed", 1024, 0},
 	} {
+		endpoint, serverPID := ep, pid
+		if tc.workload == "mixed" {
+			endpoint, serverPID = startEtcd(t)
+		}
 		cfg := config{
-			endpoints: []string{ep},
+			endpoints: []string{endpoint},
 			workload:  tc.workload,
 			valueSize: tc.valueSize,
 			keys:      20000,
@@ -99,8 +106,11 @@ func TestEtcdWorkloads(t *testing.T) {
 			duration:  500 * time.Millisecond,
 			watchers:  3,
 			page:      100,
-			pids:      []int{pid},
+			pids:      []int{serverPID},
 			seed:      1,
+		}
+		if tc.workload == "mixed" {
+			cfg.preloadRate = 300
 		}
 		res, err := run(cfg)
 		if err != nil {
@@ -114,6 +124,9 @@ func TestEtcdWorkloads(t *testing.T) {
 		}
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
+		}
+		if tc.workload == "mixed" && (res.Watch == nil || res.Watch.ServerCPUUsPerEvent != 0) {
+			t.Fatal("mixed attributed total CPU to watch events")
 		}
 		t.Log(res.oneLine())
 	}
