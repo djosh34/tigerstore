@@ -126,8 +126,10 @@ once() {
 		"${perf[@]}" \
 		"$@" || status=$?
 	if [ -n "$perfpid" ]; then
+		# perf exits with 130 after SIGINT once it wrote its data.
 		kill -INT "$perfpid"
-		wait "$perfpid" || status=$?
+		wait "$perfpid" || true
+		grep -q '^\[ perf record: Captured and wrote' "$profile.log" || status=1
 		rm -f "$dir.ctl"
 	fi
 	if [ "$status" -eq 0 ]; then
