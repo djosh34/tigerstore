@@ -104,8 +104,11 @@ func TestEtcdWorkloads(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%+v: %v", tc, err)
 		}
-		if res.Ops == 0 || res.Latency.Count != uint64(res.Ops) || res.ServerCPUUsPerOp <= 0 {
-			t.Fatalf("%+v: %d ops, %d latencies, %.1f us server CPU per op", tc, res.Ops, res.Latency.Count, res.ServerCPUUsPerOp)
+		// Latency covers the requests that arrived in the window, which
+		// all succeeded.
+		if res.Ops == 0 || res.Cohort == 0 || res.CohortFailed != 0 || res.Latency.Count != uint64(res.Cohort) || res.ServerCPUUsPerOp <= 0 || !res.Valid {
+			t.Fatalf("%+v: %d ops, cohort %d with %d failed, %d latencies, %.1f us server CPU per op, valid %v",
+				tc, res.Ops, res.Cohort, res.CohortFailed, res.Latency.Count, res.ServerCPUUsPerOp, res.Valid)
 		}
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
