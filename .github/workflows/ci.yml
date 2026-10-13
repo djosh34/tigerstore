@@ -185,6 +185,51 @@ jobs:
           go-version-file: go.mod
       - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ ./internal/node/ ./internal/peer/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
 
+  # Real-process chaos (#49). Each shard builds tigerstore and runs two
+  # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
+  # proxy on every client and peer link, recording clients and watches,
+  # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
+  # and follower, and proxy faults), then the four checkers of package
+  # check. Seeds come from the run ID. A failing seed reproduces with
+  # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
+  # and its evidence (schedule, fault records, node logs, data, history)
+  # is uploaded.
+  chaos:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Run seeds
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          status=0
+          for k in 0 1; do
+            seed=$(( (RUN_ID % 1000000000) * 8 + SHARD * 2 + k + 1 ))
+            echo "seed $seed"
+            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
+          done
+          exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-evidence-${{ matrix.shard }}
+          path: ${{ runner.temp }}/chaos-out
+          retention-days: 30
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.
   ci:
