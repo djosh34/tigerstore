@@ -136,8 +136,13 @@ func TestHeaderBlockRules(t *testing.T) {
 		t.Fatalf("stream 3 after a bad block: %+v", st)
 	}
 	// A second :path breaks the block.
-	if err := send(5, block(append(put, hpack.HeaderField{Name: ":path", Value: "/x"})...), true); err != nil || c.streams[5] != nil {
+	twoPaths := []hpack.HeaderField{put[0], put[1], {Name: ":path", Value: "/x"}, put[2]}
+	if err := send(5, block(twoPaths...), true); err != nil || c.streams[5] != nil {
 		t.Fatalf("a block with two paths: %v, stream %v", err, c.streams[5])
+	}
+	// Bad trailers on the open stream 3 reset only that stream.
+	if err := send(3, block(hpack.HeaderField{Name: "X-Upper", Value: "v"}), true); err != nil || c.streams[3] != nil {
+		t.Fatalf("bad trailers on an open stream: %v, stream %v", err, c.streams[3])
 	}
 	// A bad block on an even stream ends the connection, as a good one
 	// would.

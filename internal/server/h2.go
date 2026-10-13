@@ -431,8 +431,16 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	if !h.bad {
 		return c.onHeaders(h)
 	}
-	// A malformed block on a new stream resets only that stream; the
-	// stream ID rules hold as for any other block.
+	// Malformed trailers on an open stream, or a malformed block on a new
+	// stream, reset only that stream; otherwise the stream ID rules hold
+	// as for any other block.
+	c.mu.Lock()
+	open := c.streams[h.id] != nil
+	c.mu.Unlock()
+	if open {
+		c.resetStream(h.id, http2.ErrCodeProtocol)
+		return nil
+	}
 	if h.id%2 == 0 || h.id <= c.maxID {
 		return http2.ConnectionError(http2.ErrCodeProtocol)
 	}
