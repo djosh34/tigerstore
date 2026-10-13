@@ -20,9 +20,12 @@ import (
 const listPrefix = "/correct-round1/list/"
 
 type listEvidence struct {
-	Endpoint     string              `json:"endpoint"`
-	CallUTC      int64               `json:"call_utc_ns"`
-	ReturnUTC    int64               `json:"return_utc_ns"`
+	Endpoint     string `json:"endpoint"`
+	CallUTC      int64  `json:"call_utc_ns"`
+	ReturnUTC    int64  `json:"return_utc_ns"`
+	EOFUTC       int64  `json:"stream_eof_utc_ns,omitempty"`
+	callTime     time.Time
+	eofTime      time.Time
 	Serializable bool                `json:"serializable"`
 	Chunks       []*pb.RangeResponse `json:"chunks"`
 	Unary        *pb.RangeResponse   `json:"historical_unary,omitempty"`
@@ -32,7 +35,8 @@ type listEvidence struct {
 
 // Retain every chunk and compare every KV field at the stream's pinned revision.
 func checkedList(ctx context.Context, cl *clientv3.Client, serializable bool) (e listEvidence, err error) {
-	e.Endpoint, e.CallUTC, e.Serializable = cl.Endpoints()[0], time.Now().UnixNano(), serializable
+	e.callTime = time.Now()
+	e.Endpoint, e.CallUTC, e.Serializable = cl.Endpoints()[0], e.callTime.UnixNano(), serializable
 	defer func() {
 		e.ReturnUTC = time.Now().UnixNano()
 		e.Passed = err == nil
@@ -49,6 +53,8 @@ func checkedList(ctx context.Context, cl *clientv3.Client, serializable bool) (e
 	for {
 		chunk, recvErr := stream.Recv()
 		if errors.Is(recvErr, io.EOF) {
+			e.eofTime = time.Now()
+			e.EOFUTC = e.eofTime.UnixNano()
 			break
 		}
 		if recvErr != nil {
@@ -220,7 +226,7 @@ func listWatchProbe(c config) (err error) {
 	return nil
 }
 
-func (r *recorder) concurrentLists(ctx context.Context, cl *clientv3.Client, timeout time.Duration) {
+func (r *recorder) concurrentLists(ctx context.Context, cl *clientv3.Client, client int, timeout time.Duration) {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for ctx.Err() == nil {
@@ -229,6 +235,18 @@ func (r *recorder) concurrentLists(ctx context.Context, cl *clientv3.Client, tim
 		cancel()
 		r.mu.Lock()
 		r.lists = append(r.lists, ev)
+		if !ev.eofTime.IsZero() {
+			if merged, mergeErr := mergeList(ev.Chunks); mergeErr == nil {
+				// Record the completed linearizable stream itself, before the
+				// subsequent historical comparison. Monotonic invocation/EOF
+				// bounds let the whole-history checker reject stale snapshots.
+				r.h.Ops = append(r.h.Ops, history.Op{
+					Client: client, Call: ev.callTime.Sub(r.origin).Nanoseconds(), Return: ev.eofTime.Sub(r.origin).Nanoseconds(),
+					Req:  history.Request{Range: &history.RangeRequest{Key: listPrefix, End: clientv3.GetPrefixRangeEnd(listPrefix)}},
+					Resp: &history.Response{Revision: merged.Header.Revision, Range: rangeResponse(merged)},
+				})
+			}
+		}
 		// Fault transport errors remain evidence, not correctness violations. Any
 		// completed stream with a malformed chunk or wrong snapshot fails the case.
 		if err != nil && !transientWatch(err) && ctx.Err() == nil {

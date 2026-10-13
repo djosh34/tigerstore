@@ -365,8 +365,8 @@ func workload(c config) (err error) {
 	defer stop()
 	var listWG sync.WaitGroup
 	if c.listChecks {
-		for _, cl := range cs {
-			listWG.Go(func() { r.concurrentLists(stopCtx, cl, c.requestTimeout) })
+		for i, cl := range cs {
+			listWG.Go(func() { r.concurrentLists(stopCtx, cl, 60000+i, c.requestTimeout) })
 		}
 		listWG.Go(func() { r.mutateLists(stopCtx, cs, c) })
 	}
