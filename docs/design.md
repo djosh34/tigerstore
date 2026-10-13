@@ -37,7 +37,7 @@ While a batch is being replicated and synced, its responses and watch events are
 
 ### Batching
 
-Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
+Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The core does this itself: once the leader proposes a batch, new writes wait until the local append that carries that batch is durable, and the next `Process` then sends all of them as one entry. Appends of proposals that followers forwarded, and appends with only a hard state, such as a moved commit index, hold nothing, so forwarded traffic cannot starve local writes and a single client never waits for an extra fsync. Every write counts its size plus its framing in the entry toward the byte cap (`MaxBatchBytes`, 4 MiB), which sends a full entry early, so even empty requests cannot pile up without limit. A write that timed out while it waited is dropped, not proposed later. Followers forward at once. Heartbeats, votes, ReadIndex, replies and watch events never wait. On the disk side, the driver writes every queued append job with one write and one fsync, so the byte cap bounds one entry, not one disk group. The `tigerstore` process runs with at least two Go processors, even when pinned to one CPU or started with `GOMAXPROCS=1`: an fsync blocks in a system call that can keep its processor until the runtime takes it back, which is not reliably fast, and with only one, the goroutines that take in requests, send to peers and release replies all wait for the disk. The [batch256 pre-work](https://github.com/djosh34/tigerstore/issues/47#issuecomment-6137116710) measured 1.2 writes per leader fsync at 256 clients with one processor, and 53 with two on the same CPU (29,657 Put/s against 5,297). The committer is still one goroutine. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
 
 Symbols:
 
@@ -52,7 +52,7 @@ How batch size follows load:
 - At low load this is one operation. No operation waits for a timer, so one client sees no added latency.
 - As load rises, batches grow. The fixed cost per batch is shared, so the core time per operation falls to `c_op + c_b / (λ · t_a)`.
 - When the core saturates, queues grow, batches grow, and the per-operation cost falls further. The system settles near `1 / c_op` operations per second instead of collapsing.
-- The byte cap bounds the disk time of one batch, and so bounds the latency that one large batch adds to the next.
+- The byte cap bounds the size of one entry. Several entries can share one fsync, because the driver writes every queued append at once.
 
 How batch size follows node-to-node latency:
 
