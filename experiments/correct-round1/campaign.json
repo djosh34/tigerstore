@@ -1,0 +1,10 @@
+[
+  {"target":"tigerstore","scenario":"disk","seed":49,"rep":3,"duration":65,"disk_mib":256},
+  {"target":"etcd","scenario":"disk","seed":49,"rep":3,"duration":65,"disk_mib":256},
+  {"target":"tigerstore","scenario":"disk","seed":49,"rep":4,"duration":65,"disk_mib":256},
+  {"target":"etcd","scenario":"disk","seed":49,"rep":4,"duration":65,"disk_mib":256},
+  {"target":"tigerstore","scenario":"mixed","seed":52,"rep":2,"duration":120,"disk_mib":256,"pause_seconds":4,"kill_seconds":4,"netem_role":"leader","netem_hold_seconds":5},
+  {"target":"etcd","scenario":"mixed","seed":52,"rep":2,"duration":120,"disk_mib":256,"pause_seconds":4,"kill_seconds":4,"netem_role":"leader","netem_hold_seconds":5},
+  {"target":"tigerstore","scenario":"mixed","seed":52,"rep":3,"duration":120,"disk_mib":256,"pause_seconds":4,"kill_seconds":4,"netem_role":"leader","netem_hold_seconds":5},
+  {"target":"etcd","scenario":"mixed","seed":52,"rep":3,"duration":120,"disk_mib":256,"pause_seconds":4,"kill_seconds":4,"netem_role":"leader","netem_hold_seconds":5}
+]

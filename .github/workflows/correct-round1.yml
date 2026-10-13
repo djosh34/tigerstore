@@ -1,0 +1,121 @@
+name: Correctness round 1
+on:
+  push:
+    branches: [exp/correct-round1]
+    paths:
+      - '.github/workflows/correct-round1.yml'
+      - 'experiments/correct-round1/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      cases: ${{ steps.plan.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          echo "cases=$(jq -c . experiments/correct-round1/campaign.json)" >> "$GITHUB_OUTPUT"
+  faults:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.cases) }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build the pinned main and test client
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          mkdir -p bin evidence
+          product=$(jq -r .commit experiments/correct-round1/product.json)
+          git worktree add --detach "$RUNNER_TEMP/product" "$product"
+          (cd "$RUNNER_TEMP/product" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
+          (cd experiments/correct-round1 && go test -parallel 2 ./client && go vet ./client && go build -o "$GITHUB_WORKSPACE/bin/chaos-client" ./client)
+          python3 -m unittest discover -s experiments/correct-round1 -p 'test_*.py'
+          printf 'product=%s\ntooling=%s\n' "$product" "$GITHUB_SHA" > evidence/commits.txt
+          go version >> evidence/commits.txt
+      - name: Install stock etcd v3.7.2
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" bin/etcd
+      - name: Record the runner and enable disk barriers
+        shell: bash
+        run: |
+          sudo mount -o remount,barrier=1 /
+          {
+            uname -a
+            lscpu
+            free -b
+            findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+            tc -V
+            bin/etcd --version
+          } > evidence/runner.txt
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          ! findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'
+      - name: Run real-process faults
+        id: faults
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          SCENARIO: ${{ matrix.scenario }}
+          SEED: ${{ matrix.seed }}
+          REP: ${{ matrix.rep }}
+          DURATION: ${{ matrix.duration }}
+          VALUE_SIZE: ${{ matrix.value_size || 1024 }}
+          DISK_MIB: ${{ matrix.disk_mib || 128 }}
+          PAUSE_SECONDS: ${{ matrix.pause_seconds || 1.5 }}
+          KILL_SECONDS: ${{ matrix.kill_seconds || 1.2 }}
+          NETEM_ROLE: ${{ matrix.netem_role || 'follower' }}
+          NETEM_HOLD_SECONDS: ${{ matrix.netem_hold_seconds || 1.5 }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          sudo -E python3 experiments/correct-round1/runner.py \
+            --target "$TARGET" --scenario "$SCENARIO" \
+            --server "$PWD/bin/$TARGET" --client "$PWD/bin/chaos-client" \
+            --out "$PWD/evidence/run" --seed "$SEED" --repetition "$REP" --duration "$DURATION" --value-size "$VALUE_SIZE" --disk-mib "$DISK_MIB" \
+            --pause-seconds "$PAUSE_SECONDS" --kill-seconds "$KILL_SECONDS" \
+            --netem-role "$NETEM_ROLE" --netem-hold-seconds "$NETEM_HOLD_SECONDS" \
+            2>&1 | tee evidence/controller.log
+      - name: Check every available history
+        if: always() && steps.faults.outcome != 'skipped'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          sudo -E python3 experiments/correct-round1/run-checks.py \
+            --client "$PWD/bin/chaos-client" --backend "$TARGET" --out "$PWD/evidence/run" \
+            2>&1 | tee evidence/checks.log
+      - name: Preserve evidence
+        if: always()
+        shell: bash
+        run: |
+          sudo chmod -R a+rX evidence
+          printf 'Product and tooling commits:\n' >> "$GITHUB_STEP_SUMMARY"
+          if test -f evidence/commits.txt; then cat evidence/commits.txt >> "$GITHUB_STEP_SUMMARY"; fi
+          if test -f evidence/checks.log; then tail -100 evidence/checks.log >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: correct-round1-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: evidence
+          retention-days: 30
