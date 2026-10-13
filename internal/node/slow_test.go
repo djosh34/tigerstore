@@ -72,6 +72,13 @@ func slowWatcherIsCut(t *testing.T) error {
 	}
 	for i := 1; i <= 50; i++ {
 		if err := put(i); err != nil {
+			// If the node stopped, say why.
+			select {
+			case runErr := <-ran:
+				ran <- runErr
+				return fmt.Errorf("put %d: the node stopped: %w", i, runErr)
+			default:
+			}
 			return fmt.Errorf("%w: put %d did not finish within %v: %w", errSlowWatcher, i, bound, err)
 		}
 	}
