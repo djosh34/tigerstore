@@ -200,6 +200,9 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := pre50Observe(n); err != nil {
+		return err
+	}
 	t, err := peer.Start(peer.Config{
 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
 		Certificate: peerCert, CA: peerCA,
