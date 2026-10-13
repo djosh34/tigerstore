@@ -1,0 +1,60 @@
+package main
+
+// Experiment-only observation. No changes to request handling or persistence.
+import (
+	"encoding/json"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"runtime"
+	"runtime/metrics"
+
+	"github.com/djosh34/tigerstore/internal/node"
+)
+
+func bench75Observe(n *node.Node) error {
+	addr := os.Getenv("PRE50_DEBUG")
+	if addr == "" {
+		return nil
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader(), "gomaxprocs": uint64(runtime.GOMAXPROCS(0))}); err != nil {
+			log.Printf("debug leader: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/runtime", func(w http.ResponseWriter, r *http.Request) {
+		samples := []metrics.Sample{
+			{Name: "/gc/heap/allocs:objects"},
+			{Name: "/gc/heap/allocs:bytes"},
+			{Name: "/memory/classes/heap/objects:bytes"},
+			{Name: "/cpu/classes/gc/total:cpu-seconds"},
+			{Name: "/cpu/classes/total:cpu-seconds"},
+			{Name: "/cpu/classes/idle:cpu-seconds"},
+		}
+		metrics.Read(samples)
+		values := make(map[string]float64, len(samples))
+		for _, s := range samples {
+			switch s.Value.Kind() {
+			case metrics.KindUint64:
+				values[s.Name] = float64(s.Value.Uint64())
+			case metrics.KindFloat64:
+				values[s.Name] = s.Value.Float64()
+			}
+		}
+		if err := json.NewEncoder(w).Encode(values); err != nil {
+			log.Printf("debug runtime: %v", err)
+		}
+	})
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := http.Serve(ln, mux); err != nil {
+			log.Printf("debug HTTP: %v", err)
+		}
+	}()
+	return nil
+}

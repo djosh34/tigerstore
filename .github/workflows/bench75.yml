@@ -1,0 +1,88 @@
+name: PR 75 and 76 paired Put benchmark
+on:
+  push:
+    branches: [exp/bench-75]
+    paths:
+      - 'experiments/bench75/**'
+      - '.github/workflows/bench75.yml'
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: First candidate branch, tag or commit
+        default: work/50-frontend
+        type: string
+        required: true
+      second_candidate_ref:
+        description: Optional second candidate branch, tag or commit
+        default: work/50-batch
+        type: string
+      baseline_ref:
+        description: Baseline branch, tag or commit
+        default: main
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  resolve:
+    if: github.ref == 'refs/heads/exp/bench-75'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    outputs:
+      baseline: ${{ steps.refs.outputs.baseline }}
+      candidate: ${{ steps.refs.outputs.candidate }}
+      second: ${{ steps.refs.outputs.second }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: refs
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref || 'main' }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-frontend' }}
+          SECOND_REF: ${{ github.event_name == 'push' && 'work/50-batch' || inputs.second_candidate_ref }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          resolve() {
+            if git show-ref --verify --quiet "refs/remotes/origin/$1"; then
+              git rev-parse "refs/remotes/origin/$1^{commit}"
+            else
+              git rev-parse --verify "$1^{commit}"
+            fi
+          }
+          echo "baseline=$(resolve "$BASELINE_REF")" >> "$GITHUB_OUTPUT"
+          echo "candidate=$(resolve "$CANDIDATE_REF")" >> "$GITHUB_OUTPUT"
+          if [ -n "$SECOND_REF" ]; then
+            echo "second=$(resolve "$SECOND_REF")" >> "$GITHUB_OUTPUT"
+          fi
+          date -u +%FT%TZ
+          grep -E '^(baseline|candidate|second)=' "$GITHUB_OUTPUT"
+  paired:
+    needs: resolve
+    if: github.ref == 'refs/heads/exp/bench-75'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        clients: [64, 256]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Main, candidate refs and etcd back to back
+        env:
+          CLIENTS: ${{ matrix.clients }}
+          BASELINE_REF: ${{ needs.resolve.outputs.baseline }}
+          CANDIDATE_REF: ${{ needs.resolve.outputs.candidate }}
+          SECOND_CANDIDATE_REF: ${{ needs.resolve.outputs.second }}
+        run: timeout --kill-after=5s 820s bash experiments/bench75/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench75-${{ matrix.clients }}
+          path: evidence/bench75
+          retention-days: 14
