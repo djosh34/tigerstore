@@ -87,11 +87,13 @@ func dispatch(cfg config, workers []*worker, loads []load, wake <-chan struct{},
 		// Bound each dispatch turn by bytes and count. This also ensures
 		// control frames and queue observations get turns at high load.
 		admitted := 0
+		waitingForArrival := false
 		for admitted < 256 && meter.current.Load() < int64(cfg.concurrency) {
 			t = now()
 			if cfg.rate > 0 {
 				due = schedule.due(t)
 				if sent >= due {
+					waitingForArrival = true
 					break
 				}
 			} else if (total > 0 && sent >= total) || (total == 0 && t >= stop) {
@@ -189,9 +191,7 @@ func dispatch(cfg config, workers []*worker, loads []load, wake <-chan struct{},
 		if total == 0 && t < stop {
 			wait = min(wait, stop)
 		}
-		if cfg.rate > 0 && sent >= schedule.due(t) && sent < expected {
-			wait = min(wait, schedule.at(sent))
-		}
+		wait = dispatchArrivalWait(wait, schedule, sent, expected, waitingForArrival)
 		if wait <= t {
 			continue
 		}
@@ -281,6 +281,17 @@ func dispatch(cfg config, workers []*worker, loads []load, wake <-chan struct{},
 		out.CPUThroughDrain = cpuThroughDrain(before, after, out.Success)
 	}
 	return out, samples, errors.Join(phaseErr, sampleErr, windowErr, drainErr)
+}
+
+// dispatchArrivalWait retains why admission stopped before flushing. A flush
+// can cross the next ticket's timestamp, even after the last response wakeup.
+// Return that timestamp even when overdue so the caller immediately retries.
+// Credit/capacity stalls must instead await a wakeup or the normal poll timer.
+func dispatchArrivalWait(wait int64, schedule fixedSchedule, sent, expected int64, waitingForArrival bool) int64 {
+	if schedule.rate > 0 && waitingForArrival && sent < expected {
+		return min(wait, schedule.at(sent))
+	}
+	return wait
 }
 
 func ticketsForEndpoint(n int64, ep, endpoints int) int64 {
