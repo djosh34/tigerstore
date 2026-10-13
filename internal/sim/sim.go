@@ -43,10 +43,12 @@ type Config struct {
 	Seed uint64
 	// Duration is the length of the phase with faults.
 	Duration int64
-	// Heal is the fault-free phase after it. Clients keep running in it,
-	// and every call that starts LiveAfter into it must succeed. Nodes
-	// restarted at healing need up to two election timeouts (2 s) to elect
-	// a leader; at 1 s, seed 126 fails with "no leader".
+	// Heal is how long clients run after scheduled healing. The liveness
+	// rule allows LiveAfter for recovery once fault effects end. Gray
+	// faults and a deferred disk failure can outlast scheduled healing;
+	// those extend the client phase if needed. Nodes restarted at healing
+	// need up to two election timeouts (2 s) to elect a leader; at 1 s,
+	// seed 126 fails with "no leader".
 	Heal      int64
 	LiveAfter int64
 	// Clients is the number of clients. Each has one call in flight.
@@ -234,6 +236,9 @@ type event struct {
 	watch          *watchClient
 	resp           proto.Message
 	err            error
+	// grayDisk marks an fsync slowed by a gray fault. Its delay can
+	// outlast healing even after the gray network fault has ended.
+	grayDisk bool
 }
 
 // queue is a binary min-heap of events by time, then sequence number.
@@ -390,6 +395,9 @@ type Sim struct {
 	grayDropped, grayOnce bool
 	// grayStays keeps the gray period on the leader it started on.
 	grayStays bool
+	// grayHealedAt is when the last gray fault effect after healing ended:
+	// either the guaranteed append drop or an already-slowed fsync.
+	grayHealedAt int64
 	// recoveryDue crashes the next node that writes entries before it
 	// syncs them, until a recovery crashed.
 	recoveryDue bool
@@ -444,8 +452,10 @@ type Result struct {
 	// CommitStops the times leaders stopped because nothing committed.
 	StallStops, CommitStops []int64
 	// grayNode is the index of the last gray node, for tests.
-	grayNode  int
-	halfOpens []halfOpenLink
+	grayNode int
+	// grayHealedAt is the last gray fault completion, for tests.
+	grayHealedAt int64
+	halfOpens    []halfOpenLink
 	// FinalRev is the revision of the converged cluster at the end.
 	FinalRev int64
 	// Clients is the number of request clients.
@@ -491,7 +501,7 @@ func Run(cfg Config) (*Result, error) {
 	if err := s.loop(); err != nil {
 		return nil, err
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, CommitStops: s.commitStops, grayNode: s.lastGray, halfOpens: s.halfOpens, Clients: cfg.Clients}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, CommitStops: s.commitStops, grayNode: s.lastGray, grayHealedAt: s.grayHealedAt, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
@@ -883,14 +893,15 @@ func (s *Sim) startDisk(n *node) {
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
-	if s.gray == n && n.graySync && !s.healed {
+	grayDisk := s.gray == n && n.graySync && !s.healed
+	if grayDisk {
 		lat = max(lat, 500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
 	lat = max(lat, n.stallUntil-s.now)
 	leader := n.core.Leader() == n.id
 	if (planted.On("B02") && leader) || (planted.On("B03") && !leader) {
 		// Planted: report the jobs durable before the fsync.
-		n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen}
+		n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, grayDisk: grayDisk}
 		s.push(n.syncing)
 		for _, j := range jobs {
 			s.persisted(n, j)
@@ -898,7 +909,7 @@ func (s *Sim) startDisk(n *node) {
 		s.process(n)
 		return
 	}
-	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs}
+	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs, grayDisk: grayDisk}
 	s.push(n.syncing)
 }
 
@@ -913,6 +924,9 @@ func (s *Sim) diskDone(e *event) {
 		return
 	}
 	n.diskBusy = false
+	if e.grayDisk {
+		s.grayFaultEnded()
+	}
 	n.inflight, n.replaceFrom = nil, 0
 	for _, j := range e.jobs {
 		s.persisted(n, j)
@@ -950,7 +964,7 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 		}
 		if s.healed {
 			// The guaranteed gray period, which waited for this.
-			s.gray, s.grayOnce = nil, false
+			s.endGray()
 		}
 		return
 	}
@@ -1120,7 +1134,7 @@ func (s *Sim) setLinks(mask uint64) {
 func (s *Sim) heal() {
 	s.healed = true
 	if !s.grayOnce || s.grayDropped {
-		s.gray, s.grayOnce = nil, false
+		s.endGray()
 	}
 	if s.grayCl != nil {
 		// Closes its stream and stops.

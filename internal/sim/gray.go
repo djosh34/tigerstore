@@ -71,7 +71,7 @@ func (s *Sim) switchGray() {
 		return
 	}
 	if s.healed || s.now >= s.grayEnd {
-		s.gray, s.grayOnce = nil, false
+		s.endGray()
 		return
 	}
 	if !s.grayStays && s.rng.IntN(2) == 0 {
@@ -80,6 +80,22 @@ func (s *Sim) switchGray() {
 		}
 	}
 	s.push(&event{at: min(s.grayEnd, s.now+Second+s.rng.Int64N(2*Second)), kind: evGraySwitch})
+}
+
+func (s *Sim) endGray() {
+	if s.gray != nil {
+		s.grayFaultEnded()
+	}
+	s.gray, s.grayOnce = nil, false
+}
+
+// grayFaultEnded records only fault effects that actually survived healing.
+// A canceled disk completion from a crashed node never reaches this path.
+func (s *Sim) grayFaultEnded() {
+	if s.healed && s.now > s.healAt {
+		s.grayHealedAt = max(s.grayHealedAt, s.now)
+		s.extendLiveness()
+	}
 }
 
 // grayLeader makes the leader gray until healing, without slow fsyncs, so
