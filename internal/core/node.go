@@ -171,7 +171,8 @@ type Node struct {
 	// durable; while any is, messages to peers wait in held. Raft with
 	// async storage writes sends a candidate's vote requests before its
 	// own term and vote are durable, so it can win, lose its term in a
-	// failed write, and win the same term again with another log.
+	// failed write, and win the same term again with another log. held
+	// keeps at most maxHeld messages.
 	voteTerm, vote uint64
 	unsyncedVotes  int
 	held           []*raftpb.Message
@@ -867,11 +868,19 @@ func (n *Node) commitStalled() bool {
 	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= CommitStallTicks*int64(n.cfg.ElectionTicks)
 }
 
+// maxHeld bounds the messages held while a term or vote change is not yet
+// durable, such as on a candidate whose disk stalls.
+const maxHeld = 1024
+
 // send puts a message to a peer out, or holds it while a term or vote
 // change is not yet durable.
 func (n *Node) send(m *raftpb.Message) {
 	if n.unsyncedVotes > 0 {
-		n.held = append(n.held, m)
+		// Raft resends what it loses, so past the bound the newest
+		// messages are dropped instead of held.
+		if len(n.held) < maxHeld {
+			n.held = append(n.held, m)
+		}
 		return
 	}
 	n.out.Send = append(n.out.Send, m)
