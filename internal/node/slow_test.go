@@ -13,6 +13,10 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 )
 
+// errSlowWatcher is the failure TestPlanted counts as catching B13; any
+// other error is a setup failure.
+var errSlowWatcher = errors.New("the slow watcher held up the node")
+
 type noPeers struct{}
 
 func (noPeers) Send(*raftpb.Message) {}
@@ -65,7 +69,7 @@ func slowWatcherIsCut(t *testing.T) error {
 	}
 	for i := 1; i <= 50; i++ {
 		if err := put(i); err != nil {
-			return fmt.Errorf("put %d beside a slow watcher did not finish within %v: %w", i, bound, err)
+			return fmt.Errorf("%w: put %d did not finish within %v: %w", errSlowWatcher, i, bound, err)
 		}
 	}
 	select {
@@ -74,15 +78,15 @@ func slowWatcherIsCut(t *testing.T) error {
 			return fmt.Errorf("the slow stream ended with %w", ws.Err())
 		}
 	case <-time.After(bound):
-		return errors.New("the slow stream was never closed")
+		return fmt.Errorf("%w: the slow stream was never closed", errSlowWatcher)
 	}
 	if err := put(51); err != nil {
-		return fmt.Errorf("a put after the slow watcher did not finish within %v: %w", bound, err)
+		return fmt.Errorf("%w: a put after it did not finish within %v: %w", errSlowWatcher, bound, err)
 	}
 	rctx, rcancel := context.WithTimeout(context.Background(), bound)
 	defer rcancel()
 	if _, err := n.Do(rctx, &pb.RangeRequest{Key: []byte("k1")}); err != nil {
-		return fmt.Errorf("a read after the slow watcher did not finish within %v: %w", bound, err)
+		return fmt.Errorf("%w: a read after it did not finish within %v: %w", errSlowWatcher, bound, err)
 	}
 	return nil
 }

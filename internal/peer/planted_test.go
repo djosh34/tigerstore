@@ -3,6 +3,7 @@
 package peer
 
 import (
+	"errors"
 	"flag"
 	"testing"
 
@@ -22,6 +23,9 @@ func TestPlanted(t *testing.T) {
 	err := stalledPeerIsDropped(t)
 	if err == nil {
 		t.Fatal("B14 (the peer writer has no write deadline) was not caught")
+	}
+	if !errors.Is(err, errNotDropped) {
+		t.Fatalf("B14: the scenario failed before it could catch anything: %v", err)
 	}
 	t.Logf("B14 (%s) caught: %v", planted.Bugs["B14"], err)
 }

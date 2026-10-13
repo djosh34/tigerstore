@@ -20,9 +20,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djosh34/tigerstore/internal/planted"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Transport sends Raft messages to peers. Send never blocks: when a peer's

@@ -3,6 +3,7 @@
 package node
 
 import (
+	"errors"
 	"flag"
 	"testing"
 
@@ -22,6 +23,9 @@ func TestPlanted(t *testing.T) {
 	err := slowWatcherIsCut(t)
 	if err == nil {
 		t.Fatal("B13 (the node driver waits for a slow watch stream) was not caught")
+	}
+	if !errors.Is(err, errSlowWatcher) {
+		t.Fatalf("B13: the scenario failed before it could catch anything: %v", err)
 	}
 	t.Logf("B13 (%s) caught: %v", planted.Bugs["B13"], err)
 }
