@@ -85,7 +85,17 @@ func bufferedTLSPair(t *testing.T) (*outboundConn, *tls.Conn, *tappedConn) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := <-serverDone; err != nil {
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("server handshake did not finish: %v", ctx.Err())
+	}
+	// A TLS Read can send an alert. Bound its writes as well as reads,
+	// since the outbound client does not read after the handshake.
+	if err := server.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if c.records.bw.Size() != ioBuffer {
@@ -105,7 +115,7 @@ func testSender() *sender {
 
 func runBufferedSender(t *testing.T, s *sender, c *outboundConn) func() {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	done := make(chan error, 1)
 	go func() { done <- s.write(ctx, c) }()
 	t.Cleanup(func() {
@@ -127,7 +137,7 @@ func runBufferedSender(t *testing.T, s *sender, c *outboundConn) func() {
 
 func readPeerFrames(t *testing.T, c net.Conn, n int) []*raftpb.Message {
 	t.Helper()
-	if err := c.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := c.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	var h [8]byte
@@ -184,8 +194,13 @@ func TestOutboundHandshakeAndCiphertextCoalescing(t *testing.T) {
 	if err := c.flush(); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-readDone; err != nil {
-		t.Fatal(err)
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("TLS payload reader did not finish after Flush")
 	}
 	if !bytes.Equal(payload, got) {
 		t.Fatal("TLS payload changed")
@@ -410,7 +425,9 @@ func TestOutboundBothFlushErrors(t *testing.T) {
 					}
 					s := testSender()
 					s.send(msg(1, payload))
-					if err := s.write(context.Background(), c); !errors.Is(err, want) {
+					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+					if err := s.write(ctx, c); !errors.Is(err, want) {
 						t.Fatalf("write = %v, want %v", err, want)
 					}
 					if failing.calls != 1 {
@@ -480,7 +497,9 @@ func TestOutboundDialHandshakeTimeoutAndCancellation(t *testing.T) {
 				err  error
 			}
 			accepted := make(chan acceptResult, 1)
-			ctx, cancel := context.WithCancel(context.Background())
+			// This outer bound catches a regression that loses the shared
+			// three-second budget instead of hanging the test itself.
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 			defer cancel()
 			go func() {
 				peer, err := ln.Accept()
