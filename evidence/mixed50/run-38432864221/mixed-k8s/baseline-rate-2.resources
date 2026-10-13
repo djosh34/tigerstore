@@ -1,0 +1,9 @@
+target=baseline mode=rate rep=2
+    PID COMMAND           RSS    VSZ
+   4853 baseline        2572492 4591044
+   4854 baseline        2253940 4180380
+   4855 baseline        2373332 4312332
+               total        used        free      shared  buff/cache   available
+Mem:     16722010112  8677646336  2089635840    52248576  6293970944  8044363776
+Swap:     3221221376      118784  3221102592
+4609113185	/home/runner/work/_temp/bench-data/baseline
