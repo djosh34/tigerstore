@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/status"
 
+	"github.com/djosh34/tigerstore/internal/batchmem"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 )
@@ -50,6 +51,20 @@ func healthRead(serializable bool) *pb.RangeRequest {
 }
 
 func (c *conn) dispatchHTTP(id uint32, s *incoming, a *admission) error {
+	// Setup-only health uses a timer that can answer before core completion.
+	// Keep its descriptors GC-owned rather than recycling a still-queued batch.
+	if c.s.memory != nil {
+		if err := c.flush(a); err != nil {
+			return err
+		}
+		var setup admission
+		defer func() {
+			if len(setup.legacyTags) != 0 {
+				c.close()
+			}
+		}()
+		a = &setup
+	}
 	c.mu.Lock()
 	if b := c.budgets[id]; b != nil {
 		b.http = true
@@ -81,7 +96,7 @@ func (c *conn) dispatchHTTP(id uint32, s *incoming, a *admission) error {
 		// the existing admission and completion groups, without a waiting reader.
 		a.ops = append(a.ops, healthRead(serializable))
 		a.legacyTags = append(a.legacyTags, id)
-		if len(a.tags)+len(a.legacyTags) >= maxBatchCommands {
+		if c.s.memory != nil || len(a.tags)+len(a.legacyTags) >= maxBatchCommands {
 			return c.flush(a)
 		}
 	default:
@@ -122,24 +137,27 @@ func (c *conn) encodeHTTP(id uint32, r httpReply) (encoded, bool) {
 	if !c.reserve(id, n) {
 		return encoded{}, false
 	}
-	wire := make([]byte, n)
+	var active *batchmem.Arena
+	wire, arena := c.wireBuffer(n, &active)
+	if active != nil {
+		active.Release()
+	}
+	if wire == nil {
+		c.release(n)
+		c.close()
+		return encoded{}, false
+	}
 	frameHeader(wire, len(h), http2.FrameHeaders, byte(http2.FlagHeadersEndHeaders), id)
 	copy(wire[9:], h)
 	start := 9 + len(h)
 	frameHeader(wire[start:], len(r.body), http2.FrameData, byte(http2.FlagDataEndStream), id)
 	copy(wire[start+9:], r.body)
-	return encoded{id: id, wire: wire, reserved: n}, true
+	return encoded{id: id, wire: wire, reserved: n, arena: arena}, true
 }
 
 func (c *conn) sendHTTP(id uint32, r httpReply) {
 	if e, ok := c.encodeHTTP(id, r); ok {
-		select {
-		case c.out <- []encoded{e}:
-			c.s.stats.responseSends.Add(1)
-		default:
-			c.release(e.reserved)
-			c.close()
-		}
+		c.publish([]encoded{e})
 	}
 }
 

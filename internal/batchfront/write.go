@@ -13,15 +13,17 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/batchmem"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // encoded retains only response-owned wire bytes. No protobuf, descriptor,
 // request body, or log slice crosses the writer queue.
 type encoded struct {
-	id       uint32
-	wire     []byte
-	reserved int
+	id                 uint32
+	wire               []byte
+	reserved           int
+	arena, descriptors *batchmem.Arena
 }
 type control struct {
 	id                                         uint32
@@ -69,9 +71,11 @@ func (c *conn) reserve(id uint32, n int) bool {
 		return false
 	}
 	c.inputBytes -= b.input
+	releaseInput(b)
 	b.input = 0
 	b.ready = true
 	if b.reset {
+		b.slotID = 0
 		delete(c.budgets, id)
 		return false
 	}
@@ -94,16 +98,51 @@ func (c *conn) release(n int) { c.mu.Lock(); c.outputBytes -= n; c.mu.Unlock() }
 // allocation, so even a huge Range/prev_kv response cannot overshoot the cap.
 // No operation here waits for the writer, even when flow control is zero.
 func (c *conn) Complete(replies []node.Completion) {
+	defer func() {
+		if c.ctx.Err() != nil {
+			c.completeClosed(replies)
+		}
+	}()
 	if c.ctx.Err() != nil {
 		return
 	}
 	c.s.stats.completions.Add(1)
 	c.s.stats.replies.Add(uint64(len(replies)))
-	batch := make([]encoded, 0, len(replies))
+	var batch []encoded
+	var descriptors, output *batchmem.Arena
+	if c.s.memory == nil {
+		batch = make([]encoded, 0, len(replies))
+	} else {
+		if len(replies) > MaxStreams {
+			c.close()
+			return
+		}
+		descriptors = c.s.memory.replies.Acquire(0)
+		if descriptors == nil {
+			c.close()
+			return
+		}
+		slot := &c.s.memory.replySlots[descriptors.Index()]
+		*slot = replySlot{}
+		batch = slot.encoded[:0]
+		defer descriptors.Release()
+	}
+	defer func() {
+		if output != nil {
+			output.Release()
+		}
+	}()
+	appendReply := func(e encoded) {
+		if descriptors != nil {
+			descriptors.Retain()
+			e.descriptors = descriptors
+		}
+		batch = append(batch, e)
+	}
 	for _, r := range replies {
 		if c.isHTTP(r.Tag) {
 			if e, ok := c.encodeHTTP(r.Tag, healthReply(r.Err)); ok {
-				batch = append(batch, e)
+				appendReply(e)
 			}
 			continue
 		}
@@ -128,27 +167,46 @@ func (c *conn) Complete(replies []node.Completion) {
 			}
 			continue // reset stream
 		}
-		e, err := encode(r.Tag, r.Resp, r.Err, h, t, n)
-		if err != nil {
+		wire, arena := c.wireBuffer(n, &output)
+		if wire == nil {
 			c.release(n)
 			c.close()
 			break
 		}
-		batch = append(batch, e)
+		e, err := encodeInto(r.Tag, r.Resp, r.Err, h, t, n, wire)
+		e.arena = arena
+		if err != nil {
+			if arena != nil {
+				arena.Release()
+			}
+			c.release(n)
+			c.close()
+			break
+		}
+		appendReply(e)
 	}
 	if len(batch) == 0 {
 		return
 	}
-	select {
-	case c.out <- batch:
-		c.s.stats.responseSends.Add(1)
-		return
-	default:
-		for _, e := range batch {
-			c.release(e.reserved)
+	c.publish(batch)
+}
+
+func (c *conn) publish(batch []encoded) {
+	c.mu.Lock()
+	if c.ctx.Err() == nil {
+		select {
+		case c.out <- batch:
+			c.s.stats.responseSends.Add(1)
+			c.mu.Unlock()
+			return
+		default:
 		}
-		c.close()
 	}
+	c.mu.Unlock()
+	for _, e := range batch {
+		c.releaseEncoded(e)
+	}
+	c.close()
 }
 
 func frameHeader(b []byte, size int, kind http2.FrameType, flags byte, id uint32) {
@@ -158,14 +216,18 @@ func frameHeader(b []byte, size int, kind http2.FrameType, flags byte, id uint32
 }
 
 func encode(id uint32, resp proto.Message, replyErr error, h, t []byte, n int) (encoded, error) {
+	return encodeInto(id, resp, replyErr, h, t, n, make([]byte, n))
+}
+
+func encodeInto(id uint32, resp proto.Message, replyErr error, h, t []byte, n int, owned []byte) (encoded, error) {
 	// Marshal straight into the reserved response buffer, then insert DATA
 	// headers backwards in that same buffer. No second large scratch copy.
-	wire := make([]byte, 9+len(h), n)
+	wire := owned[: 9+len(h) : n]
 	frameHeader(wire, len(h), http2.FrameHeaders, byte(http2.FlagHeadersEndHeaders), id)
 	copy(wire[9:], h)
 	start := len(wire)
 	if replyErr == nil && resp != nil {
-		wire = append(wire, make([]byte, 5)...)
+		wire = append(wire, 0, 0, 0, 0, 0)
 		var err error
 		wire, err = proto.MarshalOptions{}.MarshalAppend(wire, resp)
 		if err != nil {
@@ -190,12 +252,14 @@ func encode(id uint32, resp proto.Message, replyErr error, h, t []byte, n int) (
 }
 
 type pending struct {
+	id        uint32
 	window    int64
 	response  *encoded
 	pos, part int
 }
 
 func (c *conn) writeLoop() error {
+	defer c.writerQueueCleanup()
 	w := bufio.NewWriterSize(c.Conn, 64<<10)
 	f := http2.NewFramer(w, nil)
 	timeout := c.writeTimeout
@@ -216,6 +280,44 @@ func (c *conn) writeLoop() error {
 		return err
 	}
 	streams := make(map[uint32]*pending)
+	var pendingSlots []pending
+	var finished []encoded
+	var finishedSlots []encoded
+	if c.s.memory != nil {
+		pendingSlots = make([]pending, MaxStreams)
+		finishedSlots = make([]encoded, MaxStreams)
+	}
+	newPending := func(id uint32, window int64) *pending {
+		if c.s.memory == nil {
+			return &pending{window: window}
+		}
+		for i := range pendingSlots {
+			p := &pendingSlots[(int(id/2)+i)%MaxStreams]
+			if p.id == 0 {
+				*p = pending{id: id, window: window}
+				return p
+			}
+		}
+		c.close()
+		return nil
+	}
+	dropPending := func(id uint32) {
+		if p := streams[id]; p != nil {
+			p.id = 0
+		}
+		delete(streams, id)
+	}
+	defer func() {
+		c.close()
+		for _, p := range streams {
+			if p.response != nil {
+				c.releaseEncoded(*p.response)
+			}
+		}
+		for _, e := range finished {
+			c.releaseEncoded(e)
+		}
+	}()
 	var window int64 = 65535
 	var initial int64 = 65535
 	applyControl := func(o control) error {
@@ -244,13 +346,15 @@ func (c *conn) writeLoop() error {
 		if o.reset {
 			if p := streams[o.id]; p != nil {
 				if p.response != nil {
-					c.release(p.response.reserved)
+					c.releaseEncoded(*p.response)
 				}
-				delete(streams, o.id)
+				dropPending(o.id)
 			}
 		}
 		if o.open && streams[o.id] == nil && c.live(o.id) {
-			streams[o.id] = &pending{window: initial}
+			if p := newPending(o.id, initial); p != nil {
+				streams[o.id] = p
+			}
 		}
 		if o.delta > 0 {
 			if o.id == 0 {
@@ -271,15 +375,23 @@ func (c *conn) writeLoop() error {
 		for i := range batch {
 			e := batch[i]
 			if !c.live(e.id) {
-				c.release(e.reserved)
+				c.releaseEncoded(e)
 				continue
 			}
 			p := streams[e.id]
 			if p == nil {
-				p = &pending{window: initial}
+				p = newPending(e.id, initial)
+				if p == nil {
+					c.releaseEncoded(e)
+					continue
+				}
 				streams[e.id] = p
 			}
-			p.response = &e
+			if c.s.memory == nil {
+				p.response = &e
+			} else {
+				p.response = &batch[i]
+			}
 		}
 	}
 	for {
@@ -325,15 +437,18 @@ func (c *conn) writeLoop() error {
 				break batches
 			}
 		}
-		var finished []encoded
+		finished = nil
+		if c.s.memory != nil {
+			finished = finishedSlots[:0]
+		}
 		for id, p := range streams {
 			if p.response == nil {
 				continue
 			}
 			e := p.response
 			if !c.live(id) {
-				c.release(e.reserved)
-				delete(streams, id)
+				c.releaseEncoded(*e)
+				dropPending(id)
 				continue
 			}
 			for p.pos < len(e.wire) {
@@ -369,7 +484,7 @@ func (c *conn) writeLoop() error {
 			}
 			if p.pos == len(e.wire) {
 				finished = append(finished, *e)
-				delete(streams, id)
+				dropPending(id)
 			}
 		}
 		if err := w.Flush(); err != nil {
@@ -377,8 +492,9 @@ func (c *conn) writeLoop() error {
 		}
 		// Keep bytes reserved through the actual Flush, not just queue removal.
 		for _, e := range finished {
-			c.release(e.reserved)
+			c.releaseEncoded(e)
 			c.finish(e.id)
 		}
+		finished = nil
 	}
 }
