@@ -16,7 +16,7 @@ import (
 )
 
 // check runs the simulator's own rules on a finished run. The checkers in
-// the history package are the independent oracle; these rules use the
+// package check are the independent oracle; these rules use the
 // final state of the cluster and catch most bugs cheaply:
 //
 //   - every node is up and has applied the same log to the same state;
@@ -35,6 +35,7 @@ func (s *Sim) check(res *Result) error {
 	if err != nil {
 		return err
 	}
+	res.FinalRev = final.Rev()
 	ents, err := s.nodes[0].core.AppliedEntries()
 	if err != nil {
 		return err
