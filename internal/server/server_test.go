@@ -32,6 +32,8 @@ type cluster struct {
 	peerAddrs map[uint64]string
 	dirs      map[uint64]string
 	running   map[uint64]*running
+	// via, if set, is the address node from dials to reach node to.
+	via map[[2]uint64]string
 }
 
 type running struct {
@@ -49,7 +51,10 @@ func freeAddr(t *testing.T) string {
 	return ln.Addr().String()
 }
 
-func newCluster(t *testing.T) *cluster {
+func newCluster(t *testing.T) *cluster { return newClusterWith(t, nil) }
+
+// newClusterWith runs setup on the cluster before its nodes start.
+func newClusterWith(t *testing.T, setup func(*cluster)) *cluster {
 	ca, err := testcert.NewCA()
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +63,9 @@ func newCluster(t *testing.T) *cluster {
 	for id := uint64(1); id <= 3; id++ {
 		c.peerAddrs[id] = freeAddr(t)
 		c.dirs[id] = t.TempDir()
+	}
+	if setup != nil {
+		setup(c)
 	}
 	for id := uint64(1); id <= 3; id++ {
 		c.start(id)
@@ -84,6 +92,9 @@ func (c *cluster) start(id uint64) {
 	for pid, a := range c.peerAddrs {
 		if pid != id {
 			peers[pid] = a
+			if v, ok := c.via[[2]uint64{id, pid}]; ok {
+				peers[pid] = v
+			}
 		}
 	}
 	tr, err := peer.Start(peer.Config{ID: id, Listen: c.peerAddrs[id], Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable})
