@@ -229,8 +229,12 @@ func (w *watchClient) receive(e *event) {
 	}
 }
 
-// broken is a stream that died with its node.
-func (w *watchClient) broken() {
+// broken is a stream that died with its node. The client may have left
+// that stream already and opened another, which stays.
+func (w *watchClient) broken(e *event) {
+	if !w.open || w.stream != e.stream || w.gen != e.gen {
+		return
+	}
 	w.open = false
 	w.openWatch()
 }

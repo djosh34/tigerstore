@@ -202,6 +202,7 @@ const (
 	evGrayLeader
 	evGrayConnect
 	evGrayCreate
+	evRecoveryDue
 	evRestart
 	evLinks
 	evHeal
@@ -378,6 +379,14 @@ type Sim struct {
 	grayEnd  int64
 	grayCl   *grayClient
 	lastGray int
+	// grayDropped is set once the gray node lost an append; grayOnce marks
+	// the run's guaranteed gray period, which lasts until then.
+	grayDropped, grayOnce bool
+	// grayStays keeps the gray period on the leader it started on.
+	grayStays bool
+	// recoveryDue crashes the next node that writes entries before it
+	// syncs them, until a recovery crashed.
+	recoveryDue bool
 	// diskFaultDue arms a disk fault at the next append with entries,
 	// after healing too; lateFaultAt is when such a fault fired after
 	// healing, which moves the start of the liveness rule.
@@ -407,10 +416,13 @@ type Stats struct {
 	// clock jumps, HalfOpens half-open links, and Asymmetric the links
 	// that drew a delay at least 10 times that of the other direction.
 	Pauses, LinkStalls, ClockJumps, HalfOpens, Asymmetric int
-	// GrayNodes counts nodes made gray, CommitStops leaders that stopped
-	// because their entries stopped committing, GrayStreams the streams
-	// gray clients opened, and RecoveryCrashes crashes inside recovery.
+	// GrayNodes counts gray nodes that lost an append, CommitStops leaders
+	// that stopped because their entries stopped committing, GrayStreams
+	// the streams with watches a gray client opened, and RecoveryCrashes
+	// crashes inside the recovery of an existing log.
 	GrayNodes, CommitStops, GrayStreams, RecoveryCrashes int
+	// GrayLeaderStops counts commit-watchdog stops of a gray leader.
+	GrayLeaderStops int
 }
 
 // Result is the outcome of a run.
@@ -637,7 +649,13 @@ func (s *Sim) handle(e *event) {
 		s.startGray()
 		s.again(e, s.cfg.Faults.GrayEvery)
 	case evGrayOnce:
-		s.retry(e, s.startGray())
+		// One gray period that lasts, past healing if need be, until its
+		// gray node lost an append: clients may write nothing for a while.
+		if s.stats.GrayNodes == 0 && !s.healed {
+			// A gray period already on becomes the guaranteed one.
+			s.grayOnce = s.gray != nil || s.startGray()
+			s.push(&event{at: s.now + 500*Millisecond, kind: evGrayOnce})
+		}
 	case evGraySwitch:
 		s.switchGray()
 	case evGrayLeader:
@@ -646,6 +664,13 @@ func (s *Sim) handle(e *event) {
 		s.grayConnect()
 	case evGrayCreate:
 		s.grayCreate(e)
+	case evRecoveryDue:
+		// Until a recovery crashed: most crashes leave no torn tail, and
+		// a clean log needs no writes to recover.
+		if s.stats.RecoveryCrashes == 0 && !s.healed {
+			s.recoveryDue = true
+			s.push(&event{at: s.now + 500*Millisecond, kind: evRecoveryDue})
+		}
 	case evStreamClose:
 		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
 			delete(n.closing, e.stream)
@@ -684,7 +709,7 @@ func (s *Sim) handle(e *event) {
 	case evWatchResponse:
 		e.watch.receive(e)
 	case evWatchBroken:
-		e.watch.broken()
+		e.watch.broken(e)
 	case evWatchDrop:
 		e.watch.drop()
 	}
@@ -741,7 +766,7 @@ func (s *Sim) start(n *node) error {
 	}
 	// Small segments, so that most of the log is in sealed ones, where
 	// any damage is detectable.
-	w.SetSegmentBytes(32 << 10)
+	w.SetSegmentBytes(8 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
 	// Progress notifications every 2 s instead of 10 minutes, so runs see
@@ -795,6 +820,9 @@ func (s *Sim) process(n *node) {
 	}
 	if errors.Is(err, core.ErrCommitStalled) {
 		s.stats.CommitStops++
+		if s.gray == n {
+			s.stats.GrayLeaderStops++
+		}
 		s.commitStops = append(s.commitStops, s.now)
 		s.stopNode(n)
 		return
@@ -830,13 +858,20 @@ func (s *Sim) startDisk(n *node) {
 		s.diskFailed(n, err)
 		return
 	}
+	if s.recoveryDue && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
+		// Crash between the write and its sync, so that the restart finds
+		// a torn tail to repair, and its recovery crashes too.
+		s.recoveryDue = false
+		s.stopNode(n)
+		return
+	}
 	n.diskBusy = true
 	s.stats.DiskWrites++
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
-	if s.gray == n && n.graySync {
+	if s.gray == n && n.graySync && !s.healed {
 		lat = max(lat, 500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
 	lat = max(lat, n.stallUntil-s.now)
@@ -896,6 +931,14 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 	if s.gray != nil && (s.gray == from || s.gray.idx == to) && (m.GetType() == raftpb.MessageType_MsgApp || m.GetType() == raftpb.MessageType_MsgSnap) {
 		// A gray node: heartbeats get through, appends do not.
 		s.stats.Dropped++
+		if !s.grayDropped {
+			s.grayDropped = true
+			s.stats.GrayNodes++
+		}
+		if s.healed {
+			// The guaranteed gray period, which waited for this.
+			s.gray, s.grayOnce = nil, false
+		}
 		return
 	}
 	if l.halfOpenUntil > s.now {
@@ -1004,7 +1047,7 @@ func (s *Sim) crash(n *node) {
 	n.reqs = map[uint64]*clientOp{}
 	for _, w := range s.watchers {
 		if w.open && w.node == n.idx && w.gen == n.gen {
-			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w})
+			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w, stream: w.stream, gen: w.gen})
 		}
 	}
 	n.streams = map[uint64]*watchClient{}
@@ -1065,15 +1108,17 @@ func (s *Sim) setLinks(mask uint64) {
 
 func (s *Sim) heal() {
 	s.healed = true
-	s.gray = nil
+	if !s.grayOnce || s.grayDropped {
+		s.gray, s.grayOnce = nil, false
+	}
 	if s.grayCl != nil {
 		// Closes its stream and stops.
 		s.grayConnect()
 	}
 	s.setLinks(1<<6 - 1)
-	// Link stalls and pauses end on their own, within 2 s, before the
-	// liveness rule starts; ending them early would let new messages
-	// overtake held ones. Half-open links end now.
+	// Link stalls and pauses end by healing, as they are cut to it, and
+	// ending them here would let new messages overtake held ones.
+	// Half-open links end now.
 	for i := range s.links {
 		for j := range s.links[i] {
 			s.links[i][j].halfOpenUntil = 0

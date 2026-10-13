@@ -74,7 +74,7 @@ func TestSeeds(t *testing.T) {
 			total.Fenced += st.Fenced
 			total.StalledStops += st.StalledStops
 			total.Asymmetric += st.Asymmetric
-			total.CommitStops += st.CommitStops
+			total.GrayLeaderStops += st.GrayLeaderStops
 			total.RecoveryCrashes += st.RecoveryCrashes
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
@@ -89,9 +89,9 @@ func TestSeeds(t *testing.T) {
 	// slower than its other direction are rare in one run, but a set of
 	// seeds must see each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0 ||
-		total.CommitStops == 0 || total.RecoveryCrashes == 0) {
+		total.GrayLeaderStops == 0 || total.RecoveryCrashes == 0) {
 		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
-			ran, total.Fenced, total.StalledStops, total.Asymmetric, total.CommitStops, total.RecoveryCrashes)
+			ran, total.Fenced, total.StalledStops, total.Asymmetric, total.GrayLeaderStops, total.RecoveryCrashes)
 	}
 }
 
@@ -251,7 +251,7 @@ func TestEachFaultTakesEffect(t *testing.T) {
 		{"link delays", Faults{SwitchEvery: 200 * Millisecond, MaxDelay: 5 * Millisecond}, func(st Stats) int { return st.Asymmetric }},
 		{"gray node", Faults{GrayEvery: Second}, func(st Stats) int { return st.GrayNodes }},
 		{"gray client", Faults{GrayClient: true}, func(st Stats) int { return st.GrayStreams }},
-		{"crash in recovery", Faults{CrashEvery: 500 * Millisecond, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
+		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -357,4 +357,34 @@ func TestDiskFaultAfterHealing(t *testing.T) {
 		t.Fatalf("%d disk faults, want the guaranteed one", res.Stats.DiskFaults)
 	}
 	checkers(t, res)
+}
+
+// TestGrayClient runs only the gray client for 5 s: it reconnects every
+// 50 to 300 ms and opens 10 watches each time, and never reads. Every
+// call of the other clients during that time must succeed in under a
+// second.
+func TestGrayClient(t *testing.T) {
+	cfg := DefaultConfig(7001)
+	cfg.Faults = Faults{GrayClient: true}
+	cfg.Duration = 5 * Second
+	res := run(t, cfg)
+	if res.Stats.GrayStreams < 10 {
+		t.Fatalf("the gray client opened only %d streams", res.Stats.GrayStreams)
+	}
+	calls := 0
+	for _, r := range res.History {
+		if r.Call >= cfg.Duration || r.Call < Second {
+			continue
+		}
+		if r.Err != nil && !isRejection(r.Err) {
+			t.Fatalf("call to node %d at %d ms failed beside the gray client: %v", r.Node+1, r.Call/Millisecond, r.Err)
+		}
+		if r.Return-r.Call >= Second {
+			t.Fatalf("call to node %d at %d ms took %d ms beside the gray client", r.Node+1, r.Call/Millisecond, (r.Return-r.Call)/Millisecond)
+		}
+		calls++
+	}
+	if calls < 100 {
+		t.Fatalf("only %d calls beside the gray client", calls)
+	}
 }

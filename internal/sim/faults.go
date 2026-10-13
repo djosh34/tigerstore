@@ -154,7 +154,7 @@ var flipPayload func(*Sim, *node) bool
 // maybeCorrupt damages the synced bytes of a node that just crashed, at
 // most once per run and only if no node is damaged yet, so a quorum stays.
 func (s *Sim) maybeCorrupt(n *node) {
-	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(5) != 0 {
+	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(2) != 0 {
 		return
 	}
 	if planted.On("B04c") && flipPayload != nil {

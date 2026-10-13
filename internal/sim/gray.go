@@ -14,6 +14,9 @@ func (s *Sim) scheduleGrayFaults() {
 		s.push(&event{at: s.exp(f.GrayEvery), kind: evGray})
 		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*3/4), kind: evGrayOnce})
 	}
+	if f.RecoveryCrash {
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/4), kind: evRecoveryDue})
+	}
 	if f.GrayClient {
 		s.grayCl = &grayClient{}
 		s.push(&event{at: s.rng.Int64N(Second), kind: evGrayConnect})
@@ -34,6 +37,12 @@ func (s *Sim) startGray() bool {
 		return false
 	}
 	s.grayEnd = s.now + 2*Second + s.rng.Int64N(4*Second)
+	// Half the periods make the leader gray and stay on it, so that the
+	// commit watchdog gets to fire.
+	s.grayStays = false
+	if i := s.leaderIdx(); i >= 0 && s.rng.IntN(2) == 0 {
+		n, s.grayStays = s.nodes[i], true
+	}
 	s.makeGray(n)
 	s.push(&event{at: s.now + Second + s.rng.Int64N(2*Second), kind: evGraySwitch})
 	return true
@@ -41,9 +50,8 @@ func (s *Sim) startGray() bool {
 
 // makeGray makes n the gray node, with slow fsyncs half the time.
 func (s *Sim) makeGray(n *node) {
-	s.gray, s.lastGray = n, n.idx
+	s.gray, s.lastGray, s.grayDropped = n, n.idx, false
 	n.graySync = s.rng.IntN(2) == 0
-	s.stats.GrayNodes++
 	s.mix(0x6a, uint64(n.idx), uint64(s.grayEnd))
 }
 
@@ -53,11 +61,20 @@ func (s *Sim) switchGray() {
 	if s.gray == nil || s.cfg.GrayLeaderAt > 0 {
 		return
 	}
-	if s.healed || s.now >= s.grayEnd {
-		s.gray = nil
+	if s.grayOnce && !s.grayDropped {
+		// The guaranteed gray period lasts until its node lost an append,
+		// and moves on from a node that is down.
+		if n := s.upNode(); !s.gray.up && n != nil {
+			s.makeGray(n)
+		}
+		s.push(&event{at: s.now + Second, kind: evGraySwitch})
 		return
 	}
-	if s.rng.IntN(2) == 0 {
+	if s.healed || s.now >= s.grayEnd {
+		s.gray, s.grayOnce = nil, false
+		return
+	}
+	if !s.grayStays && s.rng.IntN(2) == 0 {
 		if n := s.upNode(); n != nil && n != s.gray {
 			s.makeGray(n)
 		}
@@ -101,7 +118,6 @@ func (s *Sim) grayConnect() {
 		n.nextStream++
 		c.open, c.node, c.gen, c.stream = true, n.idx, n.gen, n.nextStream
 		n.grayStreams[c.stream] = true
-		s.stats.GrayStreams++
 		s.push(&event{at: s.now, kind: evGrayCreate, node: n.idx, gen: n.gen, stream: c.stream})
 	}
 	s.push(&event{at: s.now + 50*Millisecond + s.rng.Int64N(250*Millisecond), kind: evGrayConnect})
@@ -124,26 +140,36 @@ func (s *Sim) grayCreate(e *event) {
 			Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: start, PrevKv: true,
 		}}})
 	}
+	s.stats.GrayStreams++
 	s.process(n)
 }
 
 // errRecoveryCrash is the simulator's crash inside recovery.
 var errRecoveryCrash = errors.New("sim: crash during recovery")
 
-// armRecoveryCrash makes one restart in three during the faults crash at
-// its first to fourth writing disk operation, such as the truncate and
-// sync of a torn tail. It reports whether it armed the crash.
+// armRecoveryCrash makes every restart of a node with a log on its disk,
+// until one recovery crashed and then one in three, crash during recovery, from its first to sixth writing disk
+// operation on: the truncate and sync of a torn tail, or the six steps of
+// replacing a damaged newest header. Every write from that one on fails,
+// as nothing runs after a crash. A crashed recovery can crash again at the
+// next restart. It reports whether it armed the crash.
 func (s *Sim) armRecoveryCrash(n *node) bool {
-	if !s.cfg.Faults.RecoveryCrash || s.healed || n.disk.Fault != nil || s.rng.IntN(3) != 0 {
+	if !s.cfg.Faults.RecoveryCrash || s.healed || n.disk.Fault != nil || len(n.disk.DurableNames()) == 0 || (s.stats.RecoveryCrashes > 0 && s.rng.IntN(3) != 0) {
 		return false
 	}
-	k, writes := 1+s.rng.IntN(4), 0
+	// The repair of a torn tail writes twice (truncate, sync), that of a
+	// damaged newest header six times; until one recovery crashed, the
+	// crash comes at one of the first two.
+	k, writes := 1+s.rng.IntN(6), 0
+	if s.stats.RecoveryCrashes == 0 {
+		k = 1 + s.rng.IntN(2)
+	}
 	n.disk.Fault = func(op simfs.Op, _ string) error {
 		if op == simfs.OpOpen || op == simfs.OpRead {
 			return nil
 		}
 		writes++
-		if writes == k {
+		if writes >= k {
 			return errRecoveryCrash
 		}
 		return nil
