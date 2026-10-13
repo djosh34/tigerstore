@@ -50,6 +50,8 @@ type Config struct {
 	RequestTicks int
 	// MaxBatchBytes caps the requests packed into one Raft entry.
 	MaxBatchBytes int
+	// TicksPerSecond converts lease TTLs to ticks.
+	TicksPerSecond int
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
@@ -66,6 +68,7 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		RequestTicks:   70,
 		MaxBatchBytes:  4 << 20,
 		ProgressTicks:  6000, // etcd's 10 minutes
+		TicksPerSecond: 10,
 	}
 }
 
@@ -130,12 +133,15 @@ type Node struct {
 	cfg     Config
 	rn      *raft.RawNode
 	storage *storage
+	state   *State
 	kv      *mvcc.Store
 
 	now      int64
 	applied  uint64
 	term     uint64
 	leader   uint64
+	isLeader bool
+	leaseSeq uint64
 	waiting  map[uint64]*pending // writes by request ID
 	timeouts []*pending          // every waiting request in deadline order
 
@@ -183,16 +189,26 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	for _, e := range rec.Entries {
 		logBytes += wal.EntryRecordBytes(e)
 	}
+	state := NewState(minLeaseTTL(cfg))
 	return &Node{
 		logBytes: logBytes,
 		cfg:      cfg,
 		rn:       rn,
 		storage:  st,
-		kv:       mvcc.New(),
+		state:    state,
+		kv:       state.Store(),
 		term:     rec.HardState.Term,
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
 	}, nil
+}
+
+// minLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
+// up to whole seconds; 2 s with the default timeouts.
+func minLeaseTTL(cfg Config) int64 {
+	ticks := int64(3 * cfg.ElectionTicks / 2)
+	tps := int64(cfg.TicksPerSecond)
+	return (ticks + tps - 1) / tps
 }
 
 // quietLogger drops raft's log lines. Its Panic methods still panic,
@@ -240,6 +256,7 @@ func (n *Node) Tick() {
 	n.rn.Tick()
 	n.expire()
 	n.retryReads(false)
+	n.expireLeases()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
 		n.progressNotify()
 	}
@@ -301,6 +318,17 @@ func (n *Node) Submit(r Request) {
 			break
 		}
 		n.queueWrite(p)
+	case *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest:
+		n.reads = append(n.reads, p)
+	case *pb.LeaseGrantRequest:
+		if op.ID == 0 {
+			// The node that takes the request picks the ID, so every
+			// replica applies the same one, as in etcd.
+			g := proto.CloneOf(op)
+			g.ID = n.newLeaseID()
+			p.req.Op = g
+		}
+		n.queueWrite(p)
 	default:
 		n.queueWrite(p)
 	}
@@ -334,6 +362,12 @@ func check(op proto.Message) error {
 		}
 	case *pb.CompactionRequest:
 		r.Compaction = op
+	case *pb.LeaseGrantRequest:
+		r.LeaseGrant = op
+	case *pb.LeaseRevokeRequest:
+		r.LeaseRevoke = op
+	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest:
+		return nil
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
 	}
@@ -344,6 +378,17 @@ func check(op proto.Message) error {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
+}
+
+// newLeaseID returns a positive lease ID that differs from the IDs this
+// node picked before, in this run and, by the boot ID, in earlier ones.
+func (n *Node) newLeaseID() int64 {
+	n.leaseSeq++
+	id := int64((n.cfg.Boot<<32 ^ n.cfg.ID<<24 ^ n.leaseSeq) & (1<<63 - 1))
+	if id == 0 {
+		id = 1
+	}
+	return id
 }
 
 // queueWrite adds a write to the next entry. A write that would take the
@@ -379,6 +424,10 @@ func (n *Node) finish(p *pending, resp proto.Message, err error) {
 		return
 	}
 	p.done = true
+	if p.req.ID == 0 {
+		// An internal write, such as a lease expiry; no client waits.
+		return
+	}
 	delete(n.waiting, p.req.ID)
 	n.reply(p.req.ID, resp, err)
 }
@@ -479,6 +528,10 @@ func (n *Node) stop() {
 
 func (n *Node) handleReady(rd raft.Ready) {
 	if rd.SoftState != nil {
+		if leader := rd.RaftState == raft.StateLeader; leader != n.isLeader {
+			n.isLeader = leader
+			n.leadershipChanged()
+		}
 		if rd.Lead != n.leader && rd.Lead != raft.None {
 			// A term change clears Raft's pending read requests, so ask the
 			// new leader at once instead of waiting for the retry.
@@ -580,6 +633,14 @@ func (n *Node) serveRead(p *pending) {
 			n.fillHeader(r.Header)
 			resp = r
 		}
+	case *pb.LeaseTimeToLiveRequest:
+		r := n.state.timeToLive(op, n.remaining(op.ID))
+		n.fillHeader(r.Header)
+		resp = r
+	case *pb.LeaseLeasesRequest:
+		r := n.state.leaseIDs()
+		n.fillHeader(r.Header)
+		resp = r
 	}
 	n.finish(p, resp, err)
 }
@@ -626,42 +687,24 @@ var errInternal = errors.New("core: internal error")
 // applyOp runs one write. Request errors (an unknown lease, a missing key
 // for ignore_value) are answers; any other error stops the node.
 func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
-	var h *pb.ResponseHeader
-	var resp proto.Message
-	var err error
-	switch op := op.(type) {
-	case *pb.PutRequest:
-		var r *pb.PutResponse
-		if r, err = n.kv.Put(op); err == nil {
-			h, resp = r.Header, r
-		}
-	case *pb.DeleteRangeRequest:
-		var r *pb.DeleteRangeResponse
-		if r, err = n.kv.DeleteRange(op); err == nil {
-			h, resp = r.Header, r
-		}
-	case *pb.TxnRequest:
-		var r *pb.TxnResponse
-		if r, err = n.kv.Txn(op); err == nil {
-			h, resp = r.Header, r
-		}
-	case *pb.CompactionRequest:
-		// Compact keeps the revision; physical compaction is the same,
-		// because it happens at once.
-		if err = n.kv.Compact(op.Revision); err == nil {
-			r := &pb.CompactionResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}}
-			h, resp = r.Header, r
-		}
-	default:
-		return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
-	}
+	resp, err := n.state.Apply(op)
 	if err != nil {
-		if isAnswer(err) {
+		if errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %w", errInternal, err)
 	}
-	n.fillHeader(h)
+	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
+		n.fillHeader(h.GetHeader())
+	}
+	if n.isLeader {
+		switch op := op.(type) {
+		case *pb.LeaseGrantRequest:
+			n.arm(op.ID)
+		case *pb.LeaseKeepAliveRequest:
+			n.arm(op.ID)
+		}
+	}
 	return resp, nil
 }
 

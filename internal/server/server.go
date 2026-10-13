@@ -69,7 +69,7 @@ func New(n *node.Node, cfg Config) *Server {
 	pb.RegisterKVServer(g, &kvServer{n: n})
 	pb.RegisterClusterServer(g, &clusterServer{n: n, cfg: cfg})
 	pb.RegisterWatchServer(g, &watchServer{n: n})
-	pb.RegisterLeaseServer(g, &pb.UnimplementedLeaseServer{})
+	pb.RegisterLeaseServer(g, &leaseServer{n: n})
 	pb.RegisterMaintenanceServer(g, &maintenanceServer{n: n})
 	pb.RegisterAuthServer(g, &pb.UnimplementedAuthServer{})
 	s := &Server{n: n, cfg: cfg, g: g}

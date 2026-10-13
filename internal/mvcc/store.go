@@ -130,6 +130,18 @@ func (c Change) Key() []byte { return c.k.key }
 // ModRev is the main revision of the change.
 func (c Change) ModRev() int64 { return c.k.vers[c.i].mod.main }
 
+// Lease is the lease of the key after the change, 0 for a delete.
+func (c Change) Lease() int64 { return c.k.vers[c.i].lease }
+
+// PrevLease is the lease of the key before the change, 0 if it did not
+// exist or had none.
+func (c Change) PrevLease() int64 {
+	if c.i > 0 && c.k.vers[c.i-1].ver != 0 {
+		return c.k.vers[c.i-1].lease
+	}
+	return 0
+}
+
 // Event builds the watch event of the change. The previous value is set
 // when withPrev is true and the key existed before.
 func (c Change) Event(withPrev bool) *mvccpb.Event {

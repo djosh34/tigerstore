@@ -51,7 +51,11 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
-	Faults        Faults
+	// NoLeases leaves leases out of the workload. Porcupine's runs need
+	// that: every lease adds an expiry that may apply at any time, and its
+	// search grows too fast with them.
+	NoLeases bool
+	Faults   Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -233,6 +237,8 @@ type Stats struct {
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
+	// Revokes counts lease revokes in the log, expiries included.
+	Revokes int
 }
 
 // Result is the outcome of a run.

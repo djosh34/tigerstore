@@ -15,9 +15,26 @@ import (
 
 // Checkable converts a run into the format the checkers read. Watch
 // clients get client numbers after the request clients.
+//
+// Lease keepalives are left out: the format has no keepalive, and a
+// keepalive changes no key. Instead, every granted lease gets an expiry op:
+// an ambiguous LeaseRevoke from its own client, called when the grant was,
+// which the checkers' models may apply at any time after it.
 func (r *Result) Checkable() (*history.History, error) {
 	h := &history.History{Target: r.FinalRev}
+	expiryClient := r.Clients + len(r.Watches)
 	for _, rec := range r.History {
+		if _, ok := rec.req.(*pb.LeaseKeepAliveRequest); ok {
+			continue
+		}
+		if g, ok := rec.Resp.(*pb.LeaseGrantResponse); ok && rec.Err == nil {
+			h.Ops = append(h.Ops, history.Op{
+				Client: expiryClient, Call: rec.Call, Return: rec.Call,
+				Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: g.ID}},
+				Err: &history.Error{Code: "Unknown", Message: "lease expiry", Ambiguous: true},
+			})
+			expiryClient++
+		}
 		req, err := request(rec.req)
 		if err != nil {
 			return nil, err
@@ -31,6 +48,9 @@ func (r *Result) Checkable() (*history.History, error) {
 		h.Ops = append(h.Ops, op)
 	}
 	for _, m := range r.Log {
+		if _, ok := m.(*pb.LeaseKeepAliveRequest); ok {
+			continue
+		}
 		req, err := request(m)
 		if err != nil {
 			return nil, err
@@ -150,6 +170,10 @@ func request(m proto.Message) (history.Request, error) {
 		return history.Request{Delete: deleteRequest(r)}, nil
 	case *pb.CompactionRequest:
 		return history.Request{Compact: &history.CompactRequest{Revision: r.Revision, Physical: r.Physical}}, nil
+	case *pb.LeaseGrantRequest:
+		return history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: r.ID, TTL: r.TTL}}, nil
+	case *pb.LeaseRevokeRequest:
+		return history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: r.ID}}, nil
 	case *pb.TxnRequest:
 		t := &history.TxnRequest{}
 		for _, c := range r.Compare {
@@ -204,6 +228,10 @@ func response(m proto.Message) (*history.Response, error) {
 		return &history.Response{Revision: r.Header.Revision, Range: rangeResponse(r)}, nil
 	case *pb.PutResponse:
 		return &history.Response{Revision: r.Header.Revision, Put: &history.PutResponse{PrevKV: prevKV(r.PrevKv)}}, nil
+	case *pb.LeaseGrantResponse:
+		return &history.Response{Revision: r.Header.Revision, LeaseGrant: &history.LeaseGrantResponse{ID: r.ID, TTL: r.TTL}}, nil
+	case *pb.LeaseRevokeResponse:
+		return &history.Response{Revision: r.Header.Revision, LeaseRevoke: &history.LeaseRevokeResponse{}}, nil
 	case *pb.CompactionResponse:
 		return &history.Response{Revision: r.Header.Revision, Compact: &history.CompactResponse{}}, nil
 	case *pb.DeleteRangeResponse:

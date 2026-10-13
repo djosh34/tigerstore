@@ -60,7 +60,7 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.OK < 200 || len(a.Log) < 50 {
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
 			checkers(t, a)
@@ -96,12 +96,13 @@ func checkers(t *testing.T, res *Result) {
 
 // linearizableConfig is a short run whose history Porcupine can check:
 // 5 virtual seconds with the same faults and 4 clients, then 5 s of
-// healing.
+// healing, without leases.
 func linearizableConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 5 * Second
 	cfg.Heal = 5 * Second
 	cfg.Clients = 4
+	cfg.NoLeases = true
 	return cfg
 }
 

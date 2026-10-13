@@ -251,7 +251,7 @@ func (w *watcher) event(c mvcc.Change) *mvccpb.Event {
 // matchWatches queues the changes of the write just applied for every
 // watcher that covers them.
 func (n *Node) matchWatches() {
-	changes := n.kv.Changes()
+	changes := n.state.Changes()
 	if len(changes) == 0 || len(n.watchers) == 0 {
 		return
 	}

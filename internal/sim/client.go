@@ -34,6 +34,8 @@ type client struct {
 	mods [numKeys]int64
 	// rev is the newest revision this client saw.
 	rev int64
+	// leases are the IDs of leases this client was granted.
+	leases []int64
 }
 
 type clientOp struct {
@@ -113,6 +115,9 @@ func (c *client) learn(resp proto.Message) {
 	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
 		c.rev = max(c.rev, h.GetHeader().GetRevision())
 	}
+	if g, ok := resp.(*pb.LeaseGrantResponse); ok {
+		c.leases = append(c.leases, g.ID)
+	}
 	var kvsOf func(proto.Message)
 	kvsOf = func(m proto.Message) {
 		switch r := m.(type) {
@@ -142,7 +147,14 @@ func (c *client) request() proto.Message {
 	val := fmt.Appendf(nil, "c%d-%d", c.id, c.n)
 	switch p := s.rng.IntN(100); {
 	case p < 22:
-		return &pb.PutRequest{Key: key(k), Value: val, PrevKv: s.rng.IntN(2) == 0}
+		put := &pb.PutRequest{Key: key(k), Value: val, PrevKv: s.rng.IntN(2) == 0}
+		if len(c.leases) > 0 && s.rng.IntN(2) == 0 {
+			// Mostly the newest lease, so leases collect several keys and
+			// a revoke or expiry deletes them at one revision. The lease
+			// may have expired already; then the put fails.
+			put.Lease = c.leases[len(c.leases)-1]
+		}
+		return put
 	case p < 30:
 		return &pb.DeleteRangeRequest{Key: key(k), PrevKv: s.rng.IntN(2) == 0}
 	case p < 34:
@@ -170,7 +182,15 @@ func (c *client) request() proto.Message {
 		return &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Limit: int64(s.rng.IntN(4))}
 	case p < 95:
 		return &pb.RangeRequest{Key: key(k), Serializable: true}
-	case p < 96:
+	case p < 98 && s.cfg.NoLeases:
+		return &pb.RangeRequest{Key: key(k)}
+	case p < 98 && len(c.leases) > 0 && s.rng.IntN(4) == 0:
+		return &pb.LeaseRevokeRequest{ID: c.leases[s.rng.IntN(len(c.leases))]}
+	case p < 98 && len(c.leases) > 0 && s.rng.IntN(2) == 0:
+		return &pb.LeaseKeepAliveRequest{ID: c.leases[len(c.leases)-1]}
+	case p < 98:
+		return &pb.LeaseGrantRequest{TTL: 2 + int64(s.rng.IntN(3))}
+	case p < 99:
 		// Compact a little behind the newest revision seen, as the
 		// Kubernetes compactor does; it may be compacted or ahead already.
 		return &pb.CompactionRequest{Revision: max(1, c.rev-int64(s.rng.IntN(30))), Physical: s.rng.IntN(2) == 0}
