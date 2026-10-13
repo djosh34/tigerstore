@@ -1,0 +1,84 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-one-way-251-2",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        }
+      },
+      "job_status": "success",
+      "run_id": "38468977502",
+      "run_attempt": "1",
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4"
+    },
+    "reached_controller": true,
+    "passed": true,
+    "controller_pass": true,
+    "offline_pass": true,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 16,
+    "checker_timeout_verdicts": 0,
+    "diagnostic_checker_invocations": 0,
+    "operations": 2171,
+    "successful_operations": 2137,
+    "ambiguous_operations": 34,
+    "target": 587,
+    "watches": 3,
+    "controller_seconds": 58.938417445,
+    "faults": {
+      "one-way-partition": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null
+  }
+]

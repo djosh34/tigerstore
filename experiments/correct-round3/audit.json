@@ -1,0 +1,3312 @@
+{
+  "runs": {
+    "38468658463": {
+      "cases": 32,
+      "passed": 22,
+      "failed": 10,
+      "operations": 27945,
+      "verdicts": 512,
+      "passing_verdicts": 472,
+      "timeout_verdicts": 40,
+      "fault_probes": 96,
+      "probe_errors": 0,
+      "by_target": {
+        "tigerstore": {
+          "cases": 16,
+          "passed": 13
+        },
+        "etcd": {
+          "cases": 16,
+          "passed": 9
+        }
+      }
+    },
+    "38468977502": {
+      "cases": 30,
+      "passed": 26,
+      "failed": 4,
+      "operations": 62963,
+      "verdicts": 480,
+      "passing_verdicts": 464,
+      "timeout_verdicts": 16,
+      "fault_probes": 90,
+      "probe_errors": 0,
+      "by_target": {
+        "tigerstore": {
+          "cases": 16,
+          "passed": 14
+        },
+        "etcd": {
+          "cases": 14,
+          "passed": 12
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 843,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 834 operations timed out after 30s",
+          "seconds": 30.017671088
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 834 operations timed out after 30s",
+          "seconds": 30.019543624
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 834 operations timed out after 30s",
+          "seconds": 30.001152229
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 834 operations timed out after 30s",
+          "seconds": 30.008441582
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 840,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 833 operations timed out after 30s",
+          "seconds": 30.006190144
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 833 operations timed out after 30s",
+          "seconds": 30.015363016
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 833 operations timed out after 30s",
+          "seconds": 30.007570705
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 833 operations timed out after 30s",
+          "seconds": 30.003252509
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 867,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 4,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 4,
+          "watch_events": 51
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 54
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 57
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 861,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 853 operations timed out after 30s",
+          "seconds": 30.016798463
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 853 operations timed out after 30s",
+          "seconds": 30.007414606
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 853 operations timed out after 30s",
+          "seconds": 30.005632354
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 853 operations timed out after 30s",
+          "seconds": 30.007449819
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 51
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 890,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 889 operations timed out after 30s",
+          "seconds": 30.00535492
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 889 operations timed out after 30s",
+          "seconds": 30.038512672
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 889 operations timed out after 30s",
+          "seconds": 30.085957611
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 889 operations timed out after 30s",
+          "seconds": 30.007393849
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 40
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 911,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 863,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 884,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 870,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 868,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.002443847
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.005121863
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.008183098
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.005716699
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 881,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 52
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 55
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 820,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 905,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 904,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 878,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 870 operations timed out after 30s",
+          "seconds": 30.004615526
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 870 operations timed out after 30s",
+          "seconds": 30.020142895
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 870 operations timed out after 30s",
+          "seconds": 30.019166522
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 870 operations timed out after 30s",
+          "seconds": 30.013502264
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 863,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 854,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 849 operations timed out after 30s",
+          "seconds": 30.00933286
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 849 operations timed out after 30s",
+          "seconds": 30.000867595
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 849 operations timed out after 30s",
+          "seconds": 30.003158476
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 849 operations timed out after 30s",
+          "seconds": 30.002496475
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 867,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.007316411
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.00623978
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.008216548
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 864 operations timed out after 30s",
+          "seconds": 30.00440195
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 871,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 53
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 823,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 817 operations timed out after 30s",
+          "seconds": 30.001246778
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 817 operations timed out after 30s",
+          "seconds": 30.000980171
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 817 operations timed out after 30s",
+          "seconds": 30.01652025
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 817 operations timed out after 30s",
+          "seconds": 30.016093036
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 893,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 902,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 871,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 877,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 864,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 867,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 869,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 53
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 873,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 4,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 51
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 54
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 905,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 896,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 886,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468658463",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 879,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 873 operations timed out after 30s",
+          "seconds": 30.000608473
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 873 operations timed out after 30s",
+          "seconds": 30.018342742
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 873 operations timed out after 30s",
+          "seconds": 30.009115424
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 873 operations timed out after 30s",
+          "seconds": 30.018718069
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 1921,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 1917 operations timed out after 30s",
+          "seconds": 30.003771629
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 1917 operations timed out after 30s",
+          "seconds": 30.017424115
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 1917 operations timed out after 30s",
+          "seconds": 30.002937329
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 1917 operations timed out after 30s",
+          "seconds": 30.000984483
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2128,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 45
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 49
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 52
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2152,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2147,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2081,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2106,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2081,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2076,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2137,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 53
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 57
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2059,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 46
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 48
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2172,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2160,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2088,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2085,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2046,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2051,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 2012,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2006 operations timed out after 30s",
+          "seconds": 30.049194797
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2006 operations timed out after 30s",
+          "seconds": 30.00476017
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2006 operations timed out after 30s",
+          "seconds": 30.011367956
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2006 operations timed out after 30s",
+          "seconds": 30.002283347
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 43
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2101,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 46
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 49
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2101,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2166,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2103,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "etcd",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2112,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 2023,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2013 operations timed out after 30s",
+          "seconds": 30.004521008
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2013 operations timed out after 30s",
+          "seconds": 30.008294176
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2013 operations timed out after 30s",
+          "seconds": 30.005137967
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2013 operations timed out after 30s",
+          "seconds": 30.010710147
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": false,
+      "controller_pass": true,
+      "operations": 2058,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 12,
+      "timeout_verdicts": 4,
+      "failed_verdicts": [
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2053 operations timed out after 30s",
+          "seconds": 30.004382262
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2053 operations timed out after 30s",
+          "seconds": 30.010148009
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2053 operations timed out after 30s",
+          "seconds": 30.013381185
+        },
+        {
+          "name": "Linearizable",
+          "passed": false,
+          "error": "linearizability check of 2053 operations timed out after 30s",
+          "seconds": 30.001790496
+        }
+      ],
+      "fault_probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 18
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2132,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 4,
+          "watch_events": 48
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 52
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 55
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "flapping",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2145,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 44
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 47
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 50
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 53
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 21
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2160,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 42
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "one-way",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2171,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 16
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2090,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    },
+    {
+      "run": "38468977502",
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 251,
+        "rep": 2,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4",
+      "passed": true,
+      "controller_pass": true,
+      "operations": 2099,
+      "history_variants": 4,
+      "verdicts": 16,
+      "passing_verdicts": 16,
+      "timeout_verdicts": 0,
+      "failed_verdicts": [],
+      "fault_probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "watch_responses": 3,
+          "watch_events": 41
+        }
+      ],
+      "probe_errors": [],
+      "small_assertion_files_hash_verified": 17
+    }
+  ]
+}

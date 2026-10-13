@@ -1,0 +1,114 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-250-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "flapping",
+        "seed": 250,
+        "rep": 1,
+        "duration": 45,
+        "clients": 3,
+        "rate": 5,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38468977502",
+      "run_attempt": "1",
+      "tooling": "1281e8186e0e3b1d09a0a0e861e36591bd4e86d4"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": true,
+    "offline_pass": false,
+    "oracle_sets": 4,
+    "recorded_client_histories": 1,
+    "history_variants": 4,
+    "checker_verdicts": 16,
+    "checker_passes": 12,
+    "checker_timeout_verdicts": 4,
+    "diagnostic_checker_invocations": 0,
+    "operations": 1921,
+    "successful_operations": 1889,
+    "ambiguous_operations": 32,
+    "target": 527,
+    "watches": 3,
+    "controller_seconds": 61.077706662,
+    "faults": {
+      "flap-0": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "flap-1": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "flap-2": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "flap-3": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "flap-4": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ],
+      "flap-5": [
+        "exercised",
+        "healed",
+        "installed",
+        "requested"
+      ]
+    },
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": null
+  }
+]

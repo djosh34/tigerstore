@@ -1,0 +1,1282 @@
+[
+  {
+    "id": 11851845090,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTg0NTA5MA==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-flapping-251-2",
+    "size_in_bytes": 3137590,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851845090",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851845090/zip",
+    "expired": false,
+    "digest": "sha256:301edf06465898a5371586b6eb922865c30b7658dd18dd44d738e5cf7eac9063",
+    "created_at": "2026-10-13T21:15:29Z",
+    "updated_at": "2026-10-13T21:15:29Z",
+    "expires_at": "2026-11-12T21:15:21Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851760174,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTc2MDE3NA==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-251-2",
+    "size_in_bytes": 654829,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851760174",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851760174/zip",
+    "expired": false,
+    "digest": "sha256:cb8a613f99eadb4932bb5485f393e5d8e2001568ccfdc3ef4e2571be58d10e1d",
+    "created_at": "2026-10-13T21:15:03Z",
+    "updated_at": "2026-10-13T21:15:03Z",
+    "expires_at": "2026-11-12T21:15:02Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851690003,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTY5MDAwMw==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-one-way-251-2",
+    "size_in_bytes": 655191,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851690003",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851690003/zip",
+    "expired": false,
+    "digest": "sha256:9480808f16c8db81996691891074c00afabbc9c0bc90596e956d3bcf270f4675",
+    "created_at": "2026-10-13T21:13:15Z",
+    "updated_at": "2026-10-13T21:13:15Z",
+    "expires_at": "2026-11-12T21:13:13Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851660409,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTY2MDQwOQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-250-1",
+    "size_in_bytes": 713027,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851660409",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851660409/zip",
+    "expired": false,
+    "digest": "sha256:b4d3eaa9188af9ce428b8c6f3ecc234ff3fe24500b5d18a5de0e172714284872",
+    "created_at": "2026-10-13T21:15:19Z",
+    "updated_at": "2026-10-13T21:15:19Z",
+    "expires_at": "2026-11-12T21:15:18Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851580669,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTU4MDY2OQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-election-pause-251-2",
+    "size_in_bytes": 3153871,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851580669",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851580669/zip",
+    "expired": false,
+    "digest": "sha256:3549dfbf0a0a398d4e087b0dd2fbaed20c888dfd2400802c1d1df1f3866cafa8",
+    "created_at": "2026-10-13T21:16:15Z",
+    "updated_at": "2026-10-13T21:16:15Z",
+    "expires_at": "2026-11-12T21:16:08Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851570749,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTU3MDc0OQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-election-pause-250-1",
+    "size_in_bytes": 3163430,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851570749",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851570749/zip",
+    "expired": false,
+    "digest": "sha256:c6370c1313f97892a55e866cd75871b20f0396f45526414c46442153b3800819",
+    "created_at": "2026-10-13T21:16:05Z",
+    "updated_at": "2026-10-13T21:16:05Z",
+    "expires_at": "2026-11-12T21:16:00Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851540212,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTU0MDIxMg==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-250-1",
+    "size_in_bytes": 659592,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851540212",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851540212/zip",
+    "expired": false,
+    "digest": "sha256:06e1aab50fd839d9d99a8e201a308bac180f1b6cfc1b0a7c9d168b99a2bae47b",
+    "created_at": "2026-10-13T21:13:11Z",
+    "updated_at": "2026-10-13T21:13:11Z",
+    "expires_at": "2026-11-12T21:13:11Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851535249,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTUzNTI0OQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-election-pause-251-2",
+    "size_in_bytes": 1146456,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851535249",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851535249/zip",
+    "expired": false,
+    "digest": "sha256:e6d33f63c6ccab9aac9195a1f21aba6d803db2978b35d04795d441a767ec9c1a",
+    "created_at": "2026-10-13T21:13:24Z",
+    "updated_at": "2026-10-13T21:13:24Z",
+    "expires_at": "2026-11-12T21:13:23Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851525326,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTUyNTMyNg==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-flapping-250-1",
+    "size_in_bytes": 1200424,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851525326",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851525326/zip",
+    "expired": false,
+    "digest": "sha256:915f93976ffb739c6a7270b49f444b4662c9b16d6ce90a800bb2175366032f90",
+    "created_at": "2026-10-13T21:13:37Z",
+    "updated_at": "2026-10-13T21:13:37Z",
+    "expires_at": "2026-11-12T21:13:36Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851500243,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTUwMDI0Mw==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-250-1",
+    "size_in_bytes": 669525,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851500243",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851500243/zip",
+    "expired": false,
+    "digest": "sha256:d14c978b0a2b75797bae4c6b655692d340e6e236818120da3cb79c0e798eab42",
+    "created_at": "2026-10-13T21:13:17Z",
+    "updated_at": "2026-10-13T21:13:17Z",
+    "expires_at": "2026-11-12T21:13:16Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851480394,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTQ4MDM5NA==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-flapping-250-1",
+    "size_in_bytes": 3201233,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851480394",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851480394/zip",
+    "expired": false,
+    "digest": "sha256:f369e44f1627e42d70936f14fabd732bded46084c5f964c84da1138c4d37e8ab",
+    "created_at": "2026-10-13T21:13:33Z",
+    "updated_at": "2026-10-13T21:13:33Z",
+    "expires_at": "2026-11-12T21:13:24Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851445371,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTQ0NTM3MQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-250-1",
+    "size_in_bytes": 698372,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851445371",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851445371/zip",
+    "expired": false,
+    "digest": "sha256:5267a5864850d55dfdd23dd0f211ff28f3f304a136fadf9bf622024e73a116db",
+    "created_at": "2026-10-13T21:13:29Z",
+    "updated_at": "2026-10-13T21:13:29Z",
+    "expires_at": "2026-11-12T21:13:27Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851435448,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTQzNTQ0OA==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-one-way-250-1",
+    "size_in_bytes": 753425,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851435448",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851435448/zip",
+    "expired": false,
+    "digest": "sha256:002cad80cacc303e4c22c6317ccd4e50f67de52aa724f7eda0584427fd0baaea",
+    "created_at": "2026-10-13T21:13:12Z",
+    "updated_at": "2026-10-13T21:13:12Z",
+    "expires_at": "2026-11-12T21:13:11Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851405444,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTQwNTQ0NA==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-one-way-251-2",
+    "size_in_bytes": 1176414,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851405444",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851405444/zip",
+    "expired": false,
+    "digest": "sha256:4a2cc8b7e873e73721fa8267f99f230ce7c67ad7bdf9d22f06760f94483dff19",
+    "created_at": "2026-10-13T21:13:16Z",
+    "updated_at": "2026-10-13T21:13:16Z",
+    "expires_at": "2026-11-12T21:13:15Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851390710,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTM5MDcxMA==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-250-1",
+    "size_in_bytes": 742113,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851390710",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851390710/zip",
+    "expired": false,
+    "digest": "sha256:76b35d8635be63473ef38a5aa3af61ca7df12887d10c7c11cccc3aad99817fb3",
+    "created_at": "2026-10-13T21:14:47Z",
+    "updated_at": "2026-10-13T21:14:47Z",
+    "expires_at": "2026-11-12T21:14:47Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851390465,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTM5MDQ2NQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-251-2",
+    "size_in_bytes": 762040,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851390465",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851390465/zip",
+    "expired": false,
+    "digest": "sha256:40c4532e3f9c26c479531f6deef6f532e01e609a7527ba4458e4d367c8bbcc1f",
+    "created_at": "2026-10-13T21:13:23Z",
+    "updated_at": "2026-10-13T21:13:23Z",
+    "expires_at": "2026-11-12T21:13:22Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851381290,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTM4MTI5MA==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-flapping-251-2",
+    "size_in_bytes": 3064516,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851381290",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851381290/zip",
+    "expired": false,
+    "digest": "sha256:161ecd0baee37f88e44afc679334a834de42d1a0913433afc8b05bc0159ec688",
+    "created_at": "2026-10-13T21:16:30Z",
+    "updated_at": "2026-10-13T21:16:30Z",
+    "expires_at": "2026-11-12T21:16:20Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851380522,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTM4MDUyMg==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-partition-kill-250-1",
+    "size_in_bytes": 1171753,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851380522",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851380522/zip",
+    "expired": false,
+    "digest": "sha256:e0c05f1eb6b9b534a158c9b1cf5b2144d74abca0dc385dc01e9ec13060649c8d",
+    "created_at": "2026-10-13T21:13:06Z",
+    "updated_at": "2026-10-13T21:13:06Z",
+    "expires_at": "2026-11-12T21:13:05Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851341267,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTM0MTI2Nw==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-251-2",
+    "size_in_bytes": 697043,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851341267",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851341267/zip",
+    "expired": false,
+    "digest": "sha256:bd910b5f3357311e9be57dd2b3b88c22614b4db5a7f2692e5c64f3fe2bc12a96",
+    "created_at": "2026-10-13T21:16:16Z",
+    "updated_at": "2026-10-13T21:16:16Z",
+    "expires_at": "2026-11-12T21:16:14Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851310588,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTMxMDU4OA==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-251-2",
+    "size_in_bytes": 746877,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851310588",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851310588/zip",
+    "expired": false,
+    "digest": "sha256:a140de97af5402ff0bd8277bf0372ca3a385ba467ef08d61c23b3508d2ec5f4b",
+    "created_at": "2026-10-13T21:13:21Z",
+    "updated_at": "2026-10-13T21:13:21Z",
+    "expires_at": "2026-11-12T21:13:20Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851300699,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTMwMDY5OQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-251-2",
+    "size_in_bytes": 657812,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851300699",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851300699/zip",
+    "expired": false,
+    "digest": "sha256:952ce109ca849c3ef23a6d433f7aceb0500f65b812ab3e556726692bf8d4106d",
+    "created_at": "2026-10-13T21:13:22Z",
+    "updated_at": "2026-10-13T21:13:22Z",
+    "expires_at": "2026-11-12T21:13:21Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851276186,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTI3NjE4Ng==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-250-1",
+    "size_in_bytes": 751775,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851276186",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851276186/zip",
+    "expired": false,
+    "digest": "sha256:837d49a36318ecbed7e43b7b18a342f81a130e1a19b199ad3d1fee139a4c9f8e",
+    "created_at": "2026-10-13T21:15:21Z",
+    "updated_at": "2026-10-13T21:15:21Z",
+    "expires_at": "2026-11-12T21:15:20Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851275769,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTI3NTc2OQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-flapping-250-1",
+    "size_in_bytes": 666376,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851275769",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851275769/zip",
+    "expired": false,
+    "digest": "sha256:7acdb94fd545750966a0a8e15d813f134d11c7b4943d340f98758e48e3bc8999",
+    "created_at": "2026-10-13T21:13:36Z",
+    "updated_at": "2026-10-13T21:13:36Z",
+    "expires_at": "2026-11-12T21:13:35Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851271197,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTI3MTE5Nw==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-251-2",
+    "size_in_bytes": 733725,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851271197",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851271197/zip",
+    "expired": false,
+    "digest": "sha256:5ebf3cbc853f49670549804e56c7a499cc32812539ca76cd3e9d7a84b9013af3",
+    "created_at": "2026-10-13T21:15:20Z",
+    "updated_at": "2026-10-13T21:15:20Z",
+    "expires_at": "2026-11-12T21:15:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851260742,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTI2MDc0Mg==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-election-pause-250-1",
+    "size_in_bytes": 1166944,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851260742",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851260742/zip",
+    "expired": false,
+    "digest": "sha256:62216459a7a969f0012164c909e6297840494a4e3970796abdf4dcabda85232f",
+    "created_at": "2026-10-13T21:13:12Z",
+    "updated_at": "2026-10-13T21:13:12Z",
+    "expires_at": "2026-11-12T21:13:11Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851200836,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTIwMDgzNg==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-one-way-251-2",
+    "size_in_bytes": 763016,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851200836",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851200836/zip",
+    "expired": false,
+    "digest": "sha256:f9b6bac0236c8d49c519398a47b43ca8aae478620fad08515920846142913225",
+    "created_at": "2026-10-13T21:13:11Z",
+    "updated_at": "2026-10-13T21:13:11Z",
+    "expires_at": "2026-11-12T21:13:10Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851196393,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTE5NjM5Mw==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-one-way-250-1",
+    "size_in_bytes": 3217290,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851196393",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851196393/zip",
+    "expired": false,
+    "digest": "sha256:0c8163e6a6f91065d2cea8509e547ccb52b5e4e75af9b079fbeae9b5adc6e380",
+    "created_at": "2026-10-13T21:15:29Z",
+    "updated_at": "2026-10-13T21:15:29Z",
+    "expires_at": "2026-11-12T21:15:21Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851180922,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTE4MDkyMg==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-251-2",
+    "size_in_bytes": 1173286,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851180922",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851180922/zip",
+    "expired": false,
+    "digest": "sha256:3af26d2a843cf17990e3442b10be5fb0a3920f0a79790335e51c7e14b6369bb4",
+    "created_at": "2026-10-13T21:13:24Z",
+    "updated_at": "2026-10-13T21:13:24Z",
+    "expires_at": "2026-11-12T21:13:22Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851125847,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTEyNTg0Nw==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-one-way-250-1",
+    "size_in_bytes": 1211085,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851125847",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851125847/zip",
+    "expired": false,
+    "digest": "sha256:c7746b17463a9fa125399081b060cd3894afad4ee7eafeb726e53ef535c6332c",
+    "created_at": "2026-10-13T21:13:18Z",
+    "updated_at": "2026-10-13T21:13:18Z",
+    "expires_at": "2026-11-12T21:13:17Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851081059,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTA4MTA1OQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-one-way-251-2",
+    "size_in_bytes": 3207030,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851081059",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851081059/zip",
+    "expired": false,
+    "digest": "sha256:d85435901361f7f9022d1e5239555f25cb87e216836a3ac5ab99dda1a4e6c95d",
+    "created_at": "2026-10-13T21:13:19Z",
+    "updated_at": "2026-10-13T21:13:19Z",
+    "expires_at": "2026-11-12T21:13:12Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851076023,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTA3NjAyMw==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-one-way-251-2",
+    "size_in_bytes": 3213544,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851076023",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851076023/zip",
+    "expired": false,
+    "digest": "sha256:110f767fa6ab22e0030c97226781822b8a984de4251a0f9e857afe500170facd",
+    "created_at": "2026-10-13T21:13:32Z",
+    "updated_at": "2026-10-13T21:13:32Z",
+    "expires_at": "2026-11-12T21:13:23Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851066824,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTA2NjgyNA==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-election-pause-250-1",
+    "size_in_bytes": 733507,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851066824",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851066824/zip",
+    "expired": false,
+    "digest": "sha256:6a6c584798562603daff01f4c0865d9cdf7df23a8ced107ecacb76d379984b97",
+    "created_at": "2026-10-13T21:15:59Z",
+    "updated_at": "2026-10-13T21:15:59Z",
+    "expires_at": "2026-11-12T21:15:58Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851046510,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTA0NjUxMA==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-election-pause-251-2",
+    "size_in_bytes": 733156,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851046510",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851046510/zip",
+    "expired": false,
+    "digest": "sha256:d9a833679216b8f353059785603402ed826ad12bfcc53d56ca2dc487c02cf7be",
+    "created_at": "2026-10-13T21:16:08Z",
+    "updated_at": "2026-10-13T21:16:08Z",
+    "expires_at": "2026-11-12T21:16:07Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11851041288,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MTA0MTI4OA==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-partition-kill-251-2",
+    "size_in_bytes": 730306,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851041288",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11851041288/zip",
+    "expired": false,
+    "digest": "sha256:6b066706a992e2e55b3e08f7e9d42a7c102577959b2e33e6da9336e7bf322cd0",
+    "created_at": "2026-10-13T21:14:55Z",
+    "updated_at": "2026-10-13T21:14:55Z",
+    "expires_at": "2026-11-12T21:14:53Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850986375,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDk4NjM3NQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-one-way-250-1",
+    "size_in_bytes": 3219006,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850986375",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850986375/zip",
+    "expired": false,
+    "digest": "sha256:cb26f5e4ce484e6a42dc60f8327d522e82f17d3909b70a8abd20c8f11cc316cf",
+    "created_at": "2026-10-13T21:13:18Z",
+    "updated_at": "2026-10-13T21:13:18Z",
+    "expires_at": "2026-11-12T21:13:12Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850956372,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDk1NjM3Mg==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-flapping-250-1",
+    "size_in_bytes": 747645,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850956372",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850956372/zip",
+    "expired": false,
+    "digest": "sha256:3ec32a637ad2d74715afdd58688a55ed3bfe5310cd529441948051061777f12f",
+    "created_at": "2026-10-13T21:14:19Z",
+    "updated_at": "2026-10-13T21:14:19Z",
+    "expires_at": "2026-11-12T21:14:18Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850956177,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDk1NjE3Nw==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-251-2",
+    "size_in_bytes": 1207165,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850956177",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850956177/zip",
+    "expired": false,
+    "digest": "sha256:b97a54f16d3159813f54b50d27547d2c7bfc151c8ac0a23008fb9f3822b8affb",
+    "created_at": "2026-10-13T21:13:18Z",
+    "updated_at": "2026-10-13T21:13:18Z",
+    "expires_at": "2026-11-12T21:13:17Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850886566,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDg4NjU2Ng==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-partition-kill-251-2",
+    "size_in_bytes": 1161734,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850886566",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850886566/zip",
+    "expired": false,
+    "digest": "sha256:c9eca5653b33880a22da7ca1c2d31cdc2e2f2da55bc81b809d6bdd1e35bde730",
+    "created_at": "2026-10-13T21:15:04Z",
+    "updated_at": "2026-10-13T21:15:04Z",
+    "expires_at": "2026-11-12T21:15:03Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850856692,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDg1NjY5Mg==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-flapping-250-1",
+    "size_in_bytes": 3209051,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850856692",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850856692/zip",
+    "expired": false,
+    "digest": "sha256:ee00edb983d69e023aa5c031dbce6cfde66575d13c5ab31cba1ab3d4dded6c9a",
+    "created_at": "2026-10-13T21:14:29Z",
+    "updated_at": "2026-10-13T21:14:29Z",
+    "expires_at": "2026-11-12T21:14:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850852228,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDg1MjIyOA==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-election-pause-251-2",
+    "size_in_bytes": 3092195,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850852228",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850852228/zip",
+    "expired": false,
+    "digest": "sha256:6672619e2f7111a0e4a350c44e1a94c24ecd889c087e3da181c41fe32b568312",
+    "created_at": "2026-10-13T21:16:25Z",
+    "updated_at": "2026-10-13T21:16:25Z",
+    "expires_at": "2026-11-12T21:16:16Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850836501,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDgzNjUwMQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-250-1",
+    "size_in_bytes": 653466,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850836501",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850836501/zip",
+    "expired": false,
+    "digest": "sha256:92653aba60ef102e8ad6da264c6ac4a82e2cbed7a529ba628a837855f51adc69",
+    "created_at": "2026-10-13T21:13:04Z",
+    "updated_at": "2026-10-13T21:13:04Z",
+    "expires_at": "2026-11-12T21:13:03Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850826369,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDgyNjM2OQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-250-1",
+    "size_in_bytes": 1170139,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850826369",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850826369/zip",
+    "expired": false,
+    "digest": "sha256:fa7145a3a1a602eaf5f018b1bd3ad6c1bbca515c4554d2231fbfbeb01356900f",
+    "created_at": "2026-10-13T21:13:35Z",
+    "updated_at": "2026-10-13T21:13:35Z",
+    "expires_at": "2026-11-12T21:13:33Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850742126,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDc0MjEyNg==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-251-2",
+    "size_in_bytes": 649438,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850742126",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850742126/zip",
+    "expired": false,
+    "digest": "sha256:68873c083d5f7f5aab04bab6e90a8625ae4da4754ca39dc2e9c5afb68a0f6368",
+    "created_at": "2026-10-13T21:15:50Z",
+    "updated_at": "2026-10-13T21:15:50Z",
+    "expires_at": "2026-11-12T21:15:49Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850736622,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDczNjYyMg==",
+    "name": "correct-round3-combined-ubuntu-24.04-tigerstore-flapping-251-2",
+    "size_in_bytes": 1197697,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850736622",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850736622/zip",
+    "expired": false,
+    "digest": "sha256:72d1eebbb0c30a9f75ca84c510190a3c494b6e5a4113fc8ab8c2af89b9b53a31",
+    "created_at": "2026-10-13T21:14:02Z",
+    "updated_at": "2026-10-13T21:14:02Z",
+    "expires_at": "2026-11-12T21:14:01Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850736616,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDczNjYxNg==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-flapping-251-2",
+    "size_in_bytes": 675344,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850736616",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850736616/zip",
+    "expired": false,
+    "digest": "sha256:913b65fa0a83e916c7838d994de9e8b9a6424724eeef50cca5abfe6a44ee7a3e",
+    "created_at": "2026-10-13T21:14:01Z",
+    "updated_at": "2026-10-13T21:14:01Z",
+    "expires_at": "2026-11-12T21:14:00Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850697034,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDY5NzAzNA==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-251-2",
+    "size_in_bytes": 1138237,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850697034",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850697034/zip",
+    "expired": false,
+    "digest": "sha256:616e1868f4d32740d58619423cea16d07dcdc1aed966468f24549ac64cdbcec1",
+    "created_at": "2026-10-13T21:15:51Z",
+    "updated_at": "2026-10-13T21:15:51Z",
+    "expires_at": "2026-11-12T21:15:50Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850692101,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDY5MjEwMQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-flapping-251-2",
+    "size_in_bytes": 687435,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850692101",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850692101/zip",
+    "expired": false,
+    "digest": "sha256:cb57c65e397452081000603968b793f3a807966f235e93ca8bcd950d129f31fd",
+    "created_at": "2026-10-13T21:16:20Z",
+    "updated_at": "2026-10-13T21:16:20Z",
+    "expires_at": "2026-11-12T21:16:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850686912,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDY4NjkxMg==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-partition-kill-251-2",
+    "size_in_bytes": 3150649,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850686912",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850686912/zip",
+    "expired": false,
+    "digest": "sha256:7f5f40b0e0ae47dd559fd455920facb288da2e70e952f6f7237481c6d5489751",
+    "created_at": "2026-10-13T21:15:04Z",
+    "updated_at": "2026-10-13T21:15:04Z",
+    "expires_at": "2026-11-12T21:14:55Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850686885,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDY4Njg4NQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-250-1",
+    "size_in_bytes": 3172860,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850686885",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850686885/zip",
+    "expired": false,
+    "digest": "sha256:4fc10185fe5277ebcbc13ec9838ccbbd13024e7c28a4f30c0b02761eca4787f0",
+    "created_at": "2026-10-13T21:14:56Z",
+    "updated_at": "2026-10-13T21:14:56Z",
+    "expires_at": "2026-11-12T21:14:48Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850636545,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDYzNjU0NQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-250-1",
+    "size_in_bytes": 1235087,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850636545",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850636545/zip",
+    "expired": false,
+    "digest": "sha256:0e3582a9d53b410d9d9002a3825ed6ad1ac1a0af94d009f45facd9500aeab59e",
+    "created_at": "2026-10-13T21:13:31Z",
+    "updated_at": "2026-10-13T21:13:31Z",
+    "expires_at": "2026-11-12T21:13:29Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850621924,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDYyMTkyNA==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-251-2",
+    "size_in_bytes": 652312,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850621924",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850621924/zip",
+    "expired": false,
+    "digest": "sha256:5b27391212ab7db3ba7c4dc7818756b9cdc9cfe57ce277eb2e4947f15c16c145",
+    "created_at": "2026-10-13T21:13:22Z",
+    "updated_at": "2026-10-13T21:13:22Z",
+    "expires_at": "2026-11-12T21:13:22Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850607364,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDYwNzM2NA==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-250-1",
+    "size_in_bytes": 634886,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850607364",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850607364/zip",
+    "expired": false,
+    "digest": "sha256:af0a4b0d2ebb5eca13b89622d2495ae7b62215aa0383fdc3c3203940d24bad5d",
+    "created_at": "2026-10-13T21:15:19Z",
+    "updated_at": "2026-10-13T21:15:19Z",
+    "expires_at": "2026-11-12T21:15:18Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850576709,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDU3NjcwOQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-250-1",
+    "size_in_bytes": 661170,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850576709",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850576709/zip",
+    "expired": false,
+    "digest": "sha256:0cf4f76c505d1dcb4e5f9afea628710c83e14452de10fa98648633cf6218bcb3",
+    "created_at": "2026-10-13T21:13:33Z",
+    "updated_at": "2026-10-13T21:13:33Z",
+    "expires_at": "2026-11-12T21:13:32Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850572310,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDU3MjMxMA==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-250-1",
+    "size_in_bytes": 1145684,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850572310",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850572310/zip",
+    "expired": false,
+    "digest": "sha256:9c5d3c5d129dccce0d553d6f41e600bc55dd92971425d5fd0d37cbf236a6f625",
+    "created_at": "2026-10-13T21:15:20Z",
+    "updated_at": "2026-10-13T21:15:20Z",
+    "expires_at": "2026-11-12T21:15:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850421735,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDQyMTczNQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-etcd-partition-kill-250-1",
+    "size_in_bytes": 3179226,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850421735",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850421735/zip",
+    "expired": false,
+    "digest": "sha256:9356fb5cfd33bf5f5698c04d7a0b4bff859b7a51e8a7842569d36cebaa3204aa",
+    "created_at": "2026-10-13T21:13:28Z",
+    "updated_at": "2026-10-13T21:13:28Z",
+    "expires_at": "2026-11-12T21:13:17Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850126826,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDEyNjgyNg==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-250-1",
+    "size_in_bytes": 748760,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850126826",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850126826/zip",
+    "expired": false,
+    "digest": "sha256:552dc7d9df42ae55c70393bf5fcdb63e215425946b88f5105b0209249ded5516",
+    "created_at": "2026-10-13T21:13:23Z",
+    "updated_at": "2026-10-13T21:13:23Z",
+    "expires_at": "2026-11-12T21:13:22Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11850006742,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg1MDAwNjc0Mg==",
+    "name": "compact-round3-combined-ubuntu-24.04-etcd-partition-kill-250-1",
+    "size_in_bytes": 737129,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850006742",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11850006742/zip",
+    "expired": false,
+    "digest": "sha256:944a5adac6adfb6bd9c88570664ba33c3a37d0eb210d7718a236ad1b476007d9",
+    "created_at": "2026-10-13T21:13:17Z",
+    "updated_at": "2026-10-13T21:13:17Z",
+    "expires_at": "2026-11-12T21:13:15Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849881839,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTg4MTgzOQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-251-2",
+    "size_in_bytes": 3179991,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849881839",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849881839/zip",
+    "expired": false,
+    "digest": "sha256:1dde1da0761bdc12f2a8287638b99d5f17bb6fe7e8aa0ae9a45c472bef3f59cb",
+    "created_at": "2026-10-13T21:13:30Z",
+    "updated_at": "2026-10-13T21:13:30Z",
+    "expires_at": "2026-11-12T21:13:21Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849328627,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTMyODYyNw==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-251-2",
+    "size_in_bytes": 1143573,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849328627",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849328627/zip",
+    "expired": false,
+    "digest": "sha256:ab8dc57d3961d9635a0ad768ce68b8be93c629accb26ec1e60c2d062ddc74048",
+    "created_at": "2026-10-13T21:13:21Z",
+    "updated_at": "2026-10-13T21:13:21Z",
+    "expires_at": "2026-11-12T21:13:20Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849223563,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTIyMzU2Mw==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-251-2",
+    "size_in_bytes": 677216,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849223563",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849223563/zip",
+    "expired": false,
+    "digest": "sha256:cd0fd50cd47e505405c41f12c0c2a3a404e8b4207ed3346752d315a244c97b44",
+    "created_at": "2026-10-13T21:13:17Z",
+    "updated_at": "2026-10-13T21:13:17Z",
+    "expires_at": "2026-11-12T21:13:16Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849179029,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTE3OTAyOQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-etcd-election-pause-250-1",
+    "size_in_bytes": 3115897,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849179029",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849179029/zip",
+    "expired": false,
+    "digest": "sha256:11f8f35e25095fea5ae2e5cfa656d0d2ab0e18da272f4f5abcec40c726063427",
+    "created_at": "2026-10-13T21:15:28Z",
+    "updated_at": "2026-10-13T21:15:28Z",
+    "expires_at": "2026-11-12T21:15:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849018725,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTAxODcyNQ==",
+    "name": "compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-251-2",
+    "size_in_bytes": 645909,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849018725",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849018725/zip",
+    "expired": false,
+    "digest": "sha256:bc02dd1dbc12e00cbb30491fd2f210d53f13d48c69598878ef2a55bf252fb1a4",
+    "created_at": "2026-10-13T21:13:20Z",
+    "updated_at": "2026-10-13T21:13:20Z",
+    "expires_at": "2026-11-12T21:13:19Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11849008745,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0OTAwODc0NQ==",
+    "name": "correct-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-250-1",
+    "size_in_bytes": 1202573,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849008745",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11849008745/zip",
+    "expired": false,
+    "digest": "sha256:0da8ec2f7b1f1db05200f6d71c0335d12387c2676644693c233898156becf113",
+    "created_at": "2026-10-13T21:13:18Z",
+    "updated_at": "2026-10-13T21:13:18Z",
+    "expires_at": "2026-11-12T21:13:17Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  },
+  {
+    "id": 11848998897,
+    "node_id": "MDg6QXJ0aWZhY3QxMTg0ODk5ODg5Nw==",
+    "name": "compact-round3-combined-ubuntu-24.04-tigerstore-one-way-250-1",
+    "size_in_bytes": 675487,
+    "url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11848998897",
+    "archive_download_url": "https://api.github.com/repos/djosh34/tigerstore/actions/artifacts/11848998897/zip",
+    "expired": false,
+    "digest": "sha256:478e8b81b2309163fea8babbe0bf7097985bf5fa54f7e77615e52fecf3055697",
+    "created_at": "2026-10-13T21:13:16Z",
+    "updated_at": "2026-10-13T21:13:16Z",
+    "expires_at": "2026-11-12T21:13:15Z",
+    "workflow_run": {
+      "id": 38468658463,
+      "repository_id": 1415857280,
+      "head_repository_id": 1415857280,
+      "head_branch": "exp/correct-round3-combined",
+      "head_sha": "5d7e3a45f244c40a6384f02e8109a2d54c7abdd4"
+    }
+  }
+]
