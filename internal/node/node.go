@@ -37,6 +37,9 @@ type Config struct {
 	// WatchQueue is how many responses a watch stream may fall behind
 	// before it is closed; 0 means watchQueue.
 	WatchQueue int
+	// WatchBytes is how many bytes of responses a watch stream may fall
+	// behind before it is closed; 0 means watchBytes.
+	WatchBytes int64
 	Logf       func(format string, args ...any)
 }
 
@@ -52,6 +55,10 @@ type input struct {
 	status      chan *pb.StatusResponse
 }
 
+// watchBytes is how many bytes of responses a watch stream may fall
+// behind before the node closes it, whatever their count.
+const watchBytes = 64 << 20
+
 // watchQueue is how many responses a watch stream may fall behind before
 // the node closes it. The client then reconnects and resumes.
 const watchQueue = 4096
@@ -65,11 +72,17 @@ var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream 
 type WatchStream struct {
 	n  *Node
 	id uint64
-	// C carries the responses in order.
-	C    chan *pb.WatchResponse
-	done chan struct{}
-	err  error
+	// C carries the responses in order. Whoever takes one calls Taken.
+	C chan *pb.WatchResponse
+	// queued is the size of the responses in C.
+	queued atomic.Int64
+	done   chan struct{}
+	err    error
 }
+
+// Taken reports that a response from C was taken, so its bytes no longer
+// count against the stream's limit.
+func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.queued.Add(-int64(proto.Size(r))) }
 
 // Done is closed when the node dropped the stream; Err then says why.
 func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
@@ -311,9 +324,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				ws.C <- w.Resp
 				continue
 			}
-			select {
-			case ws.C <- w.Resp:
-			default:
+			// A stream falls too far behind by count or by bytes.
+			size := int64(proto.Size(w.Resp))
+			sent := false
+			if ws.queued.Add(size) <= cmp.Or(n.cfg.WatchBytes, watchBytes) {
+				select {
+				case ws.C <- w.Resp:
+					sent = true
+				default:
+				}
+			}
+			if !sent {
 				delete(streams, w.Stream)
 				n.core.CloseWatchStream(w.Stream)
 				ws.err = ErrWatchTooSlow
