@@ -444,8 +444,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 			r := &b.reqs[i]
 			r.ID = b.first + uint64(i)
 			waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}
-			n.core.Submit(*r)
 		}
+		n.core.SubmitAll(b.reqs)
 	case in.status != nil:
 		in.status <- n.core.Status()
 	case in.watchOpen != nil:

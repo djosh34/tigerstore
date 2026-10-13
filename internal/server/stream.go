@@ -275,6 +275,10 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	if st.reset || st.c.closed {
 		return
 	}
+	if st.out == nil {
+		// Headers, a message and trailers, the whole of a unary reply.
+		st.out = make([]outItem, 0, 3)
+	}
 	if msg != nil {
 		if !st.headersQueued {
 			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
