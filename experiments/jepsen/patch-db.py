@@ -51,6 +51,16 @@ s = s[:a] + '''    ; Both binaries are pre-built/downloaded by the runner, never
       (c/exec :chmod "755" (str dir "/etcd")))
 
 ''' + s[b:]
+s = s.replace('(client/await-node-ready c)', '''(client/await-node-ready c)
+        ; MemberList can succeed before the first leader election. SetClient's
+        ; setup writes without retrying. Readiness must include consensus.
+        (let [deadline (+ (System/nanoTime) 30000000000)]
+          (loop []
+            (when-not (try (client/get* c "__jepsen_db_readiness") true
+                           (catch Exception e
+                             (if (< (System/nanoTime) deadline) false (throw e))))
+              (Thread/sleep 100)
+              (recur))))''')
 p.write_text(s)
 # Resource configuration only. No client, workload, checker or nemesis changes.
 p = root / 'project.clj'
