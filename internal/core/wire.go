@@ -14,6 +14,31 @@ import (
 type Put struct {
 	Wire []byte
 	mvcc.PutOp
+	// unknown is the bytes of unknown and mistyped fields, which protobuf
+	// keeps and marshals again.
+	unknown int
+}
+
+// size is the size of the PutRequest as protobuf marshals it after a
+// decode: the fields it holds plus the unknown ones. etcd limits that
+// size, not the client's encoding, which can repeat fields.
+func (p *Put) size() int {
+	n := p.unknown
+	if len(p.Key) > 0 {
+		n += 1 + protowire.SizeBytes(len(p.Key))
+	}
+	if len(p.Value) > 0 {
+		n += 1 + protowire.SizeBytes(len(p.Value))
+	}
+	if p.Lease != 0 {
+		n += 1 + protowire.SizeVarint(uint64(p.Lease))
+	}
+	for _, b := range [...]bool{p.PrevKv, p.IgnoreValue, p.IgnoreLease} {
+		if b {
+			n += 2
+		}
+	}
+	return n
 }
 
 var errBadPut = errors.New("core: malformed PutRequest")
@@ -25,9 +50,10 @@ func ParsePut(b []byte) (Put, error) {
 	p := Put{Wire: b}
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
-		if n < 0 {
+		if n < 0 || num > protowire.MaxValidNumber {
 			return Put{}, errBadPut
 		}
+		tag := n
 		b = b[n:]
 		switch {
 		case typ == protowire.BytesType && (num == 1 || num == 2):
@@ -35,6 +61,9 @@ func ParsePut(b []byte) (Put, error) {
 			if n < 0 {
 				return Put{}, errBadPut
 			}
+			// Capped, so an append can never write into the bytes after
+			// it, which are the log's.
+			v = v[:len(v):len(v)]
 			if num == 1 {
 				p.Key = v
 			} else {
@@ -62,6 +91,7 @@ func ParsePut(b []byte) (Put, error) {
 			if n < 0 {
 				return Put{}, errBadPut
 			}
+			p.unknown += tag + n
 			b = b[n:]
 		}
 	}

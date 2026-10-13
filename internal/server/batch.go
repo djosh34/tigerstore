@@ -186,7 +186,7 @@ func (c *conn) complete(batches [][]node.Completion) {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
 			switch {
 			case f.err != nil:
-			case cp.Resp == nil:
+			case f.st.rpc.wirePut:
 				f.msg, f.err = c.putResponse(&cp.Reply)
 			default:
 				f.msg, f.err = marshal(cp.Resp)

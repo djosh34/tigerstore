@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -82,7 +83,22 @@ func TestRequestSizeLimitMatchesEtcd(t *testing.T) {
 			t.Errorf("%s of %d bytes was accepted", c.name, c.largest+1)
 		}
 	}
-	// A put in wire form has the same limit.
+	// A put in wire form has the same limit, on its size after a decode:
+	// a value field that a later one replaces does not count.
+	big := bytes.Repeat([]byte("x"), 1572864)
+	noncanonical := protowire.AppendTag(nil, 1, protowire.BytesType)
+	noncanonical = protowire.AppendBytes(noncanonical, key)
+	noncanonical = protowire.AppendTag(noncanonical, 2, protowire.BytesType)
+	noncanonical = protowire.AppendBytes(noncanonical, big)
+	noncanonical = protowire.AppendTag(noncanonical, 2, protowire.BytesType)
+	noncanonical = protowire.AppendBytes(noncanonical, []byte("last"))
+	p, err := ParsePut(noncanonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPut(&p); err != nil {
+		t.Errorf("a put that decodes to 4 value bytes: %v", err)
+	}
 	for _, n := range []int{1572801, 1572802} {
 		b, err := proto.Marshal(put(n))
 		if err != nil {
@@ -116,6 +132,7 @@ func TestParsePutMatchesProtobuf(t *testing.T) {
 		append(append([]byte{}, base...), 0x0d, 1, 2, 3, 4),                                                 // key with the wrong wire type
 		append(append([]byte{}, base...), 0x98, 0x06, 0x01),                                                 // unknown varint field 99
 		append(append([]byte{}, base...), 0x18, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01), // lease -1
+		{0x0a, 0x01, 'k', 0x80, 0x80, 0x80, 0x80, 0x10, 0x01},                                               // field 2^29, above the largest
 	}
 	for i, b := range cases {
 		for cut := 0; cut <= len(b); cut++ {
@@ -132,6 +149,9 @@ func TestParsePutMatchesProtobuf(t *testing.T) {
 			if !bytes.Equal(got.Key, want.Key) || !bytes.Equal(got.Value, want.Value) || got.Lease != want.Lease ||
 				got.PrevKv != want.PrevKv || got.IgnoreValue != want.IgnoreValue || got.IgnoreLease != want.IgnoreLease {
 				t.Fatalf("case %d cut %d: got %+v, want %v", i, cut, got.PutOp, &want)
+			}
+			if got.size() != proto.Size(&want) {
+				t.Fatalf("case %d cut %d: size %d, protobuf marshals %d bytes", i, cut, got.size(), proto.Size(&want))
 			}
 		}
 	}

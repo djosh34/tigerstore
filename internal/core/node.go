@@ -467,14 +467,14 @@ func check(op proto.Message) error {
 // without the put itself: the header with sizeRequestID, and the put's tag.
 var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
 
-// checkPut checks a put in wire form as check does a decoded one. The
-// client's encoding stands in for etcd's re-encoding; they are the same
-// for the canonical encoding that protobuf libraries write.
+// checkPut checks a put in wire form as check does a decoded one. Like
+// etcd, it limits the size of the request as protobuf marshals it again,
+// not of the client's encoding.
 func checkPut(p *Put) error {
 	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
 		return err
 	}
-	if putRequestBytes+protowire.SizeBytes(len(p.Wire)) > MaxRequestBytes {
+	if putRequestBytes+protowire.SizeBytes(p.size()) > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
@@ -505,7 +505,9 @@ func (n *Node) queueWrite(p *pending) {
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
-	n.waiting[p.req.ID] = p
+	if p.req.ID != 0 {
+		n.waiting[p.req.ID] = p
+	}
 	n.proposals = append(n.proposals, p)
 	n.propBytes += size
 }
@@ -527,16 +529,24 @@ func (n *Node) expire() {
 }
 
 func (n *Node) finish(p *pending, resp proto.Message, err error) {
+	if n.settle(p) {
+		n.reply(p.req.ID, resp, err)
+	}
+}
+
+// settle marks a request answered and reports whether a client waits for
+// the answer.
+func (n *Node) settle(p *pending) bool {
 	if p.done {
-		return
+		return false
 	}
 	p.done = true
 	if p.req.ID == 0 {
 		// An internal write, such as a lease expiry; no client waits.
-		return
+		return false
 	}
 	delete(n.waiting, p.req.ID)
-	n.reply(p.req.ID, resp, err)
+	return true
 }
 
 func (n *Node) reply(id uint64, resp proto.Message, err error) {
@@ -891,9 +901,9 @@ func (n *Node) applyPut(b []byte, p *pending) error {
 		n.finish(p, r, nil)
 		return nil
 	}
-	p.done = true
-	delete(n.waiting, p.req.ID)
-	n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
+	if n.settle(p) {
+		n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
+	}
 	return nil
 }
 

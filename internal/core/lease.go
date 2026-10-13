@@ -81,7 +81,7 @@ func (n *Node) expireLeases() {
 // proposeInternal queues a write that no client waits for. It carries
 // request ID 0, which no client request has.
 func (n *Node) proposeInternal(op *pb.LeaseCheckpoint) {
-	n.proposals = append(n.proposals, &pending{req: Request{ID: 0, Op: op}})
+	n.queueWrite(&pending{req: Request{ID: 0, Op: op}})
 }
 
 // Leases returns the IDs of the granted leases in order.
