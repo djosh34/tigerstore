@@ -3,7 +3,7 @@
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true ]] || { echo 'GitHub runner required' >&2; exit 2; }
 (( $(date -u +%s) < $(date -ud 2026-10-13T22:00:00Z +%s) )) || { echo 'Deadline reached' >&2; exit 2; }
-STORE=${1:?store}; WORKLOAD=${2:?workload}; NEMESIS=${3:?nemesis}; DURATION=${4:-60}
+STORE=${1:?store}; WORKLOAD=${2:?workload}; NEMESIS=${3:?nemesis}; DURATION=${4:-60}; OPS_PER_KEY=${5:-200}
 export STORE
 root=$PWD
 out=$root/experiments/jepsen/results
@@ -101,8 +101,8 @@ observer=$!
 docker exec jepsen-control java -version
 docker exec -w /jepsen/etcd jepsen-control lein version
 timeout --signal=TERM --kill-after=15s 360s docker exec -e LEIN_ROOT=true -w /jepsen/etcd jepsen-control lein deps
-printf '%s\n' "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload $WORKLOAD --nemesis $NEMESIS --concurrency 2n --rate 30 --time-limit $DURATION --nemesis-interval 5" > "$out/command.txt"
+printf '%s\n' "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload $WORKLOAD --nemesis $NEMESIS --concurrency 2n --rate 30 --time-limit $DURATION --nemesis-interval 5 --ops-per-key $OPS_PER_KEY" > "$out/command.txt"
 timeout --signal=TERM --kill-after=20s 480s docker exec -e LEIN_ROOT=true -e STORE="$STORE" -w /jepsen/etcd jepsen-control \
   lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa \
   --version 3.7.2 --workload "$WORKLOAD" --nemesis "$NEMESIS" \
-  --concurrency 2n --rate 30 --time-limit "$DURATION" --nemesis-interval 5
+  --concurrency 2n --rate 30 --time-limit "$DURATION" --nemesis-interval 5 --ops-per-key "$OPS_PER_KEY"
