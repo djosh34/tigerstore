@@ -1,0 +1,34 @@
+name: Jepsen external store experiment
+on:
+  push:
+    branches: [exp/jepsen]
+    paths: ['experiments/jepsen/**', '.github/workflows/jepsen-experiment.yml']
+permissions:
+  contents: read
+jobs:
+  jepsen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        store: [etcd]
+        workload: [register]
+        nemesis: [none]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        if: matrix.store == 'tigerstore'
+        with:
+          go-version: '1.27.2'
+      - name: Run upstream Jepsen
+        shell: bash
+        run: bash experiments/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jepsen-${{ matrix.store }}-${{ matrix.workload }}-${{ matrix.nemesis }}-${{ github.run_attempt }}
+          path: experiments/jepsen/results
+          retention-days: 14
