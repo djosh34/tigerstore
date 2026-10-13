@@ -1,0 +1,52 @@
+name: Jepsen round 3
+on:
+  push:
+    branches: [exp/correct-round3-jepsen]
+    paths: ['.github/workflows/jepsen3.yml']
+  workflow_dispatch:
+    inputs:
+      store:
+        type: choice
+        options: [tigerstore, etcd]
+        default: tigerstore
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        workload: [register, set, append]
+        repetition: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+      - name: Run combined faults
+        shell: bash
+        env:
+          PRODUCT_SHA: 499a4c6759d0c1276aa4257af462295216f8ab21
+          STORE: ${{ inputs.store || 'tigerstore' }}
+        run: |
+          remaining=$(( $(date -ud 2026-10-13T21:48:00Z +%s) - $(date -u +%s) ))
+          (( remaining > 0 )) || exit 2
+          timeout --signal=TERM --kill-after=20s "$remaining" bash experiments/jepsen3/run.sh "$STORE" '${{ matrix.workload }}' kill,partition,pause 90 50
+      - name: Record online verdict and fault hits
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p experiments/jepsen3/results
+          pip install edn_format==0.7.5
+          python3 experiments/jepsen/summarize.py experiments/jepsen3/results > experiments/jepsen3/results/online-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jepsen3-${{ inputs.store || 'tigerstore' }}-${{ matrix.workload }}-rep${{ matrix.repetition }}
+          path: experiments/jepsen3/results
+          retention-days: 14
