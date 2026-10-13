@@ -1,0 +1,146 @@
+package core
+
+import (
+	"bytes"
+	"testing"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/simfs"
+)
+
+// These witnesses exercise the candidate's actual default cap. They are
+// separate from the one-constant production overlays used by the runner.
+func TestExperimentLargeRequestBeyondBatchCap(t *testing.T) {
+	for _, wire := range []bool{false, true} {
+		name := "typed"
+		if wire {
+			name = "wire"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := startSingle(t, simfs.New(), 1)
+			key := bytes.Repeat([]byte("k"), 39)
+			value := bytes.Repeat([]byte("v"), 1572801)
+			put := &pb.PutRequest{Key: key, Value: value}
+			wrapped := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}, Put: put}
+			if proto.Size(wrapped) != MaxRequestBytes {
+				t.Fatalf("boundary fixture size %d, want %d", proto.Size(wrapped), MaxRequestBytes)
+			}
+			if len(value) <= s.n.cfg.MaxBatchBytes {
+				t.Skip("candidate cap is not below the request limit")
+			}
+			r := Request{ID: 1, Op: put}
+			if wire {
+				b, err := proto.Marshal(put)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p, err := ParsePut(b)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r.Op, r.Put = nil, p
+			}
+			s.n.Submit(r)
+			eff, err := s.n.Process()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(eff.Replies) != 0 || len(eff.Persist) == 0 {
+				t.Fatalf("oversize-to-cap request rejected or replied before durability: %+v", eff)
+			}
+			largeEntries := 0
+			for _, job := range eff.Persist {
+				for _, entry := range job.Entries {
+					if len(entry.GetData()) == 0 {
+						continue
+					}
+					if len(entry.GetData()) <= s.n.cfg.MaxBatchBytes {
+						t.Fatal("large request was truncated to the batching cap")
+					}
+					if err := DecodeBatch(entry.GetData(), func(_, _, id uint64, op proto.Message) error {
+						got, ok := op.(*pb.PutRequest)
+						if id != 1 || !ok || !bytes.Equal(got.Key, key) || !bytes.Equal(got.Value, value) {
+							t.Fatal("large entry lost key or value bytes")
+						}
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					largeEntries++
+				}
+			}
+			if largeEntries != 1 {
+				t.Fatalf("large request produced %d entries, want 1", largeEntries)
+			}
+			// Appending bytes without syncing them still releases no reply.
+			for _, job := range eff.Persist {
+				s.log.Append(job.HardState, job.Entries)
+			}
+			if held, err := s.n.Process(); err != nil || len(held.Replies) != 0 || len(held.Persist) != 0 {
+				t.Fatalf("unsynced append changed completion: %+v, %v", held, err)
+			}
+			if err := s.log.Sync(); err != nil {
+				t.Fatal(err)
+			}
+			for _, job := range eff.Persist {
+				s.n.Persisted(job)
+			}
+			replies := s.run()
+			if len(replies) != 1 || replies[0].ID != 1 || replies[0].Err != nil {
+				t.Fatalf("durable large request replies: %+v", replies)
+			}
+			read := func(s *single, id uint64) {
+				t.Helper()
+				r := s.do(id, &pb.RangeRequest{Key: key})
+				got, ok := r.Resp.(*pb.RangeResponse)
+				if r.Err != nil || !ok || got.Count != 1 || len(got.Kvs) != 1 || !bytes.Equal(got.Kvs[0].Value, value) {
+					t.Fatalf("large value was not intact: %v", r.Err)
+				}
+			}
+			read(s, 2)
+			// Cold replay sees only synced disk bytes, not the live store.
+			read(startSingle(t, s.disk.Durable(), 2), 1)
+		})
+	}
+}
+
+func TestExperimentDefaultCapPipelinesBeforeAppendCompletes(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	put := &pb.PutRequest{Key: []byte("p"), Value: bytes.Repeat([]byte("x"), 1024)}
+	s.n.Submit(Request{ID: 1, Op: put})
+	first, err := s.n.Process()
+	if err != nil || len(first.Persist) == 0 || len(first.Replies) != 0 {
+		t.Fatalf("initial append: %+v, %v", first, err)
+	}
+	writes := s.n.cfg.MaxBatchBytes/(proto.Size(put)+batchFraming) + 2
+	for i := range writes {
+		s.n.Submit(Request{ID: uint64(i + 2), Op: put})
+	}
+	pipelined, err := s.n.Process()
+	if err != nil || len(pipelined.Persist) == 0 || len(pipelined.Replies) != 0 {
+		t.Fatalf("cap did not pipeline an unacked batch: %+v, %v", pipelined, err)
+	}
+	for _, job := range pipelined.Persist {
+		for _, entry := range job.Entries {
+			if len(entry.GetData()) > s.n.cfg.MaxBatchBytes {
+				t.Fatalf("1KiB requests produced a %d-byte entry above cap %d", len(entry.GetData()), s.n.cfg.MaxBatchBytes)
+			}
+		}
+	}
+	// Persistence completions remain in original job order. Proposing a
+	// full batch early did not make either batch visible before this sync.
+	s.persistAll(append(first.Persist, pipelined.Persist...))
+	replies := s.run()
+	if len(replies) != writes+1 {
+		t.Fatalf("%d replies, want %d", len(replies), writes+1)
+	}
+	seen := make(map[uint64]bool)
+	for _, r := range replies {
+		if r.Err != nil || r.ID < 1 || r.ID > uint64(writes+1) || seen[r.ID] {
+			t.Fatalf("failed or duplicate reply: %+v", r)
+		}
+		seen[r.ID] = true
+	}
+}

@@ -1,0 +1,10 @@
+{
+  "put-1k-leader-open": [1000, 3000, 5000],
+  "put-1k-balanced-open": [2000, 5000, 8000],
+  "put-10k-leader-open": [500, 1000, 2000],
+  "put-10k-balanced-open": [500, 1000, 2000],
+  "range-1k-leader-open": [1000, 3000, 5000],
+  "range-1k-balanced-open": [2000, 5000, 10000],
+  "list-1k-leader-open": [50, 100, 200],
+  "list-1k-balanced-open": [100, 300, 600]
+}

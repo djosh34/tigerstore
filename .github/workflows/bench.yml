@@ -57,6 +57,9 @@ jobs:
           go build -o bin/tigerstore ./cmd/tigerstore
           ln -s tigerstore bin/tigerstore-static
           go test -short -parallel 2 ./cmd/loadgen ./internal/osfs
+      - name: Build and test byte-cap controls
+        if: contains(inputs.targets, 'cap')
+        run: bash experiments/shape/build-caps.sh
       - name: Measure
         env:
           CASE: ${{ matrix.case }}

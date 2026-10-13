@@ -1,0 +1,89 @@
+Local append-pipelining cap control
+
+Base: e5c3327e, Lean load generator and a benchmark workflow (#86).
+No push, public comment, subagent, runner launch or benchmark.
+
+Independent one-constant production variants from that base:
+- exp/pre-50-shape-cap, 0980ad8bdab169ba6a4e190ecd302e1b23fb3555
+  internal/core/node.go:90, MaxBatchBytes: 4 << 20 -> 1 << 20
+- exp/pre-50-shape-cap-256k, 29489c2afcb3328c80a1ad3aad54f21098b44916
+  internal/core/node.go:90, MaxBatchBytes: 4 << 20 -> 256 << 10
+
+Each commit changes one line in one file and has e5c3327e as its parent.
+The test fixture internal/core/cap_experiment_test.go is local and untracked.
+This audit file is also local and untracked. Neither enters the production
+variant commits. The fixture is kept so the parent can reproduce the checks.
+
+Source audit
+
+queueWrite, node.go:513-527, calculates request bytes plus conservative
+per-command framing. When there is already a queued batch and adding the
+next request would exceed MaxBatchBytes, it calls propose before adding the
+new request. This is the existing early-full-batch bypass of the append hold.
+The constant does not add a timer or change that path.
+
+MaxBatchBytes is a packing target, not a hard per-request or per-entry limit.
+A request larger than the target enters an otherwise empty batch intact.
+Admission still uses the independent MaxRequestBytes=1.5MiB limit on etcd's
+InternalRaftRequest envelope. For a 39-byte key, a 1,572,801-byte value is
+accepted at the exact envelope boundary; one extra value byte is rejected.
+A literal 1.5MiB VALUE plus key and envelope was not accepted before, and
+is not newly promised here. Both decoded and wire Put admission are unchanged.
+
+encodeBatch reserves the calculated size and writes every command byte.
+It neither splits nor truncates an oversized request. MaxSizePerMsg remains
+4MiB, so a boundary-sized individual request fits the existing Raft message
+budget. The frontend, peer framing, WAL and recovery formats are unchanged.
+
+The cap invokes the existing propose path. ownIndex/durable tracking and
+awaitOwn are untouched. Process still holds ordinary local writes behind
+an outstanding local append. Forwarded proposals and hard-state-only appends
+still do not extend that hold. Reducing the target changes when additional
+local full batches can enter the pipeline; it does not remove the hold for
+all requests.
+
+The node driver still appends queued jobs, WAL.Syncs once, and reports ordered
+Persisted jobs only after successful sync. Persisted still updates durable
+storage and delivers Raft's stored responses in order. LocalApplyThread,
+committed apply and reply paths are unchanged. No acknowledgement moves earlier.
+
+Focused local checks
+
+Exactly this command ran sequentially on both variants, with the local fixture:
+
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB go test -short -parallel 2 -count=1 \
+  -run 'Test(WritesWaitForTheLeadersAppend|ForwardedWritesDoNotHoldLocalOnes|ByteCapSendsAnEntryEarly|HardStateAppendHoldsNothing|RequestSizeLimitMatchesEtcd|VoteRequestsWaitForTheTerm|Experiment)' \
+  -v ./internal/core
+
+1MiB: all tests passed, package runtime 0.021s, 2026-10-13T14:57Z.
+256KiB: all tests passed, package runtime 0.027s, 2026-10-13T14:57Z.
+No test in this selected set was skipped on either candidate.
+After adding explicit reply-ID range checks, the same selected set passed
+again at 14:59Z: 256KiB 0.023s, then 1MiB 0.027s, one run at a time.
+
+The existing tests check append-clocked grouping, full-cap early sending,
+forwarded-write non-starvation, hard-state-only non-blocking, exact typed/wire
+request-size acceptance/rejection, and term/vote persistence ordering.
+
+The additional witnesses check the candidate's actual default cap:
+- Typed and wire Puts at the exact 1.5MiB InternalRaftRequest boundary each
+  produce one intact entry larger than the lower batching target.
+- Processing before sync releases no success. Merely calling WAL.Append
+  releases no success either. Success appears only after Sync and ordered
+  Persisted notifications.
+- A linearizable point read returns every value byte. Cold reopening a copy
+  of only durable simulated-disk bytes returns the same complete value.
+- Filling the actual default cap with 1KiB Puts produces a further persist
+  batch before the first local append completes, with zero early replies.
+  After ordered persistence, every issued request gets one successful reply.
+
+git diff --check also passed for both one-line overlays.
+
+What is not established
+
+No throughput gain, physical-disk pipeline occupancy, latency improvement,
+real crash campaign or full three-replica durability result was measured.
+The 0-25% gain range is a hypothesis only. A lower cap can increase Raft entry
+count, replication work and fsync frequency, or hit existing queue bounds.
+The parent must compare the immutable cap overlays on free ARM runners with
+its existing placement, replica fences, revision, value and error checks.
