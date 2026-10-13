@@ -13,11 +13,11 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        store: [etcd]
-        workload: [register, set, append, watch]
+        store: [tigerstore]
+        workload: [register]
         nemesis: [none, partition, kill, pause]
         include:
-          - store: etcd
+          - store: tigerstore
             workload: register
             nemesis: clock
     steps:
