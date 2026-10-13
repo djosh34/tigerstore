@@ -64,12 +64,25 @@ func dial(t *testing.T) *client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	return &client{
+	c := &client{
 		kv:    pb.NewKVClient(conn),
 		watch: pb.NewWatchClient(conn),
 		lease: pb.NewLeaseClient(conn),
 		maint: pb.NewMaintenanceClient(conn),
 	}
+	// A fresh server may still be electing a leader.
+	var err2 error
+	for range 60 {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		_, err2 = c.kv.Range(ctx, &pb.RangeRequest{Key: []byte("/diff/")})
+		cancel()
+		if err2 == nil {
+			return c
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("%s is not ready after 60 attempts: %v", endpoint, err2)
+	return nil
 }
 
 // step is one recorded request and what came back. Revisions are relative to
