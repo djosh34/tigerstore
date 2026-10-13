@@ -3,7 +3,8 @@ set -euo pipefail
 cd /home/joshazimullah.linux/work_mounts/scratch/sol-multicore
 unset GOMAXPROCS GOMEMLIMIT GOFLAGS
 mkdir -p results/host
-export OUT=results/host DATA=/tmp/sol-multicore-data WARMUP=1s DURATION=3s
+python3 bench/wait-quiet.py
+export OUT=results/host DATA=/tmp/sol-multicore-data WARMUP=1s DURATION=3s HOST_QUIET=1
 {
   date -u +%FT%TZ
   lscpu
