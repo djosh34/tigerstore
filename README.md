@@ -40,4 +40,4 @@ Stop the cluster with `kill $(cat data/*.pid)`. Starting it again recovers each 
 
 ## Tests
 
-`go test ./...` runs the unit tests, a 3-node cluster over TLS in one process, and the deterministic simulator on 16 seeds. `scripts/smoke.sh` runs etcdctl against a local cluster. CI runs the simulator on 1,600 seeds per push; see `.github/workflows/ci.yml`.
+`go test ./...` runs the unit tests, a 3-node cluster over TLS in one process, and the deterministic simulator on 16 seeds. `scripts/smoke.sh` runs etcdctl against a local cluster. `scripts/difftest.sh etcd` and `scripts/difftest.sh tigerstore` run the differential tests against etcd v3.7.2 and against a local cluster (see `difftest/doc.go`). CI runs the simulator on 1,600 seeds per push; see `.github/workflows/ci.yml`.

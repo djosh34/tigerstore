@@ -57,6 +57,33 @@ var stricter = map[string][]string{
 	},
 }
 
+const (
+	issueCompaction = "Compact is not built yet, https://github.com/djosh34/tigerstore/issues/47"
+	issueLeases     = "leases are not built yet, https://github.com/djosh34/tigerstore/issues/47"
+	issueSize       = "the request size limit is looser, https://github.com/djosh34/tigerstore/issues/62"
+)
+
+// expectedFail lists the steps where tigerstore differs from etcd v3.7.2
+// today, by case, with the reason. They still run. A listed step that
+// matches etcd fails the test, so the list shrinks as the core grows.
+var expectedFail = map[string]struct {
+	reason string
+	steps  []string
+}{
+	"compact-below-current": {issueCompaction, []string{"compact at R-1", "range a at 1", "watch a from 1 with prev_kv", "compact at R-1 again", "compact at R-2"}},
+	"compact-at-current":    {issueCompaction, []string{"compact at R", "range a at 1", "range a at 2", "watch a from 1 with prev_kv", "watch a from 2 with prev_kv", "compact at R again"}},
+	"compact-above-current": {issueCompaction, []string{"compact at R+1"}},
+	"compact-physical":      {issueCompaction, []string{"physical compact at R-1", "range a at 1", "watch a from 1 with prev_kv"}},
+	"error-codes":           {issueCompaction, []string{"txn with a historical range at a compacted revision", "compact at revision 0", "compact at revision -1"}},
+	"leases": {issueLeases, []string{
+		"grant with an explicit ID", "grant the same ID again", "grant with a TTL of 1 s", "grant with a TTL of 9000000001 s",
+		"grant with a TTL of 0", "grant with a negative ID", "put k with the lease", "put j with the lease", "put j without a lease",
+		"put ignore_lease on k", "range keys", "revoke the lease", "range keys after the revoke", "revoke the lease again",
+		"grant a lease for no keys", "revoke a lease without keys", "revoke lease 0",
+	}},
+	"max-request-size": {issueSize, []string{"largest put value for a key of 39 bytes", "largest txn put value for a key of 39 bytes"}},
+}
+
 // server returns TIGERSTORE_DIFF_SERVER, which says what the endpoint is.
 func server(t *testing.T) string {
 	t.Helper()
@@ -137,6 +164,13 @@ func TestBoundaries(t *testing.T) {
 	if len(want) != len(cases) {
 		t.Errorf("%s has %d cases, the test has %d", goldenFile, len(want), len(cases))
 	}
+	for name, known := range expectedFail {
+		for _, do := range known.steps {
+			if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
+				t.Errorf("expectedFail names %s step %q, which %s does not have", name, do, goldenFile)
+			}
+		}
+	}
 	for k := range stricter {
 		name, do, _ := strings.Cut(k, "/")
 		if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
@@ -148,8 +182,18 @@ func TestBoundaries(t *testing.T) {
 		if len(w) != len(g) {
 			t.Errorf("%s: %d steps, etcd v3.7.2 had %d", name, len(g), len(w))
 		}
+		known := expectedFail[name]
 		for i := range min(len(w), len(g)) {
-			if !allowed(srv, name, w[i], g[i]) {
+			ok := allowed(srv, name, w[i], g[i])
+			if srv == "tigerstore" && slices.Contains(known.steps, w[i].Do) {
+				if ok {
+					t.Errorf("%s step %d %q now matches etcd v3.7.2; remove it from expectedFail", name, i, w[i].Do)
+				} else {
+					t.Logf("expected failure, %s: %s step %d %q:\n got  %s\n want %s", known.reason, name, i, g[i].Do, show(g[i]), show(w[i]))
+				}
+				continue
+			}
+			if !ok {
 				t.Errorf("%s step %d %q:\n got  %s\n want %s", name, i, g[i].Do, show(g[i]), show(w[i]))
 			}
 		}
@@ -383,13 +427,15 @@ func maxRequestSize(r *run) {
 		}
 		return lo
 	}
-	// The probes wrote revisions; count from here.
 	n := largest(false)
+	// The probes wrote revisions; count from here.
+	r.rebase()
 	r.record(fmt.Sprintf("largest put value for a key of %d bytes", len(key)), n, nil)
 	for _, size := range []int{n - 1, n, n + 1} {
 		r.put(fmt.Sprintf("put %s of the largest size", relSize(size-n)), &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)})
 	}
 	t := largest(true)
+	r.rebase()
 	r.record(fmt.Sprintf("largest txn put value for a key of %d bytes", len(key)), t, nil)
 	for _, size := range []int{t - 1, t, t + 1} {
 		r.txn(fmt.Sprintf("txn put %s of the largest size", relSize(size-t)), &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)}}}}})

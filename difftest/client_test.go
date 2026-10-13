@@ -123,6 +123,16 @@ func newRun(t *testing.T, c *client, tag int64, name string) *run {
 	return r
 }
 
+// rebase makes the current revision the new base of relative revisions.
+func (r *run) rebase() {
+	r.t.Helper()
+	resp, err := r.c.kv.Range(r.ctx, &pb.RangeRequest{Key: []byte(r.prefix)})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.base = resp.Header.Revision
+}
+
 // key returns the full name of a key of this case.
 func (r *run) key(k string) []byte { return []byte(r.prefix + k) }
 

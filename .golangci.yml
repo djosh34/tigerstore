@@ -1,5 +1,9 @@
 version: "2"
 
+run:
+  # The differential tests only build with this tag.
+  build-tags: [difftest]
+
 linters:
   default: none
   enable:
