@@ -2,6 +2,6 @@
   "main_ref": "eb8a20eda7b1436e3319b924753469f2d8c0ee99",
   "native_ref": "2d4052e96939b12fd68f0252dfd1154127cdf7c6",
   "tuned_ref": "78db0c56fe2b051b651bbfa3f1aed03ca3724b9c",
-  "mode": "primary",
-  "selected_variant": null
+  "mode": "profile",
+  "selected_variant": "a"
 }
