@@ -252,6 +252,23 @@ func sameCommitted(ents, final []*raftpb.Entry, applied uint64) error {
 	return nil
 }
 
+// disagree returns two nodes that are not fenced and differ in their
+// applied entries or index, or nil.
+func disagree(nodes []*node) (*node, *node) {
+	var first *node
+	for _, n := range nodes {
+		if n.fenced {
+			continue
+		}
+		if first == nil {
+			first = n
+		} else if n.core.Applied() != first.core.Applied() || n.core.Store().Hash() != first.core.Store().Hash() {
+			return first, n
+		}
+	}
+	return nil, nil
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold,
 // and returns their applied log.
@@ -275,20 +292,24 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
 	if err := r.loop(); err != nil {
 		return nil, err
 	}
-	var first *node
-	for _, n := range r.nodes {
-		if n.fenced {
-			continue
-		}
-		if first == nil {
-			first = n
-			continue
-		}
-		if n.core.Applied() != first.core.Applied() || n.core.Store().Hash() != first.core.Store().Hash() {
-			return nil, fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", first.core.Applied(), n.core.Applied())
+	// The leader may have proposed a lease expiry just before the end, so
+	// the follower has yet to learn that it committed (seed 736998125).
+	// One more second settles that.
+	if a, _ := disagree(r.nodes); a != nil {
+		r.endAt += Second
+		if err := r.loop(); err != nil {
+			return nil, err
 		}
 	}
-	return first.core.AppliedEntries()
+	if a, b := disagree(r.nodes); a != nil {
+		return nil, fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", a.core.Applied(), b.core.Applied())
+	}
+	for _, n := range r.nodes {
+		if !n.fenced {
+			return n.core.AppliedEntries()
+		}
+	}
+	return nil, nil
 }
 
 // stalledAt reports whether a node's disk was stalled at a time. A node

@@ -15,8 +15,6 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // linkProxy forwards one directed peer link. stall makes the connections
@@ -108,6 +106,10 @@ func (p *linkProxy) serve() {
 func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	proxies := map[[2]uint64]*linkProxy{}
 	c := newClusterWith(t, func(c *cluster) {
+		// The 64 KiB puts below make fsyncs slow on a shared runner; with
+		// 10 ms ticks the leader's 200 ms disk-stall watchdog stopped it
+		// once in CI. 50 ms ticks give it a second.
+		c.tick = 50 * time.Millisecond
 		c.via = map[[2]uint64]string{}
 		for from := uint64(1); from <= 3; from++ {
 			for to := uint64(1); to <= 3; to++ {
@@ -147,7 +149,9 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	before := proxy.accepted.Load()
 	proxy.stall()
 
-	bound := 10 * time.Duration(core.DefaultConfig(1, nil).ElectionTicks) * 10 * time.Millisecond
+	// Well under the peer's 5 s write deadline, so a leader held up by the
+	// stalled link fails here.
+	bound := time.Second
 	value := bytes.Repeat([]byte("v"), 64<<10)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0

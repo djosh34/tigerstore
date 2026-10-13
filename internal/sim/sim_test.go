@@ -388,3 +388,13 @@ func TestGrayClient(t *testing.T) {
 		t.Fatalf("only %d calls beside the gray client", calls)
 	}
 }
+
+// TestColdRestartWaitsForLastCommit runs seed 736998125, whose cold
+// restart at 17,821 ms ended with a lease expiry committed on the leader
+// 1 ms before the end and not yet on the follower. The check must wait for
+// the two to agree instead of failing. A change to the simulator's random
+// draws can move this seed off that edge; the test then passes without
+// testing it.
+func TestColdRestartWaitsForLastCommit(t *testing.T) {
+	run(t, DefaultConfig(736998125))
+}
