@@ -64,7 +64,7 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || (st.DiskFaults == 0 && st.DiskFaultIdle == 0) ||
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 ||
 				st.Pauses == 0 || st.LinkStalls == 0 || st.ClockJumps == 0 || st.HalfOpens == 0 ||
 				st.GrayNodes == 0 || st.GrayStreams == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
@@ -75,7 +75,6 @@ func TestSeeds(t *testing.T) {
 			total.Asymmetric += st.Asymmetric
 			total.CommitStops += st.CommitStops
 			total.RecoveryCrashes += st.RecoveryCrashes
-			total.DiskFaultIdle += st.DiskFaultIdle
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -84,9 +83,6 @@ func TestSeeds(t *testing.T) {
 				}
 			}
 		})
-	}
-	if ran >= 64 && !t.Failed() && total.DiskFaultIdle*16 > ran {
-		t.Fatalf("in %d of %d seeds the guaranteed disk fault found no append to fail", total.DiskFaultIdle, ran)
 	}
 	// Corruption, a leader stalled long enough to stop and a link 10 times
 	// slower than its other direction are rare in one run, but a set of
@@ -335,4 +331,19 @@ func TestGrayLeaderIsReplaced(t *testing.T) {
 			t.Fatalf("seed %d: only %d calls to the healthy pair", seed, ok)
 		}
 	}
+}
+
+// TestDiskFaultAfterHealing cuts every link before the first election, so
+// no node appends during the faults: the guaranteed disk fault must fire
+// after healing, and the liveness rule must still hold.
+func TestDiskFaultAfterHealing(t *testing.T) {
+	cfg := DefaultConfig(6001)
+	cfg.Faults = Faults{DiskErrorEvery: 1000 * Second, HoldMask: 0, HoldMaskAt: 1}
+	cfg.Duration = 5 * Second
+	cfg.Heal = 5 * Second
+	res := run(t, cfg)
+	if res.Stats.DiskFaults != 1 {
+		t.Fatalf("%d disk faults, want the guaranteed one", res.Stats.DiskFaults)
+	}
+	checkers(t, res)
 }
