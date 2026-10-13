@@ -5,6 +5,7 @@ go 1.27.2
 require (
 	github.com/anishathalye/porcupine v1.1.0
 	github.com/google/btree v1.1.3
+	github.com/soheilhy/cmux v0.1.5
 	go.etcd.io/etcd/api/v3 v3.7.2
 	go.etcd.io/raft/v3 v3.7.0
 	google.golang.org/grpc v1.84.0

@@ -9,11 +9,13 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -52,20 +54,27 @@ type Server struct {
 	cfg  Config
 	g    *grpc.Server
 	http *http.Server
+
+	mu      sync.Mutex
+	clients *clientListener
+	stopped bool
 }
 
 // New builds the server for a node.
 func New(n *node.Node, cfg Config) *Server {
-	// MaxConcurrentStreams and the keepalive options only apply to gRPC's
-	// own transport, which the plaintext test path uses. With TLS, the
-	// http.Server below carries gRPC and sets its own stream limit.
-	g := grpc.NewServer(
-		grpc.MaxRecvMsgSize(core.MaxRequestBytes+grpcOverhead),
-		grpc.MaxSendMsgSize(1<<31-1),
+	opts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(core.MaxRequestBytes + grpcOverhead),
+		grpc.MaxSendMsgSize(1<<31 - 1),
 		grpc.MaxConcurrentStreams(maxStreams),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
-	)
+	}
+	if cfg.TLS != nil {
+		// cmux reads decrypted bytes. These credentials report the completed
+		// TLS handshake to gRPC without attempting a second handshake.
+		opts = append(opts, grpc.Creds(completedTLSCredentials{credentials.NewTLS(cfg.TLS)}))
+	}
+	g := grpc.NewServer(opts...)
 	pb.RegisterKVServer(g, &kvServer{n: n})
 	pb.RegisterClusterServer(g, &clusterServer{n: n, cfg: cfg})
 	pb.RegisterWatchServer(g, &watchServer{n: n})
@@ -75,7 +84,7 @@ func New(n *node.Node, cfg Config) *Server {
 	s := &Server{n: n, cfg: cfg, g: g}
 	s.http = &http.Server{
 		Handler:           s.handler(),
-		TLSConfig:         cfg.TLS,
+		TLSConfig:         clientTLSConfig(cfg.TLS),
 		ReadHeaderTimeout: 10 * time.Second,
 		// net/http allows 250 streams per connection by default; one
 		// kube-apiserver connection carries many more watches. etcd sets
@@ -85,24 +94,29 @@ func New(n *node.Node, cfg Config) *Server {
 	return s
 }
 
-// Serve accepts clients on ln until Stop. With TLS, gRPC, /health and
-// /version share the port over HTTP/2, as in etcd. Without TLS, only
-// gRPC is served; that is for tests.
+// Serve accepts clients on ln until Stop. TLS clients share one port for
+// native gRPC and HTTP/1 or HTTP/2 health and version requests. Without
+// TLS, only gRPC is served; that is for tests. Serve is called once.
 func (s *Server) Serve(ln net.Listener) error {
 	if s.cfg.TLS == nil {
-		return s.g.Serve(ln)
+		return serveError(s.g.Serve(ln))
 	}
-	err := s.http.ServeTLS(ln, "", "")
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
+	return s.serveTLS(ln)
 }
 
-// Stop closes the port and every client connection.
+// Stop closes the port and every client connection, including clients
+// still in the TLS handshake or cmux's first-request matcher.
 func (s *Server) Stop() error {
+	s.mu.Lock()
+	s.stopped = true
+	clients := s.clients
+	s.mu.Unlock()
+	var err error
+	if clients != nil {
+		err = clients.Close()
+	}
 	s.g.Stop()
-	return s.http.Close()
+	return errors.Join(err, s.http.Close())
 }
 
 type maintenanceServer struct {
