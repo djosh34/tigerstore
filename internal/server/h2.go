@@ -51,7 +51,7 @@ const (
 // other and with the handlers.
 type conn struct {
 	s *Server
-	// metrics are s.metrics; nil for connections in tests.
+	// metrics are s.metrics.
 	metrics *metrics
 	nc      net.Conn
 	raw     net.Conn // nc without TLS, closed to abort a stuck write
@@ -169,6 +169,7 @@ func (c *conn) close() {
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
+			st.countEnd(codes.Canceled)
 			st.reset = true
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -367,6 +368,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	st := c.streams[id]
 	if st != nil {
 		delete(c.streams, id)
+		st.countEnd(codes.Canceled)
 		st.reset = true
 		if st.deadline != nil {
 			st.deadline.Stop()
@@ -567,9 +569,6 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]
-		if st.rpc != nil {
-			c.metrics.started(st.rpc)
-		}
 	} else {
 		st.httpMethod, st.httpPath = h.method, h.path
 		if st.httpPath == "" {
@@ -595,6 +594,10 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		return st
 	}
 	c.streams[id] = st
+	if st.rpc != nil {
+		st.calls = c.metrics.calls[st.rpc]
+		st.calls.started.Add(1)
+	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.

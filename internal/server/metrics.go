@@ -27,11 +27,15 @@ type callMetrics struct {
 	handled [codes.Unauthenticated + 1]atomic.Int64
 }
 
-// metrics are the server's gRPC counters. A nil *metrics counts nothing,
-// for connections in tests that have no server.
+// metrics are the server's gRPC counters.
 type metrics struct {
-	calls              map[*method]*callMetrics
-	received, sentSize atomic.Int64
+	calls map[*method]*callMetrics
+	// received and sent are protobuf bytes of client messages, without
+	// the gRPC prefix, as etcd's codec counts them. They sit on separate
+	// cache lines: readers write one, handlers the other.
+	received atomic.Int64
+	_        [56]byte
+	sent     atomic.Int64
 }
 
 func newMetrics() *metrics {
@@ -42,28 +46,17 @@ func newMetrics() *metrics {
 	return m
 }
 
-func (m *metrics) started(rpc *method) {
-	if m != nil {
-		m.calls[rpc].started.Add(1)
+// countEnd counts the end of a gRPC call with its code, once: a call ends
+// when its status is queued, or, if the client reset it or the
+// connection closed first, as Canceled, which is what grpc-go's
+// interceptor sees in etcd. c.mu is held.
+func (st *stream) countEnd(code codes.Code) {
+	if st.calls == nil || st.counted {
+		return
 	}
-}
-
-func (m *metrics) handled(rpc *method, code codes.Code) {
-	if m != nil && code <= codes.Unauthenticated {
-		m.calls[rpc].handled[code].Add(1)
-	}
-}
-
-// messageIn and messageOut count gRPC message bytes, prefix included.
-func (m *metrics) messageIn(n int) {
-	if m != nil {
-		m.received.Add(int64(n))
-	}
-}
-
-func (m *metrics) messageOut(n int) {
-	if m != nil {
-		m.sentSize.Add(int64(n))
+	st.counted = true
+	if code <= codes.Unauthenticated {
+		st.calls.handled[code].Add(1)
 	}
 }
 
@@ -98,7 +91,7 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 		{"etcd_mvcc_delete_total", "counter", "Total number of deletes seen by this member.", nm.Deletes},
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
 		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", s.metrics.received.Load()},
-		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", s.metrics.sentSize.Load()},
+		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", s.metrics.sent.Load()},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)
@@ -114,10 +107,11 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 	}
 	metric("grpc_server_handled_total", "counter", "Total number of RPCs completed on the server, regardless of success or failure.")
 	for _, p := range paths {
+		// Every code of every method, at 0 too, as etcd's
+		// InitializeMetrics does, so that rate() sees a series' first call.
 		for code := range s.metrics.calls[methods[p]].handled {
-			if n := s.metrics.calls[methods[p]].handled[code].Load(); n > 0 {
-				fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
-			}
+			n := s.metrics.calls[methods[p]].handled[code].Load()
+			fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
 		}
 	}
 	return http.StatusOK, "text/plain; version=0.0.4; charset=utf-8", b.String()

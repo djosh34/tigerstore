@@ -97,7 +97,9 @@ type Store struct {
 // Counts are the operations a store has seen, for etcd's metrics
 // etcd_mvcc_put_total, etcd_mvcc_delete_total and etcd_mvcc_range_total:
 // every put, delete range and range the store runs, also inside
-// transactions.
+// transactions. Ranges also count the reads etcd makes inside other
+// operations: one per compare, one per delete with prev_kv, and one per
+// put with prev_kv, ignore_value or ignore_lease, two in a transaction.
 type Counts struct{ Puts, Deletes, Ranges int64 }
 
 // New returns an empty store at revision 1, the revision etcd starts at.
