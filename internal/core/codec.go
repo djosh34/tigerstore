@@ -6,7 +6,10 @@ import (
 	"fmt"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/batchcmd"
 )
 
 // A Raft entry carries a batch of writes:
@@ -27,14 +30,56 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
+	kindWirePut = 9
+	kindWireTxn = 10
 )
 
 var errBadBatch = errors.New("core: malformed batch")
 
 func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
-	buf := binary.AppendUvarint(nil, uint64(len(ps)))
+	// Reserve once for descriptor entries so every receive body is copied
+	// directly to its final entry location. Pure legacy submission retains
+	// its original allocation behavior for the submission ablation.
+	wire := false
+	for _, p := range ps {
+		if p.command != nil {
+			wire = true
+			break
+		}
+	}
+	var buf []byte
+	if wire {
+		capacity := protowire.SizeVarint(uint64(len(ps)))
+		for _, p := range ps {
+			size := proto.Size(p.req.Op)
+			if p.command != nil {
+				size = len(p.command.Body())
+			}
+			capacity += protowire.SizeVarint(origin) + protowire.SizeVarint(boot) + protowire.SizeVarint(p.req.ID) + 1 + protowire.SizeVarint(uint64(size)) + size
+		}
+		buf = make([]byte, 0, capacity)
+	}
+	buf = binary.AppendUvarint(buf, uint64(len(ps)))
 	for _, p := range ps {
 		var kind byte
+		if p.command != nil {
+			switch p.command.Kind() {
+			case batchcmd.Put:
+				kind = kindWirePut
+			case batchcmd.Txn:
+				kind = kindWireTxn
+			default:
+				return nil, errBadBatch
+			}
+			buf = binary.AppendUvarint(buf, origin)
+			buf = binary.AppendUvarint(buf, boot)
+			buf = binary.AppendUvarint(buf, p.req.ID)
+			buf = append(buf, kind)
+			body := p.command.Body()
+			buf = binary.AppendUvarint(buf, uint64(len(body)))
+			buf = append(buf, body...)
+			continue
+		}
 		switch p.req.Op.(type) {
 		case *pb.PutRequest:
 			kind = kindPut
@@ -108,11 +153,23 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 			op = &pb.LeaseKeepAliveRequest{}
 		case kindExpiry:
 			op = &pb.LeaseCheckpoint{}
+		case kindWirePut, kindWireTxn:
+			path := batchcmd.PutPath
+			if kind == kindWireTxn {
+				path = batchcmd.TxnPath
+			}
+			c, err := batchcmd.DecodeEntry(path, data[:size])
+			if err != nil {
+				return fmt.Errorf("%w: %w", errBadBatch, err)
+			}
+			op = c.Legacy()
 		default:
 			return errBadBatch
 		}
-		if err := proto.Unmarshal(data[:size], op); err != nil {
-			return fmt.Errorf("%w: %w", errBadBatch, err)
+		if kind != kindWirePut && kind != kindWireTxn {
+			if err := proto.Unmarshal(data[:size], op); err != nil {
+				return fmt.Errorf("%w: %w", errBadBatch, err)
+			}
 		}
 		data = data[size:]
 		if err := fn(origin, boot, id, op); err != nil {
