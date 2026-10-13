@@ -84,9 +84,9 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
 // *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is
-// chosen by the driver and comes back in the Reply. It must never repeat within one run of the
-// node: a write that timed out can still commit later, and its entry
-// carries its ID.
+// chosen by the driver and comes back in the Reply. It must never repeat
+// within one run of the node: a write that timed out can still commit
+// later, and its entry carries its ID.
 type Request struct {
 	ID uint64
 	Op proto.Message
@@ -493,9 +493,10 @@ func (n *Node) propose() {
 		}
 		return
 	}
-	// The next local append with entries carries this batch; writes wait
-	// until it is durable (ownIndex).
-	n.awaitOwn = true
+	// On the leader, the next local append with entries carries this
+	// batch; writes wait until it is durable (ownIndex). A follower only
+	// forwards, so nothing waits.
+	n.awaitOwn = n.isLeader
 }
 
 // requestReads asks Raft for one read index for all queued reads.

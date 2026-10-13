@@ -21,11 +21,23 @@ import (
 // keepalive changes no key. Instead, every granted lease gets an expiry op:
 // an ambiguous LeaseRevoke from its own client, called when the grant was,
 // which the checkers' models may apply at any time after it.
+//
+// An ambiguous put, delete or txn that is not in the committed log never
+// took effect, so it is left out. That keeps Porcupine's search small, and
+// it cannot hide a bug: a history with fewer ops is never easier to
+// linearize.
 func (r *Result) Checkable() (*history.History, error) {
 	h := &history.History{Target: r.FinalRev}
+	committed, err := r.committed()
+	if err != nil {
+		return nil, err
+	}
 	expiryClient := r.Clients + len(r.Watches)
 	for _, rec := range r.History {
 		if _, ok := rec.req.(*pb.LeaseKeepAliveRequest); ok {
+			continue
+		}
+		if rec.Ambiguous && neverCommitted(rec.req, committed) {
 			continue
 		}
 		if g, ok := rec.Resp.(*pb.LeaseGrantResponse); ok && rec.Err == nil {
@@ -78,6 +90,39 @@ func (r *Result) Checkable() (*history.History, error) {
 		h.Watches = append(h.Watches, hw)
 	}
 	return h, nil
+}
+
+// committed returns the encoded puts, deletes and txns of the committed log.
+// The cluster logs them as the client sent them.
+func (r *Result) committed() (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, m := range r.Log {
+		if !writeOp(m) {
+			continue
+		}
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		out[string(b)] = true
+	}
+	return out, nil
+}
+
+func writeOp(m proto.Message) bool {
+	switch m.(type) {
+	case *pb.PutRequest, *pb.DeleteRangeRequest, *pb.TxnRequest:
+		return true
+	}
+	return false
+}
+
+func neverCommitted(m proto.Message, committed map[string]bool) bool {
+	if !writeOp(m) {
+		return false
+	}
+	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+	return err == nil && !committed[string(b)]
 }
 
 func historyError(err error, ambiguous bool) *history.Error {

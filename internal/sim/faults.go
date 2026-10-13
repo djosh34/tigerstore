@@ -16,9 +16,11 @@ func (s *Sim) scheduleDiskFaults() {
 	f := s.cfg.Faults
 	if f.DiskErrorEvery > 0 {
 		s.push(&event{at: s.exp(f.DiskErrorEvery), kind: evDiskFault})
-		// One fault early enough to fire before healing, so that no run
-		// goes without; TestSeeds checks that one did.
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*9/10), kind: evDiskFaultOnce})
+		// One more fault, due early in the faults and armed on the next
+		// append with entries of any node, so that no run goes without:
+		// later, a run that lost a node to corruption may append nothing
+		// for many seconds. TestSeeds checks that one fired.
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/4), kind: evDiskFaultOnce})
 	}
 	if f.StallEvery > 0 {
 		s.push(&event{at: s.exp(f.StallEvery), kind: evStall})
@@ -53,7 +55,13 @@ func (s *Sim) injectDiskFault() bool {
 	if n == nil {
 		return false
 	}
-	kind := s.rng.IntN(3)
+	s.armDiskFault(n, s.rng.IntN(3))
+	return true
+}
+
+// armDiskFault arms a disk fault on n: EIO on the next sync (kind 0) or
+// write (1), or a short write with ENOSPC (2).
+func (s *Sim) armDiskFault(n *node, kind int) {
 	s.mix(0xdf, uint64(n.idx), uint64(kind))
 	switch kind {
 	case 0, 1:
@@ -72,7 +80,6 @@ func (s *Sim) injectDiskFault() bool {
 	case 2:
 		n.disk.ShortWrite(s.rng)
 	}
-	return true
 }
 
 // injectStall holds back a random node's disk writes for 1.5 to 4 s.
