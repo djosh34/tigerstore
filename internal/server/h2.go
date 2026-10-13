@@ -595,8 +595,8 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	}
 	c.streams[id] = st
 	if st.rpc != nil {
-		st.calls = c.metrics.calls[st.rpc]
-		st.calls.started.Add(1)
+		st.calls = &c.metrics.calls[st.rpc.idx]
+		st.calls.started.add(1)
 	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,43 +20,49 @@ import (
 // startTime is when the process started, for process_start_time_seconds.
 var startTime = time.Now()
 
-// callMetrics counts the calls of one method.
+// counter is a count with one writer at a time, read by scrapes: the
+// writer adds with a plain load and store, cheaper than an atomic add on
+// every call, and a scrape still reads a whole value.
+type counter struct{ v atomic.Int64 }
+
+func (c *counter) add(n int64) { c.v.Store(c.v.Load() + n) }
+func (c *counter) load() int64 { return c.v.Load() }
+
+// callMetrics counts the calls of one method. started is written by the
+// connection's reader, handled under the connection's lock.
 type callMetrics struct {
-	started atomic.Int64
-	handled [codes.Unauthenticated + 1]atomic.Int64
+	started counter
+	handled [codes.Unauthenticated + 1]counter
 }
 
 // metrics are the gRPC counters of one connection, so that connections
 // never write the same counter; a scrape adds them up. The server keeps
 // the sum of closed connections.
 type metrics struct {
-	calls map[*method]*callMetrics
+	// calls are indexed by method.idx.
+	calls []callMetrics
 	// received and sent are protobuf bytes of client messages, without
-	// the gRPC prefix, as etcd's codec counts them. They sit on separate
-	// cache lines: readers write one, handlers the other.
-	received atomic.Int64
+	// the gRPC prefix, as etcd's codec counts them. The reader writes
+	// received; sent is written under the connection's lock. They sit on
+	// separate cache lines.
+	received counter
 	_        [56]byte
-	sent     atomic.Int64
+	sent     counter
 }
 
 func newMetrics() *metrics {
-	m := &metrics{calls: map[*method]*callMetrics{}}
-	for _, rpc := range methods {
-		m.calls[rpc] = &callMetrics{}
-	}
-	return m
+	return &metrics{calls: make([]callMetrics, len(methods))}
 }
 
-// add adds o's counts to m. Nothing counts on o any more, or the sum
-// may miss a call in flight, as any scrape may.
+// add adds o's counts to m. Nothing counts on o or m meanwhile, or the
+// sum may miss a call in flight, as any scrape may.
 func (m *metrics) add(o *metrics) {
-	m.received.Add(o.received.Load())
-	m.sent.Add(o.sent.Load())
-	for rpc, c := range o.calls {
-		mc := m.calls[rpc]
-		mc.started.Add(c.started.Load())
-		for code := range c.handled {
-			mc.handled[code].Add(c.handled[code].Load())
+	m.received.add(o.received.load())
+	m.sent.add(o.sent.load())
+	for i := range o.calls {
+		m.calls[i].started.add(o.calls[i].started.load())
+		for code := range o.calls[i].handled {
+			m.calls[i].handled[code].add(o.calls[i].handled[code].load())
 		}
 	}
 }
@@ -86,7 +91,7 @@ func (st *stream) countEnd(code codes.Code) {
 	}
 	st.counted = true
 	if code <= codes.Unauthenticated {
-		st.calls.handled[code].Add(1)
+		st.calls.handled[code].add(1)
 	}
 }
 
@@ -120,27 +125,22 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 		{"etcd_mvcc_put_total", "counter", "Total number of puts seen by this member.", nm.Puts},
 		{"etcd_mvcc_delete_total", "counter", "Total number of deletes seen by this member.", nm.Deletes},
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
-		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.Load()},
-		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.Load()},
+		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.load()},
+		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.load()},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)
 	}
-	paths := make([]string, 0, len(methods))
-	for p := range methods {
-		paths = append(paths, p)
-	}
-	slices.Sort(paths)
 	metric("grpc_server_started_total", "counter", "Total number of RPCs started on the server.")
-	for _, p := range paths {
-		fmt.Fprintf(&b, "grpc_server_started_total{%s} %d\n", callLabels(p), sm.calls[methods[p]].started.Load())
+	for _, p := range methodPaths {
+		fmt.Fprintf(&b, "grpc_server_started_total{%s} %d\n", callLabels(p), sm.calls[methods[p].idx].started.load())
 	}
 	metric("grpc_server_handled_total", "counter", "Total number of RPCs completed on the server, regardless of success or failure.")
-	for _, p := range paths {
+	for _, p := range methodPaths {
 		// Every code of every method, at 0 too, as etcd's
 		// InitializeMetrics does, so that rate() sees a series' first call.
-		for code := range sm.calls[methods[p]].handled {
-			n := sm.calls[methods[p]].handled[code].Load()
+		for code := range sm.calls[methods[p].idx].handled {
+			n := sm.calls[methods[p].idx].handled[code].load()
 			fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
 		}
 	}
