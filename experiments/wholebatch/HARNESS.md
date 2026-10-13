@@ -30,7 +30,7 @@ All stores use the same generated CA, client certificates and per-node certifica
 
 After election, the runner pins every existing thread of the leader to CPU 0, followers to CPUs 1 and 2, and the generator and orchestration to CPU 3. It verifies node thread affinities at the end. Every server receives `GOMAXPROCS=2`. Tigerstore's debug endpoint verifies the actual value. etcd's value is recorded from its environment. The generator receives `GOMAXPROCS=1`.
 
-The unchanged pre50 direct-protobuf generator uses 16 connections at every concurrency. It records `conns=16` in every result. Each cluster receives 4,096 seed Puts, 8,000 warmup Puts and 30,000 measured Puts. Values are independent deterministic 1 KiB byte sequences over the same 4,096 keys. All requests target the elected leader. Variant order rotates across repetitions; stores never overlap.
+The unchanged pre50 direct-protobuf generator uses 16 connections at every concurrency. It records `conns=16` in every result. Each cluster receives 4,096 seed Puts, 8,000 warmup Puts and 30,000 measured Puts. Values are independent deterministic 1 KiB byte sequences over the same 4,096 keys. All Put requests target the elected leader. The final generator also keeps one HTTP/2 connection to the same TLS port and alternates `/health` and `/version` every 100 ms during the measured window. It primes that connection before sampling and waits for an in-flight probe before ending the CPU/elapsed window. Probe counts and failures are recorded. Variant order rotates across repetitions; stores never overlap.
 
 ## Metrics
 
@@ -46,7 +46,7 @@ These are counting-only runs. Atomic file-call counters execute in the WAL path;
 
 ## Memory and endpoint diagnostics
 
-`/debug/alloc` also records Go runtime GC CPU accounting, heap gauges and the custom frontend's admission, response and control-send counters. The GC counter is `/cpu/classes/gc/total:cpu-seconds`, an estimate from runtime accounting rather than measured process CPU. Stock etcd does not expose the same counter through this setup. Deltas use the allocation-counter boundaries. Leading and trailing revision probes are outside those boundaries.
+`/debug/alloc` also records Go runtime GC CPU accounting, heap gauges and the custom frontend's admission, response and control-send counters. The GC counter is `/cpu/classes/gc/total:cpu-seconds`, an estimate from runtime accounting rather than measured process CPU. Stock etcd does not expose the same counter through this setup. Deltas use the allocation-counter boundaries. Leading and trailing revision probes are outside those boundaries. Periodic health/version probes are inside. Channel admission/response figures subtract their known handoffs; control-send figures retain their small contribution.
 
 After the fully applied fence and CPU/latency windows, each cluster waits eight seconds for seven-second pending metadata timeouts. Tigerstore then runs one forced GC and records retained heap, runtime-reserved bytes and allocator bank materialized/pinned budgets. This GC does not contribute to headline GC CPU/op. etcd's retained metrics scrape is not forced-GC-equivalent.
 

@@ -1,0 +1,143 @@
+[
+  {
+    "clients": 16,
+    "stages": [
+      {
+        "before": "main",
+        "after": "rpc",
+        "removed_fraction_of_main": 0.476,
+        "removed_fraction_of_previous": 0.476
+      },
+      {
+        "before": "rpc",
+        "after": "admit",
+        "removed_fraction_of_main": -0.00209643605870018,
+        "removed_fraction_of_previous": -0.003968253968253954
+      },
+      {
+        "before": "admit",
+        "after": "full",
+        "removed_fraction_of_main": 0.03800000000000006,
+        "removed_fraction_of_previous": 0.06761565836298944
+      },
+      {
+        "before": "main",
+        "after": "full",
+        "removed_fraction_of_main": 0.49275362318840576,
+        "removed_fraction_of_previous": 0.49275362318840576
+      },
+      {
+        "before": "full",
+        "after": "ring",
+        "removed_fraction_of_main": -0.06708595387840674,
+        "removed_fraction_of_previous": -0.13502109704641363
+      },
+      {
+        "before": "full",
+        "after": "pool",
+        "removed_fraction_of_main": -0.06832298136645963,
+        "removed_fraction_of_previous": -0.13469387755102047
+      },
+      {
+        "before": "ring",
+        "after": "pool",
+        "removed_fraction_of_main": 0.006211180124223602,
+        "removed_fraction_of_previous": 0.010676156583629859
+      }
+    ]
+  },
+  {
+    "clients": 64,
+    "stages": [
+      {
+        "before": "main",
+        "after": "rpc",
+        "removed_fraction_of_main": 0.6170886075949368,
+        "removed_fraction_of_previous": 0.6170886075949367
+      },
+      {
+        "before": "rpc",
+        "after": "admit",
+        "removed_fraction_of_main": 0.05379746835443043,
+        "removed_fraction_of_previous": 0.14049586776859513
+      },
+      {
+        "before": "admit",
+        "after": "full",
+        "removed_fraction_of_main": 0.025157232704402493,
+        "removed_fraction_of_previous": 0.07619047619047614
+      },
+      {
+        "before": "main",
+        "after": "full",
+        "removed_fraction_of_main": 0.6949685534591195,
+        "removed_fraction_of_previous": 0.6949685534591195
+      },
+      {
+        "before": "full",
+        "after": "ring",
+        "removed_fraction_of_main": -0.03821656050955414,
+        "removed_fraction_of_previous": -0.12371134020618557
+      },
+      {
+        "before": "full",
+        "after": "pool",
+        "removed_fraction_of_main": -0.036036036036036036,
+        "removed_fraction_of_previous": -0.12371134020618557
+      },
+      {
+        "before": "ring",
+        "after": "pool",
+        "removed_fraction_of_main": -0.0030030030030030242,
+        "removed_fraction_of_previous": -0.00917431192660545
+      }
+    ]
+  },
+  {
+    "clients": 256,
+    "stages": [
+      {
+        "before": "main",
+        "after": "rpc",
+        "removed_fraction_of_main": 0.7254901960784313,
+        "removed_fraction_of_previous": 0.7254901960784313
+      },
+      {
+        "before": "rpc",
+        "after": "admit",
+        "removed_fraction_of_main": 0.049019607843137254,
+        "removed_fraction_of_previous": 0.17721518987341767
+      },
+      {
+        "before": "admit",
+        "after": "full",
+        "removed_fraction_of_main": 0.00980392156862745,
+        "removed_fraction_of_previous": 0.04347826086956519
+      },
+      {
+        "before": "main",
+        "after": "full",
+        "removed_fraction_of_main": 0.7784810126582279,
+        "removed_fraction_of_previous": 0.7784810126582279
+      },
+      {
+        "before": "full",
+        "after": "ring",
+        "removed_fraction_of_main": -0.0167785234899329,
+        "removed_fraction_of_previous": -0.07462686567164178
+      },
+      {
+        "before": "full",
+        "after": "pool",
+        "removed_fraction_of_main": -0.022304832713754646,
+        "removed_fraction_of_previous": -0.09836065573770503
+      },
+      {
+        "before": "ring",
+        "after": "pool",
+        "removed_fraction_of_main": -0.006329113924050644,
+        "removed_fraction_of_previous": -0.027397260273972712
+      }
+    ]
+  }
+]

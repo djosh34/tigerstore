@@ -22,6 +22,8 @@ Responses are sized before encoding. A single response, including frame headers,
 
 `Stats.ControlSends` counts successful sends on the reader-to-writer control channel, including the stream-open send for every RPC. `Stats.ResponseSends` counts successful sends of encoded response groups, including HTTP responses. These counters do not count all runtime channel operations or grpc-go internals.
 
+The final measurements and remaining allocation/mutex limits are in `evidence/wholebatch/REPORT.md`. `TIGERSTORE_BATCH_MEMORY=ring|pool` enables the bounded transient allocators described in `internal/batchmem/README.md`. Their chunk capacities can exceed the per-connection payload accounting, but each server has an 80 MiB input-bank and 80 MiB output-bank limit. Neither variant removes the ledger mutex or inbox admission wait.
+
 ## Compatibility gaps
 
 TLS and mTLS use the ordinary server TLS configuration with ALPN h2 and http/1.1. GET `/health` and `/version` share the port. HTTP/2 endpoints use the existing Framer reader and writer; HTTP/1.1 uses a standard HTTP server only for these endpoints. Health always makes a real Range, linearizable unless `serializable=true`, with a seven-second response timeout. HTTP/2 health uses asynchronous legacy batch admission and grouped completions in every mode. The HTTP/2 and gRPC wire format is unchanged. Standard generated clients work for Put, supported Txn, Range, Status and MemberList.

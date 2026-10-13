@@ -64,4 +64,8 @@ The runner executes race tests for `internal/batchcmd`, `internal/batchfront`, `
 
 `TestBatchColdQuorum` writes through all three TLS endpoints, runs successful and failed CAS, stops all nodes, and cold-starts each possible surviving pair. It checks all acknowledged values. This is a focused recovery test, not a fresh whole-system chaos campaign. The unchanged simulator paths alone do not certify the new frontend.
 
-No performance result is recorded yet.
+## Result
+
+The [final report](../../evidence/wholebatch/REPORT.md) records 105 passing measured windows on candidate `948395e603211cd4753c89b24d6bcb9d0dabdfcc`. Shared-port HTTP/2 health/version probes ran during Put load. Full mode reached 26,685 and 42,030 Put/s at 64 and 256 clients, with 32.33 and 22.33 leader CPU microseconds per Put. Its paired leader CPU reductions against main were 69.50% and 77.85%.
+
+Fixed rings and recycled batch arenas reduced allocations but increased CPU and retained memory. They are bounded transient-buffer experiments, not allocation-free implementations. The connection ledger mutex and blocking inbox admission remain. Arena chunk capacity may exceed per-connection payload accounting; each direction has a separate 80 MiB bank limit per server, plus 28 MiB of typed descriptor arrays across both directions. There is no global connection-count or whole-database memory bound.
