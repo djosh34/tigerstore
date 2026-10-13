@@ -458,6 +458,7 @@ class Controller:
         self.phase(name, 'installed', filler_bytes=written, filler_errno=errno.ENOSPC,
                    fill_passes=fills, probe_errno=probe_errno, blocks_available=space.f_bavail,
                    filesystem=self.cmd(['findmnt', '--json', '--target', self.disk_mount]).stdout)
+        self.disk_installed()
         # Controller ENOSPC is not proof of a server fault. Require the stock node to
         # exit with its own disk error while the recorded client keeps writing.
         exit_proof = self.wait_status(node['p'], 0, os.WIFEXITED, timeout=12)
@@ -476,6 +477,12 @@ class Controller:
         self.phase(name, 'healed', available_bytes=os.statvfs(self.disk_mount).f_bavail * space.f_frsize,
                    free_attempts=free_attempts, new_pid=self.nodes[i]['p'].pid,
                    write_fsync=True, status=status)
+
+    def disk_installed(self):
+        pass
+
+    def workload_extra_args(self):
+        return []
 
     def tc(self, *args, **kw):
         return self.cmd(['tc', *args], **kw)
@@ -710,29 +717,24 @@ class Controller:
             version = self.cmd([self.a.server, '--version']).stdout
             require('etcd Version: 3.7.2' in version, f'etcd is not stock 3.7.2: {version}')
         self.certs()
-        if self.a.scenario in ('disk', 'mixed'):
+        if self.a.scenario in ('disk', 'mixed', 'heavy-disk'):
             self.setup_disk()
         for i in range(1, 4):
             self.start_node(i)
         self.ready(timeout=25)
         argv = self.client_args('run') + ['--duration', f'{self.a.duration}s',
-            '--seed', str(self.a.seed), '--clients', '3', '--rate', '5',
+            '--seed', str(self.a.seed), '--clients', str(self.a.clients), '--rate', str(self.a.rate),
+            '--keys', str(self.a.keys),
             '--value-size', str(self.a.value_size),
             '--out', str(self.out / 'workload'), '--stop-file', str(self.out / 'workload.stop')]
+        argv += self.workload_extra_args()
         workload_start = time.monotonic()
         with (self.out / 'workload.log').open('ab', buffering=0) as log:
             self.workload = subprocess.Popen(argv, stdout=log, stderr=log, start_new_session=True)
         self.event('workload-start', pid=self.workload.pid, argv=argv,
                    duration_seconds=self.a.duration, value_size=self.a.value_size)
         self.sleep(2, require_workload=True)
-        if self.a.scenario in ('signals', 'mixed'):
-            for kind, role in [('kill', 'leader'), ('kill', 'follower'), ('stop', 'leader'), ('stop', 'follower')]:
-                self.signal_fault(kind, role)
-        if self.a.scenario in ('netem', 'mixed'):
-            for kind in ['loss', 'delay', 'reorder']:
-                self.netem_fault(kind)
-        if self.a.scenario in ('disk', 'mixed'):
-            self.disk_fault()
+        self.run_faults()
         # A too-short duration is a failed schedule, not a reason to skip faults.
         self.sleep(4, require_workload=True)
         elapsed = time.monotonic() - workload_start
@@ -750,6 +752,16 @@ class Controller:
         require(not missing, f'missing required fault evidence: {missing}')
         require(len(self.oracles) == 4, 'not all cold recovery sets completed')
         self.event('controller-pass', note='four offline checkers must still run for every oracles.json set')
+
+    def run_faults(self):
+        if self.a.scenario in ('signals', 'mixed'):
+            for kind, role in [('kill', 'leader'), ('kill', 'follower'), ('stop', 'leader'), ('stop', 'follower')]:
+                self.signal_fault(kind, role)
+        if self.a.scenario in ('netem', 'mixed'):
+            for kind in ['loss', 'delay', 'reorder']:
+                self.netem_fault(kind)
+        if self.a.scenario in ('disk', 'mixed'):
+            self.disk_fault()
 
     def cleanup(self):
         errors = []
@@ -785,21 +797,28 @@ class Controller:
                 self.loop = None
             except Exception as exc:
                 errors.append(f'loop detach: {exc}')
+        errors += self.cleanup_extra()
         self.event('cleanup', errors=errors)
         self.commands.close()
         return errors
+
+    def cleanup_extra(self):
+        return []
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', choices=['tigerstore', 'etcd'], required=True)
-    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed'], required=True)
+    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed', 'partition-kill', 'election-pause', 'heavy-disk', 'one-way', 'flapping'], required=True)
     parser.add_argument('--server', required=True)
     parser.add_argument('--client', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--seed', type=int, default=49)
     parser.add_argument('--repetition', type=int, default=1)
     parser.add_argument('--duration', type=int, default=90)
+    parser.add_argument('--clients', type=int, default=3)
+    parser.add_argument('--rate', type=int, default=5)
+    parser.add_argument('--keys', type=int, default=6)
     parser.add_argument('--disk-mib', type=int, default=128)
     parser.add_argument('--value-size', type=int, default=128)
     parser.add_argument('--pause-seconds', type=float, default=1.5)
@@ -813,6 +832,8 @@ def main():
             'ALL fault runs require a GitHub-hosted Actions runner; local runs forbidden')
     require(os.geteuid() == 0, 'run with sudo -E')
     require(deadline_seconds() > 0, 'UTC deadline reached; starting nothing')
+    require(3 <= args.clients <= 256 and 1 <= args.rate <= 50 and 2 <= args.keys <= 8,
+            'require clients 3..256, rate 1..50, keys 2..8')
     require(20 <= args.duration <= 180, '--duration must be 20..180 seconds')
     require(96 <= args.disk_mib <= 256, '--disk-mib must be 96..256')
     require(1 <= args.value_size <= 1024 * 1024, '--value-size must be 1..1048576 bytes')
@@ -827,7 +848,7 @@ def main():
     if not args.in_namespace:
         # Private mount namespace prevents loop mounts leaking into the host namespace.
         os.execvp('unshare', ['unshare', '--net', '--mount', '--propagation', 'private',
-                             sys.executable, str(Path(__file__).resolve()), *sys.argv[1:], '--in-namespace'])
+                             sys.executable, str(Path(sys.argv[0]).resolve()), *sys.argv[1:], '--in-namespace'])
     require(os.readlink('/proc/self/ns/net') != os.readlink('/proc/1/ns/net'),
             'refusing faults in host network namespace')
     controller = Controller(args)

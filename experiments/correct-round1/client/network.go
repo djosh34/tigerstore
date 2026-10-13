@@ -76,6 +76,7 @@ type nodeStatus struct {
 	MemberID string `json:"member_id"`
 	LeaderID string `json:"leader_id"`
 	Revision int64  `json:"revision"`
+	Term     uint64 `json:"term"`
 	Ready    bool   `json:"ready"`
 	Error    string `json:"error,omitempty"`
 }
@@ -99,11 +100,12 @@ func networkStatus(c config) (err error) {
 			n.MemberID = strconv.FormatUint(st.Header.MemberId, 10)
 			n.LeaderID = strconv.FormatUint(st.Leader, 10)
 			n.Revision = st.Header.Revision
+			n.Term = st.RaftTerm
 			if st.Leader == 0 || len(st.Errors) > 0 {
 				e = fmt.Errorf("not ready: leader=%d errors=%v", st.Leader, st.Errors)
 			}
 		}
-		if e == nil {
+		if e == nil && !c.statusOnly {
 			ctx, cancel = context.WithTimeout(overall, c.requestTimeout)
 			_, e = cl.Get(clientv3.WithRequireLeader(ctx), "\x00", clientv3.WithFromKey())
 			cancel()
@@ -187,11 +189,17 @@ type recorder struct {
 	h           history.History
 	errs        []error
 	diagnostics []watchDiagnostic
+	inFlight    int
+	peakFlight  int
 }
 
 func (r *recorder) now() int64 { return time.Since(r.origin).Nanoseconds() }
 func (r *recorder) call(cl *clientv3.Client, client int, q history.Request, timeout time.Duration) history.Op {
 	op := history.Op{Client: client, Call: r.now(), Req: q}
+	r.mu.Lock()
+	r.inFlight++
+	r.peakFlight = max(r.peakFlight, r.inFlight)
+	r.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	resp, err := execute(clientv3.WithRequireLeader(ctx), cl, q)
 	cancel()
@@ -214,6 +222,7 @@ func (r *recorder) call(cl *clientv3.Client, client int, q history.Request, time
 	}
 	r.mu.Lock()
 	r.h.Ops = append(r.h.Ops, op)
+	r.inFlight--
 	r.mu.Unlock()
 	return op
 }
@@ -285,8 +294,11 @@ func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*hist
 }
 
 func workload(c config) (err error) {
-	if c.clients != 3 || len(csv(c.endpoints)) != 3 || c.rate < 1 || c.rate > 50 || c.keys < 6 || c.keys > 8 || c.duration <= 0 || c.watchTimeout <= 0 || c.quiet < 0 || c.valueSize < 1 || c.valueSize > 1024*1024 {
-		return errors.New("require 3 clients/endpoints, rate 1..50, keys 6..8 and positive duration/watch-timeout")
+	if c.clients < 3 || c.clients > 256 || len(csv(c.endpoints)) != 3 || c.rate < 1 || c.rate > 50 || c.keys < 2 || c.keys > 8 || c.duration <= 0 || c.watchTimeout <= 0 || c.quiet < 0 || c.valueSize < 1 || c.valueSize > 1024*1024 {
+		return errors.New("require 3..256 clients, 3 endpoints, rate 1..50, keys 2..8 and positive duration/watch-timeout")
+	}
+	if c.burstWrites < 0 || c.burstWrites > 16 || (c.burstWrites > 0 && (c.burstArm == "" || c.burstRelease == "" || c.burstReady == "")) {
+		return errors.New("burst requires 0..16 puts per client and arm/release/ready paths")
 	}
 	cs, err := clients(c)
 	if err != nil {
@@ -294,6 +306,7 @@ func workload(c config) (err error) {
 	}
 	defer func() { err = errors.Join(err, closeClients(cs)) }()
 	r := &recorder{origin: time.Now()}
+	gate := &burstGate{}
 	rc := receipt{Seed: c.seed, Endpoints: csv(c.endpoints), History: filepath.Join(c.out, "history.json")}
 	// Save evidence on every normal error path, including terminal/watch failure.
 	defer func() {
@@ -301,7 +314,7 @@ func workload(c config) (err error) {
 		if err != nil {
 			rc.Failure = err.Error()
 		}
-		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics))
+		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics), save(filepath.Join(c.out, "traffic.json"), map[string]any{"clients": c.clients, "per_client_rate": c.rate, "peak_in_flight": r.peakFlight, "burst_writes_per_client": c.burstWrites, "burst_clients_ready": gate.ready, "burst_clients_complete": gate.complete}))
 	}()
 	members := map[uint64]bool{}
 	for _, cl := range cs {
@@ -326,14 +339,15 @@ func workload(c config) (err error) {
 	var watchWG sync.WaitGroup
 	r.h.Watches = make([]history.Watch, 3)
 	for i, cl := range cs {
-		r.h.Watches[i] = history.Watch{Client: 100 + i, Req: history.WatchRequest{Key: prefix, End: end, StartRevision: 1, PrevKV: true, ProgressNotify: true}}
+		r.h.Watches[i] = history.Watch{Client: 10000 + i, Req: history.WatchRequest{Key: prefix, End: end, StartRevision: 1, PrevKV: true, ProgressNotify: true}}
 		watchWG.Add(1)
 		go func(i int, cl *clientv3.Client) { defer watchWG.Done(); r.watch(watchCtx, cl, i, prefix) }(i, cl)
 	}
 	stopCtx, stop := context.WithTimeout(context.Background(), c.duration)
 	defer stop()
 	var workers sync.WaitGroup
-	for i, cl := range cs {
+	for i := range c.clients {
+		cl := cs[i%len(cs)]
 		workers.Add(1)
 		go func(i int, cl *clientv3.Client) {
 			defer workers.Done()
@@ -343,6 +357,7 @@ func workload(c config) (err error) {
 			mods := map[string]int64{}
 			versions := map[string]int64{}
 			seq := 0
+			burstDone := false
 			for {
 				select {
 				case <-stopCtx.Done():
@@ -353,6 +368,30 @@ func workload(c config) (err error) {
 					if _, e := os.Stat(c.stop); e == nil {
 						return
 					} else if !errors.Is(e, os.ErrNotExist) {
+						r.mu.Lock()
+						r.errs = append(r.errs, e)
+						r.mu.Unlock()
+						return
+					}
+				}
+				if c.burstWrites > 0 && !burstDone {
+					armed, e := fileExists(c.burstArm)
+					if e == nil && armed {
+						e = gate.wait(stopCtx, c)
+						if e == nil {
+							for j := range c.burstWrites {
+								key := fmt.Sprintf("%sk%d", prefix, rng.IntN(c.keys))
+								identity := fmt.Sprintf("s%d-c%d-burst%d:", c.seed, i, j)
+								value := identity + strings.Repeat("x", max(0, c.valueSize-len(identity)))
+								r.call(cl, i, history.Request{Put: &history.PutRequest{Key: key, Value: value, PrevKV: true}}, c.requestTimeout)
+							}
+							gate.mu.Lock()
+							gate.complete++
+							gate.mu.Unlock()
+							burstDone = true
+						}
+					}
+					if e != nil {
 						r.mu.Lock()
 						r.errs = append(r.errs, e)
 						r.mu.Unlock()
@@ -431,6 +470,9 @@ func workload(c config) (err error) {
 		}(i, cl)
 	}
 	workers.Wait()
+	if c.burstWrites > 0 && gate.complete != c.clients {
+		err = errors.Join(err, fmt.Errorf("burst completed on %d of %d clients", gate.complete, c.clients))
+	}
 	// Give requests whose clients timed out longer than the server's 7s timeout.
 	// The offline replay must still end exactly at the captured target.
 	time.Sleep(c.quiet)
@@ -439,14 +481,14 @@ func workload(c config) (err error) {
 	// KV mutation. Every attempt remains part of the checked client history.
 	for i, cl := range cs {
 		q := history.Request{Txn: &history.TxnRequest{Compare: []history.Compare{{Key: prefix + "k0", Target: history.TargetVersion, Result: history.Equal, Number: -1}}, Success: []history.TxnOp{{Put: &history.PutRequest{Key: prefix + "k0", Value: fmt.Sprintf("barrier-%d", i), PrevKV: true}}}, Failure: []history.TxnOp{{Range: &history.RangeRequest{Key: prefix + "k0"}}}}}
-		barrier := r.call(cl, 20+i, q, c.requestTimeout)
+		barrier := r.call(cl, 20000+i, q, c.requestTimeout)
 		if barrier.Resp == nil || barrier.Resp.Txn.Succeeded {
 			err = errors.Join(err, fmt.Errorf("terminal no-revision barrier failed on endpoint %d", i))
 		}
 	}
 	var terminal history.Op
 	for i, cl := range cs {
-		observed := r.call(cl, 10+i, history.Request{Range: &history.RangeRequest{Key: "\x00", End: history.AllKeys}}, c.requestTimeout)
+		observed := r.call(cl, 30000+i, history.Request{Range: &history.RangeRequest{Key: "\x00", End: history.AllKeys}}, c.requestTimeout)
 		if observed.Resp == nil {
 			err = errors.Join(err, fmt.Errorf("terminal linearizable read failed on endpoint %d", i))
 			continue
@@ -490,7 +532,7 @@ func workload(c config) (err error) {
 				cancel()
 				if e != nil {
 					r.mu.Lock()
-					r.diagnostics = append(r.diagnostics, watchDiagnostic{Client: 100 + i, Response: history.WatchResponse{Time: r.now()}, Error: "progress request: " + e.Error()})
+					r.diagnostics = append(r.diagnostics, watchDiagnostic{Client: 10000 + i, Response: history.WatchResponse{Time: r.now()}, Error: "progress request: " + e.Error()})
 					if !transientWatch(e) {
 						r.errs = append(r.errs, e)
 					}

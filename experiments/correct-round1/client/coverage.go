@@ -43,7 +43,7 @@ type coverageReport struct {
 	LastSuccessNS                                                                      map[int]int64 `json:"last_success_ns"`
 }
 
-func coverage(h *history.History) (coverageReport, error) {
+func coverage(h *history.History, clients int) (coverageReport, error) {
 	c := coverageReport{Ops: len(h.Ops), PerClientSuccess: map[int]int{}, LastSuccessNS: map[int]int64{}}
 	for _, op := range h.Ops {
 		if op.Resp == nil && op.Err == nil {
@@ -105,8 +105,15 @@ func coverage(h *history.History) (coverageReport, error) {
 	if c.Put == 0 || c.TxnSuccess == 0 || c.TxnFailure == 0 || c.Delete == 0 || c.MultiDelete == 0 || c.Range == 0 || c.WatchPuts == 0 || c.WatchDeletes == 0 || c.WatchPrevKV == 0 {
 		errs = append(errs, errors.New("coverage floor: require successful Put, both CAS branches, Delete, multi-key Delete, Range and watch puts/deletes/previous values"))
 	}
-	for i := range 3 {
-		if c.PerClientSuccess[i] == 0 {
+	if clients < 3 || clients > 256 {
+		errs = append(errs, errors.New("coverage floor: expected client count must be 3..256"))
+	}
+	seen := map[int]bool{}
+	for _, op := range h.Ops {
+		seen[op.Client] = true
+	}
+	for i := range clients {
+		if !seen[i] || c.PerClientSuccess[i] == 0 {
 			errs = append(errs, fmt.Errorf("client %d has no successful operation", i))
 		}
 	}

@@ -1,0 +1,38 @@
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.005s
+
+OK
+[
+  {
+    "artifact": "correct-round2-faults-build-failure",
+    "attempt": {
+      "job_status": "failure"
+    },
+    "reached_controller": false,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 0,
+    "recorded_client_histories": 0,
+    "history_variants": 0,
+    "checker_verdicts": 0,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 0,
+    "successful_operations": 0,
+    "ambiguous_operations": 0,
+    "target": 0,
+    "watches": 0,
+    "controller_seconds": 0.0,
+    "faults": {},
+    "missing_fault_phases": [],
+    "failures": [],
+    "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
+  }
+]
+..............
+----------------------------------------------------------------------
+Ran 14 tests in 0.109s
+
+OK

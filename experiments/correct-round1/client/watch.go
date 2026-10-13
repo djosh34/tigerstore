@@ -51,7 +51,7 @@ func (r *recorder) watch(ctx context.Context, cl *clientv3.Client, i int, prefix
 				}
 				hr.Events = append(hr.Events, he)
 			}
-			diagnostic := watchDiagnostic{Client: 100 + i, Response: hr}
+			diagnostic := watchDiagnostic{Client: 10000 + i, Response: hr}
 			if e != nil {
 				diagnostic.Error = e.Error()
 			}

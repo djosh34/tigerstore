@@ -123,7 +123,7 @@ func TestOfflineCLI(t *testing.T) {
 	if err := load(output, &timed); err != nil {
 		t.Fatal(err)
 	}
-	if len(timed) != 4 || timed[0].Passed || !(strings.Contains(timed[0].Error, "deadline") || strings.Contains(timed[0].Error, "timed out")) {
+	if len(timed) != 4 || timed[3].Name != "Linearizable" || timed[3].Passed || !(strings.Contains(timed[3].Error, "deadline") || strings.Contains(timed[3].Error, "timed out")) {
 		t.Fatalf("missing timeout verdict: %+v", timed)
 	}
 	// Build real etcd WAL files offline, with an uncommitted mutation tail.

@@ -1,0 +1,161 @@
+name: Correctness round 2 faults
+on:
+  push:
+    branches: [exp/correct-round2-faults]
+    paths:
+      - '.github/workflows/correct-round2-faults.yml'
+      - 'experiments/correct-round1/client/**'
+      - 'experiments/correct-round1/runner.py'
+      - 'experiments/correct-round2/campaign.json'
+      - 'experiments/correct-round2/runner.py'
+      - 'experiments/correct-round2/run-checks.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      cases: ${{ steps.plan.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          echo "cases=$(jq -c . experiments/correct-round2/campaign.json)" >> "$GITHUB_OUTPUT"
+  faults:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.cases) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Start attempt ledger
+        id: ledger
+        shell: bash
+        env:
+          CASE: ${{ toJSON(matrix) }}
+        run: |
+          mkdir -p evidence
+          printf '%s\n' "$CASE" > evidence/case.json
+          printf 'tooling=%s\n' "$GITHUB_SHA" > evidence/commits.txt
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build pinned product and test client
+        id: build
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          mkdir -p bin
+          product=$(jq -r .commit experiments/correct-round2/product.json)
+          git worktree add --detach "$RUNNER_TEMP/product" "$product"
+          (cd "$RUNNER_TEMP/product" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore) 2>&1 | tee evidence/build-product.log
+          (cd experiments/correct-round1 && go test -parallel 2 ./client && go vet ./client && go build -o "$GITHUB_WORKSPACE/bin/chaos-client" ./client) 2>&1 | tee evidence/build-client.log
+          python3 -m unittest discover -s experiments/correct-round1 -p 'test_*.py'
+          python3 -m unittest discover -s experiments/correct-round2 -p 'test_*.py'
+          printf 'product=%s\n' "$product" >> evidence/commits.txt
+          go version >> evidence/commits.txt
+      - name: Install stock etcd v3.7.2
+        id: etcd
+        shell: bash
+        run: |
+          arch=$(uname -m)
+          case "$arch" in
+            aarch64) arch=arm64; hash=5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7 ;;
+            x86_64) arch=amd64; hash=3a3679bc51a4ee9d30bccea1da7cd4fe62c6fc1d2ca1255068d2c53bf3026135 ;;
+            *) exit 1 ;;
+          esac
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" "https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-$arch.tar.gz"
+          echo "$hash  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-$arch/etcd" bin/etcd
+      - name: Record runner and enable disk barriers
+        id: setup
+        shell: bash
+        run: |
+          sudo mount -o remount,barrier=1 /
+          {
+            uname -a
+            lscpu
+            free -b
+            findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+            iptables --version
+            bin/etcd --version
+          } > evidence/runner.txt
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          ! findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'
+      - name: Run faults
+        id: faults
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          SCENARIO: ${{ matrix.scenario }}
+          SEED: ${{ matrix.seed }}
+          REP: ${{ matrix.rep }}
+          DURATION: ${{ matrix.duration }}
+          CLIENTS: ${{ matrix.clients }}
+          RATE: ${{ matrix.rate }}
+          KEYS: ${{ matrix.keys }}
+          VALUE_SIZE: ${{ matrix.value_size }}
+          DISK_MIB: ${{ matrix.disk_mib }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          sudo -E python3 experiments/correct-round2/runner.py \
+            --target "$TARGET" --scenario "$SCENARIO" --seed "$SEED" --repetition "$REP" \
+            --server "$PWD/bin/$TARGET" --client "$PWD/bin/chaos-client" --out "$PWD/evidence/run" \
+            --duration "$DURATION" --clients "$CLIENTS" --rate "$RATE" --keys "$KEYS" \
+            --value-size "$VALUE_SIZE" --disk-mib "$DISK_MIB" \
+            2>&1 | tee evidence/controller.log
+      - name: Check all recorded histories even after failed controller
+        if: always() && steps.faults.outcome != 'skipped'
+        id: checks
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          CLIENTS: ${{ matrix.clients }}
+        run: |
+          sudo -E python3 experiments/correct-round2/run-checks.py \
+            --client "$PWD/bin/chaos-client" --backend "$TARGET" --clients "$CLIENTS" --out "$PWD/evidence/run" \
+            2>&1 | tee evidence/checks.log
+      - name: Preserve attempt status
+        if: always()
+        shell: bash
+        env:
+          STEPS: ${{ toJSON(steps) }}
+          CASE: ${{ toJSON(matrix) }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p evidence
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('evidence/attempt.json').write_text(json.dumps({
+            'case': json.loads(os.environ['CASE']), 'steps': json.loads(os.environ['STEPS']),
+            'job_status': os.environ['JOB_STATUS'], 'run_id': os.environ['GITHUB_RUN_ID'],
+            'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'tooling': os.environ['GITHUB_SHA']}, indent=2)+'\n')
+          PY
+          sudo chmod -R a+rX evidence
+          if test -f evidence/commits.txt; then cat evidence/commits.txt >> "$GITHUB_STEP_SUMMARY"; fi
+          if test -f evidence/checks.log; then tail -100 evidence/checks.log >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: correct-round2-faults-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: |
+            evidence
+            !evidence/run/disk*.ext4
+            !evidence/run/disk-mount*/**
+            !evidence/run/certs/**
+          retention-days: 30

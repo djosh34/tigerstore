@@ -21,6 +21,9 @@ type config struct {
 	duration, requestTimeout, watchTimeout, checkerTimeout, quiet                     time.Duration
 	seed                                                                              uint64
 	clients, rate, keys, valueSize                                                    int
+	statusOnly                                                                        bool
+	burstArm, burstRelease, burstReady                                                string
+	burstWrites                                                                       int
 }
 
 func main() {
@@ -59,9 +62,14 @@ func runCLI() error {
 	f.DurationVar(&c.watchTimeout, "watch-timeout", 20*time.Second, "watch finalization deadline")
 	f.DurationVar(&c.checkerTimeout, "checker-timeout", 30*time.Second, "linearizability deadline")
 	f.Uint64Var(&c.seed, "seed", 49, "workload seed")
-	f.IntVar(&c.clients, "clients", 3, "one sequential client per endpoint")
+	f.IntVar(&c.clients, "clients", 3, "3..256 sequential clients spread across three endpoints; checker coverage floor")
+	f.BoolVar(&c.statusOnly, "status-only", false, "Status RPC only, without a linearizable read")
+	f.StringVar(&c.burstArm, "burst-arm-file", "", "controller arms the bounded write burst")
+	f.StringVar(&c.burstRelease, "burst-release-file", "", "controller releases all burst workers after fault installation")
+	f.StringVar(&c.burstReady, "burst-ready-file", "", "all workers ready marker")
+	f.IntVar(&c.burstWrites, "burst-writes", 0, "unpaced sequential puts per client in the bounded burst, 0..16")
 	f.IntVar(&c.rate, "rate", 5, "maximum operations per second per client")
-	f.IntVar(&c.keys, "keys", 6, "hot keys, 6 to 8")
+	f.IntVar(&c.keys, "keys", 6, "hot keys, 2 to 8")
 	f.IntVar(&c.valueSize, "value-size", 1024, "mutation value bytes")
 	f.DurationVar(&c.quiet, "quiet", 8*time.Second, "healthy quiet suffix before terminal reads")
 	if err := f.Parse(os.Args[2:]); err != nil {
@@ -137,7 +145,7 @@ func runChecks(c config) error {
 		missing = errors.Join(missing, fmt.Errorf("oracle target fence: replay revision %d target %d: %v", rev, h.Target, e))
 	}
 	missing = errors.Join(missing, h.Validate())
-	cov, covErr := coverage(h)
+	cov, covErr := coverage(h, c.clients)
 	if c.out != "" {
 		if e := save(c.out+".coverage.json", cov); e != nil {
 			missing = errors.Join(missing, e)
@@ -150,10 +158,10 @@ func runChecks(c config) error {
 		name string
 		fn   func() error
 	}{
-		{"Linearizable", func() error { return check.Linearizable(h, c.checkerTimeout) }},
 		{"Watches", func() error { return check.Watches(h) }},
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},
+		{"Linearizable", func() error { return check.Linearizable(h, c.checkerTimeout) }},
 	} {
 		start := time.Now()
 		err := errors.Join(missing, ch.fn())
@@ -163,6 +171,11 @@ func runChecks(c config) error {
 			errs = append(errs, fmt.Errorf("%s: %w", ch.name, err))
 		}
 		results = append(results, r)
+		if c.out != "" {
+			if e := save(c.out, results); e != nil {
+				errs = append(errs, e)
+			}
+		}
 		b, e := json.Marshal(r)
 		if e != nil {
 			return e
