@@ -285,7 +285,7 @@ func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*hist
 }
 
 func workload(c config) (err error) {
-	if c.clients != 3 || len(csv(c.endpoints)) != 3 || c.rate < 1 || c.rate > 50 || c.keys < 6 || c.keys > 8 || c.duration <= 0 || c.watchTimeout <= 0 || c.quiet < 0 || c.valueSize < 1 || c.valueSize > 1024*1024 {
+	if c.clients != 3 || len(csv(c.endpoints)) != 3 || c.rate < 1 || c.rate > 50 || c.keys < 6 || c.keys > 8 || c.duration <= 0 || c.watchTimeout <= 0 || c.quiet < 0 || c.valueSize < 1 || c.valueSize > 1536*1024 {
 		return errors.New("require 3 clients/endpoints, rate 1..50, keys 6..8 and positive duration/watch-timeout")
 	}
 	cs, err := clients(c)
@@ -329,6 +329,15 @@ func workload(c config) (err error) {
 		r.h.Watches[i] = history.Watch{Client: 100 + i, Req: history.WatchRequest{Key: prefix, End: end, StartRevision: 1, PrevKV: true, ProgressNotify: true}}
 		watchWG.Add(1)
 		go func(i int, cl *clientv3.Client) { defer watchWG.Done(); r.watch(watchCtx, cl, i, prefix) }(i, cl)
+	}
+	extraBytes := 0
+	if c.nearLimit {
+		extraBytes, err = probeLimit(r, cs, c, prefix)
+		if err != nil {
+			cancelWatches()
+			watchWG.Wait()
+			return err
+		}
 	}
 	stopCtx, stop := context.WithTimeout(context.Background(), c.duration)
 	defer stop()
@@ -383,6 +392,9 @@ func workload(c config) (err error) {
 					if rng.IntN(2) == 0 {
 						q.Range.Key, q.Range.End = prefix, end
 					}
+				}
+				if c.nearLimit {
+					fitLimit(&q, identity, extraBytes)
 				}
 				op := r.call(cl, i, q, c.requestTimeout)
 				if op.Resp != nil {

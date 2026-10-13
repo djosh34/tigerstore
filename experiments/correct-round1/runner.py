@@ -81,6 +81,12 @@ class Controller:
             self.required += ['netem-loss', 'netem-delay', 'netem-reorder']
         if args.scenario in ('disk', 'mixed'):
             self.required += ['disk-enospc']
+        if args.scenario == 'cpu':
+            self.required += ['cpu-quota']
+        if args.scenario == 'clock':
+            self.required += ['clock-forward', 'clock-backward']
+        if args.scenario == 'clock-control':
+            self.required += ['clock-zero-control']
         self.persist()
 
     def now(self):
@@ -716,9 +722,11 @@ class Controller:
             self.start_node(i)
         self.ready(timeout=25)
         argv = self.client_args('run') + ['--duration', f'{self.a.duration}s',
-            '--seed', str(self.a.seed), '--clients', '3', '--rate', '5',
+            '--seed', str(self.a.seed), '--clients', '3', '--rate', str(self.a.rate),
             '--value-size', str(self.a.value_size),
             '--out', str(self.out / 'workload'), '--stop-file', str(self.out / 'workload.stop')]
+        if self.a.near_limit:
+            argv += ['--near-limit']
         workload_start = time.monotonic()
         with (self.out / 'workload.log').open('ab', buffering=0) as log:
             self.workload = subprocess.Popen(argv, stdout=log, stderr=log, start_new_session=True)
@@ -733,6 +741,10 @@ class Controller:
                 self.netem_fault(kind)
         if self.a.scenario in ('disk', 'mixed'):
             self.disk_fault()
+        if self.a.scenario == 'cpu':
+            self.cpu_fault()
+        if self.a.scenario in ('clock', 'clock-control'):
+            self.clock_fault()
         # A too-short duration is a failed schedule, not a reason to skip faults.
         self.sleep(4, require_workload=True)
         elapsed = time.monotonic() - workload_start
@@ -793,7 +805,7 @@ class Controller:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', choices=['tigerstore', 'etcd'], required=True)
-    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed'], required=True)
+    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed', 'cpu', 'clock', 'clock-control'], required=True)
     parser.add_argument('--server', required=True)
     parser.add_argument('--client', required=True)
     parser.add_argument('--out', required=True)
@@ -802,6 +814,12 @@ def main():
     parser.add_argument('--duration', type=int, default=90)
     parser.add_argument('--disk-mib', type=int, default=128)
     parser.add_argument('--value-size', type=int, default=128)
+    parser.add_argument('--rate', type=int, default=5)
+    parser.add_argument('--near-limit', action='store_true')
+    parser.add_argument('--fault-role', choices=['leader', 'follower'], default='leader')
+    parser.add_argument('--quota-percent', type=int, choices=[5, 10], default=5)
+    parser.add_argument('--clockwrap')
+    parser.add_argument('--canary')
     parser.add_argument('--pause-seconds', type=float, default=1.5)
     parser.add_argument('--kill-seconds', type=float, default=1.2)
     parser.add_argument('--netem-role', choices=['leader', 'follower'], default='follower')
@@ -815,7 +833,7 @@ def main():
     require(deadline_seconds() > 0, 'UTC deadline reached; starting nothing')
     require(20 <= args.duration <= 180, '--duration must be 20..180 seconds')
     require(96 <= args.disk_mib <= 256, '--disk-mib must be 96..256')
-    require(1 <= args.value_size <= 1024 * 1024, '--value-size must be 1..1048576 bytes')
+    require(1 <= args.value_size <= 1536 * 1024, '--value-size must be 1..1572864 bytes')
     for name, value in [('pause', args.pause_seconds), ('kill', args.kill_seconds),
                         ('netem-hold', args.netem_hold_seconds)]:
         require(.1 <= value <= 30, f'--{name}-seconds must be 0.1..30')

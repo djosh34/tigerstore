@@ -21,6 +21,7 @@ type config struct {
 	duration, requestTimeout, watchTimeout, checkerTimeout, quiet                     time.Duration
 	seed                                                                              uint64
 	clients, rate, keys, valueSize                                                    int
+	nearLimit                                                                         bool
 }
 
 func main() {
@@ -63,6 +64,7 @@ func runCLI() error {
 	f.IntVar(&c.rate, "rate", 5, "maximum operations per second per client")
 	f.IntVar(&c.keys, "keys", 6, "hot keys, 6 to 8")
 	f.IntVar(&c.valueSize, "value-size", 1024, "mutation value bytes")
+	f.BoolVar(&c.nearLimit, "near-limit", false, "probe exact rejection and use largest admitted framed requests")
 	f.DurationVar(&c.quiet, "quiet", 8*time.Second, "healthy quiet suffix before terminal reads")
 	if err := f.Parse(os.Args[2:]); err != nil {
 		return err

@@ -1,0 +1,90 @@
+[
+  {
+    "runner": "ubuntu-24.04-arm",
+    "target": "tigerstore",
+    "scenario": "clock",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1024,
+    "near_limit": false,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04-arm",
+    "target": "tigerstore",
+    "scenario": "clock-control",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1572864,
+    "near_limit": true,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04-arm",
+    "target": "etcd",
+    "scenario": "clock",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1024,
+    "near_limit": false,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04-arm",
+    "target": "etcd",
+    "scenario": "clock-control",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1572864,
+    "near_limit": true,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04",
+    "target": "tigerstore",
+    "scenario": "clock",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1024,
+    "near_limit": false,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04",
+    "target": "tigerstore",
+    "scenario": "clock-control",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1572864,
+    "near_limit": true,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04",
+    "target": "etcd",
+    "scenario": "clock",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1024,
+    "near_limit": false,
+    "role": "leader"
+  },
+  {
+    "runner": "ubuntu-24.04",
+    "target": "etcd",
+    "scenario": "clock-control",
+    "seed": 149,
+    "rep": 1,
+    "duration": 40,
+    "value_size": 1572864,
+    "near_limit": true,
+    "role": "leader"
+  }
+]
