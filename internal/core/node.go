@@ -622,17 +622,14 @@ func writeSize(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
+	// Raft's own leader, not the one the last Ready reported: a Tick or a
+	// Step since then may have ended it, and Propose would drop the entry.
+	if n.rn.BasicStatus().Lead == raft.None {
+		return
+	}
 	// A write that timed out while it waited never goes out; its client
 	// got an answer that allows both outcomes.
 	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
-	if n.leader == raft.None {
-		n.proposals = props
-		n.propBytes = 0
-		for _, p := range props {
-			n.propBytes += writeSize(p)
-		}
-		return
-	}
 	n.proposals, n.propBytes = nil, 0
 	for len(props) > 0 {
 		end, size := 0, 0

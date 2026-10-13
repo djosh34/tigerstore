@@ -170,6 +170,38 @@ func TestWriteWaitsForLeader(t *testing.T) {
 		t.Fatalf("the write after the election: %+v", got)
 	}
 
+	// A member that knew a leader and lost it on its election timer, with
+	// no Ready since: the write still waits.
+	disk = simfs.New()
+	w, rec, err = wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err = New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = &single{t: t, disk: disk, log: w, n: n}
+	if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
+		t.Fatal(err)
+	}
+	s.run()
+	if n.Leader() != 2 {
+		t.Fatalf("leader %d after a heartbeat from 2", n.Leader())
+	}
+	for i := 0; n.rn.BasicStatus().Lead != 0; i++ {
+		if i > 100 {
+			t.Fatal("the election timer never fired")
+		}
+		n.Tick()
+	}
+	n.Submit(Request{ID: 3, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	for _, r := range s.run() {
+		if r.ID == 3 {
+			t.Fatalf("a write after the leader was lost was answered at once: %+v", r)
+		}
+	}
+
 	// A three-node member alone never gets a leader: its write times out.
 	disk = simfs.New()
 	w, rec, err = wal.Open(disk)
