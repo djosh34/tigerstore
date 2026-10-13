@@ -35,7 +35,10 @@ node: null before the first owner snapshot, otherwise:
   sequence, sampled_unix_ns,
   inbox_events, persist_queue_batches, persist_backlog_batches,
   persisted_groups, pending_proposals, queued_writes, queued_reads,
-  read_index_reads, read_index_batches, leader, term, applied, revision
+  read_index_reads, read_index_batches, leader, term, applied, revision,
+  raft_progress: array sorted by tracked member Raft ID, each element:
+    {id, match, next, state, recent_active, msg_app_flow_paused,
+     inflight_count, inflight_full}
 node_sample_age_ns: -1 before the first sample, otherwise monotonic age
 peers: null before sampling or for a transport without ObserveQueues,
        otherwise an array sorted by peer Raft ID, each element:
@@ -110,6 +113,27 @@ current term, including a term learned before the next Process call.
 These four fields come from one owner sample. They may lag the live node.
 The observation copies no values or keys and changes no core state.
 
+`raft_progress` comes from `RawNode.Status()` in the same owner sample.
+Only leaders have replication progress; other roles report an empty array.
+The array includes the leader's own tracked member entry. `match` is the
+highest log index that Raft knows matches this member; `next` is the next
+index to send. `state` is Raft's string, such as `StateProbe`,
+`StateReplicate` or `StateSnapshot`. `recent_active` is Raft's activity flag,
+not a timestamp or a promise that the member is currently reachable.
+`msg_app_flow_paused` is Raft's raw flow-pause flag, not a measurement of
+transport blockage or the complete `IsPaused` state predicate.
+
+`inflight_count` counts Raft MsgApp inflight slots, not entries, RPCs or
+queued transport messages. `inflight_full` is Raft's `Inflights.Full()`.
+It can be true from either the message-count or byte cap. Pinned main
+configures 256 messages and 32 MiB per follower. In replicate state, Full
+with count below 256 is evidence of the byte cap; Full with count 256
+cannot distinguish a count-only limit from both caps at once. The byte
+cap is soft, so one message may cross it. The leader's own progress is
+not a follower replication window. No inflight-byte count is reported,
+because Raft does not export it. No reflection or unsafe access is used.
+These sampled fields do not prove how long a limit held between samples.
+
 Peer bytes are the existing queue budget estimates, not encoded or TCP
 bytes. The estimate is 64 bytes plus context bytes, plus 32 and data bytes
 per entry, plus snapshot data bytes. Reservation occurs before enqueue and
@@ -134,11 +158,20 @@ the original adapter methods. The peer send/write path is unchanged.
 Enabled file calls add two clock reads, a bounded bucket search, three atomic
 increments, and one more increment each for positive bytes and an error.
 The 100 ms sampler adds a goroutine, timer, nonblocking request and atomic
-publication. Each owner sample allocates one small immutable object, copies
-lengths/gauges and walks the read-batch list once, not its requests or keys.
+publication. Each owner sample allocates an immutable object, copies lengths/gauges
+and walks the read-batch list once, not its requests or keys. The added
+Raft progress hook calls `RawNode.Status()`, which clones the entire Raft
+membership configuration and, on leaders, the whole progress map and each
+inflight ring buffer. Raft clones a ring's allocated buffer length, not
+only its active slots. Even a previously full but now empty ring can cost
+up to 256 records per follower to copy. The hook also allocates a scalar
+progress slice and sorts it by member ID. This is control-plane cloning
+work on the owner at the 100 ms sample rate, with additional allocation
+and GC cost. It is not a free length lookup. `WithProgress` is not used
+because it clears Inflights from the reported progress.
 Peer sampling reads existing atomics/channel lengths and allocates one
-small sorted slice and publication object. Scrapes allocate copies, bucket
-arrays and JSON outside the owner. No new core lock or clock import exists.
+small sorted slice and publication object. Scrapes allocate copies, including the progress slice, bucket arrays
+and JSON outside the owner. No new core lock or clock import exists.
 
 These hooks consume CPU and can delay normal work by their execution cost.
 They do not add batching timers, change persistence dependencies, reorder

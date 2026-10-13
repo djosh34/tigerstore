@@ -19,7 +19,8 @@ type observationState struct {
 }
 
 // NodeObservation is an immutable copy published by the committer between
-// normal turns. An observation request never calls Process, Tick or Status.
+// normal turns. An observation request never calls Process, Tick or the
+// Maintenance.Status RPC. It clones RawNode.Status for Raft progress.
 type NodeObservation struct {
 	Sequence              uint64 `json:"sequence"`
 	SampledUnixNS         int64  `json:"sampled_unix_ns"`
@@ -60,6 +61,7 @@ func (n *Node) Observation() *ObservationSnapshot {
 	}
 	if s := n.observation.node.Load(); s != nil {
 		copy := *s
+		copy.RaftProgress = slices.Clone(s.RaftProgress)
 		o.Node = &copy
 		o.NodeSampleAgeNS = int64(time.Since(s.sampledAt))
 	}
@@ -97,8 +99,9 @@ func (n *Node) sampleObservation(ctx context.Context, t peer.Transport) {
 }
 
 // publishObservation is called only by the core owner. It reads lengths,
-// copies gauges and publishes one allocation. It does not inspect jobs,
-// request bodies, map entries, index keys or peer state.
+// copies gauges and publishes an immutable snapshot. Core.Observe clones
+// Raft status/progress, but does not inspect persistence jobs, request
+// bodies, index keys or transport state.
 func (n *Node) publishObservation(backlog int) {
 	sequence := uint64(1)
 	if last := n.observation.node.Load(); last != nil {

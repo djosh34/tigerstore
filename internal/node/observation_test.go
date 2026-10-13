@@ -134,8 +134,12 @@ func TestObservationRunningNode(t *testing.T) {
 	for {
 		o := n.Observation()
 		if o.Node != nil && o.Node.Leader == 1 && o.Node.Revision == rev && o.Node.PendingProposals == 0 {
-			if o.Node.Applied == 0 || o.Node.Term == 0 || o.Node.Sequence == 0 || o.NodeSampleAgeNS < 0 || o.Files.Write.Calls == 0 || o.Files.Fsync.Calls == 0 || o.Files.Write.Errors != 0 || o.Files.Fsync.Errors != 0 {
+			if o.Node.Applied == 0 || o.Node.Term == 0 || o.Node.Sequence == 0 || o.NodeSampleAgeNS < 0 || o.Files.Write.Calls == 0 || o.Files.Fsync.Calls == 0 || o.Files.Write.Errors != 0 || o.Files.Fsync.Errors != 0 || len(o.Node.RaftProgress) != 1 || o.Node.RaftProgress[0].ID != 1 {
 				t.Fatalf("running snapshot: %+v", o)
+			}
+			o.Node.RaftProgress[0].ID = 999
+			if n.Observation().Node.RaftProgress[0].ID != 1 {
+				t.Fatal("scrape shares the published progress slice")
 			}
 			break
 		}
