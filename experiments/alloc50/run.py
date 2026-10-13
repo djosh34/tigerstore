@@ -43,6 +43,15 @@ def ctl(index, *args):
     return json.loads(p.stdout)
 
 
+def timing_metrics_args(mode, name, total, leader):
+    # CPU-class counters may remain stale until a GC. Short seed/profile
+    # cohorts must not fail independent success/revision/CPU validation.
+    if mode == 'primary' and name == 'put' and total == 60000:
+        return ['-metrics-url', f'http://127.0.0.1:{6060+leader}/debug/runtime',
+                '-metrics-kind', 'runtime']
+    return []
+
+
 def cluster(store, label, mode='primary'):
     check_time()
     dest = OUT / label
@@ -126,9 +135,8 @@ def cluster(store, label, mode='primary'):
             check_time()
             args = ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
                     '-certdir', str(CERT), '-pids', pids, '-hz', sp.check_output(['getconf','CLK_TCK'],text=True).strip(),
-                    '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
-                    '-metrics-url',f'http://127.0.0.1:{6060+leader}/debug/runtime',
-                    '-metrics-kind', 'runtime']
+                    '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json')]
+            args += timing_metrics_args(mode, name, total, leader)
             with (dest/f'{name}.log').open('w') as log:
                 run(args, env=os.environ | {'GOMAXPROCS':'1'}, timeout=100, stdout=log, stderr=sp.STDOUT)
 

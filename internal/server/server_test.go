@@ -33,6 +33,7 @@ type cluster struct {
 	peerAddrs map[uint64]string
 	dirs      map[uint64]string
 	running   map[uint64]*running
+	tick      time.Duration // optional fixture clock; zero retains the 10ms test default
 	// via, if set, is the address node from dials to reach node to.
 	via map[[2]uint64]string
 }
@@ -87,7 +88,11 @@ func (c *cluster) start(id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: 10 * time.Millisecond, Logf: t.Logf})
+	tick := c.tick
+	if tick == 0 {
+		tick = 10 * time.Millisecond
+	}
+	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: tick, Logf: t.Logf})
 	if err != nil {
 		t.Fatal(err)
 	}

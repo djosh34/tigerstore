@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -32,6 +33,32 @@ func TestInternalRaftBoundaryNotPayloadBoundary(t *testing.T) {
 	}
 	if !bytes.Equal(decoded.Value, request.Value) {
 		t.Fatal("boundary payload changed")
+	}
+}
+
+func TestSlowCommittedCountNotCapacity(t *testing.T) {
+	key, value := []byte("/alloc50/slow"), valueOfSize(1024)
+	for _, version := range []int64{32, 256, 4096} {
+		r := &pb.RangeResponse{
+			Header: &pb.ResponseHeader{Revision: 5000}, Count: 1,
+			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
+		}
+		count, err := slowCommittedPuts(r, key, value)
+		if err != nil || count != version {
+			t.Fatalf("committed=%d want=%d err=%v", count, version, err)
+		}
+	}
+	for _, version := range []int64{0, 4097} {
+		r := &pb.RangeResponse{
+			Header: &pb.ResponseHeader{}, Count: 1,
+			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
+		}
+		if _, err := slowCommittedPuts(r, key, value); err == nil {
+			t.Fatalf("invalid count %d accepted", version)
+		}
+	}
+	if _, err := slowCommittedPuts(nil, key, value); err == nil {
+		t.Fatal("missing Range accepted")
 	}
 }
 

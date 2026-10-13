@@ -38,7 +38,8 @@ for clients in {r['clients'] for r in rows}:
     for store in ('base', 'ring', 'arena', 'default'):
         case = json.loads((root/f'c{clients}'/f'cases-{store}'/'cases.json').read_text())
         assert case['valid'] and case['healthy_successes_while_stalled'] >= 1000
-        assert case['slow_requests'] == 4096 and case['reply_reads_after_handshake'] == 0
+        assert case['slow_requests'] == case['slow_attempted_puts'] == 4096 and case['reply_reads_after_handshake'] == 0
+        assert 1 <= case['slow_committed_puts'] <= case['slow_attempted_puts']
         assert json.loads((root/f'c{clients}'/f'cases-{store}'/'validation.json').read_text())['valid']
         if store in ('ring', 'arena'):
             assert case['allocator_saturation_verified'] and case['allocator_recovery_verified']

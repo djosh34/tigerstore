@@ -1,0 +1,9 @@
+--- FAIL: TestAllocationValueLifetimes (10.94s)
+    --- FAIL: TestAllocationValueLifetimes/base (10.34s)
+        allocation_path_test.go:167: still failing after 10 s: rpc error: code = Unavailable desc = etcdserver: server stopped
+        server_test.go:125: node 1: core: the leader's disk stalled; stopping so that another node can lead
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/server	17.032s
+ok  	github.com/djosh34/tigerstore/internal/node	0.147s
+ok  	github.com/djosh34/tigerstore/internal/core	0.009s
+FAIL

@@ -27,7 +27,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const limit = 1536 * 1024
+const (
+	limit        = 1536 * 1024
+	slowAttempts = 4096
+)
 
 func raftSize(key, value []byte) int {
 	return proto.Size(&pb.InternalRaftRequest{
@@ -43,6 +46,19 @@ func valueOfSize(n int) []byte {
 		copy(value[i:], sum[:])
 	}
 	return value
+}
+
+// slowCommittedPuts distinguishes committed writes from charged allocator
+// capacity. A singleton stream can pin an entire eight-slot arena region.
+func slowCommittedPuts(r *pb.RangeResponse, key, value []byte) (int64, error) {
+	if r == nil || r.Header == nil || r.Count != 1 || len(r.Kvs) != 1 || r.Kvs[0] == nil {
+		return 0, errors.New("slow key Range missing value or header")
+	}
+	kv := r.Kvs[0]
+	if !bytes.Equal(kv.Key, key) || !bytes.Equal(kv.Value, value) || kv.Version < 1 || kv.Version > slowAttempts {
+		return 0, errors.New("slow key Range has invalid value or committed count")
+	}
+	return kv.Version, nil
 }
 
 // stalled opens a real mTLS HTTP/2 connection. It reads only the handshake,
@@ -119,7 +135,7 @@ func stalled(endpoint string, cfg *tls.Config, key []byte) (net.Conn, int, error
 	data := make([]byte, 5+len(request))
 	binary.BigEndian.PutUint32(data[1:5], uint32(len(request)))
 	copy(data[5:], request)
-	const count = 4096
+	const count = slowAttempts
 	if len(data) > serverStreamWindow || count*len(data) > credit {
 		return fail(fmt.Errorf("slow workload exceeds advertised send credit: stream=%d connection=%d bytes=%d", serverStreamWindow, credit, count*len(data)))
 	}
@@ -170,7 +186,7 @@ func run() error {
 		return errors.New("invalid strategy")
 	}
 	report := map[string]any{
-		"valid": false, "slow_requests": 4096, "reply_reads_after_handshake": 0,
+		"valid": false, "slow_requests": slowAttempts, "slow_attempted_puts": slowAttempts, "reply_reads_after_handshake": 0,
 		"stream_receive_window": 0, "request_limit_bytes": limit,
 	}
 	// Preserve failures as raw evidence too.
@@ -326,6 +342,21 @@ func run() error {
 	}
 	report["healthy_successes_while_stalled"] = successes
 	report["healthy_last_revision"] = previous
+	// The slow connection never reads replies, so stream attempts and charged
+	// slot reservations cannot be presented as successful Puts. Its key starts
+	// absent and each committed overwrite increments Version exactly once.
+	slowKey := []byte("/alloc50/slow")
+	slowRange, err := get(slowKey)
+	if err != nil {
+		return errors.Join(errors.New("healthy Range of slow key failed"), err)
+	}
+	committed, err := slowCommittedPuts(slowRange, slowKey, valueOfSize(1024))
+	if err != nil {
+		return err
+	}
+	report["slow_committed_puts"] = committed
+	report["slow_range_header"] = slowRange.Header
+	report["slow_last_mod_revision"] = slowRange.Kvs[0].ModRevision
 	if err := slow.Close(); err != nil {
 		return err
 	}

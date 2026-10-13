@@ -16,6 +16,12 @@ PRIVATE=$RUNNER_TEMP/alloc50
 [[ ! -e "$OUT" && ! -e "$PRIVATE" ]]
 mkdir -p "$OUT/symbols" "$PRIVATE/bin" "$PRIVATE/base" "$PRIVATE/experiment"
 trap 'rm -rf "$PRIVATE"' EXIT
+cp experiments/alloc50/attempt-notes.md "$OUT/attempt-notes.md"
+tar -czf "$OUT/harness-source.tar.gz" experiments/alloc50 experiments/bench75 .github/workflows/alloc50.yml
+git diff ae0c2ecc639bb49c723dc1efd6260424a9028a82 "$EXPERIMENT" -- experiments/alloc50 .github/workflows/alloc50.yml internal/server/server_test.go internal/server/allocation_path_test.go > "$OUT/first-attempt-followup.patch"
+if [[ -f evidence/local-parent/harness-followup.log ]]; then
+ cp evidence/local-parent/harness-followup.log "$OUT/local-harness-followup.log"
+fi
 {
  date -u +%FT%TZ
  printf 'base %s\nexperiment %s\nharness_origin %s\n' "$BASE" "$EXPERIMENT" 0f82f687e5a21fa6265e508866f07dc3fffeaae9
@@ -42,6 +48,13 @@ git diff --exit-code
 git status --short > "$OUT/build-status.txt"
 git archive "$BASE" | tar -x -C "$PRIVATE/base"
 git archive "$EXPERIMENT" | tar -x -C "$PRIVATE/experiment"
+# Test fixtures only: production tick is 100ms in both census archives. No
+# candidate production file is overlaid onto the pristine base source.
+cp "$PRIVATE/base/internal/server/server_test.go" "$OUT/base-server_test-pristine.go.txt"
+cp "$PRIVATE/experiment/internal/server/server_test.go" "$PRIVATE/base/internal/server/server_test.go"
+cp "$PRIVATE/experiment/internal/server/allocation_path_test.go" "$PRIVATE/base/internal/server/allocation_path_test.go"
+diff -u "$OUT/base-server_test-pristine.go.txt" "$PRIVATE/base/internal/server/server_test.go" > "$OUT/base-server-fixture.patch" || [[ $? == 1 ]]
+cp "$PRIVATE/base/internal/server/allocation_path_test.go" "$OUT/base-allocation_path_test.go.txt"
 git diff "$BASE" "$EXPERIMENT" -- '*.go' go.mod go.sum > "$OUT/experiment-source.patch"
 for source in base experiment; do
  check_time
@@ -69,13 +82,27 @@ for binary in base experiment load cases; do gzip -c "$PRIVATE/bin/$binary" > "$
 bash scripts/dev-certs.sh "$PRIVATE/certs"
 # Targeted correctness gates only on Actions, sequential commands, no race or
 # simulator campaign. The pristine base remains untouched except observe.
-GATE='Test(Allocation.*|RawFrames|LargeValues|CanceledCalls|DeadlinesLeaderAndUnknownMethods|NodeStopsUnderLoad|ThreeNodesOverTLS|ClientCertificateRequired|ManyStreamsOnOneConnection|SlowWatcherIsCut|WritesWaitForTheLeadersAppend|ByteCapSendsAnEntryEarly|HardStateAppendHoldsNothing|BatchRoundTrip|RequestSizeLimitMatchesEtcd|ParsePutMatchesProtobuf)$'
+GATE='Test(Allocation(ValueLifetimes|Workspace.*|Shutdown.*)|RawFrames|LargeValues|CanceledCalls|DeadlinesLeaderAndUnknownMethods|NodeStopsUnderLoad|ThreeNodesOverTLS|ClientCertificateRequired|ManyStreamsOnOneConnection|SlowWatcherIsCut|WritesWaitForTheLeadersAppend|ByteCapSendsAnEntryEarly|HardStateAppendHoldsNothing|BatchRoundTrip|RequestSizeLimitMatchesEtcd|ParsePutMatchesProtobuf)$'
 mkdir -p "$OUT/tests"
 check_time
 (cd "$PRIVATE/base" && env -u TIGER_ALLOC_STRATEGY -u ALLOC50_PROFILE_RATE go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/pristine-base.log" 2>&1
 for mode in base ring arena; do
  check_time
- (cd "$PRIVATE/experiment" && TIGER_ALLOC_STRATEGY="$mode" ALLOC50_TEST_OUT="$OUT/tests/$mode" go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/$mode.log" 2>&1
+ (cd "$PRIVATE/experiment" && TIGER_ALLOC_STRATEGY="$mode" go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/$mode.log" 2>&1
+done
+# Path changes the global memory profiler: run it only in fresh processes,
+# after all ordinary gates. Preserve each archive's matching census symbols.
+for source in base experiment; do
+ check_time
+ (cd "$PRIVATE/$source" && go test -c -o "$PRIVATE/bin/$source-census.test" ./internal/server)
+ gzip -c "$PRIVATE/bin/$source-census.test" > "$OUT/symbols/$source-census.test.gz"
+ sha256sum "$PRIVATE/bin/$source-census.test" >> "$OUT/versions.txt"
+done
+check_time
+env -u TIGER_ALLOC_STRATEGY -u ALLOC50_PROFILE_RATE ALLOC50_TEST_OUT="$OUT/tests/pristine-base-census" "$PRIVATE/bin/base-census.test" -test.short -test.count=1 -test.parallel=2 -test.run='^TestAllocationPath$' > "$OUT/tests/pristine-base-census.log" 2>&1
+for mode in base ring arena; do
+ check_time
+ TIGER_ALLOC_STRATEGY="$mode" ALLOC50_TEST_OUT="$OUT/tests/$mode-census" "$PRIVATE/bin/experiment-census.test" -test.short -test.count=1 -test.parallel=2 -test.run='^TestAllocationPath$' > "$OUT/tests/$mode-census.log" 2>&1
 done
 check_time
 timeout --kill-after=5s 650s taskset -c 3 python3 experiments/alloc50/run.py

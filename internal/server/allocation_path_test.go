@@ -26,12 +26,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Allocation profiling and retained-history checks use production's 100ms
+// clock. The general fixture's 10ms clock makes its disk fence only 200ms,
+// which can mistake profiler or shared-runner scheduling delays for disk loss.
+// Keep the real default election/watchdog policy and disk barriers unchanged.
+func newAllocationCluster(t *testing.T) *cluster {
+	return newClusterWith(t, func(c *cluster) { c.tick = 100 * time.Millisecond })
+}
+
 func TestAllocationPath(t *testing.T) {
 	// Never run concurrently: MemStats and the allocation profiler are global.
 	oldRate := runtime.MemProfileRate
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
-	c := newCluster(t)
+	c := newAllocationCluster(t)
 	cert, _, _, err := c.ca.Issue("allocation-client", 191)
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +158,7 @@ func TestAllocationValueLifetimes(t *testing.T) {
 	for _, mode := range []string{"base", "ring", "arena"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("TIGER_ALLOC_STRATEGY", mode)
-			c := newCluster(t)
+			c := newAllocationCluster(t)
 			cert, _, _, err := c.ca.Issue("lifetime-client", 192)
 			if err != nil {
 				t.Fatal(err)
@@ -169,17 +177,29 @@ func TestAllocationValueLifetimes(t *testing.T) {
 				})
 				versions = append(versions, version{key: key, value: value, rev: r.Header.Revision})
 			}
-			for id := uint64(1); id <= 3; id++ {
-				client := c.client(id, cert)
-				for _, v := range versions {
-					r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
-						return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
-					})
-					if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
-						t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
+			verify := func() {
+				for id := uint64(1); id <= 3; id++ {
+					client := c.client(id, cert)
+					for _, v := range versions {
+						r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+							return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
+						})
+						if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
+							t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
+						}
 					}
 				}
 			}
+			verify()
+			// Reopen every WAL after slots have been reused. Live MVCC reads
+			// alone cannot establish that the durable bytes stayed immutable.
+			for _, r := range c.running {
+				r.stop()
+			}
+			for id := uint64(1); id <= 3; id++ {
+				c.start(id)
+			}
+			verify()
 		})
 	}
 }

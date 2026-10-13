@@ -38,7 +38,9 @@ class SummaryTests(unittest.TestCase):
             dest = cell/f'cases-{store}'
             dest.mkdir()
             result = {'valid': True, 'healthy_successes_while_stalled': 1536,
-                      'slow_requests': 4096, 'reply_reads_after_handshake': 0}
+                      'slow_requests': 4096, 'slow_attempted_puts': 4096,
+                      'slow_committed_puts': 32 if store == 'arena' else 256,
+                      'reply_reads_after_handshake': 0}
             if store in ('ring', 'arena'):
                 result.update(allocator_saturation_verified=True, allocator_recovery_verified=True)
                 stats = {'mode': {'ring': 1, 'arena': 2}[store], 'slot_budget': 4096,
