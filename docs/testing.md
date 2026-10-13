@@ -1,6 +1,6 @@
 # Planted bugs
 
-Each planted bug switches on a deliberate defect behind the `planted` build tag (`internal/planted`). CI runs one `planted` job per bug: `TestPlanted -planted=<name>` runs the bug's configuration from seed 1 until the run fails. A run counts as a catch only when its failure matches the bug's expected assertion. Any other failure, and any crash, fails the job, and so does a budget with no catch. Every configuration also runs without the bug in `TestSeeds` or `TestStalledLeaderIsReplaced`, where it must pass. The inventory, budgets and assertions come from the semantics pre-work on #47. `TestPlantedInventory` checks that this list, the test cases and the CI matrix name the same bugs.
+Each planted bug switches on a deliberate defect behind the `planted` build tag (`internal/planted`). CI runs one `planted` job per bug: `TestPlanted -planted=<name>` in `internal/sim`, `internal/node` and `internal/peer`. In the simulator it runs the bug's configuration from seed 1 until the run fails. A run counts as a catch only when its failure matches the bug's expected assertion. Any other failure, and any crash, fails the job, and so does a budget with no catch. Every configuration also runs without the bug in `TestSeeds` or `TestStalledLeaderIsReplaced`, where it must pass. The inventory, budgets and assertions come from the semantics pre-work on #47. `TestPlantedInventory` checks that this list, the test cases and the CI matrix name the same bugs.
 
 | Bug | Defect | Expected assertion | Budget | Status |
 | --- | --- | --- | --- | --- |
@@ -25,10 +25,10 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B15 | The history treats a timed-out call as certainly aborted | The durability checker finds a committed write that no client sent | 32 | planted; its CI job must catch it |
 | B17 | The stalled-disk watchdog never fires | The stalled leader never stops | 64 | planted; its CI job must catch it |
 | B18 | Closing a watch stream leaves its watchers | A node answers a stream that it closed, or holds watchers of closed streams | 16 | planted; its CI job must catch it |
-| B05 | A snapshot becomes authority before its files are synced | Cold recovery after a crash at the install boundary is consistent | 128 | deferred: there are no snapshots yet |
-| B13 | A slow watcher blocks apply | Healthy reads and writes finish within 10 election timeouts | 64 | deferred: the watch queues live in `internal/node`, which the simulator does not run |
-| B14 | A peer writer has no write deadline | The deadline drops the stalled writer and the quorum commits | 64 | deferred: the simulator does not run `internal/peer` |
-| B16 | An old segment is unlinked before its replacement is synced | Every recoverable root resolves to verified bytes | 128 | deferred: there is no segment cleaning |
+| B05 | Replaces the snapshot bug, as there are no snapshots: a new WAL segment takes records before its directory entry is synced | A node recovers less than it reported durable, an erase-one-disk cold restart loses an applied entry, or recovery refuses the log | 128 | planted; its CI job must catch it |
+| B13 | The node driver waits for a slow watch stream instead of closing it | `internal/node`: beside a watch stream with a queue of 8 that is never read, 50 writes, then a Put and a Range, each finish within 10 election timeouts, and the stream is closed as too slow | one fixed scenario | planted; its CI job must catch it |
+| B14 | The peer writer has no write deadline | `internal/peer`: through a proxy that stops reading one connection, the write deadline drops it, and a message sent after the stall arrives over a new connection | one fixed scenario | planted; its CI job must catch it |
+| B16 | Replaces the segment-cleaning bug, as there is no cleaning: WAL rotation moves to a new segment without the old one's last sync | Same as B05 | 128 | planted; its CI job must catch it |
 
 ## Deviations from the pre-work
 
@@ -39,4 +39,4 @@ The owner approved these on #47:
 - **B17.** The pre-work's bug holds the core across a stalled fsync. The core never waits for the disk; the driver does. The plant switches off the leader's stalled-disk watchdog, and the assertion is the same: the stalled leader must stop.
 - There is no forced seed-0 schedule; each bug runs the full fault mix from seed 1.
 
-B05, B13, B14 and B16 follow in a later pull request, and #47 does not close without them. Any of them that targets code this design lacks is replaced by the nearest real bug of the same class.
+B05 and B16 target code this design lacks (snapshots, segment cleaning), so, as the owner decided, each is replaced by the nearest real bug of the same class in the WAL: new on-disk state used before its metadata is synced, and old data left behind before it is durable. B13 and B14 are in `internal/node` and `internal/peer`, which the simulator does not run; each of those packages has its own `TestPlanted` with one fixed scenario that must fail with the bug on and passes without it (`TestSlowWatcherIsCut`, `TestStalledPeerIsDropped`).

@@ -152,7 +152,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B15, B17, B18]
+        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B05, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B13, B14, B15, B16, B17, B18]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -160,7 +160,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
+      - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ ./internal/node/ ./internal/peer/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
 
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.

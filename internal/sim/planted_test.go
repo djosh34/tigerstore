@@ -63,6 +63,7 @@ var plantedCases = map[string]plantedCase{
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
 	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState},
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend},
+	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06c": {seeds: 32, cfg: DefaultConfig, want: badWatch},
@@ -75,6 +76,7 @@ var plantedCases = map[string]plantedCase{
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
+	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader`, extra: func(r *Result) error {
 		if len(r.StallStops) == 0 {
 			return errors.New("the stalled leader never fenced itself")
@@ -84,11 +86,21 @@ var plantedCases = map[string]plantedCase{
 	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
 }
 
+// plantedElsewhere are the bugs in code the simulator does not run. Each
+// package's own TestPlanted runs a fixed scenario that must catch it; the
+// CI job runs those packages too.
+var plantedElsewhere = map[string]string{
+	"B13": "internal/node",
+	"B14": "internal/peer",
+}
+
 // TestPlantedInventory requires a case for every planted bug.
 func TestPlantedInventory(t *testing.T) {
 	for name := range planted.Bugs {
-		if _, ok := plantedCases[name]; !ok {
-			t.Errorf("planted bug %s (%s) has no case", name, planted.Bugs[name])
+		_, here := plantedCases[name]
+		_, there := plantedElsewhere[name]
+		if here == there {
+			t.Errorf("planted bug %s (%s) needs exactly one case, here or in another package", name, planted.Bugs[name])
 		}
 	}
 	for name := range plantedCases {
@@ -122,6 +134,9 @@ func TestPlanted(t *testing.T) {
 	name := *plantedBug
 	if name == "" {
 		t.Skip("no -planted bug selected")
+	}
+	if pkg, ok := plantedElsewhere[name]; ok {
+		t.Skipf("%s is caught by TestPlanted in %s", name, pkg)
 	}
 	c, ok := plantedCases[name]
 	if !ok {
