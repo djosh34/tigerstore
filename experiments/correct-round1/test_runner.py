@@ -15,7 +15,8 @@ class ControllerTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(dir=Path(__file__).parent)
         args = argparse.Namespace(out=str(Path(self.tmp.name) / 'artifacts'), seed=49,
             repetition=1, target='tigerstore', scenario='mixed', server='/fake/server',
-            client='/fake/client', duration=90, disk_mib=128)
+            client='/fake/client', duration=90, disk_mib=128, value_size=128,
+            pause_seconds=1.5, kill_seconds=1.2, netem_role='follower', netem_hold_seconds=1.5)
         self.c = runner.Controller(args)
         self.c.cert = self.c.out / 'certs'
 
@@ -66,6 +67,36 @@ class ControllerTests(unittest.TestCase):
                 result = self.c.kill_node(1, cleanup=True)
         self.assertTrue(result['already_exited'])
         self.assertEqual(self.c.nodes, {})
+
+    def test_designed_fence_is_explicit_failure_and_retains_waitpid(self):
+        log = self.c.out / 'node.log'
+        log.write_text("error: core: the leader's entries stopped committing; stopping so that another node can lead\n")
+        p = Mock(pid=123, returncode=None)
+        self.c.nodes[1] = {'p': p, 'generation': 2, 'log': log}
+        with patch.object(runner.os, 'waitpid', return_value=(123, 256)):
+            with self.assertRaisesRegex(RuntimeError, 'designed-self-fence'):
+                self.c.observe_exits()
+        proof = self.c.nodes[1]['exit_evidence']
+        self.assertEqual(proof['raw_status'], 256)
+        self.assertEqual(proof['matched_fences'], ['ErrCommitStalled'])
+        self.assertEqual(proof['classification'], 'designed-self-fence')
+        with patch.object(runner.os, 'waitpid', side_effect=AssertionError('already reaped')):
+            reaped = self.c.kill_node(1, cleanup=True)
+        self.assertEqual(reaped['raw_status'], 256)
+        self.assertEqual(reaped['classification'], 'designed-self-fence')
+        self.assertEqual(self.c.events[-2]['name'], 'server-exit')
+
+    def test_unknown_server_exit_is_not_called_designed_fence(self):
+        log = self.c.out / 'node.log'
+        log.write_text('unrelated failure\n')
+        p = Mock(pid=123, returncode=None)
+        self.c.nodes[1] = {'p': p, 'generation': 1, 'log': log}
+        with patch.object(runner.os, 'waitpid', return_value=(123, 9)):
+            with self.assertRaisesRegex(RuntimeError, 'unexpected-server-exit'):
+                self.c.observe_exits()
+        proof = self.c.nodes[1]['exit_evidence']
+        self.assertEqual(proof['termsig'], 9)
+        self.assertEqual(proof['matched_fences'], [])
 
     def test_scoped_filters_do_not_assume_source_binding(self):
         calls = []

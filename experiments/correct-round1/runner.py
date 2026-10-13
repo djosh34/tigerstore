@@ -130,6 +130,7 @@ class Controller:
         until = time.monotonic() + seconds
         while time.monotonic() < until:
             self.guard()
+            self.observe_exits()
             if require_workload:
                 require(self.workload is not None and self.workload.poll() is None,
                         'workload exited before required fault completed')
@@ -207,7 +208,13 @@ class Controller:
             if pid:
                 if os.WIFEXITED(status) or os.WIFSIGNALED(status):
                     p.returncode = os.waitstatus_to_exitcode(status)
-                require(predicate(status), f'unexpected waitpid status {status} for PID {p.pid}')
+                accepted = predicate(status)
+                if not accepted and (os.WIFEXITED(status) or os.WIFSIGNALED(status)):
+                    for i, node in self.nodes.items():
+                        if node['p'].pid == p.pid:
+                            self.record_exit(i, status)
+                            break
+                require(accepted, f'unexpected waitpid status {status} for PID {p.pid}')
                 return {'pid': pid, 'raw_status': status,
                         'wifsignaled': os.WIFSIGNALED(status),
                         'termsig': os.WTERMSIG(status) if os.WIFSIGNALED(status) else None,
@@ -217,6 +224,41 @@ class Controller:
                         'returncode': p.returncode, 'monotonic_ns': self.now()}
             time.sleep(.02)
         raise RuntimeError(f'waitpid evidence timeout for PID {p.pid}')
+
+    def record_exit(self, i, status):
+        node = self.nodes[i]
+        p = node['p']
+        log = node['log'].read_text(errors='replace')
+        known_fences = {
+            "the leader's disk stalled; stopping so that another node can lead": 'ErrDiskStalled',
+            "the leader's entries stopped committing; stopping so that another node can lead": 'ErrCommitStalled',
+        }
+        matches = [name for text, name in known_fences.items() if text in log]
+        classification = 'designed-self-fence' if p.returncode and matches else 'unexpected-server-exit'
+        proof = {'pid': p.pid, 'raw_status': status, 'returncode': p.returncode,
+                 'termsig': os.WTERMSIG(status) if status is not None and os.WIFSIGNALED(status) else None,
+                 'monotonic_ns': self.now(), 'classification': classification,
+                 'matched_fences': matches, 'log': str(node['log']), 'log_tail': log[-6000:]}
+        node['exit_evidence'] = proof
+        self.event('server-exit', node=i, generation=node['generation'], **proof)
+        return proof
+
+    def observe_exits(self):
+        for i, node in self.nodes.items():
+            p = node['p']
+            if p.returncode is not None:
+                proof = node.get('exit_evidence')
+                if proof is None:
+                    proof = self.record_exit(i, None)
+            else:
+                pid, status = os.waitpid(p.pid, os.WNOHANG)
+                if not pid:
+                    continue
+                p.returncode = os.waitstatus_to_exitcode(status)
+                proof = self.record_exit(i, status)
+            raise RuntimeError(f'node {i} exited during scenario: {proof["classification"]}, '
+                               f'{proof["matched_fences"]}, returncode {p.returncode}; '
+                               'explicit failure, no automatic restart or product-bug claim')
 
     def kill_node(self, i, cleanup=False):
         node = self.nodes[i]
@@ -229,8 +271,11 @@ class Controller:
         if pid:
             if status is not None:
                 p.returncode = os.waitstatus_to_exitcode(status)
-            evidence = {'pid': pid, 'raw_status': status, 'returncode': p.returncode,
-                        'already_exited': True, 'monotonic_ns': self.now()}
+            evidence = {**node.get('exit_evidence', {}), 'pid': pid,
+                        'raw_status': node.get('exit_evidence', {}).get('raw_status', status),
+                        'returncode': p.returncode, 'already_exited': True, 'monotonic_ns': self.now()}
+            if 'exit_evidence' not in node and node.get('log') is not None:
+                evidence.update(self.record_exit(i, status))
         else:
             os.kill(p.pid, signal.SIGKILL)
             evidence = self.wait_status(p, 0,
@@ -246,6 +291,7 @@ class Controller:
         last = None
         while time.monotonic() < end:
             self.guard()
+            self.observe_exits()
             result = self.cmd(self.client_args('status', members), timeout=10, check=False)
             if result.returncode == 0:
                 state = json.loads(result.stdout)
@@ -275,7 +321,8 @@ class Controller:
         p = node['p']
         name = f'{kind}-{role}'
         self.phase(name, 'requested', node=i, pid=p.pid, generation=node['generation'],
-                   role=role, status=selection)
+                   role=role, status=selection,
+                   hold_seconds=self.a.kill_seconds if kind == 'kill' else self.a.pause_seconds)
         before = proc_snapshot(p.pid)
         sig = signal.SIGKILL if kind == 'kill' else signal.SIGSTOP
         os.kill(p.pid, sig)
@@ -285,7 +332,7 @@ class Controller:
                 lambda s: os.WIFSIGNALED(s) and os.WTERMSIG(s) == signal.SIGKILL)
             del self.nodes[i]
             self.phase(name, 'exercised', waitpid=proof)
-            self.sleep(1.2, require_workload=True)
+            self.sleep(self.a.kill_seconds, require_workload=True)
             self.start_node(i)
         else:
             proof = self.wait_status(p, os.WUNTRACED,
@@ -293,7 +340,7 @@ class Controller:
             first = proc_snapshot(p.pid)
             require(first['tasks'] and all('\tT ' in s for s in first['tasks'].values()),
                     f'not all tasks stopped: {first}')
-            self.sleep(1.5, require_workload=True)
+            self.sleep(self.a.pause_seconds, require_workload=True)
             second = proc_snapshot(p.pid)
             require(second['tasks'] and all('\tT ' in s for s in second['tasks'].values()),
                     f'tasks left stopped state: {second}')
@@ -497,11 +544,12 @@ class Controller:
     def netem_fault(self, kind):
         self.guard()
         self.sleep(.25, require_workload=True)
-        i, selection = self.role_node('follower')
+        i, selection = self.role_node(self.a.netem_role)
         name = f'netem-{kind}'
         options = {'loss': ['loss', '25%'], 'delay': ['delay', '5ms'],
                    'reorder': ['delay', '10ms', 'reorder', '100%', 'gap', '2']}[kind]
         self.phase(name, 'requested', node=i, options=options, status=selection,
+                   role=self.a.netem_role, hold_seconds=self.a.netem_hold_seconds,
                    delay_semantics='5ms or 10ms per selected packet direction, not calibrated network RTT')
         before = self.positive_canaries(i)
         require(all(x['missing'] == 0 for x in before), f'baseline canary loss: {before}')
@@ -528,7 +576,7 @@ class Controller:
                      x.get('options', {}).get('keys', {}).get('ip_proto') == 'tcp']
         require(all(sum(a['stats']['packets'] for a in x['options']['actions']) > 0
                     for x in tcp_rules), f'actual TCP peer selectors were not exercised: {tcp_rules}')
-        self.sleep(1.5, require_workload=True)
+        self.sleep(self.a.netem_hold_seconds, require_workload=True)
         self.phase(name, 'exercised', baseline=before, positive=hit, negative=negative,
                    tc_before_negative=pre_negative, tc_after_negative=post_negative)
         self.tc('qdisc', 'del', 'dev', 'lo', 'root')
@@ -706,6 +754,10 @@ def main():
     parser.add_argument('--duration', type=int, default=90)
     parser.add_argument('--disk-mib', type=int, default=128)
     parser.add_argument('--value-size', type=int, default=128)
+    parser.add_argument('--pause-seconds', type=float, default=1.5)
+    parser.add_argument('--kill-seconds', type=float, default=1.2)
+    parser.add_argument('--netem-role', choices=['leader', 'follower'], default='follower')
+    parser.add_argument('--netem-hold-seconds', type=float, default=1.5)
     parser.add_argument('--in-namespace', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and
@@ -716,6 +768,9 @@ def main():
     require(20 <= args.duration <= 180, '--duration must be 20..180 seconds')
     require(96 <= args.disk_mib <= 256, '--disk-mib must be 96..256')
     require(1 <= args.value_size <= 1024 * 1024, '--value-size must be 1..1048576 bytes')
+    for name, value in [('pause', args.pause_seconds), ('kill', args.kill_seconds),
+                        ('netem-hold', args.netem_hold_seconds)]:
+        require(.1 <= value <= 30, f'--{name}-seconds must be 0.1..30')
     args.server = str(Path(args.server).resolve())
     args.client = str(Path(args.client).resolve())
     args.out = str(Path(args.out).resolve())

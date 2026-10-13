@@ -20,6 +20,10 @@ Scenarios:
 - `disk` puts one node on a 128 MiB ext4 loop image with no reserved blocks. The controller fills it during recorded writes, demands actual ENOSPC from a separate write, and then demands that the stock server exits nonzero with its own ENOSPC log. Filler exhaustion alone is not a fault hit. It frees space, proves write plus fsync works, restarts and checks readiness.
 - `mixed` runs every listed fault. Use `--duration 90` or more. Too-short durations fail rather than omit a fault.
 
+For longer faults use `--pause-seconds 5`, `--kill-seconds 5`, `--netem-role leader` and `--netem-hold-seconds 5`. Pause and netem hold default to 1.5 seconds, kill hold to 1.2 seconds, and the netem role to follower. Holds accept 0.1 through 30 seconds. Netem hold is in addition to installation and packet-canary time. Requested evidence records the actual hold and role. Longer schedules need longer workload durations.
+
+Any unrequested server exit fails the run explicitly. The controller records raw waitpid status, the log tail and exit classification. A nonzero exit whose log names the core's disk-stall or commit-stall watchdog is classified as `designed-self-fence`. That remains a failed scenario, not an automatic product-bug claim. No self-fenced node restarts automatically. Later recovery policy can change that only with an explicit decision.
+
 `--duration` is the workload's actual configured duration, not a maximum that the runner cuts short. The runner requires at least four seconds of healthy traffic after healing, then waits for natural workload finalization. Traffic is three sequential clients at five operations per second each. `--value-size` defaults to 128 bytes and passes to the client. `--disk-mib` accepts 96 through 256 MiB. The baseline etcd WAL preallocates 64 MiB. A small, short workload may not hit its server ENOSPC. That run must fail honestly; do not use unrecorded writes to force it.
 
 Every required fault must have `requested`, `installed`, `exercised` and `healed` phases in `faults.json`, with monotonic times. The realized schedule, not only the seed, is evidence. Kernel packet scheduling is not deterministic.
