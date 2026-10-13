@@ -198,12 +198,14 @@ type budget struct {
 func (b *budget) available(now time.Time) bool {
 	return (b.deadline.IsZero() || now.Before(b.deadline)) && b.next.Load() < b.limit()
 }
+
 func (b *budget) limit() uint64 {
 	if b.total != 0 {
 		return b.total
 	}
 	return maxSamples
 }
+
 func (b *budget) claim() (uint64, bool) {
 	for {
 		if !b.available(time.Now()) {
@@ -261,6 +263,7 @@ func validateCohort(all []measurement, admitted, total uint64, before, after *pb
 	}
 	return nil
 }
+
 func cmpInt64(a, b int64) int {
 	if a < b {
 		return -1

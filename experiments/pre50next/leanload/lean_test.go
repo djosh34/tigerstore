@@ -40,9 +40,11 @@ func responseWire(t *testing.T, rev int64) []byte {
 	copy(wire[5:], body)
 	return wire
 }
+
 func initialHeaders() []hpack.HeaderField {
 	return []hpack.HeaderField{{Name: ":status", Value: "200"}, {Name: "content-type", Value: "application/grpc"}}
 }
+
 func statusHeaders(code string) []hpack.HeaderField {
 	return []hpack.HeaderField{{Name: "grpc-status", Value: code}}
 }
@@ -155,13 +157,20 @@ func TestPreencodedRequestsAndHPACK(t *testing.T) {
 		}
 		seen[string(r.Value)] = true
 	}
-	block, size, err := putHeaders("127.0.0.1:2379")
+	first, warm, size, err := putHeaders("127.0.0.1:2379")
 	if err != nil || size == 0 {
 		t.Fatalf("HPACK: %v", err)
 	}
+	if len(warm) >= len(first) || len(warm) != 7 {
+		t.Fatalf("warmed headers did not become seven indexed fields: first=%d, warm=%d", len(first), len(warm))
+	}
+	for _, b := range warm {
+		if b < 0x80 {
+			t.Fatal("warmed header block contains a literal or table-size reset")
+		}
+	}
 	decoder := hpack.NewDecoder(4096, nil)
-	for _, limit := range []uint32{4096, 0, 64, 4096} {
-		decoder.SetAllowedMaxDynamicTableSize(limit)
+	for _, block := range [][]byte{first, warm, warm, warm} {
 		fields, err := decoder.DecodeFull(block)
 		if err != nil {
 			t.Fatal(err)
@@ -177,6 +186,56 @@ func TestPreencodedRequestsAndHPACK(t *testing.T) {
 		}
 		if path != "/etcdserverpb.KV/Put" {
 			t.Fatalf("bad path %q", path)
+		}
+		for _, h := range fields {
+			if h.Sensitive {
+				t.Fatal("request fields must preserve the original nonsensitive encoding")
+			}
+		}
+	}
+	if _, _, _, err := putHeaders(strings.Repeat("x", 4096)); err == nil {
+		t.Fatal("headers that cannot fit in the cached table were accepted")
+	}
+}
+
+func TestOptionalAndUnsupportedSettings(t *testing.T) {
+	for _, s := range []http2.Setting{
+		{ID: http2.SettingHeaderTableSize, Val: 4096},
+		{ID: http2.SettingEnableConnectProtocol, Val: 0},
+		{ID: http2.SettingEnableConnectProtocol, Val: 1},
+		{ID: http2.SettingNoRFC7540Priorities, Val: 0},
+		{ID: http2.SettingNoRFC7540Priorities, Val: 1},
+		{ID: http2.SettingID(0xbeef), Val: 42},
+	} {
+		var out bytes.Buffer
+		l := &leanClient{f: http2.NewFramer(&out, nil)}
+		var result connectionResult
+		if err := l.apply(leanEvent{kind: eventSettings, settings: []http2.Setting{s}}, &result); err != nil {
+			t.Fatalf("valid optional/default setting %v: %v", s, err)
+		}
+		frame, err := http2.NewFramer(nil, &out).ReadFrame()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ack, ok := frame.(*http2.SettingsFrame)
+		if !ok || !ack.IsAck() || out.Len() != 0 {
+			t.Fatal("optional setting must produce only SETTINGS ACK")
+		}
+	}
+	for _, s := range []http2.Setting{
+		{ID: http2.SettingHeaderTableSize, Val: 0},
+		{ID: http2.SettingHeaderTableSize, Val: 64},
+		{ID: http2.SettingHeaderTableSize, Val: 8192},
+		{ID: http2.SettingEnableConnectProtocol, Val: 2},
+		{ID: http2.SettingNoRFC7540Priorities, Val: 2},
+		{ID: http2.SettingEnablePush, Val: 0},
+		{ID: http2.SettingEnablePush, Val: 1},
+	} {
+		var out bytes.Buffer
+		l := &leanClient{f: http2.NewFramer(&out, nil)}
+		var result connectionResult
+		if err := l.apply(leanEvent{kind: eventSettings, settings: []http2.Setting{s}}, &result); err == nil {
+			t.Fatalf("unsupported/invalid setting accepted: %v", s)
 		}
 	}
 }

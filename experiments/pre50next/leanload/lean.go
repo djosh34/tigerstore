@@ -59,7 +59,8 @@ type leanClient struct {
 	events                    chan leanEvent
 	stop, readDone            chan struct{}
 	closeOnce                 sync.Once
-	headers                   []byte
+	firstHeaders, headers     []byte
+	first                     bool
 	next                      uint32
 	window, streamWindow      int64
 	receiveWindow             int64
@@ -106,27 +107,40 @@ func encodeRequests(keys, values [][]byte) ([][]byte, error) {
 	return requests, nil
 }
 
-func putHeaders(authority string) ([]byte, uint64, error) {
+func putHeaders(authority string) ([]byte, []byte, uint64, error) {
 	var b bytes.Buffer
+	// Preserve the original lean client's default 4096-byte dynamic table.
+	// The first block inserts fields; every later block reuses their indexes.
 	enc := hpack.NewEncoder(&b)
-	// Never reference the dynamic table. This one block remains valid after any
-	// peer HEADER_TABLE_SIZE change, including zero, without measured re-encoding.
-	enc.SetMaxDynamicTableSize(0)
 	fields := []hpack.HeaderField{
-		{Name: ":method", Value: "POST"}, {Name: ":scheme", Value: "https"},
-		{Name: ":path", Value: "/etcdserverpb.KV/Put"}, {Name: ":authority", Value: authority},
-		{Name: "content-type", Value: "application/grpc"}, {Name: "te", Value: "trailers"},
+		{Name: ":method", Value: "POST"},
+		{Name: ":scheme", Value: "https"},
+		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
+		{Name: ":authority", Value: authority},
+		{Name: "content-type", Value: "application/grpc"},
+		{Name: "te", Value: "trailers"},
 		{Name: "user-agent", Value: "grpcbench-lean/0"},
 	}
 	var size uint64
 	for _, h := range fields {
 		size += uint64(len(h.Name) + len(h.Value) + 32)
-		h.Sensitive = true
 		if err := enc.WriteField(h); err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 	}
-	return bytes.Clone(b.Bytes()), size, nil
+	// All request fields must fit together or replaying the second block could
+	// evict entries and invalidate its cached indexes on subsequent requests.
+	if size > 4096 {
+		return nil, nil, 0, errors.New("Put headers exceed fixed HPACK table capacity")
+	}
+	first := bytes.Clone(b.Bytes())
+	b.Reset()
+	for _, h := range fields {
+		if err := enc.WriteField(h); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	return first, bytes.Clone(b.Bytes()), size, nil
 }
 
 func newLeanClient(endpoint string, cfg *tls.Config, requests [][]byte, slots int) (*leanClient, error) {
@@ -136,7 +150,7 @@ func newLeanClient(endpoint string, cfg *tls.Config, requests [][]byte, slots in
 	}
 	l := &leanClient{
 		conn: c, w: bufio.NewWriterSize(c, 64<<10), events: make(chan leanEvent, max(32, min(1024, slots*8+16))),
-		stop: make(chan struct{}), readDone: make(chan struct{}), next: 1,
+		stop: make(chan struct{}), readDone: make(chan struct{}), first: true, next: 1,
 		window: initialWindow, streamWindow: initialWindow, receiveWindow: receiveConnWindow,
 		maxStreams: ^uint32(0), maxFrame: 16384, requests: requests,
 		slots: make([]leanPending, slots), pending: make(map[uint32]int, slots), free: make([]int, slots),
@@ -149,7 +163,7 @@ func newLeanClient(endpoint string, cfg *tls.Config, requests [][]byte, slots in
 	if c.ConnectionState().Version != tls.VersionTLS13 || c.ConnectionState().NegotiatedProtocol != "h2" {
 		return fail(errors.New("TLS13/h2 not negotiated"))
 	}
-	l.headers, l.headerListSize, err = putHeaders(endpoint)
+	l.firstHeaders, l.headers, l.headerListSize, err = putHeaders(endpoint)
 	if err != nil {
 		return fail(err)
 	}
@@ -186,6 +200,7 @@ func (l *leanClient) close() {
 		_ = l.conn.NetConn().Close()
 	})
 }
+
 func (l *leanClient) event(ev leanEvent) bool {
 	select {
 	case l.events <- ev:
@@ -194,6 +209,7 @@ func (l *leanClient) event(ev leanEvent) bool {
 		return false
 	}
 }
+
 func (l *leanClient) readLoop() {
 	defer close(l.readDone)
 	f := http2.NewFramer(io.Discard, bufio.NewReaderSize(l.conn, 64<<10))
@@ -283,7 +299,17 @@ func (l *leanClient) apply(ev leanEvent, result *connectionResult) error {
 			return nil
 		}
 		for _, s := range ev.settings {
+			if err := s.Valid(); err != nil {
+				return err
+			}
 			switch s.ID {
+			case http2.SettingHeaderTableSize:
+				// Cached warmed indexes require the original default table.
+				// Fail unsupported limits rather than silently send literals or
+				// change the measured server's dynamic-header decode workload.
+				if s.Val != 4096 {
+					return fmt.Errorf("unsupported HEADER_TABLE_SIZE %d; lean client requires 4096", s.Val)
+				}
 			case http2.SettingInitialWindowSize:
 				delta := int64(s.Val) - l.streamWindow
 				for _, slot := range l.pending {
@@ -304,6 +330,16 @@ func (l *leanClient) apply(ev leanEvent, result *connectionResult) error {
 				}
 			case http2.SettingEnablePush:
 				return errors.New("server sent SETTINGS_ENABLE_PUSH")
+			case http2.SettingEnableConnectProtocol:
+				// This advertises extended CONNECT support. Put uses POST and
+				// never invokes CONNECT, so a valid capability has no effect.
+			case http2.SettingNoRFC7540Priorities:
+				if s.Val > 1 {
+					return errors.New("invalid SETTINGS_NO_RFC7540_PRIORITIES value")
+				}
+				// This client sends no PRIORITY frames or priority parameters.
+			default:
+				// HTTP/2 requires unknown SETTINGS identifiers to be ignored.
 			}
 		}
 		l.settingsSeen = true
@@ -378,9 +414,11 @@ func (l *leanClient) apply(ev leanEvent, result *connectionResult) error {
 func (l *leanClient) flush() error {
 	return l.w.Flush()
 }
+
 func (l *leanClient) writeDeadline() error {
 	return l.conn.SetWriteDeadline(time.Now().Add(ioTimeout))
 }
+
 func (l *leanClient) beginPing() error {
 	l.pingSequence++
 	binary.BigEndian.PutUint64(l.waitingPing[:], l.pingSequence)
@@ -456,7 +494,12 @@ func (l *leanClient) admit(b *budget) error {
 		p.response.reset()
 		l.next += 2
 		l.pending[p.id] = slot
-		if err := l.f.WriteHeaders(http2.HeadersFrameParam{StreamID: p.id, BlockFragment: l.headers, EndHeaders: true}); err != nil {
+		headers := l.headers
+		if l.first {
+			headers = l.firstHeaders
+			l.first = false
+		}
+		if err := l.f.WriteHeaders(http2.HeadersFrameParam{StreamID: p.id, BlockFragment: headers, EndHeaders: true}); err != nil {
 			return err
 		}
 	}
@@ -609,6 +652,7 @@ func (r *unaryResponse) reset() {
 	r.body = r.body[:0]
 	r.initial, r.trailers, r.statusSeen, r.status = false, false, false, ""
 }
+
 func (r *unaryResponse) headers(fields []hpack.HeaderField, end bool) error {
 	initial := !r.initial
 	if r.trailers {
@@ -658,6 +702,7 @@ func (r *unaryResponse) headers(fields []hpack.HeaderField, end bool) error {
 	}
 	return nil
 }
+
 func (r *unaryResponse) data(data []byte) error {
 	if !r.initial || r.trailers {
 		return errors.New("DATA before headers or after trailers")
@@ -680,6 +725,7 @@ func (r *unaryResponse) data(data []byte) error {
 	}
 	return nil
 }
+
 func (r *unaryResponse) finish() (*pb.ResponseHeader, error) {
 	if !r.initial || !r.trailers || !r.statusSeen || r.status != "0" {
 		return nil, fmt.Errorf("missing/bad terminal grpc-status %q", r.status)
