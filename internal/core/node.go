@@ -19,10 +19,12 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -92,21 +94,27 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 }
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
-// *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is
-// chosen by the driver and comes back in the Reply. It must never repeat
-// within one run of the node: a write that timed out can still commit
-// later, and its entry carries its ID.
+// *pb.DeleteRangeRequest, *pb.TxnRequest, *pb.CompactionRequest or a lease
+// request; if Op is nil, Put is a put in its wire form. ID is chosen by
+// the driver and comes back in the Reply. It must never repeat within one
+// run of the node: a write that timed out can still commit later, and its
+// entry carries its ID.
 type Request struct {
-	ID uint64
-	Op proto.Message
+	ID  uint64
+	Op  proto.Message
+	Put Put
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
-// request, or nil with Err set.
+// request, or nil with Err set. A put in wire form gets no Resp: its
+// answer is Rev, Term and PrevKv, which the driver encodes itself.
 type Reply struct {
-	ID   uint64
-	Resp proto.Message
-	Err  error
+	ID     uint64
+	Resp   proto.Message
+	Err    error
+	Rev    int64
+	Term   uint64
+	PrevKv *mvccpb.KeyValue
 }
 
 // PersistJob is one disk write: entries and a hard state to append and
@@ -360,6 +368,16 @@ func (n *Node) Submit(r Request) {
 		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
 		return
 	}
+	if r.Op == nil {
+		if err := checkPut(&r.Put); err != nil {
+			n.reply(r.ID, nil, err)
+			return
+		}
+		p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		n.queueWrite(p)
+		n.timeouts = append(n.timeouts, p)
+		return
+	}
 	if err := check(r.Op); err != nil {
 		n.reply(r.ID, nil, err)
 		return
@@ -445,6 +463,23 @@ func check(op proto.Message) error {
 	return nil
 }
 
+// putRequestBytes is the size of etcd's InternalRaftRequest around a put
+// without the put itself: the header with sizeRequestID, and the put's tag.
+var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
+
+// checkPut checks a put in wire form as check does a decoded one. The
+// client's encoding stands in for etcd's re-encoding; they are the same
+// for the canonical encoding that protobuf libraries write.
+func checkPut(p *Put) error {
+	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
+		return err
+	}
+	if putRequestBytes+protowire.SizeBytes(len(p.Wire)) > MaxRequestBytes {
+		return rpctypes.ErrGRPCRequestTooLarge
+	}
+	return nil
+}
+
 // newLeaseID returns a positive lease ID that differs from the IDs this
 // node picked before, in this run and, by the boot ID, in earlier ones.
 func (n *Node) newLeaseID() int64 {
@@ -463,7 +498,10 @@ const batchFraming = 4*binary.MaxVarintLen64 + 1
 // queueWrite adds a write to the next entry. A write that would take the
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	size := proto.Size(p.req.Op) + batchFraming
+	size := len(p.req.Put.Wire) + batchFraming
+	if p.req.Op != nil {
+		size = proto.Size(p.req.Op) + batchFraming
+	}
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
@@ -510,11 +548,12 @@ func (n *Node) propose() {
 	// A write that timed out while it waited never goes out; its client
 	// got an answer that allows both outcomes.
 	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+	size := n.propBytes
 	n.proposals, n.propBytes = nil, 0
 	if len(props) == 0 {
 		return
 	}
-	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props)
+	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)
 	if err != nil {
 		n.fail(err)
 		return
@@ -787,7 +826,21 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			n.applied = e.GetIndex()
 			continue
 		}
-		err := DecodeBatch(e.GetData(), func(origin, boot, id uint64, op proto.Message) error {
+		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {
+			var p *pending
+			if origin == n.cfg.ID && boot == n.cfg.Boot {
+				p = n.waiting[id]
+			}
+			if kind == kindPut {
+				return n.applyPut(b, p)
+			}
+			op, err := newOp(kind)
+			if err != nil {
+				return err
+			}
+			if err := proto.Unmarshal(b, op); err != nil {
+				return fmt.Errorf("%w: %w", errBadBatch, err)
+			}
 			resp, err := n.applyOp(op)
 			if errors.Is(err, errInternal) {
 				return err
@@ -795,10 +848,8 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			if err == nil {
 				n.matchWatches()
 			}
-			if origin == n.cfg.ID && boot == n.cfg.Boot {
-				if p, ok := n.waiting[id]; ok {
-					n.finish(p, resp, err)
-				}
+			if p != nil {
+				n.finish(p, resp, err)
 			}
 			return nil
 		})
@@ -811,6 +862,40 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 }
 
 var errInternal = errors.New("core: internal error")
+
+// applyPut runs a put in place: the index keeps the key and value as
+// slices of the entry, which is the one copy of them in memory. p is the
+// request waiting for it on this node, if any.
+func (n *Node) applyPut(b []byte, p *pending) error {
+	put, err := ParsePut(b)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errBadBatch, err)
+	}
+	prev, err := n.state.ApplyPut(&put.PutOp)
+	if err != nil && !isAnswer(err) {
+		return fmt.Errorf("%w: %w", errInternal, err)
+	}
+	if err == nil {
+		n.matchWatches()
+	}
+	if p == nil || p.done {
+		return nil
+	}
+	if err != nil {
+		n.finish(p, nil, err)
+		return nil
+	}
+	if p.req.Op != nil {
+		r := &pb.PutResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}, PrevKv: prev}
+		n.fillHeader(r.Header)
+		n.finish(p, r, nil)
+		return nil
+	}
+	p.done = true
+	delete(n.waiting, p.req.ID)
+	n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
+	return nil
+}
 
 // applyOp runs one write. Request errors (an unknown lease, a missing key
 // for ignore_value) are answers; any other error stops the node.

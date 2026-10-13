@@ -145,16 +145,15 @@ type Completer interface {
 
 // Completion is the reply to one request of a batch.
 type Completion struct {
-	Tag  any
-	Resp proto.Message
-	Err  error
+	Tag any
+	core.Reply
 }
 
 // batch is requests that one client connection hands the committer at
 // once. Their IDs are first, first+1, and so on.
 type batch struct {
 	first uint64
-	ops   []proto.Message
+	reqs  []core.Request
 	tags  []any
 	to    Completer
 }
@@ -167,15 +166,15 @@ type waiter struct {
 	tag   any
 }
 
-// SubmitBatch hands the committer every request in ops with one inbox
+// SubmitBatch hands the committer every request in reqs with one inbox
 // send, so a client connection does not pay a channel, a goroutine and a
-// reply channel per request. tags[i] comes back with the reply to ops[i]
-// through to.Complete. It waits while the inbox is full, which slows down
-// the client connection; it fails only if ctx ends or the node stopped,
-// and then none of the requests was taken.
-func (n *Node) SubmitBatch(ctx context.Context, ops []proto.Message, tags []any, to Completer) error {
-	k := uint64(len(ops))
-	b := &batch{first: n.nextID.Add(k) - k + 1, ops: ops, tags: tags, to: to}
+// reply channel per request. The node sets their IDs. tags[i] comes back
+// with the reply to reqs[i] through to.Complete. It waits while the inbox
+// is full, which slows down the client connection; it fails only if ctx
+// ends or the node stopped, and then none of the requests was taken.
+func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {
+	k := uint64(len(reqs))
+	b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}
 	return n.put(ctx, input{batch: b})
 }
 
@@ -228,6 +227,9 @@ func (n *Node) logf(format string, args ...any) {
 
 // ID is the node's Raft ID.
 func (n *Node) ID() uint64 { return n.cfg.Core.ID }
+
+// ClusterID is the cluster ID in the node's response headers.
+func (n *Node) ClusterID() uint64 { return n.cfg.Core.ClusterID }
 
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
@@ -394,7 +396,7 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 			groupOf[w.to] = i
 			groups = append(groups, completions{to: w.to})
 		}
-		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Resp: r.Resp, Err: r.Err})
+		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
 	}
 	for _, g := range groups {
 		g.to.Complete(g.cs)
@@ -408,10 +410,11 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 	switch {
 	case in.batch != nil:
 		b := in.batch
-		for i, op := range b.ops {
-			id := b.first + uint64(i)
-			waiters[id] = waiter{to: b.to, tag: b.tags[i]}
-			n.core.Submit(core.Request{ID: id, Op: op})
+		for i := range b.reqs {
+			r := &b.reqs[i]
+			r.ID = b.first + uint64(i)
+			waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}
+			n.core.Submit(*r)
 		}
 	case in.status != nil:
 		in.status <- n.core.Status()

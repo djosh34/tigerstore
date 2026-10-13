@@ -179,18 +179,41 @@ func sortKVs(kvs []*mvccpb.KeyValue, r *pb.RangeRequest) {
 	sort.Sort(s)
 }
 
-// Put writes one key.
-func (s *Store) Put(p *pb.PutRequest) (*pb.PutResponse, error) {
-	w := s.start()
-	if err := w.checkPut(p); err != nil {
-		return nil, err
-	}
-	resp := w.put(p)
-	w.finish()
-	return resp, nil
+// PutOp is a put request's fields. Key and Value are kept without
+// copying.
+type PutOp struct {
+	Key, Value                       []byte
+	Lease                            int64
+	PrevKv, IgnoreValue, IgnoreLease bool
 }
 
-func (w *writer) checkPut(p *pb.PutRequest) error {
+func putOp(p *pb.PutRequest) PutOp {
+	return PutOp{Key: p.Key, Value: p.Value, Lease: p.Lease, PrevKv: p.PrevKv, IgnoreValue: p.IgnoreValue, IgnoreLease: p.IgnoreLease}
+}
+
+// Put writes one key.
+func (s *Store) Put(p *pb.PutRequest) (*pb.PutResponse, error) {
+	op := putOp(p)
+	prev, err := s.PutKV(&op)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.PutResponse{Header: header(s.rev), PrevKv: prev}, nil
+}
+
+// PutKV writes one key and returns its previous version if op asks for it
+// and the key existed. The store's revision is then the put's revision.
+func (s *Store) PutKV(op *PutOp) (*mvccpb.KeyValue, error) {
+	w := s.start()
+	if err := w.checkPut(op); err != nil {
+		return nil, err
+	}
+	prev := w.put(op)
+	w.finish()
+	return prev, nil
+}
+
+func (w *writer) checkPut(p *PutOp) error {
 	if p.Lease != 0 && (w.s.LeaseExists == nil || !w.s.LeaseExists(p.Lease)) {
 		return rpctypes.ErrGRPCLeaseNotFound
 	}
@@ -229,13 +252,14 @@ func (w *writer) add(k *keyIndex, v version) {
 	w.s.changes = append(w.s.changes, Change{k: k, i: len(k.vers) - 1})
 }
 
-func (w *writer) put(p *pb.PutRequest) *pb.PutResponse {
-	resp := &pb.PutResponse{Header: header(w.begin + 1)}
+// put writes one key and returns its previous version if p asks for it.
+func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
+	var prevKV *mvccpb.KeyValue
 	k, prev := w.latest(p.Key)
 	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}
 	if prev != nil {
 		if p.PrevKv {
-			resp.PrevKv = k.kv(prev)
+			prevKV = k.kv(prev)
 		}
 		if p.IgnoreValue {
 			v.value = prev.value
@@ -254,7 +278,7 @@ func (w *writer) put(p *pb.PutRequest) *pb.PutResponse {
 		w.s.keys.ReplaceOrInsert(k)
 	}
 	w.add(k, v)
-	return resp
+	return prevKV
 }
 
 // DeleteRange deletes keys.
@@ -409,7 +433,8 @@ func (w *writer) checkTxn(r *pb.TxnRequest, path []bool) (int, error) {
 		case *pb.RequestOp_RequestRange:
 			err = w.checkRange(t.RequestRange)
 		case *pb.RequestOp_RequestPut:
-			err = w.checkPut(t.RequestPut)
+			op := putOp(t.RequestPut)
+			err = w.checkPut(&op)
 		case *pb.RequestOp_RequestTxn:
 			var sub int
 			sub, err = w.checkTxn(t.RequestTxn, path[1:])
@@ -456,7 +481,8 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			}
 			out.Response = &pb.ResponseOp_ResponseRange{ResponseRange: rr}
 		case *pb.RequestOp_RequestPut:
-			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: w.put(t.RequestPut)}
+			op := putOp(t.RequestPut)
+			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: w.put(&op)}}
 		case *pb.RequestOp_RequestDeleteRange:
 			out.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: w.deleteRange(t.RequestDeleteRange)}
 		case *pb.RequestOp_RequestTxn:

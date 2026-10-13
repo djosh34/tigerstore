@@ -18,6 +18,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
@@ -1178,7 +1179,21 @@ func (s *Sim) submit(e *event) {
 	n.reqs[n.nextReq] = op
 	n.outstanding = slices.DeleteFunc(n.outstanding, func(o *clientOp) bool { return o.done })
 	n.outstanding = append(n.outstanding, op)
-	n.core.Submit(core.Request{ID: n.nextReq, Op: op.rec.req})
+	req := core.Request{ID: n.nextReq, Op: op.rec.req}
+	if put, ok := op.rec.req.(*pb.PutRequest); ok {
+		// Puts go in wire form, as the client port hands them over.
+		b, err := marshal.Marshal(put)
+		if err != nil {
+			s.fail("marshal put: %w", err)
+			return
+		}
+		if req.Put, err = core.ParsePut(b); err != nil {
+			s.fail("parse put: %w", err)
+			return
+		}
+		req.Op = nil
+	}
+	n.core.Submit(req)
 	s.process(n)
 }
 
@@ -1189,6 +1204,9 @@ func (s *Sim) replied(n *node, r core.Reply) {
 		return
 	}
 	delete(n.reqs, r.ID)
+	if r.Resp == nil && r.Err == nil {
+		r.Resp = n.core.PutResponse(r)
+	}
 	if r.Resp != nil {
 		b, err := marshal.Marshal(r.Resp)
 		if err != nil {

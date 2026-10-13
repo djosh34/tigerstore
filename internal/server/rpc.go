@@ -16,9 +16,10 @@ import (
 // by the connection reader and handed to the node in a batch. Other unary
 // calls (unary) and bidirectional streams (stream) run in a goroutine.
 type method struct {
-	op     func() proto.Message
-	unary  func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
-	stream func(s *Server, st *stream) error
+	op      func() proto.Message
+	wirePut bool // op is a put that stays in its wire form
+	unary   func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
+	stream  func(s *Server, st *stream) error
 }
 
 // methods are the etcd methods that are served. Every other method of
@@ -27,7 +28,7 @@ type method struct {
 // exactly that code.
 var methods = map[string]*method{
 	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest]},
-	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest]},
+	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
 	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
 	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},
 	"/etcdserverpb.KV/Compact":            {op: newOp[pb.CompactionRequest]},
