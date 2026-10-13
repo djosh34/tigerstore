@@ -1,0 +1,30 @@
+File: experiment
+Build ID: 1f5f7bcfd93da894224e1bcae2661f17f7201aac
+Type: inuse_space
+Time: 2026-10-13 10:57:37 UTC
+Showing nodes accounting for 2503.76kB, 99.20% of 2523.96kB total
+Dropped 63 nodes (cum <= 12.62kB)
+      flat  flat%   sum%        cum   cum%
+    2250kB 89.15% 89.15%     2250kB 89.15%  google.golang.org/protobuf/internal/impl.mergeBytes
+  187.50kB  7.43% 96.57%   187.50kB  7.43%  reflect.unsafe_New
+   31.25kB  1.24% 97.81%  2468.80kB 97.81%  go.etcd.io/raft/v3.(*raft).appendEntry
+   19.25kB  0.76% 98.58%    19.25kB  0.76%  go.etcd.io/raft/v3.(*MemoryStorage).Append
+   15.73kB  0.62% 99.20%  2484.53kB 98.44%  go.etcd.io/raft/v3.(*RawNode).Propose
+    0.05kB 0.0019% 99.20%   187.55kB  7.43%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+   -0.02kB 0.00093% 99.20%  2504.26kB 99.22%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 99.20%    19.23kB  0.76%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted
+         0     0% 99.20%  2485.05kB 98.46%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 99.20%  2484.53kB 98.44%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 99.20%    19.23kB  0.76%  github.com/djosh34/tigerstore/internal/core.(*storage).append
+         0     0% 99.20%  2504.26kB 99.22%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 99.20%  2468.80kB 97.81%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 99.20%  2468.80kB 97.81%  go.etcd.io/raft/v3.stepLeader
+         0     0% 99.20%     2250kB 89.15%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 99.20%     2250kB 89.15%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 99.20%   187.55kB  7.43%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 99.20%  2437.55kB 96.58%  google.golang.org/protobuf/proto.Clone
+         0     0% 99.20%     2250kB 89.15%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 99.20%  2504.26kB 99.22%  main.main
+         0     0% 99.20%  2504.26kB 99.22%  main.run
+         0     0% 99.20%   187.50kB  7.43%  reflect.New
+         0     0% 99.20%  2504.26kB 99.22%  runtime.main

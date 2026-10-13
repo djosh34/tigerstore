@@ -1,0 +1,6 @@
+64 base: leader CPU 33.167 [32.333, 33.833] us/Put; paired CPU change +0.00%; retained 108.55 MiB
+64 ring: leader CPU 33.667 [32.333, 34.167] us/Put; paired CPU change +0.00%; retained 159.76 MiB
+64 arena: leader CPU 33.333 [32.167, 33.500] us/Put; paired CPU change +0.50%; retained 159.48 MiB
+256 base: leader CPU 20.833 [19.833, 21.167] us/Put; paired CPU change +0.00%; retained 108.51 MiB
+256 ring: leader CPU 20.667 [20.333, 21.000] us/Put; paired CPU change -0.79%; retained 157.93 MiB
+256 arena: leader CPU 20.667 [20.500, 21.333] us/Put; paired CPU change +0.00%; retained 157.92 MiB

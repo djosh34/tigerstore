@@ -1,0 +1,189 @@
+{
+  "accepted_payload_bytes": 1572826,
+  "after_slow_close": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 127419176,
+    "heap_objects": 33150,
+    "heap_inuse_bytes": 137527296,
+    "heap_sys_bytes": 213221376,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": null
+  },
+  "allocator_recovery_verified": false,
+  "before_slow": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 126240768,
+    "heap_objects": 31955,
+    "heap_inuse_bytes": 134217728,
+    "heap_sys_bytes": 213221376,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": null
+  },
+  "boundary": [
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572863,
+      "payload_bytes": 1572825,
+      "revision": 84098
+    },
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572864,
+      "payload_bytes": 1572826,
+      "revision": 84099
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572865,
+      "payload_bytes": 1572827
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572902,
+      "payload_bytes": 1572864
+    }
+  ],
+  "healthy_last_revision": 89731,
+  "healthy_revision_after_close": 89732,
+  "healthy_successes_while_stalled": 1536,
+  "recovery_samples": [
+    {
+      "forced_gc": true,
+      "heap_alloc_bytes": 127419176,
+      "heap_objects": 33150,
+      "heap_inuse_bytes": 137527296,
+      "heap_sys_bytes": 213221376,
+      "mem_profile_rate": 524288,
+      "strategy_env": "",
+      "allocator": null
+    }
+  ],
+  "reply_reads_after_handshake": 0,
+  "request_limit_bytes": 1572864,
+  "sender_before_close": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_outcome_verified": true,
+  "sender_phase_0": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_phase_1": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_phase_2": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "slow_attempted_puts": 4096,
+  "slow_committed_puts": 4096,
+  "slow_data_bytes": 4288512,
+  "slow_last_mod_revision": 88197,
+  "slow_phase_0": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 134463976,
+    "heap_objects": 50825,
+    "heap_inuse_bytes": 144523264,
+    "heap_sys_bytes": 213221376,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": null
+  },
+  "slow_phase_1": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 135803232,
+    "heap_objects": 53649,
+    "heap_inuse_bytes": 145694720,
+    "heap_sys_bytes": 213221376,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": null
+  },
+  "slow_phase_2": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 130031400,
+    "heap_objects": 45528,
+    "heap_inuse_bytes": 141680640,
+    "heap_sys_bytes": 213221376,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": null
+  },
+  "slow_planned_puts": 4096,
+  "slow_range_header": {
+    "cluster_id": 11025271974442626655,
+    "member_id": 2,
+    "revision": 89731,
+    "raft_term": 1
+  },
+  "slow_requests": 4096,
+  "slow_sender": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": true,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "slow_sent_data": 4096,
+  "slow_sent_headers": 4096,
+  "stream_receive_window": 0,
+  "valid": true
+}

@@ -1,0 +1,21 @@
+{
+  "allocator": {
+    "byte_budget": 0,
+    "denied_count": 0,
+    "fallback_allocations": 0,
+    "held_bytes": 0,
+    "held_slots": 0,
+    "mode": 0,
+    "peak_bytes": 0,
+    "peak_slots": 0,
+    "per_connection_slots": 0,
+    "slot_budget": 0
+  },
+  "forced_gc": true,
+  "heap_alloc_bytes": 116181888,
+  "heap_inuse_bytes": 122585088,
+  "heap_objects": 33290,
+  "heap_sys_bytes": 179699712,
+  "mem_profile_rate": 524288,
+  "strategy_env": ""
+}

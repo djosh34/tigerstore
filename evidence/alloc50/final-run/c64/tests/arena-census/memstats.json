@@ -1,0 +1,11 @@
+{
+  "allocated_bytes_per_put": 16701.6875,
+  "heap_alloc_after_forced_gc": 185744128,
+  "leader_id": 2,
+  "mallocs_per_put": 295.42578125,
+  "mem_profile_rate": 1,
+  "scope": "in-process client plus leader and two followers, not leader-only",
+  "strategy": "arena",
+  "successful_puts": 256,
+  "value_bytes": 1024
+}

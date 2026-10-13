@@ -1,0 +1,38 @@
+[
+  {
+    "byte_budget": 0,
+    "denied_count": 0,
+    "fallback_allocations": 0,
+    "held_bytes": 0,
+    "held_slots": 0,
+    "mode": 0,
+    "peak_bytes": 0,
+    "peak_slots": 0,
+    "per_connection_slots": 0,
+    "slot_budget": 0
+  },
+  {
+    "byte_budget": 0,
+    "denied_count": 0,
+    "fallback_allocations": 0,
+    "held_bytes": 0,
+    "held_slots": 0,
+    "mode": 0,
+    "peak_bytes": 0,
+    "peak_slots": 0,
+    "per_connection_slots": 0,
+    "slot_budget": 0
+  },
+  {
+    "byte_budget": 0,
+    "denied_count": 0,
+    "fallback_allocations": 0,
+    "held_bytes": 0,
+    "held_slots": 0,
+    "mode": 0,
+    "peak_bytes": 0,
+    "peak_slots": 0,
+    "per_connection_slots": 0,
+    "slot_budget": 0
+  }
+]

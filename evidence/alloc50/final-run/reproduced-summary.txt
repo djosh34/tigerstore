@@ -1,0 +1,6 @@
+ 64 arena        24883.8 Put/s, p50/p99 2.338/5.210 ms, leader/total CPU 33.333/64.000 us/Put, allocations 18.42 objects and 3905.4 bytes/Put
+ 64 base         25806.3 Put/s, p50/p99 2.304/5.647 ms, leader/total CPU 33.167/64.000 us/Put, allocations 30.45 objects and 6555.2 bytes/Put
+ 64 ring         25651.2 Put/s, p50/p99 2.366/5.267 ms, leader/total CPU 33.667/64.667 us/Put, allocations 18.37 objects and 3902.9 bytes/Put
+256 arena        44121.5 Put/s, p50/p99 5.277/12.039 ms, leader/total CPU 20.667/37.667 us/Put, allocations 15.60 objects and 3721.0 bytes/Put
+256 base         43599.7 Put/s, p50/p99 5.369/12.254 ms, leader/total CPU 20.833/38.833 us/Put, allocations 26.76 objects and 6451.1 bytes/Put
+256 ring         44362.4 Put/s, p50/p99 5.238/11.515 ms, leader/total CPU 20.667/37.500 us/Put, allocations 15.67 objects and 3731.3 bytes/Put

@@ -1,0 +1,36 @@
+File: base
+Build ID: 59693393254ee7d474d0c2a349105502cdcf69c1
+Type: inuse_objects
+Time: 2026-10-13 10:57:19 UTC
+Showing nodes accounting for 5901, 73.01% of 8083 total
+Dropped 39 nodes (cum <= 40)
+      flat  flat%   sum%        cum   cum%
+      2000 24.74% 24.74%       6001 74.24%  go.etcd.io/raft/v3.(*raft).appendEntry
+      2000 24.74% 49.49%       2000 24.74%  google.golang.org/protobuf/internal/impl.mergeBytes
+      2000 24.74% 74.23%       2000 24.74%  reflect.unsafe_New
+       974 12.05% 86.28%       6975 86.29%  go.etcd.io/raft/v3.(*RawNode).Propose
+      -537  6.64% 79.64%       -537  6.64%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+      -537  6.64% 72.99%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+         1 0.012% 73.01%       2001 24.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         0     0% 73.01%       6973 86.27%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 73.01%       6975 86.29%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 73.01%       6438 79.65%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 73.01%       6438 79.65%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 73.01%       -536  6.63%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0% 73.01%       -537  6.64%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0% 73.01%       6002 74.25%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 73.01%       6002 74.25%  go.etcd.io/raft/v3.stepLeader
+         0     0% 73.01%       2000 24.74%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 73.01%       2000 24.74%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 73.01%       2001 24.76%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 73.01%       4001 49.50%  google.golang.org/protobuf/proto.Clone
+         0     0% 73.01%       2000 24.74%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 73.01%       6438 79.65%  main.main
+         0     0% 73.01%       6438 79.65%  main.run
+         0     0% 73.01%       2000 24.74%  reflect.New
+         0     0% 73.01%       6438 79.65%  runtime.main

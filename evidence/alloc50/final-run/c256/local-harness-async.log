@@ -1,0 +1,32 @@
+2026-10-13T10:40:08Z
+COMMAND: gofumpt -w experiments/alloc50/cases/main.go experiments/alloc50/cases/sender.go experiments/alloc50/cases/sender_test.go experiments/alloc50/cases/observation.go experiments/alloc50/observe.go.txt
+EXITCODE=0
+COMMAND: go test -short -parallel 2 ./experiments/alloc50/cases
+ok  	github.com/djosh34/tigerstore/experiments/alloc50/cases	0.027s
+EXITCODE=0
+COMMAND: go vet ./experiments/alloc50/cases
+EXITCODE=0
+COMMAND: golangci-lint run --concurrency 2 ./experiments/alloc50/cases/...
+0 issues.
+EXITCODE=0
+OVERALL_EXITCODE=0
+COMMAND: python3 experiments/alloc50/test_summary.py
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.555s
+
+OK
+EXITCODE=0
+COMMAND: python3 experiments/alloc50/test_metrics_scope.py
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.012s
+
+OK
+EXITCODE=0
+COMMAND: python3 experiments/alloc50/verify-harness.py
+Verified 9 exact bench75 files from 0f82f687e5a21fa6265e508866f07dc3fffeaae9
+EXITCODE=0
+COMMAND: bash -n experiments/alloc50/run.sh
+EXITCODE=0
+PYTHON_SHELL_OVERALL_EXITCODE=0

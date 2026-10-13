@@ -1,0 +1,3781 @@
+diff --git a/experiments/alloc50/cases/main.go b/experiments/alloc50/cases/main.go
+new file mode 100644
+index 0000000..48a34e4
+--- /dev/null
++++ b/experiments/alloc50/cases/main.go
+@@ -0,0 +1,419 @@
++// Separate compatibility/slow-reader diagnostics, never a timing generator.
++package main
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"crypto/tls"
++	"crypto/x509"
++	"encoding/json"
++	"errors"
++	"flag"
++	"fmt"
++	"io"
++	"net/http"
++	"os"
++	"time"
++
++	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/credentials"
++	"google.golang.org/protobuf/proto"
++)
++
++const (
++	limit        = 1536 * 1024
++	slowAttempts = 4096
++)
++
++func raftSize(key, value []byte) int {
++	return proto.Size(&pb.InternalRaftRequest{
++		Header: &pb.RequestHeader{ID: 1 << 63},
++		Put:    &pb.PutRequest{Key: key, Value: value},
++	})
++}
++
++func valueOfSize(n int) []byte {
++	value := make([]byte, n)
++	for i := 0; i < n; i += sha256.Size {
++		sum := sha256.Sum256([]byte(fmt.Sprintf("alloc50-large-%d", i)))
++		copy(value[i:], sum[:])
++	}
++	return value
++}
++
++// slowCommittedPuts distinguishes committed writes from charged allocator
++// capacity. A singleton stream can pin an entire eight-slot arena region.
++func slowCommittedPuts(r *pb.RangeResponse, key, value []byte) (int64, error) {
++	if r == nil || r.Header == nil || r.Count != 1 || len(r.Kvs) != 1 || r.Kvs[0] == nil {
++		return 0, errors.New("slow key Range missing value or header")
++	}
++	kv := r.Kvs[0]
++	if !bytes.Equal(kv.Key, key) || !bytes.Equal(kv.Value, value) || kv.Version < 1 || kv.Version > slowAttempts {
++		return 0, errors.New("slow key Range has invalid value or committed count")
++	}
++	return kv.Version, nil
++}
++
++func run() (resultErr error) {
++	endpoint := flag.String("endpoint", "", "leader client endpoint")
++	certdir := flag.String("certdir", "", "certificate directory")
++	debugURL := flag.String("debug-url", "", "leader observation endpoint")
++	out := flag.String("out", "", "raw JSON output")
++	strategy := flag.String("strategy", "base", "base, default, ring or arena")
++	flag.Parse()
++	mode := uint64(0)
++	switch *strategy {
++	case "ring":
++		mode = 1
++	case "arena":
++		mode = 2
++	case "base", "default":
++	default:
++		return errors.New("invalid strategy")
++	}
++	report := map[string]any{
++		"valid": false, "slow_requests": slowAttempts, "slow_planned_puts": slowAttempts, "reply_reads_after_handshake": 0,
++		"stream_receive_window": 0, "request_limit_bytes": limit,
++	}
++	var slow *slowSender
++	// On failure, diagnose before cleanup closes the raw socket. The writer
++	// must always be joined, including failed healthy requests or snapshots.
++	defer func() {
++		if resultErr != nil {
++			report["valid"] = false
++			report["failure"] = resultErr.Error()
++			file, err := captureGoroutines(*debugURL, *out, "failure")
++			if err != nil {
++				report["failure_goroutines_error"] = err.Error()
++			} else {
++				report["failure_goroutines"] = file
++			}
++		}
++		if slow != nil {
++			if !slow.closing.Load() {
++				report["sender_before_cleanup"] = slow.snapshot()
++			}
++			final, err := slow.closeAndWait(3 * time.Second)
++			recordSender(report, final)
++			if err != nil {
++				resultErr = errors.Join(resultErr, err)
++				report["valid"] = false
++				report["cleanup_error"] = err.Error()
++			}
++		}
++		b, err := json.MarshalIndent(report, "", "  ")
++		if err == nil {
++			err = os.WriteFile(*out, append(b, '\n'), 0o644)
++		}
++		resultErr = errors.Join(resultErr, err)
++	}()
++	ca, err := os.ReadFile(*certdir + "/ca.pem")
++	if err != nil {
++		return err
++	}
++	pool := x509.NewCertPool()
++	if !pool.AppendCertsFromPEM(ca) {
++		return errors.New("bad CA")
++	}
++	cert, err := tls.LoadX509KeyPair(*certdir+"/client.pem", *certdir+"/client-key.pem")
++	if err != nil {
++		return err
++	}
++	cfg := &tls.Config{
++		RootCAs: pool, Certificates: []tls.Certificate{cert},
++		MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, NextProtos: []string{"h2"},
++	}
++	conn, err := grpc.NewClient(*endpoint, grpc.WithTransportCredentials(credentials.NewTLS(cfg)))
++	if err != nil {
++		return err
++	}
++	defer func() { _ = conn.Close() }()
++	kv := pb.NewKVClient(conn)
++	put := func(key, value []byte) (*pb.PutResponse, error) {
++		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++		defer cancel()
++		return kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
++	}
++	get := func(key []byte) (*pb.RangeResponse, error) {
++		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++		defer cancel()
++		return kv.Range(ctx, &pb.RangeRequest{Key: key})
++	}
++	snapshots := map[string]retainedSnapshot{}
++	retained := func(phase string) error {
++		client := &http.Client{Timeout: 15 * time.Second}
++		r, err := client.Get(*debugURL + "/debug/retained")
++		if err != nil {
++			return err
++		}
++		b, readErr := io.ReadAll(r.Body)
++		closeErr := r.Body.Close()
++		if err := errors.Join(readErr, closeErr); err != nil {
++			return err
++		}
++		if r.StatusCode != http.StatusOK {
++			return fmt.Errorf("retained: %s", r.Status)
++		}
++		var j retainedSnapshot
++		if err := json.Unmarshal(b, &j); err != nil {
++			return err
++		}
++		report[phase] = j
++		snapshots[phase] = j
++		if !j.ForcedGC {
++			return errors.New("retention snapshot did not force GC")
++		}
++		return validateAllocator(j.Allocator, mode)
++	}
++	key := []byte("/alloc50/large")
++	value := valueOfSize(limit)
++	n := limit
++	for raftSize(key, value[:n]) > limit {
++		n--
++	}
++	boundary := []map[string]any{}
++	for _, size := range []int{n - 1, n, n + 1, limit} {
++		response, err := put(key, value[:size])
++		expectedOK := size <= n
++		row := map[string]any{"payload_bytes": size, "internal_raft_request_bytes": raftSize(key, value[:size]), "expected_ok": expectedOK}
++		if err != nil {
++			row["error"] = err.Error()
++		}
++		if response != nil && response.Header != nil {
++			row["revision"] = response.Header.Revision
++		}
++		boundary = append(boundary, row)
++		report["boundary"] = boundary
++		if expectedOK {
++			if err != nil || response == nil || response.Header == nil {
++				return errors.Join(errors.New("below/equal boundary Put failed or missing header"), err)
++			}
++		} else if err == nil || !errors.Is(rpctypes.Error(err), rpctypes.ErrRequestTooLarge) {
++			return errors.Join(errors.New("above boundary should be request-too-large"), err)
++		}
++		r, err := get(key)
++		if err != nil || r == nil || len(r.Kvs) != 1 {
++			return errors.Join(errors.New("boundary Range failed or missing value"), err)
++		}
++		want := size
++		if !expectedOK {
++			want = n
++		}
++		if !bytes.Equal(r.Kvs[0].Value, value[:want]) {
++			return errors.New("large value corrupted or rejected Put mutated state")
++		}
++	}
++	report["accepted_payload_bytes"] = n
++	if err := retained("before_slow"); err != nil {
++		return err
++	}
++	slow, err = stalled(*endpoint, cfg, []byte("/alloc50/slow"))
++	if err != nil {
++		return err
++	}
++	started := time.Now()
++	var quotaAt time.Time
++	quotaSamples := []map[string]any{}
++	pollQuota := func() error {
++		if err := slow.check(); err != nil {
++			return err
++		}
++		if mode == 0 {
++			return nil
++		}
++		body, err := observation(*debugURL, "/debug/allocator", 3*time.Second)
++		if err != nil {
++			return err
++		}
++		var a map[string]uint64
++		if err := json.Unmarshal(body, &a); err != nil {
++			return err
++		}
++		if err := validateAllocator(a, mode); err != nil {
++			return err
++		}
++		now := time.Now()
++		quotaSamples = append(quotaSamples, map[string]any{"elapsed_s": now.Sub(started).Seconds(), "allocator": a})
++		report["quota_samples"] = quotaSamples
++		pinned := a["held_slots"] >= a["per_connection_slots"] && a["denied_count"] > snapshots["before_slow"].Allocator["denied_count"]
++		if quotaAt.IsZero() {
++			if now.Sub(started) > 5*time.Second {
++				return errors.New("managed quota/refusal not observed within five seconds")
++			}
++			if pinned {
++				quotaAt = now
++				report["quota_observed_elapsed_s"] = now.Sub(started).Seconds()
++			}
++		} else if !pinned {
++			return errors.New("managed quota was released before intentional close")
++		}
++		return nil
++	}
++	// Healthy work starts immediately, even if the single raw writer blocks.
++	healthyKey, healthy := []byte("/alloc50/healthy"), valueOfSize(1024)
++	successes := 0
++	var previous int64
++	healthyPut := func() error {
++		if err := slow.check(); err != nil {
++			return err
++		}
++		r, err := put(healthyKey, healthy)
++		if err != nil || r == nil || r.Header == nil || r.Header.Revision <= previous {
++			return errors.Join(errors.New("healthy Put while stalled failed or invalid revision"), err)
++		}
++		previous = r.Header.Revision
++		successes++
++		report["healthy_successes_while_stalled"] = successes
++		if successes%16 == 0 {
++			return pollQuota()
++		}
++		return nil
++	}
++	for phase := range 3 {
++		if phase > 0 && mode != 0 {
++			// Establish quota by five seconds, then sustain it for at least one
++			// second. Keep healthy Puts progressing throughout that hold.
++			for quotaAt.IsZero() {
++				if err := pollQuota(); err != nil {
++					return err
++				}
++				if err := healthyPut(); err != nil {
++					return err
++				}
++			}
++			until := quotaAt.Add(time.Duration(phase) * 500 * time.Millisecond)
++			for time.Now().Before(until) {
++				if err := pollQuota(); err != nil {
++					return err
++				}
++				if err := healthyPut(); err != nil {
++					return err
++				}
++				time.Sleep(10 * time.Millisecond)
++			}
++		}
++		for range 512 {
++			if err := healthyPut(); err != nil {
++				return err
++			}
++		}
++		if err := pollQuota(); err != nil {
++			return err
++		}
++		if err := retained(fmt.Sprintf("slow_phase_%d", phase)); err != nil {
++			return err
++		}
++		report[fmt.Sprintf("sender_phase_%d", phase)] = slow.snapshot()
++	}
++	if mode == 0 {
++		for !slow.snapshot().AllDataSent {
++			if err := slow.check(); err != nil {
++				return err
++			}
++			if time.Since(started) > 5*time.Second {
++				return errors.New("baseline sender did not complete all planned Puts")
++			}
++			if err := healthyPut(); err != nil {
++				return err
++			}
++		}
++	} else {
++		if quotaAt.IsZero() || time.Since(quotaAt) < time.Second {
++			return errors.New("managed quota not sustained for one second")
++		}
++		report["quota_sustained_s"] = time.Since(quotaAt).Seconds()
++	}
++	if mode != 0 {
++		last := snapshots["slow_phase_2"].Allocator
++		prior := snapshots["slow_phase_1"].Allocator
++		if last["held_slots"] < last["per_connection_slots"] {
++			return fmt.Errorf("slow client did not pin its slot quota: %v", last)
++		}
++		if last["held_slots"] != prior["held_slots"] || last["held_bytes"] != prior["held_bytes"] {
++			return fmt.Errorf("managed retention did not stabilize: prior=%v after=%v", prior, last)
++		}
++		if last["denied_count"] <= snapshots["before_slow"].Allocator["denied_count"] {
++			return errors.New("slow workload did not exercise quota backpressure")
++		}
++		report["allocator_saturation_verified"] = true
++	}
++	report["healthy_successes_while_stalled"] = successes
++	report["healthy_last_revision"] = previous
++	// The slow connection never reads replies, so stream attempts and charged
++	// slot reservations cannot be presented as successful Puts. Its key starts
++	// absent and each committed overwrite increments Version exactly once.
++	slowKey := []byte("/alloc50/slow")
++	slowRange, err := get(slowKey)
++	if err != nil {
++		return errors.Join(errors.New("healthy Range of slow key failed"), err)
++	}
++	committed, err := slowCommittedPuts(slowRange, slowKey, valueOfSize(1024))
++	if err != nil {
++		return err
++	}
++	report["slow_committed_puts"] = committed
++	report["slow_range_header"] = slowRange.Header
++	report["slow_last_mod_revision"] = slowRange.Kvs[0].ModRevision
++	if err := slow.check(); err != nil {
++		return err
++	}
++	beforeClose := slow.snapshot()
++	report["sender_before_close"] = beforeClose
++	if !beforeClose.AllDataSent {
++		file, err := captureGoroutines(*debugURL, *out, "blocked-prefix")
++		if err != nil {
++			return err
++		}
++		report["blocked_prefix_goroutines"] = file
++	}
++	final, err := slow.closeAndWait(3 * time.Second)
++	recordSender(report, final)
++	if err != nil {
++		return err
++	}
++	if err := validateSender(final, committed, mode != 0); err != nil {
++		return err
++	}
++	report["sender_outcome_verified"] = true
++	time.Sleep(200 * time.Millisecond)
++	postClose, err := put(healthyKey, healthy)
++	if err != nil || postClose == nil || postClose.Header == nil || postClose.Header.Revision <= previous {
++		return errors.Join(errors.New("healthy Put after slow close failed or invalid revision"), err)
++	}
++	report["healthy_revision_after_close"] = postClose.Header.Revision
++	r, err := get(healthyKey)
++	if err != nil || r == nil || len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Value, healthy) {
++		return errors.Join(errors.New("healthy final Range failed or wrong value"), err)
++	}
++	deadline := time.Now().Add(5 * time.Second)
++	recovery := []retainedSnapshot{}
++	for {
++		if err := retained("after_slow_close"); err != nil {
++			return err
++		}
++		latest := snapshots["after_slow_close"]
++		recovery = append(recovery, latest)
++		report["recovery_samples"] = recovery
++		before := snapshots["before_slow"].Allocator
++		if mode == 0 || (latest.Allocator["held_slots"] <= before["held_slots"] && latest.Allocator["held_bytes"] <= before["held_bytes"]) {
++			break
++		}
++		if time.Now().After(deadline) {
++			return fmt.Errorf("managed slots not released after close: %v", latest.Allocator)
++		}
++		time.Sleep(50 * time.Millisecond)
++	}
++	report["allocator_recovery_verified"] = mode != 0
++	report["valid"] = true
++	return nil
++}
++
++func main() {
++	if err := run(); err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		os.Exit(1)
++	}
++}
+diff --git a/experiments/alloc50/cases/main_test.go b/experiments/alloc50/cases/main_test.go
+new file mode 100644
+index 0000000..de581ef
+--- /dev/null
++++ b/experiments/alloc50/cases/main_test.go
+@@ -0,0 +1,79 @@
++package main
++
++import (
++	"bytes"
++	"testing"
++
++	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"go.etcd.io/etcd/api/v3/mvccpb"
++	"google.golang.org/protobuf/proto"
++)
++
++func TestInternalRaftBoundaryNotPayloadBoundary(t *testing.T) {
++	key := []byte("/alloc50/large")
++	value := make([]byte, limit)
++	n := limit
++	for raftSize(key, value[:n]) > limit {
++		n--
++	}
++	if n >= limit || raftSize(key, value[:n]) != limit || raftSize(key, value[:n+1]) != limit+1 {
++		t.Fatalf("bad boundary n=%d sizes=%d/%d", n, raftSize(key, value[:n]), raftSize(key, value[:n+1]))
++	}
++	request := &pb.PutRequest{Key: key, Value: value[:n]}
++	if proto.Size(request) >= limit {
++		t.Fatal("forgot InternalRaftRequest overhead")
++	}
++	wire, err := proto.Marshal(request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	decoded := new(pb.PutRequest)
++	if err := proto.Unmarshal(wire, decoded); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(decoded.Value, request.Value) {
++		t.Fatal("boundary payload changed")
++	}
++}
++
++func TestSlowCommittedCountNotCapacity(t *testing.T) {
++	key, value := []byte("/alloc50/slow"), valueOfSize(1024)
++	for _, version := range []int64{32, 256, 4096} {
++		r := &pb.RangeResponse{
++			Header: &pb.ResponseHeader{Revision: 5000}, Count: 1,
++			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
++		}
++		count, err := slowCommittedPuts(r, key, value)
++		if err != nil || count != version {
++			t.Fatalf("committed=%d want=%d err=%v", count, version, err)
++		}
++	}
++	for _, version := range []int64{0, 4097} {
++		r := &pb.RangeResponse{
++			Header: &pb.ResponseHeader{}, Count: 1,
++			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
++		}
++		if _, err := slowCommittedPuts(r, key, value); err == nil {
++			t.Fatalf("invalid count %d accepted", version)
++		}
++	}
++	if _, err := slowCommittedPuts(nil, key, value); err == nil {
++		t.Fatal("missing Range accepted")
++	}
++}
++
++func TestSlowPutsFitAdvertisedCredit(t *testing.T) {
++	wire, err := proto.Marshal(&pb.PutRequest{Key: []byte("/alloc50/slow"), Value: valueOfSize(1024)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if 4096*(5+len(wire)) > 16<<20 {
++		t.Fatal("slow workload exceeds server connection credit")
++	}
++	if 5+len(wire) > 4<<20 {
++		t.Fatal("slow request exceeds server stream credit")
++	}
++	if bytes.Equal(valueOfSize(1024), make([]byte, 1024)) {
++		t.Fatal("value fixture is empty")
++	}
++}
+diff --git a/experiments/alloc50/cases/observation.go b/experiments/alloc50/cases/observation.go
+new file mode 100644
+index 0000000..4cd9d54
+--- /dev/null
++++ b/experiments/alloc50/cases/observation.go
+@@ -0,0 +1,47 @@
++package main
++
++import (
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"os"
++	"time"
++)
++
++func observation(debugURL, path string, timeout time.Duration) ([]byte, error) {
++	client := &http.Client{Timeout: timeout}
++	r, err := client.Get(debugURL + path)
++	if err != nil {
++		return nil, err
++	}
++	b, readErr := io.ReadAll(r.Body)
++	closeErr := r.Body.Close()
++	if err := errors.Join(readErr, closeErr); err != nil {
++		return nil, err
++	}
++	if r.StatusCode != http.StatusOK {
++		return nil, fmt.Errorf("observation %s: %s", path, r.Status)
++	}
++	return b, nil
++}
++
++func captureGoroutines(debugURL, out, phase string) (string, error) {
++	b, err := observation(debugURL, "/debug/goroutines", 3*time.Second)
++	if err != nil {
++		return "", err
++	}
++	file := out + "." + phase + ".goroutines.txt"
++	if err := os.WriteFile(file, b, 0o644); err != nil {
++		return "", err
++	}
++	return file, nil
++}
++
++func recordSender(report map[string]any, j senderSnapshot) {
++	report["slow_sender"] = j
++	report["slow_attempted_puts"] = j.Attempted
++	report["slow_sent_headers"] = j.Headers
++	report["slow_sent_data"] = j.Data
++	report["slow_data_bytes"] = j.DataBytes
++}
+diff --git a/experiments/alloc50/cases/sender.go b/experiments/alloc50/cases/sender.go
+new file mode 100644
+index 0000000..c2da770
+--- /dev/null
++++ b/experiments/alloc50/cases/sender.go
+@@ -0,0 +1,252 @@
++package main
++
++import (
++	"bytes"
++	"crypto/tls"
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"sync/atomic"
++	"time"
++
++	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"golang.org/x/net/http2"
++	"golang.org/x/net/http2/hpack"
++	"google.golang.org/protobuf/proto"
++)
++
++type senderSnapshot struct {
++	Planned            uint64 `json:"planned_puts"`
++	Attempted          uint64 `json:"attempted_puts"`
++	Headers            uint64 `json:"sent_headers"`
++	Data               uint64 `json:"completed_data"`
++	DataBytes          uint64 `json:"completed_data_bytes"`
++	MessageBytes       uint64 `json:"message_bytes"`
++	Finished           bool   `json:"finished"`
++	AllDataSent        bool   `json:"all_data_sent"`
++	IntentionalClose   bool   `json:"intentional_close"`
++	Error              string `json:"error"`
++	ErrorBeforeClose   bool   `json:"error_before_close"`
++	ExpectedCloseError bool   `json:"expected_close_error"`
++	Stage              string `json:"stage"`
++}
++
++type slowSender struct {
++	conn                                         net.Conn
++	fr                                           *http2.Framer
++	header, data                                 []byte
++	planned                                      uint64
++	attempted, headers, completedData, dataBytes atomic.Uint64
++	closing                                      atomic.Bool
++	done                                         chan struct{}
++	// Published once before close(done); readers access only after that fence.
++	err         error
++	beforeClose bool
++	stage       string
++}
++
++func (s *slowSender) start(timeout time.Duration) error {
++	if err := s.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
++		return err
++	}
++	s.done = make(chan struct{})
++	go func() {
++		defer close(s.done)
++		for i := range s.planned {
++			if s.closing.Load() {
++				s.err = net.ErrClosed
++				return
++			}
++			s.attempted.Add(1)
++			id := uint32(1 + 2*i)
++			s.stage = "headers"
++			if err := s.fr.WriteHeaders(http2.HeadersFrameParam{StreamID: id, BlockFragment: s.header, EndHeaders: true}); err != nil {
++				s.err, s.beforeClose = err, !s.closing.Load()
++				return
++			}
++			s.headers.Add(1)
++			s.stage = "data"
++			if err := s.fr.WriteData(id, true, s.data); err != nil {
++				s.err, s.beforeClose = err, !s.closing.Load()
++				return
++			}
++			s.completedData.Add(1)
++			s.dataBytes.Add(uint64(len(s.data)))
++		}
++		s.stage = "complete"
++	}()
++	return nil
++}
++
++func (s *slowSender) snapshot() senderSnapshot {
++	j := senderSnapshot{
++		Planned: s.planned, Attempted: s.attempted.Load(), Headers: s.headers.Load(),
++		Data: s.completedData.Load(), DataBytes: s.dataBytes.Load(), MessageBytes: uint64(len(s.data)), IntentionalClose: s.closing.Load(),
++	}
++	select {
++	case <-s.done:
++		j.Finished, j.Stage = true, s.stage
++		j.ErrorBeforeClose = s.beforeClose
++		if s.err != nil {
++			j.Error = s.err.Error()
++			j.ExpectedCloseError = !s.beforeClose && s.closing.Load() && (errors.Is(s.err, net.ErrClosed) || errors.Is(s.err, io.ErrClosedPipe))
++		}
++	default:
++		j.Stage = "sending"
++	}
++	j.AllDataSent = j.Finished && j.Data == j.Planned && j.Error == ""
++	return j
++}
++
++func (s *slowSender) check() error {
++	select {
++	case <-s.done:
++		if s.err != nil {
++			return fmt.Errorf("raw sender failed before intentional close: %w", s.err)
++		}
++	default:
++	}
++	return nil
++}
++
++func (s *slowSender) closeAndWait(timeout time.Duration) (senderSnapshot, error) {
++	s.closing.Store(true)
++	closeErr := s.conn.Close()
++	if errors.Is(closeErr, net.ErrClosed) || errors.Is(closeErr, io.ErrClosedPipe) {
++		closeErr = nil
++	}
++	select {
++	case <-s.done:
++		j := s.snapshot()
++		if j.Error != "" && !j.ExpectedCloseError {
++			return j, errors.Join(closeErr, fmt.Errorf("raw sender error: %w", s.err))
++		}
++		return j, closeErr
++	case <-time.After(timeout):
++		return s.snapshot(), errors.Join(closeErr, errors.New("raw sender did not terminate after connection close"))
++	}
++}
++
++func validateSender(j senderSnapshot, committed int64, managed bool) error {
++	if !j.Finished || j.Planned == 0 || j.Attempted > j.Planned || j.Headers > j.Attempted || j.Data > j.Headers ||
++		j.Attempted-j.Headers > 1 || j.Headers-j.Data > 1 || j.DataBytes != j.Data*j.MessageBytes {
++		return fmt.Errorf("inconsistent raw sender counts: %+v", j)
++	}
++	if committed < 1 || uint64(committed) > j.Planned || uint64(committed) > j.Data+1 {
++		return fmt.Errorf("committed=%d exceeds complete DATA plus last in-progress frame: %+v", committed, j)
++	}
++	if j.ErrorBeforeClose || (j.Error != "" && !j.ExpectedCloseError) {
++		return fmt.Errorf("unexpected sender error: %+v", j)
++	}
++	if !managed && (!j.AllDataSent || j.Error != "") {
++		return fmt.Errorf("baseline did not send every planned Put: %+v", j)
++	}
++	if j.Data < j.Planned && !j.ExpectedCloseError {
++		return fmt.Errorf("partial sender without intentional close evidence: %+v", j)
++	}
++	return nil
++}
++
++// Only handshake reads occur here. Clear its deadline before launching exactly
++// one bounded sender; healthy work must not wait for the raw prefix to finish.
++func stalled(endpoint string, cfg *tls.Config, key []byte) (*slowSender, error) {
++	tcp, err := net.DialTimeout("tcp", endpoint, 5*time.Second)
++	if err != nil {
++		return nil, err
++	}
++	fail := func(e error) (*slowSender, error) { _ = tcp.Close(); return nil, e }
++	if t, ok := tcp.(*net.TCPConn); ok {
++		if err := t.SetReadBuffer(4096); err != nil {
++			return fail(err)
++		}
++	}
++	rawCFG := cfg.Clone()
++	host, _, err := net.SplitHostPort(endpoint)
++	if err != nil {
++		return fail(err)
++	}
++	rawCFG.ServerName = host
++	tc := tls.Client(tcp, rawCFG)
++	if err := tc.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
++		return fail(err)
++	}
++	if err := tc.Handshake(); err != nil {
++		return fail(err)
++	}
++	if tc.ConnectionState().NegotiatedProtocol != "h2" {
++		return fail(errors.New("missing h2 ALPN"))
++	}
++	if _, err := io.WriteString(tc, http2.ClientPreface); err != nil {
++		return fail(err)
++	}
++	fr := http2.NewFramer(tc, tc)
++	if err := fr.WriteSettings(http2.Setting{ID: http2.SettingInitialWindowSize, Val: 0}); err != nil {
++		return fail(err)
++	}
++	gotSettings, gotAck := false, false
++	credit, streamWindow := 65535, 65535
++	for !gotSettings || !gotAck || credit == 65535 {
++		frame, err := fr.ReadFrame()
++		if err != nil {
++			return fail(err)
++		}
++		if s, ok := frame.(*http2.SettingsFrame); ok {
++			if s.IsAck() {
++				gotAck = true
++			} else {
++				gotSettings = true
++				if err := s.ForeachSetting(func(setting http2.Setting) error {
++					if setting.ID == http2.SettingInitialWindowSize {
++						streamWindow = int(setting.Val)
++					}
++					return nil
++				}); err != nil {
++					return fail(err)
++				}
++				if err := fr.WriteSettingsAck(); err != nil {
++					return fail(err)
++				}
++			}
++		}
++		if w, ok := frame.(*http2.WindowUpdateFrame); ok && w.StreamID == 0 {
++			credit += int(w.Increment)
++		}
++	}
++	request, err := proto.Marshal(&pb.PutRequest{Key: key, Value: valueOfSize(1024)})
++	if err != nil {
++		return fail(err)
++	}
++	data := make([]byte, 5+len(request))
++	binary.BigEndian.PutUint32(data[1:5], uint32(len(request)))
++	copy(data[5:], request)
++	if len(data) > streamWindow || slowAttempts*len(data) > credit {
++		return fail(fmt.Errorf("slow workload exceeds advertised credit: stream=%d connection=%d bytes=%d", streamWindow, credit, slowAttempts*len(data)))
++	}
++	var header bytes.Buffer
++	enc := hpack.NewEncoder(&header)
++	enc.SetMaxDynamicTableSize(0)
++	for _, field := range []hpack.HeaderField{
++		{Name: ":method", Value: "POST"},
++		{Name: ":scheme", Value: "https"},
++		{Name: ":authority", Value: endpoint},
++		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
++		{Name: "content-type", Value: "application/grpc"},
++		{Name: "te", Value: "trailers"},
++	} {
++		if err := enc.WriteField(field); err != nil {
++			return fail(err)
++		}
++	}
++	if err := tc.SetDeadline(time.Time{}); err != nil {
++		return fail(err)
++	}
++	// Close the underlying TCP socket, not TLS Close (which can block while
++	// sending close_notify). Framer I/O still runs through the TLS connection.
++	s := &slowSender{conn: tcp, fr: fr, header: header.Bytes(), data: data, planned: slowAttempts}
++	if err := s.start(20 * time.Second); err != nil {
++		return fail(err)
++	}
++	return s, nil
++}
+diff --git a/experiments/alloc50/cases/sender_test.go b/experiments/alloc50/cases/sender_test.go
+new file mode 100644
+index 0000000..08582fd
+--- /dev/null
++++ b/experiments/alloc50/cases/sender_test.go
+@@ -0,0 +1,142 @@
++package main
++
++import (
++	"net"
++	"testing"
++	"time"
++
++	"golang.org/x/net/http2"
++)
++
++func fixtureSender(t *testing.T, conn net.Conn, planned uint64, timeout time.Duration) *slowSender {
++	t.Helper()
++	s := &slowSender{conn: conn, fr: http2.NewFramer(conn, conn), header: []byte{0x83}, data: []byte{0, 0, 0, 0, 1, 'v'}, planned: planned}
++	if err := s.start(timeout); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _, _ = s.closeAndWait(time.Second) })
++	return s
++}
++
++func TestSenderCompleteCounts(t *testing.T) {
++	client, server := net.Pipe()
++	defer func() { _ = server.Close() }()
++	read := make(chan error, 1)
++	go func() {
++		fr := http2.NewFramer(server, server)
++		for range 6 {
++			if _, err := fr.ReadFrame(); err != nil {
++				read <- err
++				return
++			}
++		}
++		read <- nil
++	}()
++	s := fixtureSender(t, client, 3, time.Second)
++	select {
++	case <-s.done:
++	case <-time.After(2 * time.Second):
++		t.Fatal("sender did not finish")
++	}
++	if err := <-read; err != nil {
++		t.Fatal(err)
++	}
++	j, err := s.closeAndWait(time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if j.Attempted != 3 || j.Headers != 3 || j.Data != 3 || j.DataBytes != 18 || !j.AllDataSent {
++		t.Fatalf("bad counters: %+v", j)
++	}
++	if err := validateSender(j, 3, false); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestSenderBlockedPrefixJoinsOnIntentionalClose(t *testing.T) {
++	client, server := net.Pipe()
++	defer func() { _ = server.Close() }()
++	read := make(chan error, 1)
++	go func() {
++		fr := http2.NewFramer(server, server)
++		for range 2 {
++			if _, err := fr.ReadFrame(); err != nil {
++				read <- err
++				return
++			}
++		}
++		// Stop reading with the next HEADERS in progress.
++		read <- nil
++	}()
++	s := fixtureSender(t, client, 4, time.Second)
++	if err := <-read; err != nil {
++		t.Fatal(err)
++	}
++	until := time.Now().Add(time.Second)
++	for s.attempted.Load() < 2 && time.Now().Before(until) {
++		time.Sleep(time.Millisecond)
++	}
++	j, err := s.closeAndWait(time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if j.Attempted != 2 || j.Headers != 1 || j.Data != 1 || j.DataBytes != 6 || !j.ExpectedCloseError || j.ErrorBeforeClose {
++		t.Fatalf("bad prefix: %+v", j)
++	}
++	if err := validateSender(j, 1, true); err != nil {
++		t.Fatal(err)
++	}
++	if err := validateSender(j, 2, true); err != nil {
++		t.Fatal("last in-progress DATA allowance rejected:", err)
++	}
++	if err := validateSender(j, 3, true); err == nil {
++		t.Fatal("commits beyond DATA+1 accepted")
++	}
++	if err := validateSender(j, 1, false); err == nil {
++		t.Fatal("baseline prefix accepted")
++	}
++}
++
++func TestSenderDeadlineBeforeCloseIsFailure(t *testing.T) {
++	client, server := net.Pipe()
++	defer func() { _ = server.Close() }()
++	s := fixtureSender(t, client, 4, 20*time.Millisecond)
++	select {
++	case <-s.done:
++	case <-time.After(time.Second):
++		t.Fatal("deadline did not stop blocked writer")
++	}
++	if err := s.check(); err == nil {
++		t.Fatal("premature timeout accepted")
++	}
++	j, err := s.closeAndWait(time.Second)
++	if err == nil || !j.ErrorBeforeClose || j.ExpectedCloseError {
++		t.Fatalf("timeout masked by cleanup: %+v err=%v", j, err)
++	}
++	if err := validateSender(j, 1, true); err == nil {
++		t.Fatal("timeout outcome accepted")
++	}
++}
++
++func TestSenderCounterConsistency(t *testing.T) {
++	j := senderSnapshot{Planned: 4096, Attempted: 4096, Headers: 4096, Data: 4096, DataBytes: 24576, MessageBytes: 6, Finished: true, AllDataSent: true, IntentionalClose: true}
++	if err := validateSender(j, 256, true); err != nil {
++		t.Fatal(err)
++	}
++	broken := j
++	broken.Headers = 4097
++	if err := validateSender(broken, 256, true); err == nil {
++		t.Fatal("headers beyond attempts accepted")
++	}
++	broken = j
++	broken.DataBytes--
++	if err := validateSender(broken, 256, true); err == nil {
++		t.Fatal("inconsistent bytes accepted")
++	}
++	broken = j
++	broken.Error = "premature reset"
++	broken.ErrorBeforeClose = true
++	if err := validateSender(broken, 256, true); err == nil {
++		t.Fatal("premature error accepted")
++	}
++}
+diff --git a/experiments/alloc50/cases/stats.go b/experiments/alloc50/cases/stats.go
+new file mode 100644
+index 0000000..b00c057
+--- /dev/null
++++ b/experiments/alloc50/cases/stats.go
+@@ -0,0 +1,45 @@
++package main
++
++import (
++	"fmt"
++)
++
++type retainedSnapshot struct {
++	ForcedGC    bool              `json:"forced_gc"`
++	HeapAlloc   uint64            `json:"heap_alloc_bytes"`
++	HeapObjects uint64            `json:"heap_objects"`
++	HeapInuse   uint64            `json:"heap_inuse_bytes"`
++	HeapSys     uint64            `json:"heap_sys_bytes"`
++	ProfileRate int               `json:"mem_profile_rate"`
++	StrategyEnv string            `json:"strategy_env"`
++	Allocator   map[string]uint64 `json:"allocator"`
++}
++
++// This checks the managed workspace only, not live database/log memory or all
++// process mallocs. The latter remain separately measured, never claimed zero.
++func validateAllocator(a map[string]uint64, mode uint64) error {
++	if a == nil {
++		if mode == 0 {
++			return nil
++		} // Pristine base has no prototype stats method.
++		return fmt.Errorf("allocator stats unavailable for mode %d", mode)
++	}
++	for _, key := range []string{"mode", "slot_budget", "byte_budget", "per_connection_slots", "held_slots", "held_bytes", "peak_slots", "peak_bytes", "denied_count", "fallback_allocations"} {
++		if _, ok := a[key]; !ok {
++			return fmt.Errorf("allocator stat missing %s", key)
++		}
++	}
++	if a["mode"] != mode {
++		return fmt.Errorf("allocator mode=%d, want %d", a["mode"], mode)
++	}
++	if a["held_slots"] > a["slot_budget"] || a["peak_slots"] > a["slot_budget"] || a["held_bytes"] > a["byte_budget"] || a["peak_bytes"] > a["byte_budget"] {
++		return fmt.Errorf("allocator budget exceeded: %v", a)
++	}
++	if mode != 0 && (a["slot_budget"] == 0 || a["byte_budget"] == 0 || a["per_connection_slots"] == 0 || a["per_connection_slots"] > a["slot_budget"]) {
++		return fmt.Errorf("invalid allocator quotas: %v", a)
++	}
++	if a["fallback_allocations"] != 0 {
++		return fmt.Errorf("unbounded allocation fallback: %v", a)
++	}
++	return nil
++}
+diff --git a/experiments/alloc50/cases/stats_test.go b/experiments/alloc50/cases/stats_test.go
+new file mode 100644
+index 0000000..12120bc
+--- /dev/null
++++ b/experiments/alloc50/cases/stats_test.go
+@@ -0,0 +1,44 @@
++package main
++
++import "testing"
++
++func TestAllocatorBounds(t *testing.T) {
++	fixture := func() map[string]uint64 {
++		return map[string]uint64{
++			"mode": 1, "slot_budget": 4096, "byte_budget": 64 << 20, "per_connection_slots": 256,
++			"held_slots": 256, "held_bytes": 1 << 20, "peak_slots": 257, "peak_bytes": 2 << 20, "denied_count": 100, "fallback_allocations": 0,
++		}
++	}
++	if err := validateAllocator(nil, 0); err != nil {
++		t.Fatal(err)
++	}
++	if err := validateAllocator(nil, 1); err == nil {
++		t.Fatal("missing prototype stats accepted")
++	}
++	if err := validateAllocator(fixture(), 1); err != nil {
++		t.Fatal(err)
++	}
++	for _, key := range []string{"held_slots", "peak_slots", "held_bytes", "peak_bytes", "fallback_allocations", "mode", "per_connection_slots"} {
++		a := fixture()
++		switch key {
++		case "held_slots", "peak_slots":
++			a[key] = a["slot_budget"] + 1
++		case "held_bytes", "peak_bytes":
++			a[key] = a["byte_budget"] + 1
++		case "fallback_allocations":
++			a[key] = 1
++		case "mode":
++			a[key] = 2
++		case "per_connection_slots":
++			a[key] = 0
++		}
++		if err := validateAllocator(a, 1); err == nil {
++			t.Fatalf("invalid %s accepted", key)
++		}
++	}
++	a := fixture()
++	delete(a, "held_bytes")
++	if err := validateAllocator(a, 1); err == nil {
++		t.Fatal("missing gauge accepted")
++	}
++}
+diff --git a/experiments/bench75/load/main.go b/experiments/bench75/load/main.go
+new file mode 100644
+index 0000000..c899b4c
+--- /dev/null
++++ b/experiments/bench75/load/main.go
+@@ -0,0 +1,289 @@
++// A closed-loop, direct etcd protobuf client used unchanged for both servers.
++package main
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"crypto/tls"
++	"crypto/x509"
++	"encoding/json"
++	"errors"
++	"flag"
++	"fmt"
++	"log"
++	"math"
++	"os"
++	"slices"
++	"strconv"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/credentials"
++)
++
++type cpu struct {
++	PID          int
++	Ticks, Start uint64
++}
++
++func sample(pid int) (cpu, error) {
++	b, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
++	if e != nil {
++		return cpu{}, e
++	}
++	pos := strings.LastIndex(string(b), ")")
++	if pos < 0 {
++		return cpu{}, errors.New("bad proc stat")
++	}
++	s := strings.Fields(string(b[pos+1:]))
++	u, e := strconv.ParseUint(s[11], 10, 64)
++	if e != nil {
++		return cpu{}, e
++	}
++	k, e := strconv.ParseUint(s[12], 10, 64)
++	if e != nil {
++		return cpu{}, e
++	}
++	st, e := strconv.ParseUint(s[19], 10, 64)
++	return cpu{pid, u + k, st}, e
++}
++
++func run() error {
++	endpoint := flag.String("endpoint", "127.0.0.1:2379", "leader endpoint")
++	certdir := flag.String("certdir", "", "cert directory")
++	op := flag.String("op", "put", "put or range")
++	total := flag.Uint64("total", 60000, "operations, zero for duration")
++	duration := flag.Duration("duration", 0, "arrival duration, drain included in elapsed")
++	workers := flag.Int("workers", 256, "closed-loop concurrency")
++	conns := flag.Int("conns", 16, "connections")
++	pidstr := flag.String("pids", "", "leader,follower1,follower2")
++	hz := flag.Float64("hz", 100, "getconf CLK_TCK")
++	out := flag.String("out", "", "json output")
++	metricsURL := flag.String("metrics-url", "", "leader runtime metrics or Prometheus endpoint")
++	metricsKind := flag.String("metrics-kind", "runtime", "runtime or etcd")
++	flag.Parse()
++	if (*op != "put" && *op != "range") || *workers < 1 || *conns < 1 || (*total == 0 && *duration <= 0) {
++		return errors.New("invalid flags")
++	}
++	ca, e := os.ReadFile(*certdir + "/ca.pem")
++	if e != nil {
++		return e
++	}
++	pool := x509.NewCertPool()
++	if !pool.AppendCertsFromPEM(ca) {
++		return errors.New("bad CA")
++	}
++	cert, e := tls.LoadX509KeyPair(*certdir+"/client.pem", *certdir+"/client-key.pem")
++	if e != nil {
++		return e
++	}
++	cfg := &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13}
++	clients := make([]pb.KVClient, *conns)
++	for i := range clients {
++		c, e := grpc.NewClient(*endpoint, grpc.WithTransportCredentials(credentials.NewTLS(cfg.Clone())))
++		if e != nil {
++			return e
++		}
++		defer func() {
++			if err := c.Close(); err != nil {
++				log.Printf("close client: %v", err)
++			}
++		}()
++		clients[i] = pb.NewKVClient(c)
++		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++		_, e = clients[i].Range(ctx, &pb.RangeRequest{Key: []byte("/pre50-probe")})
++		cancel()
++		if e != nil {
++			return e
++		}
++	}
++	const keyspace = 4096
++	keys := make([][]byte, keyspace)
++	values := make([][]byte, keyspace)
++	for i := range keyspace {
++		keys[i] = []byte(fmt.Sprintf("/registry/pods/ns-%03d/pod-%08d", i%64, i))
++		values[i] = make([]byte, 1024)
++		for j := range 32 {
++			s := sha256.Sum256([]byte(fmt.Sprintf("pre50-independent-%d-%d", i, j)))
++			copy(values[i][j*32:], s[:])
++		}
++	}
++	probe := func() (*pb.RangeResponse, error) {
++		ctx, c := context.WithTimeout(context.Background(), 10*time.Second)
++		defer c()
++		return clients[0].Range(ctx, &pb.RangeRequest{Key: keys[0]})
++	}
++	before, e := probe()
++	if e != nil {
++		return e
++	}
++	pids := []int{}
++	if *pidstr != "" {
++		for p := range strings.SplitSeq(*pidstr, ",") {
++			id, e := strconv.Atoi(p)
++			if e != nil {
++				return e
++			}
++			pids = append(pids, id)
++		}
++	}
++	pids = append(pids, os.Getpid())
++	pre := make([]cpu, len(pids))
++	post := make([]cpu, len(pids))
++	var next atomic.Uint64
++	var wg sync.WaitGroup
++	start := make(chan struct{})
++	latencies := make([][]int64, *workers)
++	errs := make([]map[string]int, *workers)
++	terms := make([]map[uint64]int, *workers)
++	var deadline time.Time
++	for w := range *workers {
++		wg.Go(func() {
++			<-start
++			local := make([]int64, 0, 1024)
++			em := map[string]int{}
++			tm := map[uint64]int{}
++			for {
++				i := next.Add(1) - 1
++				if (*total > 0 && i >= *total) || (!deadline.IsZero() && !time.Now().Before(deadline)) {
++					break
++				}
++				k := int((i * 2654435761) % keyspace)
++				t := time.Now()
++				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++				var err error
++				var h *pb.ResponseHeader
++				if *op == "put" {
++					var r *pb.PutResponse
++					r, err = clients[w%*conns].Put(ctx, &pb.PutRequest{Key: keys[k], Value: values[k]})
++					if r != nil {
++						h = r.Header
++					}
++				} else {
++					var r *pb.RangeResponse
++					r, err = clients[w%*conns].Range(ctx, &pb.RangeRequest{Key: keys[k]})
++					if r != nil {
++						h = r.Header
++						if err == nil && (r.Count != 1 || len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Key, keys[k]) || !bytes.Equal(r.Kvs[0].Value, values[k])) {
++							err = errors.New("invalid range result")
++						}
++					}
++				}
++				cancel()
++				dt := time.Since(t).Nanoseconds()
++				if err == nil && (h == nil || h.Revision < 1) {
++					err = errors.New("invalid header")
++				}
++				if err != nil {
++					em[err.Error()]++
++				} else {
++					local = append(local, dt)
++					tm[h.RaftTerm]++
++				}
++			}
++			latencies[w] = local
++			errs[w] = em
++			terms[w] = tm
++		})
++	}
++	var heapBefore, heapAfter heapSnapshot
++	if *metricsURL != "" {
++		heapBefore, e = sampleHeap(*metricsURL, *metricsKind)
++		if e != nil {
++			return e
++		}
++	}
++	for i, p := range pids {
++		pre[i], e = sample(p)
++		if e != nil {
++			return e
++		}
++	}
++	t := time.Now()
++	if *duration > 0 {
++		deadline = t.Add(*duration)
++	}
++	close(start)
++	wg.Wait()
++	elapsed := time.Since(t).Seconds()
++	for i, p := range pids {
++		post[i], e = sample(p)
++		if e != nil {
++			return e
++		}
++		if pre[i].Start != post[i].Start {
++			return errors.New("process restarted")
++		}
++	}
++	if *metricsURL != "" {
++		heapAfter, e = sampleHeap(*metricsURL, *metricsKind)
++		if e != nil {
++			return e
++		}
++	}
++	after, e := probe()
++	if e != nil {
++		return e
++	}
++	all := []int64{}
++	em := map[string]int{}
++	tm := map[uint64]int{}
++	for i := range *workers {
++		all = append(all, latencies[i]...)
++		for k, n := range errs[i] {
++			em[k] += n
++		}
++		for k, n := range terms[i] {
++			tm[k] += n
++		}
++	}
++	if len(all) == 0 {
++		return errors.New("no successes")
++	}
++	slices.Sort(all)
++	pct := func(p float64) float64 { return float64(all[int(math.Ceil(p*float64(len(all))))-1]) / 1e6 }
++	sum := float64(0)
++	for _, v := range all {
++		sum += float64(v)
++	}
++	cpus := make([]float64, len(pids))
++	occup := make([]float64, len(pids))
++	for i := range pids {
++		secs := float64(post[i].Ticks-pre[i].Ticks) / *hz
++		cpus[i] = secs * 1e6 / float64(len(all))
++		occup[i] = secs / elapsed
++	}
++	delta := after.Header.Revision - before.Header.Revision
++	valid := len(em) == 0 && len(tm) == 1 && (*total == 0 || uint64(len(all)) == *total) && ((*op == "put" && delta == int64(len(all))) || (*op == "range" && delta == 0))
++	result := map[string]any{"valid": valid, "op": *op, "successes": len(all), "errors": em, "terms": tm, "elapsed_s": elapsed, "ops_s": float64(len(all)) / elapsed, "mean_ms": sum / float64(len(all)) / 1e6, "p50_ms": pct(.5), "p90_ms": pct(.9), "p99_ms": pct(.99), "p999_ms": pct(.999), "max_ms": float64(all[len(all)-1]) / 1e6, "cpu_us_op": cpus, "occupied_cores": occup, "cpu_before": pre, "cpu_after": post, "revision_before": before.Header.Revision, "revision_after": after.Header.Revision, "workers": *workers, "conns": *conns, "keyspace": keyspace, "value_bytes": 1024, "clock_hz": *hz, "start_utc": t.UTC().Format(time.RFC3339Nano)}
++	if *metricsURL != "" {
++		delta, err := heapDelta(heapBefore, heapAfter, len(all))
++		if err != nil {
++			return err
++		}
++		result["leader_heap"] = delta
++	}
++	b, e := json.MarshalIndent(result, "", "  ")
++	if e != nil {
++		return e
++	}
++	if e = os.WriteFile(*out, append(b, '\n'), 0o644); e != nil {
++		return e
++	}
++	if !valid {
++		return errors.New("invalid measurement; see JSON")
++	}
++	return nil
++}
++
++func main() {
++	if err := run(); err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		os.Exit(1)
++	}
++}
+diff --git a/experiments/bench75/load/metrics.go b/experiments/bench75/load/metrics.go
+new file mode 100644
+index 0000000..c9a84d3
+--- /dev/null
++++ b/experiments/bench75/load/metrics.go
+@@ -0,0 +1,103 @@
++package main
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"strconv"
++	"strings"
++	"time"
++)
++
++// These counters include all leader-process allocations, not only RPC handlers.
++type heapSnapshot struct {
++	Objects   float64            `json:"allocated_objects"`
++	Bytes     float64            `json:"allocated_bytes"`
++	HeapBytes float64            `json:"heap_object_bytes"`
++	GCCPU     float64            `json:"gc_cpu_seconds"`
++	BusyCPU   float64            `json:"runtime_nonidle_cpu_seconds"`
++	HasGCCPU  bool               `json:"has_gc_cpu"`
++	Raw       map[string]float64 `json:"raw"`
++}
++
++func parseHeap(b []byte, kind string) (heapSnapshot, error) {
++	m := map[string]float64{}
++	var objects, allocated, heap string
++	switch kind {
++	case "runtime":
++		if err := json.Unmarshal(b, &m); err != nil {
++			return heapSnapshot{}, err
++		}
++		objects, allocated, heap = "/gc/heap/allocs:objects", "/gc/heap/allocs:bytes", "/memory/classes/heap/objects:bytes"
++	case "etcd":
++		for line := range strings.SplitSeq(string(b), "\n") {
++			f := strings.Fields(line)
++			if len(f) == 2 && strings.HasPrefix(f[0], "go_memstats_") {
++				v, err := strconv.ParseFloat(f[1], 64)
++				if err != nil {
++					return heapSnapshot{}, err
++				}
++				m[f[0]] = v
++			}
++		}
++		objects, allocated, heap = "go_memstats_mallocs_total", "go_memstats_alloc_bytes_total", "go_memstats_heap_alloc_bytes"
++	default:
++		return heapSnapshot{}, errors.New("unknown metrics kind")
++	}
++	for _, k := range []string{objects, allocated, heap} {
++		if _, ok := m[k]; !ok {
++			return heapSnapshot{}, fmt.Errorf("missing heap metric %s", k)
++		}
++	}
++	s := heapSnapshot{Objects: m[objects], Bytes: m[allocated], HeapBytes: m[heap], Raw: m}
++	gc, hasGC := m["/cpu/classes/gc/total:cpu-seconds"]
++	total, hasTotal := m["/cpu/classes/total:cpu-seconds"]
++	idle, hasIdle := m["/cpu/classes/idle:cpu-seconds"]
++	if hasGC && hasTotal && hasIdle {
++		s.HasGCCPU, s.GCCPU, s.BusyCPU = true, gc, total-idle
++	}
++	return s, nil
++}
++
++func sampleHeap(url, kind string) (heapSnapshot, error) {
++	client := &http.Client{Timeout: 10 * time.Second}
++	r, err := client.Get(url)
++	if err != nil {
++		return heapSnapshot{}, err
++	}
++	b, readErr := io.ReadAll(r.Body)
++	closeErr := r.Body.Close()
++	if err := errors.Join(readErr, closeErr); err != nil {
++		return heapSnapshot{}, err
++	}
++	if r.StatusCode != http.StatusOK {
++		return heapSnapshot{}, fmt.Errorf("metrics returned %s", r.Status)
++	}
++	return parseHeap(b, kind)
++}
++
++func heapDelta(before, after heapSnapshot, n int) (map[string]any, error) {
++	if n < 1 || after.Objects < before.Objects || after.Bytes < before.Bytes {
++		return nil, errors.New("invalid allocation delta")
++	}
++	result := map[string]any{
++		"objects_per_put":  (after.Objects - before.Objects) / float64(n),
++		"bytes_per_put":    (after.Bytes - before.Bytes) / float64(n),
++		"heap_bytes_after": after.HeapBytes,
++		"before":           before,
++		"after":            after,
++	}
++	if before.HasGCCPU && after.HasGCCPU {
++		gc, busy := after.GCCPU-before.GCCPU, after.BusyCPU-before.BusyCPU
++		if gc < 0 || busy <= 0 {
++			return nil, errors.New("invalid GC CPU delta")
++		}
++		result["gc_cpu_share"] = gc / busy
++		result["gc_cpu_us_per_put"] = gc * 1e6 / float64(n)
++	} else {
++		result["gc_cpu_share"] = nil
++	}
++	return result, nil
++}
+diff --git a/experiments/bench75/load/metrics_test.go b/experiments/bench75/load/metrics_test.go
+new file mode 100644
+index 0000000..5662d01
+--- /dev/null
++++ b/experiments/bench75/load/metrics_test.go
+@@ -0,0 +1,56 @@
++package main
++
++import (
++	"math"
++	"testing"
++)
++
++func TestHeapMetrics(t *testing.T) {
++	cases := []struct {
++		kind, input string
++		gc          bool
++	}{
++		{"runtime", `{"/gc/heap/allocs:objects":100,"/gc/heap/allocs:bytes":2048,"/memory/classes/heap/objects:bytes":1024,"/cpu/classes/gc/total:cpu-seconds":2,"/cpu/classes/total:cpu-seconds":20,"/cpu/classes/idle:cpu-seconds":5}`, true},
++		{"etcd", "# HELP comment\ngo_memstats_mallocs_total 100\ngo_memstats_alloc_bytes_total 2048\ngo_memstats_heap_alloc_bytes 1024\n", false},
++	}
++	for _, c := range cases {
++		t.Run(c.kind, func(t *testing.T) {
++			before, err := parseHeap([]byte(c.input), c.kind)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if before.Objects != 100 || before.Bytes != 2048 || before.HeapBytes != 1024 || before.HasGCCPU != c.gc {
++				t.Fatalf("bad snapshot: %+v", before)
++			}
++			after := before
++			after.Objects += 100
++			after.Bytes += 2048
++			after.GCCPU += 1
++			after.BusyCPU += 10
++			delta, err := heapDelta(before, after, 10)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if delta["objects_per_put"] != float64(10) || delta["bytes_per_put"] != 204.8 {
++				t.Fatalf("bad delta: %+v", delta)
++			}
++			if c.gc && math.Abs(delta["gc_cpu_share"].(float64)-.1) > 1e-12 {
++				t.Fatalf("bad GC share: %+v", delta)
++			}
++			if !c.gc && delta["gc_cpu_share"] != nil {
++				t.Fatal("must not report pause time as GC CPU")
++			}
++		})
++	}
++}
++
++func TestBadHeapMetrics(t *testing.T) {
++	for _, kind := range []string{"runtime", "etcd", "unknown"} {
++		if _, err := parseHeap([]byte("{}"), kind); err == nil {
++			t.Fatalf("accepted missing metrics for %s", kind)
++		}
++	}
++	if _, err := heapDelta(heapSnapshot{Objects: 2}, heapSnapshot{Objects: 1}, 10); err == nil {
++		t.Fatal("accepted decreasing counter")
++	}
++}
+diff --git a/internal/core/allocation.go b/internal/core/allocation.go
+new file mode 100644
+index 0000000..e8dc9b0
+--- /dev/null
++++ b/internal/core/allocation.go
+@@ -0,0 +1,72 @@
++package core
++
++// Workspace is transient request state supplied by the allocation experiment.
++// It must remain owned by the driver until its reply is consumed. Entry.Data is
++// deliberately never stored here. Only wire Puts use this optional API.
++type Workspace struct {
++	p     pending
++	Reply Reply
++	Next  *Workspace
++}
++
++func (n *Node) answerRequest(r Request, reply Reply) {
++	if r.Workspace == nil {
++		n.out.Replies = append(n.out.Replies, reply)
++		return
++	}
++	w := r.Workspace
++	w.Reply = reply
++	w.Next = n.out.ManagedReplies
++	n.out.ManagedReplies = w
++}
++
++// retireManaged removes ALL transient core references before the driver can
++// return a workspace. In particular settle alone does not retire timeouts or
++// a proposal that expired before it was encoded.
++// EnableAllocationWorkspace reserves descriptor-list/map capacity before Run.
++// Retained entry encoding, effects for WAL/peers and MVCC history stay owned by
++// their original subsystems, not this transient allocator.
++func (n *Node) EnableAllocationWorkspace(limit int) {
++	n.allocationWorkspace = true
++	n.proposals = make([]*pending, 0, limit)
++	n.timeouts = make([]*pending, 0, limit)
++	n.waiting = make(map[uint64]*pending, limit)
++}
++
++func (n *Node) retireManaged() {
++	if !n.allocationWorkspace {
++		return
++	}
++	n.proposals = filterManaged(n.proposals, false)
++	n.timeouts = filterManaged(n.timeouts, false)
++}
++
++func filterManaged(ps []*pending, all bool) []*pending {
++	kept := ps[:0]
++	for _, p := range ps {
++		if p.req.Workspace != nil && (all || p.done) {
++			// Do not reset done until all lists have been filtered.
++			continue
++		}
++		kept = append(kept, p)
++	}
++	clear(ps[len(kept):])
++	return kept
++}
++
++// AbandonManaged is called only after the driver has stopped using the core.
++// The driver then fails accepted requests, including ones left in its inbox.
++func (n *Node) AbandonManaged() {
++	n.proposals = filterManaged(n.proposals, true)
++	n.timeouts = filterManaged(n.timeouts, true)
++	for id, p := range n.waiting {
++		if p.req.Workspace != nil {
++			delete(n.waiting, id)
++		}
++	}
++	n.out.ManagedReplies = nil
++}
++
++// Clear removes aliases after all core holders have retired, before a reply
++// callback can make its containing slot reusable.
++func (w *Workspace) Clear() { *w = Workspace{} }
+diff --git a/internal/core/allocation_test.go b/internal/core/allocation_test.go
+new file mode 100644
+index 0000000..6c87abf
+--- /dev/null
++++ b/internal/core/allocation_test.go
+@@ -0,0 +1,41 @@
++package core
++
++import (
++	"testing"
++
++	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
++)
++
++// A settled workspace must NOT reappear in an old timeout/proposal list after
++// the driver clears and reuses it. Exercise both pre-proposal expiry and an
++// ordinary settlement, without relying on the runtime GC to hide stale refs.
++func TestAllocationWorkspaceRetiresAllPendingReferences(t *testing.T) {
++	put, err := ParsePut([]byte{10, 1, 'k', 18, 1, 'v'})
++	if err != nil {
++		t.Fatal(err)
++	}
++	n := &Node{cfg: Config{RequestTicks: 2, MaxBatchBytes: 4 << 20}}
++	n.EnableAllocationWorkspace(16)
++	var w Workspace
++	for id := uint64(1); id <= 20; id++ {
++		n.Submit(Request{ID: id, Put: put, Workspace: &w})
++		if len(n.proposals) != 1 || len(n.timeouts) != 1 {
++			t.Fatal("request was not pinned in both lists")
++		}
++		if id%2 == 0 {
++			n.finish(&w.p, nil, rpctypes.ErrGRPCStopped)
++		} else {
++			n.now += 2
++			n.expire()
++		}
++		n.retireManaged()
++		if len(n.proposals) != 0 || len(n.timeouts) != 0 || len(n.waiting) != 0 {
++			t.Fatal("settled request retained in core workspace collections")
++		}
++		if n.out.ManagedReplies != &w || w.Reply.ID != id {
++			t.Fatal("reply lost or attributed to wrong generation")
++		}
++		n.out = Effects{}
++		w.Clear()
++	}
++}
+diff --git a/internal/core/node.go b/internal/core/node.go
+index e729be0..b10780f 100644
+--- a/internal/core/node.go
++++ b/internal/core/node.go
+@@ -103,6 +103,8 @@ type Request struct {
+ 	ID  uint64
+ 	Op  proto.Message
+ 	Put Put
++	// Workspace is optional transient storage for the wire-Put experiment.
++	Workspace *Workspace
+ }
+ 
+ // Reply answers one request. Resp is the response of the same kind as the
+@@ -130,10 +132,11 @@ type PersistJob struct {
+ 
+ // Effects is what the core asks its driver to do.
+ type Effects struct {
+-	Persist []PersistJob
+-	Send    []*raftpb.Message
+-	Replies []Reply
+-	Watch   []WatchResponse
++	Persist        []PersistJob
++	Send           []*raftpb.Message
++	Replies        []Reply
++	ManagedReplies *Workspace
++	Watch          []WatchResponse
+ 	// Expired lists the leases that expired as this node applied the log.
+ 	// Drivers may log them; the simulator checks their timing.
+ 	Expired []int64
+@@ -213,8 +216,9 @@ type Node struct {
+ 	streams  map[uint64]*watchStream
+ 	watchers []*watcher
+ 
+-	out Effects
+-	err error
++	out                 Effects
++	err                 error
++	allocationWorkspace bool
+ }
+ 
+ // New starts a node from what its log recovered.
+@@ -365,15 +369,22 @@ func (n *Node) Unreachable(id uint64) {
+ // Effects.
+ func (n *Node) Submit(r Request) {
+ 	if n.err != nil {
+-		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
++		n.answerRequest(r, Reply{ID: r.ID, Err: rpctypes.ErrGRPCStopped})
+ 		return
+ 	}
+ 	if r.Op == nil {
+ 		if err := checkPut(&r.Put); err != nil {
+-			n.reply(r.ID, nil, err)
++			n.answerRequest(r, Reply{ID: r.ID, Err: err})
+ 			return
+ 		}
+-		p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
++		var p *pending
++		if r.Workspace != nil {
++			n.allocationWorkspace = true
++			p = &r.Workspace.p
++			*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
++		} else {
++			p = &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
++		}
+ 		n.queueWrite(p)
+ 		n.timeouts = append(n.timeouts, p)
+ 		return
+@@ -525,12 +536,18 @@ func (n *Node) expire() {
+ 		}
+ 		n.finish(p, nil, rpctypes.ErrGRPCTimeout)
+ 	}
+-	n.timeouts = n.timeouts[i:]
++	if n.allocationWorkspace {
++		copy(n.timeouts, n.timeouts[i:])
++		clear(n.timeouts[len(n.timeouts)-i:])
++		n.timeouts = n.timeouts[:len(n.timeouts)-i]
++	} else {
++		n.timeouts = n.timeouts[i:]
++	}
+ }
+ 
+ func (n *Node) finish(p *pending, resp proto.Message, err error) {
+ 	if n.settle(p) {
+-		n.reply(p.req.ID, resp, err)
++		n.answerRequest(p.req, Reply{ID: p.req.ID, Resp: resp, Err: err})
+ 	}
+ }
+ 
+@@ -560,6 +577,9 @@ func (n *Node) propose() {
+ 	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+ 	size := n.propBytes
+ 	n.proposals, n.propBytes = nil, 0
++	if n.allocationWorkspace {
++		defer func() { clear(props); n.proposals = props[:0] }()
++	}
+ 	if len(props) == 0 {
+ 		return
+ 	}
+@@ -665,6 +685,7 @@ func (n *Node) Process() (Effects, error) {
+ 	if n.err != nil {
+ 		n.stop()
+ 	}
++	n.retireManaged()
+ 	out := n.out
+ 	n.out = Effects{}
+ 	return out, n.err
+@@ -902,7 +923,7 @@ func (n *Node) applyPut(b []byte, p *pending) error {
+ 		return nil
+ 	}
+ 	if n.settle(p) {
+-		n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
++		n.answerRequest(p.req, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
+ 	}
+ 	return nil
+ }
+diff --git a/internal/node/allocation.go b/internal/node/allocation.go
+new file mode 100644
+index 0000000..e0f52b5
+--- /dev/null
++++ b/internal/node/allocation.go
+@@ -0,0 +1,81 @@
++package node
++
++import (
++	"context"
++
++	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
++
++	"github.com/djosh34/tigerstore/internal/core"
++)
++
++// ManagedBatch is an immutable linked handoff owned by the experimental
++// transport. The links and wire bytes stay pinned through completion.
++type ManagedBatch interface {
++	ManagedRequest() (core.Request, any)
++	NextManagedRequest() ManagedBatch
++}
++
++// DirectCompleter avoids a freshly allocated completion slice. CompleteOne
++// must only copy into bounded storage, never encode or wait for socket output.
++type DirectCompleter interface{ CompleteOne(any, core.Reply) }
++
++func (n *Node) SubmitManagedBatch(ctx context.Context, head ManagedBatch, count int, to DirectCompleter) error {
++	n.managedMu.RLock()
++	defer n.managedMu.RUnlock()
++	select {
++	case <-n.managedStop:
++		return rpctypes.ErrGRPCStopped
++	default:
++	}
++	first := n.nextID.Add(uint64(count)) - uint64(count) + 1
++	select {
++	case n.inbox <- input{managed: head, managedFirst: first, direct: to}:
++		return nil
++	case <-ctx.Done():
++		return ctx.Err()
++	case <-n.managedStop:
++		return rpctypes.ErrGRPCStopped
++	}
++}
++
++func completeManaged(head *core.Workspace, waiters map[uint64]waiter) {
++	for head != nil {
++		w := head
++		head = w.Next
++		r := w.Reply
++		w.Clear() // callback may immediately recycle the enclosing slot
++		if to, ok := waiters[r.ID]; ok {
++			delete(waiters, r.ID)
++			to.direct.CompleteOne(to.tag, r)
++		}
++	}
++}
++
++// shutdownManaged retires core and inbox owners before making any slot
++// reusable. Closing managedStop unblocks a submitter holding the read lock;
++// the write lock then excludes every possible late accepted inbox send.
++func (n *Node) shutdownManaged(waiters map[uint64]waiter) {
++	close(n.managedStop)
++	n.managedMu.Lock()
++	defer n.managedMu.Unlock()
++	n.core.AbandonManaged()
++	for id, w := range waiters {
++		if w.direct != nil {
++			delete(waiters, id)
++			w.direct.CompleteOne(w.tag, core.Reply{ID: id, Err: rpctypes.ErrGRPCStopped})
++		}
++	}
++	for {
++		select {
++		case in := <-n.inbox:
++			for b := in.managed; b != nil; {
++				next := b.NextManagedRequest() // callback may recycle this link
++				_, tag := b.ManagedRequest()
++				in.direct.CompleteOne(tag, core.Reply{Err: rpctypes.ErrGRPCStopped})
++				b = next
++			}
++		default:
++			return
++		}
++	}
++}
+diff --git a/internal/node/allocation_test.go b/internal/node/allocation_test.go
+new file mode 100644
+index 0000000..41d0e12
+--- /dev/null
++++ b/internal/node/allocation_test.go
+@@ -0,0 +1,47 @@
++package node
++
++import (
++	"context"
++	"testing"
++
++	"github.com/djosh34/tigerstore/internal/core"
++)
++
++type allocationTestLink struct{ next *allocationTestLink }
++
++func (b *allocationTestLink) ManagedRequest() (core.Request, any) { return core.Request{}, b }
++func (b *allocationTestLink) NextManagedRequest() ManagedBatch {
++	if b.next == nil {
++		return nil
++	}
++	return b.next
++}
++
++type allocationTestCompleter struct{ calls int }
++
++func (c *allocationTestCompleter) CompleteOne(tag any, _ core.Reply) {
++	c.calls++
++	tag.(*allocationTestLink).next = nil
++}
++
++func TestAllocationShutdownRetiresUnprocessedInboxLinks(t *testing.T) {
++	n, err := New(Config{Core: core.DefaultConfig(1, []uint64{1}), DataDir: t.TempDir()})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = n.wal.Close() }()
++	last := &allocationTestLink{}
++	middle := &allocationTestLink{next: last}
++	first := &allocationTestLink{next: middle}
++	var to allocationTestCompleter
++	if err := n.SubmitManagedBatch(context.Background(), first, 3, &to); err != nil {
++		t.Fatal(err)
++	}
++	n.shutdownManaged(map[uint64]waiter{})
++	if to.calls != 3 {
++		t.Fatalf("shutdown orphaned links: completions=%d", to.calls)
++	}
++	if err := n.SubmitManagedBatch(context.Background(), first, 1, &to); err == nil {
++		t.Fatal("accepted managed request after shutdown")
++	}
++}
+diff --git a/internal/node/node.go b/internal/node/node.go
+index 2056122..3957b32 100644
+--- a/internal/node/node.go
++++ b/internal/node/node.go
+@@ -9,6 +9,7 @@ import (
+ 	"context"
+ 	"errors"
+ 	"math/rand/v2"
++	"os"
+ 	"path/filepath"
+ 	"sync"
+ 	"sync/atomic"
+@@ -42,15 +43,18 @@ type Config struct {
+ 
+ // input is one event for the committer from a client or a peer.
+ type input struct {
+-	req         *request
+-	batch       *batch
+-	msg         *raftpb.Message
+-	unreachable uint64
+-	watchOpen   *WatchStream
+-	watchReq    *pb.WatchRequest
+-	watchClose  bool
+-	stream      uint64
+-	status      chan *pb.StatusResponse
++	req          *request
++	batch        *batch
++	managed      ManagedBatch
++	managedFirst uint64
++	direct       DirectCompleter
++	msg          *raftpb.Message
++	unreachable  uint64
++	watchOpen    *WatchStream
++	watchReq     *pb.WatchRequest
++	watchClose   bool
++	stream       uint64
++	status       chan *pb.StatusResponse
+ }
+ 
+ // watchQueue is how many responses a watch stream may fall behind before
+@@ -161,9 +165,10 @@ type batch struct {
+ // waiter is who waits for the reply to a request: a Do call, or a
+ // completer with its tag.
+ type waiter struct {
+-	reply chan core.Reply
+-	to    Completer
+-	tag   any
++	reply  chan core.Reply
++	to     Completer
++	tag    any
++	direct DirectCompleter
+ }
+ 
+ // SubmitBatch hands the committer every request in reqs with one inbox
+@@ -189,14 +194,16 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
+ 
+ // Node is a running node.
+ type Node struct {
+-	cfg       Config
+-	core      *core.Node
+-	wal       *wal.WAL
+-	inbox     chan input
+-	persistQ  chan []core.PersistJob
+-	persisted chan persistDone
+-	nextID    atomic.Uint64
+-	done      chan struct{}
++	cfg         Config
++	core        *core.Node
++	wal         *wal.WAL
++	inbox       chan input
++	persistQ    chan []core.PersistJob
++	persisted   chan persistDone
++	nextID      atomic.Uint64
++	done        chan struct{}
++	managedStop chan struct{}
++	managedMu   sync.RWMutex
+ 
+ 	// leader is the leader the committer saw last, for readers outside it.
+ 	leader atomic.Uint64
+@@ -217,14 +224,18 @@ func New(cfg Config) (*Node, error) {
+ 	if err != nil {
+ 		return nil, errors.Join(err, w.Close())
+ 	}
++	if strategy := os.Getenv("TIGER_ALLOC_STRATEGY"); strategy == "ring" || strategy == "arena" {
++		c.EnableAllocationWorkspace(4096)
++	}
+ 	return &Node{
+-		cfg:       cfg,
+-		core:      c,
+-		wal:       w,
+-		inbox:     make(chan input, 8192),
+-		persistQ:  make(chan []core.PersistJob, maxBacklog),
+-		persisted: make(chan persistDone, 1),
+-		done:      make(chan struct{}),
++		cfg:         cfg,
++		core:        c,
++		wal:         w,
++		inbox:       make(chan input, 8192),
++		persistQ:    make(chan []core.PersistJob, maxBacklog),
++		persisted:   make(chan persistDone, 1),
++		done:        make(chan struct{}),
++		managedStop: make(chan struct{}),
+ 	}, nil
+ }
+ 
+@@ -304,6 +315,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
+ 	ticker := time.NewTicker(n.cfg.Tick)
+ 	defer ticker.Stop()
+ 	waiters := map[uint64]waiter{}
++	if strategy := os.Getenv("TIGER_ALLOC_STRATEGY"); strategy == "ring" || strategy == "arena" {
++		waiters = make(map[uint64]waiter, 4096)
++	}
++	defer n.shutdownManaged(waiters)
+ 	var groups []completions
+ 	groupOf := map[Completer]int{}
+ 	var backlog [][]core.PersistJob
+@@ -353,6 +368,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
+ 		for _, m := range eff.Send {
+ 			t.Send(m)
+ 		}
++		completeManaged(eff.ManagedReplies, waiters)
+ 		groups = completeAll(eff.Replies, waiters, groups, groupOf)
+ 		for _, w := range eff.Watch {
+ 			ws, ok := streams[w.Stream]
+@@ -417,6 +433,15 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
+ 
+ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
+ 	switch {
++	case in.managed != nil:
++		id := in.managedFirst
++		for b := in.managed; b != nil; b = b.NextManagedRequest() {
++			r, tag := b.ManagedRequest()
++			r.ID = id
++			id++
++			waiters[r.ID] = waiter{direct: in.direct, tag: tag}
++			n.core.Submit(r)
++		}
+ 	case in.batch != nil:
+ 		b := in.batch
+ 		for i := range b.reqs {
+diff --git a/internal/server/allocation.go b/internal/server/allocation.go
+new file mode 100644
+index 0000000..e90ad5b
+--- /dev/null
++++ b/internal/server/allocation.go
+@@ -0,0 +1,525 @@
++package server
++
++// Throwaway experiment: can bounded startup storage replace transient wire-Put
++// allocations without reusing retained Raft/MVCC bytes? Only TIGER_ALLOC_STRATEGY
++// ring|arena opts in. Non-Put RPCs and transport/timer/error infrastructure are
++// outside the managed scope; there is NO managed heap fallback.
++
++import (
++	"encoding/binary"
++	"os"
++	"sync"
++	"unsafe"
++
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
++
++	"github.com/djosh34/tigerstore/internal/core"
++	"github.com/djosh34/tigerstore/internal/node"
++)
++
++const (
++	allocationSlots     = 4096
++	allocationQuota     = 256
++	allocationByteQuota = 8 << 20
++	allocationBudget    = 64 << 20
++	arenaSlots          = 8
++)
++
++type allocSlot struct {
++	st                                  stream
++	workspace                           core.Workspace
++	req                                 core.Request
++	reply                               core.Reply
++	response                            [5 + putResponseSize]byte
++	output                              [3]outItem
++	index                               int
++	group                               int
++	block                               int
++	prev, next                          *allocSlot // connection's ownership list, not the ready list
++	readerRefs, frameRefs               int
++	mapRef, queueRef, nodeRef, timerRef bool
++	submitNext                          *stream
++	compNext                            *allocSlot
++}
++
++// Worst-case startup capacity (ring has the most block descriptors). This
++// zero-sized array type fails compilation if descriptors outgrow the budget.
++const (
++	allocationDriverReserve = 8 << 20
++	allocationStartupBytes  = (48 << 20) + allocationDriverReserve + allocationSlots*int(unsafe.Sizeof(allocSlot{})) + (allocationSlots/arenaSlots)*int(unsafe.Sizeof(allocGroup{})) + (allocationSlots+64+16)*int(unsafe.Sizeof(allocBlock{})) + (2*allocationSlots+allocationSlots/arenaSlots+allocationSlots+64+16)*int(unsafe.Sizeof(int(0))) + int(unsafe.Sizeof(allocationPool{}))
++)
++
++type allocationBudgetCheck [allocationBudget - allocationStartupBytes]struct{}
++
++var _ allocationBudgetCheck
++
++type allocGroup struct {
++	used, live int
++	sealed     bool
++	blocks     int
++	c          *conn
++}
++
++type allocBlock struct {
++	b     []byte
++	used  int
++	next  int
++	class int
++}
++
++type allocationPool struct {
++	mu                                                                                 sync.Mutex
++	mode                                                                               uint64
++	slots                                                                              []allocSlot
++	groups                                                                             []allocGroup
++	freeSlots, freeGroups                                                              []int
++	freeSlotHead, freeSlotCount                                                        int // fixed circular free-slot queue (ring mode)
++	blocks                                                                             []allocBlock
++	freeBlocks                                                                         [3][]int
++	heldSlots, heldBytes, peakSlots, peakBytes, denied, timerAllocations, unmanagedRPC uint64
++}
++
++func newAllocationPool() *allocationPool {
++	var mode uint64
++	switch os.Getenv("TIGER_ALLOC_STRATEGY") {
++	case "ring":
++		mode = 1
++	case "arena":
++		mode = 2
++	default:
++		return nil
++	}
++	p := &allocationPool{mode: mode, slots: make([]allocSlot, allocationSlots), groups: make([]allocGroup, allocationSlots/arenaSlots)}
++	p.freeSlots = make([]int, allocationSlots)
++	p.freeSlotCount = allocationSlots
++	p.freeGroups = make([]int, 0, len(p.groups))
++	for i := range p.slots {
++		p.slots[i].index = i
++		p.freeSlots[i] = i
++	}
++	for i := range p.groups {
++		p.freeGroups = append(p.freeGroups, i)
++	}
++	// 48MiB body capacity, not 2MiB per slot. The remaining budget covers
++	// all slot, group, block and free-list descriptors allocated here.
++	smallSize, smallCount := 2048, allocationSlots
++	if mode == 2 {
++		smallSize, smallCount = 16<<10, allocationSlots/arenaSlots
++	}
++	sizes := [3]int{smallSize, 128 << 10, 2 << 20}
++	counts := [3]int{smallCount, 64, 16}
++	totalBlocks := counts[0] + counts[1] + counts[2]
++	p.blocks = make([]allocBlock, 0, totalBlocks)
++	for class := range sizes {
++		data := make([]byte, sizes[class]*counts[class])
++		p.freeBlocks[class] = make([]int, 0, counts[class])
++		for i := 0; i < counts[class]; i++ {
++			p.freeBlocks[class] = append(p.freeBlocks[class], len(p.blocks))
++			p.blocks = append(p.blocks, allocBlock{b: data[i*sizes[class] : (i+1)*sizes[class]], next: -1, class: class})
++		}
++	}
++	// The compile-time allocationBudgetCheck below guards startup capacity,
++	// including a conservative 8MiB reserve for core/node list and map backing.
++	return p
++}
++
++// AllocationStats snapshots actual managed reservations. Arena slots/bytes are
++// charged for the WHOLE region until its last reader/node/timer/flush owner
++// retires; unused capacity is not mislabeled free. Snapshot allocation itself
++// is observer overhead, not managed fallback.
++func (s *Server) AllocationStats() map[string]uint64 {
++	m := map[string]uint64{"mode": 0, "slot_budget": 0, "byte_budget": 0, "per_connection_slots": 0, "held_slots": 0, "held_bytes": 0, "peak_slots": 0, "peak_bytes": 0, "denied_count": 0, "fallback_allocations": 0}
++	if s.alloc == nil {
++		return m
++	}
++	p := s.alloc
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	m["mode"], m["slot_budget"], m["byte_budget"], m["per_connection_slots"] = p.mode, allocationSlots, allocationBudget, allocationQuota
++	m["held_slots"], m["held_bytes"], m["peak_slots"], m["peak_bytes"] = p.heldSlots, p.heldBytes+allocationDriverReserve, p.peakSlots, p.peakBytes+allocationDriverReserve
++	m["driver_reserve_bytes"] = allocationDriverReserve
++	m["denied_count"] = p.denied
++	m["timer_allocations"], m["unmanaged_rpc_count"] = p.timerAllocations, p.unmanagedRPC
++	m["per_connection_bytes"] = allocationByteQuota
++	return m
++}
++
++func (p *allocationPool) peaks() {
++	p.peakSlots = max(p.peakSlots, p.heldSlots)
++	p.peakBytes = max(p.peakBytes, p.heldBytes)
++}
++
++// acquireSlot runs with c.mu. Allocation mutex never calls back into a conn.
++func (c *conn) acquireSlot() *stream {
++	p := c.s.alloc
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	var slot *allocSlot
++	if p.mode == 1 {
++		if c.allocSlots >= allocationQuota || p.freeSlotCount == 0 {
++			p.denied++
++			return nil
++		}
++		i := p.freeSlots[p.freeSlotHead]
++		p.freeSlotHead = (p.freeSlotHead + 1) % allocationSlots
++		p.freeSlotCount--
++		slot = &p.slots[i]
++		slot.group = -1
++		c.allocSlots++
++		p.heldSlots++
++		p.heldBytes += uint64(unsafe.Sizeof(allocSlot{}))
++	} else {
++		if c.arena < 0 {
++			if c.allocSlots+arenaSlots > allocationQuota || len(p.freeGroups) == 0 {
++				p.denied++
++				return nil
++			}
++			i := p.freeGroups[len(p.freeGroups)-1]
++			p.freeGroups = p.freeGroups[:len(p.freeGroups)-1]
++			p.groups[i] = allocGroup{blocks: -1, c: c}
++			c.arena = i
++			c.allocSlots += arenaSlots
++			p.heldSlots += arenaSlots
++			p.heldBytes += uint64(arenaSlots)*uint64(unsafe.Sizeof(allocSlot{})) + uint64(unsafe.Sizeof(allocGroup{}))
++		}
++		g := &p.groups[c.arena]
++		slot = &p.slots[c.arena*arenaSlots+g.used]
++		slot.group = c.arena
++		g.used++
++		g.live++
++		if g.used == arenaSlots {
++			g.sealed = true
++			c.arena = -1
++		}
++	}
++	slot.block = -1
++	slot.readerRefs = 1 // onHeaders owns the pointer through onEnd/admit
++	slot.mapRef = true
++	slot.st = stream{c: c, slot: slot, out: slot.output[:0]}
++	slot.next = c.allocHead
++	if slot.next != nil {
++		slot.next.prev = slot
++	}
++	c.allocHead = slot
++	p.peaks()
++	return &slot.st
++}
++
++func (c *conn) sealArenaLocked() {
++	if c.s.alloc == nil || c.arena < 0 {
++		return
++	}
++	p := c.s.alloc
++	p.mu.Lock()
++	i := c.arena
++	p.groups[i].sealed = true
++	c.arena = -1
++	p.recycleGroup(i)
++	p.mu.Unlock()
++}
++
++func (p *allocationPool) recycleGroup(i int) {
++	g := &p.groups[i]
++	if !g.sealed || g.live != 0 {
++		return
++	}
++	c := g.c
++	for block := g.blocks; block >= 0; {
++		next := p.blocks[block].next
++		p.releaseBlock(c, block)
++		block = next
++	}
++	for j := 0; j < g.used; j++ {
++		s := &p.slots[i*arenaSlots+j]
++		index := s.index
++		*s = allocSlot{index: index}
++	}
++	c.allocSlots -= arenaSlots
++	p.heldSlots -= arenaSlots
++	p.heldBytes -= uint64(arenaSlots)*uint64(unsafe.Sizeof(allocSlot{})) + uint64(unsafe.Sizeof(allocGroup{}))
++	*g = allocGroup{}
++	p.freeGroups = append(p.freeGroups, i)
++}
++
++// releaseReader pins even a pointer removed from streams by an early timer.
++func (c *conn) releaseReader(st *stream) {
++	if st == nil || st.slot == nil {
++		return
++	}
++	c.mu.Lock()
++	st.slot.readerRefs--
++	c.retireSlotLocked(st.slot)
++	c.mu.Unlock()
++}
++
++func (c *conn) retireSlotLocked(s *allocSlot) {
++	if s.mapRef || s.queueRef || s.nodeRef || s.timerRef || s.readerRefs != 0 || s.frameRefs != 0 || s.st.listed {
++		return
++	}
++	if s.prev != nil {
++		s.prev.next = s.next
++	} else {
++		c.allocHead = s.next
++	}
++	if s.next != nil {
++		s.next.prev = s.prev
++	}
++	p := c.s.alloc
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	if p.mode == 2 {
++		g := &p.groups[s.group]
++		g.live--
++		// No slot in an arena is reused independently, even after retirement.
++		s.st.body, s.st.msg, s.st.out, s.req = nil, nil, nil, core.Request{}
++		p.recycleGroup(s.group)
++	} else {
++		for block := s.block; block >= 0; {
++			next := p.blocks[block].next
++			p.releaseBlock(c, block)
++			block = next
++		}
++		i := s.index
++		*s = allocSlot{index: i}
++		p.freeSlots[(p.freeSlotHead+p.freeSlotCount)%allocationSlots] = i
++		p.freeSlotCount++
++		c.allocSlots--
++		p.heldSlots--
++		p.heldBytes -= uint64(unsafe.Sizeof(allocSlot{}))
++	}
++}
++
++func (p *allocationPool) releaseBlock(c *conn, i int) {
++	b := &p.blocks[i]
++	p.heldBytes -= uint64(len(b.b))
++	c.allocBytes -= len(b.b)
++	b.used, b.next = 0, -1
++	p.freeBlocks[b.class] = append(p.freeBlocks[b.class], i)
++}
++
++func (st *stream) managedBody(size int) ([]byte, error) { return st.managedBytes(size, false) }
++
++func (st *stream) managedReply(size int) ([]byte, error) {
++	b, err := st.managedBytes(size, true)
++	if err != nil {
++		return nil, err
++	}
++	return b[:5], nil
++}
++
++func (st *stream) managedBytes(size int, reply bool) ([]byte, error) {
++	c, s := st.c, st.slot
++	p := c.s.alloc
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	if !reply && st.msgs != 0 {
++		return nil, status.Error(codes.Internal, "grpc: multiple unary messages")
++	}
++	if size > 2<<20 {
++		p.denied++
++		return nil, errAllocationFull
++	}
++	if size == 0 {
++		return s.response[:0:0], nil
++	}
++	block := -1
++	if p.mode == 2 {
++		g := &p.groups[s.group]
++		for i := g.blocks; i >= 0; i = p.blocks[i].next {
++			if len(p.blocks[i].b)-p.blocks[i].used >= size {
++				block = i
++				break
++			}
++		}
++	}
++	if block < 0 {
++		class := 0
++		for class < 2 && size > len(p.blocks[classStart(p, class)].b) {
++			class++
++		}
++		if len(p.freeBlocks[class]) == 0 {
++			p.denied++
++			return nil, errAllocationFull
++		}
++		block = p.freeBlocks[class][len(p.freeBlocks[class])-1]
++		if c.allocBytes+len(p.blocks[block].b) > allocationByteQuota {
++			p.denied++
++			return nil, errAllocationFull
++		}
++		p.freeBlocks[class] = p.freeBlocks[class][:len(p.freeBlocks[class])-1]
++		b := &p.blocks[block]
++		c.allocBytes += len(b.b)
++		p.heldBytes += uint64(len(b.b))
++		if p.mode == 2 {
++			g := &p.groups[s.group]
++			b.next = g.blocks
++			g.blocks = block
++		} else {
++			b.next = s.block
++			s.block = block
++		}
++		p.peaks()
++	}
++	b := &p.blocks[block]
++	start := b.used
++	b.used += size
++	// Exact capacity is mandatory: receive uses cap to recognize message end.
++	return b.b[start : start : start+size], nil
++}
++
++func classStart(p *allocationPool, class int) int {
++	if class == 0 {
++		return 0
++	}
++	if class == 1 {
++		if p.mode == 2 {
++			return allocationSlots / arenaSlots
++		}
++		return allocationSlots
++	}
++	if p.mode == 2 {
++		return allocationSlots/arenaSlots + 64
++	}
++	return allocationSlots + 64
++}
++
++var errAllocationFull = status.Error(codes.ResourceExhausted, "allocation experiment: bounded workspace full")
++
++func (st *stream) ManagedRequest() (core.Request, any) { return st.slot.req, st }
++func (st *stream) NextManagedRequest() node.ManagedBatch {
++	if st.slot.submitNext == nil {
++		return nil
++	}
++	return st.slot.submitNext
++}
++
++// queueManaged establishes ownership BEFORE flush, reset, or deadline can run.
++func (c *conn) queueManaged(st *stream, req core.Request) {
++	c.mu.Lock()
++	req.Workspace = &st.slot.workspace
++	st.slot.req = req
++	st.slot.queueRef = true
++	if c.managedTail == nil {
++		c.managedHead = st
++	} else {
++		c.managedTail.slot.submitNext = st
++	}
++	c.managedTail = st
++	c.managedCount++
++	c.managedBytes += st.reqSize
++	c.mu.Unlock()
++}
++
++func (c *conn) flushManaged() error {
++	c.mu.Lock()
++	head, count := c.managedHead, c.managedCount
++	c.managedHead, c.managedTail, c.managedCount, c.managedBytes = nil, nil, 0, 0
++	c.sealArenaLocked()
++	for st := head; st != nil; st = st.slot.submitNext {
++		st.slot.queueRef = false
++		st.slot.nodeRef = true
++		st.atNode = true
++		c.holdLocked(st, st.reqSize+callCost)
++	}
++	c.mu.Unlock()
++	if head == nil {
++		return nil
++	}
++	err := c.s.n.SubmitManagedBatch(c.ctx, head, count, c)
++	if err == nil {
++		return nil
++	}
++	for st := head; st != nil; {
++		next := st.slot.submitNext // callback may retire st
++		c.CompleteOne(st, core.Reply{Err: err})
++		st = next
++	}
++	if c.ctx.Err() != nil {
++		return err
++	}
++	return nil
++}
++
++// CompleteOne is an O(1) bounded linked queue copy under compMu; the owner
++// does NOT encode or acquire c.mu unless this connection is already closed.
++// This intentionally pays one short mutex operation per completion.
++func (c *conn) CompleteOne(tag any, reply core.Reply) {
++	st := tag.(*stream)
++	s := st.slot
++	c.compMu.Lock()
++	if c.completionClosed {
++		c.compMu.Unlock()
++		c.mu.Lock()
++		s.nodeRef = false
++		st.atNode = false
++		c.releaseLocked(st)
++		c.retireSlotLocked(s)
++		c.mu.Unlock()
++		return
++	}
++	s.reply = reply
++	if c.compTail == nil {
++		c.compHead = s
++	} else {
++		c.compTail.compNext = s
++	}
++	c.compTail = s
++	c.compMu.Unlock()
++	c.signal()
++}
++
++func (c *conn) takeManagedCompletions() *allocSlot {
++	c.compMu.Lock()
++	head := c.compHead
++	c.compHead, c.compTail = nil, nil
++	c.compMu.Unlock()
++	return head
++}
++
++func (c *conn) completeManaged(head *allocSlot) {
++	for s := head; s != nil; {
++		next := s.compNext
++		st := &s.st
++		r := s.reply
++		var b []byte
++		err := r.Err
++		if err == nil {
++			b = s.response[:5]
++			if r.PrevKv != nil {
++				// Previous-key responses are variable-sized but remain bounded
++				// managed storage, not a silently allocating append fallback.
++				size := 5 + putResponseSize + 2 + binary.MaxVarintLen64 + proto.Size(r.PrevKv)
++				b, err = st.managedReply(size)
++			}
++			if err == nil {
++				b, err = appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)
++				if err == nil {
++					binary.BigEndian.PutUint32(b[1:5], uint32(len(b)-5))
++				}
++			}
++		}
++		c.mu.Lock()
++		s.compNext = nil
++		s.reply = core.Reply{}
++		s.req = core.Request{}
++		s.nodeRef = false
++		st.atNode = false
++		if st.reset || c.closed {
++			c.releaseLocked(st)
++		} else if !st.done.Swap(true) {
++			c.holdLocked(st, len(b))
++			var statusValue *status.Status
++			if err != nil {
++				statusValue = status.Convert(toStatus(err))
++			}
++			st.pushLocked(b, true, statusValue)
++		}
++		c.retireSlotLocked(s)
++		c.mu.Unlock()
++		s = next
++	}
++}
+diff --git a/internal/server/allocation_lifetime.go b/internal/server/allocation_lifetime.go
+new file mode 100644
+index 0000000..a90566a
+--- /dev/null
++++ b/internal/server/allocation_lifetime.go
+@@ -0,0 +1,63 @@
++package server
++
++// All lifetime changes below run under c.mu. A stopped timer may still have
++// an active callback: only Stop()==true transfers its reference to us.
++func (c *conn) stopDeadlineLocked(st *stream) {
++	if st.deadline != nil && st.deadline.Stop() && st.slot != nil {
++		st.slot.timerRef = false
++	}
++}
++
++func (c *conn) dropManagedCompletions(head *allocSlot) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	for s := head; s != nil; {
++		next := s.compNext
++		s.compNext = nil
++		s.nodeRef = false
++		s.st.atNode = false
++		c.releaseLocked(&s.st)
++		c.retireSlotLocked(s)
++		s = next
++	}
++}
++
++// readerDone is the only cleanup that may release queued-but-unsubmitted
++// batches. close can race the reader, and must not recycle those links.
++func (c *conn) readerDone() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	for st := c.managedHead; st != nil; {
++		next := st.slot.submitNext
++		st.slot.queueRef = false
++		c.retireSlotLocked(st.slot)
++		st = next
++	}
++	c.managedHead, c.managedTail, c.managedCount, c.managedBytes = nil, nil, 0, 0
++	c.sealArenaLocked()
++}
++
++func (c *conn) frameOwner(st *stream) *allocSlot {
++	if st.slot != nil {
++		st.slot.frameRefs++
++	}
++	return st.slot
++}
++
++// Writer frames retain response aliases through the ACTUAL flush, including
++// its error/abort path, not merely endStream's removal from the stream map.
++func (c *conn) retireFrames(frames []wframe) {
++	if c.s.alloc == nil {
++		clear(frames)
++		return
++	}
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	for i := range frames {
++		if s := frames[i].owner; s != nil {
++			s.frameRefs--
++			c.retireSlotLocked(s)
++		}
++		frames[i] = wframe{}
++	}
++}
+diff --git a/internal/server/allocation_path_test.go b/internal/server/allocation_path_test.go
+new file mode 100644
+index 0000000..e218a27
+--- /dev/null
++++ b/internal/server/allocation_path_test.go
+@@ -0,0 +1,372 @@
++package server_test
++
++// Throwaway allocation census. This is a correctness-sized test, not a
++// throughput benchmark. The process counters include the client and all three
++// nodes. The Actions experiment measures the leader process separately.
++import (
++	"bytes"
++	"context"
++	"crypto/tls"
++	"encoding/binary"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"runtime"
++	"runtime/pprof"
++	"testing"
++	"time"
++
++	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"golang.org/x/net/http2"
++	"golang.org/x/net/http2/hpack"
++	"google.golang.org/protobuf/encoding/protowire"
++	"google.golang.org/protobuf/proto"
++)
++
++// Allocation profiling and retained-history checks use production's 100ms
++// clock. The general fixture's 10ms clock makes its disk fence only 200ms,
++// which can mistake profiler or shared-runner scheduling delays for disk loss.
++// Keep the real default election/watchdog policy and disk barriers unchanged.
++func newAllocationCluster(t *testing.T) *cluster {
++	return newClusterWith(t, func(c *cluster) { c.tick = 100 * time.Millisecond })
++}
++
++func TestAllocationPath(t *testing.T) {
++	// Never run concurrently: MemStats and the allocation profiler are global.
++	oldRate := runtime.MemProfileRate
++	runtime.MemProfileRate = 1
++	defer func() { runtime.MemProfileRate = oldRate }()
++	c := newAllocationCluster(t)
++	cert, _, _, err := c.ca.Issue("allocation-client", 191)
++	if err != nil {
++		t.Fatal(err)
++	}
++	leader := retry(t, func(ctx context.Context) (uint64, error) {
++		st, err := pb.NewMaintenanceClient(c.dial(1, cert)).Status(ctx, &pb.StatusRequest{})
++		if err == nil && st.Leader == 0 {
++			err = errors.New("no leader")
++		}
++		return st.GetLeader(), err
++	})
++	kv := c.client(leader, cert)
++	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
++		return kv.Put(ctx, &pb.PutRequest{Key: []byte("allocation-probe"), Value: []byte("ready")})
++	})
++	conn, err := tls.Dial("tcp", c.running[leader].addr, &tls.Config{
++		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool,
++		ServerName: "localhost", NextProtos: []string{"h2"}, MinVersion: tls.VersionTLS13,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := conn.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	if err := conn.SetDeadline(time.Now().Add(60 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	cl, err := allocationClient(conn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range 32 {
++		if err := cl.put(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	out := os.Getenv("ALLOC50_TEST_OUT")
++	profile := func(name string) {
++		if out == "" {
++			return
++		}
++		if err := os.MkdirAll(out, 0o755); err != nil {
++			t.Fatal(err)
++		}
++		f, err := os.Create(filepath.Join(out, name+".pb.gz"))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := pprof.Lookup("allocs").WriteTo(f, 0); err != nil {
++			t.Fatal(err)
++		}
++		if err := f.Close(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	// Two GCs flush delayed memory-profile accounting. Profiles are cumulative;
++	// subtract before from after with pprof -base, not by reading after alone.
++	runtime.GC()
++	runtime.GC()
++	profile("before")
++	var before, after runtime.MemStats
++	runtime.ReadMemStats(&before)
++	const puts = 256
++	for range puts {
++		if err := cl.put(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	runtime.ReadMemStats(&after)
++	runtime.GC()
++	runtime.GC()
++	profile("after")
++	var retained runtime.MemStats
++	runtime.ReadMemStats(&retained)
++	result := map[string]any{
++		"scope":    "in-process client plus leader and two followers, not leader-only",
++		"strategy": os.Getenv("TIGER_ALLOC_STRATEGY"), "successful_puts": puts,
++		"leader_id": leader, "value_bytes": 1024, "mem_profile_rate": 1,
++		"mallocs_per_put":            float64(after.Mallocs-before.Mallocs) / puts,
++		"allocated_bytes_per_put":    float64(after.TotalAlloc-before.TotalAlloc) / puts,
++		"heap_alloc_after_forced_gc": retained.HeapAlloc,
++	}
++	// The index must retain immutable entry bytes after transient bodies and
++	// replies have been recycled. Check every replica outside the counters.
++	for id := uint64(1); id <= 3; id++ {
++		got := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
++			r, err := c.client(id, cert).Range(ctx, &pb.RangeRequest{Key: []byte("allocation-probe"), Serializable: true})
++			if err == nil && uint64(r.Header.Revision) != cl.lastRev {
++				err = fmt.Errorf("replica %d has revision %d, want %d", id, r.Header.Revision, cl.lastRev)
++			}
++			return r, err
++		})
++		if len(got.Kvs) != 1 || !bytes.Equal(got.Kvs[0].Value, bytes.Repeat([]byte{0xab}, 1024)) {
++			t.Fatalf("replica %d lost the wire-backed value", id)
++		}
++	}
++	b, err := json.MarshalIndent(result, "", "  ")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Log(string(b))
++	if out != "" {
++		if err := os.WriteFile(filepath.Join(out, "memstats.json"), b, 0o644); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
++
++// TestAllocationValueLifetimes catches reuse of a request body or stream slot
++// while any historical value still references it. Each overwrite has distinct
++// bytes; constant-value throughput workloads cannot catch that corruption.
++func TestAllocationValueLifetimes(t *testing.T) {
++	for _, mode := range []string{"base", "ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			t.Setenv("TIGER_ALLOC_STRATEGY", mode)
++			c := newAllocationCluster(t)
++			cert, _, _, err := c.ca.Issue("lifetime-client", 192)
++			if err != nil {
++				t.Fatal(err)
++			}
++			kv := c.client(1, cert)
++			type version struct {
++				key, value []byte
++				rev        int64
++			}
++			var versions []version
++			for i := range 96 {
++				key := fmt.Appendf(nil, "/alloc50/lifetime/%d", i%8)
++				value := bytes.Repeat([]byte{byte(i + 1)}, 1024+i%17)
++				r := retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
++					return kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
++				})
++				versions = append(versions, version{key: key, value: value, rev: r.Header.Revision})
++			}
++			verify := func() {
++				for id := uint64(1); id <= 3; id++ {
++					client := c.client(id, cert)
++					for _, v := range versions {
++						r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
++							return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
++						})
++						if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
++							t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
++						}
++					}
++				}
++			}
++			verify()
++			// Reopen every WAL after slots have been reused. Live MVCC reads
++			// alone cannot establish that the durable bytes stayed immutable.
++			for _, r := range c.running {
++				r.stop()
++			}
++			for id := uint64(1); id <= 3; id++ {
++				c.start(id)
++			}
++			verify()
++		})
++	}
++}
++
++type allocClient struct {
++	conn        *tls.Conn
++	first, next []byte
++	second      int
++	id          uint32
++	wantTrailer []byte
++	head        [9]byte
++	payload     [65536]byte
++	reply       [256]byte
++	lastRev     uint64
++}
++
++func allocationClient(conn *tls.Conn) (*allocClient, error) {
++	var pre bytes.Buffer
++	pre.WriteString(http2.ClientPreface)
++	fr := http2.NewFramer(&pre, nil)
++	if err := fr.WriteSettings(http2.Setting{ID: http2.SettingInitialWindowSize, Val: 4 << 20}); err != nil {
++		return nil, err
++	}
++	if err := fr.WriteWindowUpdate(0, (16<<20)-65535); err != nil {
++		return nil, err
++	}
++	if _, err := conn.Write(pre.Bytes()); err != nil {
++		return nil, err
++	}
++	req, err := proto.Marshal(&pb.PutRequest{Key: []byte("allocation-probe"), Value: bytes.Repeat([]byte{0xab}, 1024)})
++	if err != nil {
++		return nil, err
++	}
++	msg := make([]byte, 5, 5+len(req))
++	binary.BigEndian.PutUint32(msg[1:], uint32(len(req)))
++	msg = append(msg, req...)
++	var hb bytes.Buffer
++	enc := hpack.NewEncoder(&hb)
++	fields := []hpack.HeaderField{{Name: ":method", Value: "POST"}, {Name: ":scheme", Value: "https"}, {Name: ":path", Value: "/etcdserverpb.KV/Put"}, {Name: ":authority", Value: "localhost"}, {Name: "content-type", Value: "application/grpc"}, {Name: "te", Value: "trailers"}}
++	makeRequest := func() ([]byte, int, error) {
++		hb.Reset()
++		for _, f := range fields {
++			if err := enc.WriteField(f); err != nil {
++				return nil, 0, err
++			}
++		}
++		var wire bytes.Buffer
++		fr := http2.NewFramer(&wire, nil)
++		if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: hb.Bytes(), EndHeaders: true}); err != nil {
++			return nil, 0, err
++		}
++		second := wire.Len()
++		if err := fr.WriteData(1, true, msg); err != nil {
++			return nil, 0, err
++		}
++		return wire.Bytes(), second, nil
++	}
++	first, _, err := makeRequest()
++	if err != nil {
++		return nil, err
++	}
++	next, second, err := makeRequest()
++	return &allocClient{conn: conn, first: first, next: next, second: second}, err
++}
++
++func (cl *allocClient) put() error {
++	cl.id += 2
++	id := cl.id - 1
++	wire, second := cl.next, cl.second
++	if id == 1 {
++		wire = cl.first
++		second = 9 + int(wire[0])<<16 + int(wire[1])<<8 + int(wire[2])
++	}
++	binary.BigEndian.PutUint32(wire[5:9], id)
++	binary.BigEndian.PutUint32(wire[second+5:second+9], id)
++	if _, err := cl.conn.Write(wire); err != nil {
++		return err
++	}
++	replyN := 0
++	for {
++		if _, err := io.ReadFull(cl.conn, cl.head[:]); err != nil {
++			return err
++		}
++		n := int(cl.head[0])<<16 | int(cl.head[1])<<8 | int(cl.head[2])
++		if n > len(cl.payload) {
++			return fmt.Errorf("frame too large: %d", n)
++		}
++		b := cl.payload[:n]
++		if _, err := io.ReadFull(cl.conn, b); err != nil {
++			return err
++		}
++		typ, flags := http2.FrameType(cl.head[3]), http2.Flags(cl.head[4])
++		sid := binary.BigEndian.Uint32(cl.head[5:]) & 0x7fffffff
++		if typ == http2.FrameSettings && flags&http2.FlagSettingsAck == 0 {
++			ack := [9]byte{3: byte(http2.FrameSettings), 4: byte(http2.FlagSettingsAck)}
++			if _, err := cl.conn.Write(ack[:]); err != nil {
++				return err
++			}
++		}
++		if sid != id {
++			continue
++		}
++		if typ == http2.FrameRSTStream {
++			return fmt.Errorf("reset on %d: %x", sid, b)
++		}
++		if typ == http2.FrameData {
++			if replyN+n > len(cl.reply) {
++				return errors.New("reply too large")
++			}
++			replyN += copy(cl.reply[replyN:], b)
++		}
++		if typ == http2.FrameHeaders && flags&http2.FlagHeadersEndStream != 0 {
++			if cl.wantTrailer == nil {
++				fields, err := hpack.NewDecoder(4096, nil).DecodeFull(b)
++				if err != nil {
++					return err
++				}
++				ok := false
++				for _, f := range fields {
++					if f.Name == "grpc-status" && f.Value == "0" {
++						ok = true
++					}
++				}
++				if !ok {
++					return fmt.Errorf("non-OK trailer: %v", fields)
++				}
++				cl.wantTrailer = append([]byte(nil), b...)
++			} else if !bytes.Equal(b, cl.wantTrailer) {
++				return fmt.Errorf("changed trailer: %x", b)
++			}
++			return cl.validate(cl.reply[:replyN])
++		}
++	}
++}
++
++func (cl *allocClient) validate(msg []byte) error {
++	if len(msg) < 5 || int(binary.BigEndian.Uint32(msg[1:5])) != len(msg)-5 {
++		return errors.New("invalid gRPC response")
++	}
++	b := msg[5:]
++	num, typ, n := protowire.ConsumeTag(b)
++	if n < 0 || num != 1 || typ != protowire.BytesType {
++		return errors.New("missing response header")
++	}
++	h, n := protowire.ConsumeBytes(b[n:])
++	if n < 0 {
++		return errors.New("bad response header")
++	}
++	var rev uint64
++	for len(h) > 0 {
++		num, typ, n = protowire.ConsumeTag(h)
++		if n < 0 || typ != protowire.VarintType {
++			return errors.New("bad header field")
++		}
++		h = h[n:]
++		v, k := protowire.ConsumeVarint(h)
++		if k < 0 {
++			return errors.New("bad header value")
++		}
++		if num == 3 {
++			rev = v
++		}
++		h = h[k:]
++	}
++	if rev == 0 || (cl.lastRev > 0 && rev != cl.lastRev+1) {
++		return fmt.Errorf("revision %d after %d", rev, cl.lastRev)
++	}
++	cl.lastRev = rev
++	return nil
++}
+diff --git a/internal/server/allocation_workspace_test.go b/internal/server/allocation_workspace_test.go
+new file mode 100644
+index 0000000..f7e7fe2
+--- /dev/null
++++ b/internal/server/allocation_workspace_test.go
+@@ -0,0 +1,231 @@
++package server
++
++import (
++	"bytes"
++	"encoding/binary"
++	"net"
++	"testing"
++	"time"
++
++	"golang.org/x/net/http2"
++	"golang.org/x/net/http2/hpack"
++)
++
++func allocationFixture(t *testing.T, mode string) (*Server, *conn) {
++	t.Helper()
++	t.Setenv("TIGER_ALLOC_STRATEGY", mode)
++	s := New(nil, Config{})
++	a, b := net.Pipe()
++	c := newConn(s, a, a)
++	t.Cleanup(func() { c.close(); c.readerDone(); _ = b.Close() })
++	return s, c
++}
++
++func allocationHeaders(id uint32, timeout string) *http2.MetaHeadersFrame {
++	fields := []hpack.HeaderField{{Name: ":method", Value: "POST"}, {Name: ":path", Value: "/etcdserverpb.KV/Put"}, {Name: "content-type", Value: "application/grpc"}}
++	if timeout != "" {
++		fields = append(fields, hpack.HeaderField{Name: "grpc-timeout", Value: timeout})
++	}
++	return &http2.MetaHeadersFrame{HeadersFrame: &http2.HeadersFrame{StreamID: id}, Fields: fields}
++}
++
++func assertAllocationHeld(t *testing.T, s *Server, slots uint64) {
++	t.Helper()
++	stats := s.AllocationStats()
++	if stats["held_slots"] != slots || stats["held_bytes"] > stats["byte_budget"] || stats["peak_bytes"] > stats["byte_budget"] || stats["fallback_allocations"] != 0 {
++		t.Fatalf("held slots want %d: %v", slots, stats)
++	}
++}
++
++func TestAllocationWorkspaceQuotaAndFairness(t *testing.T) {
++	for _, mode := range []string{"ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			s, c := allocationFixture(t, mode)
++			for i := range allocationQuota {
++				st := c.newStream(uint32(i*2+1), allocationHeaders(uint32(i*2+1), ""))
++				if st == nil {
++					t.Fatalf("quota denied at %d", i)
++				}
++				c.releaseReader(st)
++			}
++			assertAllocationHeld(t, s, allocationQuota)
++			if st := c.newStream(999, allocationHeaders(999, "")); st != nil {
++				t.Fatal("quota did not refuse stream")
++			}
++			if s.AllocationStats()["denied_count"] != 1 {
++				t.Fatal("missing denial")
++			}
++			a, b := net.Pipe()
++			other := newConn(s, a, a)
++			st := other.newStream(1, allocationHeaders(1, ""))
++			if st == nil {
++				t.Fatal("slow connection exhausted healthy connection")
++			}
++			other.releaseReader(st)
++			other.close()
++			other.readerDone()
++			_ = b.Close()
++			c.close()
++			c.readerDone()
++			assertAllocationHeld(t, s, 0)
++		})
++	}
++}
++
++func TestAllocationWorkspaceResetBeforeFlushAndReaderPin(t *testing.T) {
++	for _, mode := range []string{"ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			s, c := allocationFixture(t, mode)
++			st := c.newStream(1, allocationHeaders(1, ""))
++			// A tiny valid wire Put; it is admitted but has NOT reached Submit.
++			wire := []byte{0, 0, 0, 0, 6, 10, 1, 'k', 18, 1, 'v'}
++			if err := st.receive(wire); err != nil {
++				t.Fatal(err)
++			}
++			c.admit(st)
++			c.resetStream(1, 0)
++			want := uint64(1)
++			if mode == "arena" {
++				want = arenaSlots
++			}
++			assertAllocationHeld(t, s, want)
++			c.releaseReader(st)              // map removal did not invalidate reader's pointer
++			assertAllocationHeld(t, s, want) // queued admission still owns it
++			c.readerDone()                   // abort unsubmitted batch, then seal its arena
++			assertAllocationHeld(t, s, 0)
++		})
++	}
++}
++
++func TestAllocationWorkspaceFramesPinUntilFlushOrAbort(t *testing.T) {
++	for _, mode := range []string{"ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			s, c := allocationFixture(t, mode)
++			st := c.newStream(1, allocationHeaders(1, ""))
++			st.inEOF = true
++			copy(st.slot.response[:], "immutable reply")
++			c.mu.Lock()
++			st.pushLocked(st.slot.response[:15], true, nil)
++			c.sealArenaLocked()
++			c.mu.Unlock()
++			c.releaseReader(st)
++			c.mu.Lock()
++			frames := c.take(nil)
++			c.mu.Unlock()
++			if len(frames) != 3 {
++				t.Fatalf("frames=%d", len(frames))
++			}
++			want := uint64(1)
++			if mode == "arena" {
++				want = arenaSlots
++			}
++			assertAllocationHeld(t, s, want)
++			if !bytes.Equal(frames[1].b, []byte("immutable reply")) {
++				t.Fatal("reply changed at endStream")
++			}
++			c.close() // abort cannot recycle frame aliases owned by writer
++			assertAllocationHeld(t, s, want)
++			c.retireFrames(frames) // same cleanup boundary used after Flush/error
++			assertAllocationHeld(t, s, 0)
++		})
++	}
++}
++
++func TestAllocationWorkspaceActiveTimerOwnsReference(t *testing.T) {
++	for _, mode := range []string{"ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			s, c := allocationFixture(t, mode)
++			st := c.newStream(1, allocationHeaders(1, "1H"))
++			c.mu.Lock() // let callback start, but block its push
++			c.stopDeadlineLocked(st)
++			st.deadline = nil
++			st.slot.timerRef = true
++			started := make(chan struct{})
++			st.deadline = time.AfterFunc(time.Nanosecond, func() { close(started); st.expire() })
++			<-started
++			deadline := time.Now().Add(time.Second)
++			for !st.done.Load() && time.Now().Before(deadline) {
++				time.Sleep(time.Millisecond)
++			}
++			if !st.done.Load() {
++				c.mu.Unlock()
++				t.Fatal("timer callback did not start")
++			}
++			c.stopDeadlineLocked(st)
++			if !st.slot.timerRef {
++				c.mu.Unlock()
++				t.Fatal("Stop(false) lost active callback reference")
++			}
++			st.reset = true
++			st.slot.mapRef = false
++			delete(c.streams, st.id)
++			st.slot.readerRefs--
++			c.sealArenaLocked()
++			c.retireSlotLocked(st.slot)
++			c.mu.Unlock()
++			for s.AllocationStats()["held_slots"] != 0 && time.Now().Before(deadline) {
++				time.Sleep(time.Millisecond)
++			}
++			assertAllocationHeld(t, s, 0)
++		})
++	}
++}
++
++func TestAllocationWorkspaceRawTwoMiBAndNoPrimitiveChurn(t *testing.T) {
++	for _, mode := range []string{"ring", "arena"} {
++		t.Run(mode, func(t *testing.T) {
++			s, c := allocationFixture(t, mode)
++			st := c.newStream(1, allocationHeaders(1, ""))
++			var prefix [5]byte
++			binary.BigEndian.PutUint32(prefix[1:], 2<<20)
++			if err := st.receive(prefix[:]); err != nil {
++				t.Fatal(err)
++			}
++			if cap(st.msg) != 2<<20 {
++				t.Fatalf("raw capacity=%d", cap(st.msg))
++			}
++			chunk := make([]byte, 16<<10)
++			for range 128 {
++				if err := st.receive(chunk); err != nil {
++					t.Fatal(err)
++				}
++			}
++			if len(st.body) != 2<<20 || st.msgs != 1 {
++				t.Fatal("raw 2MiB body not accepted")
++			}
++			c.resetStream(1, 0)
++			c.releaseReader(st)
++			c.mu.Lock()
++			c.sealArenaLocked()
++			c.mu.Unlock()
++			assertAllocationHeld(t, s, 0)
++			allocs := testing.AllocsPerRun(100, func() {
++				c.mu.Lock()
++				st := c.acquireSlot()
++				c.mu.Unlock()
++				if st == nil {
++					t.Fatal("unexpected denial")
++				}
++				if _, err := st.managedBody(1024); err != nil {
++					t.Fatal(err)
++				}
++				c.mu.Lock()
++				st.slot.mapRef = false
++				st.slot.readerRefs--
++				c.retireSlotLocked(st.slot)
++				c.sealArenaLocked()
++				c.mu.Unlock()
++			})
++			if allocs != 0 {
++				t.Fatalf("bounded slot/body primitive allocations=%g", allocs)
++			}
++			assertAllocationHeld(t, s, 0)
++		})
++	}
++}
++
++func TestAllocationWorkspaceStartupBudget(t *testing.T) {
++	if allocationStartupBytes > allocationBudget {
++		t.Fatalf("startup=%d budget=%d", allocationStartupBytes, allocationBudget)
++	}
++}
+diff --git a/internal/server/batch.go b/internal/server/batch.go
+index a355af4..46d84de 100644
+--- a/internal/server/batch.go
++++ b/internal/server/batch.go
+@@ -70,6 +70,10 @@ func (c *conn) admit(st *stream) {
+ 	}
+ 	st.reqSize = len(st.body)
+ 	st.body = nil
++	if st.slot != nil {
++		c.queueManaged(st, req)
++		return
++	}
+ 	c.batch.reqs = append(c.batch.reqs, req)
+ 	c.batch.tags = append(c.batch.tags, st)
+ 	c.batch.bytes += st.reqSize
+@@ -82,10 +86,10 @@ func (c *conn) admit(st *stream) {
+ // timer.
+ func (c *conn) batchDue() bool {
+ 	b := &c.batch
+-	if len(b.reqs) == 0 {
++	if len(b.reqs) == 0 && c.managedCount == 0 {
+ 		return false
+ 	}
+-	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
++	if len(b.reqs)+c.managedCount >= maxBatchOps || b.bytes+c.managedBytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+ 		return true
+ 	}
+ 	// Peek cannot fail: the header is buffered.
+@@ -100,6 +104,14 @@ func (c *conn) batchDue() bool {
+ // flush hands the batch to the node. It never waits for the node's
+ // replies; the held bytes bound a connection through flow control.
+ func (c *conn) flush() error {
++	if c.s.alloc != nil {
++		if err := c.flushManaged(); err != nil {
++			return err
++		}
++	}
++	if len(c.batch.reqs) == 0 {
++		return nil
++	}
+ 	b := c.batch
+ 	c.batch = opBatch{}
+ 	c.mu.Lock()
+@@ -220,6 +232,11 @@ func (c *conn) complete(batches [][]node.Completion) {
+ // node's last replies came in Complete calls before it stopped, so they
+ // are encoded first.
+ func (c *conn) nodeStopped() {
++	if c.s.alloc != nil {
++		if head := c.takeManagedCompletions(); head != nil {
++			c.completeManaged(head)
++		}
++	}
+ 	if cs := c.takeCompletions(); cs != nil {
+ 		c.complete(cs)
+ 	}
+diff --git a/internal/server/h2.go b/internal/server/h2.go
+index 71ef1ab..8fdc839 100644
+--- a/internal/server/h2.go
++++ b/internal/server/h2.go
+@@ -62,8 +62,14 @@ type conn struct {
+ 	wake   chan struct{} // the writer has work; capacity 1
+ 
+ 	// Reader only.
+-	maxID uint32 // highest client stream ID seen
+-	batch opBatch
++	maxID                    uint32 // highest client stream ID seen
++	batch                    opBatch
++	managedHead, managedTail *stream
++	managedCount             int
++	managedBytes             int
++	arena                    int // -1 means no current HEADERS-started arena
++	allocSlots, allocBytes   int
++	allocHead                *allocSlot
+ 
+ 	mu        sync.Mutex
+ 	streams   map[uint32]*stream
+@@ -81,8 +87,10 @@ type conn struct {
+ 
+ 	// compMu guards completions, the replies from the node for the writer
+ 	// to encode. The node's committer takes it, so nothing holds it long.
+-	compMu      sync.Mutex
+-	completions [][]node.Completion
++	compMu             sync.Mutex
++	completions        [][]node.Completion
++	compHead, compTail *allocSlot
++	completionClosed   bool
+ }
+ 
+ // ctrlKind is the kind of a frame other than HEADERS and DATA.
+@@ -116,6 +124,11 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
+ 		sendWin:  65535,
+ 		initWin:  65535,
+ 		maxFrame: 16384,
++		arena:    -1,
++	}
++	if s.alloc != nil {
++		c.streams = make(map[uint32]*stream, allocationQuota)
++		c.ready = make([]*stream, 0, allocationQuota)
+ 	}
+ 	c.fr = http2.NewFramer(c.bw, c.br)
+ 	c.fr.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
+@@ -152,13 +165,31 @@ func (c *conn) serve() {
+ // it never waits for a client that stopped reading.
+ func (c *conn) close() {
+ 	c.once.Do(func() {
++		c.compMu.Lock()
++		c.completionClosed = true
++		comps := c.compHead
++		c.compHead, c.compTail = nil, nil
++		c.compMu.Unlock()
+ 		c.mu.Lock()
+ 		c.closed = true
+ 		for _, st := range c.streams {
+ 			st.reset = true
+ 		}
++		for slot := c.allocHead; slot != nil; {
++			next := slot.next
++			st := &slot.st
++			st.reset = true
++			delete(c.streams, st.id)
++			slot.mapRef = false
++			st.listed = false
++			st.out = nil
++			c.stopDeadlineLocked(st)
++			c.retireSlotLocked(slot)
++			slot = next
++		}
+ 		c.ready = nil
+ 		c.mu.Unlock()
++		c.dropManagedCompletions(comps)
+ 		c.cancel()
+ 		_ = c.raw.Close()
+ 	})
+@@ -216,6 +247,9 @@ func (c *conn) addCtrl(f ctrlFrame) {
+ }
+ 
+ func (c *conn) readLoop() error {
++	if c.s.alloc != nil {
++		defer c.readerDone()
++	}
+ 	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+ 		return err
+ 	}
+@@ -248,6 +282,11 @@ func (c *conn) readLoop() error {
+ 				return err
+ 			}
+ 		}
++		if c.s.alloc != nil && c.br.Buffered() < frameHeaderLen {
++			c.mu.Lock()
++			c.sealArenaLocked()
++			c.mu.Unlock()
++		}
+ 		f, err := c.fr.ReadFrame()
+ 		if err != nil {
+ 			if se, ok := errors.AsType[http2.StreamError](err); ok {
+@@ -336,11 +375,16 @@ func (c *conn) onWindowUpdate(f *http2.WindowUpdateFrame) error {
+ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
+ 	c.mu.Lock()
+ 	st := c.streams[id]
++	if st != nil && st.slot != nil {
++		st.slot.readerRefs++
++	}
++	defer c.releaseReader(st)
+ 	if st != nil {
+ 		delete(c.streams, id)
+ 		st.reset = true
+-		if st.deadline != nil {
+-			st.deadline.Stop()
++		c.stopDeadlineLocked(st)
++		if st.slot != nil {
++			st.slot.mapRef = false
+ 		}
+ 		// A call the node still runs keeps its request bytes until its
+ 		// reply comes and is dropped.
+@@ -349,6 +393,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
+ 		}
+ 		st.out = nil
+ 		st.queued = 0
++		if st.slot != nil {
++			c.retireSlotLocked(st.slot)
++		}
+ 	}
+ 	if code != 0 {
+ 		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
+@@ -375,7 +422,11 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
+ 	if id%2 == 0 || id <= c.maxID {
+ 		c.mu.Lock()
+ 		st := c.streams[id]
++		if st != nil && st.slot != nil {
++			st.slot.readerRefs++
++		}
+ 		c.mu.Unlock()
++		defer c.releaseReader(st)
+ 		if st != nil && f.StreamEnded() && !st.inEOF {
+ 			// Trailers from the client end its side of the stream.
+ 			return c.onEnd(st)
+@@ -395,6 +446,11 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
+ 		return nil
+ 	}
+ 	st := c.newStream(id, f)
++	if st == nil {
++		c.resetStream(id, http2.ErrCodeRefusedStream)
++		return nil
++	}
++	defer c.releaseReader(st)
+ 	if st.rpc == nil && st.httpPath == "" {
+ 		// gRPC to an unknown method; its error is already queued.
+ 		if f.StreamEnded() {
+@@ -430,10 +486,32 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
+ 			needLeader = needLeader || h.Value == "true"
+ 		}
+ 	}
+-	st := &stream{c: c, id: id, needLeader: needLeader}
+ 	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
++	var st *stream
++	if c.s.alloc != nil && grpc && methods[path] != nil && methods[path].wirePut {
++		c.mu.Lock()
++		if !c.closed {
++			st = c.acquireSlot()
++			if st != nil {
++				st.id, st.needLeader, st.rpc = id, needLeader, methods[path]
++			}
++		}
++		c.mu.Unlock()
++		if st == nil {
++			return nil
++		}
++	} else {
++		st = &stream{c: c, id: id, needLeader: needLeader}
++		if c.s.alloc != nil {
++			c.s.alloc.mu.Lock()
++			c.s.alloc.unmanagedRPC++
++			c.s.alloc.mu.Unlock()
++		}
++	}
+ 	if grpc {
+-		st.rpc = methods[path]
++		if st.slot == nil {
++			st.rpc = methods[path]
++		}
+ 	} else {
+ 		st.httpMethod, st.httpPath = method, path
+ 		if st.httpPath == "" {
+@@ -451,10 +529,21 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
+ 	}
+ 	c.mu.Lock()
+ 	st.sendWin = c.initWin
+-	c.streams[id] = st
+-	if grpc && hasTimeout {
++	if !c.closed {
++		c.streams[id] = st
++	} else if st.slot != nil {
++		st.slot.mapRef = false
++		st.reset = true
++	}
++	if grpc && hasTimeout && !c.closed {
+ 		// The deadline ends the call whether or not its request is
+ 		// complete or its handler started.
++		if st.slot != nil {
++			st.slot.timerRef = true
++			c.s.alloc.mu.Lock()
++			c.s.alloc.timerAllocations++
++			c.s.alloc.mu.Unlock()
++		}
+ 		st.deadline = time.AfterFunc(timeout, st.expire)
+ 	}
+ 	c.mu.Unlock()
+@@ -468,6 +557,10 @@ func (c *conn) onData(f *http2.DataFrame) error {
+ 	c.credit(int(f.Length))
+ 	c.mu.Lock()
+ 	st := c.streams[f.StreamID]
++	if st != nil && st.slot != nil {
++		st.slot.readerRefs++
++	}
++	defer c.releaseReader(st)
+ 	var halfClosed, overflow bool
+ 	if st != nil {
+ 		halfClosed = st.inEOF
+@@ -509,6 +602,9 @@ func (c *conn) onEnd(st *stream) error {
+ 	st.inEOF = true
+ 	if st.ended {
+ 		delete(c.streams, st.id)
++		if st.slot != nil {
++			st.slot.mapRef = false
++		}
+ 	}
+ 	c.mu.Unlock()
+ 	select {
+@@ -567,7 +663,8 @@ func parseTimeout(v string) (time.Duration, bool) {
+ var (
+ 	grpcHeaders = headerBlock(
+ 		hpack.HeaderField{Name: ":status", Value: "200"},
+-		hpack.HeaderField{Name: "content-type", Value: "application/grpc"})
++		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
++	)
+ 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
+ )
+ 
+diff --git a/internal/server/server.go b/internal/server/server.go
+index d74245c..595e60d 100644
+--- a/internal/server/server.go
++++ b/internal/server/server.go
+@@ -44,8 +44,9 @@ const stopGrace = time.Second
+ 
+ // Server serves one node's client port.
+ type Server struct {
+-	n   *node.Node
+-	cfg Config
++	n     *node.Node
++	cfg   Config
++	alloc *allocationPool
+ 
+ 	// ctx ends at Stop; it bounds TLS handshakes in progress.
+ 	ctx    context.Context
+@@ -74,7 +75,7 @@ func New(n *node.Node, cfg Config) *Server {
+ 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
+ 	}
+ 	ctx, cancel := context.WithCancel(context.Background())
+-	return &Server{n: n, cfg: cfg, ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
++	return &Server{n: n, cfg: cfg, alloc: newAllocationPool(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
+ }
+ 
+ // Serve accepts clients on ln until Stop.
+diff --git a/internal/server/server_test.go b/internal/server/server_test.go
+index 6bdba64..ed7a658 100644
+--- a/internal/server/server_test.go
++++ b/internal/server/server_test.go
+@@ -33,6 +33,7 @@ type cluster struct {
+ 	peerAddrs map[uint64]string
+ 	dirs      map[uint64]string
+ 	running   map[uint64]*running
++	tick      time.Duration // optional fixture clock; zero retains the 10ms test default
+ 	// via, if set, is the address node from dials to reach node to.
+ 	via map[[2]uint64]string
+ }
+@@ -87,7 +88,11 @@ func (c *cluster) start(id uint64) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: 10 * time.Millisecond, Logf: t.Logf})
++	tick := c.tick
++	if tick == 0 {
++		tick = 10 * time.Millisecond
++	}
++	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: tick, Logf: t.Logf})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/server/stream.go b/internal/server/stream.go
+index 1d9e2f6..5499130 100644
+--- a/internal/server/stream.go
++++ b/internal/server/stream.go
+@@ -18,8 +18,9 @@ import (
+ 
+ // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
+ type stream struct {
+-	c  *conn
+-	id uint32
++	c    *conn
++	id   uint32
++	slot *allocSlot // optional bounded transient workspace
+ 	// ctx ends with the call: done, reset, timed out or connection
+ 	// closed. Calls that the node runs have none.
+ 	ctx        context.Context
+@@ -119,7 +120,15 @@ func (st *stream) receive(d []byte) error {
+ 			if size > maxRecvMsg {
+ 				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, maxRecvMsg)
+ 			}
+-			st.msg = make([]byte, 0, size)
++			if st.slot != nil {
++				var err error
++				st.msg, err = st.managedBody(int(size))
++				if err != nil {
++					return err
++				}
++			} else {
++				st.msg = make([]byte, 0, size)
++			}
+ 		}
+ 		n := min(len(d), cap(st.msg)-len(st.msg))
+ 		st.msg = append(st.msg, d[:n]...)
+@@ -378,6 +387,13 @@ func (st *stream) expire() {
+ 	if st.cancel != nil {
+ 		st.cancel()
+ 	}
++	if st.slot != nil {
++		c := st.c
++		c.mu.Lock()
++		st.slot.timerRef = false
++		c.retireSlotLocked(st.slot)
++		c.mu.Unlock()
++	}
+ }
+ 
+ // runHTTP answers an HTTP request on an HTTP/2 stream.
+diff --git a/internal/server/write.go b/internal/server/write.go
+index 5346996..3250509 100644
+--- a/internal/server/write.go
++++ b/internal/server/write.go
+@@ -12,6 +12,7 @@ type wframe struct {
+ 	flags http2.Flags
+ 	id    uint32
+ 	b     []byte
++	owner *allocSlot // payload storage pinned through Flush (including abort)
+ 	ctrl  *ctrlFrame // set for frames other than HEADERS and DATA
+ }
+ 
+@@ -34,8 +35,18 @@ func (c *conn) writeLoop() error {
+ 	var frames []wframe
+ 	var ctrl []ctrlFrame
+ 	var hdr []byte
++	if c.s.alloc != nil {
++		frames = make([]wframe, 0, 4*allocationQuota)
++		hdr = make([]byte, 0, frameHeaderLen)
++	}
++	defer func() { c.retireFrames(frames) }()
+ 	nodeDone := c.s.n.Done()
+ 	for {
++		if c.s.alloc != nil {
++			if head := c.takeManagedCompletions(); head != nil {
++				c.completeManaged(head)
++			}
++		}
+ 		if comps := c.takeCompletions(); comps != nil {
+ 			c.complete(comps)
+ 		}
+@@ -69,7 +80,7 @@ func (c *conn) writeLoop() error {
+ 				return err
+ 			}
+ 		}
+-		for i, f := range frames {
++		for _, f := range frames {
+ 			if f.ctrl != nil {
+ 				if err := c.writeCtrl(f.ctrl); err != nil {
+ 					return err
+@@ -79,12 +90,13 @@ func (c *conn) writeLoop() error {
+ 				_, _ = c.bw.Write(hdr)
+ 				_, _ = c.bw.Write(f.b)
+ 			}
+-			frames[i] = wframe{}
+ 		}
+ 		// bufio.Writer keeps the first write error and returns it here.
+ 		if err := c.bw.Flush(); err != nil {
+ 			return err
+ 		}
++		c.retireFrames(frames)
++		frames = frames[:0]
+ 		if drained {
+ 			return nil
+ 		}
+@@ -110,6 +122,9 @@ func (c *conn) take(frames []wframe) []wframe {
+ 				kept = append(kept, st)
+ 			} else {
+ 				st.listed = false
++				if st.slot != nil {
++					c.retireSlotLocked(st.slot)
++				}
+ 			}
+ 		}
+ 		clear(c.ready[len(kept):])
+@@ -138,9 +153,9 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
+ 		it := &st.out[0]
+ 		switch it.kind {
+ 		case outHeaders:
+-			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders, id: st.id, b: it.b})
++			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders, id: st.id, b: it.b, owner: c.frameOwner(st)})
+ 		case outTrailers:
+-			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders | http2.FlagHeadersEndStream, id: st.id, b: it.b})
++			frames = append(frames, wframe{typ: http2.FrameHeaders, flags: http2.FlagHeadersEndHeaders | http2.FlagHeadersEndStream, id: st.id, b: it.b, owner: c.frameOwner(st)})
+ 			frames = c.endStream(st, frames)
+ 		case outData:
+ 			for len(it.b) > 0 || it.end {
+@@ -156,7 +171,7 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
+ 				if last && it.end {
+ 					flags = http2.FlagDataEndStream
+ 				}
+-				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n]})
++				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n], owner: c.frameOwner(st)})
+ 				it.b = it.b[n:]
+ 				c.sendWin -= int64(n)
+ 				st.sendWin -= int64(n)
+@@ -182,14 +197,15 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
+ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
+ 	st.ended = true
+ 	delete(c.streams, st.id)
++	if st.slot != nil {
++		st.slot.mapRef = false
++	}
+ 	if st.cancel != nil {
+ 		// Calls that ended without a handler, such as unknown methods,
+ 		// release their context here.
+ 		st.cancel()
+ 	}
+-	if st.deadline != nil {
+-		st.deadline.Stop()
+-	}
++	c.stopDeadlineLocked(st)
+ 	c.releaseLocked(st)
+ 	if !st.inEOF {
+ 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
+@@ -202,7 +218,8 @@ func (c *conn) writeCtrl(f *ctrlFrame) error {
+ 	case ctrlSettings:
+ 		return c.fr.WriteSettings(
+ 			http2.Setting{ID: http2.SettingMaxConcurrentStreams, Val: maxStreams},
+-			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow})
++			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow},
++		)
+ 	case ctrlSettingsAck:
+ 		return c.fr.WriteSettingsAck()
+ 	case ctrlPingAck:

@@ -1,0 +1,2641 @@
+{
+  "accepted_payload_bytes": 1572826,
+  "after_slow_close": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 178487696,
+    "heap_objects": 32360,
+    "heap_inuse_bytes": 191619072,
+    "heap_sys_bytes": 280330240,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 588,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 8388608,
+      "held_slots": 0,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85661,
+      "unmanaged_rpc_count": 62
+    }
+  },
+  "allocator_recovery_verified": true,
+  "allocator_saturation_verified": true,
+  "before_slow": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 176068880,
+    "heap_objects": 26897,
+    "heap_inuse_bytes": 188620800,
+    "heap_sys_bytes": 280330240,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 0,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 8388608,
+      "held_slots": 0,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 72,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 84100,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "blocked_prefix_goroutines": "/home/runner/work/tigerstore/tigerstore/evidence/alloc50/c64/cases-ring/cases.json.blocked-prefix.goroutines.txt",
+  "boundary": [
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572863,
+      "payload_bytes": 1572825,
+      "revision": 84098
+    },
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572864,
+      "payload_bytes": 1572826,
+      "revision": 84099
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572865,
+      "payload_bytes": 1572827
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572902,
+      "payload_bytes": 1572864
+    }
+  ],
+  "healthy_last_revision": 85915,
+  "healthy_revision_after_close": 85916,
+  "healthy_successes_while_stalled": 1560,
+  "quota_observed_elapsed_s": 0.016524352,
+  "quota_samples": [
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84116,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.016524352
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84132,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.027574063
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84148,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.038769251
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84164,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.050685917
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84180,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.06200287
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84196,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.072408179
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84212,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.083699619
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84228,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.093826693
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84244,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.104710365
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84260,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.11537074
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84276,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.126018779
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84292,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.137606039
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84308,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.148374282
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84324,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.159595288
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84340,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.170082008
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84356,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.180272949
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84372,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.190846032
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84388,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.201664262
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84404,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.212063875
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84420,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.223100729
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84436,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.233765736
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84452,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.244783246
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84468,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.256428884
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84484,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.26757071
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84500,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.278728801
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84516,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.290217041
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84532,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.301235519
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84548,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.312379489
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84564,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.32369869
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84580,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.335330632
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84596,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.347336581
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84612,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.358374643
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84612,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.358518905
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84612,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.368426898
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84613,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.379630615
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84614,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.392022931
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84615,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.403139868
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84616,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.414300007
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84617,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.42555335
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84618,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.436763387
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84619,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.447965127
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84620,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.459214334
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84621,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.470586434
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84622,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.481705307
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84623,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.492683775
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84624,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.503835954
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84625,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.515039151
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84628,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.527826674
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84644,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.538254904
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84660,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.548548553
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84676,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.560004535
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84692,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.571228461
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84708,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.582222753
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84724,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.593140043
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84740,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.603780537
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84756,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.614612103
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84772,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.625813404
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84788,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.637160006
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84804,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.648095576
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84820,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.659022762
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84836,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.670331907
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84852,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.681629915
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84868,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.692723468
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84884,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.705511623
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84900,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.717870122
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84916,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.729778507
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84932,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.741533469
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84948,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.753779067
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84964,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.76558736
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84980,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.77741711
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 84996,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.789056996
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85012,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.801654944
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85028,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.814335183
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85044,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.826164061
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85060,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.837670134
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85076,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.849169382
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85092,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.860827797
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85108,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.872405056
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85124,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.883308393
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85138,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.893899014
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85138,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.904639816
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85139,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.915894943
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85140,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.917018731
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85140,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.927299651
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85141,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.93844675
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85142,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.949735542
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85143,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.960981221
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85144,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.972230803
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85145,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.983405591
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85146,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 0.994511208
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85147,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.005952702
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85156,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.022203787
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85172,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.032724869
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85188,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.045159514
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85204,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.056169663
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85220,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.067837638
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85236,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.079145119
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85252,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.090077257
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85268,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.101560929
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85284,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.114216687
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85300,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.12626631
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85316,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.137907092
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85332,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.148591652
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85348,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.160395585
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85364,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.171159676
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85380,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.182366153
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85396,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.192979814
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85412,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.204235813
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85428,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.215449858
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85444,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.226705217
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85460,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.238127526
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85476,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.300851368
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85492,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.312260717
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85508,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.324171214
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85524,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.336463462
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85540,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.347467075
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85556,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.3589961480000001
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85572,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.370526774
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85588,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.381830047
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85604,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.392450748
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85620,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.403042441
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85636,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.41360354
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85652,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.424617473
+    },
+    {
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 9166848,
+        "held_slots": 256,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85660,
+        "unmanaged_rpc_count": 60
+      },
+      "elapsed_s": 1.430153021
+    }
+  ],
+  "quota_sustained_s": 1.423757951,
+  "recovery_samples": [
+    {
+      "forced_gc": true,
+      "heap_alloc_bytes": 178487696,
+      "heap_objects": 32360,
+      "heap_inuse_bytes": 191619072,
+      "heap_sys_bytes": 280330240,
+      "mem_profile_rate": 524288,
+      "strategy_env": "ring",
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 588,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 8388608,
+        "held_slots": 0,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85661,
+        "unmanaged_rpc_count": 62
+      }
+    }
+  ],
+  "reply_reads_after_handshake": 0,
+  "request_limit_bytes": 1572864,
+  "sender_before_close": {
+    "planned_puts": 4096,
+    "attempted_puts": 3088,
+    "sent_headers": 3087,
+    "completed_data": 3087,
+    "completed_data_bytes": 3232089,
+    "message_bytes": 1047,
+    "finished": false,
+    "all_data_sent": false,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "sending"
+  },
+  "sender_outcome_verified": true,
+  "sender_phase_0": {
+    "planned_puts": 4096,
+    "attempted_puts": 3088,
+    "sent_headers": 3087,
+    "completed_data": 3087,
+    "completed_data_bytes": 3232089,
+    "message_bytes": 1047,
+    "finished": false,
+    "all_data_sent": false,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "sending"
+  },
+  "sender_phase_1": {
+    "planned_puts": 4096,
+    "attempted_puts": 3088,
+    "sent_headers": 3087,
+    "completed_data": 3087,
+    "completed_data_bytes": 3232089,
+    "message_bytes": 1047,
+    "finished": false,
+    "all_data_sent": false,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "sending"
+  },
+  "sender_phase_2": {
+    "planned_puts": 4096,
+    "attempted_puts": 3088,
+    "sent_headers": 3087,
+    "completed_data": 3087,
+    "completed_data_bytes": 3232089,
+    "message_bytes": 1047,
+    "finished": false,
+    "all_data_sent": false,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "sending"
+  },
+  "slow_attempted_puts": 3088,
+  "slow_committed_puts": 256,
+  "slow_data_bytes": 3232089,
+  "slow_last_mod_revision": 84356,
+  "slow_phase_0": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 177245520,
+    "heap_objects": 28782,
+    "heap_inuse_bytes": 190357504,
+    "heap_sys_bytes": 280264704,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 588,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 84612,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_phase_1": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 177977848,
+    "heap_objects": 30655,
+    "heap_inuse_bytes": 191070208,
+    "heap_sys_bytes": 280264704,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 588,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85138,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_phase_2": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 178662704,
+    "heap_objects": 32447,
+    "heap_inuse_bytes": 191774720,
+    "heap_sys_bytes": 280264704,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 588,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85660,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_planned_puts": 4096,
+  "slow_range_header": {
+    "cluster_id": 15477341921496934344,
+    "member_id": 1,
+    "revision": 85915,
+    "raft_term": 1
+  },
+  "slow_requests": 4096,
+  "slow_sender": {
+    "planned_puts": 4096,
+    "attempted_puts": 3088,
+    "sent_headers": 3087,
+    "completed_data": 3087,
+    "completed_data_bytes": 3232089,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": false,
+    "intentional_close": true,
+    "error": "write tcp 127.0.0.1:35086-\u003e127.0.0.1:2379: use of closed network connection",
+    "error_before_close": false,
+    "expected_close_error": true,
+    "stage": "headers"
+  },
+  "slow_sent_data": 3087,
+  "slow_sent_headers": 3087,
+  "stream_receive_window": 0,
+  "valid": true
+}

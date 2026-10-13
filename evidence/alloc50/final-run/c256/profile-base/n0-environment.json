@@ -1,0 +1,6 @@
+{
+  "GOMAXPROCS": "1",
+  "PRE50_DEBUG": "127.0.0.1:6060",
+  "TIGER_ALLOC_STRATEGY": null,
+  "ALLOC50_PROFILE_RATE": "1"
+}

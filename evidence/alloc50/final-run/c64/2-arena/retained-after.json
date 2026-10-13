@@ -1,0 +1,25 @@
+{
+  "allocator": {
+    "byte_budget": 67108864,
+    "denied_count": 0,
+    "driver_reserve_bytes": 8388608,
+    "fallback_allocations": 0,
+    "held_bytes": 8388608,
+    "held_slots": 0,
+    "mode": 2,
+    "peak_bytes": 9947648,
+    "peak_slots": 512,
+    "per_connection_bytes": 8388608,
+    "per_connection_slots": 256,
+    "slot_budget": 4096,
+    "timer_allocations": 84096,
+    "unmanaged_rpc_count": 55
+  },
+  "forced_gc": true,
+  "heap_alloc_bytes": 167225144,
+  "heap_inuse_bytes": 180166656,
+  "heap_objects": 27330,
+  "heap_sys_bytes": 263553024,
+  "mem_profile_rate": 524288,
+  "strategy_env": "arena"
+}

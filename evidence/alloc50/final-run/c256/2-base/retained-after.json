@@ -1,0 +1,10 @@
+{
+  "allocator": null,
+  "forced_gc": true,
+  "heap_alloc_bytes": 113777056,
+  "heap_inuse_bytes": 117923840,
+  "heap_objects": 25973,
+  "heap_sys_bytes": 179601408,
+  "mem_profile_rate": 524288,
+  "strategy_env": ""
+}

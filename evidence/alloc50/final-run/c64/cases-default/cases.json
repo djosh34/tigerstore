@@ -1,0 +1,255 @@
+{
+  "accepted_payload_bytes": 1572826,
+  "after_slow_close": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 135094072,
+    "heap_objects": 43931,
+    "heap_inuse_bytes": 141737984,
+    "heap_sys_bytes": 208994304,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": {
+      "byte_budget": 0,
+      "denied_count": 0,
+      "fallback_allocations": 0,
+      "held_bytes": 0,
+      "held_slots": 0,
+      "mode": 0,
+      "peak_bytes": 0,
+      "peak_slots": 0,
+      "per_connection_slots": 0,
+      "slot_budget": 0
+    }
+  },
+  "allocator_recovery_verified": false,
+  "before_slow": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 127926808,
+    "heap_objects": 33427,
+    "heap_inuse_bytes": 134307840,
+    "heap_sys_bytes": 208994304,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": {
+      "byte_budget": 0,
+      "denied_count": 0,
+      "fallback_allocations": 0,
+      "held_bytes": 0,
+      "held_slots": 0,
+      "mode": 0,
+      "peak_bytes": 0,
+      "peak_slots": 0,
+      "per_connection_slots": 0,
+      "slot_budget": 0
+    }
+  },
+  "boundary": [
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572863,
+      "payload_bytes": 1572825,
+      "revision": 84098
+    },
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572864,
+      "payload_bytes": 1572826,
+      "revision": 84099
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572865,
+      "payload_bytes": 1572827
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572902,
+      "payload_bytes": 1572864
+    }
+  ],
+  "healthy_last_revision": 89731,
+  "healthy_revision_after_close": 89732,
+  "healthy_successes_while_stalled": 1536,
+  "recovery_samples": [
+    {
+      "forced_gc": true,
+      "heap_alloc_bytes": 135094072,
+      "heap_objects": 43931,
+      "heap_inuse_bytes": 141737984,
+      "heap_sys_bytes": 208994304,
+      "mem_profile_rate": 524288,
+      "strategy_env": "",
+      "allocator": {
+        "byte_budget": 0,
+        "denied_count": 0,
+        "fallback_allocations": 0,
+        "held_bytes": 0,
+        "held_slots": 0,
+        "mode": 0,
+        "peak_bytes": 0,
+        "peak_slots": 0,
+        "per_connection_slots": 0,
+        "slot_budget": 0
+      }
+    }
+  ],
+  "reply_reads_after_handshake": 0,
+  "request_limit_bytes": 1572864,
+  "sender_before_close": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_outcome_verified": true,
+  "sender_phase_0": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_phase_1": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "sender_phase_2": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": false,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "slow_attempted_puts": 4096,
+  "slow_committed_puts": 4096,
+  "slow_data_bytes": 4288512,
+  "slow_last_mod_revision": 88206,
+  "slow_phase_0": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 135148320,
+    "heap_objects": 50676,
+    "heap_inuse_bytes": 142147584,
+    "heap_sys_bytes": 208928768,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": {
+      "byte_budget": 0,
+      "denied_count": 0,
+      "fallback_allocations": 0,
+      "held_bytes": 0,
+      "held_slots": 0,
+      "mode": 0,
+      "peak_bytes": 0,
+      "peak_slots": 0,
+      "per_connection_slots": 0,
+      "slot_budget": 0
+    }
+  },
+  "slow_phase_1": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 136464608,
+    "heap_objects": 53470,
+    "heap_inuse_bytes": 143376384,
+    "heap_sys_bytes": 208896000,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": {
+      "byte_budget": 0,
+      "denied_count": 0,
+      "fallback_allocations": 0,
+      "held_bytes": 0,
+      "held_slots": 0,
+      "mode": 0,
+      "peak_bytes": 0,
+      "peak_slots": 0,
+      "per_connection_slots": 0,
+      "slot_budget": 0
+    }
+  },
+  "slow_phase_2": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 137813344,
+    "heap_objects": 56323,
+    "heap_inuse_bytes": 144670720,
+    "heap_sys_bytes": 208928768,
+    "mem_profile_rate": 524288,
+    "strategy_env": "",
+    "allocator": {
+      "byte_budget": 0,
+      "denied_count": 0,
+      "fallback_allocations": 0,
+      "held_bytes": 0,
+      "held_slots": 0,
+      "mode": 0,
+      "peak_bytes": 0,
+      "peak_slots": 0,
+      "per_connection_slots": 0,
+      "slot_budget": 0
+    }
+  },
+  "slow_planned_puts": 4096,
+  "slow_range_header": {
+    "cluster_id": 17697145458917736209,
+    "member_id": 3,
+    "revision": 89731,
+    "raft_term": 1
+  },
+  "slow_requests": 4096,
+  "slow_sender": {
+    "planned_puts": 4096,
+    "attempted_puts": 4096,
+    "sent_headers": 4096,
+    "completed_data": 4096,
+    "completed_data_bytes": 4288512,
+    "message_bytes": 1047,
+    "finished": true,
+    "all_data_sent": true,
+    "intentional_close": true,
+    "error": "",
+    "error_before_close": false,
+    "expected_close_error": false,
+    "stage": "complete"
+  },
+  "slow_sent_data": 4096,
+  "slow_sent_headers": 4096,
+  "stream_receive_window": 0,
+  "valid": true
+}

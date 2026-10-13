@@ -1,0 +1,27 @@
+File: experiment
+Build ID: 1f5f7bcfd93da894224e1bcae2661f17f7201aac
+Type: inuse_objects
+Time: 2026-10-13 10:57:46 UTC
+Showing nodes accounting for 6996, 99.54% of 7028 total
+Dropped 60 nodes (cum <= 35)
+      flat  flat%   sum%        cum   cum%
+      2000 28.46% 28.46%       6002 85.40%  go.etcd.io/raft/v3.(*raft).appendEntry
+      2000 28.46% 56.92%       2000 28.46%  google.golang.org/protobuf/internal/impl.mergeBytes
+      2000 28.46% 85.37%       2000 28.46%  reflect.unsafe_New
+       995 14.16% 99.53%       6997 99.56%  go.etcd.io/raft/v3.(*RawNode).Propose
+         1 0.014% 99.54%       2001 28.47%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         0     0% 99.54%       6998 99.57%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 99.54%       6997 99.56%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 99.54%       6996 99.54%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 99.54%       6996 99.54%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 99.54%       6001 85.39%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 99.54%       6001 85.39%  go.etcd.io/raft/v3.stepLeader
+         0     0% 99.54%       2000 28.46%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 99.54%       2000 28.46%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 99.54%       2001 28.47%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 99.54%       4002 56.94%  google.golang.org/protobuf/proto.Clone
+         0     0% 99.54%       2000 28.46%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 99.54%       6996 99.54%  main.main
+         0     0% 99.54%       6996 99.54%  main.run
+         0     0% 99.54%       2000 28.46%  reflect.New
+         0     0% 99.54%       6996 99.54%  runtime.main

@@ -1,0 +1,48 @@
+File: base
+Build ID: 59693393254ee7d474d0c2a349105502cdcf69c1
+Type: inuse_space
+Time: 2026-10-13 10:56:56 UTC
+Showing nodes accounting for 628kB, 14.27% of 4401.81kB total
+Dropped 30 nodes (cum <= 22.01kB)
+      flat  flat%   sum%        cum   cum%
+    2250kB 51.12% 51.12%     2250kB 51.12%  google.golang.org/protobuf/internal/impl.mergeBytes
+-1643.62kB 37.34% 13.78% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+ -218.02kB  4.95%  8.82%  -218.02kB  4.95%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+  187.50kB  4.26% 13.08%   187.50kB  4.26%  reflect.unsafe_New
+   31.25kB  0.71% 13.79%  2468.83kB 56.09%  go.etcd.io/raft/v3.(*raft).appendEntry
+   19.25kB  0.44% 14.23%    19.25kB  0.44%  go.etcd.io/raft/v3.(*MemoryStorage).Append
+     -18kB  0.41% 13.82%      -18kB  0.41%  crypto/tls.(*halfConn).encrypt
+   16.03kB  0.36% 14.18%  2484.86kB 56.45%  go.etcd.io/raft/v3.(*RawNode).Propose
+    3.61kB 0.082% 14.27%     3.61kB 0.082%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0% 14.27%   -18.28kB  0.42%  bufio.(*Writer).Flush
+         0     0% 14.27%   -18.28kB  0.42%  crypto/tls.(*Conn).Write
+         0     0% 14.27%   -18.28kB  0.42%  crypto/tls.(*Conn).writeRecordLocked
+         0     0% 14.27%    19.25kB  0.44%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted
+         0     0% 14.27%  2485.73kB 56.47%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 14.27%  2484.86kB 56.45%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 14.27%    19.25kB  0.44%  github.com/djosh34/tigerstore/internal/core.(*storage).append
+         0     0% 14.27%  2286.97kB 51.96%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 14.27%     3.61kB 0.082%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0% 14.27%  2286.97kB 51.96%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 14.27%  -218.02kB  4.95%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 14.27%   -17.82kB   0.4%  github.com/djosh34/tigerstore/internal/peer.(*sender).run
+         0     0% 14.27%   -17.82kB   0.4%  github.com/djosh34/tigerstore/internal/peer.(*sender).write
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0% 14.27% -1643.62kB 37.34%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0% 14.27%  2468.83kB 56.09%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 14.27%  2468.83kB 56.09%  go.etcd.io/raft/v3.stepLeader
+         0     0% 14.27%   187.50kB  4.26%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         0     0% 14.27%     2250kB 51.12%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 14.27%     2250kB 51.12%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 14.27%   187.50kB  4.26%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 14.27%  2437.58kB 55.38%  google.golang.org/protobuf/proto.Clone
+         0     0% 14.27%     2250kB 51.12%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 14.27%  2286.97kB 51.96%  main.main
+         0     0% 14.27%  2286.97kB 51.96%  main.run
+         0     0% 14.27%   187.50kB  4.26%  reflect.New
+         0     0% 14.27%  2286.97kB 51.96%  runtime.main
+         0     0% 14.27%   -14.25kB  0.32%  sync.(*WaitGroup).Go.func1

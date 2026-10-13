@@ -1,0 +1,109 @@
+package main
+
+// Experiment-only observation. No changes to request handling or persistence.
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"runtime"
+	"runtime/metrics"
+	"runtime/pprof"
+	"strconv"
+
+	"github.com/djosh34/tigerstore/internal/node"
+)
+
+func bench75Observe(n *node.Node, g any) error {
+	addr := os.Getenv("PRE50_DEBUG")
+	if addr == "" {
+		return nil
+	}
+	// Rate changes only in a separately launched diagnostic process.
+	if value := os.Getenv("ALLOC50_PROFILE_RATE"); value != "" {
+		rate, err := strconv.Atoi(value)
+		if err != nil || rate < 1 {
+			return fmt.Errorf("invalid ALLOC50_PROFILE_RATE %q", value)
+		}
+		runtime.MemProfileRate = rate
+	}
+	allocator := func() map[string]uint64 {
+		if source, ok := g.(interface{ AllocationStats() map[string]uint64 }); ok {
+			return source.AllocationStats()
+		}
+		return nil // Pristine base has no prototype allocator.
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/allocator", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(allocator()); err != nil {
+			log.Printf("debug allocator: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/goroutines", func(w http.ResponseWriter, r *http.Request) {
+		if err := pprof.Lookup("goroutine").WriteTo(w, 2); err != nil {
+			log.Printf("debug goroutines: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/allocs", func(w http.ResponseWriter, r *http.Request) {
+		// Two GCs flush delayed allocation-profile accounting. These are never
+		// called inside a timed window; a fresh process isolates the cohort.
+		runtime.GC()
+		runtime.GC()
+		if err := pprof.Lookup("allocs").WriteTo(w, 0); err != nil {
+			log.Printf("debug allocs: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/retained", func(w http.ResponseWriter, r *http.Request) {
+		runtime.GC()
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"forced_gc": true, "heap_alloc_bytes": m.HeapAlloc,
+			"heap_objects": m.HeapObjects, "heap_inuse_bytes": m.HeapInuse,
+			"heap_sys_bytes": m.HeapSys, "mem_profile_rate": runtime.MemProfileRate,
+			"strategy_env": os.Getenv("TIGER_ALLOC_STRATEGY"), "allocator": allocator(),
+		}); err != nil {
+			log.Printf("debug retained: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader(), "gomaxprocs": uint64(runtime.GOMAXPROCS(0))}); err != nil {
+			log.Printf("debug leader: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/runtime", func(w http.ResponseWriter, r *http.Request) {
+		samples := []metrics.Sample{
+			{Name: "/gc/heap/allocs:objects"},
+			{Name: "/gc/heap/allocs:bytes"},
+			{Name: "/memory/classes/heap/objects:bytes"},
+			{Name: "/cpu/classes/gc/total:cpu-seconds"},
+			{Name: "/cpu/classes/total:cpu-seconds"},
+			{Name: "/cpu/classes/idle:cpu-seconds"},
+		}
+		metrics.Read(samples)
+		values := make(map[string]float64, len(samples))
+		for _, s := range samples {
+			switch s.Value.Kind() {
+			case metrics.KindUint64:
+				values[s.Name] = float64(s.Value.Uint64())
+			case metrics.KindFloat64:
+				values[s.Name] = s.Value.Float64()
+			}
+		}
+		if err := json.NewEncoder(w).Encode(values); err != nil {
+			log.Printf("debug runtime: %v", err)
+		}
+	})
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := http.Serve(ln, mux); err != nil {
+			log.Printf("debug HTTP: %v", err)
+		}
+	}()
+	return nil
+}
