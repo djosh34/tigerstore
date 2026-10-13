@@ -61,8 +61,7 @@ var stricter = map[string][]string{
 }
 
 const (
-	issueCompaction = "Compact is not built yet, https://github.com/djosh34/tigerstore/issues/47"
-	issueLeases     = "leases are not built yet, https://github.com/djosh34/tigerstore/issues/47"
+	issueLeases = "leases are not built yet, https://github.com/djosh34/tigerstore/issues/47"
 )
 
 // expectedFail lists the steps where tigerstore differs from etcd v3.7.2
@@ -73,11 +72,6 @@ var expectedFail = map[string]struct {
 	reason string
 	steps  []string
 }{
-	"compact-below-current": {issueCompaction, []string{"compact at R-1", "range a at 1", "watch a from 1 with prev_kv", "compact at R-1 again", "compact at R-2"}},
-	"compact-at-current":    {issueCompaction, []string{"compact at R", "range a at 1", "range a at 2", "watch a from 1 with prev_kv", "watch a from 2 with prev_kv", "compact at R again"}},
-	"compact-above-current": {issueCompaction, []string{"compact at R+1"}},
-	"compact-physical":      {issueCompaction, []string{"physical compact at R-1", "range a at 1", "watch a from 1 with prev_kv"}},
-	"error-codes":           {issueCompaction, []string{"compact at 2", "txn with a historical range at a compacted revision", "compact at revision 0", "compact at revision -1"}},
 	"leases": {issueLeases, []string{
 		"grant with an explicit ID", "grant the same ID again", "grant with a TTL of 1 s", "grant with a TTL of 9000000001 s",
 		"grant with a TTL of 0", "grant with a negative ID", "put k with the lease", "put j with the lease", "put j without a lease",

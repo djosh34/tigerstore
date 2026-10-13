@@ -203,8 +203,15 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	created.WatchId = id
 	n.watchReply(s.id, created)
 	if w.start <= rev {
-		if w.start < n.kv.CompactRev() {
-			n.watchReply(s.id, &pb.WatchResponse{WatchId: id, CompactRevision: n.kv.CompactRev(), Canceled: true})
+		// Like etcd, a watch from below the compaction is canceled. A
+		// watch with prev_kv from the compaction revision itself is too:
+		// the versions before it are gone, and etcd would send its events
+		// without previous values, which Kubernetes rejects.
+		if c := n.kv.CompactRev(); w.start < c || (w.prevKV && w.start == c) {
+			r := &pb.WatchResponse{WatchId: id, CompactRevision: c, Canceled: true}
+			n.watchReply(s.id, r)
+			// etcd's compaction cancel carries header revision 0.
+			r.Header.Revision = 0
 			return
 		}
 		var evs []*mvccpb.Event

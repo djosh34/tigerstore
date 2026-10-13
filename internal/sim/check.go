@@ -9,6 +9,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -51,11 +53,21 @@ func (s *Sim) check(res *Result) error {
 			return err
 		}
 	}
+	// The cluster compacts, so the checks read history from a model: the
+	// committed log replayed without compactions. It must end in the
+	// cluster's state.
+	model, err := replay(res.Log)
+	if err != nil {
+		return err
+	}
+	if err := sameLatest(model, final); err != nil {
+		return err
+	}
 	for _, r := range res.History {
 		if r.Err != nil {
 			continue
 		}
-		if err := checkRecord(final, r); err != nil {
+		if err := checkRecord(model, r); err != nil {
 			return fmt.Errorf("client %d call at %d ms on node %d: %w\nrequest: %v\nresponse: %v",
 				r.Client, r.Call/Millisecond, r.Node+1, err, r.req, r.Resp)
 		}
@@ -66,7 +78,7 @@ func (s *Sim) check(res *Result) error {
 	if err := checkLog(res); err != nil {
 		return err
 	}
-	if err := s.checkWatches(final, res); err != nil {
+	if err := s.checkWatches(model, res); err != nil {
 		return err
 	}
 	live := 0
@@ -74,7 +86,7 @@ func (s *Sim) check(res *Result) error {
 		if r.Call < s.healAt+s.cfg.LiveAfter {
 			continue
 		}
-		if r.Err != nil {
+		if r.Err != nil && (r.Ambiguous || !isAnswer(r.Err)) {
 			return fmt.Errorf("liveness: client %d call at %d ms, %d ms after healing, failed: %w",
 				r.Client, r.Call/Millisecond, (r.Call-s.healAt)/Millisecond, r.Err)
 		}
@@ -231,6 +243,13 @@ func checkRecord(st *mvcc.Store, r *Record) error {
 			return errors.New("wrong response type")
 		}
 		return checkTxn(st, req, resp)
+	case *pb.CompactionRequest:
+		// A compaction changes no value; converged checks that every
+		// node compacted the same way.
+		if _, ok := r.Resp.(*pb.CompactionResponse); !ok {
+			return errors.New("wrong response type")
+		}
+		return nil
 	}
 	return fmt.Errorf("unknown request %T", r.req)
 }
@@ -424,6 +443,57 @@ func checkLog(res *Result) error {
 					r.Client, r.Call/Millisecond, v)
 			}
 		}
+	}
+	return nil
+}
+
+// isAnswer reports whether an error is the server's definite answer to the
+// request, such as a compacted revision, rather than unavailability.
+func isAnswer(err error) bool {
+	c := status.Code(err)
+	return c == codes.InvalidArgument || c == codes.OutOfRange || c == codes.NotFound || c == codes.FailedPrecondition
+}
+
+// replay applies the committed log to a fresh store, without compactions,
+// so every revision stays readable.
+func replay(log []proto.Message) (*mvcc.Store, error) {
+	st := mvcc.New()
+	for i, op := range log {
+		var err error
+		switch op := op.(type) {
+		case *pb.PutRequest:
+			_, err = st.Put(op)
+		case *pb.DeleteRangeRequest:
+			_, err = st.DeleteRange(op)
+		case *pb.TxnRequest:
+			_, err = st.Txn(op)
+		case *pb.CompactionRequest:
+			continue
+		default:
+			return nil, fmt.Errorf("log write %d has unknown type %T", i, op)
+		}
+		if err != nil && !isAnswer(err) {
+			return nil, fmt.Errorf("replaying log write %d: %w", i, err)
+		}
+	}
+	return st, nil
+}
+
+// sameLatest checks that two stores are at the same revision with the same
+// keys and values.
+func sameLatest(a, b *mvcc.Store) error {
+	all := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}}
+	ra, err := a.Range(all)
+	if err != nil {
+		return err
+	}
+	rb, err := b.Range(all)
+	if err != nil {
+		return err
+	}
+	if a.Rev() != b.Rev() || !proto.Equal(ra, rb) {
+		return fmt.Errorf("replaying the committed log gives revision %d and %d keys, the cluster has revision %d and %d keys",
+			a.Rev(), len(ra.Kvs), b.Rev(), len(rb.Kvs))
 	}
 	return nil
 }

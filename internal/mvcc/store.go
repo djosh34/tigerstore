@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
 
 // rev orders changes: main is the revision of the request, sub the position
@@ -212,4 +213,38 @@ func InRange(key, start, end []byte) bool {
 		return bytes.Compare(key, start) >= 0
 	}
 	return bytes.Compare(key, start) >= 0 && bytes.Compare(key, end) < 0
+}
+
+// Compact drops every version that no read at rev or later can see, as
+// etcd's compaction does: per key, the newest version at or below rev
+// stays, unless it is a tombstone from before rev. A tombstone at rev
+// stays, so a watch from rev still gets that delete. Reads below rev then
+// fail with ErrCompacted. Compact does not change the revision.
+func (s *Store) Compact(rev int64) error {
+	switch {
+	case rev <= s.compactRev:
+		return rpctypes.ErrGRPCCompacted
+	case rev > s.rev:
+		return rpctypes.ErrGRPCFutureRev
+	}
+	s.changes = s.changes[:0]
+	var gone []*keyIndex
+	s.keys.Ascend(func(k *keyIndex) bool {
+		i := k.at(rev)
+		if i >= 0 && k.vers[i].ver == 0 && k.vers[i].mod.main < rev {
+			i++
+		}
+		if i > 0 {
+			k.vers = slices.Delete(k.vers, 0, i)
+		}
+		if len(k.vers) == 0 {
+			gone = append(gone, k)
+		}
+		return true
+	})
+	for _, k := range gone {
+		s.keys.Delete(k)
+	}
+	s.compactRev = rev
+	return nil
 }

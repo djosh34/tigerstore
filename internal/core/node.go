@@ -70,7 +70,7 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 }
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
-// *pb.DeleteRangeRequest or *pb.TxnRequest. ID is chosen by the driver and
+// *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is chosen by the driver and
 // comes back in the Reply. It must never repeat within one run of the
 // node: a write that timed out can still commit later, and its entry
 // carries its ID.
@@ -331,6 +331,8 @@ func check(op proto.Message) error {
 		if err == nil && mvcc.IsTxnReadOnly(op) {
 			return nil
 		}
+	case *pb.CompactionRequest:
+		r.Compaction = op
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
 	}
@@ -640,6 +642,13 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	case *pb.TxnRequest:
 		var r *pb.TxnResponse
 		if r, err = n.kv.Txn(op); err == nil {
+			h, resp = r.Header, r
+		}
+	case *pb.CompactionRequest:
+		// Compact keeps the revision; physical compaction is the same,
+		// because it happens at once.
+		if err = n.kv.Compact(op.Revision); err == nil {
+			r := &pb.CompactionResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}}
 			h, resp = r.Header, r
 		}
 	default:

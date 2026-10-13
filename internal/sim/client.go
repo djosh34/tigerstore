@@ -32,6 +32,8 @@ type client struct {
 	// mods remembers the last mod revision this client saw per key, for
 	// compare-and-swap.
 	mods [numKeys]int64
+	// rev is the newest revision this client saw.
+	rev int64
 }
 
 type clientOp struct {
@@ -75,6 +77,9 @@ func (c *client) done(op *clientOp, resp proto.Message, err error) {
 	switch {
 	case err == nil:
 		s.stats.OK++
+		if _, ok := resp.(*pb.CompactionResponse); ok {
+			s.stats.Compactions++
+		}
 		c.learn(resp)
 	case r.Ambiguous:
 		s.stats.Ambiguous++
@@ -103,8 +108,11 @@ func ambiguous(err error) bool {
 	return true
 }
 
-// learn keeps the mod revisions the client saw.
+// learn keeps the revisions the client saw.
 func (c *client) learn(resp proto.Message) {
+	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
+		c.rev = max(c.rev, h.GetHeader().GetRevision())
+	}
 	var kvsOf func(proto.Message)
 	kvsOf = func(m proto.Message) {
 		switch r := m.(type) {
@@ -162,6 +170,10 @@ func (c *client) request() proto.Message {
 		return &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Limit: int64(s.rng.IntN(4))}
 	case p < 95:
 		return &pb.RangeRequest{Key: key(k), Serializable: true}
+	case p < 96:
+		// Compact a little behind the newest revision seen, as the
+		// Kubernetes compactor does; it may be compacted or ahead already.
+		return &pb.CompactionRequest{Revision: max(1, c.rev-int64(s.rng.IntN(30))), Physical: s.rng.IntN(2) == 0}
 	default:
 		rev := c.mods[k]
 		if rev == 0 {
