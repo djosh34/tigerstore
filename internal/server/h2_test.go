@@ -74,8 +74,8 @@ func TestLargeValues(t *testing.T) {
 	// With 10 ms ticks the leader's commit watchdog (three election
 	// timeouts, 300 ms) stopped the leader in CI during these 1.5 MiB
 	// writes. Why an entry waited that long is not known; slow fsyncs on
-	// a shared runner are a guess. 50 ms ticks give it 1.5 s, still
-	// faster than the 100 ms of a real node.
+	// a shared runner are a guess, and the stall is open as #88. 50 ms
+	// ticks give it 1.5 s, still faster than the 100 ms of a real node.
 	c := newClusterWith(t, func(c *cluster) { c.tick = 50 * time.Millisecond })
 	cert, _, _, err := c.ca.Issue("client", 91)
 	if err != nil {
