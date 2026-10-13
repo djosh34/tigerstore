@@ -902,7 +902,7 @@ func (s *Sim) crash(n *node) {
 	n.reqs = map[uint64]*clientOp{}
 	for _, w := range s.watchers {
 		if w.open && w.node == n.idx && w.gen == n.gen {
-			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w, stream: w.stream, gen: w.gen})
+			s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w, node: n.idx, stream: w.stream, gen: w.gen})
 		}
 	}
 	n.streams = map[uint64]*watchClient{}
