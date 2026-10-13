@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/protobuf/proto"
 )
 
 var recordFlag = flag.Bool("record", false, "write etcd's answers to "+goldenFile+", or tigerstore's answers to its expected failures to "+knownFile+", instead of comparing")
@@ -36,6 +38,7 @@ var cases = []struct {
 	{"error-codes", errorCodes},
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
+	{"range-stream", rangeStream},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
@@ -464,4 +467,87 @@ func relSize(d int) string {
 		return "one byte above"
 	}
 	return "exactly"
+}
+
+// rangeStream checks KV.RangeStream's chunks against etcd: their sizes
+// for small values, for 400 KiB values, and with the first chunk just
+// below and at half of the 1.5 MiB target, where etcd doubles the next
+// limit or keeps it; the header, count and more of the last chunk with a
+// limit, at a past revision, count only and empty; and the errors.
+func rangeStream(r *run) {
+	r.rebase()
+	for i := range 25 {
+		r.put(fmt.Sprintf("put small key %d", i), &pb.PutRequest{Key: r.key(fmt.Sprintf("s/%02d", i)), Value: []byte("v")})
+	}
+	small := func(req *pb.RangeRequest) *pb.RangeRequest {
+		req.Key, req.RangeEnd = r.key("s/"), r.key("s0")
+		return req
+	}
+	r.rangeStream("stream 25 small keys", small(&pb.RangeRequest{}))
+	r.rangeStream("stream with limit 12", small(&pb.RangeRequest{Limit: 12}))
+	r.rangeStream("stream at a past revision", small(&pb.RangeRequest{Revision: r.abs(20)}))
+	r.rangeStream("stream count only", small(&pb.RangeRequest{CountOnly: true}))
+	r.rangeStream("stream serializable", small(&pb.RangeRequest{Serializable: true}))
+	r.rangeStream("stream an empty range", &pb.RangeRequest{Key: r.key("x/"), RangeEnd: r.key("x0")})
+	r.rangeStream("stream keys only", small(&pb.RangeRequest{KeysOnly: true}))
+
+	big := bytes.Repeat([]byte("b"), 400<<10)
+	for i := range 25 {
+		r.put(fmt.Sprintf("put 400 KiB key %d", i), &pb.PutRequest{Key: r.key(fmt.Sprintf("b/%02d", i)), Value: big})
+	}
+	r.rangeStream("stream 25 values of 400 KiB", &pb.RangeRequest{Key: r.key("b/"), RangeEnd: r.key("b0")})
+
+	// The next limit doubles when a chunk, as etcd sizes it inside the
+	// server, is under half of 1.5 MiB (786,432 bytes).
+	for _, target := range []int{786431, 786432} {
+		prefix := fmt.Sprintf("t%d/", target)
+		r.rebase()
+		first := r.base + 1
+		sizes := boundarySizes(r, prefix, first, target)
+		for i, n := range sizes {
+			r.put(fmt.Sprintf("put boundary key %d for %d bytes", i, target), &pb.PutRequest{Key: r.key(fmt.Sprintf("%s%02d", prefix, i)), Value: bytes.Repeat([]byte("v"), n)})
+		}
+		r.rangeStream(fmt.Sprintf("stream with a first chunk of %d bytes", target), &pb.RangeRequest{Key: r.key(prefix), RangeEnd: prefixEnd(r.key(prefix))})
+	}
+
+	r.rangeStream("stream sorted by key descending", small(&pb.RangeRequest{SortTarget: pb.RangeRequest_KEY, SortOrder: pb.RangeRequest_DESCEND}))
+	r.rangeStream("stream sorted by value", small(&pb.RangeRequest{SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND}))
+	r.rangeStream("stream with a revision filter", small(&pb.RangeRequest{MinModRevision: 2}))
+	r.rangeStream("stream with an empty key", &pb.RangeRequest{})
+	r.rangeStream("stream at a future revision", small(&pb.RangeRequest{Revision: r.abs(1 << 20)}))
+	r.rebase()
+	r.compact("compact for streams", r.abs(0), false)
+	r.rangeStream("stream below the compaction", small(&pb.RangeRequest{Revision: r.abs(-1)}))
+	r.rangeStream("stream at the compaction", small(&pb.RangeRequest{Revision: r.abs(0)}))
+}
+
+// boundarySizes returns the value lengths of 30 keys under prefix, written
+// from revision first on, so that the first chunk of a stream over them,
+// as etcd's range answers it inside the server (the store revision as its
+// only header field, 10 keys, more, and a count of the 11 keys it saw),
+// has exactly target bytes.
+func boundarySizes(r *run, prefix string, first int64, target int) []int {
+	sizes := make([]int, 30)
+	for i := range sizes {
+		sizes[i] = target / 10
+	}
+	chunk := func() int {
+		resp := &pb.RangeResponse{Header: &pb.ResponseHeader{Revision: first + 29}, More: true, Count: 11}
+		for i := range 10 {
+			resp.Kvs = append(resp.Kvs, &mvccpb.KeyValue{
+				Key: r.key(fmt.Sprintf("%s%02d", prefix, i)), Value: make([]byte, sizes[i]),
+				CreateRevision: first + int64(i), ModRevision: first + int64(i), Version: 1,
+			})
+		}
+		return proto.Size(resp)
+	}
+	for range 10 {
+		d := target - chunk()
+		if d == 0 {
+			return sizes
+		}
+		sizes[9] += d
+	}
+	r.t.Fatalf("no value sizes give a first chunk of %d bytes", target)
+	return nil
 }

@@ -75,11 +75,11 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 // response themselves.
 func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	w := &writer{s: s, begin: s.rev}
-	return w.rangeResult(r)
+	return w.rangeResult(r, true)
 }
 
 func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r)
+	res, err := w.rangeResult(r, true)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,22 @@ func (res *RangeResult) Response() *pb.RangeResponse {
 	return resp
 }
 
-func (w *writer) rangeResult(r *pb.RangeRequest) (RangeResult, error) {
+// RangeChunk answers one chunk of a RangeStream as etcd v3.7.2's range
+// without a total count does: the index walk stops once it has the limit
+// plus one keys, and Count holds the keys it saw, not every key in the
+// range.
+func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	w := &writer{s: s, begin: s.rev}
+	res, err := w.rangeResult(r, false)
+	if err != nil {
+		return nil, err
+	}
+	return res.Response(), nil
+}
+
+// rangeResult answers r. Without total, the walk stops at the pushed-down
+// limit and Count holds only the keys it saw.
+func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error) {
 	cur := w.cur()
 	at := r.Revision
 	if at <= 0 {
@@ -130,6 +145,9 @@ func (w *writer) rangeResult(r *pb.RangeRequest) (RangeResult, error) {
 		v, ok := k.live(at)
 		if !ok {
 			return true
+		}
+		if !total && pushLimit > 0 && int64(len(kvs)) >= pushLimit {
+			return false
 		}
 		count++
 		if !r.CountOnly && (pushLimit == 0 || int64(len(kvs)) < pushLimit) {

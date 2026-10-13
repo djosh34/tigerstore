@@ -2,15 +2,18 @@ package server_test
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
@@ -136,5 +139,118 @@ func TestRangeStream(t *testing.T) {
 	}
 	if _, err := stream(&pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Revision: 26}); err != nil {
 		t.Fatalf("read at the compaction: %v", err)
+	}
+}
+
+// TestRangeStreamPinnedAndCompacted checks a stream that the client reads
+// slowly, so the server reads the later chunks after other writes: they
+// read the first chunk's revision, so a key written meanwhile does not
+// show, and a compaction past that revision ends the stream with etcd's
+// compacted error after the chunks already sent, with no message cut.
+func TestRangeStreamPinnedAndCompacted(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 98)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Small fixed windows: the server can queue only its own limit ahead
+	// of the client, so it reads the later chunks only as the client takes
+	// the earlier ones.
+	conn, err := grpc.NewClient(c.running[1].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})), grpc.WithInitialWindowSize(64<<10), grpc.WithInitialConnWindowSize(64<<10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() //nolint:errcheck // closing a test client
+	kv := pb.NewKVClient(conn)
+	big := make([]byte, 400<<10)
+	put := func(i int) *pb.PutResponse {
+		t.Helper()
+		return retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+			return kv.Put(ctx, &pb.PutRequest{Key: fmt.Appendf(nil, "b%02d", i), Value: big})
+		})
+	}
+	for i := range 40 {
+		put(i)
+	}
+	all := &pb.RangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}
+
+	s, err := kv.RangeStream(context.Background(), all, grpc.MaxCallRecvMsgSize(64<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged := &pb.RangeResponse{}
+	first, err := s.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proto.Merge(merged, first.RangeResponse)
+	pinned := put(39).Header.Revision - 1
+	for {
+		m, err := s.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		proto.Merge(merged, m.RangeResponse)
+	}
+	if merged.Header.Revision != pinned {
+		t.Fatalf("header revision %d, want %d", merged.Header.Revision, pinned)
+	}
+	want, err := kv.Range(context.Background(), &pb.RangeRequest{Key: []byte("b"), RangeEnd: []byte("c"), Revision: pinned}, grpc.MaxCallRecvMsgSize(64<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want.Header = merged.Header
+	if len(merged.Kvs) != 40 || !proto.Equal(merged, want) {
+		t.Fatalf("the stream read %d keys, not the range at revision %d", len(merged.Kvs), pinned)
+	}
+
+	s, err = kv.RangeStream(context.Background(), all, grpc.MaxCallRecvMsgSize(64<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Recv(); err != nil {
+		t.Fatal(err)
+	}
+	rev := put(0).Header.Revision
+	if _, err := kv.Compact(context.Background(), &pb.CompactionRequest{Revision: rev}); err != nil {
+		t.Fatal(err)
+	}
+	chunks := 1
+	for {
+		_, err := s.Recv()
+		if err == nil {
+			chunks++
+			continue
+		}
+		if !errors.Is(rpctypes.Error(err), rpctypes.ErrCompacted) {
+			t.Fatalf("after %d chunks: %v, want compacted", chunks, err)
+		}
+		break
+	}
+}
+
+// TestRangeStreamWithoutRequest checks grpc-go's answer to a RangeStream
+// call that ends without a request.
+func TestRangeStreamWithoutRequest(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.dial(1, cert).NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/etcdserverpb.KV/RangeStream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseSend(); err != nil {
+		t.Fatal(err)
+	}
+	err = s.RecvMsg(&pb.RangeStreamResponse{})
+	if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "cardinality violation") {
+		t.Fatalf("a call without a request: %v", err)
 	}
 }

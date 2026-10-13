@@ -5,6 +5,9 @@ import (
 	"io"
 	"math"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
@@ -29,7 +32,8 @@ func (s *Server) rangeStream(st *stream) error {
 	r := &pb.RangeRequest{}
 	if err := st.Recv(r); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil
+			// grpc-go's answer to a server-streaming call without a request.
+			return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
 		}
 		return err
 	}
@@ -37,7 +41,7 @@ func (s *Server) rangeStream(st *stream) error {
 		return err
 	}
 	if r.CountOnly {
-		resp, err := s.rangeChunk(st, r)
+		resp, err := s.countRead(st, r)
 		if err != nil {
 			return err
 		}
@@ -51,9 +55,9 @@ func (s *Server) rangeStream(st *stream) error {
 	var header *pb.ResponseHeader
 	count := int64(0)
 	for {
-		resp, err := s.rangeChunk(st, r)
+		resp, err := s.n.RangeChunk(st.ctx, r)
 		if err != nil {
-			return err
+			return toStatus(err)
 		}
 		if header == nil {
 			header = resp.Header
@@ -70,12 +74,18 @@ func (s *Server) rangeStream(st *stream) error {
 			last := resp.Kvs[len(resp.Kvs)-1].Key
 			next = append(append(make([]byte, 0, len(last)+1), last...), 0)
 		}
+		// The next limit follows the size of this chunk as etcd's range
+		// answers it inside the server: the store revision as its only
+		// header field, and the keys the chunk read saw as its count. It
+		// is taken before Send, so that resp does not stay alive while a
+		// slow client takes the chunk.
+		size := proto.Size(&pb.RangeResponse{Header: &pb.ResponseHeader{Revision: resp.Header.Revision}, Kvs: resp.Kvs, More: resp.More, Count: resp.Count})
 		out := &pb.RangeResponse{Kvs: resp.Kvs}
 		done := !resp.More || count == total
 		if done {
 			out.Header, out.More, out.Count = header, resp.More, count
 			if resp.More {
-				rest, err := s.rangeChunk(st, &pb.RangeRequest{Key: next, RangeEnd: r.RangeEnd, Revision: r.Revision, CountOnly: true, Serializable: true})
+				rest, err := s.countRead(st, &pb.RangeRequest{Key: next, RangeEnd: r.RangeEnd, Revision: r.Revision, CountOnly: true, Serializable: true})
 				if err != nil {
 					return err
 				}
@@ -89,12 +99,13 @@ func (s *Server) rangeStream(st *stream) error {
 			return nil
 		}
 		r.Key = next
-		r.Limit = min(nextChunk(r.Limit, proto.Size(resp), core.MaxRequestBytes), total-count)
+		r.Limit = min(nextChunk(r.Limit, size, core.MaxRequestBytes), total-count)
 	}
 }
 
-// rangeChunk runs one Range of a RangeStream on the node.
-func (s *Server) rangeChunk(st *stream, r *pb.RangeRequest) (*pb.RangeResponse, error) {
+// countRead runs a count-only Range of a RangeStream on the node, with the
+// total count.
+func (s *Server) countRead(st *stream, r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	resp, err := s.n.Do(st.ctx, r)
 	if err != nil {
 		return nil, toStatus(err)
