@@ -293,10 +293,14 @@ func TestRawFrames(t *testing.T) {
 	must(fr.WriteRSTStream(1, http2.ErrCodeCancel))
 	call(3, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("2")})
 	call(5, "/etcdserverpb.KV/RangeStream", &pb.RangeRequest{Key: []byte("raw")})
+	// A second end of the same stream is a stream error, not a second put.
+	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
+	must(fr.WriteData(7, true, nil))
 
 	var settings, pinged bool
 	statuses := map[uint32]string{}
-	for len(statuses) < 2 || !settings || !pinged {
+	reset7 := false
+	for statuses[3] == "" || statuses[5] == "" || (statuses[7] == "" && !reset7) || !settings || !pinged {
 		f, err := fr.ReadFrame()
 		must(err)
 		switch f := f.(type) {
@@ -307,6 +311,8 @@ func TestRawFrames(t *testing.T) {
 			}
 		case *http2.PingFrame:
 			pinged = f.IsAck() && f.Data == [8]byte{1, 2, 3}
+		case *http2.RSTStreamFrame:
+			reset7 = reset7 || f.StreamID == 7
 		case *http2.MetaHeadersFrame:
 			if v := f.PseudoValue("status"); v != "" && v != "200" {
 				t.Fatalf("stream %d: HTTP status %s", f.StreamID, v)
@@ -320,6 +326,15 @@ func TestRawFrames(t *testing.T) {
 	}
 	if statuses[3] != "0" || statuses[5] != "12" {
 		t.Fatalf("grpc-status by stream: %v", statuses)
+	}
+	// The reset may have come before the put reached the node, so the
+	// put may or may not have happened, but never twice.
+	time.Sleep(200 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	r, err := kv.Range(ctx, &pb.RangeRequest{Key: []byte("once")})
+	if err != nil || len(r.Kvs) > 1 || (len(r.Kvs) == 1 && r.Kvs[0].Version != 1) {
+		t.Fatalf("key written by one put: %v %v", r, err)
 	}
 
 	// Stopping the server sends GOAWAY before the connection closes.

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"net/http"
 	"sync/atomic"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -45,6 +46,7 @@ type stream struct {
 	in            [][]byte // streaming calls: messages not yet taken by Recv
 	inEOF         bool     // the client ended its side
 	recvCredit    int      // stream bytes taken by Recv and not yet credited back
+	recvUsed      int      // stream bytes received and not credited back
 	sendWin       int64
 	out           []outItem
 	queued        int  // message bytes in out
@@ -134,8 +136,9 @@ func (st *stream) Recv(m proto.Message) error {
 			st.in[0] = nil
 			st.in = st.in[1:]
 			st.recvCredit += len(b) + 5
-			if st.recvCredit >= streamWindow/4 && !c.closed {
-				c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
+			if st.recvCredit >= streamWindow/4 {
+				c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
+				st.recvUsed -= st.recvCredit
 				st.recvCredit = 0
 			}
 			c.mu.Unlock()
@@ -305,5 +308,9 @@ func (c *conn) runHTTP(st *stream) {
 	defer st.cancel()
 	st.done.Store(true)
 	code, contentType, body := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
-	st.pushHTTP(httpHeaders(code, contentType, len(body)), []byte(body))
+	headers := httpHeaders(code, contentType, len(body))
+	if st.httpMethod == http.MethodHead {
+		body = ""
+	}
+	st.pushHTTP(headers, []byte(body))
 }

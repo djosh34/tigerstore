@@ -206,7 +206,9 @@ Each connection has a reader goroutine, which decodes frames and copies each req
 - The receive limit is etcd's 1.5 MiB request limit plus 512 KiB, with grpc-go's ResourceExhausted "received message larger than max". Compressed messages are refused with Unimplemented.
 - `grpc-timeout` sets the call's deadline. etcd's `hasleader` metadata fails a call without a leader with "etcdserver: no leader", unary calls included, as etcd's interceptors do.
 - A stream the client resets is canceled, and a reply that comes after the reset is dropped. When the server ends a stream that the client has not ended, it sends RST_STREAM with NO_ERROR, as grpc-go does.
-- Each stream may queue 4 MiB of replies for the writer; a watch stream that cannot send waits there, and the node closes it when it falls 4096 responses behind (see Watches). A write that blocks for 20 s closes the connection.
+- A streaming call may queue 4 MiB of replies for the writer; a watch stream that cannot send waits there, and the node closes it when it falls 4096 responses behind (see Watches). A unary reply is queued whole, as grpc-go does, so a client that stops granting flow-control window keeps its unary replies in memory until it goes away. At most 10,000 control frames (ping and settings acknowledgements, resets, window updates) wait for the writer; past that the connection closes. A write that blocks for 20 s closes the connection.
+- The writer sends at most one frame of each ready stream per turn, so one large reply does not hold up the others.
+- A second end of a stream (DATA or trailers after END_STREAM) resets it with STREAM_CLOSED, and data past a stream's 4 MiB window resets it with FLOW_CONTROL_ERROR. HEAD gets headers without a body.
 - The receive window is 4 MiB per stream, above the largest request, and 16 MiB per connection, credited back as data arrives. A connection allows 1,048,576 concurrent streams.
 - Stop sends GOAWAY, lets streams in flight finish for one second, and then closes every connection.
 

@@ -177,13 +177,28 @@ func (c *conn) signal() {
 	}
 }
 
+// maxCtrl bounds the control frames waiting for the writer, as x/net's
+// server does; a client that floods pings and does not read is dropped.
+const maxCtrl = 10000
+
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()
-	if !c.closed {
-		c.ctrl = append(c.ctrl, f)
-	}
+	c.addCtrl(f)
 	c.mu.Unlock()
 	c.signal()
+}
+
+// addCtrl queues a control frame. c.mu is held.
+func (c *conn) addCtrl(f ctrlFrame) {
+	if c.closed {
+		return
+	}
+	if len(c.ctrl) >= maxCtrl {
+		// close takes c.mu, so it runs once the caller lets go.
+		go c.close()
+		return
+	}
+	c.ctrl = append(c.ctrl, f)
 }
 
 func (c *conn) readLoop() error {
@@ -272,8 +287,8 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 		}
 		return nil
 	})
-	if err == nil && !c.closed {
-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlSettingsAck})
+	if err == nil {
+		c.addCtrl(ctrlFrame{kind: ctrlSettingsAck})
 	}
 	c.mu.Unlock()
 	c.signal()
@@ -306,8 +321,8 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		st.out = nil
 		st.queued = 0
 	}
-	if code != 0 && !c.closed {
-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
+	if code != 0 {
+		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
 	}
 	c.mu.Unlock()
 	if st != nil {
@@ -332,9 +347,13 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 		c.mu.Lock()
 		st := c.streams[id]
 		c.mu.Unlock()
-		if st != nil && f.StreamEnded() {
+		if st != nil && f.StreamEnded() && !st.inEOF {
 			// Trailers from the client end its side of the stream.
 			return c.onEnd(st)
+		}
+		if st != nil {
+			c.resetStream(id, http2.ErrCodeStreamClosed)
+			return nil
 		}
 		return http2.ConnectionError(http2.ErrCodeProtocol)
 	}
@@ -416,9 +435,24 @@ func (c *conn) onData(f *http2.DataFrame) error {
 	c.credit(int(f.Length))
 	c.mu.Lock()
 	st := c.streams[f.StreamID]
+	var halfClosed, overflow bool
+	if st != nil {
+		halfClosed = st.inEOF
+		// The stream's window is credited back only as Recv takes
+		// messages; a client that sends past it breaks flow control.
+		st.recvUsed += int(f.Length)
+		overflow = st.recvUsed > streamWindow
+	}
 	c.mu.Unlock()
-	if st == nil {
+	switch {
+	case st == nil:
 		// A stream that is gone or reset; the data is dropped.
+		return nil
+	case halfClosed:
+		c.resetStream(f.StreamID, http2.ErrCodeStreamClosed)
+		return nil
+	case overflow:
+		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
 		return nil
 	}
 	if st.rpc != nil && !st.done.Load() {

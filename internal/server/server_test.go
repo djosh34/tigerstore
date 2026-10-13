@@ -371,6 +371,11 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
 		t.Fatalf("/health = %d %q", code, body)
 	}
+	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != 200 || resp.ProtoMajor != 2 {
+		t.Fatalf("HEAD /version over HTTP/2: %v %v", resp, err)
+	} else if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// Without a quorum there is no leader for long, and /health says so.
 	c.running[2].stop()
 	c.running[3].stop()
