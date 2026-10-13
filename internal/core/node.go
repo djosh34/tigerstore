@@ -145,6 +145,9 @@ type Node struct {
 	readBatches []*readBatch
 	nextReadCtx uint64
 
+	// logBytes estimates the size of the durable log.
+	logBytes int64
+
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
@@ -176,14 +179,19 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	var logBytes int64
+	for _, e := range rec.Entries {
+		logBytes += recordBytes(e)
+	}
 	return &Node{
-		cfg:     cfg,
-		rn:      rn,
-		storage: st,
-		kv:      mvcc.New(),
-		term:    rec.HardState.Term,
-		waiting: map[uint64]*pending{},
-		streams: map[uint64]*watchStream{},
+		logBytes: logBytes,
+		cfg:      cfg,
+		rn:       rn,
+		storage:  st,
+		kv:       mvcc.New(),
+		term:     rec.HardState.Term,
+		waiting:  map[uint64]*pending{},
+		streams:  map[uint64]*watchStream{},
 	}, nil
 }
 
@@ -299,21 +307,40 @@ func (n *Node) Submit(r Request) {
 	n.timeouts = append(n.timeouts, p)
 }
 
+// sizeRequestID stands in for etcd's request ID when sizing a write. etcd
+// v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
+// made from the member ID; with the top bit set it is a 10-byte varint, the
+// longest, which makes the limit the same as etcd's to the byte.
+const sizeRequestID = 1 << 63
+
+// check validates a request like etcd's gRPC layer, then limits the size of
+// a write like etcd's server does. Reads do not go through Raft and have
+// only gRPC's limit.
 func check(op proto.Message) error {
-	if proto.Size(op) > MaxRequestBytes {
-		return rpctypes.ErrGRPCRequestTooLarge
-	}
+	var err error
+	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
 	case *pb.RangeRequest:
 		return mvcc.CheckRange(op)
 	case *pb.PutRequest:
-		return mvcc.CheckPut(op)
+		err, r.Put = mvcc.CheckPut(op), op
 	case *pb.DeleteRangeRequest:
-		return mvcc.CheckDelete(op)
+		err, r.DeleteRange = mvcc.CheckDelete(op), op
 	case *pb.TxnRequest:
-		return mvcc.CheckTxn(op)
+		err, r.Txn = mvcc.CheckTxn(op), op
+		if err == nil && mvcc.IsTxnReadOnly(op) {
+			return nil
+		}
+	default:
+		return fmt.Errorf("core: unknown request type %T", op)
 	}
-	return fmt.Errorf("core: unknown request type %T", op)
+	if err != nil {
+		return err
+	}
+	if proto.Size(r) > MaxRequestBytes {
+		return rpctypes.ErrGRPCRequestTooLarge
+	}
+	return nil
 }
 
 // queueWrite adds a write to the next entry. A write that would take the
@@ -398,6 +425,9 @@ func (n *Node) Persisted(job PersistJob) {
 	if err := n.storage.append(job); err != nil {
 		n.fail(err)
 		return
+	}
+	for _, e := range job.Entries {
+		n.logBytes += recordBytes(e)
 	}
 	n.deliver(job.msg.GetResponses())
 }

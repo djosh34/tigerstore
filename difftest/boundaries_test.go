@@ -63,7 +63,6 @@ var stricter = map[string][]string{
 const (
 	issueCompaction = "Compact is not built yet, https://github.com/djosh34/tigerstore/issues/47"
 	issueLeases     = "leases are not built yet, https://github.com/djosh34/tigerstore/issues/47"
-	issueSize       = "the request size limit is looser, https://github.com/djosh34/tigerstore/issues/62"
 )
 
 // expectedFail lists the steps where tigerstore differs from etcd v3.7.2
@@ -85,7 +84,6 @@ var expectedFail = map[string]struct {
 		"put ignore_lease on k", "range keys", "revoke the lease", "range keys after the revoke", "revoke the lease again",
 		"grant a lease for no keys", "revoke a lease without keys", "revoke lease 0",
 	}},
-	"max-request-size": {issueSize, []string{"largest put value for a key of 39 bytes", "largest txn put value for a key of 39 bytes"}},
 }
 
 // server returns TIGERSTORE_DIFF_SERVER, which says what the endpoint is.

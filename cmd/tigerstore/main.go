@@ -235,6 +235,6 @@ func run(args []string, logger *log.Logger) error {
 	}()
 	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
 	runErr := n.Run(ctx, t)
-	g.Stop()
-	return errors.Join(runErr, <-served, t.Close())
+	stopErr := g.Stop()
+	return errors.Join(runErr, stopErr, <-served, t.Close())
 }

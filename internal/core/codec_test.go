@@ -47,3 +47,25 @@ func TestReadCtxNeedsSameBoot(t *testing.T) {
 		t.Fatal("a read context from another boot was accepted")
 	}
 }
+
+// TestRequestSizeLimitMatchesEtcd checks the largest values etcd v3.7.2
+// accepts for a 39-byte key, measured in issue #62.
+func TestRequestSizeLimitMatchesEtcd(t *testing.T) {
+	key := make([]byte, 39)
+	put := func(n int) proto.Message { return &pb.PutRequest{Key: key, Value: make([]byte, n)} }
+	txn := func(n int) proto.Message {
+		return &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: make([]byte, n)}}}}}
+	}
+	for _, c := range []struct {
+		name    string
+		mk      func(int) proto.Message
+		largest int
+	}{{"put", put, 1572801}, {"txn", txn, 1572793}} {
+		if err := check(c.mk(c.largest)); err != nil {
+			t.Errorf("%s of %d bytes: %v", c.name, c.largest, err)
+		}
+		if err := check(c.mk(c.largest + 1)); err == nil {
+			t.Errorf("%s of %d bytes was accepted", c.name, c.largest+1)
+		}
+	}
+}

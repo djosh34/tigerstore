@@ -62,6 +62,25 @@ if [ "$(cat "$work/watch.out")" != "$want" ]; then
 	echo "etcdctl watch: got [$(cat "$work/watch.out")], want [$want]"
 	exit 1
 fi
+# endpoint status reads Maintenance.Status from every node; the table
+# divides by the database size, so a zero size would crash etcdctl.
+ctl endpoint status -w table
+ctl endpoint status -w json | grep -q '"version":"3.7.2"' || {
+	echo "endpoint status does not report version 3.7.2"
+	exit 1
+}
+version=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	"https://127.0.0.1:$((2379 + off))/version")
+if [ "$version" != '{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}' ]; then
+	echo "/version: got [$version]"
+	exit 1
+fi
+health=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	"https://127.0.0.1:$((2379 + off))/health")
+if [ "$health" != '{"health":"true","reason":""}' ]; then
+	echo "/health: got [$health]"
+	exit 1
+fi
 if etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) --cacert "$work/certs/ca.pem" \
 	--command-timeout=3s get foo >/dev/null 2>&1; then
 	echo "a client without a client certificate was served"

@@ -458,15 +458,5 @@
     "do": "revoke the lease again",
     "code": "Unimplemented",
     "message": "method LeaseRevoke not implemented"
-  },
-  "max-request-size/largest put value for a key of 39 bytes": {
-    "do": "largest put value for a key of 39 bytes",
-    "code": "OK",
-    "result": 1572819
-  },
-  "max-request-size/largest txn put value for a key of 39 bytes": {
-    "do": "largest txn put value for a key of 39 bytes",
-    "code": "OK",
-    "result": 1572811
   }
 }
