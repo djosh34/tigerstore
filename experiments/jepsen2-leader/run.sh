@@ -12,6 +12,7 @@ printf 'start=%s\nworkflow_sha=%s\ntiger_sha=%s\netcd_sha=%s\nrepetition=%s\n' "
 uname -a >> "$out/versions.txt"
 lscpu >> "$out/versions.txt"
 go version >> "$out/versions.txt"
+git fetch --depth=1 origin b5f2e28ef2edd94393d62952b1568763ebc12fe2
 git worktree add --detach "$RUNNER_TEMP/leader-build/tiger" b5f2e28ef2edd94393d62952b1568763ebc12fe2
 deadline
 (cd "$RUNNER_TEMP/leader-build/tiger" && CGO_ENABLED=0 go build -o "$RUNNER_TEMP/leader-build/tigerstore" ./cmd/tigerstore)
