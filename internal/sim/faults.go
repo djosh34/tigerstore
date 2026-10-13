@@ -118,8 +118,9 @@ func (s *Sim) diskFailed(n *node, err error) {
 	}
 	s.stats.DiskFaults++
 	n.disk.Fault = nil
-	if planted.On("B11") && errors.Is(err, simfs.ErrIO) {
-		// Planted: carry on as if the write or sync worked.
+	if planted.On("B11") && errors.Is(err, simfs.ErrIO) && n.diskBusy {
+		// Planted: carry on as if the sync worked. diskBusy is set only
+		// once the write is done, so this is a failed sync.
 		n.diskBusy = false
 		for _, j := range n.inflight {
 			n.core.Persisted(j)

@@ -5,6 +5,7 @@ package sim
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
@@ -120,7 +121,7 @@ func TestPlanted(t *testing.T) {
 	t.Cleanup(func() { planted.Active = "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
 		cryptotest.SetGlobalRandom(t, seed)
-		res, err := Run(c.cfg(seed))
+		res, err := runCatching(c.cfg(seed))
 		if err == nil {
 			err = independent(res)
 		}
@@ -133,4 +134,17 @@ func TestPlanted(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
+}
+
+// runCatching runs a seed and turns a panic into an error. A planted bug
+// can break Raft's own invariants, and Raft then panics, which stops a
+// real node too: that counts as caught. Only planted runs do this.
+func runCatching(cfg Config) (res *Result, err error) {
+	defer func() {
+		//nolint:forbidigo // A panic of a planted run is the bug being caught; see above.
+		if p := recover(); p != nil {
+			err = fmt.Errorf("seed %d panicked: %v", cfg.Seed, p)
+		}
+	}()
+	return Run(cfg)
 }

@@ -141,7 +141,8 @@ jobs:
       - run: scripts/difftest.sh ${{ matrix.server }}
 
   # Every planted bug (internal/planted) must be caught within its seed
-  # budget; TestPlanted fails otherwise, and a crash is a failure too.
+  # budget; TestPlanted fails otherwise. A Raft panic in a planted run
+  # counts as caught, since it stops a real node too.
   # TestPlantedInventory checks that this list names every bug.
   planted:
     strategy:
