@@ -1,0 +1,28 @@
+{
+  "server_go_processors": [
+    {
+      "gomaxprocs": 2,
+      "id": 1,
+      "leader": 1
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 2,
+      "leader": 1
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 3,
+      "leader": 1
+    }
+  ],
+  "server_cpus_in_role_order": [
+    0,
+    1,
+    2
+  ],
+  "generator_cpu": 3,
+  "generator_gomaxprocs": 1,
+  "conns": 16,
+  "etcd_client_port": "stock shared TLS, ServeHTTP, no separate HTTP port"
+}

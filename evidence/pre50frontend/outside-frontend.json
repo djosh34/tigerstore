@@ -1,0 +1,260 @@
+{
+  "definition": "Exclude samples with net/http including Go 1.27 net/http/internal/http2, x/net/http2, grpc-go or internal/server on the stack. This corrects the inherited attribution.json HTTP category, which missed the new bundled package. Peer TLS stays outside. Categories overlap. Background GC and scheduling cannot be causally assigned to their request origin; this is a stack partition, not an irreducible CPU floor.",
+  "clients": {
+    "16": {
+      "operations": 249964,
+      "total_sample_cpu_ns": 49500000000,
+      "total_sample_cpu_us_op": 198.0285161063193,
+      "outside_frontend_sample_cpu_us_op": 74.8907842729353,
+      "outside_frontend_sample_pct": 37.81818181818182,
+      "categories": {
+        "TLS including socket descendants": {
+          "all_stacks_cpu_us_op": 67.289689715319,
+          "outside_frontend_cpu_us_op": 15.602246723528188
+        },
+        "crypto implementation": {
+          "all_stacks_cpu_us_op": 2.5603686930918053,
+          "outside_frontend_cpu_us_op": 0.7601094557616297
+        },
+        "frontend including descendants": {
+          "all_stacks_cpu_us_op": 19.642828567313693,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "gRPC including descendants": {
+          "all_stacks_cpu_us_op": 37.36538061480853,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 104.65507033012754,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "protobuf including descendants": {
+          "all_stacks_cpu_us_op": 8.241186730889249,
+          "outside_frontend_cpu_us_op": 5.320766190331407
+        },
+        "committer including descendants": {
+          "all_stacks_cpu_us_op": 15.202189115232594,
+          "outside_frontend_cpu_us_op": 15.202189115232594
+        },
+        "core including descendants": {
+          "all_stacks_cpu_us_op": 12.161751292186075,
+          "outside_frontend_cpu_us_op": 12.161751292186075
+        },
+        "entry encode/decode including descendants": {
+          "all_stacks_cpu_us_op": 6.3209102110703945,
+          "outside_frontend_cpu_us_op": 6.3209102110703945
+        },
+        "raft including descendants": {
+          "all_stacks_cpu_us_op": 3.68052999631947,
+          "outside_frontend_cpu_us_op": 3.68052999631947
+        },
+        "WAL including descendants": {
+          "all_stacks_cpu_us_op": 21.28306476132563,
+          "outside_frontend_cpu_us_op": 21.28306476132563
+        },
+        "WAL write syscall path": {
+          "all_stacks_cpu_us_op": 20.963018674689156,
+          "outside_frontend_cpu_us_op": 20.963018674689156
+        },
+        "fsync syscall path": {
+          "all_stacks_cpu_us_op": 16.20233313597158,
+          "outside_frontend_cpu_us_op": 16.20233313597158
+        },
+        "index including descendants": {
+          "all_stacks_cpu_us_op": 3.1204493447056376,
+          "outside_frontend_cpu_us_op": 3.1204493447056376
+        },
+        "allocation and GC including descendants": {
+          "all_stacks_cpu_us_op": 15.922292810164663,
+          "outside_frontend_cpu_us_op": 6.120881406922597
+        },
+        "peer transport including descendants": {
+          "all_stacks_cpu_us_op": 19.12275367652942,
+          "outside_frontend_cpu_us_op": 19.12275367652942
+        },
+        "scheduler including descendants": {
+          "all_stacks_cpu_us_op": 15.722264006016866,
+          "outside_frontend_cpu_us_op": 15.40221791938039
+        },
+        "syscalls including descendants": {
+          "all_stacks_cpu_us_op": 81.37171752732394,
+          "outside_frontend_cpu_us_op": 36.525259637387784
+        },
+        "net/http and bundled HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 104.73508185178666,
+          "outside_frontend_cpu_us_op": 0.0
+        }
+      }
+    },
+    "64": {
+      "operations": 519217,
+      "total_sample_cpu_ns": 53010000000,
+      "total_sample_cpu_us_op": 102.09604076908114,
+      "outside_frontend_sample_cpu_us_op": 24.88362283977605,
+      "outside_frontend_sample_pct": 24.372759856630825,
+      "categories": {
+        "TLS including socket descendants": {
+          "all_stacks_cpu_us_op": 32.1445561297107,
+          "outside_frontend_cpu_us_op": 4.083071239963252
+        },
+        "crypto implementation": {
+          "all_stacks_cpu_us_op": 1.6370804499852663,
+          "outside_frontend_cpu_us_op": 0.6933517199937599
+        },
+        "frontend including descendants": {
+          "all_stacks_cpu_us_op": 13.481838999878663,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "gRPC including descendants": {
+          "all_stacks_cpu_us_op": 25.90439064976686,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 64.69356742941775,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "protobuf including descendants": {
+          "all_stacks_cpu_us_op": 3.986772389964119,
+          "outside_frontend_cpu_us_op": 2.0222758499817997
+        },
+        "committer including descendants": {
+          "all_stacks_cpu_us_op": 5.912749389946785,
+          "outside_frontend_cpu_us_op": 5.912749389946785
+        },
+        "core including descendants": {
+          "all_stacks_cpu_us_op": 4.410487329960306,
+          "outside_frontend_cpu_us_op": 4.410487329960306
+        },
+        "entry encode/decode including descendants": {
+          "all_stacks_cpu_us_op": 2.3689517099786794,
+          "outside_frontend_cpu_us_op": 2.3689517099786794
+        },
+        "raft including descendants": {
+          "all_stacks_cpu_us_op": 0.8666896499921998,
+          "outside_frontend_cpu_us_op": 0.8666896499921998
+        },
+        "WAL including descendants": {
+          "all_stacks_cpu_us_op": 4.198629859962212,
+          "outside_frontend_cpu_us_op": 4.198629859962212
+        },
+        "WAL write syscall path": {
+          "all_stacks_cpu_us_op": 4.025291929963772,
+          "outside_frontend_cpu_us_op": 4.025291929963772
+        },
+        "fsync syscall path": {
+          "all_stacks_cpu_us_op": 2.503770099977466,
+          "outside_frontend_cpu_us_op": 2.503770099977466
+        },
+        "index including descendants": {
+          "all_stacks_cpu_us_op": 1.020767809990813,
+          "outside_frontend_cpu_us_op": 1.020767809990813
+        },
+        "allocation and GC including descendants": {
+          "all_stacks_cpu_us_op": 10.631393039904317,
+          "outside_frontend_cpu_us_op": 3.312680439970186
+        },
+        "peer transport including descendants": {
+          "all_stacks_cpu_us_op": 4.834202269956492,
+          "outside_frontend_cpu_us_op": 4.834202269956492
+        },
+        "scheduler including descendants": {
+          "all_stacks_cpu_us_op": 7.780947079929971,
+          "outside_frontend_cpu_us_op": 7.665388459931012
+        },
+        "syscalls including descendants": {
+          "all_stacks_cpu_us_op": 32.279374519709485,
+          "outside_frontend_cpu_us_op": 7.626868919931358
+        },
+        "net/http and bundled HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 64.75134673941724,
+          "outside_frontend_cpu_us_op": 0.0
+        }
+      }
+    },
+    "256": {
+      "operations": 592362,
+      "total_sample_cpu_ns": 56320000000,
+      "total_sample_cpu_us_op": 95.07699683639396,
+      "outside_frontend_sample_cpu_us_op": 21.7941056313538,
+      "outside_frontend_sample_pct": 22.922585227272727,
+      "categories": {
+        "TLS including socket descendants": {
+          "all_stacks_cpu_us_op": 27.213089293371283,
+          "outside_frontend_cpu_us_op": 2.7516957536101234
+        },
+        "crypto implementation": {
+          "all_stacks_cpu_us_op": 1.3505255232442324,
+          "outside_frontend_cpu_us_op": 0.5233286402571401
+        },
+        "frontend including descendants": {
+          "all_stacks_cpu_us_op": 14.18051799406444,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "gRPC including descendants": {
+          "all_stacks_cpu_us_op": 27.111799879127965,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 60.14903049149,
+          "outside_frontend_cpu_us_op": 0.0
+        },
+        "protobuf including descendants": {
+          "all_stacks_cpu_us_op": 3.95028715548938,
+          "outside_frontend_cpu_us_op": 2.0089067158257956
+        },
+        "committer including descendants": {
+          "all_stacks_cpu_us_op": 5.098233850246977,
+          "outside_frontend_cpu_us_op": 5.098233850246977
+        },
+        "core including descendants": {
+          "all_stacks_cpu_us_op": 4.169747553016568,
+          "outside_frontend_cpu_us_op": 4.169747553016568
+        },
+        "entry encode/decode including descendants": {
+          "all_stacks_cpu_us_op": 2.295893389515195,
+          "outside_frontend_cpu_us_op": 2.295893389515195
+        },
+        "raft including descendants": {
+          "all_stacks_cpu_us_op": 1.0804204185953858,
+          "outside_frontend_cpu_us_op": 1.0804204185953858
+        },
+        "WAL including descendants": {
+          "all_stacks_cpu_us_op": 4.963181297922554,
+          "outside_frontend_cpu_us_op": 4.963181297922554
+        },
+        "WAL write syscall path": {
+          "all_stacks_cpu_us_op": 4.9125365908008956,
+          "outside_frontend_cpu_us_op": 4.9125365908008956
+        },
+        "fsync syscall path": {
+          "all_stacks_cpu_us_op": 3.359432239070028,
+          "outside_frontend_cpu_us_op": 3.359432239070028
+        },
+        "index including descendants": {
+          "all_stacks_cpu_us_op": 0.8271968829870924,
+          "outside_frontend_cpu_us_op": 0.8271968829870924
+        },
+        "allocation and GC including descendants": {
+          "all_stacks_cpu_us_op": 9.63937592215571,
+          "outside_frontend_cpu_us_op": 2.954274582096758
+        },
+        "peer transport including descendants": {
+          "all_stacks_cpu_us_op": 3.54512949851611,
+          "outside_frontend_cpu_us_op": 3.54512949851611
+        },
+        "scheduler including descendants": {
+          "all_stacks_cpu_us_op": 6.347469959247892,
+          "outside_frontend_cpu_us_op": 6.229298975964022
+        },
+        "syscalls including descendants": {
+          "all_stacks_cpu_us_op": 28.631141092777728,
+          "outside_frontend_cpu_us_op": 7.073377427991668
+        },
+        "net/http and bundled HTTP2 including descendants": {
+          "all_stacks_cpu_us_op": 60.216556767652214,
+          "outside_frontend_cpu_us_op": 0.0
+        }
+      }
+    }
+  }
+}

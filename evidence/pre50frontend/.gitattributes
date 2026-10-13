@@ -1,0 +1,3 @@
+# Preserve raw runner output, including CSV CRLF and pprof spacing.
+primary/** -whitespace
+profile/** -whitespace

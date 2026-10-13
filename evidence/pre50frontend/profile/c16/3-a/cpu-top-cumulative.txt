@@ -1,0 +1,89 @@
+File: a
+Build ID: 1a14280d04aafac7f82601b3a438d6c66958d8fb
+Type: cpu
+Time: 2026-10-13 07:56:20 UTC
+Duration: 15s, Total samples = 9.86s (65.73%)
+Showing nodes accounting for 4.70s, 47.67% of 9.86s total
+Dropped 455 nodes (cum <= 0.05s)
+Showing top 80 nodes out of 293
+      flat  flat%   sum%        cum   cum%
+     3.96s 40.16% 40.16%      3.96s 40.16%  internal/runtime/syscall/linux.Syscall6
+     0.01s   0.1% 40.26%      3.88s 39.35%  syscall.Syscall
+         0     0% 40.26%      3.85s 39.05%  syscall.RawSyscall6
+         0     0% 40.26%      3.08s 31.24%  internal/poll.ignoringEINTRIO (inline)
+     0.03s   0.3% 40.57%      2.69s 27.28%  bufio.(*Writer).Flush
+         0     0% 40.57%      2.56s 25.96%  internal/poll.(*FD).Write
+         0     0% 40.57%      2.55s 25.86%  syscall.Write (inline)
+         0     0% 40.57%      2.55s 25.86%  syscall.write
+     0.01s   0.1% 40.67%      2.53s 25.66%  crypto/tls.(*Conn).Write
+     0.02s   0.2% 40.87%      2.50s 25.35%  crypto/tls.(*Conn).writeRecordLocked
+     0.01s   0.1% 40.97%      2.36s 23.94%  net/http/internal/http2.(*serverConn).writeFrameAsync
+         0     0% 40.97%      2.32s 23.53%  crypto/tls.(*Conn).write
+         0     0% 40.97%      2.32s 23.53%  net.(*conn).Write
+     0.01s   0.1% 41.08%      2.32s 23.53%  net.(*netFD).Write
+         0     0% 41.08%      2.19s 22.21%  net/http/internal/http2.(*bufferedWriter).Flush
+         0     0% 41.08%      2.19s 22.21%  net/http/internal/http2.(*serverConn).Flush
+         0     0% 41.08%      2.19s 22.21%  net/http/internal/http2.flushFrameWriter.writeFrame
+         0     0% 41.08%      2.17s 22.01%  net/http/internal/http2.(*bufferedWriterTimeoutWriter).Write
+         0     0% 41.08%      2.17s 22.01%  net/http/internal/http2.writeWithByteTimeout
+         0     0% 41.08%      1.95s 19.78%  sync.(*WaitGroup).Go.func1
+     0.37s  3.75% 44.83%      1.23s 12.47%  runtime.selectgo
+         0     0% 44.83%      1.14s 11.56%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0% 44.83%      1.14s 11.56%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0% 44.83%      1.13s 11.46%  net/http.(*conn).serve
+         0     0% 44.83%      1.12s 11.36%  net/http.(*Server).serveHTTP2Conn
+         0     0% 44.83%      1.12s 11.36%  net/http/internal/http2.(*Server).ServeConn
+         0     0% 44.83%      1.12s 11.36%  net/http/internal/http2.(*Server).serveConn
+     0.02s   0.2% 45.03%      1.12s 11.36%  net/http/internal/http2.(*serverConn).serve
+     0.01s   0.1% 45.13%      1.10s 11.16%  net/http/internal/http2.(*serverConn).runHandler
+     0.01s   0.1% 45.23%      1.08s 10.95%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync
+     0.01s   0.1% 45.33%      0.97s  9.84%  net/http.http2Handler.ServeHTTP
+         0     0% 45.33%      0.94s  9.53%  github.com/djosh34/tigerstore/internal/server.(*Server).handler.func1
+         0     0% 45.33%      0.94s  9.53%  net/http.HandlerFunc.ServeHTTP
+         0     0% 45.33%      0.94s  9.53%  net/http.serverHandler.ServeHTTP
+         0     0% 45.33%      0.92s  9.33%  google.golang.org/grpc.(*Server).ServeHTTP
+         0     0% 45.33%      0.87s  8.82%  google.golang.org/grpc.(*Server).handleStream
+         0     0% 45.33%      0.87s  8.82%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0% 45.33%      0.84s  8.52%  google.golang.org/grpc.(*Server).processRPC
+     0.01s   0.1% 45.44%      0.82s  8.32%  github.com/djosh34/tigerstore/internal/osfs.file.Sync
+         0     0% 45.44%      0.81s  8.22%  internal/poll.(*FD).Fsync
+         0     0% 45.44%      0.81s  8.22%  internal/poll.(*FD).Fsync.func1 (inline)
+         0     0% 45.44%      0.81s  8.22%  internal/poll.ignoringEINTR (inline)
+         0     0% 45.44%      0.81s  8.22%  os.(*File).Sync
+         0     0% 45.44%      0.81s  8.22%  syscall.Fsync
+     0.02s   0.2% 45.64%      0.76s  7.71%  io.ReadAtLeast
+         0     0% 45.64%      0.76s  7.71%  io.ReadFull (inline)
+     0.01s   0.1% 45.74%      0.74s  7.51%  crypto/tls.(*Conn).Read
+     0.01s   0.1% 45.84%      0.73s  7.40%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+     0.02s   0.2% 46.04%      0.72s  7.30%  google.golang.org/grpc.(*Server).serveStreams
+         0     0% 46.04%      0.72s  7.30%  runtime.mcall
+         0     0% 46.04%      0.71s  7.20%  net/http/internal/http2.(*serverConn).readFrames
+         0     0% 46.04%      0.70s  7.10%  crypto/tls.(*Conn).readRecord (inline)
+     0.01s   0.1% 46.15%      0.70s  7.10%  crypto/tls.(*Conn).readRecordOrCCS
+     0.01s   0.1% 46.25%      0.69s  7.00%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).HandleStreams
+         0     0% 46.25%      0.67s  6.80%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+     0.01s   0.1% 46.35%      0.67s  6.80%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 46.35%      0.67s  6.80%  main.main
+         0     0% 46.35%      0.67s  6.80%  main.run
+         0     0% 46.35%      0.67s  6.80%  runtime.main
+         0     0% 46.35%      0.60s  6.09%  net/http/internal/http2.(*Framer).ReadFrame
+         0     0% 46.35%      0.60s  6.09%  runtime.park_m
+         0     0% 46.35%      0.58s  5.88%  crypto/tls.(*Conn).readFromUntil
+     0.01s   0.1% 46.45%      0.57s  5.78%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+         0     0% 46.45%      0.57s  5.78%  internal/poll.(*FD).Read
+         0     0% 46.45%      0.57s  5.78%  net.(*conn).Read
+         0     0% 46.45%      0.57s  5.78%  net.(*netFD).Read
+     0.03s   0.3% 46.75%      0.55s  5.58%  runtime.schedule
+         0     0% 46.75%      0.53s  5.38%  syscall.Read (inline)
+     0.01s   0.1% 46.86%      0.53s  5.38%  syscall.read
+     0.03s   0.3% 47.16%      0.51s  5.17%  net/http/internal/http2.(*serverConn).processFrame
+         0     0% 47.16%      0.51s  5.17%  net/http/internal/http2.(*serverConn).processFrameFromReader
+     0.03s   0.3% 47.46%      0.48s  4.87%  runtime.mallocgc
+         0     0% 47.46%      0.47s  4.77%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1.1
+         0     0% 47.46%      0.47s  4.77%  google.golang.org/grpc.(*serverStream).RecvMsg
+         0     0% 47.46%      0.47s  4.77%  google.golang.org/grpc.recv
+         0     0% 47.46%      0.47s  4.77%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).runStream (inline)
+     0.01s   0.1% 47.57%      0.47s  4.77%  net/http/internal/http2.(*Framer).ReadFrameHeader
+     0.01s   0.1% 47.67%      0.47s  4.77%  runtime.findRunnable
+         0     0% 47.67%      0.46s  4.67%  net/http/internal/http2.readFrameHeader
+         0     0% 47.67%      0.45s  4.56%  github.com/djosh34/tigerstore/internal/peer.(*sender).run

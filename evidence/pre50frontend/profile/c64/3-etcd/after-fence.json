@@ -1,0 +1,23 @@
+{
+  "expected": 88192,
+  "headers": [
+    {
+      "cluster_id": 6360853392673649869,
+      "member_id": 13287879269150966081,
+      "revision": 88192,
+      "raft_term": 2
+    },
+    {
+      "cluster_id": 6360853392673649869,
+      "member_id": 3508690607860029340,
+      "revision": 88192,
+      "raft_term": 2
+    },
+    {
+      "cluster_id": 6360853392673649869,
+      "member_id": 11827585455036424645,
+      "revision": 88192,
+      "raft_term": 2
+    }
+  ]
+}

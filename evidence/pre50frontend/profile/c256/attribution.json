@@ -1,0 +1,688 @@
+{
+  "note": "Inclusive categories overlap. Do not sum rows. Aggregate uses sample nanoseconds, not mean percentages. Profiles include the recorded idle lead/tail and observation requests.",
+  "repetitions": {
+    "1-a": {
+      "operations": 93145,
+      "sample_cpu_ns": 8790000000,
+      "sampled_cpu_us_op": 94.36899457834559,
+      "categories": {
+        "TLS including socket descendants": {
+          "sample_cpu_ns": 2390000000,
+          "cpu_us_op": 25.65891888990284,
+          "sample_pct": 27.189988623435724
+        },
+        "crypto implementation": {
+          "sample_cpu_ns": 90000000,
+          "cpu_us_op": 0.9662354393687261,
+          "sample_pct": 1.023890784982935
+        },
+        "frontend including descendants": {
+          "sample_cpu_ns": 1420000000,
+          "cpu_us_op": 15.245048043373234,
+          "sample_pct": 16.1547212741752
+        },
+        "HTTP ServeHTTP including descendants": {
+          "sample_cpu_ns": 2690000000,
+          "cpu_us_op": 28.879703687798592,
+          "sample_pct": 30.602957906712174
+        },
+        "gRPC including descendants": {
+          "sample_cpu_ns": 2610000000,
+          "cpu_us_op": 28.020827741693058,
+          "sample_pct": 29.692832764505116
+        },
+        "HTTP2 including descendants": {
+          "sample_cpu_ns": 160000000,
+          "cpu_us_op": 1.7177518922110688,
+          "sample_pct": 1.8202502844141069
+        },
+        "protobuf including descendants": {
+          "sample_cpu_ns": 290000000,
+          "cpu_us_op": 3.113425304632562,
+          "sample_pct": 3.299203640500569
+        },
+        "committer including descendants": {
+          "sample_cpu_ns": 490000000,
+          "cpu_us_op": 5.260615169896398,
+          "sample_pct": 5.5745164960182025
+        },
+        "core including descendants": {
+          "sample_cpu_ns": 430000000,
+          "cpu_us_op": 4.616458210317247,
+          "sample_pct": 4.891922639362913
+        },
+        "entry encode/decode including descendants": {
+          "sample_cpu_ns": 260000000,
+          "cpu_us_op": 2.7913468248429867,
+          "sample_pct": 2.9579067121729237
+        },
+        "raft including descendants": {
+          "sample_cpu_ns": 130000000,
+          "cpu_us_op": 1.3956734124214933,
+          "sample_pct": 1.4789533560864618
+        },
+        "WAL including descendants": {
+          "sample_cpu_ns": 460000000,
+          "cpu_us_op": 4.938536690106822,
+          "sample_pct": 5.233219567690557
+        },
+        "WAL write syscall path": {
+          "sample_cpu_ns": 450000000,
+          "cpu_us_op": 4.831177196843631,
+          "sample_pct": 5.1194539249146755
+        },
+        "fsync syscall path": {
+          "sample_cpu_ns": 320000000,
+          "cpu_us_op": 3.4355037844221377,
+          "sample_pct": 3.6405005688282137
+        },
+        "index including descendants": {
+          "sample_cpu_ns": 90000000,
+          "cpu_us_op": 0.9662354393687261,
+          "sample_pct": 1.023890784982935
+        },
+        "allocation and GC including descendants": {
+          "sample_cpu_ns": 1080000000,
+          "cpu_us_op": 11.594825272424714,
+          "sample_pct": 12.286689419795222
+        },
+        "peer transport including descendants": {
+          "sample_cpu_ns": 280000000,
+          "cpu_us_op": 3.0060658113693703,
+          "sample_pct": 3.1854379977246867
+        },
+        "scheduler including descendants": {
+          "sample_cpu_ns": 580000000,
+          "cpu_us_op": 6.226850609265124,
+          "sample_pct": 6.598407281001138
+        },
+        "syscalls including descendants": {
+          "sample_cpu_ns": 2510000000,
+          "cpu_us_op": 26.94723280906114,
+          "sample_pct": 28.555176336746303
+        }
+      },
+      "leader_process_cpu_us_op": 95.01315153792474,
+      "server_process_cpu_us_op": 111.86859198024585,
+      "capture": {
+        "request_start_monotonic": 346.849833906,
+        "request_start_utc": "2026-10-13T07:54:31.461408+00:00",
+        "barrier_start_monotonic": 347.350033358,
+        "drained_monotonic": 359.374484096,
+        "response_end_monotonic": 361.855128136,
+        "operations": 93145,
+        "generator_elapsed_s": 12.018872733,
+        "estimated_idle_lead_s": 0.5001994520000039,
+        "estimated_idle_tail_s": 2.4806440400000156,
+        "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+      }
+    },
+    "2-a": {
+      "operations": 123754,
+      "sample_cpu_ns": 11900000000,
+      "sampled_cpu_us_op": 96.15850800782196,
+      "categories": {
+        "TLS including socket descendants": {
+          "sample_cpu_ns": 3240000000,
+          "cpu_us_op": 26.1809719281801,
+          "sample_pct": 27.22689075630252
+        },
+        "crypto implementation": {
+          "sample_cpu_ns": 150000000,
+          "cpu_us_op": 1.2120820337120417,
+          "sample_pct": 1.2605042016806722
+        },
+        "frontend including descendants": {
+          "sample_cpu_ns": 1720000000,
+          "cpu_us_op": 13.89854065323141,
+          "sample_pct": 14.453781512605044
+        },
+        "HTTP ServeHTTP including descendants": {
+          "sample_cpu_ns": 3570000000,
+          "cpu_us_op": 28.84755240234659,
+          "sample_pct": 30.0
+        },
+        "gRPC including descendants": {
+          "sample_cpu_ns": 3370000000,
+          "cpu_us_op": 27.231443024063868,
+          "sample_pct": 28.319327731092436
+        },
+        "HTTP2 including descendants": {
+          "sample_cpu_ns": 220000000,
+          "cpu_us_op": 1.7777203161109945,
+          "sample_pct": 1.8487394957983194
+        },
+        "protobuf including descendants": {
+          "sample_cpu_ns": 560000000,
+          "cpu_us_op": 4.525106259191622,
+          "sample_pct": 4.705882352941177
+        },
+        "committer including descendants": {
+          "sample_cpu_ns": 630000000,
+          "cpu_us_op": 5.090744541590575,
+          "sample_pct": 5.294117647058823
+        },
+        "core including descendants": {
+          "sample_cpu_ns": 500000000,
+          "cpu_us_op": 4.040273445706806,
+          "sample_pct": 4.201680672268908
+        },
+        "entry encode/decode including descendants": {
+          "sample_cpu_ns": 310000000,
+          "cpu_us_op": 2.504969536338219,
+          "sample_pct": 2.6050420168067228
+        },
+        "raft including descendants": {
+          "sample_cpu_ns": 80000000,
+          "cpu_us_op": 0.6464437513130888,
+          "sample_pct": 0.6722689075630253
+        },
+        "WAL including descendants": {
+          "sample_cpu_ns": 670000000,
+          "cpu_us_op": 5.413966417247119,
+          "sample_pct": 5.630252100840337
+        },
+        "WAL write syscall path": {
+          "sample_cpu_ns": 670000000,
+          "cpu_us_op": 5.413966417247119,
+          "sample_pct": 5.630252100840337
+        },
+        "fsync syscall path": {
+          "sample_cpu_ns": 460000000,
+          "cpu_us_op": 3.717051570050261,
+          "sample_pct": 3.865546218487395
+        },
+        "index including descendants": {
+          "sample_cpu_ns": 100000000,
+          "cpu_us_op": 0.8080546891413611,
+          "sample_pct": 0.8403361344537815
+        },
+        "allocation and GC including descendants": {
+          "sample_cpu_ns": 1200000000,
+          "cpu_us_op": 9.696656269696334,
+          "sample_pct": 10.084033613445378
+        },
+        "peer transport including descendants": {
+          "sample_cpu_ns": 460000000,
+          "cpu_us_op": 3.717051570050261,
+          "sample_pct": 3.865546218487395
+        },
+        "scheduler including descendants": {
+          "sample_cpu_ns": 640000000,
+          "cpu_us_op": 5.171550010504711,
+          "sample_pct": 5.378151260504202
+        },
+        "syscalls including descendants": {
+          "sample_cpu_ns": 3520000000,
+          "cpu_us_op": 28.44352505777591,
+          "sample_pct": 29.57983193277311
+        }
+      },
+      "leader_process_cpu_us_op": 96.72414629022093,
+      "server_process_cpu_us_op": 113.61248929327537,
+      "capture": {
+        "request_start_monotonic": 416.042861697,
+        "request_start_utc": "2026-10-13T07:55:40.654437+00:00",
+        "barrier_start_monotonic": 416.543033114,
+        "drained_monotonic": 428.557379527,
+        "response_end_monotonic": 431.048170096,
+        "operations": 123754,
+        "generator_elapsed_s": 12.010538265,
+        "estimated_idle_lead_s": 0.5001714170000469,
+        "estimated_idle_tail_s": 2.490790568999955,
+        "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+      }
+    },
+    "3-a": {
+      "operations": 125632,
+      "sample_cpu_ns": 11890000000,
+      "sampled_cpu_us_op": 94.64149261334691,
+      "categories": {
+        "TLS including socket descendants": {
+          "sample_cpu_ns": 3280000000,
+          "cpu_us_op": 26.107997962302598,
+          "sample_pct": 27.586206896551722
+        },
+        "crypto implementation": {
+          "sample_cpu_ns": 160000000,
+          "cpu_us_op": 1.273560876209883,
+          "sample_pct": 1.3456686291000841
+        },
+        "frontend including descendants": {
+          "sample_cpu_ns": 1870000000,
+          "cpu_us_op": 14.884742740703006,
+          "sample_pct": 15.727502102607232
+        },
+        "HTTP ServeHTTP including descendants": {
+          "sample_cpu_ns": 3380000000,
+          "cpu_us_op": 26.903973509933774,
+          "sample_pct": 28.427249789739278
+        },
+        "gRPC including descendants": {
+          "sample_cpu_ns": 3390000000,
+          "cpu_us_op": 26.983571064696893,
+          "sample_pct": 28.511354079058034
+        },
+        "HTTP2 including descendants": {
+          "sample_cpu_ns": 250000000,
+          "cpu_us_op": 1.9899388690779418,
+          "sample_pct": 2.1026072329688814
+        },
+        "protobuf including descendants": {
+          "sample_cpu_ns": 570000000,
+          "cpu_us_op": 4.537060621497708,
+          "sample_pct": 4.79394449116905
+        },
+        "committer including descendants": {
+          "sample_cpu_ns": 580000000,
+          "cpu_us_op": 4.616658176260826,
+          "sample_pct": 4.878048780487805
+        },
+        "core including descendants": {
+          "sample_cpu_ns": 490000000,
+          "cpu_us_op": 3.9002801833927663,
+          "sample_pct": 4.121110176619007
+        },
+        "entry encode/decode including descendants": {
+          "sample_cpu_ns": 200000000,
+          "cpu_us_op": 1.5919510952623535,
+          "sample_pct": 1.682085786375105
+        },
+        "raft including descendants": {
+          "sample_cpu_ns": 150000000,
+          "cpu_us_op": 1.193963321446765,
+          "sample_pct": 1.2615643397813288
+        },
+        "WAL including descendants": {
+          "sample_cpu_ns": 680000000,
+          "cpu_us_op": 5.412633723892002,
+          "sample_pct": 5.719091673675358
+        },
+        "WAL write syscall path": {
+          "sample_cpu_ns": 670000000,
+          "cpu_us_op": 5.333036169128884,
+          "sample_pct": 5.634987384356602
+        },
+        "fsync syscall path": {
+          "sample_cpu_ns": 460000000,
+          "cpu_us_op": 3.6614875191034133,
+          "sample_pct": 3.8687973086627423
+        },
+        "index including descendants": {
+          "sample_cpu_ns": 60000000,
+          "cpu_us_op": 0.47758532857870606,
+          "sample_pct": 0.5046257359125316
+        },
+        "allocation and GC including descendants": {
+          "sample_cpu_ns": 1200000000,
+          "cpu_us_op": 9.55170657157412,
+          "sample_pct": 10.09251471825063
+        },
+        "peer transport including descendants": {
+          "sample_cpu_ns": 500000000,
+          "cpu_us_op": 3.9798777381558836,
+          "sample_pct": 4.205214465937763
+        },
+        "scheduler including descendants": {
+          "sample_cpu_ns": 930000000,
+          "cpu_us_op": 7.4025725929699435,
+          "sample_pct": 7.821698906644239
+        },
+        "syscalls including descendants": {
+          "sample_cpu_ns": 3550000000,
+          "cpu_us_op": 28.257131940906774,
+          "sample_pct": 29.857022708158116
+        }
+      },
+      "leader_process_cpu_us_op": 95.4374681609781,
+      "server_process_cpu_us_op": 111.91416199694346,
+      "capture": {
+        "request_start_monotonic": 436.170871721,
+        "request_start_utc": "2026-10-13T07:56:00.782446+00:00",
+        "barrier_start_monotonic": 436.671032241,
+        "drained_monotonic": 448.682651545,
+        "response_end_monotonic": 451.179289031,
+        "operations": 125632,
+        "generator_elapsed_s": 12.010235161,
+        "estimated_idle_lead_s": 0.5001605199999517,
+        "estimated_idle_tail_s": 2.4966374859999974,
+        "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+      }
+    },
+    "4-a": {
+      "operations": 125006,
+      "sample_cpu_ns": 11850000000,
+      "sampled_cpu_us_op": 94.79544981840871,
+      "categories": {
+        "TLS including socket descendants": {
+          "sample_cpu_ns": 3520000000,
+          "cpu_us_op": 28.158648384877527,
+          "sample_pct": 29.70464135021097
+        },
+        "crypto implementation": {
+          "sample_cpu_ns": 190000000,
+          "cpu_us_op": 1.5199270435019119,
+          "sample_pct": 1.6033755274261603
+        },
+        "frontend including descendants": {
+          "sample_cpu_ns": 1560000000,
+          "cpu_us_op": 12.47940098875254,
+          "sample_pct": 13.164556962025317
+        },
+        "HTTP ServeHTTP including descendants": {
+          "sample_cpu_ns": 3140000000,
+          "cpu_us_op": 25.118794297873702,
+          "sample_pct": 26.49789029535865
+        },
+        "gRPC including descendants": {
+          "sample_cpu_ns": 3300000000,
+          "cpu_us_op": 26.39873286082268,
+          "sample_pct": 27.848101265822784
+        },
+        "HTTP2 including descendants": {
+          "sample_cpu_ns": 220000000,
+          "cpu_us_op": 1.7599155240548454,
+          "sample_pct": 1.8565400843881856
+        },
+        "protobuf including descendants": {
+          "sample_cpu_ns": 540000000,
+          "cpu_us_op": 4.319792649952802,
+          "sample_pct": 4.556962025316456
+        },
+        "committer including descendants": {
+          "sample_cpu_ns": 790000000,
+          "cpu_us_op": 6.319696654560581,
+          "sample_pct": 6.666666666666667
+        },
+        "core including descendants": {
+          "sample_cpu_ns": 630000000,
+          "cpu_us_op": 5.039758091611603,
+          "sample_pct": 5.3164556962025316
+        },
+        "entry encode/decode including descendants": {
+          "sample_cpu_ns": 340000000,
+          "cpu_us_op": 2.7198694462665793,
+          "sample_pct": 2.869198312236287
+        },
+        "raft including descendants": {
+          "sample_cpu_ns": 170000000,
+          "cpu_us_op": 1.3599347231332897,
+          "sample_pct": 1.4345991561181435
+        },
+        "WAL including descendants": {
+          "sample_cpu_ns": 580000000,
+          "cpu_us_op": 4.639777290690047,
+          "sample_pct": 4.89451476793249
+        },
+        "WAL write syscall path": {
+          "sample_cpu_ns": 570000000,
+          "cpu_us_op": 4.559781130505736,
+          "sample_pct": 4.810126582278481
+        },
+        "fsync syscall path": {
+          "sample_cpu_ns": 370000000,
+          "cpu_us_op": 2.9598579268195127,
+          "sample_pct": 3.1223628691983123
+        },
+        "index including descendants": {
+          "sample_cpu_ns": 140000000,
+          "cpu_us_op": 1.1199462425803561,
+          "sample_pct": 1.1814345991561181
+        },
+        "allocation and GC including descendants": {
+          "sample_cpu_ns": 1190000000,
+          "cpu_us_op": 9.519543061933026,
+          "sample_pct": 10.042194092827005
+        },
+        "peer transport including descendants": {
+          "sample_cpu_ns": 460000000,
+          "cpu_us_op": 3.679823368478313,
+          "sample_pct": 3.8818565400843887
+        },
+        "scheduler including descendants": {
+          "sample_cpu_ns": 720000000,
+          "cpu_us_op": 5.759723533270403,
+          "sample_pct": 6.075949367088607
+        },
+        "syscalls including descendants": {
+          "sample_cpu_ns": 3650000000,
+          "cpu_us_op": 29.19859846727357,
+          "sample_pct": 30.801687763713083
+        }
+      },
+      "leader_process_cpu_us_op": 95.83539990080476,
+      "server_process_cpu_us_op": 112.47460121914148,
+      "capture": {
+        "request_start_monotonic": 503.756567909,
+        "request_start_utc": "2026-10-13T07:57:08.368142+00:00",
+        "barrier_start_monotonic": 504.256746949,
+        "drained_monotonic": 516.266132114,
+        "response_end_monotonic": 518.76183332,
+        "operations": 125006,
+        "generator_elapsed_s": 12.008184828,
+        "estimated_idle_lead_s": 0.5001790399999777,
+        "estimated_idle_tail_s": 2.495701206000035,
+        "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+      }
+    },
+    "5-a": {
+      "operations": 124825,
+      "sample_cpu_ns": 11890000000,
+      "sampled_cpu_us_op": 95.2533546965752,
+      "categories": {
+        "TLS including socket descendants": {
+          "sample_cpu_ns": 3690000000,
+          "cpu_us_op": 29.561385940316445,
+          "sample_pct": 31.03448275862069
+        },
+        "crypto implementation": {
+          "sample_cpu_ns": 210000000,
+          "cpu_us_op": 1.682355297416383,
+          "sample_pct": 1.7661900756938604
+        },
+        "frontend including descendants": {
+          "sample_cpu_ns": 1830000000,
+          "cpu_us_op": 14.66052473462848,
+          "sample_pct": 15.391084945332212
+        },
+        "HTTP ServeHTTP including descendants": {
+          "sample_cpu_ns": 3320000000,
+          "cpu_us_op": 26.597236130582814,
+          "sample_pct": 27.922624053826745
+        },
+        "gRPC including descendants": {
+          "sample_cpu_ns": 3390000000,
+          "cpu_us_op": 27.15802122972161,
+          "sample_pct": 28.511354079058034
+        },
+        "HTTP2 including descendants": {
+          "sample_cpu_ns": 280000000,
+          "cpu_us_op": 2.243140396555177,
+          "sample_pct": 2.3549201009251473
+        },
+        "protobuf including descendants": {
+          "sample_cpu_ns": 380000000,
+          "cpu_us_op": 3.0442619667534547,
+          "sample_pct": 3.1959629941127
+        },
+        "committer including descendants": {
+          "sample_cpu_ns": 530000000,
+          "cpu_us_op": 4.245944322050871,
+          "sample_pct": 4.457527333894029
+        },
+        "core including descendants": {
+          "sample_cpu_ns": 420000000,
+          "cpu_us_op": 3.364710594832766,
+          "sample_pct": 3.532380151387721
+        },
+        "entry encode/decode including descendants": {
+          "sample_cpu_ns": 250000000,
+          "cpu_us_op": 2.002803925495694,
+          "sample_pct": 2.1026072329688814
+        },
+        "raft including descendants": {
+          "sample_cpu_ns": 110000000,
+          "cpu_us_op": 0.8812337272181053,
+          "sample_pct": 0.9251471825063078
+        },
+        "WAL including descendants": {
+          "sample_cpu_ns": 550000000,
+          "cpu_us_op": 4.406168636090527,
+          "sample_pct": 4.625735912531539
+        },
+        "WAL write syscall path": {
+          "sample_cpu_ns": 550000000,
+          "cpu_us_op": 4.406168636090527,
+          "sample_pct": 4.625735912531539
+        },
+        "fsync syscall path": {
+          "sample_cpu_ns": 380000000,
+          "cpu_us_op": 3.0442619667534547,
+          "sample_pct": 3.1959629941127
+        },
+        "index including descendants": {
+          "sample_cpu_ns": 100000000,
+          "cpu_us_op": 0.8011215701982776,
+          "sample_pct": 0.8410428931875525
+        },
+        "allocation and GC including descendants": {
+          "sample_cpu_ns": 1040000000,
+          "cpu_us_op": 8.331664330062086,
+          "sample_pct": 8.746846089150546
+        },
+        "peer transport including descendants": {
+          "sample_cpu_ns": 400000000,
+          "cpu_us_op": 3.2044862807931103,
+          "sample_pct": 3.36417157275021
+        },
+        "scheduler including descendants": {
+          "sample_cpu_ns": 890000000,
+          "cpu_us_op": 7.129981974764671,
+          "sample_pct": 7.485281749369217
+        },
+        "syscalls including descendants": {
+          "sample_cpu_ns": 3730000000,
+          "cpu_us_op": 29.881834568395753,
+          "sample_pct": 31.370899915895713
+        }
+      },
+      "leader_process_cpu_us_op": 95.97436410975365,
+      "server_process_cpu_us_op": 112.95814139795714,
+      "capture": {
+        "request_start_monotonic": 523.915092124,
+        "request_start_utc": "2026-10-13T07:57:28.526666+00:00",
+        "barrier_start_monotonic": 524.415384117,
+        "drained_monotonic": 536.432736109,
+        "response_end_monotonic": 538.920224743,
+        "operations": 124825,
+        "generator_elapsed_s": 12.012362171,
+        "estimated_idle_lead_s": 0.5002919930000189,
+        "estimated_idle_tail_s": 2.4874886339999875,
+        "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+      }
+    }
+  },
+  "aggregate": {
+    "operations": 592362,
+    "sample_cpu_ns": 56320000000,
+    "sampled_cpu_us_op": 95.07699683639396,
+    "categories": {
+      "TLS including socket descendants": {
+        "sample_cpu_ns": 16120000000,
+        "cpu_us_op": 27.213089293371283,
+        "sample_pct": 28.62215909090909
+      },
+      "crypto implementation": {
+        "sample_cpu_ns": 800000000,
+        "cpu_us_op": 1.3505255232442324,
+        "sample_pct": 1.4204545454545454
+      },
+      "frontend including descendants": {
+        "sample_cpu_ns": 8400000000,
+        "cpu_us_op": 14.18051799406444,
+        "sample_pct": 14.914772727272727
+      },
+      "HTTP ServeHTTP including descendants": {
+        "sample_cpu_ns": 16100000000,
+        "cpu_us_op": 27.179326155290177,
+        "sample_pct": 28.58664772727273
+      },
+      "gRPC including descendants": {
+        "sample_cpu_ns": 16060000000,
+        "cpu_us_op": 27.111799879127965,
+        "sample_pct": 28.515625
+      },
+      "HTTP2 including descendants": {
+        "sample_cpu_ns": 1130000000,
+        "cpu_us_op": 1.9076173015824782,
+        "sample_pct": 2.0063920454545454
+      },
+      "protobuf including descendants": {
+        "sample_cpu_ns": 2340000000,
+        "cpu_us_op": 3.95028715548938,
+        "sample_pct": 4.154829545454546
+      },
+      "committer including descendants": {
+        "sample_cpu_ns": 3020000000,
+        "cpu_us_op": 5.098233850246977,
+        "sample_pct": 5.362215909090909
+      },
+      "core including descendants": {
+        "sample_cpu_ns": 2470000000,
+        "cpu_us_op": 4.169747553016568,
+        "sample_pct": 4.385653409090909
+      },
+      "entry encode/decode including descendants": {
+        "sample_cpu_ns": 1360000000,
+        "cpu_us_op": 2.295893389515195,
+        "sample_pct": 2.414772727272727
+      },
+      "raft including descendants": {
+        "sample_cpu_ns": 640000000,
+        "cpu_us_op": 1.0804204185953858,
+        "sample_pct": 1.1363636363636365
+      },
+      "WAL including descendants": {
+        "sample_cpu_ns": 2940000000,
+        "cpu_us_op": 4.963181297922554,
+        "sample_pct": 5.220170454545454
+      },
+      "WAL write syscall path": {
+        "sample_cpu_ns": 2910000000,
+        "cpu_us_op": 4.9125365908008956,
+        "sample_pct": 5.166903409090909
+      },
+      "fsync syscall path": {
+        "sample_cpu_ns": 1990000000,
+        "cpu_us_op": 3.359432239070028,
+        "sample_pct": 3.5333806818181817
+      },
+      "index including descendants": {
+        "sample_cpu_ns": 490000000,
+        "cpu_us_op": 0.8271968829870924,
+        "sample_pct": 0.8700284090909091
+      },
+      "allocation and GC including descendants": {
+        "sample_cpu_ns": 5710000000,
+        "cpu_us_op": 9.63937592215571,
+        "sample_pct": 10.138494318181818
+      },
+      "peer transport including descendants": {
+        "sample_cpu_ns": 2100000000,
+        "cpu_us_op": 3.54512949851611,
+        "sample_pct": 3.7286931818181817
+      },
+      "scheduler including descendants": {
+        "sample_cpu_ns": 3760000000,
+        "cpu_us_op": 6.347469959247892,
+        "sample_pct": 6.676136363636363
+      },
+      "syscalls including descendants": {
+        "sample_cpu_ns": 16960000000,
+        "cpu_us_op": 28.631141092777728,
+        "sample_pct": 30.113636363636363
+      }
+    },
+    "server_process_cpu_us_op": 112.60006550048787
+  }
+}

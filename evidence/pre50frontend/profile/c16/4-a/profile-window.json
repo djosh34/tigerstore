@@ -1,0 +1,12 @@
+{
+  "request_start_monotonic": 617.994295318,
+  "request_start_utc": "2026-10-13T07:57:38.745700+00:00",
+  "barrier_start_monotonic": 618.494610459,
+  "drained_monotonic": 630.507854036,
+  "response_end_monotonic": 632.999112894,
+  "operations": 50642,
+  "generator_elapsed_s": 12.010224303,
+  "estimated_idle_lead_s": 0.5003151409999873,
+  "estimated_idle_tail_s": 2.4912588579999237,
+  "caveat": "HTTP request bounds, not exact sampler start/stop. Tail includes replica fences, observation RPCs and the final validation Range probe."
+}

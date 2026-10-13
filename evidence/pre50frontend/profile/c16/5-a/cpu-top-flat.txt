@@ -1,0 +1,89 @@
+File: a
+Build ID: 1a14280d04aafac7f82601b3a438d6c66958d8fb
+Type: cpu
+Time: 2026-10-13 07:58:02 UTC
+Duration: 15s, Total samples = 10.24s (68.26%)
+Showing nodes accounting for 7.10s, 69.34% of 10.24s total
+Dropped 498 nodes (cum <= 0.05s)
+Showing top 80 nodes out of 270
+      flat  flat%   sum%        cum   cum%
+     4.23s 41.31% 41.31%      4.23s 41.31%  internal/runtime/syscall/linux.Syscall6
+     0.33s  3.22% 44.53%      1.23s 12.01%  runtime.selectgo
+     0.18s  1.76% 46.29%      0.21s  2.05%  runtime.unlock2
+     0.16s  1.56% 47.85%      0.16s  1.56%  runtime.nanotime (inline)
+     0.15s  1.46% 49.32%      0.15s  1.46%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.15s  1.46% 50.78%      0.15s  1.46%  runtime.lock2
+     0.14s  1.37% 52.15%      0.14s  1.37%  runtime.memmove
+     0.12s  1.17% 53.32%      0.12s  1.17%  runtime.futex
+     0.09s  0.88% 54.20%      0.20s  1.95%  runtime.sellock
+     0.08s  0.78% 54.98%      0.08s  0.78%  runtime.findfunc
+     0.06s  0.59% 55.57%      0.13s  1.27%  runtime.mapaccess2_faststr
+     0.06s  0.59% 56.15%      0.06s  0.59%  runtime.memclrNoHeapPointers
+     0.06s  0.59% 56.74%      0.09s  0.88%  runtime.step
+     0.05s  0.49% 57.23%      0.08s  0.78%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.05s  0.49% 57.71%      0.08s  0.78%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.05s  0.49% 58.20%      0.06s  0.59%  net/textproto.CanonicalMIMEHeaderKey
+     0.05s  0.49% 58.69%      0.10s  0.98%  runtime.(*unwinder).resolveInternal
+     0.05s  0.49% 59.18%      0.53s  5.18%  runtime.mallocgc
+     0.04s  0.39% 59.57%      0.07s  0.68%  runtime.(*waitq).dequeue (inline)
+     0.04s  0.39% 59.96%      0.18s  1.76%  runtime.growslice
+     0.04s  0.39% 60.35%      0.12s  1.17%  runtime.isSystemGoroutine
+     0.03s  0.29% 60.64%      0.07s  0.68%  context.(*cancelCtx).Done
+     0.03s  0.29% 60.94%      0.10s  0.98%  crypto/tls.(*halfConn).decrypt
+     0.03s  0.29% 61.23%      0.66s  6.45%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).HandleStreams
+     0.03s  0.29% 61.52%      0.22s  2.15%  runtime.newobject
+     0.03s  0.29% 61.82%      0.13s  1.27%  runtime.newproc1
+     0.03s  0.29% 62.11%      0.69s  6.74%  runtime.park_m
+     0.03s  0.29% 62.40%      0.14s  1.37%  runtime.pcvalue
+     0.03s  0.29% 62.70%      0.07s  0.68%  strings.ToLower
+     0.02s   0.2% 62.89%      0.06s  0.59%  crypto/tls.(*xorNonceAEAD).Open
+     0.02s   0.2% 63.09%      1.18s 11.52%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync
+     0.02s   0.2% 63.28%      0.11s  1.07%  github.com/google/btree.(*node[go.shape.*uint8]).get
+     0.02s   0.2% 63.48%      0.11s  1.07%  go.etcd.io/raft/v3.(*raft).Step
+     0.02s   0.2% 63.67%      0.79s  7.71%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+     0.02s   0.2% 63.87%      0.37s  3.61%  google.golang.org/grpc/internal/transport.(*Stream).ReadMessageHeader
+     0.02s   0.2% 64.06%      0.18s  1.76%  google.golang.org/grpc/internal/transport.NewServerHandlerTransport
+     0.02s   0.2% 64.26%      0.46s  4.49%  internal/poll.(*FD).Read
+     0.02s   0.2% 64.45%      0.07s  0.68%  internal/runtime/maps.(*Map).deleteSmall
+     0.02s   0.2% 64.65%      0.14s  1.37%  net/textproto.MIMEHeader.Add (inline)
+     0.02s   0.2% 64.84%      0.18s  1.76%  runtime.chansend
+     0.02s   0.2% 65.04%      0.55s  5.37%  runtime.findRunnable
+     0.02s   0.2% 65.23%      0.17s  1.66%  runtime.ready
+     0.02s   0.2% 65.43%      0.12s  1.17%  runtime.selunlock
+     0.02s   0.2% 65.62%      0.07s  0.68%  runtime.sweepone
+     0.02s   0.2% 65.82%      0.09s  0.88%  sync.(*Pool).Get
+     0.02s   0.2% 66.02%      0.09s  0.88%  vendor/golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+     0.01s 0.098% 66.11%      0.09s  0.88%  context.(*cancelCtx).propagateCancel
+     0.01s 0.098% 66.21%      0.12s  1.17%  context.WithDeadlineCause
+     0.01s 0.098% 66.31%      0.06s  0.59%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal
+     0.01s 0.098% 66.41%      0.57s  5.57%  crypto/tls.(*Conn).readRecordOrCCS
+     0.01s 0.098% 66.50%      2.57s 25.10%  crypto/tls.(*Conn).write
+     0.01s 0.098% 66.60%      0.09s  0.88%  crypto/tls.(*halfConn).encrypt
+     0.01s 0.098% 66.70%      0.19s  1.86%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+     0.01s 0.098% 66.80%      0.35s  3.42%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+     0.01s 0.098% 66.89%      0.08s  0.78%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Put
+     0.01s 0.098% 66.99%      0.12s  1.17%  github.com/google/btree.(*BTreeG[go.shape.*uint8]).Get
+     0.01s 0.098% 67.09%      0.09s  0.88%  github.com/google/btree.items[go.shape.*uint8].find.func1 (inline)
+     0.01s 0.098% 67.19%      0.07s  0.68%  go.etcd.io/raft/v3.(*RawNode).Step
+     0.01s 0.098% 67.29%      0.91s  8.89%  google.golang.org/grpc.(*Server).ServeHTTP
+     0.01s 0.098% 67.38%      0.74s  7.23%  google.golang.org/grpc.(*Server).processRPC
+     0.01s 0.098% 67.48%      0.62s  6.05%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+     0.01s 0.098% 67.58%      0.11s  1.07%  google.golang.org/grpc/encoding/proto.(*codecV2).Unmarshal
+     0.01s 0.098% 67.68%      0.07s  0.68%  google.golang.org/grpc/internal/transport.(*ServerStream).WriteStatus (inline)
+     0.01s 0.098% 67.77%      0.35s  3.42%  google.golang.org/grpc/internal/transport.(*recvBufferReader).readMessageHeader
+     0.01s 0.098% 67.87%      0.09s  0.88%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).HandleStreams.func2
+     0.01s 0.098% 67.97%      0.08s  0.78%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).writeStatus.func1
+     0.01s 0.098% 68.07%      0.06s  0.59%  google.golang.org/protobuf/internal/impl.(*MessageInfo).marshal
+     0.01s 0.098% 68.16%      0.09s  0.88%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal
+     0.01s 0.098% 68.26%      0.08s  0.78%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.01s 0.098% 68.36%      0.07s  0.68%  google.golang.org/protobuf/proto.Clone
+     0.01s 0.098% 68.46%      0.15s  1.46%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+     0.01s 0.098% 68.55%      2.76s 26.95%  internal/poll.(*FD).Write
+     0.01s 0.098% 68.65%      0.12s  1.17%  internal/runtime/maps.(*Map).Delete
+     0.01s 0.098% 68.75%      0.11s  1.07%  internal/runtime/maps.(*Map).growToSmall
+     0.01s 0.098% 68.85%      0.92s  8.98%  net/http.HandlerFunc.ServeHTTP
+     0.01s 0.098% 68.95%      0.44s  4.30%  net/http/internal/http2.(*Framer).ReadFrame
+     0.01s 0.098% 69.04%      0.07s  0.68%  net/http/internal/http2.(*Framer).readMetaFrame.func1
+     0.01s 0.098% 69.14%      2.39s 23.34%  net/http/internal/http2.(*bufferedWriter).Flush
+     0.01s 0.098% 69.24%      0.08s  0.78%  net/http/internal/http2.(*dataBuffer).lastChunkOrAlloc
+     0.01s 0.098% 69.34%      0.50s  4.88%  net/http/internal/http2.(*serverConn).processFrameFromReader

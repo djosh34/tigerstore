@@ -1,0 +1,89 @@
+File: a
+Build ID: 1a14280d04aafac7f82601b3a438d6c66958d8fb
+Type: cpu
+Time: 2026-10-13 07:57:38 UTC
+Duration: 15s, Total samples = 9.89s (65.93%)
+Showing nodes accounting for 6.97s, 70.48% of 9.89s total
+Dropped 445 nodes (cum <= 0.05s)
+Showing top 80 nodes out of 300
+      flat  flat%   sum%        cum   cum%
+     3.92s 39.64% 39.64%      3.92s 39.64%  internal/runtime/syscall/linux.Syscall6
+     0.34s  3.44% 43.07%      1.16s 11.73%  runtime.selectgo
+     0.18s  1.82% 44.89%      0.25s  2.53%  runtime.unlock2
+     0.15s  1.52% 46.41%      0.16s  1.62%  runtime.lock2
+     0.12s  1.21% 47.62%      0.12s  1.21%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.11s  1.11% 48.74%      0.11s  1.11%  runtime.futex
+     0.11s  1.11% 49.85%      0.11s  1.11%  runtime.memmove
+     0.11s  1.11% 50.96%      0.11s  1.11%  runtime.nanotime (inline)
+     0.09s  0.91% 51.87%      0.09s  0.91%  runtime.nextFreeFast (inline)
+     0.06s  0.61% 52.48%      0.15s  1.52%  runtime.mapaccess2_faststr
+     0.06s  0.61% 53.08%      0.06s  0.61%  runtime.memclrNoHeapPointers
+     0.06s  0.61% 53.69%      0.16s  1.62%  runtime.sellock
+     0.05s  0.51% 54.20%      0.05s  0.51%  cmpbody
+     0.05s  0.51% 54.70%      0.05s  0.51%  crypto/internal/fips140/aes/gcm.gcmAesEnc
+     0.05s  0.51% 55.21%      0.11s  1.11%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.05s  0.51% 55.71%      0.08s  0.81%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.05s  0.51% 56.22%      0.05s  0.51%  internal/sync.(*Mutex).Lock (inline)
+     0.05s  0.51% 56.72%      0.05s  0.51%  internal/sync.(*Mutex).Unlock (inline)
+     0.05s  0.51% 57.23%      0.05s  0.51%  runtime.(*guintptr).cas (inline)
+     0.05s  0.51% 57.74%      0.05s  0.51%  runtime.(*sweepLocker).tryAcquire
+     0.05s  0.51% 58.24%      0.06s  0.61%  runtime.acquireSudog
+     0.05s  0.51% 58.75%      0.05s  0.51%  runtime.findfunc
+     0.05s  0.51% 59.25%      0.05s  0.51%  runtime.mutexSampleContention (inline)
+     0.04s   0.4% 59.66%      0.05s  0.51%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.04s   0.4% 60.06%      0.50s  5.06%  runtime.schedule
+     0.04s   0.4% 60.47%      0.08s  0.81%  vendor/golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+     0.03s   0.3% 60.77%      0.05s  0.51%  github.com/djosh34/tigerstore/internal/peer.(*TCP).Send
+     0.03s   0.3% 61.07%      0.09s  0.91%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).HandleStreams.func1
+     0.03s   0.3% 61.38%      0.06s  0.61%  google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer
+     0.03s   0.3% 61.68%      0.56s  5.66%  internal/poll.(*FD).Read
+     0.03s   0.3% 61.98%      0.16s  1.62%  net/http/internal/http2.(*Framer).ReadFrameForHeader
+     0.03s   0.3% 62.29%      0.15s  1.52%  net/http/internal/http2.(*serverConn).startFrameWrite
+     0.03s   0.3% 62.59%      0.15s  1.52%  runtime.chansend
+     0.03s   0.3% 62.89%      0.05s  0.51%  runtime.exitsyscall
+     0.03s   0.3% 63.20%      0.16s  1.62%  runtime.growslice
+     0.03s   0.3% 63.50%      0.28s  2.83%  runtime.mallocgcSmallScanNoHeader
+     0.03s   0.3% 63.80%      0.60s  6.07%  runtime.park_m
+     0.03s   0.3% 64.11%      0.12s  1.21%  runtime.sweepone
+     0.03s   0.3% 64.41%      0.59s  5.97%  runtime.systemstack
+     0.03s   0.3% 64.71%      0.09s  0.91%  sync.(*Pool).Get
+     0.02s   0.2% 64.91%      0.33s  3.34%  bufio.(*Reader).Read
+     0.02s   0.2% 65.12%      0.65s  6.57%  crypto/tls.(*Conn).readRecordOrCCS
+     0.02s   0.2% 65.32%      0.06s  0.61%  crypto/tls.(*halfConn).decrypt
+     0.02s   0.2% 65.52%      0.18s  1.82%  crypto/tls.(*halfConn).encrypt
+     0.02s   0.2% 65.72%      0.43s  4.35%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+     0.02s   0.2% 65.93%      0.16s  1.62%  go.etcd.io/raft/v3.(*raft).Step
+     0.02s   0.2% 66.13%      0.08s  0.81%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.02s   0.2% 66.33%      0.06s  0.61%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+     0.02s   0.2% 66.53%      0.05s  0.51%  internal/runtime/maps.(*Map).Delete
+     0.02s   0.2% 66.73%      0.41s  4.15%  net/http/internal/http2.(*Framer).ReadFrameHeader
+     0.02s   0.2% 66.94%      0.05s  0.51%  net/textproto.CanonicalMIMEHeaderKey
+     0.02s   0.2% 67.14%      0.07s  0.71%  runtime.(*unwinder).resolveInternal
+     0.02s   0.2% 67.34%      0.06s  0.61%  runtime.(*waitq).dequeue (inline)
+     0.02s   0.2% 67.54%      0.38s  3.84%  runtime.findRunnable
+     0.02s   0.2% 67.75%      0.08s  0.81%  runtime.makeslice
+     0.02s   0.2% 67.95%      0.08s  0.81%  runtime.pcvalue
+     0.02s   0.2% 68.15%      3.89s 39.33%  syscall.Syscall
+     0.01s   0.1% 68.25%      2.81s 28.41%  bufio.(*Writer).Flush
+     0.01s   0.1% 68.35%      0.06s  0.61%  bytes.Compare
+     0.01s   0.1% 68.45%      0.14s  1.42%  context.WithDeadlineCause
+     0.01s   0.1% 68.55%      0.15s  1.52%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal
+     0.01s   0.1% 68.66%      0.11s  1.11%  crypto/internal/fips140/aes/gcm.seal
+     0.01s   0.1% 68.76%      2.64s 26.69%  crypto/tls.(*Conn).Write
+     0.01s   0.1% 68.86%      2.60s 26.29%  crypto/tls.(*Conn).writeRecordLocked
+     0.01s   0.1% 68.96%      0.16s  1.62%  crypto/tls.(*xorNonceAEAD).Seal
+     0.01s   0.1% 69.06%      0.49s  4.95%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+     0.01s   0.1% 69.16%      0.14s  1.42%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+     0.01s   0.1% 69.26%      0.80s  8.09%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+     0.01s   0.1% 69.36%      1.13s 11.43%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+     0.01s   0.1% 69.46%      1.09s 11.02%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync
+     0.01s   0.1% 69.57%      0.13s  1.31%  github.com/google/btree.(*node[go.shape.*uint8]).get
+     0.01s   0.1% 69.67%      0.12s  1.21%  github.com/google/btree.items[go.shape.*uint8].find
+     0.01s   0.1% 69.77%      0.08s  0.81%  go.etcd.io/raft/v3.(*RawNode).Step
+     0.01s   0.1% 69.87%      0.66s  6.67%  google.golang.org/grpc.(*Server).processRPC
+     0.01s   0.1% 69.97%      0.55s  5.56%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+     0.01s   0.1% 70.07%      0.35s  3.54%  google.golang.org/grpc.(*serverStream).RecvMsg
+     0.01s   0.1% 70.17%      0.11s  1.11%  google.golang.org/grpc.(*serverStream).SendMsg
+     0.01s   0.1% 70.27%      0.05s  0.51%  google.golang.org/grpc/internal/transport.(*serverHandlerTransport).HandleStreams.func2
+     0.01s   0.1% 70.37%      0.25s  2.53%  google.golang.org/grpc/internal/transport.NewServerHandlerTransport
+     0.01s   0.1% 70.48%      0.06s  0.61%  google.golang.org/grpc/internal/transport.prefixLoggerForServerHandlerTransport (inline)

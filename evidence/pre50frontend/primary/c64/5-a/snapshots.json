@@ -1,0 +1,96 @@
+{
+  "before": [
+    {
+      "mallocs": 3546766,
+      "total_alloc": 542240544,
+      "disk": {
+        "syncs": 1500,
+        "write_bytes": 26062633,
+        "writes": 1500
+      }
+    },
+    {
+      "mallocs": 278419,
+      "total_alloc": 74062352,
+      "disk": {
+        "syncs": 1672,
+        "write_bytes": 26061775,
+        "writes": 1672
+      }
+    },
+    {
+      "mallocs": 278296,
+      "total_alloc": 74048728,
+      "disk": {
+        "syncs": 1681,
+        "write_bytes": 26061808,
+        "writes": 1681
+      }
+    }
+  ],
+  "after": [
+    {
+      "mallocs": 12166711,
+      "total_alloc": 1859181616,
+      "disk": {
+        "syncs": 5190,
+        "write_bytes": 91000719,
+        "writes": 5190
+      }
+    },
+    {
+      "mallocs": 885927,
+      "total_alloc": 250294112,
+      "disk": {
+        "syncs": 5826,
+        "write_bytes": 90997584,
+        "writes": 5826
+      }
+    },
+    {
+      "mallocs": 885914,
+      "total_alloc": 250285024,
+      "disk": {
+        "syncs": 5829,
+        "write_bytes": 90997782,
+        "writes": 5829
+      }
+    }
+  ],
+  "cpu_before": [
+    {
+      "pid": 8125,
+      "ticks": 274,
+      "start": 74690
+    },
+    {
+      "pid": 8123,
+      "ticks": 44,
+      "start": 74690
+    },
+    {
+      "pid": 8124,
+      "ticks": 41,
+      "start": 74690
+    }
+  ],
+  "cpu_after": [
+    {
+      "pid": 8125,
+      "ticks": 926,
+      "start": 74690
+    },
+    {
+      "pid": 8123,
+      "ticks": 147,
+      "start": 74690
+    },
+    {
+      "pid": 8124,
+      "ticks": 135,
+      "start": 74690
+    }
+  ],
+  "hz": 100,
+  "scope": "workers parked; all replicas applied; etcd also post-WAL.Save"
+}

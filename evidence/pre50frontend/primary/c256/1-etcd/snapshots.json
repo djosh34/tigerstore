@@ -1,0 +1,150 @@
+{
+  "before": [
+    {
+      "mallocs": 6546285.0,
+      "total_alloc": 857193848.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 0.24910936600000005,
+        "etcd_disk_backend_commit_duration_seconds_count": 50.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 1.8717931060000013,
+        "etcd_disk_wal_fsync_duration_seconds_count": 1664.0,
+        "etcd_disk_wal_write_bytes_total": 27012664.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.005421773000000635,
+        "etcd_disk_wal_write_duration_seconds_count": 24716.0
+      }
+    },
+    {
+      "mallocs": 2075866.0,
+      "total_alloc": 366226680.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 0.13661928199999998,
+        "etcd_disk_backend_commit_duration_seconds_count": 52.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 0.39402056100000055,
+        "etcd_disk_wal_fsync_duration_seconds_count": 706.0,
+        "etcd_disk_wal_write_bytes_total": 27008432.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.011359692000001774,
+        "etcd_disk_wal_write_duration_seconds_count": 24610.0
+      }
+    },
+    {
+      "mallocs": 2084958.0,
+      "total_alloc": 367111832.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 0.15621353300000002,
+        "etcd_disk_backend_commit_duration_seconds_count": 52.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 0.3754917369999997,
+        "etcd_disk_wal_fsync_duration_seconds_count": 729.0,
+        "etcd_disk_wal_write_bytes_total": 27009312.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.008675457000000983,
+        "etcd_disk_wal_write_duration_seconds_count": 24632.0
+      }
+    }
+  ],
+  "after": [
+    {
+      "mallocs": 22371912.0,
+      "total_alloc": 2917752880.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 1.2906832829999995,
+        "etcd_disk_backend_commit_duration_seconds_count": 146.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 6.055608839000012,
+        "etcd_disk_wal_fsync_duration_seconds_count": 5568.0,
+        "etcd_disk_wal_write_bytes_total": 94258384.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.03893804999998773,
+        "etcd_disk_wal_write_duration_seconds_count": 85856.0
+      }
+    },
+    {
+      "mallocs": 6907459.0,
+      "total_alloc": 1232726240.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 0.8933300159999998,
+        "etcd_disk_backend_commit_duration_seconds_count": 154.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 1.6494433759999996,
+        "etcd_disk_wal_fsync_duration_seconds_count": 2048.0,
+        "etcd_disk_wal_write_bytes_total": 94244952.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.033673168999996984,
+        "etcd_disk_wal_write_duration_seconds_count": 85520.0
+      }
+    },
+    {
+      "mallocs": 6912621.0,
+      "total_alloc": 1228103472.0,
+      "disk": {
+        "etcd_disk_backend_commit_duration_seconds_sum": 0.9778202640000001,
+        "etcd_disk_backend_commit_duration_seconds_count": 153.0,
+        "etcd_disk_backend_defrag_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_defrag_duration_seconds_count": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_sum": 0.0,
+        "etcd_disk_backend_snapshot_duration_seconds_count": 0.0,
+        "etcd_disk_defrag_inflight": 0.0,
+        "etcd_disk_wal_fsync_duration_seconds_sum": 1.7424879230000014,
+        "etcd_disk_wal_fsync_duration_seconds_count": 2090.0,
+        "etcd_disk_wal_write_bytes_total": 94244672.0,
+        "etcd_disk_wal_write_duration_seconds_sum": 0.030080200999999095,
+        "etcd_disk_wal_write_duration_seconds_count": 85513.0
+      }
+    }
+  ],
+  "cpu_before": [
+    {
+      "pid": 7235,
+      "ticks": 419,
+      "start": 7095
+    },
+    {
+      "pid": 7234,
+      "ticks": 84,
+      "start": 7095
+    },
+    {
+      "pid": 7236,
+      "ticks": 83,
+      "start": 7095
+    }
+  ],
+  "cpu_after": [
+    {
+      "pid": 7235,
+      "ticks": 1396,
+      "start": 7095
+    },
+    {
+      "pid": 7234,
+      "ticks": 267,
+      "start": 7095
+    },
+    {
+      "pid": 7236,
+      "ticks": 258,
+      "start": 7095
+    }
+  ],
+  "hz": 100,
+  "scope": "workers parked; all replicas applied; etcd also post-WAL.Save"
+}

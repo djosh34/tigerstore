@@ -1,0 +1,83 @@
+{
+  "client_kind": "direct etcd protobuf pb.KVClient over grpc-go",
+  "clock_hz": 100,
+  "conns": 16,
+  "controller_barriers": true,
+  "cpu_after": [
+    {
+      "PID": 2839,
+      "Ticks": 1797,
+      "Start": 48008
+    },
+    {
+      "PID": 2838,
+      "Ticks": 614,
+      "Start": 48008
+    },
+    {
+      "PID": 2840,
+      "Ticks": 601,
+      "Start": 48008
+    },
+    {
+      "PID": 2898,
+      "Ticks": 329,
+      "Start": 49140
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 2839,
+      "Ticks": 712,
+      "Start": 48008
+    },
+    {
+      "PID": 2838,
+      "Ticks": 239,
+      "Start": 48008
+    },
+    {
+      "PID": 2840,
+      "Ticks": 231,
+      "Start": 48008
+    },
+    {
+      "PID": 2898,
+      "Ticks": 5,
+      "Start": 49140
+    }
+  ],
+  "cpu_us_op": [
+    321.91069574247143,
+    111.25945705384957,
+    109.77599762646491,
+    96.12817089452604
+  ],
+  "elapsed_s": 12.002135227,
+  "errors": {},
+  "keyspace": 4096,
+  "max_ms": 85.215883,
+  "mean_ms": 5.696217607565643,
+  "occupied_cores": [
+    0.9040058118651957,
+    0.31244440502253307,
+    0.30827847962223265,
+    0.2699519659394686
+  ],
+  "op": "put",
+  "ops_s": 2808.250312342527,
+  "p50_ms": 5.457136,
+  "p90_ms": 7.573949,
+  "p999_ms": 16.544117,
+  "p99_ms": 12.377487,
+  "revision_after": 57802,
+  "revision_before": 24097,
+  "start_utc": "2026-10-13T07:55:32.327836422Z",
+  "successes": 33705,
+  "terms": {
+    "2": 33705
+  },
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 16
+}

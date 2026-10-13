@@ -1,0 +1,56 @@
+[
+  {
+    "header": {
+      "cluster_id": 17720586612193299140,
+      "member_id": 1,
+      "revision": 84097,
+      "raft_term": 1
+    },
+    "version": "3.7.2",
+    "dbSize": 90899482,
+    "leader": 3,
+    "raftIndex": 6528,
+    "raftTerm": 1,
+    "raftAppliedIndex": 6528,
+    "dbSizeInUse": 90899482,
+    "storageVersion": "3.7.0",
+    "dbSizeQuota": 2147483648,
+    "downgradeInfo": {}
+  },
+  {
+    "header": {
+      "cluster_id": 17720586612193299140,
+      "member_id": 2,
+      "revision": 84097,
+      "raft_term": 1
+    },
+    "version": "3.7.2",
+    "dbSize": 90899482,
+    "leader": 3,
+    "raftIndex": 6528,
+    "raftTerm": 1,
+    "raftAppliedIndex": 6528,
+    "dbSizeInUse": 90899482,
+    "storageVersion": "3.7.0",
+    "dbSizeQuota": 2147483648,
+    "downgradeInfo": {}
+  },
+  {
+    "header": {
+      "cluster_id": 17720586612193299140,
+      "member_id": 3,
+      "revision": 84097,
+      "raft_term": 1
+    },
+    "version": "3.7.2",
+    "dbSize": 90899482,
+    "leader": 3,
+    "raftIndex": 6528,
+    "raftTerm": 1,
+    "raftAppliedIndex": 6528,
+    "dbSizeInUse": 90899482,
+    "storageVersion": "3.7.0",
+    "dbSizeQuota": 2147483648,
+    "downgradeInfo": {}
+  }
+]
