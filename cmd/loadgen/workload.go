@@ -459,3 +459,92 @@ func (w *watchLoad) done(_ *stream, _ int64, err error) {
 	}
 	w.stats.errs["watch: "+err.Error()]++
 }
+
+// listLoad lists one namespace a page at a time, as kube-apiserver lists
+// a resource in a namespace: a range over the namespace's prefix with a
+// limit. Its answers must hold the namespace's key count, a full page of
+// its keys in order, and values of the size put.
+type listLoad struct {
+	base
+	page      int
+	valueSize int
+	starts    [][]byte // per namespace: its prefix
+	ends      [][]byte // per namespace: the end of its range
+}
+
+func newListLoad(b base, page, valueSize int) *listLoad {
+	w := &listLoad{base: b, page: page, valueSize: valueSize}
+	for ns := range nsCount {
+		p := listPrefix(ns)
+		w.starts = append(w.starts, p)
+		w.ends = append(w.ends, prefixEnd(p))
+	}
+	return w
+}
+
+// inNamespace is how many of the keys live in namespace ns.
+func (w *listLoad) inNamespace(ns int) int {
+	n := w.ks.n / nsCount
+	if ns < w.ks.n%nsCount {
+		n++
+	}
+	return n
+}
+
+func (w *listLoad) start(c *conn, st *stream) bool {
+	if !c.canStart(w.tpl, w.limit) {
+		return false
+	}
+	ns := w.rng.IntN(nsCount)
+	st.slot = ns
+	r := c.startStream(st, w.tpl)
+	copy(r[w.tpl.keys[0]:], w.starts[ns])
+	copy(r[w.tpl.keys[1]:], w.ends[ns])
+	return true
+}
+
+func (w *listLoad) exhausted() bool { return false }
+
+func (w *listLoad) message(st *stream, m []byte) error {
+	if _, err := responseRevision(m); err != nil {
+		return err
+	}
+	ns := st.slot
+	var count uint64
+	var last []byte
+	kvs := 0
+	err := fields(m, func(num protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the default case handles the rest
+		switch num {
+		case rangeCount:
+			count = v
+		case rangeKVs:
+			kvs++
+			key, err := bytesField(b, kvKey)
+			if err != nil {
+				return err
+			}
+			if !bytes.HasPrefix(key, w.starts[ns]) || bytes.Compare(key, last) <= 0 {
+				return fmt.Errorf("list returned key %q out of order or outside %q", key, w.starts[ns])
+			}
+			last = key
+			val, err := bytesField(b, kvValue)
+			if err != nil {
+				return err
+			}
+			if len(val) != w.valueSize {
+				return fmt.Errorf("list returned a %d byte value, want %d", len(val), w.valueSize)
+			}
+		default:
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	want := w.inNamespace(ns)
+	if int(count) != want || kvs != min(w.page, want) {
+		return fmt.Errorf("list of namespace %d returned count %d with %d keys, want %d with %d", ns, count, kvs, want, min(w.page, want))
+	}
+	return nil
+}

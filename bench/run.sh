@@ -4,8 +4,8 @@
 #
 #   bench/run.sh <benchmark> <out dir>
 #
-# <benchmark> is <workload>-<size>: workload put, txn, delete, range or
-# watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
+# <benchmark> is <workload>-<size>: workload put, txn, delete, range, list
+# or watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
 # target and run, so no run sees another's data. Two kinds of run:
 #
 #   max   every stream busy (6 connections x 256 streams): throughput
@@ -63,6 +63,12 @@ fi
 # deletes/s. The 10 KiB run preloads fewer keys, to keep the disk it fills
 # small, so it is shorter still: 300,000 keys over 1 + 2 s.
 keys=10000 warmup=3s duration=10s
+# A LIST pages through one namespace of 100: 1,000 keys each, pages of
+# 500 (the loadgen default), so every answer holds a count of 1,000 and
+# 500 keys. With 10 KiB values, 100 keys each keep the preload small.
+if [ "$workload" = list ]; then
+	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
+fi
 if [ "$workload" = delete ]; then
 	if [ "$size" = 1024 ]; then
 		keys=600000 warmup=1s duration=4s

@@ -17,10 +17,12 @@ import (
 const (
 	headerRevision = 3 // ResponseHeader.revision
 
-	rangeKey = 1 // RangeRequest
-	putKey   = 1 // PutRequest
-	putValue = 2
-	delKey   = 1 // DeleteRangeRequest
+	rangeKey   = 1 // RangeRequest
+	rangeEnd   = 2
+	rangeLimit = 3
+	putKey     = 1 // PutRequest
+	putValue   = 2
+	delKey     = 1 // DeleteRangeRequest
 
 	txnCompare = 1 // TxnRequest
 	txnSuccess = 2
@@ -222,6 +224,16 @@ func putRequest(keyLen, valueLen int) *msg {
 	m := newMsg()
 	m.key(putKey, keyLen)
 	m.val(putValue, valueLen)
+	return m
+}
+
+// listRequest is a page of a LIST: a range over a prefix of prefixLen
+// bytes, filled in per request, with a limit.
+func listRequest(prefixLen, page int) *msg {
+	m := newMsg()
+	m.key(rangeKey, prefixLen)
+	m.key(rangeEnd, prefixLen)
+	m.varint(rangeLimit, uint64(page))
 	return m
 }
 
