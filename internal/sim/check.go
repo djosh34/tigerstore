@@ -556,7 +556,13 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 	}
 	for _, id := range s.expiredOrder {
 		at := s.expiredAt[id]
-		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second {
+		// The declared clock envelope: the leader's clock may run fast by
+		// DriftPerMille and jump forward once by up to 3 ticks.
+		early := ttl[id]*Second*s.cfg.Faults.DriftPerMille/1000 + 3*TickTime
+		if s.cfg.Faults.DriftPerMille == 0 && s.cfg.Faults.ClockJumpEvery == 0 {
+			early = 0
+		}
+		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-early {
 			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
 				id, ttl[id], at/Millisecond, t/Millisecond)
 		}

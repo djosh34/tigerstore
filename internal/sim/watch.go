@@ -87,6 +87,18 @@ func (s *Sim) startWatchers() {
 	}
 }
 
+// closeStream disconnects a watch client from its stream at once. The node
+// learns of it in an event of its own, so a paused node handles it when it
+// resumes.
+func (s *Sim) closeStream(w *watchClient) {
+	n := s.nodes[w.node]
+	if n.up && n.gen == w.gen {
+		delete(n.streams, w.stream)
+		n.closing[w.stream] = true
+		s.push(&event{at: s.now, kind: evStreamClose, node: n.idx, gen: n.gen, stream: w.stream})
+	}
+}
+
 // drop closes the stream on purpose, as clients do on a timeout, and
 // resumes up to 2 s later, so the next stream catches up on history.
 func (w *watchClient) drop() {
@@ -96,12 +108,7 @@ func (w *watchClient) drop() {
 		return
 	}
 	if w.open {
-		n := s.nodes[w.node]
-		if n.up && n.gen == w.gen {
-			delete(n.streams, w.stream)
-			n.core.CloseWatchStream(w.stream)
-			s.process(n)
-		}
+		s.closeStream(w)
 		w.open = false
 		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
 	}
@@ -137,6 +144,9 @@ func (w *watchClient) create(n *node, gen uint64) {
 // watchResponse routes a response from a node to its client, in order.
 func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
 	w, ok := n.streams[r.Stream]
+	if !ok && n.closing[r.Stream] {
+		return
+	}
 	if !ok {
 		s.fail("node %d answered unknown watch stream %d", n.id, r.Stream)
 		return
@@ -167,11 +177,7 @@ func (w *watchClient) receive(e *event) {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
-		if n := s.nodes[w.node]; n.up && n.gen == w.gen {
-			delete(n.streams, w.stream)
-			n.core.CloseWatchStream(w.stream)
-			s.process(n)
-		}
+		s.closeStream(w)
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
 		w.start, w.next, w.events, w.responses, w.open = 0, 0, nil, nil, false
 		s.push(&event{at: s.now + s.clientLatency(), kind: evWatchOpen, watch: w})
@@ -222,8 +228,13 @@ func (w *watchClient) receive(e *event) {
 	}
 }
 
-// broken is a stream that died with its node.
-func (w *watchClient) broken() {
+// broken is a stream that died with its node. The client may have left
+// that stream already and opened another, on the same node or another one
+// whose stream and generation numbers can be the same; that one stays.
+func (w *watchClient) broken(e *event) {
+	if !w.open || w.node != e.node || w.stream != e.stream || w.gen != e.gen {
+		return
+	}
 	w.open = false
 	w.openWatch()
 }
