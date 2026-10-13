@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
@@ -100,6 +101,18 @@ func (st *State) track() {
 			}
 		}
 	}
+}
+
+// ApplyPut runs one committed put, given by its fields, and returns the
+// previous version if the put asked for it.
+func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
+	st.changes = nil
+	prev, err := st.kv.PutKV(op)
+	if err != nil {
+		return nil, err
+	}
+	st.track()
+	return prev, nil
 }
 
 // Apply runs one committed write and returns its response with the header

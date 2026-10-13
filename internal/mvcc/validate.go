@@ -27,6 +27,12 @@ func CheckRange(r *pb.RangeRequest) error {
 
 // CheckPut validates a put request.
 func CheckPut(r *pb.PutRequest) error {
+	op := putOp(r)
+	return CheckPutOp(&op)
+}
+
+// CheckPutOp validates a put request given by its fields.
+func CheckPutOp(r *PutOp) error {
 	switch {
 	case len(r.Key) == 0:
 		return rpctypes.ErrGRPCEmptyKey

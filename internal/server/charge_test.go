@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
@@ -97,7 +97,7 @@ func TestCallCharges(t *testing.T) {
 		},
 		"deadline before the batch goes out": func(c *conn, st *stream) {
 			st.expire()
-			c.batch = opBatch{ops: []proto.Message{&pb.RangeRequest{}}, tags: []any{st}}
+			c.batch = opBatch{reqs: []core.Request{{Op: &pb.RangeRequest{}}}, tags: []any{st}}
 			if err := c.flush(); err != nil {
 				t.Fatal(err)
 			}

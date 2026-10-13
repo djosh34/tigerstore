@@ -1,14 +1,18 @@
 package server
 
 import (
+	"encoding/binary"
 	"slices"
 
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
@@ -32,7 +36,7 @@ const (
 // opBatch is the requests the reader decoded since it last handed a batch
 // to the node.
 type opBatch struct {
-	ops   []proto.Message
+	reqs  []core.Request
 	tags  []any
 	bytes int
 }
@@ -48,14 +52,26 @@ func (c *conn) admit(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	op := st.rpc.op()
-	if err := unmarshal(st.body, op); err != nil {
-		st.finish(err)
-		return
+	var req core.Request
+	if st.rpc.wirePut {
+		// The put stays in its wire form; the node copies it into the
+		// Raft entry as it is.
+		put, err := core.ParsePut(st.body)
+		if err != nil {
+			st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+			return
+		}
+		req.Put = put
+	} else {
+		req.Op = st.rpc.op()
+		if err := unmarshal(st.body, req.Op); err != nil {
+			st.finish(err)
+			return
+		}
 	}
 	st.reqSize = len(st.body)
 	st.body = nil
-	c.batch.ops = append(c.batch.ops, op)
+	c.batch.reqs = append(c.batch.reqs, req)
 	c.batch.tags = append(c.batch.tags, st)
 	c.batch.bytes += st.reqSize
 }
@@ -67,10 +83,10 @@ func (c *conn) admit(st *stream) {
 // timer.
 func (c *conn) batchDue() bool {
 	b := &c.batch
-	if len(b.ops) == 0 {
+	if len(b.reqs) == 0 {
 		return false
 	}
-	if len(b.ops) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+	if len(b.reqs) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
 		return true
 	}
 	// Peek cannot fail: the header is buffered.
@@ -95,19 +111,19 @@ func (c *conn) flush() error {
 		if st.done.Load() || st.reset {
 			continue
 		}
-		b.ops[keep], b.tags[keep] = b.ops[i], tag
+		b.reqs[keep], b.tags[keep] = b.reqs[i], tag
 		keep++
 		c.chargeLocked(&st.reqHeld, st.reqSize+callCost)
 		c.atNode[st] = struct{}{}
 	}
 	c.mu.Unlock()
-	clear(b.ops[keep:])
+	clear(b.reqs[keep:])
 	clear(b.tags[keep:])
-	b.ops, b.tags = b.ops[:keep], b.tags[:keep]
+	b.reqs, b.tags = b.reqs[:keep], b.tags[:keep]
 	if keep == 0 {
 		return nil
 	}
-	err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c)
+	err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)
 	if err == nil {
 		return nil
 	}
@@ -237,7 +253,11 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
-			if f.err == nil {
+			switch {
+			case f.err != nil:
+			case f.st.rpc.wirePut:
+				f.msg, f.err = c.putResponse(&cp.Reply)
+			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
 			out = append(out, f)
@@ -280,4 +300,42 @@ func (c *conn) nodeStopped() {
 	for _, st := range held {
 		st.finish(rpctypes.ErrGRPCStopped)
 	}
+}
+
+// putResponse encodes the response to a put in wire form, without
+// building a protobuf message.
+func (c *conn) putResponse(r *core.Reply) ([]byte, error) {
+	b := make([]byte, 5, 5+putResponseSize)
+	b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
+	}
+	binary.BigEndian.PutUint32(b[1:5], uint32(len(b)-5))
+	return b, nil
+}
+
+// putResponseSize is the most appendPutResponse appends without a
+// previous key: the header field with four varints.
+const putResponseSize = 2 + 4*(1+binary.MaxVarintLen64)
+
+// appendPutResponse appends a PutResponse in its wire form: the header
+// with the cluster, member, revision and term, and the previous key if
+// there is one.
+func appendPutResponse(b []byte, cluster, member uint64, rev int64, term uint64, prev *mvccpb.KeyValue) ([]byte, error) {
+	var h [4 * (1 + binary.MaxVarintLen64)]byte
+	hb := h[:0]
+	for i, v := range [...]uint64{cluster, member, uint64(rev), term} {
+		if v != 0 {
+			hb = protowire.AppendTag(hb, protowire.Number(i+1), protowire.VarintType)
+			hb = protowire.AppendVarint(hb, v)
+		}
+	}
+	b = protowire.AppendTag(b, 1, protowire.BytesType)
+	b = protowire.AppendBytes(b, hb)
+	if prev == nil {
+		return b, nil
+	}
+	b = protowire.AppendTag(b, 2, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(proto.Size(prev)))
+	return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, prev)
 }
