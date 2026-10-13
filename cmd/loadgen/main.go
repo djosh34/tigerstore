@@ -25,6 +25,8 @@ import (
 type config struct {
 	endpoints []string
 	workload  string
+	mix       string
+	owner     int // mixed namespace owner, internal only
 	valueSize int
 	keys      int
 	conns     int
@@ -42,13 +44,14 @@ type config struct {
 	cert, key string
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "list", "watch"}
+var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
 	fs := flag.NewFlagSet("loadgen", flag.ContinueOnError)
 	endpoints := fs.String("endpoints", "127.0.0.1:2379", "comma-separated host:port of the cluster's client endpoints; connections go round robin")
 	fs.StringVar(&cfg.workload, "workload", "put", "one of "+strings.Join(workloads, ", "))
+	fs.StringVar(&cfg.mix, "mix", defaultMix, "mixed percentages: get,list,update,create,delete; watches on every resource prefix")
 	fs.IntVar(&cfg.valueSize, "value-size", 1024, "value size in bytes")
 	fs.IntVar(&cfg.keys, "keys", 10000, "number of keys; delete deletes each once, so it needs at least as many as it sends")
 	fs.IntVar(&cfg.conns, "conns", 6, "HTTP/2 connections for requests")
@@ -90,6 +93,9 @@ func parseFlags(args []string) (config, error) {
 	case cfg.rate < 0 || cfg.duration <= 0 || cfg.warmup < 0:
 		return cfg, errors.New("need -rate >= 0, -duration > 0 and -warmup >= 0")
 	}
+	if _, err := parseMix(cfg.mix); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
 }
 
@@ -103,6 +109,9 @@ type result struct {
 	Workload       string   `json:"workload"`
 	ValueSize      int      `json:"value_size"`
 	Keys           int      `json:"keys"`
+	LiveKeys       int      `json:"live_keys,omitempty"`
+	SizeSource     string   `json:"size_source,omitempty"`
+	Mix            string   `json:"mix,omitempty"`
 	Endpoints      []string `json:"endpoints"`
 	Conns          int      `json:"conns"`
 	StreamsPerConn int      `json:"streams_per_conn"`
@@ -203,6 +212,9 @@ func run(cfg config) (*result, error) {
 			return nil, err
 		}
 		clientTLS = c
+	}
+	if cfg.workload == "mixed" {
+		return runMixed(cfg)
 	}
 	ks := makeKeys(cfg.keys)
 	vals := makeValues(cfg.valueSize, cfg.seed)

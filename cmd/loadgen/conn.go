@@ -215,6 +215,7 @@ func (c *conn) canStart(t *template, limit int) bool {
 		len(c.streams) < limit &&
 		uint32(len(c.streams)) < c.maxStreams &&
 		c.sendWin >= int64(t.dataLen) &&
+		int64(c.streamWin) >= int64(t.dataLen) &&
 		c.nextID < maxStreamID
 }
 
@@ -228,7 +229,9 @@ func (c *conn) startStream(st *stream, t *template) []byte {
 	c.out = append(c.out, t.b...)
 	b := c.out[start:]
 	binary.BigEndian.PutUint32(b[5:], st.id)
-	binary.BigEndian.PutUint32(b[t.data+5:], st.id)
+	for _, off := range t.frames {
+		binary.BigEndian.PutUint32(b[off+5:], st.id)
+	}
 	c.streams[st.id] = st
 	c.sendWin -= int64(t.dataLen)
 	return b

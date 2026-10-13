@@ -1,0 +1,181 @@
+package main
+
+import (
+	"bytes"
+	"math"
+	"math/rand/v2"
+	"testing"
+)
+
+func TestK8sSizes(t *testing.T) {
+	r := rand.New(rand.NewPCG(1, 2))
+	var count int
+	var total float64
+	for _, b := range k8sSizes {
+		if b.count <= 0 || b.min < 8 || b.max < b.min || b.mean < float64(b.min) || b.mean > float64(b.max) {
+			t.Fatalf("bad bin: %+v", b)
+		}
+		const samples = 100000
+		sum := 0
+		for range samples {
+			n := b.draw(r)
+			if n < b.min || n > b.max {
+				t.Fatalf("%+v drew %d", b, n)
+			}
+			sum += n
+		}
+		got := float64(sum) / samples
+		// Six standard errors for the endpoint-weighted Bernoulli draw.
+		variance := (b.mean - float64(b.min)) * (float64(b.max) - b.mean)
+		tolerance := 6*math.Sqrt(variance/samples) + 0.01
+		if math.Abs(got-b.mean) > tolerance {
+			t.Fatalf("%s %s mean %.3f want %.3f", b.resource, b.bin, got, b.mean)
+		}
+		count += b.count
+		total += b.mean * float64(b.count)
+	}
+	if count != 6261 || math.Abs(total-9217907) > 0.001 {
+		t.Fatalf("dump totals %d %.3f", count, total)
+	}
+	draws := make([]int, len(k8sSizes))
+	for range 200000 {
+		draws[drawBin(r, "")]++
+	}
+	for i, b := range k8sSizes {
+		probability := float64(b.count) / 6261
+		want := 200000 * probability
+		tolerance := 6*math.Sqrt(want*(1-probability)) + 1
+		if math.Abs(float64(draws[i])-want) > tolerance {
+			t.Fatalf("%s bin share %d want %.0f", b.resource, draws[i], want)
+		}
+		for range 100 {
+			if k8sSizes[drawBin(r, b.resource)].resource != b.resource {
+				t.Fatal("resource draw crossed resources")
+			}
+		}
+	}
+}
+
+func TestMixedOwnership(t *testing.T) {
+	seen := map[string]int{}
+	cfg := config{keys: 2000, conns: 6, mix: defaultMix, seed: 1}
+	for owner := range cfg.conns {
+		wk := newWorker(nil, uint64(owner+1))
+		w, err := newMixedLoad(wk, cfg, owner, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Include newly created keys, not only the preload.
+		for range 100 {
+			w.live = append(w.live, w.newKey(owner, max(1, 1024/cfg.conns)))
+		}
+		for _, k := range w.live {
+			key := string(k.key)
+			if previous, ok := seen[key]; ok {
+				t.Fatalf("key %s owned by %d and %d", key, previous, owner)
+			}
+			seen[key] = owner
+			if !bytes.HasPrefix(k.key, w.groups[k.group].prefix) {
+				t.Fatal("wrong group")
+			}
+		}
+		for _, g := range w.groups {
+			for key, other := range seen {
+				if other != owner && bytes.HasPrefix([]byte(key), g.prefix) {
+					t.Fatal("LIST prefix shared across workers")
+				}
+			}
+		}
+	}
+}
+
+func TestMixedValidation(t *testing.T) {
+	k := &mixedKey{key: []byte("/registry/pods/ns/name"), value: []byte("random value"), create: 3, mod: 8, version: 2}
+	response := func(key *mixedKey, count, more uint64) []byte {
+		m := newMsg()
+		m.sub(rangeKVs, mixedKV(key))
+		m.varint(rangeCount, count)
+		m.varint(rangeMore, more)
+		return m.b
+	}
+	if err := checkMixedRange(response(k, 1, 0), []*mixedKey{k}, 500); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"key", "value", "create", "mod", "version"} {
+		bad := *k
+		switch field {
+		case "key":
+			bad.key = []byte("wrong")
+		case "value":
+			bad.value = []byte("wrong")
+		case "create":
+			bad.create++
+		case "mod":
+			bad.mod++
+		case "version":
+			bad.version++
+		}
+		if err := checkMixedRange(response(&bad, 1, 0), []*mixedKey{k}, 500); err == nil {
+			t.Fatalf("accepted wrong %s", field)
+		}
+	}
+	if err := checkMixedRange(response(k, 2, 0), []*mixedKey{k}, 500); err == nil {
+		t.Fatal("accepted wrong count")
+	}
+	if err := checkMixedRange(response(k, 1, 1), []*mixedKey{k}, 500); err == nil {
+		t.Fatal("accepted wrong more")
+	}
+	if err := checkMixedRange(nil, []*mixedKey{k}, 500); err == nil {
+		t.Fatal("accepted missing key")
+	}
+}
+
+func TestMixedWatchPairing(t *testing.T) {
+	for _, watchFirst := range []bool{false, true} {
+		l := &mixedLedger{expected: make(map[int64]mixedEvent), observed: make(map[int64]mixedEvent), start: 1, stop: 100}
+		k := &mixedKey{key: []byte("/registry/pods/ns/name"), value: []byte("old"), create: 2, mod: 2, version: 1}
+		prev := *k
+		k.value = []byte("new")
+		k.mod = 3
+		k.version++
+		observed := mixedEvent{digest: eventDigest(k, &prev, false), at: 30}
+		if watchFirst {
+			l.pair(3, observed, false)
+		}
+		l.expect(3, k, &prev, false, 10)
+		if !watchFirst {
+			l.pair(3, observed, false)
+		}
+		if len(l.errs) != 0 || len(l.expected)+len(l.observed) != 0 || l.lat.n != 1 || l.lat.min != 20 {
+			t.Fatalf("pair failed: %+v", l)
+		}
+		l.expect(4, k, &prev, true, 20)
+		observed.digest[0]++
+		l.pair(4, observed, false)
+		if len(l.errs) != 1 {
+			t.Fatal("accepted wrong watch event")
+		}
+	}
+}
+
+func TestMixedMix(t *testing.T) {
+	for _, s := range []string{"", "25,10,40,15", "25,10,40,15,11", "25,10,40,26,-1", "25,10,x,15,10"} {
+		if _, err := parseMix(s); err == nil {
+			t.Fatalf("accepted %q", s)
+		}
+	}
+	if _, err := parseMix(defaultMix); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVariableValuePoolWrap(t *testing.T) {
+	v := values{pool: make([]byte, 100), size: 8, off: 90}
+	if len(v.next()) != 8 {
+		t.Fatal("short value")
+	}
+	v.size = 30
+	if len(v.next()) != 30 || v.off != 30 {
+		t.Fatal("variable size did not wrap")
+	}
+}
