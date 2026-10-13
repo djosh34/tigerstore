@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -39,9 +40,19 @@ type config struct {
 	out       string
 	cacert    string
 	cert, key string
+
+	// Opt-in experiment controls. The default path keeps the existing CLI.
+	concurrency int
+	balance     string
+	arrival     string
+	total       int64
+	barrier     string
+	drain       time.Duration
+	barrierWait time.Duration
+	maxResponse int
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "watch"}
+var workloads = []string{"put", "txn", "delete", "range", "watch", "list"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
@@ -53,6 +64,14 @@ func parseFlags(args []string) (config, error) {
 	fs.IntVar(&cfg.conns, "conns", 6, "HTTP/2 connections for requests")
 	fs.IntVar(&cfg.streams, "streams", 256, "requests in flight per connection at most")
 	fs.Float64Var(&cfg.rate, "rate", 0, "open-loop arrivals per second over all connections; 0 keeps every stream busy")
+	fs.IntVar(&cfg.concurrency, "concurrency", 0, "exact global in-flight limit, independent of -conns and -streams; enables experiment dispatcher")
+	fs.StringVar(&cfg.balance, "balance", "", "round-robin dispatches requests, not just connections, across endpoints")
+	fs.StringVar(&cfg.arrival, "arrival", "poisson", "poisson or fixed; fixed requires -rate > 0 and enables experiment dispatcher")
+	fs.Int64Var(&cfg.total, "total", 0, "closed-loop measured request count instead of a duration; enables experiment dispatcher")
+	fs.StringVar(&cfg.barrier, "barrier-prefix", "", "publish PREFIX.ready, wait for .go, drain then publish .done, wait for .finish")
+	fs.DurationVar(&cfg.drain, "drain", 30*time.Second, "experiment dispatcher: maximum time to drain after arrivals end")
+	fs.DurationVar(&cfg.barrierWait, "barrier-timeout", 5*time.Minute, "maximum wait for each external barrier")
+	fs.IntVar(&cfg.maxResponse, "max-response-bytes", 0, "experiment dispatcher: per-message receive limit; 0 leaves it unlimited, not an aggregate memory bound")
 	fs.DurationVar(&cfg.warmup, "warmup", 2*time.Second, "load before the measurement window")
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
@@ -67,6 +86,18 @@ func parseFlags(args []string) (config, error) {
 		return cfg, err
 	}
 	cfg.endpoints = strings.Split(*endpoints, ",")
+	if cfg.workload == "list" {
+		keysSet := false
+		fs.Visit(func(f *flag.Flag) { keysSet = keysSet || f.Name == "keys" })
+		if !keysSet {
+			cfg.keys = 1000
+		}
+	}
+	for _, ep := range cfg.endpoints {
+		if strings.TrimSpace(ep) != ep || ep == "" {
+			return cfg, errors.New("-endpoints needs nonempty host:port entries without whitespace")
+		}
+	}
 	if *pids != "" {
 		for p := range strings.SplitSeq(*pids, ",") {
 			n, err := strconv.Atoi(p)
@@ -85,8 +116,30 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
-	case cfg.rate < 0 || cfg.duration <= 0 || cfg.warmup < 0:
-		return cfg, errors.New("need -rate >= 0, -duration > 0 and -warmup >= 0")
+	case cfg.rate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
+		return cfg, errors.New("need finite -rate >= 0, -duration > 0 and -warmup >= 0")
+	case cfg.maxResponse < 0:
+		return cfg, errors.New("-max-response-bytes must be nonnegative")
+	case cfg.concurrency < 0 || cfg.total < 0 || cfg.drain <= 0 || cfg.barrierWait <= 0:
+		return cfg, errors.New("need nonnegative -concurrency and -total, positive -drain and -barrier-timeout")
+	case cfg.balance != "" && cfg.balance != "round-robin":
+		return cfg, errors.New("-balance must be round-robin")
+	case cfg.arrival != "poisson" && cfg.arrival != "fixed":
+		return cfg, errors.New("-arrival must be poisson or fixed")
+	case cfg.arrival == "fixed" && cfg.rate <= 0:
+		return cfg, errors.New("-arrival fixed needs -rate > 0")
+	case cfg.total > 0 && cfg.rate > 0:
+		return cfg, errors.New("-total is for closed-loop runs; open-loop uses -duration")
+	case cfg.workload == "list" && (cfg.keys != 1000 || cfg.valueSize != 1024):
+		return cfg, errors.New("list requires exactly -keys 1000 and -value-size 1024")
+	case cfg.shaped() && !slices.Contains([]string{"put", "range", "list"}, cfg.workload):
+		return cfg, errors.New("experiment dispatcher supports put, range and list; other workloads use the default dispatcher")
+	case cfg.shaped() && cfg.conns < len(cfg.endpoints):
+		return cfg, errors.New("experiment dispatcher needs at least one connection per endpoint")
+	case cfg.shaped() && cfg.rate > 0 && cfg.arrival != "fixed":
+		return cfg, errors.New("experiment open-loop runs need -arrival fixed; use the default dispatcher for Poisson arrivals")
+	case cfg.rate > 1e9 || cfg.rate*cfg.duration.Seconds() > float64(1<<52):
+		return cfg, errors.New("rate or scheduled cohort exceeds nanosecond schedule precision")
 	}
 	return cfg, nil
 }
@@ -131,6 +184,7 @@ type result struct {
 	ClientCPUUsPerOp   float64          `json:"client_cpu_us_per_op"`
 	ClientCores        float64          `json:"client_cores"`
 	Errors             map[string]int64 `json:"errors"`
+	Shape              *shapeResult     `json:"shape,omitempty"`
 }
 
 type watchResult struct {
@@ -195,12 +249,16 @@ const (
 )
 
 func run(cfg config) (*result, error) {
+	clientTLS = nil
 	if cfg.cacert != "" {
 		c, err := loadTLS(cfg.cacert, cfg.cert, cfg.key)
 		if err != nil {
 			return nil, err
 		}
 		clientTLS = c
+	}
+	if cfg.shaped() {
+		return runShaped(cfg)
 	}
 	ks := makeKeys(cfg.keys)
 	vals := makeValues(cfg.valueSize, cfg.seed)
@@ -388,7 +446,7 @@ func kvPath(workload string) string {
 		return "/etcdserverpb.KV/Txn"
 	case "delete":
 		return "/etcdserverpb.KV/DeleteRange"
-	case "range":
+	case "range", "list":
 		return "/etcdserverpb.KV/Range"
 	default:
 		return "/etcdserverpb.KV/Put"

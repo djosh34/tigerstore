@@ -36,13 +36,23 @@ type stats struct {
 	resp              hist  // latency from the intended send time
 	service           hist  // latency from the actual send time
 	errs              map[string]int64
+	active            *inflightCounter // experiment dispatcher only
+	sent              int64
+	cohortSuccess     int64
+	completedWindow   int64 // every outcome completed in the arrival window
 }
 
 // complete counts the end of a unary call. A success needs exactly one
 // response message.
 func (s *stats) complete(st *stream, at int64, err error) {
+	if s.active != nil {
+		s.active.current.Add(-1)
+	}
 	if err == nil && st.msgs != 1 {
 		err = fmt.Errorf("%d response messages to a unary call", st.msgs)
+	}
+	if at >= s.winStart && at < s.winStop {
+		s.completedWindow++
 	}
 	inCohort := st.intended >= s.winStart && st.intended < s.winStop
 	if inCohort {
@@ -60,6 +70,7 @@ func (s *stats) complete(st *stream, at int64, err error) {
 		s.ops++
 	}
 	if inCohort {
+		s.cohortSuccess++
 		s.resp.record(at - st.intended)
 		s.service.record(at - st.sent)
 	}

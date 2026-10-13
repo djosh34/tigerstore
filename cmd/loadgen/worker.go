@@ -77,7 +77,7 @@ func (wk *worker) run(l load, p phase) error {
 					break
 				}
 				intended = backlog[0]
-			} else if t >= p.stop {
+			} else if t < p.start || t >= p.stop {
 				break
 			}
 			st := c.newStream(l)
@@ -137,6 +137,9 @@ func (wk *worker) run(l load, p phase) error {
 		wait := deadline
 		if !over && t < p.stop {
 			wait = min(next, p.stop)
+			if t < p.start {
+				wait = p.start
+			}
 		}
 		if wait <= t {
 			continue

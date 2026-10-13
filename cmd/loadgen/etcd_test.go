@@ -23,7 +23,8 @@ func startEtcd(t *testing.T) (string, int) {
 	}
 	client, peer := freePort(t), freePort(t)
 	dir := t.TempDir()
-	cmd := exec.Command(bin,
+	cmd := exec.Command(
+		bin,
 		"--name", "n1",
 		"--data-dir", filepath.Join(dir, "data"),
 		"--listen-client-urls", "http://"+client,

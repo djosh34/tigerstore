@@ -86,9 +86,12 @@ type conn struct {
 	connWinIncr uint32
 	streamIncr  []streamIncr
 
-	wake  chan struct{} // tells the writer that a stream ended or a window or control frame changed
-	ready chan struct{} // closed on the server's first SETTINGS
-	gone  chan struct{} // closed when the reader exits
+	reassembly  *reassemblyCounter
+	maxResponse int
+	wakeAll     chan struct{} // optional shared dispatcher notification
+	wake        chan struct{} // tells the writer that a stream ended or a window or control frame changed
+	ready       chan struct{} // closed on the server's first SETTINGS
+	gone        chan struct{} // closed when the reader exits
 
 	// Reader-only state.
 	dec          *hpack.Decoder
@@ -111,7 +114,9 @@ type streamIncr struct {
 // without it connections are plain text (HTTP/2 with prior knowledge).
 var clientTLS *tls.Config
 
-func dial(addr string) (*conn, error) {
+func dial(addr string) (*conn, error) { return dialShared(addr, nil, nil, 0) }
+
+func dialShared(addr string, wake chan struct{}, reassembly *reassemblyCounter, maxResponse int) (*conn, error) {
 	d := &net.Dialer{Timeout: 5 * time.Second}
 	var nc net.Conn
 	var err error
@@ -129,16 +134,19 @@ func dial(addr string) (*conn, error) {
 		return nil, err
 	}
 	c := &conn{
-		addr:       addr,
-		nc:         nc,
-		streams:    make(map[uint32]*stream),
-		nextID:     1,
-		sendWin:    65535,
-		maxStreams: math.MaxUint32,
-		streamWin:  65535,
-		wake:       make(chan struct{}, 1),
-		ready:      make(chan struct{}),
-		gone:       make(chan struct{}),
+		addr:        addr,
+		nc:          nc,
+		streams:     make(map[uint32]*stream),
+		nextID:      1,
+		sendWin:     65535,
+		maxStreams:  math.MaxUint32,
+		streamWin:   65535,
+		wake:        make(chan struct{}, 1),
+		wakeAll:     wake,
+		reassembly:  reassembly,
+		maxResponse: maxResponse,
+		ready:       make(chan struct{}),
+		gone:        make(chan struct{}),
 	}
 	c.fr = http2.NewFramer(&c.out, bufio.NewReaderSize(nc, 64<<10))
 	c.fr.SetReuseFrames()
@@ -182,6 +190,12 @@ func (c *conn) signal() {
 	select {
 	case c.wake <- struct{}{}:
 	default:
+	}
+	if c.wakeAll != nil {
+		select {
+		case c.wakeAll <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -404,8 +418,22 @@ func (c *conn) onData(f *http2.DataFrame) error {
 // messages hands each complete gRPC message in p to the stream's handler and
 // keeps a trailing partial message for the next DATA frame.
 func (c *conn) messages(st *stream, p []byte) error {
+	accounted, beforeCap := len(st.buf), cap(st.buf)
+	defer func() {
+		if c.reassembly != nil {
+			c.reassembly.live.add(int64(len(st.buf) - accounted))
+			c.reassembly.capacity.add(int64(cap(st.buf) - beforeCap))
+		}
+	}()
+	if c.maxResponse > 0 && len(st.buf)+len(p) > c.maxResponse+grpcPrefixLen {
+		return fmt.Errorf("response assembly exceeds %d bytes", c.maxResponse)
+	}
 	if len(st.buf) > 0 {
 		st.buf = append(st.buf, p...)
+		if c.reassembly != nil {
+			c.reassembly.live.add(int64(len(st.buf) - accounted))
+			accounted = len(st.buf)
+		}
 		p = st.buf
 	}
 	for len(p) >= grpcPrefixLen {
@@ -413,6 +441,9 @@ func (c *conn) messages(st *stream, p []byte) error {
 			return errors.New("compressed gRPC message")
 		}
 		n := binary.BigEndian.Uint32(p[1:grpcPrefixLen])
+		if c.maxResponse > 0 && uint64(n) > uint64(c.maxResponse) {
+			return fmt.Errorf("response message of %d bytes exceeds %d", n, c.maxResponse)
+		}
 		if uint64(len(p)-grpcPrefixLen) < uint64(n) {
 			break
 		}
@@ -513,6 +544,10 @@ func (c *conn) finish(st *stream, err error) {
 	}
 	delete(c.streams, st.id)
 	st.h.done(st, now(), err)
+	if c.reassembly != nil {
+		c.reassembly.live.add(-int64(len(st.buf)))
+	}
+	st.buf = st.buf[:0]
 	c.free = append(c.free, st)
 	c.signal()
 }
