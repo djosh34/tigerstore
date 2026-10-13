@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
@@ -113,6 +114,15 @@ func (s *Sim) diskFailed(n *node, err error) {
 	}
 	s.stats.DiskFaults++
 	n.disk.Fault = nil
+	if planted.On("B11") && errors.Is(err, simfs.ErrIO) {
+		// Planted: carry on as if the write or sync worked.
+		n.diskBusy = false
+		for _, j := range n.inflight {
+			n.core.Persisted(j)
+		}
+		s.process(n)
+		return
+	}
 	s.stopNode(n)
 }
 

@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -265,6 +266,8 @@ type node struct {
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
+	// inflight are the jobs of the disk write under way.
+	inflight []core.PersistJob
 }
 
 type link struct {
@@ -622,12 +625,23 @@ func (s *Sim) startDisk(n *node) {
 		return
 	}
 	n.diskBusy = true
+	n.inflight = jobs
 	s.stats.DiskWrites++
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
 	lat = max(lat, n.stallUntil-s.now)
+	leader := n.core.Leader() == n.id
+	if (planted.On("B02") && leader) || (planted.On("B03") && !leader) {
+		// Planted: report the jobs durable before the fsync.
+		s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen})
+		for _, j := range jobs {
+			n.core.Persisted(j)
+		}
+		s.process(n)
+		return
+	}
 	s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs})
 }
 

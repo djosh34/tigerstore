@@ -85,6 +85,9 @@ func (s *Sim) check(res *Result) error {
 	if err := s.checkLeasesExpire(res); err != nil {
 		return err
 	}
+	if err := s.checkWatchersFreed(); err != nil {
+		return err
+	}
 	if err := s.checkColdRestarts(res); err != nil {
 		return err
 	}
@@ -591,6 +594,23 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 	for _, op := range res.Log {
 		if _, ok := op.(*pb.LeaseRevokeRequest); ok {
 			res.Stats.Revokes++
+		}
+	}
+	return nil
+}
+
+// checkWatchersFreed requires every node to hold exactly the watchers of
+// the streams that are still open on it, so closed streams leak nothing.
+func (s *Sim) checkWatchersFreed() error {
+	for _, n := range s.live() {
+		open := 0
+		for _, w := range s.watchers {
+			if w.open && w.node == n.idx && w.gen == n.gen {
+				open++
+			}
+		}
+		if got := n.core.WatcherCount(); got != open {
+			return fmt.Errorf("node %d holds %d watchers for %d open watch streams", n.id, got, open)
 		}
 	}
 	return nil

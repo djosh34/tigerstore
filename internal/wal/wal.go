@@ -26,6 +26,8 @@ import (
 	"strings"
 
 	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // FS is the directory that holds the log.
@@ -78,15 +80,18 @@ func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
 
 // WAL appends to the newest segment.
 type WAL struct {
-	fs      FS
-	seg     File
-	seq     uint64
-	size    int64
-	crc     uint32
-	last    uint64
-	buf     []byte
-	dirty   bool
-	maxSize int64
+	fs    FS
+	seg   File
+	seq   uint64
+	size  int64
+	crc   uint32
+	last  uint64
+	buf   []byte
+	dirty bool
+	// lastStart is where the last valid record of the newest segment
+	// started during recovery.
+	lastStart int
+	maxSize   int64
 }
 
 // HardState is the Raft hard state.
@@ -173,6 +178,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			// A torn tail: the write was never synced, so nothing in it was
 			// acknowledged.
+			if planted.On("B04b") && w.lastStart > 0 {
+				good = int64(w.lastStart)
+			}
 			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
 				return nil, nil, errors.Join(err, f.Close())
 			}
@@ -221,7 +229,7 @@ func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
 			return int64(off), nil
 		}
 		body := data[off+8 : end]
-		if got := crc32.Update(w.crc, castagnoli, body); got != sum {
+		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !planted.On("B04a") {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
 			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
@@ -232,6 +240,7 @@ func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
 		if err := w.apply(body[0], body[1:], rec); err != nil {
 			return int64(off), err
 		}
+		w.lastStart = off
 		w.crc = sum
 		off = end
 	}
@@ -367,6 +376,10 @@ func (w *WAL) Flush() error {
 	w.size += int64(n)
 	w.dirty = true
 	if err != nil {
+		if planted.On("B12") {
+			w.buf = w.buf[:0]
+			return nil
+		}
 		return err
 	}
 	w.buf = w.buf[:0]

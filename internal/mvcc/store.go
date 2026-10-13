@@ -16,6 +16,8 @@ import (
 	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // rev orders changes: main is the revision of the request, sub the position
@@ -243,7 +245,7 @@ func (s *Store) Compact(rev int64) error {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
 		i := k.at(rev)
-		if i >= 0 && k.vers[i].ver == 0 && k.vers[i].mod.main < rev {
+		if i >= 0 && k.vers[i].ver == 0 && (k.vers[i].mod.main < rev || planted.On("B08")) {
 			i++
 		}
 		if i > 0 {
