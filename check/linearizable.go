@@ -58,11 +58,7 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 
 	var tripped, unsupported atomic.Bool
 	m := porcupine.Model{
-		Init: func() any {
-			s := newState(keys)
-			s.sum = s.fingerprint()
-			return states{s}
-		},
+		Init: func() any { return initial(keys) },
 		Step: func(st, in, out any) (bool, any) {
 			if tripped.Load() {
 				return false, nil
@@ -157,8 +153,17 @@ func keysOf(reqs []history.Request) []string {
 // non-deterministic model: an ambiguous mutation forks every state into one
 // where it took effect and one where it did not. It is sorted by
 // fingerprint, so two different sets usually differ in their first
-// fingerprints. Porcupine compares such sets for every cached step.
+// fingerprints. Porcupine compares such sets for every cached step. Every
+// set comes from initial or step, which keep it sorted and free of
+// duplicates.
 type states []*state
+
+// initial is the set holding only the empty store.
+func initial(keys []string) states {
+	s := newState(keys)
+	s.sum = s.fingerprint()
+	return states{s}
+}
 
 // same reports whether a and b are the same state, checking the cheap
 // fingerprint first.

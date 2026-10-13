@@ -48,12 +48,15 @@ type state struct {
 	rev       int64
 	compacted int64
 	// sum is a fingerprint of the state, kept only by the Porcupine
-	// model, where comparing sets of states is the hot path.
+	// model, where comparing sets of states is the hot path. It must be
+	// recomputed after every change: same and states.equal rely on it,
+	// and a stale sum could make two different sets compare equal.
 	sum uint64
 }
 
-// fingerprint hashes the state with FNV-1a. Values count only by length,
-// so equal fingerprints still need equal to confirm.
+// fingerprint hashes the state FNV-style, one 64-bit word at a time.
+// Values count only by length, so equal fingerprints still need equal to
+// confirm.
 func (s *state) fingerprint() uint64 {
 	h := uint64(14695981039346656037)
 	mix := func(v int64) {

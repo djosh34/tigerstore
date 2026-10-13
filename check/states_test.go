@@ -12,9 +12,7 @@ import (
 func TestStatesEqual(t *testing.T) {
 	timedOut := output{err: errUnavailable}
 	after := func(values ...string) states {
-		s := newState([]string{"a"})
-		s.sum = s.fingerprint()
-		ss := states{s}
+		ss := initial([]string{"a"})
 		for _, v := range values {
 			ss, _ = ss.step(input{req: history.Request{Put: &history.PutRequest{Key: "a", Value: v}}}, timedOut)
 		}
