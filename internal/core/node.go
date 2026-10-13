@@ -76,9 +76,9 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
 // *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is
-// chosen by the driver and comes back in the Reply. It must never repeat within one run of the
-// node: a write that timed out can still commit later, and its entry
-// carries its ID.
+// chosen by the driver and comes back in the Reply. It must never repeat
+// within one run of the node: a write that timed out can still commit
+// later, and its entry carries its ID.
 type Request struct {
 	ID uint64
 	Op proto.Message
