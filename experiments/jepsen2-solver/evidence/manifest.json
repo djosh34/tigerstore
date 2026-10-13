@@ -1,0 +1,31 @@
+{
+  "archives": [
+    {
+      "path": "old-parser-attempt-38444408855.tar.gz",
+      "sha256": "e717f2928616ef7d7a6f2412fdb7ef9aa68b68bf0187be0e689dec9771f73b38",
+      "bytes": 2577420,
+      "member_count": 4546,
+      "members_manifest": "old-parser-attempt-38444408855.members.json",
+      "members_manifest_sha256": "b4302283bef5a5ed44d844288ee0de59d679ec0a6084a407180a261bb744acdb",
+      "executed_commit": "29e1e7fcdc1d7c87acb3f805ef1d120a3c87aa8f"
+    },
+    {
+      "path": "old-success-38444996427.tar.gz",
+      "sha256": "decaba2acf1a937d122918e10174553a4df59356ba12b87d0e9582ed79db9897",
+      "bytes": 6288123,
+      "member_count": 6005,
+      "members_manifest": "old-success-38444996427.members.json",
+      "members_manifest_sha256": "51ed8d004443f789111324083b3f7378973cec5183c64f4a68d06176871b43bb",
+      "executed_commit": "89a97a0487a5a904f6b27dc9d9e1b990590cabff"
+    },
+    {
+      "path": "fresh-first-success-38445539009.tar.gz",
+      "sha256": "58153e0a4e49d0a4456e5ddf00f01d2985a33f3ee723ce3d62c7ee8655d7576c",
+      "bytes": 899851,
+      "member_count": 698,
+      "members_manifest": "fresh-first-success-38445539009.members.json",
+      "members_manifest_sha256": "5df5d7fd398bbdbc52a42840b931f08ceecb1b37188e92bfca0bba4792255270",
+      "executed_commit": "82989021aabe01bd06a9af26b291e04fe772ed8e"
+    }
+  ]
+}

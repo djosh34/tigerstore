@@ -1,0 +1,114 @@
+[
+  {
+    "case": "register-solver-3",
+    "key": 6,
+    "f": "write",
+    "id": "2439",
+    "after_info": true
+  },
+  {
+    "case": "register-solver-3",
+    "key": 6,
+    "f": "write",
+    "id": "2441",
+    "after_info": true
+  },
+  {
+    "case": "register-solver-4",
+    "key": 0,
+    "f": "write",
+    "id": "279",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-4",
+    "key": 0,
+    "f": "write",
+    "id": "281",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-5",
+    "key": 0,
+    "f": "write",
+    "id": "313",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-5",
+    "key": 4,
+    "f": "write",
+    "id": "1690",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-5",
+    "key": 2,
+    "f": "write",
+    "id": "1023",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-7",
+    "key": 28,
+    "f": "write",
+    "id": "2881",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-7",
+    "key": 3,
+    "f": "write",
+    "id": "316",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-7",
+    "key": 3,
+    "f": "cas",
+    "id": "318",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-7",
+    "key": 13,
+    "f": "write",
+    "id": "1361",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-1",
+    "key": 5,
+    "f": "cas",
+    "id": "2315",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-6",
+    "key": 18,
+    "f": "write",
+    "id": "1880",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-6",
+    "key": 13,
+    "f": "write",
+    "id": "1312",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-6",
+    "key": 13,
+    "f": "write",
+    "id": "1313",
+    "after_info": false
+  },
+  {
+    "case": "register-solver-6",
+    "key": 13,
+    "f": "write",
+    "id": "1314",
+    "after_info": false
+  }
+]

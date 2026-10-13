@@ -1,0 +1,3495 @@
+{
+  "executed_commit": "82989021aabe01bd06a9af26b291e04fe772ed8e",
+  "members": [
+    {
+      "path": "artifacts/register-solver-0/case/0/attempts.json",
+      "sha256": "c3030ca4c37ef873b7f05f758b783502377ad82997adf9b93877907a8c2cfc8b",
+      "bytes": 713
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/clojure-validation.edn",
+      "sha256": "2ad1539e5264a960a8234a19860b67e2e10cbf91ff621aa6731980aac9cecfc4",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/clojure-validation.log",
+      "sha256": "2ad1539e5264a960a8234a19860b67e2e10cbf91ff621aa6731980aac9cecfc4",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/python-validation.json",
+      "sha256": "05e0a6b3f1c7cc54f749d9fccb2db1f2fade0b76214b151bc02b7d5e10f8912a",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/python-validation.log",
+      "sha256": "05e0a6b3f1c7cc54f749d9fccb2db1f2fade0b76214b151bc02b7d5e10f8912a",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/result.json",
+      "sha256": "92d852279a077092581827e76ea47e5201f8f25cbb64a7e00879c78093104b39",
+      "bytes": 2031
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/solve.json",
+      "sha256": "fb99095400b2efda122d8d2866c942d96d9882be3697b29176b3e8f68f277aab",
+      "bytes": 1337
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/solve.log",
+      "sha256": "b5aa24eb12568a6adbf3824d68f424184aa65ab10717f0748dd169e02311d7b2",
+      "bytes": 1472
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/witness.edn",
+      "sha256": "8bf1ecc8f9fee394a23de8cf9d2e969e724fea8ff749bf65573acda57b230d56",
+      "bytes": 108823
+    },
+    {
+      "path": "artifacts/register-solver-0/case/0/witness.json",
+      "sha256": "0ce079f78c5ccb83c22d8ce6814c37f0b9b63d84c81d6bec3a3a7fe5f6896b58",
+      "bytes": 231117
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/attempts.json",
+      "sha256": "e542d908f79c76cc17c24f819a9c085001a0185f4b0fccd287249d5a32f6071a",
+      "bytes": 718
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/clojure-validation.edn",
+      "sha256": "56e4772105f995b20bcbe8b78d6a670fd98dd84fc543eead96a202358d758a6f",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/clojure-validation.log",
+      "sha256": "56e4772105f995b20bcbe8b78d6a670fd98dd84fc543eead96a202358d758a6f",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/python-validation.json",
+      "sha256": "6636fd185fe7771545f864c3d48bba880bf3a77e368632cdfaf9f0d9592fb494",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/python-validation.log",
+      "sha256": "6636fd185fe7771545f864c3d48bba880bf3a77e368632cdfaf9f0d9592fb494",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/result.json",
+      "sha256": "bfa843b1f3cdca9e8125a1305ec20b6d693afc13c0d676f813a2b4d8cbf03950",
+      "bytes": 2038
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/solve.json",
+      "sha256": "8bd4a1808a5639e55eb189a58fee399391254293d0c7004ce30b892cf5c1798c",
+      "bytes": 1344
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/solve.log",
+      "sha256": "b1b9e877e4b26a9f1391e549e50acf14fe2db2c044d8d2433e3dd7decd88fbf8",
+      "bytes": 1482
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/witness.edn",
+      "sha256": "1f7e41a54458110152a1457bd872cb85cf5aa930986eef84e6fc2d0f5671a50e",
+      "bytes": 110857
+    },
+    {
+      "path": "artifacts/register-solver-0/case/1/witness.json",
+      "sha256": "9ee00c052c71b5284f2f346f04dc055950357e0deeb9a96098f600270713788e",
+      "bytes": 231736
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/attempts.json",
+      "sha256": "870256419eda734bfae070365342ed55ac75001a67d03782b2a3965fb4a7fd18",
+      "bytes": 514
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/clojure-validation.edn",
+      "sha256": "5501f409ecc34bf31d35fd201e4192f19902a9f64094cbe32953eb38cead5c19",
+      "bytes": 244
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/clojure-validation.log",
+      "sha256": "5501f409ecc34bf31d35fd201e4192f19902a9f64094cbe32953eb38cead5c19",
+      "bytes": 244
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/python-validation.json",
+      "sha256": "68d70cb10a58a2dbb806d391f318b02b97d273d5f2964a802878b4ff6cfcdbc6",
+      "bytes": 276
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/python-validation.log",
+      "sha256": "68d70cb10a58a2dbb806d391f318b02b97d273d5f2964a802878b4ff6cfcdbc6",
+      "bytes": 276
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/result.json",
+      "sha256": "79ea5d5664fa56ded5562972bfeab24a9f24d44cc76a24ec8233410dcda7521a",
+      "bytes": 1822
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/solve.json",
+      "sha256": "ccd0b95a67260a87ec8192bc14cf092e8bb9783090a01e1b42bfbe984a2619d5",
+      "bytes": 1136
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/solve.log",
+      "sha256": "9899d15d367ee81136b534cdb90c2da0161dc0e6bb118c691c4a43158a431767",
+      "bytes": 1271
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/witness.edn",
+      "sha256": "d807d78c6a103c6045184238d65c79115e7c98922f7b2ab06ffda29bc5a4407d",
+      "bytes": 5281
+    },
+    {
+      "path": "artifacts/register-solver-0/case/10/witness.json",
+      "sha256": "350096545e9ab90275ef17affdbff8cc2d7a565583acace41b1232ad00df2005",
+      "bytes": 9505
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/attempts.json",
+      "sha256": "08eac18181151fa88696bd05828432e5e0c9593ad7764cdfa33677300f71e8bf",
+      "bytes": 661
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/clojure-validation.edn",
+      "sha256": "bacbf531ef3a3c2952a94b78398083314efb74d7a422f62a54399dc32c12198a",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/clojure-validation.log",
+      "sha256": "bacbf531ef3a3c2952a94b78398083314efb74d7a422f62a54399dc32c12198a",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/python-validation.json",
+      "sha256": "a3a8b6166d2ddb2e390d1f4ef75132cf7713cb28d9708b28cdae73483b071220",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/python-validation.log",
+      "sha256": "a3a8b6166d2ddb2e390d1f4ef75132cf7713cb28d9708b28cdae73483b071220",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/result.json",
+      "sha256": "621c4ed95ffb5333a46cfc6139fed03887bd1a59e13b1098056dd1d6620ff215",
+      "bytes": 1979
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/solve.json",
+      "sha256": "120a390ca3f95073fe7973111bbccdd50f91f045e6496102e7c51dfe065c7c44",
+      "bytes": 1285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/solve.log",
+      "sha256": "39b389939b5e0cd92d0ff158a94b6d344fbaa4e797db273575739bb186a9eb76",
+      "bytes": 1420
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/witness.edn",
+      "sha256": "902b3660b3189db0d2cf31dbffa31907df8556923564f618e74ca390ed95c6c8",
+      "bytes": 110858
+    },
+    {
+      "path": "artifacts/register-solver-0/case/2/witness.json",
+      "sha256": "5d42cfd123e6d936d1889909d5fe29538c628970f699166fb7e0049b24f154ce",
+      "bytes": 231517
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/attempts.json",
+      "sha256": "6f1aad8ee2d5da8c9b18eb558e92d3cb9f0d7a48732fbefcfa5e240297cc5035",
+      "bytes": 1098
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/clojure-validation.edn",
+      "sha256": "0170e7f6bf83e109df27c2788a82e95790cb66ca62bf0b17d529d88d6701d09c",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/clojure-validation.log",
+      "sha256": "0170e7f6bf83e109df27c2788a82e95790cb66ca62bf0b17d529d88d6701d09c",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/python-validation.json",
+      "sha256": "8751e889e1e98e632f0f1d320e5eac95ce806147b4345b1246578bd7ad614c0c",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/python-validation.log",
+      "sha256": "8751e889e1e98e632f0f1d320e5eac95ce806147b4345b1246578bd7ad614c0c",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/result.json",
+      "sha256": "e83d9085e84f9e8dcea656a3d58c70bac491b3456cec20d35c6c977f6be797dc",
+      "bytes": 2417
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/solve.json",
+      "sha256": "522a4a92cee24f76533689dd947e9f6dbd8f43af5e7f9523ee9ec9c97f171a66",
+      "bytes": 1723
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/solve.log",
+      "sha256": "46b91a99e08630e4c4f6ea5b2c8728c43dc57bbb03aacd064e4f7c85d58e442a",
+      "bytes": 1858
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/witness.edn",
+      "sha256": "85d0980690038a1aacbde0d23ef289fea3051daba9ce58dd2824ba1488ccce49",
+      "bytes": 112343
+    },
+    {
+      "path": "artifacts/register-solver-0/case/3/witness.json",
+      "sha256": "3e67fef12f0d31aae225ca5a78aac320009f057929b73f97b9df3b4672c6d3c2",
+      "bytes": 235578
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/attempts.json",
+      "sha256": "4819a224a92ac1c27756966d5afb78893983262e515215260844f0fce4cce5a9",
+      "bytes": 721
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/clojure-validation.edn",
+      "sha256": "8f4777e2fade082cac7fec172ded5e964539ddd90c2c4070db89455a15b044b4",
+      "bytes": 251
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/clojure-validation.log",
+      "sha256": "8f4777e2fade082cac7fec172ded5e964539ddd90c2c4070db89455a15b044b4",
+      "bytes": 251
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/python-validation.json",
+      "sha256": "93b32e212c1e879358e33a0f7a8cfbcd3dc8daacc90edc5fc10c5719666bb79d",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/python-validation.log",
+      "sha256": "93b32e212c1e879358e33a0f7a8cfbcd3dc8daacc90edc5fc10c5719666bb79d",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/result.json",
+      "sha256": "aed31cb3b3be007b47ea82776690da811d0333c0e400b7a008bc54c1e210c2e4",
+      "bytes": 2042
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/solve.json",
+      "sha256": "3f9771ddfa3c89564200d4417c1cf04eebcc07f579d160e27d45f4fc47a937e9",
+      "bytes": 1348
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/solve.log",
+      "sha256": "f293f37c11e79a82f6a55c9450cf7fc7ce011079b798d251a94ea6600a5f28ea",
+      "bytes": 1487
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/witness.edn",
+      "sha256": "ec071a440c4ef7bb1e0d1c56b531533d1f15d3a1a45f7ee6b55420de0b905e95",
+      "bytes": 112793
+    },
+    {
+      "path": "artifacts/register-solver-0/case/4/witness.json",
+      "sha256": "e0ddc98ef62b4cc7f96768305b114203ebfe1a71a622f904d69a75ec1db88d09",
+      "bytes": 237386
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/attempts.json",
+      "sha256": "8332aad258c8fb34b750171540a6ae15fc4a6690eea7da5abb709a052f1d7089",
+      "bytes": 691
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/clojure-validation.edn",
+      "sha256": "c9d7bbfd8998de0cf204bdd9950f718439ea928b14584390bd92ca30bd6857d8",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/clojure-validation.log",
+      "sha256": "c9d7bbfd8998de0cf204bdd9950f718439ea928b14584390bd92ca30bd6857d8",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/python-validation.json",
+      "sha256": "508de4793da834c3a7e7dfb5c3525eaee8d9b1a04beb423a4af4d740703cfcd1",
+      "bytes": 286
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/python-validation.log",
+      "sha256": "508de4793da834c3a7e7dfb5c3525eaee8d9b1a04beb423a4af4d740703cfcd1",
+      "bytes": 286
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/result.json",
+      "sha256": "9dd53caa466416939b3d63117eb2837441024d7949b8f68418510a90173535cf",
+      "bytes": 2014
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/solve.json",
+      "sha256": "7c2b76b66754140264cd2c464ae22ba2458375f8a582ef5eb423747efdeadcf8",
+      "bytes": 1319
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/solve.log",
+      "sha256": "a9f0a1744194febf086ee19f833ab263a46f5162b5dda0be0ac8498821cecc63",
+      "bytes": 1458
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/witness.edn",
+      "sha256": "fb03f69446c0e18397f531c69e0831394859316297e23f940073e07bf9aeeee5",
+      "bytes": 112463
+    },
+    {
+      "path": "artifacts/register-solver-0/case/5/witness.json",
+      "sha256": "02d3a8c9c669ab060646db87f77bf7002c56dfbc8abed8f1ff8cf14db5a3c6e7",
+      "bytes": 234071
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/attempts.json",
+      "sha256": "d84455d23f93c8f237fd7e5945ca316d5b17d57239c2feca383066b3aaf35507",
+      "bytes": 692
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/clojure-validation.edn",
+      "sha256": "7e63e9bfec04b7d0e488f7e0087ab73c0c4e1e0004c1b6d42cd676dd80c8aae0",
+      "bytes": 251
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/clojure-validation.log",
+      "sha256": "7e63e9bfec04b7d0e488f7e0087ab73c0c4e1e0004c1b6d42cd676dd80c8aae0",
+      "bytes": 251
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/python-validation.json",
+      "sha256": "3b48c33d6bb9e28e278352b6771c741034d71469c5b4f4c76b64aad5b6c37915",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/python-validation.log",
+      "sha256": "3b48c33d6bb9e28e278352b6771c741034d71469c5b4f4c76b64aad5b6c37915",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/result.json",
+      "sha256": "2d1239ea7ab84986026d156cc6fe9b1a95ca05bcb089d31b2c3baf2079825b16",
+      "bytes": 2014
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/solve.json",
+      "sha256": "1f59f63697ada878fc6cb3a3252afc5d5592262a9a2a739e55edc7b9912a6182",
+      "bytes": 1320
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/solve.log",
+      "sha256": "06eb284fb074d9c02c1fc65fba73976795280536bbe4da94ef24345c6a22cd1e",
+      "bytes": 1459
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/witness.edn",
+      "sha256": "9e2913d3be9254707bb148d6143d5d068dd72c92a63cf39b8d294aa06f6b26d0",
+      "bytes": 112851
+    },
+    {
+      "path": "artifacts/register-solver-0/case/6/witness.json",
+      "sha256": "418df39a6a24919210ef416fe26ab6d2e2bfef6135f816d011006db4f3466af4",
+      "bytes": 238166
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/attempts.json",
+      "sha256": "f87df0f6af55cda6e91ac7c037579478c573c4af0172eb4da10a342c9770f639",
+      "bytes": 661
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/clojure-validation.edn",
+      "sha256": "9bc042bb75ac3013b04b551ef50d553e24db8b74029159c0da70f50f13e73c4b",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/clojure-validation.log",
+      "sha256": "9bc042bb75ac3013b04b551ef50d553e24db8b74029159c0da70f50f13e73c4b",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/python-validation.json",
+      "sha256": "7f2b56e8f14c8b52cfb57694cdcedc27da025eed3cdfa2f8796db8c17bdb07a1",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/python-validation.log",
+      "sha256": "7f2b56e8f14c8b52cfb57694cdcedc27da025eed3cdfa2f8796db8c17bdb07a1",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/result.json",
+      "sha256": "1f2191c9685a28f05cdc98d8a89fd4e2d721d7f90c8fcca8fb4f188f8b268f04",
+      "bytes": 1980
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/solve.json",
+      "sha256": "f84442f390e491da740e1c0f8ab86b42b14aab452da3b54a1fe4cfc7172d6f71",
+      "bytes": 1286
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/solve.log",
+      "sha256": "d930202b5c34f5991d9dbb758db661ad4530c34539537b65bb2b84b0353f31de",
+      "bytes": 1422
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/witness.edn",
+      "sha256": "84ff189161f161c390b0016e11c58b12a7b8d57d43f8eabde15fc00dec5534fc",
+      "bytes": 112278
+    },
+    {
+      "path": "artifacts/register-solver-0/case/7/witness.json",
+      "sha256": "19ce2abd65adbc1c5202866dc9dc1d00423c938a1dceb575c0628a9060bed2fe",
+      "bytes": 233744
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/attempts.json",
+      "sha256": "b674dfd8864d21f35f9be0b764e6c8eb9cec5ee87912ef2ef934263d34bea4ee",
+      "bytes": 721
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/clojure-validation.edn",
+      "sha256": "44768ff999e982114a7d6c6c9df9682eadaba2ae6a58a86d8cc406100e6ce972",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/clojure-validation.log",
+      "sha256": "44768ff999e982114a7d6c6c9df9682eadaba2ae6a58a86d8cc406100e6ce972",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/python-validation.json",
+      "sha256": "0775557a73ef5e90a38d04ca9c0a0f493992b7e0b2837d36b566fcf675c9f94e",
+      "bytes": 286
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/python-validation.log",
+      "sha256": "0775557a73ef5e90a38d04ca9c0a0f493992b7e0b2837d36b566fcf675c9f94e",
+      "bytes": 286
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/result.json",
+      "sha256": "6259636b0a6e99e42a68e3e67badde67c306cbe075c13d91d737c81269f98aa2",
+      "bytes": 2043
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/solve.json",
+      "sha256": "cefd28a5e38b208a73dff0b30d54b2bd2ecd96520a6634a28b98da0b1abdc347",
+      "bytes": 1348
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/solve.log",
+      "sha256": "de9e3096e3991758d619ad5a094b5ada900859e902255f459b1f9faae27e610e",
+      "bytes": 1487
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/witness.edn",
+      "sha256": "b2bb2a892b8d3eafed2d937f27a35fa69ec65f68484a38220cd865356c5217fd",
+      "bytes": 113135
+    },
+    {
+      "path": "artifacts/register-solver-0/case/8/witness.json",
+      "sha256": "e9fea830755070b2ca05763e86216f636617400992b1babb94c4a6f7a422af80",
+      "bytes": 236929
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/attempts.json",
+      "sha256": "91f5a44edcc97e79d835d8ebc63f981a0efad7d22dd9a0d5cdf57b4faf86f31a",
+      "bytes": 689
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/clojure-validation.edn",
+      "sha256": "560010761b87d325930ab92a0ea0ffd672d193128a53927f645a692328f5f625",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/clojure-validation.log",
+      "sha256": "560010761b87d325930ab92a0ea0ffd672d193128a53927f645a692328f5f625",
+      "bytes": 252
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/python-validation.json",
+      "sha256": "704db9498ba0e519115c0e5c0859b1e68f0bec68dd247b6f91984eb27f228ab5",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/python-validation.log",
+      "sha256": "704db9498ba0e519115c0e5c0859b1e68f0bec68dd247b6f91984eb27f228ab5",
+      "bytes": 285
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/result.json",
+      "sha256": "a2ac8f2aa24cabd81e72554cf396dc9d3364c0f4de7ab68ebd6a602ed4bb75f7",
+      "bytes": 2010
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/solve.json",
+      "sha256": "4aef6257734d61ca006e85c763d902d8410604412eca00044e9670522e8e92f3",
+      "bytes": 1316
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/solve.log",
+      "sha256": "ebe5c627abd2904bffd5730d45d1f3e3ce4c79219460029dc6ed043efa8a42da",
+      "bytes": 1454
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/witness.edn",
+      "sha256": "a16c4151c0d5dfb6d5f2ad39d28e52240c1d997f9ab6bbfa281a4b24d59c291c",
+      "bytes": 112650
+    },
+    {
+      "path": "artifacts/register-solver-0/case/9/witness.json",
+      "sha256": "e5a7d110de527610f5c8312ee023e15b4b099f2b00801192754ef551cdf2b7e7",
+      "bytes": 235206
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/history.edn",
+      "sha256": "030edc69e867246543542bf53f4a2e6d4ac84d04d49c17b456244571ee1f0f51",
+      "bytes": 374456
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/0/history.edn",
+      "sha256": "95b74f08ba0830baee0a67a8a9b1e7f6170cba57e373ebe734329dbbfbe681ad",
+      "bytes": 38079
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/1/history.edn",
+      "sha256": "a505b5bc28745754a60731c89ffe4e9a8c8ef7544f97c9ab72bf9847daef299e",
+      "bytes": 38362
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/10/history.edn",
+      "sha256": "25984d62ed34fceec26f5501ed4e3fdfc78253fb97c2e6d2d52b95b606d0d305",
+      "bytes": 4379
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/2/history.edn",
+      "sha256": "7e58b5d017b6ccf494250848cd7c6e02aab821192f38a4c1c3186d3cc645a947",
+      "bytes": 38478
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/3/history.edn",
+      "sha256": "c5f090c6360ce46a1e40b474899b7de33f80f172882022357e8949fc7b2f7237",
+      "bytes": 39483
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/4/history.edn",
+      "sha256": "97ff725ea5a1411752de7a899a4a9d8ab7c3ec07808c72623c09c2b41346fb37",
+      "bytes": 40583
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/5/history.edn",
+      "sha256": "3b6f033cd8fa71df3b45158d4e788efde20a36f4461af9c208270228f2b76350",
+      "bytes": 39806
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/6/history.edn",
+      "sha256": "a9840a1b102bb2fabba86ebb3b7250530d55ff2c06d26fb9fb6d857d87df0ff0",
+      "bytes": 40429
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/7/history.edn",
+      "sha256": "816ad3ad63f58f8f6d73c9a6e97075414b9d275a6852a12135fd03209649f93b",
+      "bytes": 39235
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/8/history.edn",
+      "sha256": "a92eebb850678c3cdd9f1b0d5c63165d82d9c463e7f9e3c43dd7c13a5bc4d7a5",
+      "bytes": 40522
+    },
+    {
+      "path": "artifacts/register-solver-0/case/input/independent/9/history.edn",
+      "sha256": "700b7f44e9465377f4e0b3c9e417ebab93f5f1cb1236dd1b9eea56e1c650a093",
+      "bytes": 39470
+    },
+    {
+      "path": "artifacts/register-solver-0/case/projections.json",
+      "sha256": "eec7b9687cc4b8b4c5b10730c9608e946ff817ee96542bdb73b97e296659ef29",
+      "bytes": 3381
+    },
+    {
+      "path": "artifacts/register-solver-0/case/source.json",
+      "sha256": "3898cffda2084824ec14325a5a8c639f1ecebbca2f6cf14fb546d0a40fd43691",
+      "bytes": 7775
+    },
+    {
+      "path": "artifacts/register-solver-0/case/summary.json",
+      "sha256": "a94e8a6c54a94b3b010e09f3d6165de8dc81aab71bf73b83ce07155403aee875",
+      "bytes": 25197
+    },
+    {
+      "path": "artifacts/register-solver-0/classpath.txt",
+      "sha256": "456bb4ba81bf989608840f652027dc5c31ac7e8506b9a3fee58b7d70e328b7cd",
+      "bytes": 1851
+    },
+    {
+      "path": "artifacts/register-solver-0/manifest.json",
+      "sha256": "6f65c9006e5df106bf248530c09987d1284e27d6ef671608943d847f720ed491",
+      "bytes": 8221
+    },
+    {
+      "path": "artifacts/register-solver-0/model-source.json",
+      "sha256": "90559577394765ad0466ca4236d819b2aa20713c4c85a6be62f5845e810a611b",
+      "bytes": 192
+    },
+    {
+      "path": "artifacts/register-solver-0/pip-freeze.txt",
+      "sha256": "8581eaa20822bee84b7cec8dbd33fd0ef731223cb13a407d55575f5ef30ee168",
+      "bytes": 78
+    },
+    {
+      "path": "artifacts/register-solver-0/runtime.txt",
+      "sha256": "8242bf8a96cb051a5e59c7c833733c556a3767d83e6e0c312324b589d34ced0d",
+      "bytes": 605
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/bad-info-cas/attempts.json",
+      "sha256": "1c8b2bb1c2be4ea2ffe385ff7967aafe4987b9e8e4cb9189acc03a2cf996ad08",
+      "bytes": 1074
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/bad-info-cas/full.edn",
+      "sha256": "2e2393c7f37a0a742c9db0e6d895bdd2982436463ff9be6af482bf52be2183b6",
+      "bytes": 326
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/bad-info-cas/independent.edn",
+      "sha256": "ce4fabd67f7b2e04c9a02cab016057d2b78e47004f7f9ac5ae14ce5eabe2a379",
+      "bytes": 302
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/bad-info-cas/solve.json",
+      "sha256": "8e6cd11f35885244abb35feaf2f6342bb9027a3f3ced0d420c7636d74216368f",
+      "bytes": 1582
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-compare/attempts.json",
+      "sha256": "dd02d9078f1a973db1f961864de172c89ad75566c5f900e67e385a62629355da",
+      "bytes": 228
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-compare/full.edn",
+      "sha256": "01b8ec663f1739e3a3a9738a31659a3ef81836c63eea7ca92bb39469d42f62bc",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-compare/independent.edn",
+      "sha256": "2005ea918362ee413101566087f4ca0a4afeb12dafa529e10480eddf5ac6109f",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-compare/solve.json",
+      "sha256": "3c1fb7dc6e7e35ad83a37a34fae4af7c9a5805baf55062995f2b8e5c312f9650",
+      "bytes": 736
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/attempts.json",
+      "sha256": "7af214b747021a6d56fca0303c8a2557fda8e8c61809278efbb70b6c6c6aabc8",
+      "bytes": 437
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/clojure-validation.edn",
+      "sha256": "3f867fae468bf8ab4c6f8da2b76067c896779eccaa9aa3edc4dc0beebde70a61",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/full.edn",
+      "sha256": "f4c0f2a0536cc380cf1686d14e32d71aefd9e786a91e55a10054784fb4f7d7b8",
+      "bytes": 114
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/independent.edn",
+      "sha256": "a73dac9945f910ae7b0b7a4ca262aaa62ac8cb7c69175ba370bb630dfb6800d0",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/python-validation.json",
+      "sha256": "bcd99159866fe0bb18d742439dac8145cfbcfe344009f0831c859edb9296c431",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/solve.json",
+      "sha256": "0f7e855b80424cad6159f5ad6fd2c3e1ed5bccda6c2c959551d01ef9bd59e501",
+      "bytes": 989
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/witness.edn",
+      "sha256": "c601bfb77fdf577940b8541ea6a5f631f0dad57cce7ee082f096ade54601e068",
+      "bytes": 679
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/cas-nil-compare/witness.json",
+      "sha256": "66f4bc701c789c497ea8ec1b5469181094730299fba8fd3e638735bccad1f804",
+      "bytes": 1391
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/clojure-args.json",
+      "sha256": "12256054a9ebb4311f02a3e7a711587f1118b3621d7d0337ef0a4ed4c0ffe11a",
+      "bytes": 7520
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/clojure-reject-args.json",
+      "sha256": "97e2a31d10c374da83d495b526349abe7852640f70ecbe1dcff4ca873302ba95",
+      "bytes": 1396
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-000/attempts.json",
+      "sha256": "7d481a9e52085a1a4d75d07833c3e095cb18561c06f83f896cb7220a1526538c",
+      "bytes": 230
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-000/full.edn",
+      "sha256": "320f36a4f629fc3fb2d76ac48903422ec8b19e1387e34ce52035779a53ae55bb",
+      "bytes": 214
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-000/independent.edn",
+      "sha256": "a02ace1889c97e961a64fcecf7133091431860c921cae563c936479b79b6d65e",
+      "bytes": 198
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-000/solve.json",
+      "sha256": "60c1dfae80e8e7971a75d1f550e68c3a2e2ed70028bb3f641ef5912bd958da98",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-001/attempts.json",
+      "sha256": "e31c9183ec123d4a727c8ab2e4809238b6b7bb40f3f2f30f48564937e306274b",
+      "bytes": 230
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-001/full.edn",
+      "sha256": "da63008e11928101ad0ba959a1a51094f52cd96708c08d27d504312f60526e2f",
+      "bytes": 544
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-001/independent.edn",
+      "sha256": "6ffdac7dbb3bcaf6ab10883b095eaabfb30a0b0e15f27ea598a21e88c05c405f",
+      "bytes": 504
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-001/solve.json",
+      "sha256": "b27655703de7b38c243a697fd78cd30a5c2cd5fe49d87e97659e61db9b1ef441",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-002/attempts.json",
+      "sha256": "aaf064250b8d7cdc4f3e0ac20d7c9388ee1be1d4a810fa191ac17b0741b72ff6",
+      "bytes": 230
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-002/full.edn",
+      "sha256": "d5c67c8102a86469f2dffd6fde979def76900e0dfb26167b74a0cc48fa108b88",
+      "bytes": 444
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-002/independent.edn",
+      "sha256": "9131d6d7dca9fcbe95b455ea7d7f914943f00f50cb994d615450aad7238646de",
+      "bytes": 412
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-002/solve.json",
+      "sha256": "346c90ac715e52f33f1f8d051ad302333b531184dde301ca76ace17bb5875577",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-003/attempts.json",
+      "sha256": "ec76233b548ef75c64a733be5cac82253bc4d36a0342d1377576759b04b6d858",
+      "bytes": 224
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-003/full.edn",
+      "sha256": "732f7f130b43cf1de5e24f6a9e81ac5565286aecfa2493be20e2fc21acfae9f1",
+      "bytes": 330
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-003/independent.edn",
+      "sha256": "3a9ff8a744ae42d49a45d443d8570d8a107542fab8fac659caea628f483e339b",
+      "bytes": 306
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-003/solve.json",
+      "sha256": "1a0f1791413ed7a5cf0472411c7ec926ba87c8c9486cfb8e13be08451796b173",
+      "bytes": 732
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-004/attempts.json",
+      "sha256": "bbf6595e81782cde6c54ccac58469d62712383869007e5adb0ca98af8c4e8c0f",
+      "bytes": 385
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-004/full.edn",
+      "sha256": "7c4525814120d3c4756583b04baf75667ba747a5df1e5bfb98c5d7f991f70495",
+      "bytes": 438
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-004/independent.edn",
+      "sha256": "fed96e67b9a4f5e2b0323ded636603035b718dc4e215102954e28f28a6ee9ed4",
+      "bytes": 406
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-004/solve.json",
+      "sha256": "0298b029e110dc226eabc9fa46ee2d5ec1a6b943a25b0e920bddc88c357925d3",
+      "bytes": 893
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-005/attempts.json",
+      "sha256": "733c83f83ce389e3644827fabaafea3361176b8c4a87678f6f4f208559582741",
+      "bytes": 229
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-005/full.edn",
+      "sha256": "899008c900314dd3c47591c67d352f533e6962b7f2dcfea8c4cc353837221aa5",
+      "bytes": 336
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-005/independent.edn",
+      "sha256": "80b4c5c047c117e20b7517a15f0f55c307a6957a0114b5ec8e6969548285d18e",
+      "bytes": 312
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-005/solve.json",
+      "sha256": "696627411a78fb03b982679d26f296a4bf6285669fe2336c0672822962e5435f",
+      "bytes": 737
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/attempts.json",
+      "sha256": "e81bc38f8e7776f870567b90f4073102994c31373bc309dc54b060b489fcb1b2",
+      "bytes": 590
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/clojure-validation.edn",
+      "sha256": "bc78e0186b499795897fe543d63b3e3c7e945ef4203f6f70d9ab3298c41ff2c2",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/full.edn",
+      "sha256": "9b146becc4c76e3a3d275a41f4e0c96ded507cde2e76e8ebb42780f6e512b2d1",
+      "bytes": 114
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/independent.edn",
+      "sha256": "85745d115fe680ac28d4ddc84dc9d7f0b09be6f0031abfa8e3c44bab11678e77",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/python-validation.json",
+      "sha256": "4e6ef9f6972e056daa58110df144c0decf9f93b10908474b5444b05c91a97eb2",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/solve.json",
+      "sha256": "19b37469b43d7c5fae18f6e42f9b938ce71ca75c96112e85c2e2158c6d4f1181",
+      "bytes": 1142
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/witness.edn",
+      "sha256": "190c798d46863f60fa685d693bdff7bba6b378775d0f259b0f2e07913cfb7ba5",
+      "bytes": 613
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-006/witness.json",
+      "sha256": "c193e88d291d8b9bf156c78525af01172eae189a7d0f733ebb1941b1c2c51c2f",
+      "bytes": 1259
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-007/attempts.json",
+      "sha256": "aeafaf7d0b573167b103b46d96839e9d43ff2d152f0e46c7c247d0c0527dd625",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-007/full.edn",
+      "sha256": "0509c334c71bc6a8b66e0122f68e329e8cd4195753d01422f53c85194bb77b8b",
+      "bytes": 556
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-007/independent.edn",
+      "sha256": "770d24e6062f7dc4f6d6331dfd8e0573d1299a0f62ae56ee609160fb5d06a2c8",
+      "bytes": 516
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-007/solve.json",
+      "sha256": "a591b32755c7ca1dec96884d320514bbaa51f7f34fd65a6756b19829f1977115",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/attempts.json",
+      "sha256": "2a9871b433e016c04748331acbccb0e07f4cb520d27a211bee4571e4a47ee5d3",
+      "bytes": 1005
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/clojure-validation.edn",
+      "sha256": "d664107904487b42cdbf60206c6b8a2f21fb4d88979655ff807b2a937866745f",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/full.edn",
+      "sha256": "9c9638279962253cac06957f6994435ab3a2f335951c296ad8d6d54ada9a903c",
+      "bytes": 220
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/independent.edn",
+      "sha256": "64d08a617253856ee21a755d38fbf31c29c9ce04ffec37358e52f6b5cf7d2773",
+      "bytes": 204
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/python-validation.json",
+      "sha256": "3401b46bfbaebe3a48db1537455f1fb69f17e489227406621d0d87ae9d8f0933",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/solve.json",
+      "sha256": "9d33e0297cf3d4d327bcf85959a442c6aab8576f1c5b1e5b7614d40f1e7cd213",
+      "bytes": 1557
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/witness.edn",
+      "sha256": "297557a487e9d531b19951b8ab0844ecbce06eda44f542dc397d8694907b9e89",
+      "bytes": 1010
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-008/witness.json",
+      "sha256": "f5b82499285594aa9c3c82bb510329d2374daa5db1e73b4cfb7429a8b496812a",
+      "bytes": 2144
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/attempts.json",
+      "sha256": "1513a33cb6fe52b3dd202a0e4265e8554f46c6237b06ab7a6a2a4a8823f0dcd2",
+      "bytes": 517
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/clojure-validation.edn",
+      "sha256": "5540682d6f46c05ff0deca00b4c90b352c12cba1b184984f720edc9cd22899e3",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/full.edn",
+      "sha256": "e4ca043c41ffe09fd1ff01f499e72e298518ea0e35e79834872c04ceb7192ea2",
+      "bytes": 108
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/independent.edn",
+      "sha256": "6266ad6bef9402dbf23c7b5c5927c6b41d81dc0b2ee7c0b1569f4a72288c4060",
+      "bytes": 100
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/python-validation.json",
+      "sha256": "f957dba6d868fa250803f4fce214dcc3cc5de4f27f7129c471addfab7948f357",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/solve.json",
+      "sha256": "aa102d2fce586490c5df1d1f3061b33cee000621f1c08c5a081ca4afcf10a4da",
+      "bytes": 1069
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/witness.edn",
+      "sha256": "74f8794b370eed7ac4757f05cc088d5c487c364b8b0cba35c4a6afb249151ebf",
+      "bytes": 665
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-009/witness.json",
+      "sha256": "abe5623c96a7c6a7a891a759fabcfbea42d08346119b85474cef60b1ecfbc3ef",
+      "bytes": 1208
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-010/attempts.json",
+      "sha256": "f5d663994bc0060cedd7d938f2572bffd7083ce6dd4dc1ef7c04be293e397e30",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-010/full.edn",
+      "sha256": "df261b53633d87cb1a18f26b9f4363c26f3a02ec792da3a97e335f9d80bb5bdb",
+      "bytes": 330
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-010/independent.edn",
+      "sha256": "ceef63b0a8ddec55c2b4c74074c20384d40c43731ff974e178c80920db03fbea",
+      "bytes": 306
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-010/solve.json",
+      "sha256": "190ea2096052113f6df51d68032977d9ad14193b8dcb682054b75694b49008d9",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/attempts.json",
+      "sha256": "e622181d4af1c4c191ee9fc8550dc612419a1fe426918fa72c47d89b675093ed",
+      "bytes": 540
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/clojure-validation.edn",
+      "sha256": "ded75ab553eff254a471f6201ceb8eab66e83901ba4c58494be30b456c4e8a2f",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/full.edn",
+      "sha256": "a62d5860096afb16aa936e23049a041b238e1b636240cd2c9b89b0340e215c19",
+      "bytes": 112
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/independent.edn",
+      "sha256": "c153f1bf1dc32b696e27fed8e6b33f4f6329a34dae0f810ffa7a5bfd3a26575d",
+      "bytes": 104
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/python-validation.json",
+      "sha256": "dbcf9583044194253862b518d8326a1a451cc4f955fecbb24875b791b745b296",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/solve.json",
+      "sha256": "ad9afb75f38b1c0780ecc15644f61320507ff232fdb6ea4d69736b8fe92f1696",
+      "bytes": 1091
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/witness.edn",
+      "sha256": "ddacab3a57c35efd44de35cec3c8426abff24f37a263aa5d7b55f01dac21c971",
+      "bytes": 608
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-011/witness.json",
+      "sha256": "fdce6642b3228fea9311a23a11791d718b88946de72c7b48f8ad02e3370ed68a",
+      "bytes": 1092
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/attempts.json",
+      "sha256": "ba3682daebf668ba7277c736091b17ad7b7cd75554f7b6c215aa8da4fc6e7b69",
+      "bytes": 594
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/clojure-validation.edn",
+      "sha256": "f4182ae64fe6d37cc5500d5b9d0f6c4b3094d621b6b185b1b825c86c0a150f35",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/full.edn",
+      "sha256": "0ca06a92844f0cb7dda9d09626d4987d0b990fec0c0eb025cf455b2c8cc50017",
+      "bytes": 334
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/independent.edn",
+      "sha256": "995131a1afa8eff6b800013a24a713961adce47233ea99c3685075a814b37c26",
+      "bytes": 310
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/python-validation.json",
+      "sha256": "3c2c0f3a0e34faa60a7bdf3cbc738d6b46cc97fb3bdbcb3aa79dc3a7480e7b14",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/solve.json",
+      "sha256": "0a5414423559a62f49890fccea355666ee2214f68cfbc80ed5d897d769659068",
+      "bytes": 1146
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/witness.edn",
+      "sha256": "de752325ee213e41b56131ce4f8671b15ad2481c01aa6cb0f061dbc2e4c0a81a",
+      "bytes": 1301
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-012/witness.json",
+      "sha256": "2dbe06c4b24656db0ea8f0f3151f985a8c0db3b71b160c40d20d4cdca45deb16",
+      "bytes": 2644
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-013/attempts.json",
+      "sha256": "0956895de592581bf55c2f4e25bcb70f5014f52a262dc46567d716c0825767b6",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-013/full.edn",
+      "sha256": "96fcae767bb3eabfb3ed29eeab7562943a506a4183a00474696488d900796a0b",
+      "bytes": 428
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-013/independent.edn",
+      "sha256": "be117ffe8d99ab5b86c112f1264558f76f47910f6da1332608ad499638574149",
+      "bytes": 396
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-013/solve.json",
+      "sha256": "e13d3fb9968521f28a529fe33f9badd55da4b206b66d210310c5cc57f9f87be0",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-014/attempts.json",
+      "sha256": "d6e155cadec0aaf3b6c8d19aaf1b572bf3ce86d7c9d280cbd903f0f4b8b27bfc",
+      "bytes": 230
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-014/full.edn",
+      "sha256": "b2cdb10e56d4932a97ff93a61be9ea736bc82e1b7f4d38fa00aacc79fbcc5b29",
+      "bytes": 550
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-014/independent.edn",
+      "sha256": "ccbed0aa311b18924c4f929c371d4718672a8f981b18220fbe8114a070953111",
+      "bytes": 510
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-014/solve.json",
+      "sha256": "968d5e31e6c8584355cc2c5c0318a7dbca8f352a384e77778128f7f04f4d5a16",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-015/attempts.json",
+      "sha256": "c280805be549cee3aa248c8c7715127c86d122a254c88c54973f01445106375c",
+      "bytes": 828
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-015/full.edn",
+      "sha256": "aae6cc734d804614886c02d90326c7951704de6c706d352078e6d70ec25e980c",
+      "bytes": 222
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-015/independent.edn",
+      "sha256": "96e6fda2173a3d090b386341a03cf24b14bed6ec1ead1d0388359da90f09dc35",
+      "bytes": 206
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-015/solve.json",
+      "sha256": "99917f7d6209501d5c4e7c769a38b127e559868c339cc5f8ea7152d83fada0ef",
+      "bytes": 1336
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-016/attempts.json",
+      "sha256": "614a0af84b014386fb341e12e3bafd1d0e0c0fe391c813761c90b9e4d219a561",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-016/full.edn",
+      "sha256": "04aa7a509071384c474d932e1cf646b11dd9ee30292871ed0abf5901b7dd661b",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-016/independent.edn",
+      "sha256": "c6eabcb03d687a3b47bea8f4ee14455b6ad110d42111537f19b6aa141f34ae9e",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-016/solve.json",
+      "sha256": "6b0a8e595891e79cac2e73391f80d8c99d80330388623836bd630ac481eb1ac8",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-017/attempts.json",
+      "sha256": "01e6a3ab832b301d101bec9e05a62be2abf34c7910635c8525b6755260f8d125",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-017/full.edn",
+      "sha256": "7362ad684ec118e903ce498bef6db26a6bf465dcf19dd490e27c2a49f95d405f",
+      "bytes": 226
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-017/independent.edn",
+      "sha256": "eb3e9a2b534ff6e07c16c4ad27485e0926ffaac8760edb13921c726d64c112d3",
+      "bytes": 210
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-017/solve.json",
+      "sha256": "27486ca1cecd8555473c7c7e9cd2fcaaa1defaeef610ae4b7131ec9ebd1f2d7c",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-018/attempts.json",
+      "sha256": "7264d1d4bb41652a3d474ca2a6870b3a45e6340a80fee4a935ac6730a9c64597",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-018/full.edn",
+      "sha256": "6d63101c5ec15fa2e5f8ffa49d55d0b887967e23334d1833fa6ec0c9c1f19d71",
+      "bytes": 224
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-018/independent.edn",
+      "sha256": "87733c05c4d045c38ac80dae1aea8f85aeb61fb3cf090c4c97384e736c45904b",
+      "bytes": 208
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-018/solve.json",
+      "sha256": "44f8b2f17522dab9a8ce1f59b857b86924994bef3526eacd3afaf842dd512110",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-019/attempts.json",
+      "sha256": "9015b11be9cc45455fb618774964e4f61f8b8eb1e0657d44a69875e0780bd0fb",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-019/full.edn",
+      "sha256": "562b9ef34ba317989f94ae87532f22ba9162337844d19f2670e221b1bf220182",
+      "bytes": 450
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-019/independent.edn",
+      "sha256": "5e831b16193cbbb7b57236eb3cf9235bc319647c23bc9f6efa5a9ff1213c2803",
+      "bytes": 418
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-019/solve.json",
+      "sha256": "0a1667c7ad281a0ceef584b572ca49bef98351d3e7614365e91c0d20d0d8e61e",
+      "bytes": 741
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/attempts.json",
+      "sha256": "bffa7fcf6a90e970a2729f278424c2ad5064b59c0db597d6b42194ba568c423f",
+      "bytes": 872
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/clojure-validation.edn",
+      "sha256": "1278a89ee275b0e6ab88235d3a3c8a8c107d1fceae58d345f70b769190283404",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/full.edn",
+      "sha256": "c1853c7a7c3b90607f388a25be647f7ea2af38dd10db45ecc18f6fa795917f70",
+      "bytes": 434
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/independent.edn",
+      "sha256": "bc675865f9fca494e54dcf3decd7c4d5caf0017a59d6839cb2ea724e2a232c10",
+      "bytes": 402
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/python-validation.json",
+      "sha256": "c3f0499bee64c1d51f1d03578b7a57abc4dda35900c727b364bebe8196c5941f",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/solve.json",
+      "sha256": "49a04ab402512dbd303d63840ada1f43c406eb487c408d801ed110e1f2f90863",
+      "bytes": 1424
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/witness.edn",
+      "sha256": "4ff68bad42e4f7972b82fbacfc3cd3086a3890b1f95090ef171f47c80dc5717c",
+      "bytes": 1814
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-020/witness.json",
+      "sha256": "65d888ecf01fa2365fd35d4f41d0996c8d5857a97143eb6f6a12cd0a4da87c65",
+      "bytes": 3762
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-021/attempts.json",
+      "sha256": "00e41281de83f4d26f13ae416f0e527f7417b95431e7629528c4b65184b51b90",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-021/full.edn",
+      "sha256": "c4dd28bcfaeabd05f585f8c1d104258dfcebf12ee79ba954d1e56f49ae54e337",
+      "bytes": 430
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-021/independent.edn",
+      "sha256": "b2765b5e1ff7612cb1b36d3f335c600f32df66f09ffe1603d94e9f0307f5d7f9",
+      "bytes": 398
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-021/solve.json",
+      "sha256": "91b2cb3dada32712444c56b6ccfb9e919992eed3dbe9faeae0eca16884da56f0",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/attempts.json",
+      "sha256": "0a84fa21914c0be20fd7a828587a4a69ff9b1d15b6ac94a0246261c5a8d69a12",
+      "bytes": 1076
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/clojure-validation.edn",
+      "sha256": "73f7ff1e09d60f56716a677c7bc165e23092692766dfd26931330ee3b3dca23e",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/full.edn",
+      "sha256": "87b3fb0bd41464b099afa5f0b9db9d64fc07f5069b7432f1a8d391dcb566ca1a",
+      "bytes": 446
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/independent.edn",
+      "sha256": "3177106f02136e3378aa6f967e81fac1e233e99c7da391998d9f57523fa62816",
+      "bytes": 414
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/python-validation.json",
+      "sha256": "ce223a9a2d75c25ab475c655e85eea2765a1b20a641ca0a81e64b244192ed5da",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/solve.json",
+      "sha256": "c33775d04a1a46c0e8894cc97583a38baff9ac347a41a828732412883ef56ea5",
+      "bytes": 1626
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/witness.edn",
+      "sha256": "5bcba4bf9cd326d9dda3b5faa3957ec5527b14aa508b37aed974fd38d49e89d4",
+      "bytes": 1789
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-022/witness.json",
+      "sha256": "9b1ed9718a2539aa949cef50b26187b6ffb16f7e7ea7beae8069c3eea88884f2",
+      "bytes": 4008
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-023/attempts.json",
+      "sha256": "69675cbf4d1740cc10113abaa783970de80ca64683caf84e4252f5a67c136bda",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-023/full.edn",
+      "sha256": "21407c7c3d59ce009c94fae3d93d2773df1bf75f1d14d4ca53f01051e19057fe",
+      "bytes": 220
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-023/independent.edn",
+      "sha256": "ac72357ddda9975006918517cb616d2fa665621b0e17df9c7dca6be467056d13",
+      "bytes": 204
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-023/solve.json",
+      "sha256": "466973eb4fa3be2e52bb4de4dba71c736ef6da26128f6facd8113d564383c441",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-024/attempts.json",
+      "sha256": "f7952254b489e97e8aed29d293915a867839c42e9bd70a8cd6a6ebb238476d7f",
+      "bytes": 494
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-024/full.edn",
+      "sha256": "6a15b64adae7c3b256f4b11558c2e57dc5c6f31b952202a30a2d0b9a078f3766",
+      "bytes": 112
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-024/independent.edn",
+      "sha256": "96a0922aa91d5290498b724b79b2001ee558aebcd7c382fae737ba71c19ca620",
+      "bytes": 104
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-024/solve.json",
+      "sha256": "6741feb49588fd8222ac913d2a5661625a2f0da4de1ccc4ee52fa15fa6adf0ea",
+      "bytes": 1002
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-025/attempts.json",
+      "sha256": "6f7de9aa01a5b14bb75aa0b430aa1768b815aea43fe0ead553802c11aac59ecc",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-025/full.edn",
+      "sha256": "b82ddc3c81f8a117fdad2842241bef64a1b0ade1bfed9909496e2ed6d8615657",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-025/independent.edn",
+      "sha256": "ed22685fb29934fa73877782e911cb0d05abe76251085fc8bcf8951642d856e2",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-025/solve.json",
+      "sha256": "ebafb7c6b43a7779ce4ece6d219711e0decea7a27f2cc23c73276b9062bb3e1b",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-026/attempts.json",
+      "sha256": "d2e1ee200b867c894d72fd12a04b68ef2e375697ef611849b460548725022ef0",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-026/full.edn",
+      "sha256": "410d0189dbd9f3b231d3e2ef9af49ff384cc362b0955195bdfac7ed17c474640",
+      "bytes": 544
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-026/independent.edn",
+      "sha256": "047efff1efe2c28d0de13589de3d521e86440e65c3f3efcb0417e94ce22497fe",
+      "bytes": 504
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-026/solve.json",
+      "sha256": "bfc4c89835f7a01abe5116777609a231f9b429c3da28f3ecb5970947b4613d1a",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/attempts.json",
+      "sha256": "356546ea22299c2f609777ffa610cf0529f3bc4f6b1613b74298652c841e3915",
+      "bytes": 1076
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/clojure-validation.edn",
+      "sha256": "ccba3b1a9241b6314d11034e7b736e891a9d5dd115e49665628a8621eb4c504d",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/full.edn",
+      "sha256": "ace16e9f1c8d2b472067008da9598b3b414668411ccfe00675dfc6f7f6fc7ec7",
+      "bytes": 224
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/independent.edn",
+      "sha256": "ebde7e2ece56f4d4a4c7c51fb4ed1e3351ad6ef7cdfa5bd9bc3ef74992d57812",
+      "bytes": 208
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/python-validation.json",
+      "sha256": "a046e8f5ffc56e5f498762b659ddc5176ef865a60bb41bd10e2d02735fcc649f",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/solve.json",
+      "sha256": "06718f61c2e78243c05e093538901ad3dd2baee504b463f85d425c0a1c907dbe",
+      "bytes": 1629
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/witness.edn",
+      "sha256": "a1901553bda8b2f7df193a8f3031ba95017eed884a0bc31446f58ac140e1f358",
+      "bytes": 954
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-027/witness.json",
+      "sha256": "16f342957226183babc1011a62710ddd5b8e8fe54862acbc53f9abbb1f3aa978",
+      "bytes": 2027
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-028/attempts.json",
+      "sha256": "69eb1dfb6dc8682113dc601b44d8ad03fc911dcabbc7f02ccf5eea5dfbc4dae9",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-028/full.edn",
+      "sha256": "55b7c996a24b1c0a3c611d2b112e86f957ccf7c0c3d3067b7dca13babb5095a4",
+      "bytes": 218
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-028/independent.edn",
+      "sha256": "95315af015c2ca5416906e365e0eaab5e23e7f85adf590988dbc850cb96097dc",
+      "bytes": 202
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-028/solve.json",
+      "sha256": "af7c8a375933ed25f5b7153a744c899096ecb77f3fbcb3ae99ad307cb623cf5a",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/attempts.json",
+      "sha256": "39a50e5a24fb93792f2fcfa3481b9bad65f9f167f60d75cf16dd2b4291bc3227",
+      "bytes": 771
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/clojure-validation.edn",
+      "sha256": "86f83f37b66e3d54091b45d111d715f6becb819412d1c03cb349cda3d0cd584b",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/full.edn",
+      "sha256": "7d6349fc35803a2741d5a0949287c90fb265a7478d87d21cdc9c9517969c8040",
+      "bytes": 226
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/independent.edn",
+      "sha256": "7ffd1f699c958a8f0911c3c79d5f0463e9218a3c765ce773af76d2a1d76555e1",
+      "bytes": 210
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/python-validation.json",
+      "sha256": "7fba874c8e6681925027b35bb70771529a824877e793622080172814737ec47e",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/solve.json",
+      "sha256": "f1c53f21a6e8e0495113718c0375342bfe3c5d14ec3807d2dea3ec67cac5e89a",
+      "bytes": 1324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/witness.edn",
+      "sha256": "bc210339da4e56988b14e1786d8d205a606e4398c09243584c6da6c98cba5094",
+      "bytes": 959
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-029/witness.json",
+      "sha256": "13020537239d48c6aaf4cc56ab80f6acb5223ac2d650f7eebe245dc094b4779e",
+      "bytes": 2037
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-030/attempts.json",
+      "sha256": "85ef07187ebb954f7e196a9706226492ba1797db37d63fa58d3b405bb36ffedb",
+      "bytes": 385
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-030/full.edn",
+      "sha256": "0316479b7eaf8daceeb4a6592d4095940863a4e81f172b8c489302ce7927b8ec",
+      "bytes": 438
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-030/independent.edn",
+      "sha256": "090d384681bf95b33339f72964374c56214532df33946c90ac4cf0ce8d784aff",
+      "bytes": 406
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-030/solve.json",
+      "sha256": "8fd8c86f40f71918295556299573415c30f7ecdcdf5b63e4ea573ddace76f152",
+      "bytes": 891
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-031/attempts.json",
+      "sha256": "c75fd10f907552a9a9019d9f8f68b6f36264338151c1d33223200cc43ae569c3",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-031/full.edn",
+      "sha256": "3512df3ff774533c7cf308ca15f0a17bbd944a585ba7d58bb262a7f42daee54d",
+      "bytes": 222
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-031/independent.edn",
+      "sha256": "6055f8bed5254a2e6b5c1be59abdd62b5c418c740a74c0f593aa44048375db39",
+      "bytes": 206
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-031/solve.json",
+      "sha256": "7ca0b307dda3f9849f3c0fdbedb2d29b7e2f9a3fb2c71ca43f7bc966b3175ffd",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-032/attempts.json",
+      "sha256": "dd2bd1f76372a33b879888b06602db4941d1af7124888222dda1d50ea092e21b",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-032/full.edn",
+      "sha256": "339fdcf0596d750537c1636139a5d81176846c8a242b24ac3f710e5bcbf95df8",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-032/independent.edn",
+      "sha256": "fdabfeb288c60f2bce5b5ec09bdfa9fc2a83f32b14438b654158f13e6c066ea4",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-032/solve.json",
+      "sha256": "1db17a0bc779ab31501447419d0423ac404bd19bee26a2fd263a112e184ab0c1",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-033/attempts.json",
+      "sha256": "c0e3df190cc4f94422bc25b1a6e5f952949c856bd73869b7ac81016e4c4c558b",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-033/full.edn",
+      "sha256": "ac71369de9ff4c22457b3532edc84a0225b4344f67a4e8a58790a71ebc89e08c",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-033/independent.edn",
+      "sha256": "1476e7a96cbe3c513768853af93aad13397c39f6e00c695b74885b1a1bfb098d",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-033/solve.json",
+      "sha256": "1dc69dc0ec2beaeac1c987c2a6793e4f4b1feb33bba10de9d63f3f9d5d28c7b0",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-034/attempts.json",
+      "sha256": "90e5d02b5e797f5914fd2ebec18707ceb83d0139e72d3477a2cdba1e15db9e39",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-034/full.edn",
+      "sha256": "fc1c1b6f4d2ca671131919028dfbae55e2cb2124a297cc2ec97a7c21480094b2",
+      "bytes": 330
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-034/independent.edn",
+      "sha256": "c9e965c23ca816b0fda33f0820670e6ba0be96b89fd10a0b512ba367ce85d7d4",
+      "bytes": 306
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-034/solve.json",
+      "sha256": "5f22835c73eef235057c607b22455221b8f06a6791814ba3c18817ed35f1d508",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/attempts.json",
+      "sha256": "51e10ae046022eb7424d27e4640c5321fefefb66c883b5e119e1e6ef7b814f2b",
+      "bytes": 692
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/clojure-validation.edn",
+      "sha256": "0a51c76667e665ff636c6bbfee42a7257b77146ee5e62feb089a1e78ddf04287",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/full.edn",
+      "sha256": "9293d990a7f8e39c8b2986ba560b4e10efa58a025913b0177c93fd09a2b46368",
+      "bytes": 110
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/independent.edn",
+      "sha256": "6e7c62143a78a6302033b4b025cabcf6718696d17142324e13904ddc152492c8",
+      "bytes": 102
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/python-validation.json",
+      "sha256": "186ec4693b0f2765b7e7eb1c00af92c4777068760e6c86e416acd6aebd6ee543",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/solve.json",
+      "sha256": "c85e1c64144ed64f605bdac1080066742292022f9167f4c031e1a785f50eaff1",
+      "bytes": 1245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/witness.edn",
+      "sha256": "6d59624d61ce795154c20db956b04a3cd111b8606412ef911da596f6e4ff1364",
+      "bytes": 671
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-035/witness.json",
+      "sha256": "a4e0b5a7c30c8e5995c3bba8bb0c20d5007c187abc5c9bfa6377f7573a7f3c8d",
+      "bytes": 1214
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-036/attempts.json",
+      "sha256": "38535890f9434a0f71ca3f00d69301f8a614ad0257292ab90fa6b749e765451b",
+      "bytes": 228
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-036/full.edn",
+      "sha256": "0e93ff3112ea10c82183cc063b4c25d09234bd2305f825d8caad224797a15116",
+      "bytes": 538
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-036/independent.edn",
+      "sha256": "367da9506fd145a748dad73f9a1022b02f8cd6078e9fc6a10b9aa2cec846c72c",
+      "bytes": 498
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-036/solve.json",
+      "sha256": "607eab9d4aadb374be0cc0add35659eca285ff509fe242a1a69862b01bbcb370",
+      "bytes": 737
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-037/attempts.json",
+      "sha256": "2edff88cc31c4fa2e3b097023e908ff64cd497617e4622f916b31f94ae9c3841",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-037/full.edn",
+      "sha256": "dbe475426a542303e9844c973e75bc7a4a6475c0e7c2ba995989763d980b263f",
+      "bytes": 330
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-037/independent.edn",
+      "sha256": "b6607abbb94b7895d4f7845bfff57d95194a82baae1380595d61c0216391f581",
+      "bytes": 306
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-037/solve.json",
+      "sha256": "dc3511605f9445b6c94411ad121050504c4155865c29cceedf01fae0dc68cf15",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-038/attempts.json",
+      "sha256": "a267b0f5dc9bc21502d1567637ead55bd9104dfe182655ac4ecf095480041c55",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-038/full.edn",
+      "sha256": "31b4db54601b9612982c3f8e8defa59656bac72e42b91668831e4000ce864abc",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-038/independent.edn",
+      "sha256": "7584f05192c8d56476dba70d81b1b35ddba0bee85e2437e26d93ed7865aca6fb",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-038/solve.json",
+      "sha256": "05c91962811ffd3120d461da0e2677d221aab3063816e9bf8e388300e9d1a6a2",
+      "bytes": 741
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-039/attempts.json",
+      "sha256": "0b6fe9f01134994dd14164f56eef2a3008e5a8030b87c0f4d4606e60fbd77719",
+      "bytes": 622
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-039/full.edn",
+      "sha256": "3a8fe31f12f694f468bcf4992d0b96720b95334a6e2668c752d7751ce811ed52",
+      "bytes": 436
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-039/independent.edn",
+      "sha256": "d3a62075d98b30f4ac10e2288d93e12897ec0f6512ea344268e04b5b0652d71c",
+      "bytes": 404
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-039/solve.json",
+      "sha256": "d9c67e4dbf551af7ce53eaea45f2a68b049c824bf44419d87d58f8798a34f0aa",
+      "bytes": 1130
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-040/attempts.json",
+      "sha256": "d9c929dc4a6a19970e6ad8f35a64a25424e997fa2174740296dbb47e89719f2e",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-040/full.edn",
+      "sha256": "43e5de86a9c06423e5359fdf20b37b6c5b32ec48d57e98789f2bd6e445ad3482",
+      "bytes": 322
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-040/independent.edn",
+      "sha256": "47227f7568dc150af2acaa4fddad015d09b9adb5c0898ea9f7a005bf963cdb1c",
+      "bytes": 298
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-040/solve.json",
+      "sha256": "5264916066fe8813f04363b3d76543d9f1944f734b3a2e98eb5fd4944e63c3ec",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/attempts.json",
+      "sha256": "0ee05fd5f81376de66a33b959496ca0b21f1734f0d1b2da169f2a176474a789e",
+      "bytes": 1044
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/clojure-validation.edn",
+      "sha256": "0e240b23ab4fb59c95a4ed54f6a831a1b844a0a9c2f75f78bba4954b85af4492",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/full.edn",
+      "sha256": "62127b7ead3b5fc8768a336b35736bbc4e27a208507de578e08d26500abe24ad",
+      "bytes": 552
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/independent.edn",
+      "sha256": "7adbcdd70a2160f0ea4d5c2b917dc588f702e59a7c9e1f7c4b82c819be30db32",
+      "bytes": 512
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/python-validation.json",
+      "sha256": "0517501f7f8b9b3f33581db7edaf25b26594013d41e3f3bd72104997d14b8961",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/solve.json",
+      "sha256": "66c082e16c1201ac323ec9161a85dabf9e81c3a797399b6fdd68a290b90c6f65",
+      "bytes": 1597
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/witness.edn",
+      "sha256": "11060c3a433ba3c47b9b222de4452d02c55ad2add0cbc4c1840aee2df409d14c",
+      "bytes": 2173
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-041/witness.json",
+      "sha256": "9fbb5c14b058a8c1219a643364f2a4cebd41f4326abbd3caece9b27af9132a7e",
+      "bytes": 4720
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-042/attempts.json",
+      "sha256": "a1a6dd7049514fa8df247b0514746902a7ce84271b8b95feef8476614322f051",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-042/full.edn",
+      "sha256": "0b4513d4eba3b1759b3e87879b4716ec5400d0d20c76306a3c66bef78ac9a7fa",
+      "bytes": 324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-042/independent.edn",
+      "sha256": "03c420a0b93637d8d8b5d90803d859ac7a7442ed4fcc774cce60f6f2678fd359",
+      "bytes": 300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-042/solve.json",
+      "sha256": "91c527c9b6301a3420aeb0006a160915de421d1bc09bb24139cefaa2fb793d66",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-043/attempts.json",
+      "sha256": "0c02e52439c9777c5cc18fb7b1bb948f8a79b0d88f68b9a3d461453b6ff7e28a",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-043/full.edn",
+      "sha256": "ec488be969512bbf9e9c02acff2687b4e798cf79a4168c2c5d619879ac962a51",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-043/independent.edn",
+      "sha256": "780c27193cb8224c0ccfa4b9c045ecb17bc7ac2062f325312f3c1c0dc41bea68",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-043/solve.json",
+      "sha256": "8f590c10736d0efc1b69e25661d39de1dcc455d6ef68308f9af16d999c882c2c",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-044/attempts.json",
+      "sha256": "1b74604a24c4cdd6eeff9d76eb6ac83eebc47db0e8d94497e1d85844e980634d",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-044/full.edn",
+      "sha256": "68955133ccefc15974bd28696d13e3201fc9634c06258c775a482fe2186993fb",
+      "bytes": 562
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-044/independent.edn",
+      "sha256": "8e00fb48d7721585ea842cc793d07548f4273394e1afac365db575c8a61616ce",
+      "bytes": 522
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-044/solve.json",
+      "sha256": "4cf821a677ca791f9bef8a19821ab4d1724a813c916e29040bebb0cdfef77d30",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-045/attempts.json",
+      "sha256": "0b12da6ee11e8d9bb22aa825927a568c8bf1359ed479c5aeff633502899c40af",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-045/full.edn",
+      "sha256": "c9a44166bbee4540728b76d1ca12d0abed0e709cde7acd56f3c4abb5bd8e17e5",
+      "bytes": 318
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-045/independent.edn",
+      "sha256": "b2c8242f1a3b3174c92622f4bd87203c14b6ddfc4674d952feafe0410ac22963",
+      "bytes": 294
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-045/solve.json",
+      "sha256": "1e133ace4ed06adaa1ca446ab66652a8864dac53e7fea50276bed67cc5e21160",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-046/attempts.json",
+      "sha256": "ed0024436c76e0cec09e1172423f469ef0243ce65a79e924655e69ad0105848e",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-046/full.edn",
+      "sha256": "6ba82db4086eb7f27772601994bcae5a4e77c29bc236d6a6e06294a382045fab",
+      "bytes": 430
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-046/independent.edn",
+      "sha256": "cf887b301b2eae3e7e61d658ffe4761ff87777c64c72b7d279f8c91a59c0ca6a",
+      "bytes": 398
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-046/solve.json",
+      "sha256": "5bda56ee9b548956435a2640f4fce5a1af2cd938c86d2b2b3a4c955f8e991697",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/attempts.json",
+      "sha256": "1900ac3b4468201965734b193d4444348e49ded0af47081fc76f35cead1c44dd",
+      "bytes": 389
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/clojure-validation.edn",
+      "sha256": "a8999c6a6acf29809d5193bcb7914c8582be3ddb8c44ec3102303b0fcd4962f0",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/full.edn",
+      "sha256": "ab8308b46b83a82eb484535a2c7fe7cb2b8bfc8184812f3475ceca8540bb67b9",
+      "bytes": 222
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/independent.edn",
+      "sha256": "9ea78d152b21870d181da43e0bdd1b711d8170f4a9dcfc34a97f0558df03ada3",
+      "bytes": 206
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/python-validation.json",
+      "sha256": "de6712e1523878c8d305fc2e33e31e4afb265ec4204a95069ca20ce4fef9ee50",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/solve.json",
+      "sha256": "2ccdbcc13a6c0d151d1cb9bebf3eb68c18a4ec469d415894ffee37c503348f34",
+      "bytes": 941
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/witness.edn",
+      "sha256": "4cc2cb917d00da63766d895d49b1a0249c3ebc172e1a3ea34b1ac2906f840d44",
+      "bytes": 961
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-047/witness.json",
+      "sha256": "6a576c44ebe40f6e3167e2cecf1818a341a55904766a4bc70f9b59fdb23ac79f",
+      "bytes": 1872
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-048/attempts.json",
+      "sha256": "b63fba21cdeb7fc2f9ee3fcb0f8be14eb33414d088467a4ad3c907b2108b8cca",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-048/full.edn",
+      "sha256": "208e12556973f66ebd8414756c12fff5d2257b080ca958fcae818840c7dfb66d",
+      "bytes": 550
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-048/independent.edn",
+      "sha256": "cb6523466eba22eb0e328df60e23ec9e14248723dd1b6a0a31993aa7f2794b8a",
+      "bytes": 510
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-048/solve.json",
+      "sha256": "98a6d8a1c91eb6242d05d5c533e4a6f39cff57d241a38398c90180eff7ed10de",
+      "bytes": 741
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-049/attempts.json",
+      "sha256": "8d09d77f7396d14cd952624009115bbdd97556668310954bd4571546d1fa2f55",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-049/full.edn",
+      "sha256": "cc6bf68fa823517b84548b42b2b1710b53290615a179f99bf39eb4ad2ab2895a",
+      "bytes": 326
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-049/independent.edn",
+      "sha256": "27bf44267dd5fcaaaa11e0a4313f3a201e6ca0d89b98b2e082a4651b94029082",
+      "bytes": 302
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-049/solve.json",
+      "sha256": "562fe817a849f6506d3cf05d5bc79ceef4d8bbb392d33659593e3ab2c659137f",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/attempts.json",
+      "sha256": "08a364e757e39e11188e37278e6efa18212825e737d0b080431393aa9be1ae2d",
+      "bytes": 492
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/clojure-validation.edn",
+      "sha256": "32685910ce63f67bd2711ef6d6f3c4c3aaf917b82e5838ca0fa3c75f13c5ae5d",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/full.edn",
+      "sha256": "ed147b85dea694f8364a9dde10513e43a0e211794fc3f39f395ac1dcc39df0ec",
+      "bytes": 222
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/independent.edn",
+      "sha256": "23a6004b8fc16d8f5c43f8b2a2e596e21bcc86f38df12defd156f060f1cdee4e",
+      "bytes": 206
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/python-validation.json",
+      "sha256": "4f80d7ae4fb86f611a4eff92403c30d87a38885cb0c952460df0735917368210",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/solve.json",
+      "sha256": "d5ff6676267b7ea71ad6b9d78032ab5387d8408f4e00b82debc2c87b38c8552c",
+      "bytes": 1045
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/witness.edn",
+      "sha256": "e6df6fb1a9da7cef75a2c497209f5c9d79695fae8079f683f713c5884b6f1968",
+      "bytes": 1084
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-050/witness.json",
+      "sha256": "700de5fc63d5e4e9171cdb282d428162bb03246fcb3ca78002e13b503b009e90",
+      "bytes": 2287
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-051/attempts.json",
+      "sha256": "f0c19543106bdbdb84b6adeffdbe9ca9af03463a6d9b6f6220928cca593bc50d",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-051/full.edn",
+      "sha256": "b323de222fdf33bd2674e908651ae2d7e537af7e535903a9ad4f04dbb49467aa",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-051/independent.edn",
+      "sha256": "a1d37a7f935e7b02343305164c96ed4658faed011d0912943192bacd81fb40f4",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-051/solve.json",
+      "sha256": "80dad91c4580b1f3cf5b8e5eb76c7c21d44dba1112fef58682ee12c7e6f1e675",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-052/attempts.json",
+      "sha256": "9610a3aa025cd61d4f1cb7f8cd0ca1a382bf8f6e697f5772fc49485944fdd91e",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-052/full.edn",
+      "sha256": "be15aee71e1ea93170584a8df56a573fd65a0e14e51a8e1529b94b9c3fe94217",
+      "bytes": 438
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-052/independent.edn",
+      "sha256": "2c4f5b30b72b70ce01c81f0e6949131aadefc30ac80f3e7ff6442317c5e6d7b3",
+      "bytes": 406
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-052/solve.json",
+      "sha256": "345f9604194e7104630ba8da0c0eacf41411ae87b20794577c462850b2a204f8",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-053/attempts.json",
+      "sha256": "8d005453ce50ddc90f601e1a4dd3c54eff647002e21473af2fc5a0c617929148",
+      "bytes": 725
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-053/full.edn",
+      "sha256": "078b381ea9c15d124b807ff96aed9b5756b9acfc6bdab491b69971a8b58b1970",
+      "bytes": 444
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-053/independent.edn",
+      "sha256": "8efca7b73ff5f1d785606d583e53bf8e5e828a55015383de18ccf1c400c258e6",
+      "bytes": 412
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-053/solve.json",
+      "sha256": "fe69e0b676b8b6b70205ce0aecd646f0c46f6083944725ba65cf9812a7fb9115",
+      "bytes": 1233
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-054/attempts.json",
+      "sha256": "c371d1e824f4ae955f3695fa877e105fcfba2c0251099def240446f6dc7afc71",
+      "bytes": 1084
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-054/full.edn",
+      "sha256": "bc02f2f8942f5c110517b83b24e31a56cbaeeb912d1083744ed44cd7132578bf",
+      "bytes": 570
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-054/independent.edn",
+      "sha256": "7870cfc8782d9bd67b0df22b35f43a2db74ddc496d9b8f1c3a6b405d15de103c",
+      "bytes": 530
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-054/solve.json",
+      "sha256": "e7fd2039c8957c70335b9eae279b945511afdc0f05eac6e1ae2f7a0ea2c0fe82",
+      "bytes": 1592
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-055/attempts.json",
+      "sha256": "4aa5a7b446a51231a237eea3523283347580c428438adbde8881d84cde6249f8",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-055/full.edn",
+      "sha256": "680c7b9274049bb51149345ddb3186ef45cc92848fbf07e653edc0c75d716201",
+      "bytes": 324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-055/independent.edn",
+      "sha256": "118ebed5455409277fbe304478a8ebf0b8ef20500ac9cf912a40e3b6fdacc95f",
+      "bytes": 300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-055/solve.json",
+      "sha256": "3edf3497edf01ac9d76f04e3b287f3f684debe51f07a6e440f85a675104f2968",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-056/attempts.json",
+      "sha256": "a2e1c97cb51b5547bb0cc74c70b8fd4a6b13a270be314b5bb93732d585cbc1d5",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-056/full.edn",
+      "sha256": "440cb6d4fe4ababfc93c0fd2e33ec74f6a71e6792be838cd8fe690d7d81d7be4",
+      "bytes": 220
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-056/independent.edn",
+      "sha256": "cfc0aaabbbca329308b2f91e57effa6f1b1b905641c8f34c41f6f7bdb3a675b7",
+      "bytes": 204
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-056/solve.json",
+      "sha256": "e89611fe5f7012b53d05820b18d9ec0615db4686ef0e7a5979e46d2cdceba4a7",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-057/attempts.json",
+      "sha256": "322709acae9b5c274c00cc800905e4b692c3499143a0a40cfd5af3d0e34f3611",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-057/full.edn",
+      "sha256": "1dba4c7225a094a93b58e0de4d54bbc89b9c4a92d297e85b28558e4d6cae47b1",
+      "bytes": 336
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-057/independent.edn",
+      "sha256": "56f25f36832a2c3a7a93b7e4c8cba377dbcfff8b3b698345db3f005ccc83bf4a",
+      "bytes": 312
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-057/solve.json",
+      "sha256": "db3200d62a82fec67b7d93d58e4fb1d5042105ecc8a356342356548e60765a44",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/attempts.json",
+      "sha256": "7b9e03f5f398b6ed92596c4e98eda65505dd60ce41814ea1d9065f0cf3f8ed3d",
+      "bytes": 389
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/clojure-validation.edn",
+      "sha256": "fdb1cc954dac0c7a9c4e9e829ea4e9fde054639992929d7305788942ae2abc07",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/full.edn",
+      "sha256": "e8fd0e2b143dc318ab16742de5e3092e8bcf229298ece554cb4e3f12967a6640",
+      "bytes": 114
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/independent.edn",
+      "sha256": "83be12960cdd5bf090e467c64198d1d8979995af0eb62b07c3b97f7634c909b8",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/python-validation.json",
+      "sha256": "62a4b9aa07fc82ed964ab0860ec6dc8898805060df5a5cbbc121b11e270ee806",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/solve.json",
+      "sha256": "93f1f158a7048009e2642fefe9d264f638e920120c97dfe91fc3f1b77ee4fdfa",
+      "bytes": 942
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/witness.edn",
+      "sha256": "72c8d94cdf30f5788c477bc8e3a3eab2a7622b92f79260da3898089116cfa34a",
+      "bytes": 619
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-058/witness.json",
+      "sha256": "7a84c06771102e83379b3b305693970f335846eb3e59ad09dfc1fac47c001be4",
+      "bytes": 1265
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-059/attempts.json",
+      "sha256": "d70e5c824a93e0b057719442d6ac7ccedf5bf37f7f3f4adfab20a891f78d47f8",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-059/full.edn",
+      "sha256": "06abd621707dd15f9fa1fd2782feafd87b022ef2ca6624366cc308a96d2db4ab",
+      "bytes": 212
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-059/independent.edn",
+      "sha256": "e9968faa60496c75d7110e09b571648d37d42ee2d6301d903106029d1d65c7e1",
+      "bytes": 196
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-059/solve.json",
+      "sha256": "99971f7c5bfe2fbffc183f290f5805716bced85b23fd95e5df9a0f146466cfa2",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-060/attempts.json",
+      "sha256": "e091227a7e38f4ba7434b06edd15be4e83539e25e5a549acff38c00515733219",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-060/full.edn",
+      "sha256": "511a91acbc240cd734661a2d32a7380111621c58c3c8987b0ef97b3265260418",
+      "bytes": 324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-060/independent.edn",
+      "sha256": "c9fa23ae8dea2ce89b9f37c78971a1677fd2cf1dc284c394b125ace033ed6678",
+      "bytes": 300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-060/solve.json",
+      "sha256": "3882ffd76399a8057b9ce5b43dc91071eae46388321b4d5b3da7770de1830b22",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-061/attempts.json",
+      "sha256": "05125ecde75b246af9f43e47d5ff204f2e08c0a05788c620f1bee5b9b2129855",
+      "bytes": 386
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-061/full.edn",
+      "sha256": "483122bc0fe3145fe342b74f3612a2eb50140556d4c9d97e1551f7c57c1436d8",
+      "bytes": 436
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-061/independent.edn",
+      "sha256": "5b3914a0888630adaa21f6418e06d646fcd13f9e2b6568a5f9c22a5cc09e9949",
+      "bytes": 404
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-061/solve.json",
+      "sha256": "a9c7e6758c0b9d34a50e2b9ed95883839e8c27d75c9db876779ecacf1bbc702a",
+      "bytes": 894
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-062/attempts.json",
+      "sha256": "4e21aa869734e9866bd2982f6bdada87de5909d115012d41774dcb449aba3c01",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-062/full.edn",
+      "sha256": "3bf6bfd085b0525c452a095357a24849ccf549fd0556935f839b573f6eeab9e0",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-062/independent.edn",
+      "sha256": "51e79de1409b51930e52f41e3f2c1c0bdfb519fd5394912cfd2cfc4e27478b5a",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-062/solve.json",
+      "sha256": "0b285dcf9ca5f66a9d992e25af4fba7504be5f9cc09c2ee55de256febbbac760",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-063/attempts.json",
+      "sha256": "70d28289f3ef3b55d262bc565ce74eaa549395e154d4662b6e58d6afed7c8f15",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-063/full.edn",
+      "sha256": "f0dbaa922555049412a7da7ac2722145327912b9ade194b496e68b167ef57b81",
+      "bytes": 560
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-063/independent.edn",
+      "sha256": "2f423b1c18a9c8c5c310117db8ebc33d2780ceddb1bc6113b4ad8cb7cbab3f49",
+      "bytes": 520
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-063/solve.json",
+      "sha256": "86471ed2d7294643ac63f84291f26a116292bacbbc17e41ab34609a19c0ab379",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-064/attempts.json",
+      "sha256": "6b45213a5fd95d18a27fa427dccb63f49ad6cd019c42ccf6c19d1356ba29ef72",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-064/full.edn",
+      "sha256": "cbe74772e92515e21c366b26cc32d3cb95e65336e54f096524ffc27283884258",
+      "bytes": 332
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-064/independent.edn",
+      "sha256": "fc21fd0b7abc28af660b61cf8d28e202c6879d080c5f7b4f710461d01797b7bc",
+      "bytes": 308
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-064/solve.json",
+      "sha256": "ebb0872c94eb0d6e2497009da040045fd1fc55de299eecef9fd4feb0981d5a10",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-065/attempts.json",
+      "sha256": "8dc09f89c8c5dc99444a20e23c76b30fe384890f7254d742efe15a5fad46742a",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-065/full.edn",
+      "sha256": "cc8c1a1b5c19f0d591c2bee76b8e790f381a94f46226d15404d5c2ff20e2ff8d",
+      "bytes": 550
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-065/independent.edn",
+      "sha256": "4401ab0030fb48e1b2897839d99c9d45758ed9403a68c77cf6fb812b7b35ae59",
+      "bytes": 510
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-065/solve.json",
+      "sha256": "fbdcf996ab8bd9e538bd25fb596c18a8cd5178c7c3c35bd7cd8dc08a44aaad29",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/attempts.json",
+      "sha256": "0e79979357abd77578be58b4168f5580570a10a26595f35511a9e2eb2f4cf542",
+      "bytes": 439
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/clojure-validation.edn",
+      "sha256": "309b781d9260968291e9934e1aedff868b44eaa204b1e99ef4fdc7482f7e293a",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/full.edn",
+      "sha256": "ed526d819e6de912f933ff876bfdaebd082da8593d9645cdfd381a0e0f4aacbb",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/independent.edn",
+      "sha256": "4208e14580d3d3b730eb1c7c6cccc9c5bc836f6363cefb84ff4112d2ce0fc2fd",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/python-validation.json",
+      "sha256": "fa1b3cefaa74f71a689c9bc902bb0705aa32e3684184a436e594f0510e61252e",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/solve.json",
+      "sha256": "78e7446dc0c6e69363d353f5e911cbfaaa50d0e79b1b55c6915355a8c68d0de1",
+      "bytes": 991
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/witness.edn",
+      "sha256": "686d617d9b588e733a38bd7c869425fb56a467695d437d7d37c1cbee61727e7d",
+      "bytes": 659
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-066/witness.json",
+      "sha256": "a8ece738e69cd55670666bb108825cee07fbf3e251219e38d5469a88baac72f4",
+      "bytes": 1199
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-067/attempts.json",
+      "sha256": "78fa74caa1623107e687ce5d25af90f36f0c8f4e0485dec146e9c7db1d94147d",
+      "bytes": 362
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-067/full.edn",
+      "sha256": "fbb6db242c9167de8816d2dbcaeb947132e61562413b2f842067165fc9ff3a70",
+      "bytes": 324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-067/independent.edn",
+      "sha256": "47e4a0a0e7447eacdcb8d995d250b47daf81afa0e60fb94ffec30b03a63e745a",
+      "bytes": 300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-067/solve.json",
+      "sha256": "d43a2d82994c1c479c2da7421e4d02ac38a37f1b592383bf05365edaf3e8ce51",
+      "bytes": 870
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-068/attempts.json",
+      "sha256": "7164974516679addbf8fd2883d0169c70e1374676a83ed0f1d820590241f1bc7",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-068/full.edn",
+      "sha256": "0e690fe82acca2d01acb82d74f3a98f889818ac4d1c16cd713369ad35372c848",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-068/independent.edn",
+      "sha256": "a5991c4ea90691087c861b7e256f3208b970f9cfde37916e2b039928b06d4b3a",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-068/solve.json",
+      "sha256": "05ed99a6baf89b37ad9f6e81f87e5c832f32e4f159834bf8910f3461c97e37df",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-069/attempts.json",
+      "sha256": "c89a5f0642e46ac061109b3cadfcd3e3aff8a86c5fdbecfc1633b466b5d64082",
+      "bytes": 231
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-069/full.edn",
+      "sha256": "fb51410dfc9f3f01ac2967f24d673fc50c567f901bc8eae233ed358dc9cc2bcf",
+      "bytes": 218
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-069/independent.edn",
+      "sha256": "397c1b695fcbdd5473d05c8e514cf9adfadd61c059aceca8ab1f0bfcaf2a912a",
+      "bytes": 202
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-069/solve.json",
+      "sha256": "85f7794f08f61cd38b9a70f1b304bf3ea71273aa440e923534e284022b4b29e3",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-070/attempts.json",
+      "sha256": "3863936665eed45730353f8fb06e6cabd3a3987a8512257cdffbcd91a4ce49ad",
+      "bytes": 363
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-070/full.edn",
+      "sha256": "7b476c22bfac3d0126be48541d669922cf0530ea043569646a75bda145f4def4",
+      "bytes": 560
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-070/independent.edn",
+      "sha256": "8a7d4c965a4d49e86b2ea5df2ea4b7cf2c217f212e31328ca6dd2741c2ae0c60",
+      "bytes": 520
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-070/solve.json",
+      "sha256": "7db69b7cecd92e52fa27822ff38e5f2beec11467206a8e3356b88a22fc55877d",
+      "bytes": 872
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-071/attempts.json",
+      "sha256": "75ae7ae6787539729f0a15467864562f2c4b1f5dc64ed4cb3ec1897b4ca3e910",
+      "bytes": 1037
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-071/full.edn",
+      "sha256": "480764fb525edb4b31450d8169f619f858638dd70c2eb258a2748062a3a33ddb",
+      "bytes": 220
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-071/independent.edn",
+      "sha256": "3db61255fa3d2d302d417b8918759e654e57036bc9d2309be2da5d446003ce22",
+      "bytes": 204
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-071/solve.json",
+      "sha256": "4a91875769222b94cc3db5acd1976776d64d76b7a8f6563cda197a3a8d0fae75",
+      "bytes": 1544
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-072/attempts.json",
+      "sha256": "a6c36f56efb662ccb7a832506ef297b860089222b8023816e536aae7a59ad4e4",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-072/full.edn",
+      "sha256": "a39d22375b4247105fdd08c265c5c290ee1491ea7b7b6eb0f1ee4147859de235",
+      "bytes": 552
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-072/independent.edn",
+      "sha256": "55afaeb878ef23e277d0283707f500d00d7650c486f8d3d528400242bdfb3d5a",
+      "bytes": 512
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-072/solve.json",
+      "sha256": "e5d374eacc664c61272856bac9468560e7397497ff74fd5581040780fc4c8305",
+      "bytes": 741
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/attempts.json",
+      "sha256": "386726f7762c567bdcb95e1f76dfb3b2a89cd27cb8ce8166f69b153ac8eb12bc",
+      "bytes": 1078
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/clojure-validation.edn",
+      "sha256": "dcdff3a09003e4e8d4cd77ea4edf342dc7f8a40e88466b2a7865771a65f752f8",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/full.edn",
+      "sha256": "1dea73369b1c5716a413d14f4328c6e01f057ace72bec36d8d7c011d0b529d19",
+      "bytes": 338
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/independent.edn",
+      "sha256": "39f5e70dc40ec43ada428bf4ef82bac97828265539732b7f6a0942f3cc872ba7",
+      "bytes": 314
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/python-validation.json",
+      "sha256": "65f61fd8737e6ad32d9568e0c6d3d21a608606fe88e9e316da4e03423aac5dea",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/solve.json",
+      "sha256": "f82df5f5c147b9c67d35f3cf74b5eb72f88b35a6306d65a48aca43700132c059",
+      "bytes": 1630
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/witness.edn",
+      "sha256": "f057d66f0dfb2c47ea9a9dd2eaf15e2aba88fc6731c759e32d5737e6e35ec356",
+      "bytes": 1311
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-073/witness.json",
+      "sha256": "edbcb5faf50604a265f1c9e582912010f4241479b44bda4a6e86d84c908e8904",
+      "bytes": 2978
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-074/attempts.json",
+      "sha256": "c0cab068e5e8da54eca6227a6855bd006f02b063cc484a0572570e27f58b238b",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-074/full.edn",
+      "sha256": "5ee7b50058a22a017ceefba4db2f85023d8787263dd14a2593eb087f7510b411",
+      "bytes": 430
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-074/independent.edn",
+      "sha256": "a356061ee242b71d98e4c583466f74699b022b368011c174aad3bcf451b59c1a",
+      "bytes": 398
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-074/solve.json",
+      "sha256": "52ced9f738f3261cf3af37cb752621d6869e6b34243f95085660616422e721fc",
+      "bytes": 739
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/attempts.json",
+      "sha256": "d49c7ebab11fdf59c1425aa146179da541fb9aa1532f3463ee6679e71517b431",
+      "bytes": 941
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/clojure-validation.edn",
+      "sha256": "3ef692eeb7967578d51ac1b3ba6eba3edf89913d2ade783c7fbbabc1f739b89a",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/full.edn",
+      "sha256": "7e4e4db2a922e7b5c50b8cfe4afd07253e21ad2d290ffdaa795b4073d05ca7a2",
+      "bytes": 450
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/independent.edn",
+      "sha256": "d4a244ae8f8ee01af67c0cb78edb562dd46fd0d6bd3728c3104364bcf4368877",
+      "bytes": 418
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/python-validation.json",
+      "sha256": "d1766b32a3110a6194c944d388cf0179df0d3e720951ddb784bb6cc33e8c9d02",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/solve.json",
+      "sha256": "f8759fb85a5a00b5c956501b8186d729dd90e08983ca90968f49a62ea38cf0a3",
+      "bytes": 1493
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/witness.edn",
+      "sha256": "0fda541d919971b7007d9d0e592fd495500dda35db83f6a481e336cef7f63fa9",
+      "bytes": 1792
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-075/witness.json",
+      "sha256": "195740dfa0fd569e605d7e99ef3fac87ff8f590592f10ddc4a52b4f32a19669a",
+      "bytes": 4018
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/attempts.json",
+      "sha256": "9dfb3d0e731ef411bae517324c43e76b4ffba8c932f8388fc1a1204c8473ebd0",
+      "bytes": 391
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/clojure-validation.edn",
+      "sha256": "9994f33fec34ea759a3c244c0d584a7cd6c53e1f549505abbfa257b1bb6111e2",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/full.edn",
+      "sha256": "e5fb8997fb6309d76a3d2c2685fe955e231ce0f168275fb0dccac5fe375eb686",
+      "bytes": 114
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/independent.edn",
+      "sha256": "c9551cdcff991f91c70df1fe30e5ba9c0eabadfc69834e79f99f6da5e0f763cd",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/python-validation.json",
+      "sha256": "ff6aae9959f7bde7ed4260ead636711170a0b90d846481c7835fd718bfd50c0d",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/solve.json",
+      "sha256": "6e4894f36df1778d3f29f9a1d5dccdb2f29d53ff8753548f94104e669364b9a4",
+      "bytes": 944
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/witness.edn",
+      "sha256": "5f7ec95c6c92df60c4cfe48b582f068359501bd96b6395656cabcfaf2954d381",
+      "bytes": 619
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-076/witness.json",
+      "sha256": "af54d5caea3a9a5ec7912dd8b2ad9fdf0c62aa9ae3beee98e967ae6ce09aecba",
+      "bytes": 1265
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/attempts.json",
+      "sha256": "d7464f76726598c6d5414cf58f7aca28567aaed29bd41996358dab7ec1327cef",
+      "bytes": 518
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/clojure-validation.edn",
+      "sha256": "1d0a11ccc1e5351942b31c514e06aebb64ef9eacbd87c7ed0590b8d860ea132d",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/full.edn",
+      "sha256": "c7a2c933539a34d79947de55ae044f138fd33eee86adddc54b0fc094ea9eec3c",
+      "bytes": 222
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/independent.edn",
+      "sha256": "1777f10480dcacdad4f6145c6db802ea7a1fb6936c2423fedc412ee5217ebcd4",
+      "bytes": 206
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/python-validation.json",
+      "sha256": "ae179ed93e1b7c922d681587bba12295e37583b1a4936bb59ca30c0cafc6bb44",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/solve.json",
+      "sha256": "c1bc342d904b791c9be80c128d9c924ce1baa7a8a286066758d5d3ac728907f9",
+      "bytes": 1070
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/witness.edn",
+      "sha256": "5e814d58e2fadd160a5572c533f725f46c8202ab55d20255a6a5070af698bdad",
+      "bytes": 955
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-077/witness.json",
+      "sha256": "471066729910b379ab12be43d5ac92465f0ac109fcd5fc7ee76186fe0be3630f",
+      "bytes": 1866
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-078/attempts.json",
+      "sha256": "0aab2e1f596b32d45b679f8dd68b8f1d919c1ed2b077d6b445a5a46b644f0eb1",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-078/full.edn",
+      "sha256": "6a9755abdc9ce800747be24a447b555e645ac2919066cee78e7f878bdc20a988",
+      "bytes": 218
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-078/independent.edn",
+      "sha256": "9458d7e4ddc557627b755b57d878ef18e8a78ca4cdc7c17877abbb762a359c2a",
+      "bytes": 202
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-078/solve.json",
+      "sha256": "86686b1ba73161d11c7cde15494a352d055e3088aa48148da71d83cc357632af",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-079/attempts.json",
+      "sha256": "862ff718b638a1c15c29b7107d3223f765afd4d2792abbc917fcbf2db803fd73",
+      "bytes": 232
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-079/full.edn",
+      "sha256": "aa0141724a201b5d9f710b5fea6a4f8afe0d67995964872ac7b401350464de53",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-079/independent.edn",
+      "sha256": "f22487aacff0515e6cd609c6641eab0dbe5a796c196cc5c1fb13f5e91596ed35",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/differential-079/solve.json",
+      "sha256": "38b6c2cf9b53f3a544859f5259665e95864e7fd138e69636feea46d8608b30b4",
+      "bytes": 740
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/attempts.json",
+      "sha256": "dcee3f813a53532a459845d7c351f335e8b7ea74d2bf9055846330921d397e55",
+      "bytes": 488
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/clojure-validation.edn",
+      "sha256": "b10b9699cf61244d0d19be62aca80f8302b1bab9da7626948f3e22d992066b00",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/full.edn",
+      "sha256": "08adb45d7deaaee42a51d89768321c56c7b185bdec3bb1082b5bad64c2360ecf",
+      "bytes": 108
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/independent.edn",
+      "sha256": "017160d19807340c2fb3877c3170328fdd12ea7a11a3e9b792490331d61677b2",
+      "bytes": 100
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/python-validation.json",
+      "sha256": "8861bf3985b47fe93855ca49929003b8917d9fbf3f4ac75daa5d953df7804491",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/solve.json",
+      "sha256": "1558b91585fe0f0f85d3fae9a49893e9264dc033de1b53558e4623113db1a99a",
+      "bytes": 1040
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/witness.edn",
+      "sha256": "25299bc85e9f97a396011185769477852baee7bbcb2bdd3345d05a94c2242d76",
+      "bytes": 666
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/empty-read/witness.json",
+      "sha256": "b5f2a2812f7dfc6012d423b93079097c3761ea15721ec47f9255b51ae60ef31c",
+      "bytes": 1212
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/attempts.json",
+      "sha256": "aeef4f25e4b9257090e21a0a37c9c5c7881f73064ebe91b62e9f5a6cd30a40ee",
+      "bytes": 514
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/clojure-validation.edn",
+      "sha256": "341abd9635bd700a6b01bc314422eb742c0f71798e57c0836169b8f56841ddd2",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/full.edn",
+      "sha256": "198ff1e7db009dff1269faa087d763317b22da8773a0f064ca4e8609ecfd6ad4",
+      "bytes": 326
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/independent.edn",
+      "sha256": "d7994e8a69b8229136d981fe57fc26076c1902cc60a37a208496658d4396ee2f",
+      "bytes": 302
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/python-validation.json",
+      "sha256": "8b8bc7612946f5ce869b419d1a01a1f80e45582fceac49fcfa6607401672fb27",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/solve.json",
+      "sha256": "49e98bcfc797bff143ecd37172577fbd2298458d5654291ff90f08c5610f8509",
+      "bytes": 1066
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/witness.edn",
+      "sha256": "e1fac3b239511e0585a3cafe0274534d6b938e1cfd2739be36e618b608108226",
+      "bytes": 1413
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-cas-removed/witness.json",
+      "sha256": "41dde3f2940b9e4b7047e6108849ab39bf67ab6c9d5237226319a32868ff24aa",
+      "bytes": 3034
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-write-no-effect/attempts.json",
+      "sha256": "0ca2c46575ee23688b378ab743f39c139b1984e1fccd4ad28adae47a6ddfa94e",
+      "bytes": 230
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-write-no-effect/full.edn",
+      "sha256": "0c83e8e92fbdddcd18a4b3dc6d347511faa8fd7c97ab3fdfa15269a1713de2d4",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-write-no-effect/independent.edn",
+      "sha256": "22e910210bddb2b0a96b87ffa191266c5fbd2d3eb761c8a3fa2d12aeace9eccf",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/failed-write-no-effect/solve.json",
+      "sha256": "8ce8e332442095ba3887fc8adc2245677d04209e808ef1b75b8dd660aeb8cad5",
+      "bytes": 738
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/future-invoke-forbidden/attempts.json",
+      "sha256": "9bdfa88d4c025aff02096fbb07c1424433438ad938f372b087761dededaec0b0",
+      "bytes": 695
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/future-invoke-forbidden/full.edn",
+      "sha256": "e240bad71665af8f0fb5bcc30233401631a594d73baa6dea7c10893e68a32949",
+      "bytes": 162
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/future-invoke-forbidden/independent.edn",
+      "sha256": "b6bcf857b907dfa6bec3c6f1945908a5177db00402881cde097d854971e3e8bd",
+      "bytes": 150
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/future-invoke-forbidden/solve.json",
+      "sha256": "ea26736d51cfeb2cd38ede4e82b9bf545586e48a498fde056fa4938cb7d872c4",
+      "bytes": 1203
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/attempts.json",
+      "sha256": "b6c98985a59d052726c96f04827a3fe114677ddf83a35f1b3baaba2ae30a4f02",
+      "bytes": 774
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/clojure-validation.edn",
+      "sha256": "620ea6a4dc448547033e6e437b8b63e1a63758fee90943b71dd0246a8eac7987",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/full.edn",
+      "sha256": "4f529d8c4b0796356387c03b84ffcecde1dece6ccb9d43fa9d933b366bed56f8",
+      "bytes": 432
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/independent.edn",
+      "sha256": "eb7895dc9defa10a7b1d4e931ea4ef1ad353c609028300dd5d8a613c7aafa903",
+      "bytes": 400
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/python-validation.json",
+      "sha256": "e91ee2771b078624c5c52857f1395357cc8c86d841374d0013059165cf05007c",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/solve.json",
+      "sha256": "90b574101cfff198318e6188f1404ec1138f14a7b2ba2c750b90b91a09280960",
+      "bytes": 1326
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/witness.edn",
+      "sha256": "64593776d10b0e069bae90f857dc26b7bddb53e8a3c0c4979fa930f44fbe47f8",
+      "bytes": 1873
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/late-info-cas/witness.json",
+      "sha256": "42f320efe299dfbaf10451fab6bc93cef6acb31c2952860859f0c9afa1385809",
+      "bytes": 4040
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/attempts.json",
+      "sha256": "2db376f9a4a383779ecb013d570cdb75a13742fbc34502dc03620af9a93d6092",
+      "bytes": 639
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/clojure-validation.edn",
+      "sha256": "d66f184c793b464f7feaabffcd84f18fdf7570ae6a3a9364f5eba599d2c633bf",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/full.edn",
+      "sha256": "6b360e8b750f70c1f76b4daa23b3160db4d25fa4ae9347abd5062086bbc682ab",
+      "bytes": 455
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/independent.edn",
+      "sha256": "4ca0a21dbc1120bd09b7aeeb6e79554b07c2fe6f57c921d56fc1cda4e1d4518f",
+      "bytes": 431
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/python-validation.json",
+      "sha256": "2177aa6c8d69c7778dc7c43c56b0f6493fcb0e4b8f2ec24dd07654c3df179f09",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/solve.json",
+      "sha256": "cff683b13015c61b1ee6f12838ed44cfa2873886aa772b68042e6cf807c77c08",
+      "bytes": 1191
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/witness.edn",
+      "sha256": "e65ba3a969b66b0cb81170898b55ff62b7629ccebad0fd459c3906334054b18f",
+      "bytes": 1652
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/metadata-set-symbol/witness.json",
+      "sha256": "04077fc1314feeb342e8f782248d236330cac0dd43fbba7a67371c2d9637dd5c",
+      "bytes": 3384
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/attempts.json",
+      "sha256": "92318889464bbf277dbc8a9a84e150e1a2ff5bf32a9adaf62e7306efa9e702de",
+      "bytes": 616
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/clojure-validation.edn",
+      "sha256": "ab230929913e810e8937a3cff221d32726cc679a7013ac9d8b66fe1995186ab3",
+      "bytes": 245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/full.edn",
+      "sha256": "a6212f0259bf53179dfde1b9dc1f4bd03303a6b06af0c022cdfa2cc21f0b3420",
+      "bytes": 324
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/independent.edn",
+      "sha256": "b822d444620f2e953a5f33a70c08c659ddb30e7b0398f874747a1010a6931ea0",
+      "bytes": 300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/python-validation.json",
+      "sha256": "6749e8cd59601fac51eb00568d1036d396210da37fcae31749c3cc9862fb1c54",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/solve.json",
+      "sha256": "b26a09bf34e0c2a91662d03c3cc330e193a7c522b55cb2b71629b4c6534b1bc0",
+      "bytes": 1168
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/witness.edn",
+      "sha256": "7ced08a43643202c3e1f798a304314fcbf35e00b691c908699b3ecc430b19d38",
+      "bytes": 1474
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/nil-write/witness.json",
+      "sha256": "7d20e66a5044dae7d1ee04671bd80067ba86fdfe27bd7098a8cdf330b982d40e",
+      "bytes": 2996
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/attempts.json",
+      "sha256": "2f6410b05c3f4c5000cc771da2bfbaf242e13ad2b339055733bf7d20153eea35",
+      "bytes": 515
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/clojure-validation.edn",
+      "sha256": "a24dd76c054d658aca9c09ccf05df2be1354007e03f75acda5b88d2f3c107d32",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/full.edn",
+      "sha256": "7bad0ad4676b1532ba31f1e90dd929d584b4150a96c7cb1a314cf61946dc5ec4",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/independent.edn",
+      "sha256": "06a15538e9791280f32b4d08b45f67f2c329c07dc89e0986a31db5e4f4407ab3",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/python-validation.json",
+      "sha256": "dcad53fb8835bf13fe71b21de89de28c2a82e58f0956d06ec331bc340a355731",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/solve.json",
+      "sha256": "779a40ca6a1268a8964730b7aa272ac9d242ff505e331e9221dfb857bcce28b6",
+      "bytes": 1068
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/witness.edn",
+      "sha256": "cdeeccb74c22a4f2c2cf45fc9579c8f6e7d6db877be7e2d7f1432b4ecc5f7414",
+      "bytes": 1068
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/read-wildcards/witness.json",
+      "sha256": "e2aa4903f6111f5262f8c39f8d51399af77e16b94c44deb7d1d604bd99ce71b9",
+      "bytes": 2101
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-bad-state/witness.edn",
+      "sha256": "f04176ed033ec7ec93ea9e4e2c1bd4e0d5aa8c2a9c6a1461f55acbc29c7b5b91",
+      "bytes": 1058
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-bad-state/witness.json",
+      "sha256": "cb11f85b505742b99b5c1b9070f3f23803967a320b91957aa526d91801854097",
+      "bytes": 2085
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-bad-time/witness.edn",
+      "sha256": "8ba587c656d55bdb7619a57fcf84b961d09794ce0d67ec16d07205f39d185fce",
+      "bytes": 1054
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-bad-time/witness.json",
+      "sha256": "08014fa2684aa1ce34f7089657107545c3df4d1ec119b41a7c14cbf6a612eda7",
+      "bytes": 2081
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-missing-operation/witness.edn",
+      "sha256": "2d62cd4c4418a671b3ca77e35a301cde907f52fbe9a0a7d09f966a0ce59498c8",
+      "bytes": 760
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-missing-operation/witness.json",
+      "sha256": "c15c033fee8794f799802a87eecb710e26c5f3fc725cc24c932bc3903e4884c2",
+      "bytes": 1445
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-omit-required-info/witness.edn",
+      "sha256": "ad7ca94fe814ab97116aacd478f537110b50283da5ea385f13cf615a57bcac9c",
+      "bytes": 1491
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-omit-required-info/witness.json",
+      "sha256": "5f4161f4aab72d7c825c141723a6e027a304d352c9b1bc29522689d1329ac60f",
+      "bytes": 3021
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-omit-success/witness.edn",
+      "sha256": "ae43847fd8b488885f850783f903d3867aac5016d148d4e386b1373a75ce9a9b",
+      "bytes": 987
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-omit-success/witness.json",
+      "sha256": "9d96cfd5d7392473f0d367b2f1dc645c3c772abc147f1c0eddd94454614c9ded",
+      "bytes": 1953
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-reversed-order/witness.edn",
+      "sha256": "44257294b8a88839905cd74ae01fedf8a31b71ec24b8b67c2cf17a5a2586c104",
+      "bytes": 1056
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/reject-reversed-order/witness.json",
+      "sha256": "fd83167c49bb79ec3bdbfeb01da219d010803accd5405d4949fb958dda577e9e",
+      "bytes": 2083
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/attempts.json",
+      "sha256": "a8f8ec49ee558f9ceef998915587bbebd2a5f9209eb75840d9d9f9e6499b4577",
+      "bytes": 748
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/clojure-validation.edn",
+      "sha256": "ccdb370196bf59333711d71d87498064afef9b234afba10e386a67e3f809ddd9",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/full.edn",
+      "sha256": "ff7a06ad0f292193e48a2f619d575f295a33e5586e88e259f64fd8e8be7d7c16",
+      "bytes": 326
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/independent.edn",
+      "sha256": "6c7be8ec95c6ea1f2bcbabd380581f181a0911d14e427da68bb72d2f588c8759",
+      "bytes": 302
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/python-validation.json",
+      "sha256": "2719dbe59e151eddaae454df3876ada1d040702ce165cd6825011766de96bfef",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/solve.json",
+      "sha256": "75026a5b229939188a7ad769a049fa4f6dea3cb99e083b8232d32b295950c839",
+      "bytes": 1300
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/witness.edn",
+      "sha256": "2068b14ac19b916cba36e4dc9bc05da9cfeeb3df64f031c39e888450cb2a6fae",
+      "bytes": 1476
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-cas/witness.json",
+      "sha256": "361e2611a4eaf989a0a07b4c90310f453495e04be5e9b7da53905c9cb5279ef7",
+      "bytes": 3158
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/attempts.json",
+      "sha256": "3d26471a253efa74c6250a4635897acc55b57d7796e90cb3e5158cd7cdcf9deb",
+      "bytes": 690
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/clojure-validation.edn",
+      "sha256": "279be2aef6d5895e7a051eaade69dbc81ca1b2de5642400dd17a2d1533bb1ad8",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/full.edn",
+      "sha256": "aedb1a1b68e5c951c415ddf623160da4bbba128f21cf674f8cd14acfaade801d",
+      "bytes": 216
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/independent.edn",
+      "sha256": "d68cf86e8a4c89c48cc234679fb7c0a3f5e451a71113347b91a1a1bca7306aab",
+      "bytes": 200
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/python-validation.json",
+      "sha256": "2a69e748315cf950a9071520e5ef0c4801240ab4e2b312c7e8c29f4eac413247",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/solve.json",
+      "sha256": "26dc01c84e5a1e3523d561e940027698581d2427a70779be2e9ef9703ff9feb1",
+      "bytes": 1242
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/witness.edn",
+      "sha256": "7eafb2a95388c80e76b08991aa8917a3326ff029ba681096b4a2c2463a9636fc",
+      "bytes": 1068
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-info-write/witness.json",
+      "sha256": "4b6e3098d95cf8a18af82a3e289e4b8e077a84f515ad7e455787c26d336a4fc0",
+      "bytes": 2098
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/attempts.json",
+      "sha256": "8701e02eace08cc104012372a98de6c492b6263b7fd46d5e7443efc5e7a589c1",
+      "bytes": 1364
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/clojure-validation.edn",
+      "sha256": "b4a2c5ca6135069ebd49b81e984043644f21a4f5244b074a25a013c04591b2a5",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/full.edn",
+      "sha256": "0c90d9ee9081cac7c35832eddf984db26e872482b027db3b725e8c2e42ad7988",
+      "bytes": 369
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/independent.edn",
+      "sha256": "44695d13289017c45b2d81a5f892ab83986aa8294cbad8e2e7216809f85b4a89",
+      "bytes": 345
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/python-validation.json",
+      "sha256": "41d9c56f28f701be3cb96eed280b6f7692806a381ddc68a63a62a615f8165b6e",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/solve.json",
+      "sha256": "39373971c0d6cbb2e72d40f986de28f0d2b7b42b1793e14696def20f30056b09",
+      "bytes": 1928
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/witness.edn",
+      "sha256": "e7496d4d9d8b53e2526f369ac432e90e3d3c9a1eda1b232994e6b5851f4c066e",
+      "bytes": 1560
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/required-no-leader/witness.json",
+      "sha256": "c8faa8c742b327687fb3b4435e532f7ae870ec5feb5ec1ae243a40ba91546ec6",
+      "bytes": 3151
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/attempts.json",
+      "sha256": "be452bcbfcaf57b2629d4e117a51ff447ec1788423edc2cc8ba1c34cc3b63976",
+      "bytes": 617
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/clojure-validation.edn",
+      "sha256": "135006832d7bbfaeb0afcdd8e32bef6897d8c24da7896a1eb9d2ca522909ca29",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/full.edn",
+      "sha256": "5acf5cf73708d51c52d6b663187727f93540928b18047cdea94e5472522170b8",
+      "bytes": 318
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/independent.edn",
+      "sha256": "a59412444e8cb8ea3ada3f76342b2f416e6b23ba9fd2a3efe13eb954758f90a1",
+      "bytes": 294
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/python-validation.json",
+      "sha256": "5e48c0180d9dde82fe72aab24ecffaceebb8c6a76f4223a62ef99c7e14a16977",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/solve.json",
+      "sha256": "9c8425b0964e8386b6c298db189dc23392dbfa3f38816c69f0a34be925cab368",
+      "bytes": 1169
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/witness.edn",
+      "sha256": "488016bb33e099443f8ee173bfc9d9c8284a96eb9ffb9f5ff41004d9811033cd",
+      "bytes": 1454
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/same-value-increments/witness.json",
+      "sha256": "34ca4fb251198a3ffce8ff0f60d16e5f51f48fac0c5d8bc799fc2348711de08c",
+      "bytes": 2966
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/stale-read/attempts.json",
+      "sha256": "a365860e5a4d9fb0183666f34cf30d05b4ddb07af7a2058ac65a78a9ca7b04a5",
+      "bytes": 228
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/stale-read/full.edn",
+      "sha256": "0f75e2f7644bc9bdaa4c69a31714379dbc04aaebbebcb96ba645be4fdca4ddea",
+      "bytes": 212
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/stale-read/independent.edn",
+      "sha256": "901dcc25cf4d523c79046a9d6be5d2bc18fdd68cfb245a2260d4b02d8e5246f4",
+      "bytes": 196
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/stale-read/solve.json",
+      "sha256": "6ed51000698e20d034f354a269b5bc6fb4bf329cef66ac6e24dbc053866082a5",
+      "bytes": 736
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/summary.json",
+      "sha256": "abfd78ba4929dc79b73f3f5e441fcc7b65d3273e4517ad965685b354c4a59699",
+      "bytes": 9921
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/attempts.json",
+      "sha256": "dfe6d98ea478d7096be2fcba153d52b9a28fd65f12fc7a565d2543d6ed69706f",
+      "bytes": 693
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/clojure-validation.edn",
+      "sha256": "9fce00ee91e25c8122058d1470406ae65caec4b5e8519ded32b542ce26bd9e36",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/full.edn",
+      "sha256": "59c225fc2cef373ec7848259f024efb4b01835f3e99dd11520686ff9d7c45e17",
+      "bytes": 162
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/independent.edn",
+      "sha256": "fc5eaf97aeb5cb9337528b5e4e9b721f76ef3c8bc3d67b07b81eae26cf0e8a02",
+      "bytes": 150
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/python-validation.json",
+      "sha256": "b09600380014ab0c71aeaae08e21ab04e8ef89c71b1d1db3f38edfc7d7078332",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/solve.json",
+      "sha256": "3fd806428ae58781ae4c97cc375a958790e5e70083cd9b8c081171b4da167746",
+      "bytes": 1245
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/witness.edn",
+      "sha256": "a2a962647815e5f2077ef7dc97b0d9e9a3b644efecf9c29d2db0382a9021833b",
+      "bytes": 976
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/unfinished-needed/witness.json",
+      "sha256": "fa6c31b952048b56b3eac663074eacb17fa4039856c6fe092baa3f361ab7b455",
+      "bytes": 1853
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/version-gap/attempts.json",
+      "sha256": "aee96d9bbfb5cbcfaf2baefc70f6543f8626706e142fb52b916d6c90caee9576",
+      "bytes": 229
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/version-gap/full.edn",
+      "sha256": "b323de222fdf33bd2674e908651ae2d7e537af7e535903a9ad4f04dbb49467aa",
+      "bytes": 106
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/version-gap/independent.edn",
+      "sha256": "a1d37a7f935e7b02343305164c96ed4658faed011d0912943192bacd81fb40f4",
+      "bytes": 98
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/version-gap/solve.json",
+      "sha256": "df1a10f8da884af0d5236b7f115c2ce1c7fea50c253b9644b87677dc4e2d15f0",
+      "bytes": 737
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/attempts.json",
+      "sha256": "b640681c4cafbef202823cd2aeb103b34088638b01a1ad4c4ad54c92d8f65ceb",
+      "bytes": 514
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/clojure-validation.edn",
+      "sha256": "7bf8f549251a832eb07ca6d8d2d60e886d4fbb8bf121854eb9132cd276927ff1",
+      "bytes": 243
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/full.edn",
+      "sha256": "0f065dfe4bbac439689d5d7d349e8cf04a8b347dc72249025b68e581ff9f2fc4",
+      "bytes": 212
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/independent.edn",
+      "sha256": "e79b12c914ebcfeaac4addd7e00544c3b746592ccf795c52f494225556c54890",
+      "bytes": 196
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/python-validation.json",
+      "sha256": "56bafd634d213f9063f4a1dd9eb400ef462f1a5ab598a5f7cf0b6adb24a29d22",
+      "bytes": 275
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/solve.json",
+      "sha256": "a70280e12ddccb27c7b1b09a8126def125944b14fc7f9acaaf008bff595a71d2",
+      "bytes": 1066
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/witness.edn",
+      "sha256": "5fe0d079679cda5b5f13e10f94d0278084b825fdf4871eaf90d3d722c64257b3",
+      "bytes": 1056
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest/write-read/witness.json",
+      "sha256": "7bf1c524156d8ad829976841dad8af0a3f7025360a1250648482b213c559f10b",
+      "bytes": 2083
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest-clojure-reject.log",
+      "sha256": "119dc0ed7529ce2316b6efe3774610c05d8acf20b21da8ca30af416b171fa2ef",
+      "bytes": 492
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest-clojure.log",
+      "sha256": "d7990599cfa75437b4b7e08aa3dbe8f316af7b0eaf62193eae7950c8b9644f56",
+      "bytes": 7800
+    },
+    {
+      "path": "artifacts/register-solver-0/selftest.log",
+      "sha256": "953fafdf28b0b65f35aa185cca60ec4410144b30e7c82d4952e35832acae2844",
+      "bytes": 13416
+    },
+    {
+      "path": "executed-source/.github/workflows/jepsen2-solver.yml",
+      "sha256": "b2147879d7737f8ae24f9fd4f5f58aa155db2078d85f72d8de6f95138c725ab2",
+      "bytes": 5687
+    },
+    {
+      "path": "executed-source/commit.json",
+      "sha256": "c53c167f6a67dac7df0fb97c0b1347a1ca55f7640c48f1132c9cbb2078cc72e1",
+      "bytes": 1663
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/EVIDENCE.md",
+      "sha256": "6c0723732430a04a0f5bbff4dcf9d2e272ff61c4c3be0f19b34cdcdcf839e04d",
+      "bytes": 2749
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/README.md",
+      "sha256": "a54dd0350aa0df90ecbab3564c4c3418c8c152cb3b977c2c351c7b7bda6e257a",
+      "bytes": 5764
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/history_io.py",
+      "sha256": "836e09a4b31577d26196d8113215354b39818cc7a152dee9cf1ddd6b4c491bab",
+      "bytes": 4566
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/project.clj",
+      "sha256": "67c5e3565c3b9db3d1d8f696fcf82cc23a4b9bfe3116409cfdc6effbc61003b3",
+      "bytes": 281
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/src/offline/verify.clj",
+      "sha256": "48aa4adf16d4e200b37b4236d522416ea7d8cbe868d55978cebe29cc76edad2d",
+      "bytes": 7955
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/src/offline/versioned_register.clj",
+      "sha256": "dd15acc854ed10d274c5501b13dad173a591629c96d34b390d561e91440083fa",
+      "bytes": 1799
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/prepare-fresh.py",
+      "sha256": "5ed96a5454912eebcde2c32e7258414bc0c495b8a5fe1b5de8135f7b98213178",
+      "bytes": 3309
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/prepare.py",
+      "sha256": "8c02901aed29270bbe9f6a3dfe098d11e034cb246e02d041c02e390cfc63ae18",
+      "bytes": 3060
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/projections.py",
+      "sha256": "7595f9cdf7eb2b894be29872c4130d951c581401d139e328ae2c9f8571d5a1d5",
+      "bytes": 2890
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/run-case.py",
+      "sha256": "c687532c2689f1dad0932d05352499d490a71b5ef52833a625ddf625b3e7a771",
+      "bytes": 6269
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/selftest.py",
+      "sha256": "598517c9e1cb12ea9dda447121490d3d834b78cf2cfb1b7f4b4ebefb3fbf36df",
+      "bytes": 10179
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/solve.py",
+      "sha256": "6d0ae4e87d13b5ae91a4896a8dc7fb414d9dcbbfdf92576ca356bc1cbe075661",
+      "bytes": 8161
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/sources/knossos_history.clj",
+      "sha256": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780",
+      "bytes": 14065
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/sources/register.clj",
+      "sha256": "72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668",
+      "bytes": 4694
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/verify.py",
+      "sha256": "c3f253344e01e86b47d47396c8d492a270a752eaa4cd02cc581658ccb9963740",
+      "bytes": 5677
+    },
+    {
+      "path": "executed-source/manifest.json",
+      "sha256": "13ad42d90d423a080b927310da361db4a923c098cfb025420a8da6018468ca56",
+      "bytes": 3984
+    },
+    {
+      "path": "executed-source/tree.json",
+      "sha256": "79800711506001a7eef32032426e295eb5553df960e766cbd2624210a39f14b4",
+      "bytes": 159664
+    },
+    {
+      "path": "log-38445539009.txt",
+      "sha256": "004bfd8f15b03938a660c37871d420e85a4cfba469ff7db8caa8b23c52a2f497",
+      "bytes": 65533
+    },
+    {
+      "path": "artifacts-fresh-first.json",
+      "sha256": "5f784761fe1e5b61975f330fc81c76df94da7874d7666bbf411bc222e7aa6ef0",
+      "bytes": 727
+    },
+    {
+      "path": "first-fresh-run.json",
+      "sha256": "70e4b260e1f943033fe2fcbc5f2189574059a66f095c1a242af42b9bbf7d6579",
+      "bytes": 195
+    },
+    {
+      "path": "fresh-verdicts.json",
+      "sha256": "c15f05934be6a6fc3b2c99b428252ed6a951bdc8b41697c785db33662881a88a",
+      "bytes": 9571
+    },
+    {
+      "path": "inputs/first-fresh-manifest.json",
+      "sha256": "1d1531a87836dbbcfb044d49963b8105faa261d2a320da7272b8384546a235f1",
+      "bytes": 3585
+    },
+    {
+      "path": "inputs/first-fresh-38440292743-kill-ops200-rep2.tar.gz",
+      "sha256": "7651fd001ac6f9e899e13ff1cf7202f10baa9743e64f282e1a9e2d5a6aea1afa",
+      "bytes": 107819
+    },
+    {
+      "path": "EVIDENCE.md",
+      "sha256": "f71fa4bfba3ed35cc1969fee84a27c29312281c1d61cb1b7ef0206500f510e58",
+      "bytes": 6427
+    }
+  ]
+}

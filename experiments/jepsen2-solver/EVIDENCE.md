@@ -1,11 +1,38 @@
 # Solver evidence
 
+## All eight original histories resolved
+
+Run https://github.com/djosh34/tigerstore/actions/runs/38444996427 completed successfully at commit `89a97a0487a5a904f6b27dc9d9e1b990590cabff`. All 143 keys in all eight original OOM histories have SAT witnesses validated independently by Python and the exact upstream Clojure model. All 15,987 client calls remain in the per-operation decision records. Sixteen info mutations are included, and two linearize after their info responses. Failed calls retain upstream Knossos removal semantics. There was no history truncation or info-to-fail rewrite.
+
+`old-verdicts.json` is the integration-ready machine summary. Its audit checks original archive/full/independent hashes, complete expected key coverage, both validator exits and output files, and JSON/EDN witness hashes. Per-case artifacts are:
+
+| Case | History | Validated keys | Artifact |
+| --- | --- | --- | --- |
+| 0 | first kill | 9 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11837183532 |
+| 1 | first partition | 12 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11838003304 |
+| 2 | kill rep2 | 10 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11838155844 |
+| 3 | kill rep3 | 9 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11838385703 |
+| 4 | partition rep2 | 11 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11837143521 |
+| 5 | partition rep3 | 11 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11838140808 |
+| 6 | 50/key kill | 34 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11837848359 |
+| 7 | 50/key partition | 47 | https://github.com/djosh34/tigerstore/actions/runs/38444996427/artifacts/11837423725 |
+
+The successful run also passed 19 fixed tests, 80 exhaustive differential cases, exact upstream replay of every SAT selftest certificate, and six invalid-witness rejection tests in both validators. None of these solves or JVMs ran on the host.
+
+## First fresh unknown history
+
+The supplied original artifact `38440292743/jepsen2-tigerstore-kill-ops200-rep2` is retained without changes in `inputs/first-fresh-38440292743-kill-ops200-rep2.tar.gz`. Its SHA-256 is `7651fd001ac6f9e899e13ff1cf7202f10baa9743e64f282e1a9e2d5a6aea1afa`. The adjacent manifest records every original member's hash. Only full/independent histories and original results are archived. Run https://github.com/djosh34/tigerstore/actions/runs/38445539009 completed successfully at commit `82989021aabe01bd06a9af26b291e04fe772ed8e`. It validated every key in the first fresh unknown history before the parent's complete 40-history archive. All 11 keys and 2,002 client calls passed both validators. One info mutation is included. `fresh-verdicts.json` records hashes and per-key decisions. Its retained artifact is https://github.com/djosh34/tigerstore/actions/runs/38445539009/artifacts/11838556178 .
+
+## Permanent branch evidence
+
+The `evidence` directory contains compressed complete runner artifacts and logs for the failed parser attempt, the successful eight-history run, and the first fresh success. Each archive includes the exact executed source/workflow snapshot and its Git blob/SHA-256 manifest. `evidence/manifest.json` records archive hashes, and each `*.members.json` records every retained member's SHA-256. These files do not depend on expiring Actions artifact retention. Repeated selftests are retained as executed, not reconstructed. Original full and independent histories, all certificates, both replay outputs, and unsuccessful parser logs remain available.
+
 ## First validated witnesses
 
 Commit `29e1e7fcdc1d7c87acb3f805ef1d120a3c87aa8f` ran on GitHub Actions:
 https://github.com/djosh34/tigerstore/actions/runs/38444408855
 
-Cases 0, 2, and 3 passed every key. The overall run failed because the other five jobs stopped on unsupported EDN metadata sets/symbols before solving. These are tooling failures, not invalid histories. Commit `89a97a0487a5a904f6b27dc9d9e1b990590cabff` fixes metadata parsing and adds set/symbol regression and negative-verifier tests. Its all-eight recheck is:
+Cases 0, 2, and 3 passed every key. The overall run failed because the other five jobs stopped on unsupported EDN metadata sets/symbols before solving. These are tooling failures, not invalid histories. Commit `89a97a0487a5a904f6b27dc9d9e1b990590cabff` fixes metadata parsing and adds set/symbol regression and negative-verifier tests. Its successful all-eight recheck is:
 https://github.com/djosh34/tigerstore/actions/runs/38444996427
 
 | Case | History | Keys validated | Artifact |
