@@ -17,7 +17,7 @@ import urllib.request
 ROOT = Path.cwd()
 WORKERS = int(os.environ['CLIENTS'])
 MODE = os.environ.get('MODE', 'diagnose')
-TOTAL = 60000 if MODE == 'paired' else 12000
+TOTAL = 12000 if MODE in ('diagnose','isolate') else 60000
 OUT = ROOT / f'evidence/pre47batch256/{MODE}/c{WORKERS}'
 TMP = Path(os.environ['RUNNER_TEMP']) / 'pre47batch256'
 CERT = TMP / 'certs'
@@ -79,6 +79,8 @@ def cluster(store, label):
             env = os.environ | {'GOMAXPROCS': '2' if 'p2' in store else '1', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}', 'PRE50_DISK_TIMING': '1'}
             if store.startswith('trace'):
                 env['PRE47_TRACE'] = '1'
+            if store.startswith('counter'):
+                env['PRE47_COUNTERS'] = '1'
             if 'window' in store:
                 env['PRE47_GRPC_WINDOW'] = str(16 << 20)
             if 'h2' in store:
@@ -87,6 +89,10 @@ def cluster(store, label):
                 env['PRE47_DISK_YIELD'] = 'before'
             if 'yield-after' in store:
                 env['PRE47_DISK_YIELD'] = 'after'
+            if 'raw-' in store:
+                env['PRE47_FSYNC_MODE'] = 'raw'
+            if 'block-' in store:
+                env['PRE47_FSYNC_MODE'] = 'block'
             (dest/f'n{i}-env.json').write_text(json.dumps({k:v for k,v in env.items() if k.startswith(('PRE47_', 'PRE50_')) or k=='GOMAXPROCS'}, indent=2))
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
@@ -185,6 +191,8 @@ def cluster(store, label):
         warmup = json.loads((dest/'warmup.json').read_text())
         terms_before = applied_fence(warmup['revision_after'], 'before')
         before = disk('before')
+        if store.startswith('counter'):
+            (dest/'clock-before.json').write_text(json.dumps([json.loads(http(6060+i, '/debug/clock')) for i in order],indent=2))
         if store.startswith('trace'):
             for i in range(3):
                 http(6060+i, '/debug/trace/start')
@@ -199,6 +207,8 @@ def cluster(store, label):
         terms_after = applied_fence(result['revision_after'], 'after')
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
         after_disk = disk('after')
+        if store.startswith('counter'):
+            (dest/'clock-after.json').write_text(json.dumps([json.loads(http(6060+i, '/debug/clock')) for i in order],indent=2))
         (dest/'disk.json').write_text(json.dumps({'before':before,'after':after_disk},indent=2))
         if store.startswith('trace'):
             for i in range(3):
@@ -235,11 +245,14 @@ def cluster(store, label):
 def main():
     check_time()
     OUT.mkdir(parents=True,exist_ok=True)
-    repetitions = 5 if MODE == 'paired' else 3 if MODE == 'isolate' else 1
+    repetitions = 5 if MODE == 'paired' else 1 if MODE == 'diagnose' else 3
     for rep in range(1, repetitions+1):
         # All variants run sequentially with identical physical CPU placement.
         stores = {'diagnose': ['trace-h2-p1', 'trace-h2-p2'],
                   'isolate': ['prototype','off-p1','leader2','followers2','yield-before-p1','yield-after-p1','window-p1','p2'],
+                  'counter': ['prototype','off-p1','counter-p1','counter-p2','p2'],
+                  'handoff': ['raw-p1','block-p1','counter-raw-p1','counter-block-p1'],
+                  'isolate-long': ['off-p1','leader2','followers2','p2'],
                   'paired': ['prototype','p2','etcd']}[MODE]
         if rep % 2 == 0:
             stores.reverse()

@@ -33,11 +33,11 @@ func (f file) Write(b []byte) (int, error) {
 
 func (f file) Sync() error {
 	if !timing {
-		return f.File.Sync()
+		return pre47FileSync(f.File)
 	}
 	start := time.Now()
 	expclock.Event("fsync_begin", 0, 0, 0, 0)
-	err := f.File.Sync()
+	err := pre47FileSync(f.File)
 	expclock.Event("fsync_end", 0, 0, 0, 0)
 	syncNanos.Add(uint64(time.Since(start)))
 	syncs.Add(1)

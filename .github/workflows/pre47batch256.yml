@@ -17,11 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {mode: diagnose, clients: 256}
-          - {mode: isolate, clients: 256}
-          - {mode: paired, clients: 16}
-          - {mode: paired, clients: 64}
-          - {mode: paired, clients: 256}
+          - {mode: counter, clients: 256}
+          - {mode: handoff, clients: 256}
+          - {mode: isolate-long, clients: 256}
     steps:
       - uses: actions/checkout@v7
         with:

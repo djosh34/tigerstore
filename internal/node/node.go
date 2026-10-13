@@ -119,6 +119,7 @@ type request struct {
 // Node is a running node.
 type Node struct {
 	cfg       Config
+	clocks    *ClockCounters
 	core      *core.Node
 	wal       *wal.WAL
 	inbox     chan input
@@ -149,7 +150,12 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, errors.Join(err, w.Close())
 	}
+	var clocks *ClockCounters
+	if os.Getenv("PRE47_COUNTERS") == "1" {
+		clocks = &ClockCounters{}
+	}
 	return &Node{
+		clocks:    clocks,
 		cfg:       cfg,
 		core:      c,
 		wal:       w,
@@ -196,6 +202,9 @@ func (n *Node) Unreachable(id uint64) {
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+	if n.clocks != nil {
+		n.clocks.arrivals.Add(1)
+	}
 	expclock.Event("arrival", r.id, uint64(len(n.inbox)), 0, 0)
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return nil, err
@@ -261,6 +270,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 		case done := <-n.persisted:
 			expclock.Event("completion", group, uint64(len(n.inbox)), uint64(len(deferred)), 0)
+			if n.clocks != nil {
+				n.clocks.inbox[min(512, len(n.inbox))].Add(1)
+				n.clocks.deferred[min(512, len(deferred))].Add(1)
+			}
 			if done.err != nil {
 				return done.err
 			}
@@ -303,6 +316,20 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		expclock.Event("turn_process", group, uint64(len(n.inbox)), uint64(len(deferred)), uint64(len(waiters)))
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
+			if n.clocks != nil {
+				var count, bytes uint64
+				for _, j := range eff.Persist {
+					for _, e := range j.Entries {
+						count++
+						bytes += uint64(len(e.GetData()))
+					}
+				}
+				if count > 0 {
+					n.clocks.entryGroups.Add(1)
+				}
+				n.clocks.entries.Add(count)
+				n.clocks.entryBytes.Add(bytes)
+			}
 			group++
 			for i := range eff.Persist {
 				eff.Persist[i].TraceGroup = group
@@ -409,8 +436,18 @@ func (n *Node) persist(ctx context.Context) {
 		n.wal.Append(hs, nil)
 		done := persistDone{jobs: jobs}
 		expclock.Event("sync_start", group, 0, 0, 0)
+		var before uint64
+		if n.clocks != nil {
+			before = n.clocks.arrivals.Load()
+		}
 		if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
+		}
+		if n.clocks != nil {
+			count := n.clocks.arrivals.Load() - before
+			n.clocks.groups.Add(1)
+			n.clocks.during.Add(count)
+			n.clocks.hist[min(512, count)].Add(1)
 		}
 		expclock.Event("persist_end", group, 0, 0, 0)
 		if yield == "after" {

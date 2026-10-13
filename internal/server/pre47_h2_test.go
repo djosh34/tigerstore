@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"reflect"
@@ -133,7 +134,7 @@ func TestPre47H2PartialIO(t *testing.T) {
 	buf := make([]byte, 16)
 	for {
 		_, err := c.Read(buf)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

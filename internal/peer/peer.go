@@ -14,12 +14,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/djosh34/tigerstore/internal/expclock"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/expclock"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"

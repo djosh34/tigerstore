@@ -24,7 +24,7 @@ func pre50Observe(n *node.Node) error {
 	http.HandleFunc("/debug/procs", func(w http.ResponseWriter, r *http.Request) {
 		value, err := strconv.Atoi(r.URL.Query().Get("n"))
 		if err != nil || value < 1 || value > 2 {
-			http.Error(w, "expected n=1 or n=2", 400)
+			http.Error(w, "expected n=1 or n=2", http.StatusBadRequest)
 			return
 		}
 		previous := runtime.GOMAXPROCS(value)
@@ -36,6 +36,11 @@ func pre50Observe(n *node.Node) error {
 	http.HandleFunc("/debug/trace/stop", expclock.Stop)
 	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader()}); err != nil {
+			return
+		}
+	})
+	http.HandleFunc("/debug/clock", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(n.ClockStats()); err != nil {
 			return
 		}
 	})
