@@ -10,11 +10,13 @@
 package core
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math"
+	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -145,11 +147,15 @@ type Node struct {
 	leader   uint64
 	isLeader bool
 	leaseSeq uint64
-	// appending counts the local appends with entries that are on their way
-	// to disk. While the leader has one, it holds new proposals.
-	appending int
-	waiting   map[uint64]*pending // writes by request ID
-	timeouts  []*pending          // every waiting request in deadline order
+	// ownIndex is the last index of the append that carries the leader's
+	// last batch of writes, and durable the last index on disk. While
+	// ownIndex is ahead, new writes wait. awaitOwn marks that the next
+	// append with entries carries a batch just proposed. Appends of
+	// forwarded proposals do not hold anything.
+	ownIndex, durable uint64
+	awaitOwn          bool
+	waiting           map[uint64]*pending // writes by request ID
+	timeouts          []*pending          // every waiting request in deadline order
 
 	proposals   []*pending
 	propBytes   int
@@ -398,10 +404,14 @@ func (n *Node) newLeaseID() int64 {
 	return id
 }
 
+// batchFraming is the most a write adds to an entry besides its request:
+// origin, boot, request ID, kind and length.
+const batchFraming = 4*binary.MaxVarintLen64 + 1
+
 // queueWrite adds a write to the next entry. A write that would take the
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	size := proto.Size(p.req.Op)
+	size := proto.Size(p.req.Op) + batchFraming
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
@@ -445,22 +455,28 @@ func (n *Node) reply(id uint64, resp proto.Message, err error) {
 
 // propose packs the queued writes into one Raft entry.
 func (n *Node) propose() {
-	if len(n.proposals) == 0 {
+	// A write that timed out while it waited never goes out; its client
+	// got an answer that allows both outcomes.
+	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+	n.proposals, n.propBytes = nil, 0
+	if len(props) == 0 {
 		return
 	}
-	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, n.proposals)
+	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props)
 	if err != nil {
 		n.fail(err)
 		return
 	}
-	props := n.proposals
-	n.proposals, n.propBytes = nil, 0
 	if err := n.rn.Propose(data); err != nil {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
 			n.finish(p, nil, rpctypes.ErrGRPCNoLeader)
 		}
+		return
 	}
+	// The next local append with entries carries this batch; writes wait
+	// until it is durable (ownIndex).
+	n.awaitOwn = true
 }
 
 // requestReads asks Raft for one read index for all queued reads.
@@ -489,7 +505,7 @@ func (n *Node) Persisted(job PersistJob) {
 		n.logBytes += wal.EntryRecordBytes(e)
 	}
 	if len(job.Entries) > 0 {
-		n.appending--
+		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
 	}
 	n.deliver(job.msg.GetResponses())
 }
@@ -518,7 +534,7 @@ func (n *Node) Process() (Effects, error) {
 		// the append is durable. Nothing else waits, and with no append in
 		// flight a write goes out at once, so one client sees no delay.
 		// The byte cap still sends a full entry early (queueWrite).
-		if !n.isLeader || n.appending == 0 {
+		if !n.isLeader || n.durable >= n.ownIndex {
 			n.propose()
 		}
 		n.requestReads()
@@ -547,6 +563,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 	if rd.SoftState != nil {
 		if leader := rd.RaftState == raft.StateLeader; leader != n.isLeader {
 			n.isLeader = leader
+			// A batch from an earlier leadership may have been replaced
+			// and never reach the disk; wait for nothing from it.
+			n.ownIndex, n.awaitOwn = 0, false
 			n.leadershipChanged()
 		}
 		if rd.Lead != n.leader && rd.Lead != raft.None {
@@ -574,8 +593,9 @@ func (n *Node) handleReady(rd raft.Ready) {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
 			}
 			n.out.Persist = append(n.out.Persist, job)
-			if len(job.Entries) > 0 {
-				n.appending++
+			if len(job.Entries) > 0 && n.awaitOwn {
+				n.ownIndex = job.Entries[len(job.Entries)-1].GetIndex()
+				n.awaitOwn = false
 			}
 		case raft.LocalApplyThread:
 			if err := n.apply(m.Entries); err != nil {
