@@ -285,7 +285,8 @@ jobs:
             fi
             # Caught only if the named checker itself found the bug, not
             # only a shared precondition such as the coverage floor.
-            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "")' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
+            # For Linearizable, a search timeout is not a catch.
+            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
               echo "seed $seed: $CHECKER caught it"
               caught=1
             else

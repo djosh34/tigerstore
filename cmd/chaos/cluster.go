@@ -58,14 +58,15 @@ type node struct {
 	control *clientv3.Client
 }
 
-// freePort returns a port nothing listens on right now.
-func freePort() (int, error) {
+// reservePort returns a free port and the listener that holds it. The
+// caller closes the listener once the proxies listen, so the kernel cannot
+// hand the port to a proxy meanwhile.
+func reservePort() (net.Listener, int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().(*net.TCPAddr).Port, nil
+	return ln, ln.Addr().(*net.TCPAddr).Port, nil
 }
 
 func writeFile(path string, b []byte) error {
@@ -103,12 +104,22 @@ func newCluster(dir, bin string, seed uint64) (*cluster, error) {
 		}
 	}
 	var clientPort, peerPort [3]int
-	for i := range 3 {
-		if clientPort[i], err = freePort(); err != nil {
-			return nil, err
+	var held []net.Listener
+	// The node ports stay held until every proxy listens: a proxy once got
+	// a node's port, and the node could not start.
+	defer func() {
+		for _, ln := range held {
+			_ = ln.Close()
 		}
-		if peerPort[i], err = freePort(); err != nil {
-			return nil, err
+	}()
+	for i := range 3 {
+		for _, port := range []*int{&clientPort[i], &peerPort[i]} {
+			ln, p, err := reservePort()
+			if err != nil {
+				return nil, err
+			}
+			held = append(held, ln)
+			*port = p
 		}
 	}
 	add := func(name string, from, to, port int) (*link, error) {
