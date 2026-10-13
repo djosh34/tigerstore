@@ -5,10 +5,6 @@
 name: bench
 
 on:
-  # TEMPORARY: runs this branch's push once to try the workflow; removed
-  # before merge.
-  push:
-    branches: [work/50-loadgen-2]
   workflow_dispatch:
     inputs:
       candidate:
@@ -102,8 +98,8 @@ jobs:
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || 'max' }}
-          REPS: ${{ inputs.reps || '3' }}
+          MODES: ${{ inputs.modes || 'max rate' }}
+          REPS: ${{ inputs.reps || '5' }}
         run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
       - name: Report
         if: always()
