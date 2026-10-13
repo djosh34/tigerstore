@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/batchcmd"
+	"github.com/djosh34/tigerstore/internal/batchmem"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 )
@@ -26,10 +27,13 @@ import (
 const maxMessage = core.MaxRequestBytes + (512 << 10)
 
 type budget struct {
-	input                  int
-	admitted, ready, reset bool
-	http, httpDone         bool
-	timer                  *time.Timer
+	input                     int
+	admitted, ready, reset    bool
+	http, httpDone            bool
+	timer                     *time.Timer
+	slotID                    uint32
+	incoming                  incoming
+	receiveArena, descriptors *batchmem.Arena
 }
 type conn struct {
 	net.Conn
@@ -41,6 +45,8 @@ type conn struct {
 	control                 chan control
 	mu                      sync.Mutex
 	budgets                 map[uint32]*budget
+	budgetSlots             []budget
+	inputArena              *batchmem.Arena
 	inputBytes, outputBytes int
 	writeTimeout            time.Duration // zero uses the experiment's 5 s default
 }
@@ -74,8 +80,19 @@ func (c *conn) start(id uint32) bool {
 	if len(c.budgets) >= MaxStreams {
 		return false
 	}
-	c.budgets[id] = &budget{}
-	return true
+	if c.s.memory == nil {
+		c.budgets[id] = &budget{}
+		return true
+	}
+	for i := range c.budgetSlots {
+		b := &c.budgetSlots[(int(id/2)+i)%MaxStreams]
+		if b.slotID == 0 {
+			*b = budget{slotID: id}
+			c.budgets[id] = b
+			return true
+		}
+	}
+	return false
 }
 
 func (c *conn) receive(id uint32, size int) bool {
@@ -108,6 +125,8 @@ func (c *conn) reset(id uint32) {
 		// An admitted payload still belongs to the core until completion.
 		if !b.admitted || b.ready {
 			c.inputBytes -= b.input
+			releaseInput(b)
+			b.slotID = 0
 			delete(c.budgets, id)
 		}
 	}
@@ -129,6 +148,8 @@ func (c *conn) finish(id uint32) {
 		if b.timer != nil {
 			b.timer.Stop()
 		}
+		releaseInput(b)
+		b.slotID = 0
 		delete(c.budgets, id)
 	}
 	c.mu.Unlock()
@@ -146,20 +167,35 @@ type admission struct {
 	tags       []uint32
 	legacyTags []uint32
 	bytes      int
+	arena      *batchmem.Arena
 }
 
 func (c *conn) flush(a *admission) error {
 	if len(a.tags) > 0 {
 		c.s.stats.sends.Add(1)
 		if err := c.s.n.SubmitBatch(c.ctx, a.commands, a.tags, c); err != nil {
+			c.unsubmit(a.tags)
+			c.unsubmit(a.legacyTags)
 			return err
 		}
+		a.tags, a.commands = nil, nil
 	}
 	if len(a.legacyTags) > 0 {
 		c.s.stats.sends.Add(1)
 		if err := c.s.n.SubmitLegacyBatch(c.ctx, a.ops, a.legacyTags, c); err != nil {
+			c.unsubmit(a.legacyTags)
 			return err
 		}
+		a.legacyTags, a.ops = nil, nil
+	}
+	if a.arena != nil {
+		a.arena.Release()
+	}
+	// End the receive allocation batch. Incomplete streams and admitted
+	// commands keep their own refs to the chunks they still need.
+	if c.inputArena != nil {
+		c.inputArena.Release()
+		c.inputArena = nil
 	}
 	*a = admission{}
 	return nil
@@ -238,6 +274,9 @@ func (c *conn) dispatch(id uint32, s *incoming, a *admission) error {
 		c.Complete([]node.Completion{{Tag: id, Err: err}})
 		return nil //nolint:nilerr // The error is a stream status, not a fatal connection error.
 	}
+	if !c.prepareAdmission(a, id) {
+		return errors.New("descriptor budget exhausted")
+	}
 	c.admit(id)
 	c.s.stats.commands.Add(1)
 	if c.s.mode == "rpc" {
@@ -292,6 +331,7 @@ func (c *conn) readLoop() error {
 	streams := make(map[uint32]*incoming)
 	var last, received uint32
 	var a admission
+	defer c.readerCleanup(&a)
 	for {
 		if !readyFrame(r) {
 			if err := c.flush(&a); err != nil {
@@ -336,7 +376,13 @@ func (c *conn) readLoop() error {
 					return errors.New("stream admission limit or invalid stream ID")
 				}
 				last = v.StreamID
-				s = &incoming{}
+				if c.s.memory == nil {
+					s = &incoming{}
+				} else {
+					c.mu.Lock()
+					s = &c.budgets[v.StreamID].incoming
+					c.mu.Unlock()
+				}
 				for _, h := range v.Fields {
 					switch h.Name {
 					case ":path":
@@ -381,8 +427,10 @@ func (c *conn) readLoop() error {
 				if !c.receive(v.StreamID, capacity-cap(s.body)) {
 					return errors.New("input byte limit")
 				}
-				owned := make([]byte, len(s.body), capacity)
-				copy(owned, s.body)
+				owned, ok := c.receiveBuffer(v.StreamID, s.body, capacity)
+				if !ok {
+					return errors.New("receive arena budget exhausted")
+				}
 				s.body = owned
 			}
 			// Framer.Data is reused by ReadFrame. Copy into this stream's owned

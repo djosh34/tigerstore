@@ -41,6 +41,9 @@ func testConn(t *testing.T) (*conn, net.Conn) {
 		t.Fatal(err)
 	}
 	c := &conn{Conn: a, s: s, ctx: ctx, cancel: cancel, out: make(chan []encoded, 64), control: make(chan control, 256), budgets: make(map[uint32]*budget)}
+	if s.memory != nil {
+		c.budgetSlots = make([]budget, MaxStreams)
+	}
 	t.Cleanup(func() { c.close(); _ = b.Close() })
 	return c, b
 }
@@ -158,6 +161,9 @@ func TestFlowBlockedBytesStayReserved(t *testing.T) {
 	if before == 0 {
 		t.Fatal("writer forgot flow-blocked bytes")
 	}
+	if c.s.memory != nil && c.s.MemoryStats().Output.InUseBytes == 0 {
+		t.Fatal("writer recycled flow-blocked chunk")
+	}
 	c.sendControl(control{id: 1, delta: 3})
 	frame, err := f.ReadFrame()
 	if err != nil {
@@ -194,6 +200,9 @@ func TestFlowBlockedBytesStayReserved(t *testing.T) {
 			t.Fatal("flushed response retains bytes")
 		}
 		time.Sleep(time.Millisecond)
+	}
+	if c.s.memory != nil && c.s.MemoryStats().Output.InUseBytes != 0 {
+		t.Fatal("flushed reply retained chunk")
 	}
 	c.close()
 	if err := <-done; err != nil {

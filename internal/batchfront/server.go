@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,12 +43,15 @@ type counters struct {
 type Stats struct {
 	Commands, AdmissionSends, CompletionBatches, Replies, OutputHighwater uint64
 	ControlSends, ResponseSends                                           uint64
+	Memory                                                                MemoryStats
 }
 
 type Server struct {
 	n              *node.Node
 	cfg            server.Config
 	mode           string
+	memory         *memory
+	memoryMode     string
 	successHeader  []byte
 	successTrailer []byte
 	mu             sync.Mutex
@@ -74,11 +78,18 @@ func New(n *node.Node, cfg server.Config, mode string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{n: n, cfg: cfg, mode: mode, successHeader: h, successTrailer: t, connections: make(map[*conn]struct{})}, nil
+	mem, err := newMemory()
+	if err != nil {
+		return nil, err
+	}
+	if mem != nil && mode != "full" {
+		return nil, errors.New("TIGERSTORE_BATCH_MEMORY requires full batch mode")
+	}
+	return &Server{n: n, cfg: cfg, mode: mode, memory: mem, memoryMode: os.Getenv("TIGERSTORE_BATCH_MEMORY"), successHeader: h, successTrailer: t, connections: make(map[*conn]struct{})}, nil
 }
 
 func (s *Server) Stats() Stats {
-	return Stats{Commands: s.stats.commands.Load(), AdmissionSends: s.stats.sends.Load(), CompletionBatches: s.stats.completions.Load(), Replies: s.stats.replies.Load(), OutputHighwater: s.stats.highwater.Load(), ControlSends: s.stats.controlSends.Load(), ResponseSends: s.stats.responseSends.Load()}
+	return Stats{Commands: s.stats.commands.Load(), AdmissionSends: s.stats.sends.Load(), CompletionBatches: s.stats.completions.Load(), Replies: s.stats.replies.Load(), OutputHighwater: s.stats.highwater.Load(), ControlSends: s.stats.controlSends.Load(), ResponseSends: s.stats.responseSends.Load(), Memory: s.MemoryStats()}
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -107,6 +118,10 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		c := &conn{Conn: nc, s: s, ctx: ctx, cancel: cancel, out: make(chan []encoded, 64), control: make(chan control, 256), budgets: make(map[uint32]*budget)}
+		if s.memory != nil {
+			c.budgets = make(map[uint32]*budget, MaxStreams)
+			c.budgetSlots = make([]budget, MaxStreams)
+		}
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
