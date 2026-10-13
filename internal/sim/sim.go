@@ -674,9 +674,12 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	if last := lastIndex(rec); last < n.recoverFloor {
+	last := lastIndex(rec)
+	if last < n.recoverFloor {
 		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.recoverFloor)
 	}
+	// What recovery returned is now durable, and nothing is in flight.
+	n.durableLast, n.recoverFloor, n.inflight, n.replaceFrom = last, 0, nil, 0
 	// Small segments, so that most of the log is in sealed ones, where
 	// any damage is detectable.
 	w.SetSegmentBytes(32 << 10)
