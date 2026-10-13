@@ -1,0 +1,8 @@
+{
+  "successes": 2000,
+  "workers": 1,
+  "mem_profile_rate": 1,
+  "note": "Profiles include observation/fence/GC/background overhead; not timing results.",
+  "binary": "experiment",
+  "strategy": "ring"
+}

@@ -1,0 +1,101 @@
+etcdctl version: 3.7.2
+API version: 3.7
+eda6374c3728d98df88600a014057cb98e103499e7e1ecd4dda1fb36608306a0  /home/runner/work/_temp/alloc50/bin/base
+da78e31b7de01dde8db8dc8fb830eeba2a9e359b93f62c12a94ced21226832ad  /home/runner/work/_temp/alloc50/bin/cases
+ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572  /home/runner/work/_temp/alloc50/bin/etcdctl
+4ef7fa2a188da6bee8a9bcaf235a3a17a4671c4cb3b9c42cd846ce45b2403473  /home/runner/work/_temp/alloc50/bin/experiment
+08cee28120e1a7e5aefa8c49cd4f30e9b78f26620eca6fccdde3bd1a64463e09  /home/runner/work/_temp/alloc50/bin/load
+/home/runner/work/_temp/alloc50/bin/base: go1.27.2
+	path	github.com/djosh34/tigerstore/cmd/tigerstore
+	mod	github.com/djosh34/tigerstore	(devel)	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	go.etcd.io/raft/v3	v3.7.0	h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=1
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+/home/runner/work/_temp/alloc50/bin/experiment: go1.27.2
+	path	github.com/djosh34/tigerstore/cmd/tigerstore
+	mod	github.com/djosh34/tigerstore	(devel)	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	go.etcd.io/raft/v3	v3.7.0	h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=1
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+/home/runner/work/_temp/alloc50/bin/load: go1.27.2
+	path	github.com/djosh34/tigerstore/experiments/bench75/load
+	mod	github.com/djosh34/tigerstore	v0.0.0-20261013100808-191e12ca104c+dirty	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=1
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=191e12ca104c78f1646ee0481cec29ca209118b8
+	build	vcs.time=2026-10-13T10:08:08Z
+	build	vcs.modified=true
+/home/runner/work/_temp/alloc50/bin/cases: go1.27.2
+	path	github.com/djosh34/tigerstore/experiments/alloc50/cases
+	mod	github.com/djosh34/tigerstore	v0.0.0-20261013100808-191e12ca104c+dirty	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=1
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=191e12ca104c78f1646ee0481cec29ca209118b8
+	build	vcs.time=2026-10-13T10:08:08Z
+	build	vcs.modified=true
+cfd07f5e49c4e1527db08dcd8bb0104dd822113a58a0428d0e21733011ec9abb  /home/runner/work/_temp/alloc50/bin/base-census.test
+436c07067578efd931d083e1c1bdb8758f465df8fcd09db84f9db602860d9dcd  /home/runner/work/_temp/alloc50/bin/experiment-census.test

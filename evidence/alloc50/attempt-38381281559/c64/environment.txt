@@ -1,0 +1,63 @@
+2026-10-13T10:09:30Z
+base 0d406cb09aa99dea7ef1488476d6ebc6b032a6b8
+experiment 191e12ca104c78f1646ee0481cec29ca209118b8
+harness_origin 0f82f687e5a21fa6265e508866f07dc3fffeaae9
+Linux runnervmy3dvn 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          32-bit, 64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  4
+On-line CPU(s) list:                     0-3
+Vendor ID:                               ARM
+Model name:                              Neoverse-N2
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Stepping:                                r0p0
+BogoMIPS:                                2000.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16
+L1d cache:                               256 KiB (4 instances)
+L1i cache:                               256 KiB (4 instances)
+L2 cache:                                4 MiB (4 instances)
+L3 cache:                                128 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-3
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     16722046976  1529344000 12627877888    48349184  2887815168 15192702976
+Swap:     3221221376           0  3221221376
+NAME            SIZE TYPE ROTA MODEL        MOUNTPOINTS
+sda     161061273600 disk    1 Virtual Disk 
+├─sda1  159986466304 part    1              /
+├─sda15    103809536 part    1              /boot/efi
+└─sda16    967836160 part    1              /boot
+Filesystem        1B-blocks        Used    Available Use% Mounted on
+/dev/root      154894188544 40458997760 114418413568  27% /
+/dev/root      154894188544 40458997760 114418413568  27% /
+TARGET SOURCE    FSTYPE OPTIONS
+/      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,nobarrier,errors=remount-ro,commit=30,data=writeback
+RUNNER_NAME=GitHub Actions 1000009027
+RUNNER_OS=Linux
+RUNNER_ARCH=ARM64
+ImageVersion=20261004.142.1
+ImageOS=ubuntu24-arm64
+go version go1.27.2 linux/arm64

@@ -7,21 +7,17 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
@@ -61,114 +57,7 @@ func slowCommittedPuts(r *pb.RangeResponse, key, value []byte) (int64, error) {
 	return kv.Version, nil
 }
 
-// stalled opens a real mTLS HTTP/2 connection. It reads only the handshake,
-// advertises zero stream receive credit, submits 4096 1KiB Puts, then
-// performs no further reads or WINDOW_UPDATE. Replies must retain managed slots.
-func stalled(endpoint string, cfg *tls.Config, key []byte) (net.Conn, int, error) {
-	tcp, err := net.DialTimeout("tcp", endpoint, 5*time.Second)
-	if err != nil {
-		return nil, 0, err
-	}
-	fail := func(e error) (net.Conn, int, error) { _ = tcp.Close(); return nil, 0, e }
-	if t, ok := tcp.(*net.TCPConn); ok {
-		if err := t.SetReadBuffer(4096); err != nil {
-			return fail(err)
-		}
-	}
-	rawCFG := cfg.Clone()
-	host, _, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		return fail(err)
-	}
-	rawCFG.ServerName = host
-	tc := tls.Client(tcp, rawCFG)
-	if err := tc.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		return fail(err)
-	}
-	if err := tc.Handshake(); err != nil {
-		return fail(err)
-	}
-	if tc.ConnectionState().NegotiatedProtocol != "h2" {
-		return fail(errors.New("missing h2 ALPN"))
-	}
-	if _, err := io.WriteString(tc, http2.ClientPreface); err != nil {
-		return fail(err)
-	}
-	fr := http2.NewFramer(tc, tc)
-	if err := fr.WriteSettings(http2.Setting{ID: http2.SettingInitialWindowSize, Val: 0}); err != nil {
-		return fail(err)
-	}
-	gotSettings, gotAck := false, false
-	credit := 65535
-	serverStreamWindow := 65535
-	for !gotSettings || !gotAck || credit == 65535 {
-		frame, err := fr.ReadFrame()
-		if err != nil {
-			return fail(err)
-		}
-		if s, ok := frame.(*http2.SettingsFrame); ok {
-			if s.IsAck() {
-				gotAck = true
-			} else {
-				gotSettings = true
-				if err := s.ForeachSetting(func(setting http2.Setting) error {
-					if setting.ID == http2.SettingInitialWindowSize {
-						serverStreamWindow = int(setting.Val)
-					}
-					return nil
-				}); err != nil {
-					return fail(err)
-				}
-				if err := fr.WriteSettingsAck(); err != nil {
-					return fail(err)
-				}
-			}
-		}
-		if w, ok := frame.(*http2.WindowUpdateFrame); ok && w.StreamID == 0 {
-			credit += int(w.Increment)
-		}
-	}
-	request, err := proto.Marshal(&pb.PutRequest{Key: key, Value: valueOfSize(1024)})
-	if err != nil {
-		return fail(err)
-	}
-	data := make([]byte, 5+len(request))
-	binary.BigEndian.PutUint32(data[1:5], uint32(len(request)))
-	copy(data[5:], request)
-	const count = slowAttempts
-	if len(data) > serverStreamWindow || count*len(data) > credit {
-		return fail(fmt.Errorf("slow workload exceeds advertised send credit: stream=%d connection=%d bytes=%d", serverStreamWindow, credit, count*len(data)))
-	}
-	for i := range uint32(count) {
-		var header bytes.Buffer
-		enc := hpack.NewEncoder(&header)
-		for _, field := range []hpack.HeaderField{
-			{Name: ":method", Value: "POST"},
-			{Name: ":scheme", Value: "https"},
-			{Name: ":authority", Value: endpoint},
-			{Name: ":path", Value: "/etcdserverpb.KV/Put"},
-			{Name: "content-type", Value: "application/grpc"},
-			{Name: "te", Value: "trailers"},
-		} {
-			if err := enc.WriteField(field); err != nil {
-				return fail(err)
-			}
-		}
-		id := 1 + 2*i
-		if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: id, BlockFragment: header.Bytes(), EndHeaders: true}); err != nil {
-			return fail(err)
-		}
-		if err := fr.WriteData(id, true, data); err != nil {
-			return fail(err)
-		}
-	}
-	if err := tc.SetDeadline(time.Time{}); err != nil {
-		return fail(err)
-	}
-	return tc, count * len(data), nil
-}
-
-func run() error {
+func run() (resultErr error) {
 	endpoint := flag.String("endpoint", "", "leader client endpoint")
 	certdir := flag.String("certdir", "", "certificate directory")
 	debugURL := flag.String("debug-url", "", "leader observation endpoint")
@@ -186,18 +75,40 @@ func run() error {
 		return errors.New("invalid strategy")
 	}
 	report := map[string]any{
-		"valid": false, "slow_requests": slowAttempts, "slow_attempted_puts": slowAttempts, "reply_reads_after_handshake": 0,
+		"valid": false, "slow_requests": slowAttempts, "slow_planned_puts": slowAttempts, "reply_reads_after_handshake": 0,
 		"stream_receive_window": 0, "request_limit_bytes": limit,
 	}
-	// Preserve failures as raw evidence too.
+	var slow *slowSender
+	// On failure, diagnose before cleanup closes the raw socket. The writer
+	// must always be joined, including failed healthy requests or snapshots.
 	defer func() {
+		if resultErr != nil {
+			report["valid"] = false
+			report["failure"] = resultErr.Error()
+			file, err := captureGoroutines(*debugURL, *out, "failure")
+			if err != nil {
+				report["failure_goroutines_error"] = err.Error()
+			} else {
+				report["failure_goroutines"] = file
+			}
+		}
+		if slow != nil {
+			if !slow.closing.Load() {
+				report["sender_before_cleanup"] = slow.snapshot()
+			}
+			final, err := slow.closeAndWait(3 * time.Second)
+			recordSender(report, final)
+			if err != nil {
+				resultErr = errors.Join(resultErr, err)
+				report["valid"] = false
+				report["cleanup_error"] = err.Error()
+			}
+		}
 		b, err := json.MarshalIndent(report, "", "  ")
 		if err == nil {
 			err = os.WriteFile(*out, append(b, '\n'), 0o644)
 		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "write case evidence:", err)
-		}
+		resultErr = errors.Join(resultErr, err)
 	}()
 	ca, err := os.ReadFile(*certdir + "/ca.pem")
 	if err != nil {
@@ -299,32 +210,121 @@ func run() error {
 	if err := retained("before_slow"); err != nil {
 		return err
 	}
-	slow, sentBytes, err := stalled(*endpoint, cfg, []byte("/alloc50/slow"))
+	slow, err = stalled(*endpoint, cfg, []byte("/alloc50/slow"))
 	if err != nil {
 		return err
 	}
-	report["slow_data_bytes"] = sentBytes
-	defer func() { _ = slow.Close() }()
-	// Healthy Puts are on a completely independent TLS connection. Require
-	// progress both immediately and after the stalled replies accumulate.
-	healthyKey := []byte("/alloc50/healthy")
-	healthy := valueOfSize(1024)
+	started := time.Now()
+	var quotaAt time.Time
+	quotaSamples := []map[string]any{}
+	pollQuota := func() error {
+		if err := slow.check(); err != nil {
+			return err
+		}
+		if mode == 0 {
+			return nil
+		}
+		body, err := observation(*debugURL, "/debug/allocator", 3*time.Second)
+		if err != nil {
+			return err
+		}
+		var a map[string]uint64
+		if err := json.Unmarshal(body, &a); err != nil {
+			return err
+		}
+		if err := validateAllocator(a, mode); err != nil {
+			return err
+		}
+		now := time.Now()
+		quotaSamples = append(quotaSamples, map[string]any{"elapsed_s": now.Sub(started).Seconds(), "allocator": a})
+		report["quota_samples"] = quotaSamples
+		pinned := a["held_slots"] >= a["per_connection_slots"] && a["denied_count"] > snapshots["before_slow"].Allocator["denied_count"]
+		if quotaAt.IsZero() {
+			if now.Sub(started) > 5*time.Second {
+				return errors.New("managed quota/refusal not observed within five seconds")
+			}
+			if pinned {
+				quotaAt = now
+				report["quota_observed_elapsed_s"] = now.Sub(started).Seconds()
+			}
+		} else if !pinned {
+			return errors.New("managed quota was released before intentional close")
+		}
+		return nil
+	}
+	// Healthy work starts immediately, even if the single raw writer blocks.
+	healthyKey, healthy := []byte("/alloc50/healthy"), valueOfSize(1024)
 	successes := 0
 	var previous int64
+	healthyPut := func() error {
+		if err := slow.check(); err != nil {
+			return err
+		}
+		r, err := put(healthyKey, healthy)
+		if err != nil || r == nil || r.Header == nil || r.Header.Revision <= previous {
+			return errors.Join(errors.New("healthy Put while stalled failed or invalid revision"), err)
+		}
+		previous = r.Header.Revision
+		successes++
+		report["healthy_successes_while_stalled"] = successes
+		if successes%16 == 0 {
+			return pollQuota()
+		}
+		return nil
+	}
 	for phase := range 3 {
-		for range 512 {
-			r, err := put(healthyKey, healthy)
-			if err != nil || r == nil || r.Header == nil || r.Header.Revision <= previous {
-				return errors.Join(errors.New("healthy Put while stalled failed or invalid revision"), err)
+		if phase > 0 && mode != 0 {
+			// Establish quota by five seconds, then sustain it for at least one
+			// second. Keep healthy Puts progressing throughout that hold.
+			for quotaAt.IsZero() {
+				if err := pollQuota(); err != nil {
+					return err
+				}
+				if err := healthyPut(); err != nil {
+					return err
+				}
 			}
-			previous = r.Header.Revision
-			successes++
+			until := quotaAt.Add(time.Duration(phase) * 500 * time.Millisecond)
+			for time.Now().Before(until) {
+				if err := pollQuota(); err != nil {
+					return err
+				}
+				if err := healthyPut(); err != nil {
+					return err
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		for range 512 {
+			if err := healthyPut(); err != nil {
+				return err
+			}
+		}
+		if err := pollQuota(); err != nil {
+			return err
 		}
 		if err := retained(fmt.Sprintf("slow_phase_%d", phase)); err != nil {
 			return err
 		}
-		// Diagnostic settling, not a latency measurement.
-		time.Sleep(100 * time.Millisecond)
+		report[fmt.Sprintf("sender_phase_%d", phase)] = slow.snapshot()
+	}
+	if mode == 0 {
+		for !slow.snapshot().AllDataSent {
+			if err := slow.check(); err != nil {
+				return err
+			}
+			if time.Since(started) > 5*time.Second {
+				return errors.New("baseline sender did not complete all planned Puts")
+			}
+			if err := healthyPut(); err != nil {
+				return err
+			}
+		}
+	} else {
+		if quotaAt.IsZero() || time.Since(quotaAt) < time.Second {
+			return errors.New("managed quota not sustained for one second")
+		}
+		report["quota_sustained_s"] = time.Since(quotaAt).Seconds()
 	}
 	if mode != 0 {
 		last := snapshots["slow_phase_2"].Allocator
@@ -357,9 +357,27 @@ func run() error {
 	report["slow_committed_puts"] = committed
 	report["slow_range_header"] = slowRange.Header
 	report["slow_last_mod_revision"] = slowRange.Kvs[0].ModRevision
-	if err := slow.Close(); err != nil {
+	if err := slow.check(); err != nil {
 		return err
 	}
+	beforeClose := slow.snapshot()
+	report["sender_before_close"] = beforeClose
+	if !beforeClose.AllDataSent {
+		file, err := captureGoroutines(*debugURL, *out, "blocked-prefix")
+		if err != nil {
+			return err
+		}
+		report["blocked_prefix_goroutines"] = file
+	}
+	final, err := slow.closeAndWait(3 * time.Second)
+	recordSender(report, final)
+	if err != nil {
+		return err
+	}
+	if err := validateSender(final, committed, mode != 0); err != nil {
+		return err
+	}
+	report["sender_outcome_verified"] = true
 	time.Sleep(200 * time.Millisecond)
 	postClose, err := put(healthyKey, healthy)
 	if err != nil || postClose == nil || postClose.Header == nil || postClose.Header.Revision <= previous {

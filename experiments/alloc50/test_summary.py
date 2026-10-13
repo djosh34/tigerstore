@@ -37,12 +37,27 @@ class SummaryTests(unittest.TestCase):
         for store in ('base', 'ring', 'arena', 'default'):
             dest = cell/f'cases-{store}'
             dest.mkdir()
+            prefix = store == 'arena'
+            headers, data_count = (1024, 1023) if prefix else (4096, 4096)
+            sender = {'planned_puts': 4096, 'attempted_puts': headers, 'sent_headers': headers,
+                      'completed_data': data_count, 'completed_data_bytes': data_count*1047,
+                      'message_bytes': 1047, 'finished': True, 'intentional_close': True,
+                      'all_data_sent': not prefix, 'error': 'closed network connection' if prefix else '',
+                      'error_before_close': False, 'expected_close_error': prefix}
             result = {'valid': True, 'healthy_successes_while_stalled': 1536,
-                      'slow_requests': 4096, 'slow_attempted_puts': 4096,
-                      'slow_committed_puts': 32 if store == 'arena' else 256,
+                      'slow_requests': 4096, 'slow_planned_puts': 4096, 'slow_attempted_puts': headers,
+                      'slow_sent_headers': headers, 'slow_sent_data': data_count,
+                      'slow_data_bytes': data_count*1047, 'slow_sender': sender,
+                      'sender_before_close': {'all_data_sent': not prefix}, 'sender_outcome_verified': True,
+                      'slow_committed_puts': 32 if prefix else 256,
                       'reply_reads_after_handshake': 0}
+            if prefix:
+                dump = dest/'cases.json.blocked-prefix.goroutines.txt'
+                dump.write_text('synthetic goroutine fixture; not runner evidence\n')
+                result['blocked_prefix_goroutines'] = str(dump)
             if store in ('ring', 'arena'):
-                result.update(allocator_saturation_verified=True, allocator_recovery_verified=True)
+                result.update(allocator_saturation_verified=True, allocator_recovery_verified=True,
+                              quota_observed_elapsed_s=.1, quota_sustained_s=1.1)
                 stats = {'mode': {'ring': 1, 'arena': 2}[store], 'slot_budget': 4096,
                          'byte_budget': 64 << 20, 'held_slots': 0, 'held_bytes': 0,
                          'peak_slots': 256, 'peak_bytes': 1024, 'fallback_allocations': 0,
@@ -70,6 +85,25 @@ class SummaryTests(unittest.TestCase):
             data['allocator_recovery_verified'] = False
             file.write_text(json.dumps(data))
             self.assertNotEqual(self.summarize(root).returncode, 0)
+
+    def test_async_prefix_validation(self):
+        with tempfile.TemporaryDirectory(dir=HERE) as temp:
+            root = Path(temp)
+            cell = self.make_fixture(root)
+            file = cell/'cases-arena'/'cases.json'
+            original = json.loads(file.read_text())
+            for mutation in ('early_error', 'too_many_commits', 'short_hold', 'late_quota', 'bad_headers'):
+                data = json.loads(json.dumps(original))
+                if mutation == 'early_error': data['slow_sender']['error_before_close'] = True
+                elif mutation == 'too_many_commits': data['slow_committed_puts'] = data['slow_sent_data']+2
+                elif mutation == 'short_hold': data['quota_sustained_s'] = .5
+                elif mutation == 'late_quota': data['quota_observed_elapsed_s'] = 5.1
+                else: data['slow_sender']['sent_headers'] = data['slow_attempted_puts']+1
+                file.write_text(json.dumps(data))
+                self.assertNotEqual(self.summarize(root).returncode, 0, mutation)
+            file.write_text(json.dumps(original))
+            (file.parent/'cases.json.blocked-prefix.goroutines.txt').unlink()
+            self.assertNotEqual(self.summarize(root).returncode, 0, 'missing pre-close dump')
 
     def test_failed_window_and_missing_repetition(self):
         with tempfile.TemporaryDirectory(dir=HERE) as temp:

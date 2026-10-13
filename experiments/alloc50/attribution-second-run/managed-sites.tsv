@@ -1,0 +1,17 @@
+base_site	candidate_site	base_objects	ring_objects	arena_objects	base_bytes	ring_bytes	arena_bytes
+server/h2.go:433	server/h2.go:504	2018	18	18	645760	6336	6336
+server/stream.go:122	server/stream.go:130	2018	18	18	2304352	352	352
+server/batch.go:73	server/batch.go:77	2018	18	18	258304	2304	2304
+server/batch.go:74	server/batch.go:78	2018	18	18	32288	288	288
+node/node.go:186	node/node.go:191	2018	18	18	161440	1440	1440
+core/node.go:376	no allocating managed site	2000	0	0	288000	0	0
+core/node.go:511	no allocating managed site	2000	0	0	16000	0	0
+core/node.go:905	no allocating managed site	2000	0	0	128000	0	0
+node/node.go:408	node/node.go:424	2018	18	18	161440	1440	1440
+server/batch.go:159	server/batch.go:171	2018	18	18	48432	432	432
+server/batch.go:194	server/batch.go:206	2018	18	18	96864	864	864
+server/batch.go:243	no allocating managed site	2000	0	0	128000	0	0
+server/stream.go:275	server/stream.go:284	2018	18	18	96864	864	864
+server/stream.go:278	server/stream.go:287	2018	18	18	161440	1440	1440
+server/stream.go:298	server/stream.go:307	2018	18	18	322880	2880	2880
+TOTAL		30198	198	198	4850064	18640	18640

@@ -1,0 +1,132 @@
+File: base
+Build ID: a9a96873a2506671ca0d1ec3728dbc3f952ca53c
+Type: alloc_objects
+Time: 2026-10-13 10:12:29 UTC
+Showing nodes accounting for 255751, 97.12% of 263344 total
+Dropped 444 nodes (cum <= 1316)
+      flat  flat%   sum%        cum   cum%
+     24136  9.17%  9.17%      44258 16.81%  go.etcd.io/raft/v3.(*raft).maybeSendAppend
+     20290  7.70% 16.87%      20290  7.70%  go.etcd.io/raft/v3.(*raft).send
+     16244  6.17% 23.04%      16244  6.17%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+     12963  4.92% 27.96%      22030  8.37%  go.etcd.io/raft/v3.newStorageAppendMsg
+     10507  3.99% 31.95%      10507  3.99%  runtime/pprof.allFrames
+     10256  3.89% 35.85%      10256  3.89%  go.etcd.io/raft/v3.(*raft).hardState (inline)
+     10220  3.88% 39.73%      10220  3.88%  go.etcd.io/raft/v3/raftpb.MessageType.Enum (inline)
+      8146  3.09% 42.82%      28545 10.84%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+      8144  3.09% 45.91%       8144  3.09%  github.com/djosh34/tigerstore/internal/core.(*Node).send (inline)
+      8072  3.07% 48.98%       8072  3.07%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1
+      7976  3.03% 52.01%      18989  7.21%  go.etcd.io/raft/v3.(*raft).appendEntry
+      7065  2.68% 54.69%      15325  5.82%  golang.org/x/net/http2.(*Framer).readMetaFrame
+      7052  2.68% 57.37%      21272  8.08%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+      7032  2.67% 60.04%       7036  2.67%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+      7012  2.66% 62.70%      48989 18.60%  go.etcd.io/raft/v3.(*RawNode).Propose
+      6959  2.64% 65.34%      14000  5.32%  go.etcd.io/raft/v3.newStorageApplyMsg
+      6054  2.30% 67.64%       6070  2.30%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked
+      4982  1.89% 69.53%       4982  1.89%  github.com/djosh34/tigerstore/internal/core.raftHardState (inline)
+      4959  1.88% 71.42%       6000  2.28%  go.etcd.io/raft/v3.newStorageApplyRespMsg (inline)
+      4140  1.57% 72.99%       4140  1.57%  google.golang.org/protobuf/internal/impl.consumeInt32Ptr
+      4052  1.54% 74.53%       6070  2.30%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+      4036  1.53% 76.06%       4072  1.55%  github.com/djosh34/tigerstore/internal/server.(*conn).admit
+      4004  1.52% 77.58%      50290 19.10%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+      4000  1.52% 79.10%     162680 61.77%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+      2787  1.06% 80.16%       2847  1.08%  runtime/pprof.(*profileBuilder).emitLocation
+      2087  0.79% 80.95%       4123  1.57%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+      2058  0.78% 81.73%      15504  5.89%  runtime/pprof.writeHeapProto
+      2034  0.77% 82.50%       2034  0.77%  time.newTimer
+      2018  0.77% 83.27%       2018  0.77%  github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch
+      2018  0.77% 84.04%       4036  1.53%  github.com/djosh34/tigerstore/internal/node.completeAll
+      2018  0.77% 84.80%       2018  0.77%  github.com/djosh34/tigerstore/internal/server.(*conn).Complete
+      2018  0.77% 85.57%      10106  3.84%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+      2018  0.77% 86.33%       2018  0.77%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+      2018  0.77% 87.10%       2018  0.77%  golang.org/x/net/http2.(*frameCache).getDataFrame (inline)
+      2018  0.77% 87.87%       2018  0.77%  golang.org/x/net/http2.parseHeadersFrame
+      2018  0.77% 88.63%       2018  0.77%  golang.org/x/net/http2.parsePingFrame
+      2018  0.77% 89.40%       2018  0.77%  golang.org/x/net/http2.parseWindowUpdateFrame
+      2000  0.76% 90.16%       6000  2.28%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut
+      2000  0.76% 90.92%       2000  0.76%  github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite
+      2000  0.76% 91.68%       2000  0.76%  github.com/djosh34/tigerstore/internal/core.(*State).track
+      2000  0.76% 92.44%       2000  0.76%  github.com/djosh34/tigerstore/internal/core.encodeBatch
+      2000  0.76% 93.20%       2000  0.76%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+      2000  0.76% 93.96%       2000  0.76%  github.com/djosh34/tigerstore/internal/server.(*conn).putResponse
+      2000  0.76% 94.72%       2000  0.76%  go.etcd.io/raft/v3.(*unstable).truncateAndAppend
+      2000  0.76% 95.48%       2000  0.76%  google.golang.org/protobuf/internal/impl.mergeBytes
+      2000  0.76% 96.23%       2000  0.76%  reflect.unsafe_New
+      1296  0.49% 96.73%       2160  0.82%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+       576  0.22% 96.95%       2304  0.87%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+       256 0.097% 97.04%       2560  0.97%  crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+        48 0.018% 97.06%       1472  0.56%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate
+        32 0.012% 97.07%       1826  0.69%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters
+        32 0.012% 97.09%      37719 14.32%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+        25 0.0095% 97.10%      10254  3.89%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop
+        16 0.0061% 97.10%       8144  3.09%  crypto/tls.(*Conn).handshakeContext
+        16 0.0061% 97.11%       1504  0.57%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished
+        16 0.0061% 97.11%      37671 14.30%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         6 0.0023% 97.12%      13365  5.08%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         1 0.00038% 97.12%       2001  0.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         1 0.00038% 97.12%      15538  5.90%  net/http.(*conn).serve
+         1 0.00038% 97.12%      15505  5.89%  runtime/pprof.writeHeapInternal
+         0     0% 97.12%       1440  0.55%  crypto/internal/fips140/tls13.deriveSecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+         0     0% 97.12%       8144  3.09%  crypto/tls.(*Conn).HandshakeContext (inline)
+         0     0% 97.12%       8016  3.04%  crypto/tls.(*Conn).serverHandshake
+         0     0% 97.12%       7664  2.91%  crypto/tls.(*serverHandshakeStateTLS13).handshake
+         0     0% 97.12%       2112   0.8%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate
+         0     0% 97.12%       5038  1.91%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted
+         0     0% 97.12%     122864 46.66%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 97.12%      22272  8.46%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0% 97.12%       6000  2.28%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+         0     0% 97.12%       6000  2.28%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+         0     0% 97.12%      50989 19.36%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 97.12%       4000  1.52%  github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut
+         0     0% 97.12%       4986  1.89%  github.com/djosh34/tigerstore/internal/core.(*storage).append
+         0     0% 97.12%       6000  2.28%  github.com/djosh34/tigerstore/internal/core.walkBatch
+         0     0% 97.12%       2000  0.76%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).PutKV
+         0     0% 97.12%       2000  0.76%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).put
+         0     0% 97.12%     162680 61.77%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 97.12%      26395 10.02%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 97.12%      28545 10.84%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 97.12%      46167 17.53%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 97.12%      46167 17.53%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 97.12%       2018  0.77%  github.com/djosh34/tigerstore/internal/server.(*conn).flush
+         0     0% 97.12%       6090  2.31%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+         0     0% 97.12%       4072  1.55%  github.com/djosh34/tigerstore/internal/server.(*conn).onEnd
+         0     0% 97.12%      12160  4.62%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 97.12%       6070  2.30%  github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders
+         0     0% 97.12%      10254  3.89%  github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1
+         0     0% 97.12%      50290 19.10%  go.etcd.io/raft/v3.(*RawNode).Ready
+         0     0% 97.12%      22324  8.48%  go.etcd.io/raft/v3.(*RawNode).Step
+         0     0% 97.12%      63797 24.23%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 97.12%      43998 16.71%  go.etcd.io/raft/v3.(*raft).bcastAppend (inline)
+         0     0% 97.12%      43998 16.71%  go.etcd.io/raft/v3.(*raft).bcastAppend.func1
+         0     0% 97.12%      44258 16.81%  go.etcd.io/raft/v3.(*raft).sendAppend
+         0     0% 97.12%       2000  0.76%  go.etcd.io/raft/v3.(*raftLog).append
+         0     0% 97.12%      63767 24.21%  go.etcd.io/raft/v3.stepLeader
+         0     0% 97.12%      44439 16.87%  go.etcd.io/raft/v3/tracker.(*ProgressTracker).Visit
+         0     0% 97.12%      23462  8.91%  golang.org/x/net/http2.(*Framer).ReadFrame
+         0     0% 97.12%      23462  8.91%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader
+         0     0% 97.12%       2018  0.77%  golang.org/x/net/http2.parseDataFrame
+         0     0% 97.12%       8260  3.14%  golang.org/x/net/http2/hpack.(*Decoder).Write
+         0     0% 97.12%       8072  3.07%  golang.org/x/net/http2/hpack.(*Decoder).callEmit
+         0     0% 97.12%       8039  3.05%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+         0     0% 97.12%       8260  3.14%  golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr
+         0     0% 97.12%       2000  0.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 97.12%       2000  0.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 97.12%      20417  7.75%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal
+         0     0% 97.12%      20417  7.75%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointer
+         0     0% 97.12%      20417  7.75%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+         0     0% 97.12%       2001  0.76%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 97.12%       4001  1.52%  google.golang.org/protobuf/proto.Clone
+         0     0% 97.12%      20417  7.75%  google.golang.org/protobuf/proto.Unmarshal
+         0     0% 97.12%      20417  7.75%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+         0     0% 97.12%       2000  0.76%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 97.12%      15507  5.89%  main.bench75Observe.func3
+         0     0% 97.12%     162680 61.77%  main.main
+         0     0% 97.12%     162680 61.77%  main.run
+         0     0% 97.12%      15507  5.89%  net/http.(*ServeMux).ServeHTTP
+         0     0% 97.12%      15507  5.89%  net/http.HandlerFunc.ServeHTTP
+         0     0% 97.12%      15507  5.89%  net/http.serverHandler.ServeHTTP
+         0     0% 97.12%       2000  0.76%  reflect.New
+         0     0% 97.12%     162680 61.77%  runtime.main
+         0     0% 97.12%      15505  5.89%  runtime/pprof.(*Profile).WriteTo
+         0     0% 97.12%      15505  5.89%  runtime/pprof.writeAlloc
+         0     0% 97.12%      38837 14.75%  sync.(*WaitGroup).Go.func1
+         0     0% 97.12%       2034  0.77%  time.AfterFunc

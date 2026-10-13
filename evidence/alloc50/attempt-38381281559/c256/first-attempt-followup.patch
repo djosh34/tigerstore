@@ -1,0 +1,439 @@
+diff --git a/experiments/alloc50/README.md b/experiments/alloc50/README.md
+index 8d2031e..d36bac0 100644
+--- a/experiments/alloc50/README.md
++++ b/experiments/alloc50/README.md
+@@ -5,7 +5,7 @@
+ - Pristine base: **0d406cb09aa99dea7ef1488476d6ebc6b032a6b8** (`0d406cbbc` does not resolve).
+ - Candidate: workflow's immutable checked-out `${github.sha}`, recorded in every job.
+ - Copied harness: `git archive 0f82f687e5a21fa6265e508866f07dc3fffeaae9 experiments/bench75 | tar -x` from `exp/bench-75`. `verify-harness.py` verifies all nine copied files byte-for-byte. The timed generator is **unchanged**.
+-- The base binary comes from a fresh `git archive` of the base SHA, never from the experiment's default mode. Both archived trees receive the **identical** observation source and hook. Source manifests, original main files, hook patches, candidate production-source diff, Go/module identities and binary SHA256s are artifacts. Ring and arena use the same experiment binary with `TIGER_ALLOC_STRATEGY=ring|arena`; an unset-mode experiment diagnostic checks the default independently.
++- The base binary comes from a fresh `git archive` of the base SHA, never from the experiment's default mode. Only `server_test.go` and `allocation_path_test.go` are overlaid from the experiment archive for production-matched 100ms allocation-test fixtures; original fixture, overlay diff and actual manifest are saved. No candidate production file is overlaid. Both archived trees receive the **identical** observation source and hook. Source manifests, original main files, hook patches, candidate production-source diff, Go/module identities and binary SHA256s are artifacts. Ring and arena use the same experiment binary with `TIGER_ALLOC_STRATEGY=ring|arena`; an unset-mode experiment diagnostic checks the default independently.
+ 
+ Only on a fresh GitHub `ubuntu-24.04-arm` runner, before **2026-10-13T22:00:00Z**:
+ 
+@@ -25,13 +25,13 @@ Client and peer certificate-authenticated TLS flags, election discovery, role pi
+ 
+ The generator rejects RPC errors, incorrect counts, response/revision/term mismatches and process changes. The driver requires exactly 60000 successes, no errors, identical terms before/after, unchanged leader, expected Go processors, live processes and affinity. Summary rejects missing variants, duplicate/missing repetitions and failed diagnostics. Invalid raw evidence remains uploaded but is not a result.
+ 
+-CPU is process user+system `/proc/PID/stat` delta divided by successful Puts; the generator's own interval covers execution and drain, not later replica fences. Allocation objects/bytes and GC CPU are whole-leader runtime counter deltas over a slightly wider bracketing interval, not handler-only attribution. GC CPU share is estimated GC CPU divided by estimated runtime non-idle CPU, **not** GC pause time or `/proc` CPU share. Throughput and p99 are medians of five independent per-run statistics, never pooled percentiles. The unchanged generator does not retain every latency sample. A saturated generator or short window limits conclusions; these are not capacity or open-loop latency claims.
++CPU is process user+system `/proc/PID/stat` delta divided by successful Puts; the generator's own interval covers execution and drain, not later replica fences. Allocation objects/bytes and GC CPU are whole-leader runtime counter deltas over a slightly wider bracketing interval, not handler-only attribution. Metrics flags are attached only to the primary 60000-Put timing cohort, not seed, warmup, case or 2000-Put profile cohorts: runtime CPU-class counters can stay stale when a short cohort has no GC. Primary metrics still use the exact copied generator's strict delta checks; no forced GC is added inside or before timing to make them pass, and a stale/invalid primary delta remains a failed window. GC CPU share is estimated GC CPU divided by estimated runtime non-idle CPU, **not** GC pause time or `/proc` CPU share. Throughput and p99 are medians of five independent per-run statistics, never pooled percentiles. The unchanged generator does not retain every latency sample. A saturated generator or short window limits conclusions; these are not capacity or open-loop latency claims.
+ 
+ ## Retention and profiles, separate from timing
+ 
+ Each timed window ends before replica fencing and the leader's `/debug/retained` call. That endpoint forces GC and records heap allocated/object/in-use/reserved bytes and optional allocator gauges. Forced-GC retained heap is reported separately from the unforced heap snapshot in timed counters; it includes live MVCC/log history, runtime and connection state. It is **not** all transient workspace or proof of a zero-allocation runtime.
+ 
+-Fresh separate profile clusters warm up normally, then set a process-start diagnostic allocation sampling rate of **1** and run exactly **2000 sequential successful Puts**. Before/after allocation profiles each force two GCs to flush delayed accounting. The exact successful count, sample rate, and matching binary are recorded in `profile-cohort.json`; profiler-run throughput is not added to primary medians. The unchanged load generator's runtime-metric counters bracket the actual operation window independently. Profile blocks/objects need not equal runtime malloc counts because the tiny allocator can pack several small objects in a block; do not sum profile rows or equate profile block totals with `Mallocs`.
++Fresh separate profile clusters warm up normally, then set a process-start diagnostic allocation sampling rate of **1** and run exactly **2000 sequential successful Puts**. Before/after allocation profiles each force two GCs to flush delayed accounting. The exact successful count, sample rate, and matching binary are recorded in `profile-cohort.json`; profiler-run throughput is not added to primary medians. Exact success, revision, term and process-CPU checks remain active for profile cohorts even though runtime allocation/GC metrics flags are omitted; their allocation attribution comes from before/after pprof deltas. Profile blocks/objects need not equal runtime malloc counts because the tiny allocator can pack several small objects in a block; do not sum profile rows or equate profile block totals with `Mallocs`.
+ 
+ Artifacts retain both raw profiles and symbol binaries, plus `go tool pprof -base=<before> -sample_index=alloc_space|alloc_objects|inuse_space|inuse_objects <binary> <after>` text and proto deltas. Allocation attribution views additionally ignore only identified observation stacks (`runtime/pprof`, `main.bench75Observe`, `net/http.`). Raw deltas remain available: before-profile serialization itself appears after the baseline snapshot and must not be attributed to Put. GC/background accounting and observation overhead still mean a profile delta is not an exact census of just 2000 RPCs.
+ 
+@@ -40,10 +40,14 @@ Artifacts retain both raw profiles and symbol binaries, plus `go tool pprof -bas
+ Fresh case clusters run the same valid Put cohort outside primary summaries, then execute `cases` (also on CPU3):
+ 
+ 1. Build the canonical `InternalRaftRequest` with etcd's request-header sizing ID `1<<63`; determine the largest value whose entire request is 1536KiB. Verify just-below and equal-request-boundary Puts and exact byte roundtrips; reject the next byte and **exact 1536KiB value payload** with `request too large`. After each rejected Put, verify the previous accepted value was not changed. A 1536KiB payload is **not** a legal 1536KiB request because keys, protobuf framing and request header also count.
+-2. Open raw mTLS HTTP/2 with `INITIAL_WINDOW_SIZE=0`, read and ACK only handshake SETTINGS/window credit, then stop all reply reads and updates. Submit **4096 valid 1KiB Puts** on distinct streams, with their DATA bytes explicitly checked against the server's advertised stream and connection credit. No flow-control violations or HTTP/2 floods are needed. Unsent replies retain prototype managed slots; an independent healthy TLS connection must complete **1536 Puts** while the slow connection remains open. Capture forced-GC/allocator snapshots before, three stalled phases, and after closing the slow connection; verify healthy values, replica completion/term, process liveness and affinities.
++2. Open raw mTLS HTTP/2 with `INITIAL_WINDOW_SIZE=0`, read and ACK only handshake SETTINGS/window credit, then stop all reply reads and updates. Submit **4096 valid 1KiB Puts** on distinct streams, with their DATA bytes explicitly checked against the server's advertised stream and connection credit. No flow-control violations or HTTP/2 floods are needed. Unsent replies retain prototype managed slots; an independent healthy TLS connection must complete **1536 Puts** while the slow connection remains open. Before close, that healthy connection also reads `/alloc50/slow`: its `Version` is reported as **`slow_committed_puts`**, separately from **`slow_attempted_puts=4096`** and reserved capacity. Singleton HEADERS sent in separate TLS records can seal an eight-slot arena region for one active stream: charging 256 slots can therefore mean only 32 actual committed stalled calls, versus 256 on ring. The harness measures and reports the actual count rather than assuming equivalent admissions. Capture forced-GC/allocator snapshots before, three stalled phases, and after closing the slow connection; verify healthy values, replica completion/term, process liveness and affinities.
+ 
+ `cases.json` retains sizes, errors/revisions, successful healthy counts and snapshots. The optional `Server.AllocationStats() map[string]uint64` interface is absent on pristine base and mandatory for prototypes. Checks require the expected mode (0/1/2), actual stalled occupancy at least `per_connection_slots`, quota refusal (`denied_count` grows), stable held slots/bytes in the last two stalled phases, held/peak slots and bytes within declared budgets, zero fallback allocations, and release to no more than before-slow occupancy within five seconds after close. Healthy Puts alone are not sufficient saturation evidence. Implemented budgets are 4096 slots, 256 capacity units / 8MiB per connection, and 64MiB globally; the recorded gauges, not these prose values, determine validity. Ring uses a circular 4096-slot queue; arena uses 512 preseeded pooled eight-slot regions, so `held_slots` counts reserved capacity, not necessarily active streams. Both strategies pay startup allocation costs rather than obtaining a lazy-heap advantage. The byte budget includes a conservative 8MiB driver list/map reserve, also exposed as `driver_reserve_bytes`; `held_bytes` includes this baseline reserve. Recovery therefore compares against the before-slow baseline, never against zero. `fallback_allocations` counts only explicit managed-Put heap fallback (none is implemented), not the known generic RPC/debug allocations still included in whole-leader runtime counters. Additional `per_connection_bytes`, `timer_allocations` and `unmanaged_rpc_count` gauges are preserved in raw snapshots without being mislabeled as managed fallback. This case covers isolation between connections, not same-connection fairness or every cancellation/leadership/retransmission lifetime.
+ 
++`TestAllocationPath` runs alone in fresh, separately preserved census test-binary processes after all ordinary gates, for pristine base and experiment base/ring/arena. Gate regex `Allocation(ValueLifetimes|Workspace.*|Shutdown.*)` excludes Path so its rate-1 profiling cannot perturb other tests. Logs/profiles use `tests/*-census`; gzip symbol binaries and hashes identify the actual executable. These in-process census counters include client plus all three replicas, unlike the subprocess leader-only measurements.
++
++See `attempt-notes.md` for failed first-run evidence and exact follow-up rationale; each runner artifact carries the note, complete harness source, first-attempt follow-up patch, fixture overlay and available local check log.
++
+ ## Local checks
+ 
+ With the parent's explicitly granted Go slot: `GOFLAGS=-p=2 GOMEMLIMIT=2GiB go test -short -parallel 2 ./experiments/bench75/load ./experiments/alloc50/cases` and `go vet` for those packages passed. Unit tests cover canonical request-boundary overhead and the slow-case send-credit budget. Shell syntax/Python compilation and exact copied-harness verification passed. No local benchmark, broad test, race campaign, commit or push is performed by this harness worker. Parent owns `internal/server/allocation_path_test.go`; the prototype worker owns production Go.
+diff --git a/experiments/alloc50/attempt-notes.md b/experiments/alloc50/attempt-notes.md
+new file mode 100644
+index 0000000..b5ed475
+--- /dev/null
++++ b/experiments/alloc50/attempt-notes.md
+@@ -0,0 +1,12 @@
++# First attempt and harness follow-up
++
++First runner attempt: **38378542755**, source **ae0c2ecc639bb49c723dc1efd6260424a9028a82**. It failed and supplies no complete paired result. Parent preserved the downloaded raw attempt under `evidence/alloc50/attempt-38378542755/`; failures must not be replaced by the later run's success.
++
++- `c256/1-ring/seed.log` reports `invalid GC CPU delta`. A 4096-Put seed can perform no GC, leaving runtime CPU-class deltas stale/zero. The immutable copied bench75 generator remains byte-for-byte unchanged. Only alloc50's invocation changed: runtime metrics flags now attach exclusively to primary `put`, total 60000. Seed, warmup, cases and 2000-Put pprof cohorts still validate exact successes, errors, revisions, terms and process CPU but do not invoke GC-share validation. No GC was inserted around primary timing to hide an invalid delta; a failed primary delta still fails.
++- Slow requests are **4096 attempts**, not 4096 demonstrated admissions. Before closing the stalled connection, a healthy Range reads `/alloc50/slow`; its `Version` is the actual committed overwrite count, recorded as `slow_committed_puts`. Ring and arena may admit different counts: separate HEADERS TLS records can charge a full eight-slot arena region for one call. Reserved capacity and committed Puts are reported separately.
++- Parent independently investigated the c64 pristine correctness gate and changed only test fixtures to use production's 100ms tick for allocation tests. The runner overlays exactly `internal/server/server_test.go` and `allocation_path_test.go` from the experiment archive onto the private base archive. The original server fixture, fixture diff and added allocation test are preserved; the actual source manifest includes these test-only overlays. No candidate production code enters the pristine base binary.
++- `TestAllocationPath` changes global profile sampling, so ordinary gates now include only `Allocation(ValueLifetimes|Workspace.*|Shutdown.*)` plus the existing selected correctness cases. After all gates, Path runs alone in a fresh test-binary process for pristine base and experiment base/ring/arena. The matching test binaries/hashes, per-mode logs and before/after profiles are preserved separately under `tests/*-census` and `symbols/*-census.test.gz`.
++
++Local cases follow-up had an initial **lint failure** (`unparam`: attempted-count parameter always 4096); that failure was not claimed as a pass. The helper now uses the same `slowAttempts` constant as the sender/report. The successful follow-up's exact command stdout and exit codes are in `evidence/local-parent/harness-followup.log`; gofumpt, cases short tests, vet and lint each exited zero under the parent's exclusive Go slot. No benchmark or local race run occurred. Parent owns subsequent production/fixture Go runs.
++
++Every runner artifact includes this note, its immutable checked-out harness files, and the candidate/base production-source patch. Follow-up runtime validity remains to be established; do not infer measured improvements from local compilation or this repair description.
+diff --git a/experiments/alloc50/cases/main.go b/experiments/alloc50/cases/main.go
+index 090c12f..3ee2ee4 100644
+--- a/experiments/alloc50/cases/main.go
++++ b/experiments/alloc50/cases/main.go
+@@ -27,7 +27,10 @@ import (
+ 	"google.golang.org/protobuf/proto"
+ )
+ 
+-const limit = 1536 * 1024
++const (
++	limit        = 1536 * 1024
++	slowAttempts = 4096
++)
+ 
+ func raftSize(key, value []byte) int {
+ 	return proto.Size(&pb.InternalRaftRequest{
+@@ -45,6 +48,19 @@ func valueOfSize(n int) []byte {
+ 	return value
+ }
+ 
++// slowCommittedPuts distinguishes committed writes from charged allocator
++// capacity. A singleton stream can pin an entire eight-slot arena region.
++func slowCommittedPuts(r *pb.RangeResponse, key, value []byte) (int64, error) {
++	if r == nil || r.Header == nil || r.Count != 1 || len(r.Kvs) != 1 || r.Kvs[0] == nil {
++		return 0, errors.New("slow key Range missing value or header")
++	}
++	kv := r.Kvs[0]
++	if !bytes.Equal(kv.Key, key) || !bytes.Equal(kv.Value, value) || kv.Version < 1 || kv.Version > slowAttempts {
++		return 0, errors.New("slow key Range has invalid value or committed count")
++	}
++	return kv.Version, nil
++}
++
+ // stalled opens a real mTLS HTTP/2 connection. It reads only the handshake,
+ // advertises zero stream receive credit, submits 4096 1KiB Puts, then
+ // performs no further reads or WINDOW_UPDATE. Replies must retain managed slots.
+@@ -119,7 +135,7 @@ func stalled(endpoint string, cfg *tls.Config, key []byte) (net.Conn, int, error
+ 	data := make([]byte, 5+len(request))
+ 	binary.BigEndian.PutUint32(data[1:5], uint32(len(request)))
+ 	copy(data[5:], request)
+-	const count = 4096
++	const count = slowAttempts
+ 	if len(data) > serverStreamWindow || count*len(data) > credit {
+ 		return fail(fmt.Errorf("slow workload exceeds advertised send credit: stream=%d connection=%d bytes=%d", serverStreamWindow, credit, count*len(data)))
+ 	}
+@@ -170,7 +186,7 @@ func run() error {
+ 		return errors.New("invalid strategy")
+ 	}
+ 	report := map[string]any{
+-		"valid": false, "slow_requests": 4096, "reply_reads_after_handshake": 0,
++		"valid": false, "slow_requests": slowAttempts, "slow_attempted_puts": slowAttempts, "reply_reads_after_handshake": 0,
+ 		"stream_receive_window": 0, "request_limit_bytes": limit,
+ 	}
+ 	// Preserve failures as raw evidence too.
+@@ -326,6 +342,21 @@ func run() error {
+ 	}
+ 	report["healthy_successes_while_stalled"] = successes
+ 	report["healthy_last_revision"] = previous
++	// The slow connection never reads replies, so stream attempts and charged
++	// slot reservations cannot be presented as successful Puts. Its key starts
++	// absent and each committed overwrite increments Version exactly once.
++	slowKey := []byte("/alloc50/slow")
++	slowRange, err := get(slowKey)
++	if err != nil {
++		return errors.Join(errors.New("healthy Range of slow key failed"), err)
++	}
++	committed, err := slowCommittedPuts(slowRange, slowKey, valueOfSize(1024))
++	if err != nil {
++		return err
++	}
++	report["slow_committed_puts"] = committed
++	report["slow_range_header"] = slowRange.Header
++	report["slow_last_mod_revision"] = slowRange.Kvs[0].ModRevision
+ 	if err := slow.Close(); err != nil {
+ 		return err
+ 	}
+diff --git a/experiments/alloc50/cases/main_test.go b/experiments/alloc50/cases/main_test.go
+index 6c8f4e0..de581ef 100644
+--- a/experiments/alloc50/cases/main_test.go
++++ b/experiments/alloc50/cases/main_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"testing"
+ 
+ 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"go.etcd.io/etcd/api/v3/mvccpb"
+ 	"google.golang.org/protobuf/proto"
+ )
+ 
+@@ -35,6 +36,32 @@ func TestInternalRaftBoundaryNotPayloadBoundary(t *testing.T) {
+ 	}
+ }
+ 
++func TestSlowCommittedCountNotCapacity(t *testing.T) {
++	key, value := []byte("/alloc50/slow"), valueOfSize(1024)
++	for _, version := range []int64{32, 256, 4096} {
++		r := &pb.RangeResponse{
++			Header: &pb.ResponseHeader{Revision: 5000}, Count: 1,
++			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
++		}
++		count, err := slowCommittedPuts(r, key, value)
++		if err != nil || count != version {
++			t.Fatalf("committed=%d want=%d err=%v", count, version, err)
++		}
++	}
++	for _, version := range []int64{0, 4097} {
++		r := &pb.RangeResponse{
++			Header: &pb.ResponseHeader{}, Count: 1,
++			Kvs: []*mvccpb.KeyValue{{Key: key, Value: value, Version: version}},
++		}
++		if _, err := slowCommittedPuts(r, key, value); err == nil {
++			t.Fatalf("invalid count %d accepted", version)
++		}
++	}
++	if _, err := slowCommittedPuts(nil, key, value); err == nil {
++		t.Fatal("missing Range accepted")
++	}
++}
++
+ func TestSlowPutsFitAdvertisedCredit(t *testing.T) {
+ 	wire, err := proto.Marshal(&pb.PutRequest{Key: []byte("/alloc50/slow"), Value: valueOfSize(1024)})
+ 	if err != nil {
+diff --git a/experiments/alloc50/run.py b/experiments/alloc50/run.py
+index 4e44082..2a95e30 100644
+--- a/experiments/alloc50/run.py
++++ b/experiments/alloc50/run.py
+@@ -43,6 +43,15 @@ def ctl(index, *args):
+     return json.loads(p.stdout)
+ 
+ 
++def timing_metrics_args(mode, name, total, leader):
++    # CPU-class counters may remain stale until a GC. Short seed/profile
++    # cohorts must not fail independent success/revision/CPU validation.
++    if mode == 'primary' and name == 'put' and total == 60000:
++        return ['-metrics-url', f'http://127.0.0.1:{6060+leader}/debug/runtime',
++                '-metrics-kind', 'runtime']
++    return []
++
++
+ def cluster(store, label, mode='primary'):
+     check_time()
+     dest = OUT / label
+@@ -126,9 +135,8 @@ def cluster(store, label, mode='primary'):
+             check_time()
+             args = ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
+                     '-certdir', str(CERT), '-pids', pids, '-hz', sp.check_output(['getconf','CLK_TCK'],text=True).strip(),
+-                    '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
+-                    '-metrics-url',f'http://127.0.0.1:{6060+leader}/debug/runtime',
+-                    '-metrics-kind', 'runtime']
++                    '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json')]
++            args += timing_metrics_args(mode, name, total, leader)
+             with (dest/f'{name}.log').open('w') as log:
+                 run(args, env=os.environ | {'GOMAXPROCS':'1'}, timeout=100, stdout=log, stderr=sp.STDOUT)
+ 
+diff --git a/experiments/alloc50/run.sh b/experiments/alloc50/run.sh
+index 2a7f0b2..088bd9b 100644
+--- a/experiments/alloc50/run.sh
++++ b/experiments/alloc50/run.sh
+@@ -16,6 +16,12 @@ PRIVATE=$RUNNER_TEMP/alloc50
+ [[ ! -e "$OUT" && ! -e "$PRIVATE" ]]
+ mkdir -p "$OUT/symbols" "$PRIVATE/bin" "$PRIVATE/base" "$PRIVATE/experiment"
+ trap 'rm -rf "$PRIVATE"' EXIT
++cp experiments/alloc50/attempt-notes.md "$OUT/attempt-notes.md"
++tar -czf "$OUT/harness-source.tar.gz" experiments/alloc50 experiments/bench75 .github/workflows/alloc50.yml
++git diff ae0c2ecc639bb49c723dc1efd6260424a9028a82 "$EXPERIMENT" -- experiments/alloc50 .github/workflows/alloc50.yml internal/server/server_test.go internal/server/allocation_path_test.go > "$OUT/first-attempt-followup.patch"
++if [[ -f evidence/local-parent/harness-followup.log ]]; then
++ cp evidence/local-parent/harness-followup.log "$OUT/local-harness-followup.log"
++fi
+ {
+  date -u +%FT%TZ
+  printf 'base %s\nexperiment %s\nharness_origin %s\n' "$BASE" "$EXPERIMENT" 0f82f687e5a21fa6265e508866f07dc3fffeaae9
+@@ -42,6 +48,13 @@ git diff --exit-code
+ git status --short > "$OUT/build-status.txt"
+ git archive "$BASE" | tar -x -C "$PRIVATE/base"
+ git archive "$EXPERIMENT" | tar -x -C "$PRIVATE/experiment"
++# Test fixtures only: production tick is 100ms in both census archives. No
++# candidate production file is overlaid onto the pristine base source.
++cp "$PRIVATE/base/internal/server/server_test.go" "$OUT/base-server_test-pristine.go.txt"
++cp "$PRIVATE/experiment/internal/server/server_test.go" "$PRIVATE/base/internal/server/server_test.go"
++cp "$PRIVATE/experiment/internal/server/allocation_path_test.go" "$PRIVATE/base/internal/server/allocation_path_test.go"
++diff -u "$OUT/base-server_test-pristine.go.txt" "$PRIVATE/base/internal/server/server_test.go" > "$OUT/base-server-fixture.patch" || [[ $? == 1 ]]
++cp "$PRIVATE/base/internal/server/allocation_path_test.go" "$OUT/base-allocation_path_test.go.txt"
+ git diff "$BASE" "$EXPERIMENT" -- '*.go' go.mod go.sum > "$OUT/experiment-source.patch"
+ for source in base experiment; do
+  check_time
+@@ -69,13 +82,27 @@ for binary in base experiment load cases; do gzip -c "$PRIVATE/bin/$binary" > "$
+ bash scripts/dev-certs.sh "$PRIVATE/certs"
+ # Targeted correctness gates only on Actions, sequential commands, no race or
+ # simulator campaign. The pristine base remains untouched except observe.
+-GATE='Test(Allocation.*|RawFrames|LargeValues|CanceledCalls|DeadlinesLeaderAndUnknownMethods|NodeStopsUnderLoad|ThreeNodesOverTLS|ClientCertificateRequired|ManyStreamsOnOneConnection|SlowWatcherIsCut|WritesWaitForTheLeadersAppend|ByteCapSendsAnEntryEarly|HardStateAppendHoldsNothing|BatchRoundTrip|RequestSizeLimitMatchesEtcd|ParsePutMatchesProtobuf)$'
++GATE='Test(Allocation(ValueLifetimes|Workspace.*|Shutdown.*)|RawFrames|LargeValues|CanceledCalls|DeadlinesLeaderAndUnknownMethods|NodeStopsUnderLoad|ThreeNodesOverTLS|ClientCertificateRequired|ManyStreamsOnOneConnection|SlowWatcherIsCut|WritesWaitForTheLeadersAppend|ByteCapSendsAnEntryEarly|HardStateAppendHoldsNothing|BatchRoundTrip|RequestSizeLimitMatchesEtcd|ParsePutMatchesProtobuf)$'
+ mkdir -p "$OUT/tests"
+ check_time
+ (cd "$PRIVATE/base" && env -u TIGER_ALLOC_STRATEGY -u ALLOC50_PROFILE_RATE go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/pristine-base.log" 2>&1
+ for mode in base ring arena; do
+  check_time
+- (cd "$PRIVATE/experiment" && TIGER_ALLOC_STRATEGY="$mode" ALLOC50_TEST_OUT="$OUT/tests/$mode" go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/$mode.log" 2>&1
++ (cd "$PRIVATE/experiment" && TIGER_ALLOC_STRATEGY="$mode" go test -short -count=1 -parallel 2 -run "$GATE" ./internal/server ./internal/node ./internal/core) > "$OUT/tests/$mode.log" 2>&1
++done
++# Path changes the global memory profiler: run it only in fresh processes,
++# after all ordinary gates. Preserve each archive's matching census symbols.
++for source in base experiment; do
++ check_time
++ (cd "$PRIVATE/$source" && go test -c -o "$PRIVATE/bin/$source-census.test" ./internal/server)
++ gzip -c "$PRIVATE/bin/$source-census.test" > "$OUT/symbols/$source-census.test.gz"
++ sha256sum "$PRIVATE/bin/$source-census.test" >> "$OUT/versions.txt"
++done
++check_time
++env -u TIGER_ALLOC_STRATEGY -u ALLOC50_PROFILE_RATE ALLOC50_TEST_OUT="$OUT/tests/pristine-base-census" "$PRIVATE/bin/base-census.test" -test.short -test.count=1 -test.parallel=2 -test.run='^TestAllocationPath$' > "$OUT/tests/pristine-base-census.log" 2>&1
++for mode in base ring arena; do
++ check_time
++ TIGER_ALLOC_STRATEGY="$mode" ALLOC50_TEST_OUT="$OUT/tests/$mode-census" "$PRIVATE/bin/experiment-census.test" -test.short -test.count=1 -test.parallel=2 -test.run='^TestAllocationPath$' > "$OUT/tests/$mode-census.log" 2>&1
+ done
+ check_time
+ timeout --kill-after=5s 650s taskset -c 3 python3 experiments/alloc50/run.py
+diff --git a/experiments/alloc50/summarize.py b/experiments/alloc50/summarize.py
+index 22a8388..11be84b 100644
+--- a/experiments/alloc50/summarize.py
++++ b/experiments/alloc50/summarize.py
+@@ -38,7 +38,8 @@ for clients in {r['clients'] for r in rows}:
+     for store in ('base', 'ring', 'arena', 'default'):
+         case = json.loads((root/f'c{clients}'/f'cases-{store}'/'cases.json').read_text())
+         assert case['valid'] and case['healthy_successes_while_stalled'] >= 1000
+-        assert case['slow_requests'] == 4096 and case['reply_reads_after_handshake'] == 0
++        assert case['slow_requests'] == case['slow_attempted_puts'] == 4096 and case['reply_reads_after_handshake'] == 0
++        assert 1 <= case['slow_committed_puts'] <= case['slow_attempted_puts']
+         assert json.loads((root/f'c{clients}'/f'cases-{store}'/'validation.json').read_text())['valid']
+         if store in ('ring', 'arena'):
+             assert case['allocator_saturation_verified'] and case['allocator_recovery_verified']
+diff --git a/experiments/alloc50/test_metrics_scope.py b/experiments/alloc50/test_metrics_scope.py
+new file mode 100644
+index 0000000..e7a0817
+--- /dev/null
++++ b/experiments/alloc50/test_metrics_scope.py
+@@ -0,0 +1,29 @@
++#!/usr/bin/env python3
++"""Metrics sampling scope regression; no cluster or Go execution."""
++import os
++from pathlib import Path
++import runpy
++import unittest
++from unittest.mock import patch
++
++HERE = Path(__file__).resolve().parent
++
++
++class MetricsScopeTests(unittest.TestCase):
++    def test_only_primary_60000_put_has_runtime_metrics(self):
++        with patch.dict(os.environ, {'CLIENTS': '64', 'RUNNER_TEMP': str(HERE)}):
++            args = runpy.run_path(str(HERE/'run.py'))['timing_metrics_args']
++        self.assertEqual(args('primary', 'put', 60000, 2), [
++            '-metrics-url', 'http://127.0.0.1:6062/debug/runtime', '-metrics-kind', 'runtime'])
++        for mode, name, total in [
++            ('primary', 'seed', 4096), ('primary', 'warmup', 20000),
++            ('profile', 'seed', 4096), ('profile', 'warmup', 20000),
++            ('profile', 'put', 2000), ('cases', 'put', 60000),
++            ('primary', 'put', 2000),
++        ]:
++            with self.subTest(mode=mode, name=name, total=total):
++                self.assertEqual(args(mode, name, total, 0), [])
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/experiments/alloc50/test_summary.py b/experiments/alloc50/test_summary.py
+index 52637d3..522926f 100644
+--- a/experiments/alloc50/test_summary.py
++++ b/experiments/alloc50/test_summary.py
+@@ -38,7 +38,9 @@ class SummaryTests(unittest.TestCase):
+             dest = cell/f'cases-{store}'
+             dest.mkdir()
+             result = {'valid': True, 'healthy_successes_while_stalled': 1536,
+-                      'slow_requests': 4096, 'reply_reads_after_handshake': 0}
++                      'slow_requests': 4096, 'slow_attempted_puts': 4096,
++                      'slow_committed_puts': 32 if store == 'arena' else 256,
++                      'reply_reads_after_handshake': 0}
+             if store in ('ring', 'arena'):
+                 result.update(allocator_saturation_verified=True, allocator_recovery_verified=True)
+                 stats = {'mode': {'ring': 1, 'arena': 2}[store], 'slot_budget': 4096,
+diff --git a/internal/server/allocation_path_test.go b/internal/server/allocation_path_test.go
+index 234f31e..e218a27 100644
+--- a/internal/server/allocation_path_test.go
++++ b/internal/server/allocation_path_test.go
+@@ -26,12 +26,20 @@ import (
+ 	"google.golang.org/protobuf/proto"
+ )
+ 
++// Allocation profiling and retained-history checks use production's 100ms
++// clock. The general fixture's 10ms clock makes its disk fence only 200ms,
++// which can mistake profiler or shared-runner scheduling delays for disk loss.
++// Keep the real default election/watchdog policy and disk barriers unchanged.
++func newAllocationCluster(t *testing.T) *cluster {
++	return newClusterWith(t, func(c *cluster) { c.tick = 100 * time.Millisecond })
++}
++
+ func TestAllocationPath(t *testing.T) {
+ 	// Never run concurrently: MemStats and the allocation profiler are global.
+ 	oldRate := runtime.MemProfileRate
+ 	runtime.MemProfileRate = 1
+ 	defer func() { runtime.MemProfileRate = oldRate }()
+-	c := newCluster(t)
++	c := newAllocationCluster(t)
+ 	cert, _, _, err := c.ca.Issue("allocation-client", 191)
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -150,7 +158,7 @@ func TestAllocationValueLifetimes(t *testing.T) {
+ 	for _, mode := range []string{"base", "ring", "arena"} {
+ 		t.Run(mode, func(t *testing.T) {
+ 			t.Setenv("TIGER_ALLOC_STRATEGY", mode)
+-			c := newCluster(t)
++			c := newAllocationCluster(t)
+ 			cert, _, _, err := c.ca.Issue("lifetime-client", 192)
+ 			if err != nil {
+ 				t.Fatal(err)
+@@ -169,17 +177,29 @@ func TestAllocationValueLifetimes(t *testing.T) {
+ 				})
+ 				versions = append(versions, version{key: key, value: value, rev: r.Header.Revision})
+ 			}
+-			for id := uint64(1); id <= 3; id++ {
+-				client := c.client(id, cert)
+-				for _, v := range versions {
+-					r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
+-						return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
+-					})
+-					if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
+-						t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
++			verify := func() {
++				for id := uint64(1); id <= 3; id++ {
++					client := c.client(id, cert)
++					for _, v := range versions {
++						r := retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
++							return client.Range(ctx, &pb.RangeRequest{Key: v.key, Revision: v.rev})
++						})
++						if len(r.Kvs) != 1 || r.Kvs[0].ModRevision != v.rev || !bytes.Equal(r.Kvs[0].Value, v.value) {
++							t.Fatalf("node %d, key %q, revision %d: recycled historical bytes", id, v.key, v.rev)
++						}
+ 					}
+ 				}
+ 			}
++			verify()
++			// Reopen every WAL after slots have been reused. Live MVCC reads
++			// alone cannot establish that the durable bytes stayed immutable.
++			for _, r := range c.running {
++				r.stop()
++			}
++			for id := uint64(1); id <= 3; id++ {
++				c.start(id)
++			}
++			verify()
+ 		})
+ 	}
+ }
+diff --git a/internal/server/server_test.go b/internal/server/server_test.go
+index 6bdba64..ed7a658 100644
+--- a/internal/server/server_test.go
++++ b/internal/server/server_test.go
+@@ -33,6 +33,7 @@ type cluster struct {
+ 	peerAddrs map[uint64]string
+ 	dirs      map[uint64]string
+ 	running   map[uint64]*running
++	tick      time.Duration // optional fixture clock; zero retains the 10ms test default
+ 	// via, if set, is the address node from dials to reach node to.
+ 	via map[[2]uint64]string
+ }
+@@ -87,7 +88,11 @@ func (c *cluster) start(id uint64) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: 10 * time.Millisecond, Logf: t.Logf})
++	tick := c.tick
++	if tick == 0 {
++		tick = 10 * time.Millisecond
++	}
++	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: tick, Logf: t.Logf})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}

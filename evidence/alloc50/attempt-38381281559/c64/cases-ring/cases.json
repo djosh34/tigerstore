@@ -1,0 +1,201 @@
+{
+  "accepted_payload_bytes": 1572826,
+  "after_slow_close": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 178598792,
+    "heap_objects": 32749,
+    "heap_inuse_bytes": 187703296,
+    "heap_sys_bytes": 255164416,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 3840,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 8388608,
+      "held_slots": 0,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85637,
+      "unmanaged_rpc_count": 62
+    }
+  },
+  "allocator_recovery_verified": true,
+  "allocator_saturation_verified": true,
+  "before_slow": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 176204656,
+    "heap_objects": 27414,
+    "heap_inuse_bytes": 184860672,
+    "heap_sys_bytes": 255164416,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 0,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 8388608,
+      "held_slots": 0,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 68,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 84100,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "boundary": [
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572863,
+      "payload_bytes": 1572825,
+      "revision": 84098
+    },
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572864,
+      "payload_bytes": 1572826,
+      "revision": 84099
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572865,
+      "payload_bytes": 1572827
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572902,
+      "payload_bytes": 1572864
+    }
+  ],
+  "healthy_last_revision": 85891,
+  "healthy_revision_after_close": 85892,
+  "healthy_successes_while_stalled": 1536,
+  "recovery_samples": [
+    {
+      "forced_gc": true,
+      "heap_alloc_bytes": 178598792,
+      "heap_objects": 32749,
+      "heap_inuse_bytes": 187703296,
+      "heap_sys_bytes": 255164416,
+      "mem_profile_rate": 524288,
+      "strategy_env": "ring",
+      "allocator": {
+        "byte_budget": 67108864,
+        "denied_count": 3840,
+        "driver_reserve_bytes": 8388608,
+        "fallback_allocations": 0,
+        "held_bytes": 8388608,
+        "held_slots": 0,
+        "mode": 1,
+        "peak_bytes": 10486752,
+        "peak_slots": 257,
+        "per_connection_bytes": 8388608,
+        "per_connection_slots": 256,
+        "slot_budget": 4096,
+        "timer_allocations": 85637,
+        "unmanaged_rpc_count": 62
+      }
+    }
+  ],
+  "reply_reads_after_handshake": 0,
+  "request_limit_bytes": 1572864,
+  "slow_attempted_puts": 4096,
+  "slow_committed_puts": 256,
+  "slow_data_bytes": 4288512,
+  "slow_last_mod_revision": 84355,
+  "slow_phase_0": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 177401016,
+    "heap_objects": 29339,
+    "heap_inuse_bytes": 186597376,
+    "heap_sys_bytes": 255098880,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 3840,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 84612,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_phase_1": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 178057128,
+    "heap_objects": 31124,
+    "heap_inuse_bytes": 187211776,
+    "heap_sys_bytes": 255098880,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 3840,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85124,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_phase_2": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 178745408,
+    "heap_objects": 32904,
+    "heap_inuse_bytes": 187867136,
+    "heap_sys_bytes": 255098880,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 3840,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 9166848,
+      "held_slots": 256,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 257,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 85636,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "slow_range_header": {
+    "cluster_id": 15477341921496934344,
+    "member_id": 2,
+    "revision": 85891,
+    "raft_term": 1
+  },
+  "slow_requests": 4096,
+  "stream_receive_window": 0,
+  "valid": true
+}

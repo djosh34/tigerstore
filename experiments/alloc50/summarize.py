@@ -36,13 +36,33 @@ for clients in {r['clients'] for r in rows}:
         assert json.loads((profile/'validation.json').read_text())['valid'], profile
         assert cohort['successes'] == 2000 and cohort['mem_profile_rate'] == 1
     for store in ('base', 'ring', 'arena', 'default'):
-        case = json.loads((root/f'c{clients}'/f'cases-{store}'/'cases.json').read_text())
-        assert case['valid'] and case['healthy_successes_while_stalled'] >= 1000
-        assert case['slow_requests'] == case['slow_attempted_puts'] == 4096 and case['reply_reads_after_handshake'] == 0
-        assert 1 <= case['slow_committed_puts'] <= case['slow_attempted_puts']
+        case_file = root/f'c{clients}'/f'cases-{store}'/'cases.json'
+        case = json.loads(case_file.read_text())
+        assert case['valid'] and case['healthy_successes_while_stalled'] >= 1536
+        assert case['slow_requests'] == case['slow_planned_puts'] == 4096 and case['reply_reads_after_handshake'] == 0
+        sender = case['slow_sender']
+        assert case['sender_outcome_verified'] and sender['finished'] and sender['intentional_close']
+        assert sender['planned_puts'] == 4096
+        assert sender['attempted_puts'] == case['slow_attempted_puts'] <= 4096
+        assert sender['sent_headers'] == case['slow_sent_headers'] <= sender['attempted_puts']
+        assert sender['completed_data'] == case['slow_sent_data'] <= sender['sent_headers']
+        assert sender['attempted_puts'] - sender['sent_headers'] <= 1
+        assert sender['sent_headers'] - sender['completed_data'] <= 1
+        assert sender['completed_data_bytes'] == case['slow_data_bytes'] == sender['completed_data'] * sender['message_bytes']
+        assert not sender['error_before_close']
+        assert not sender['error'] or sender['expected_close_error']
+        assert 1 <= case['slow_committed_puts'] <= min(4096, sender['completed_data'] + 1)
+        if not case['sender_before_close']['all_data_sent']:
+            assert case['blocked_prefix_goroutines']
+            assert case_file.with_name(case_file.name+'.blocked-prefix.goroutines.txt').stat().st_size > 0
+        if store in ('base', 'default'):
+            assert sender['all_data_sent'] and sender['completed_data'] == 4096 and not sender['error']
+        elif sender['completed_data'] < 4096:
+            assert sender['expected_close_error']
         assert json.loads((root/f'c{clients}'/f'cases-{store}'/'validation.json').read_text())['valid']
         if store in ('ring', 'arena'):
             assert case['allocator_saturation_verified'] and case['allocator_recovery_verified']
+            assert 0 <= case['quota_observed_elapsed_s'] <= 5 and case['quota_sustained_s'] >= 1
             for phase in ('before_slow', 'slow_phase_0', 'slow_phase_1', 'slow_phase_2', 'after_slow_close'):
                 stats = case[phase]['allocator']
                 assert stats['mode'] == {'ring': 1, 'arena': 2}[store]

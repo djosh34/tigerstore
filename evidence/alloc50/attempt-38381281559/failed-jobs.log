@@ -1,0 +1,129 @@
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	﻿2026-10-13T10:09:30.1742213Z ##[group]Run timeout --kill-after=5s 820s bash experiments/alloc50/run.sh
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1743014Z ^[[36;1mtimeout --kill-after=5s 820s bash experiments/alloc50/run.sh^[[0m
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1846380Z shell: /usr/bin/bash -e {0}
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1846955Z env:
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1847207Z   GOTOOLCHAIN: local
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1847455Z   CLIENTS: 64
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1847752Z   GOFLAGS: -p=2
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1848027Z   GOMEMLIMIT: 2GiB
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.1848311Z ##[endgroup]
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.2361941Z Verified 9 exact bench75 files from 0f82f687e5a21fa6265e508866f07dc3fffeaae9
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.3173425Z TARGET SOURCE    FSTYPE OPTIONS
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.3261431Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.3262629Z                                  Dload  Upload   Total   Spent    Left  Speed
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.3262895Z 
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.3263264Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.5723968Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.5724653Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:30.5757220Z 
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.3144169Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.3145029Z 100 20.9M  100 20.9M    0     0  21.1M      0 --:--:-- --:--:-- --:--:-- 28.3M
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.6415045Z /home/runner/work/_temp/alloc50/etcd-v3.7.2-linux-arm64/etcd: OK
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.8533893Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.8546726Z go: downloading go.etcd.io/raft/v3 v3.7.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.8578981Z go: downloading google.golang.org/grpc v1.84.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:31.9815965Z go: downloading google.golang.org/protobuf v1.36.11
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.0108729Z go: downloading golang.org/x/net v0.58.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3319351Z go: downloading github.com/golang/protobuf v1.5.4
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3322909Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3499571Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3507612Z go: downloading github.com/google/btree v1.1.3
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3707304Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.3750336Z go: downloading golang.org/x/text v0.41.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:32.4341128Z go: downloading golang.org/x/sys v0.47.0
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:02.8374024Z ok  	github.com/djosh34/tigerstore/experiments/bench75/load	0.004s
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:03.0961641Z ok  	github.com/djosh34/tigerstore/experiments/alloc50/cases	0.006s
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:05.8840118Z certificates in /home/runner/work/_temp/alloc50/certs
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:12.8914022Z 64 clients, repetition 1, base
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:18.8878455Z 64 clients, repetition 1, ring
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:24.8626784Z 64 clients, repetition 1, arena
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:30.7089289Z 64 clients, repetition 2, arena
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:37.0414143Z 64 clients, repetition 2, ring
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:42.9189733Z 64 clients, repetition 2, base
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:48.7007519Z 64 clients, repetition 3, base
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:54.7334052Z 64 clients, repetition 3, ring
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:00.5680455Z 64 clients, repetition 3, arena
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:06.3514401Z 64 clients, repetition 4, arena
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:12.1557081Z 64 clients, repetition 4, ring
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:17.9846534Z 64 clients, repetition 4, base
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:24.0176129Z 64 clients, repetition 5, base
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:29.8507696Z 64 clients, repetition 5, ring
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:35.7787401Z 64 clients, repetition 5, arena
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2673239Z Traceback (most recent call last):
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2674218Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 262, in <module>
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2674810Z     main()
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2675299Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 255, in main
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2676374Z     cluster(store, f'cases-{store}', mode='cases')
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2676999Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 215, in cluster
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2677741Z     run(args, env=os.environ | {'GOMAXPROCS': '1'}, timeout=100, stdout=log, stderr=sp.STDOUT)
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2678499Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 30, in run
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2679074Z     return sp.run(args, check=True, text=True, **kwargs)
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2679583Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2680048Z   File "/usr/lib/python3.12/subprocess.py", line 571, in run
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2681021Z     raise CalledProcessError(retcode, process.args,
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.2682651Z subprocess.CalledProcessError: Command '['taskset', '-c', '3', '/home/runner/work/_temp/alloc50/bin/cases', '-endpoint', '127.0.0.1:2379', '-certdir', '/home/runner/work/_temp/alloc50/certs', '-debug-url', 'http://127.0.0.1:6060', '-strategy', 'arena', '-out', '/home/runner/work/tigerstore/tigerstore/evidence/alloc50/c64/cases-arena/cases.json']' returned non-zero exit status 1.
+paired (64)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:53.3384309Z ##[error]Process completed with exit code 1.
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	﻿2026-10-13T10:09:26.1981598Z ##[group]Run timeout --kill-after=5s 820s bash experiments/alloc50/run.sh
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.1982411Z ^[[36;1mtimeout --kill-after=5s 820s bash experiments/alloc50/run.sh^[[0m
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2098457Z shell: /usr/bin/bash -e {0}
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2099081Z env:
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2099410Z   GOTOOLCHAIN: local
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2099665Z   CLIENTS: 256
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2100001Z   GOFLAGS: -p=2
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2100247Z   GOMEMLIMIT: 2GiB
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2100551Z ##[endgroup]
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.2681777Z Verified 9 exact bench75 files from 0f82f687e5a21fa6265e508866f07dc3fffeaae9
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.3540237Z TARGET SOURCE    FSTYPE OPTIONS
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.3541471Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.3644259Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.3645825Z                                  Dload  Upload   Total   Spent    Left  Speed
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.3646320Z 
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.5419679Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.5420867Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.6732371Z 
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:26.6733594Z 100 20.9M  100 20.9M    0     0  67.7M      0 --:--:-- --:--:-- --:--:-- 67.7M
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.0103233Z /home/runner/work/_temp/alloc50/etcd-v3.7.2-linux-arm64/etcd: OK
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.2306082Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.2343894Z go: downloading go.etcd.io/raft/v3 v3.7.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.3040649Z go: downloading google.golang.org/grpc v1.84.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.3041912Z go: downloading google.golang.org/protobuf v1.36.11
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.5023036Z go: downloading golang.org/x/net v0.58.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.5936450Z go: downloading github.com/google/btree v1.1.3
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.5964353Z go: downloading github.com/golang/protobuf v1.5.4
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.6118080Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.6281501Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.6600723Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.6624594Z go: downloading golang.org/x/sys v0.47.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:09:27.6690187Z go: downloading golang.org/x/text v0.41.0
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:02.0756850Z ok  	github.com/djosh34/tigerstore/experiments/bench75/load	0.005s
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:02.3869850Z ok  	github.com/djosh34/tigerstore/experiments/alloc50/cases	0.007s
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:10:05.1946635Z certificates in /home/runner/work/_temp/alloc50/certs
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:12.8144244Z 256 clients, repetition 1, base
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:17.6553665Z 256 clients, repetition 1, ring
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:22.7235905Z 256 clients, repetition 1, arena
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:27.8955352Z 256 clients, repetition 2, arena
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:32.5654517Z 256 clients, repetition 2, ring
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:37.5850012Z 256 clients, repetition 2, base
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:42.0996595Z 256 clients, repetition 3, base
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:46.4206702Z 256 clients, repetition 3, ring
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:51.4458596Z 256 clients, repetition 3, arena
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:11:56.0136110Z 256 clients, repetition 4, arena
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:00.6949315Z 256 clients, repetition 4, ring
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:05.5158039Z 256 clients, repetition 4, base
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:10.1786468Z 256 clients, repetition 5, base
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:15.0557864Z 256 clients, repetition 5, ring
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:12:19.9290814Z 256 clients, repetition 5, arena
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7339240Z Traceback (most recent call last):
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7340219Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 262, in <module>
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7340787Z     main()
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7341305Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 255, in main
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7341943Z     cluster(store, f'cases-{store}', mode='cases')
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7343390Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 215, in cluster
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7344198Z     run(args, env=os.environ | {'GOMAXPROCS': '1'}, timeout=100, stdout=log, stderr=sp.STDOUT)
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7345032Z   File "/home/runner/work/tigerstore/tigerstore/experiments/alloc50/run.py", line 30, in run
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7345907Z     return sp.run(args, check=True, text=True, **kwargs)
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7346413Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7346845Z   File "/usr/lib/python3.12/subprocess.py", line 571, in run
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7347337Z     raise CalledProcessError(retcode, process.args,
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7349053Z subprocess.CalledProcessError: Command '['taskset', '-c', '3', '/home/runner/work/_temp/alloc50/bin/cases', '-endpoint', '127.0.0.1:2379', '-certdir', '/home/runner/work/_temp/alloc50/certs', '-debug-url', 'http://127.0.0.1:6060', '-strategy', 'ring', '-out', '/home/runner/work/tigerstore/tigerstore/evidence/alloc50/c256/cases-ring/cases.json']' returned non-zero exit status 1.
+paired (256)	Five paired pristine base, ring and arena repetitions, then diagnostics	2026-10-13T10:13:13.7912781Z ##[error]Process completed with exit code 1.

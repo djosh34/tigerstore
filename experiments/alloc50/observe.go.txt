@@ -41,6 +41,11 @@ func bench75Observe(n *node.Node, g any) error {
 			log.Printf("debug allocator: %v", err)
 		}
 	})
+	mux.HandleFunc("/debug/goroutines", func(w http.ResponseWriter, r *http.Request) {
+		if err := pprof.Lookup("goroutine").WriteTo(w, 2); err != nil {
+			log.Printf("debug goroutines: %v", err)
+		}
+	})
 	mux.HandleFunc("/debug/allocs", func(w http.ResponseWriter, r *http.Request) {
 		// Two GCs flush delayed allocation-profile accounting. These are never
 		// called inside a timed window; a fresh process isolates the cohort.

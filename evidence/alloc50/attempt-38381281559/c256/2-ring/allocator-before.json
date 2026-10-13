@@ -1,0 +1,50 @@
+[
+  {
+    "byte_budget": 67108864,
+    "denied_count": 0,
+    "driver_reserve_bytes": 8388608,
+    "fallback_allocations": 0,
+    "held_bytes": 8388608,
+    "held_slots": 0,
+    "mode": 1,
+    "peak_bytes": 8388608,
+    "peak_slots": 0,
+    "per_connection_bytes": 8388608,
+    "per_connection_slots": 256,
+    "slot_budget": 4096,
+    "timer_allocations": 0,
+    "unmanaged_rpc_count": 0
+  },
+  {
+    "byte_budget": 67108864,
+    "denied_count": 0,
+    "driver_reserve_bytes": 8388608,
+    "fallback_allocations": 0,
+    "held_bytes": 8388608,
+    "held_slots": 0,
+    "mode": 1,
+    "peak_bytes": 8388608,
+    "peak_slots": 0,
+    "per_connection_bytes": 8388608,
+    "per_connection_slots": 256,
+    "slot_budget": 4096,
+    "timer_allocations": 0,
+    "unmanaged_rpc_count": 0
+  },
+  {
+    "byte_budget": 67108864,
+    "denied_count": 0,
+    "driver_reserve_bytes": 8388608,
+    "fallback_allocations": 0,
+    "held_bytes": 8388608,
+    "held_slots": 0,
+    "mode": 1,
+    "peak_bytes": 8388608,
+    "peak_slots": 0,
+    "per_connection_bytes": 8388608,
+    "per_connection_slots": 256,
+    "slot_budget": 4096,
+    "timer_allocations": 0,
+    "unmanaged_rpc_count": 0
+  }
+]

@@ -19,9 +19,11 @@ trap 'rm -rf "$PRIVATE"' EXIT
 cp experiments/alloc50/attempt-notes.md "$OUT/attempt-notes.md"
 tar -czf "$OUT/harness-source.tar.gz" experiments/alloc50 experiments/bench75 .github/workflows/alloc50.yml
 git diff ae0c2ecc639bb49c723dc1efd6260424a9028a82 "$EXPERIMENT" -- experiments/alloc50 .github/workflows/alloc50.yml internal/server/server_test.go internal/server/allocation_path_test.go > "$OUT/first-attempt-followup.patch"
-if [[ -f evidence/local-parent/harness-followup.log ]]; then
- cp evidence/local-parent/harness-followup.log "$OUT/local-harness-followup.log"
-fi
+for log in harness-followup harness-async; do
+ if [[ -f evidence/local-parent/$log.log ]]; then
+  cp "evidence/local-parent/$log.log" "$OUT/local-$log.log"
+ fi
+done
 {
  date -u +%FT%TZ
  printf 'base %s\nexperiment %s\nharness_origin %s\n' "$BASE" "$EXPERIMENT" 0f82f687e5a21fa6265e508866f07dc3fffeaae9

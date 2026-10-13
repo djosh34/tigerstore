@@ -1,0 +1,26 @@
+{
+  "leader_index": 1,
+  "node_order": [
+    1,
+    0,
+    2
+  ],
+  "pids": "9551,9550,9552",
+  "status_before": [
+    {
+      "gomaxprocs": 2,
+      "id": 1,
+      "leader": 2
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 2,
+      "leader": 2
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 3,
+      "leader": 2
+    }
+  ]
+}

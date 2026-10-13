@@ -1,0 +1,845 @@
+File: base
+Build ID: a9a96873a2506671ca0d1ec3728dbc3f952ca53c
+Type: alloc_space
+Time: 2026-10-13 12:12:47 CEST
+Active filters:
+   ignore=runtime/pprof|main.bench75Observe|net/http\.
+Showing nodes accounting for 24408000B, 86.57% of 28194152B total
+      flat  flat%   sum%        cum   cum%
+  2304352B  8.17%  8.17%   2304352B  8.17%  github.com/djosh34/tigerstore/internal/server.(*stream).receive github.com/djosh34/tigerstore/internal/server/stream.go:122
+  2304000B  8.17% 16.35%   2304000B  8.17%  github.com/djosh34/tigerstore/internal/core.encodeBatch github.com/djosh34/tigerstore/internal/core/codec.go:37
+  2304000B  8.17% 24.52%   2304000B  8.17%  google.golang.org/protobuf/internal/impl.mergeBytes google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:188
+  1695824B  6.01% 30.53%   1695824B  6.01%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive github.com/djosh34/tigerstore/internal/peer/peer.go:240
+  1675024B  5.94% 36.47%   1900424B  6.74%  go.etcd.io/raft/v3.(*raft).maybeSendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:651
+  1226944B  4.35% 40.82%   1226944B  4.35%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1 golang.org/x/net@v0.58.0/http2/frame.go:1755
+  1048576B  3.72% 44.54%   1048576B  3.72%  bufio.NewReaderSize bufio/bufio.go:57 (inline)
+  1048576B  3.72% 48.26%   1048576B  3.72%  bufio.NewWriterSize bufio/bufio.go:599 (inline)
+   832000B  2.95% 51.21%    832000B  2.95%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:224
+   645760B  2.29% 53.50%    645760B  2.29%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream github.com/djosh34/tigerstore/internal/server/h2.go:433
+   448160B  1.59% 55.09%    512080B  1.82%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:845
+   420160B  1.49% 56.58%    420160B  1.49%  go.etcd.io/raft/v3.newStorageAppendRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:267
+   416000B  1.48% 58.06%   4592208B 16.29%  go.etcd.io/raft/v3.(*RawNode).Propose go.etcd.io/raft/v3@v3.7.0/rawnode.go:91
+   416000B  1.48% 59.53%    416000B  1.48%  go.etcd.io/raft/v3.newStorageApplyMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:374
+   416000B  1.48% 61.01%    416000B  1.48%  go.etcd.io/raft/v3.newStorageApplyRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:388 (inline)
+   322880B  1.15% 62.16%    322880B  1.15%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked github.com/djosh34/tigerstore/internal/server/stream.go:298
+   288000B  1.02% 63.18%    288000B  1.02%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:376
+   264512B  0.94% 64.12%    264512B  0.94%  go.etcd.io/raft/v3.(*raft).hardState go.etcd.io/raft/v3@v3.7.0/raft.go:505 (inline)
+   260096B  0.92% 65.04%    260096B  0.92%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:2782
+   258304B  0.92% 65.95%    258304B  0.92%  github.com/djosh34/tigerstore/internal/server.(*conn).admit github.com/djosh34/tigerstore/internal/server/batch.go:73
+   227808B  0.81% 66.76%    227808B  0.81%  time.newTimer runtime/time.go:395
+   208000B  0.74% 67.50%    208000B  0.74%  go.etcd.io/raft/v3.(*RawNode).Propose go.etcd.io/raft/v3@v3.7.0/rawnode.go:94
+   192000B  0.68% 68.18%    192000B  0.68%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:726
+   192000B  0.68% 68.86%    192000B  0.68%  reflect.unsafe_New runtime/malloc.go:2162
+   176208B  0.62% 69.49%    176208B  0.62%  github.com/djosh34/tigerstore/internal/core.raftHardState github.com/djosh34/tigerstore/internal/core/storage.go:49 (inline)
+   161440B  0.57% 70.06%    161440B  0.57%  github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch github.com/djosh34/tigerstore/internal/node/node.go:186
+   161440B  0.57% 70.63%    161440B  0.57%  github.com/djosh34/tigerstore/internal/node.completeAll github.com/djosh34/tigerstore/internal/node/node.go:408
+   161440B  0.57% 71.20%    161440B  0.57%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked github.com/djosh34/tigerstore/internal/server/stream.go:278
+   159968B  0.57% 71.77%    159968B  0.57%  go.etcd.io/raft/v3/raftpb.MessageType.Enum go.etcd.io/raft/v3@v3.7.0/raftpb/raft.pb.go:172 (inline)
+   129152B  0.46% 72.23%    129152B  0.46%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1721
+   128848B  0.46% 72.69%    128848B  0.46%  go.etcd.io/raft/v3.(*raft).maybeSendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:654
+   128000B  0.45% 73.14%    128000B  0.45%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut github.com/djosh34/tigerstore/internal/core/node.go:905
+   128000B  0.45% 73.59%    128000B  0.45%  github.com/djosh34/tigerstore/internal/server.(*conn).putResponse github.com/djosh34/tigerstore/internal/server/batch.go:243
+   127872B  0.45% 74.05%    127872B  0.45%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept go.etcd.io/raft/v3@v3.7.0/rawnode.go:168
+   112640B   0.4% 74.45%    112640B   0.4%  crypto/internal/fips140/sha256.New crypto/internal/fips140/sha256/sha256.go:150 (inline)
+   104448B  0.37% 74.82%    104448B  0.37%  crypto/internal/fips140/mlkem.NewEncapsulationKey768 crypto/internal/fips140/mlkem/mlkem768.go:376 (inline)
+    97752B  0.35% 75.17%     97752B  0.35%  github.com/djosh34/tigerstore/internal/core.(*Node).send github.com/djosh34/tigerstore/internal/core/node.go:981 (inline)
+    97752B  0.35% 75.51%     97752B  0.35%  go.etcd.io/raft/v3.(*raft).send go.etcd.io/raft/v3@v3.7.0/raft.go:598
+    96864B  0.34% 75.86%     96864B  0.34%  github.com/djosh34/tigerstore/internal/server.(*conn).complete github.com/djosh34/tigerstore/internal/server/batch.go:194
+    96864B  0.34% 76.20%     96864B  0.34%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked github.com/djosh34/tigerstore/internal/server/stream.go:275
+    96864B  0.34% 76.54%     96864B  0.34%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1711
+    96864B  0.34% 76.89%     96864B  0.34%  golang.org/x/net/http2.(*frameCache).getDataFrame golang.org/x/net@v0.58.0/http2/frame.go:439 (inline)
+    96864B  0.34% 77.23%     96864B  0.34%  golang.org/x/net/http2.parseHeadersFrame golang.org/x/net@v0.58.0/http2/frame.go:1071
+    96000B  0.34% 77.57%     96000B  0.34%  github.com/djosh34/tigerstore/internal/core.(*State).track github.com/djosh34/tigerstore/internal/core/state.go:92
+    96000B  0.34% 77.91%     96000B  0.34%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest github.com/djosh34/tigerstore/internal/mvcc/ops.go:234
+    96000B  0.34% 78.25%     96000B  0.34%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:351
+    92160B  0.33% 78.58%     92160B  0.33%  crypto/tls.(*Conn).write crypto/tls/conn.go:949
+    81392B  0.29% 78.87%     81392B  0.29%  go.etcd.io/raft/v3.(*raft).send go.etcd.io/raft/v3@v3.7.0/raft.go:543
+    81056B  0.29% 79.15%     81056B  0.29%  go.etcd.io/raft/v3.(*raft).send go.etcd.io/raft/v3@v3.7.0/raft.go:516
+    66560B  0.24% 79.39%     66560B  0.24%  bytes.growSlice bytes/buffer.go:267
+    66128B  0.23% 79.62%     66128B  0.23%  go.etcd.io/raft/v3.(*raft).hardState go.etcd.io/raft/v3@v3.7.0/raft.go:506 (inline)
+    64512B  0.23% 79.85%     64512B  0.23%  go.etcd.io/raft/v3.(*raft).maybeSendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:652
+    64512B  0.23% 80.08%     64512B  0.23%  go.etcd.io/raft/v3.(*raft).maybeSendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:657
+    64400B  0.23% 80.31%     64400B  0.23%  google.golang.org/protobuf/internal/impl.consumeInt32Ptr google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:707
+    64000B  0.23% 80.54%     64000B  0.23%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:226
+    63792B  0.23% 80.76%     63792B  0.23%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:730
+    61824B  0.22% 80.98%     61824B  0.22%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).add vendor/golang.org/x/crypto/cryptobyte/builder.go:308 (inline)
+    57344B   0.2% 81.19%     57344B   0.2%  crypto/internal/fips140/aes/gcm.NewGCMForTLS13 crypto/internal/fips140/aes/gcm/gcm_nonces.go:174
+    55296B   0.2% 81.38%     55296B   0.2%  go.etcd.io/raft/v3.(*MemoryStorage).Append go.etcd.io/raft/v3@v3.7.0/storage.go:320
+    50688B  0.18% 81.56%     50688B  0.18%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).addLengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:200
+    48432B  0.17% 81.73%     48432B  0.17%  github.com/djosh34/tigerstore/internal/server.(*conn).Complete github.com/djosh34/tigerstore/internal/server/batch.go:159
+    48432B  0.17% 81.91%     48432B  0.17%  golang.org/x/net/http2.parsePingFrame golang.org/x/net@v0.58.0/http2/frame.go:916
+    48000B  0.17% 82.08%     48000B  0.17%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:723
+    41472B  0.15% 82.22%     41472B  0.15%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hmac/hmac.go:169
+    33792B  0.12% 82.34%     33792B  0.12%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1178
+    33584B  0.12% 82.46%     33584B  0.12%  go.etcd.io/raft/v3.(*raft).hardState go.etcd.io/raft/v3@v3.7.0/raft.go:508 (inline)
+    32768B  0.12% 82.58%     32768B  0.12%  crypto/internal/fips140/aes.New crypto/internal/fips140/aes/aes.go:66 (inline)
+    32320B  0.11% 82.69%     32320B  0.11%  go.etcd.io/raft/v3.newStorageAppendRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:269
+    32320B  0.11% 82.81%     32320B  0.11%  go.etcd.io/raft/v3.newStorageAppendRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:356
+    32288B  0.11% 82.92%     32288B  0.11%  github.com/djosh34/tigerstore/internal/server.(*conn).admit github.com/djosh34/tigerstore/internal/server/batch.go:74
+    32288B  0.11% 83.04%    258304B  0.92%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream github.com/djosh34/tigerstore/internal/server/h2.go:458
+    32288B  0.11% 83.15%     32288B  0.11%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1717
+    32288B  0.11% 83.27%     32288B  0.11%  golang.org/x/net/http2.parseWindowUpdateFrame golang.org/x/net@v0.58.0/http2/frame.go:1022
+    32256B  0.11% 83.38%     32256B  0.11%  crypto/internal/fips140/sha512.New crypto/internal/fips140/sha512/sha512.go:205 (inline)
+    32160B  0.11% 83.49%     32160B  0.11%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:257
+    32000B  0.11% 83.61%     32000B  0.11%  go.etcd.io/raft/v3.newStorageApplyMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:376
+    32000B  0.11% 83.72%     32000B  0.11%  go.etcd.io/raft/v3.newStorageApplyRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:390 (inline)
+    31744B  0.11% 83.83%     31744B  0.11%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hmac/hmac.go:186
+    31744B  0.11% 83.95%     31744B  0.11%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hmac/hmac.go:187
+    28672B   0.1% 84.05%     28672B   0.1%  crypto/tls.(*hybridKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:256
+    26528B 0.094% 84.14%     26528B 0.094%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:378
+    24576B 0.087% 84.23%     24576B 0.087%  crypto/x509.parseCertificate crypto/x509/parser.go:965
+    20800B 0.074% 84.30%     23600B 0.084%  go.etcd.io/raft/v3.(*raft).sendHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:703
+    19456B 0.069% 84.37%     19456B 0.069%  crypto/internal/fips140/sha256.(*Digest).Sum crypto/internal/fips140/sha256/sha256.go:208
+    18432B 0.065% 84.44%     18432B 0.065%  crypto/internal/fips140/mlkem.(*EncapsulationKey768).Encapsulate crypto/internal/fips140/mlkem/mlkem768.go:337 (inline)
+    16592B 0.059% 84.50%     16592B 0.059%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:238
+    16592B 0.059% 84.56%     16592B 0.059%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:240
+    16592B 0.059% 84.61%     16592B 0.059%  go.etcd.io/raft/v3.newStorageApplyMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:378
+    16592B 0.059% 84.67%     16592B 0.059%  go.etcd.io/raft/v3.newStorageApplyRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:392 (inline)
+    16384B 0.058% 84.73%     16384B 0.058%  crypto/tls.Server crypto/tls/tls.go:47 (inline)
+    16080B 0.057% 84.79%     16080B 0.057%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:728
+    16080B 0.057% 84.85%     16080B 0.057%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:818
+    16080B 0.057% 84.90%     16080B 0.057%  go.etcd.io/raft/v3.newStorageAppendRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:272
+    16000B 0.057% 84.96%     16000B 0.057%  github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite github.com/djosh34/tigerstore/internal/core/node.go:511
+    16000B 0.057% 85.02%     16000B 0.057%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:814
+    16000B 0.057% 85.07%     16000B 0.057%  go.etcd.io/raft/v3.(*raft).send go.etcd.io/raft/v3@v3.7.0/raft.go:592
+    16000B 0.057% 85.13%     16000B 0.057%  go.etcd.io/raft/v3.(*unstable).truncateAndAppend go.etcd.io/raft/v3@v3.7.0/log_unstable.go:205
+    16000B 0.057% 85.19%    496000B  1.76%  go.etcd.io/raft/v3.newStorageApplyMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:380
+    15968B 0.057% 85.24%     15968B 0.057%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1714
+    15920B 0.056% 85.30%     15920B 0.056%  go.etcd.io/raft/v3.(*RawNode).Propose go.etcd.io/raft/v3@v3.7.0/rawnode.go:93
+    15920B 0.056% 85.36%     15920B 0.056%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:819
+    15408B 0.055% 85.41%     15408B 0.055%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:239
+    14912B 0.053% 85.46%     14912B 0.053%  golang.org/x/net/http2/hpack.(*headerFieldTable).addEntry golang.org/x/net@v0.58.0/http2/hpack/tables.go:78 (inline)
+    13312B 0.047% 85.51%     13312B 0.047%  crypto/internal/fips140/sha512.(*Digest).MarshalBinary crypto/internal/fips140/sha512/sha512.go:134
+    12288B 0.044% 85.55%     12288B 0.044%  crypto/internal/fips140/nistec.NewP256Point crypto/internal/fips140/nistec/p256_asm.go:49
+    11008B 0.039% 85.59%     11008B 0.039%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:43
+    10240B 0.036% 85.63%     10240B 0.036%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1128
+     9216B 0.033% 85.66%      9216B 0.033%  vendor/golang.org/x/crypto/cryptobyte.(*String).ReadASN1ObjectIdentifier vendor/golang.org/x/crypto/cryptobyte/asn1.go:461
+     8192B 0.029% 85.69%      8192B 0.029%  crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:32
+     8192B 0.029% 85.72%    173872B  0.62%  crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:39
+     7200B 0.026% 85.75%      7200B 0.026%  github.com/djosh34/tigerstore/internal/core.check github.com/djosh34/tigerstore/internal/core/node.go:433
+     7168B 0.025% 85.77%      7168B 0.025%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:28
+     6944B 0.025% 85.80%     23808B 0.084%  go.etcd.io/raft/v3.(*raft).tickHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:885
+     6400B 0.023% 85.82%      6400B 0.023%  crypto/x509.parseCertificate crypto/x509/parser.go:1134
+     5632B  0.02% 85.84%      7168B 0.025%  crypto/tls.signedMessage crypto/tls/auth.go:126
+     5616B  0.02% 85.86%     15696B 0.056%  go.etcd.io/raft/v3.(*RawNode).ReadIndex go.etcd.io/raft/v3@v3.7.0/rawnode.go:556
+     5120B 0.018% 85.88%      5120B 0.018%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:110
+     5120B 0.018% 85.89%      5120B 0.018%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:110
+     4480B 0.016% 85.91%      4480B 0.016%  crypto/x509.newPolicyGraph crypto/x509/verify.go:1092 (inline)
+     4096B 0.015% 85.93%      4096B 0.015%  crypto/internal/fips140/bigmod.(*Nat).Bytes crypto/internal/fips140/bigmod/nat.go:159
+     4096B 0.015% 85.94%      4096B 0.015%  crypto/internal/fips140/bigmod.NewNat crypto/internal/fips140/bigmod/nat.go:72 (inline)
+     4096B 0.015% 85.95%      4096B 0.015%  crypto/internal/fips140/ecdsa.pad000 crypto/internal/fips140/ecdsa/hmacdrbg.go:132
+     3840B 0.014% 85.97%      3840B 0.014%  crypto/ecdsa.pointFromAffine crypto/ecdsa/ecdsa.go:632
+     3840B 0.014% 85.98%      3840B 0.014%  crypto/tls.clientHelloInfo crypto/tls/handshake_server.go:1039
+     3744B 0.013% 85.99%      3744B 0.013%  go.etcd.io/raft/v3.(*raft).responseToReadIndexReq go.etcd.io/raft/v3@v3.7.0/raft.go:2080
+     3584B 0.013% 86.01%      3584B 0.013%  context.(*cancelCtx).Done context/context.go:458
+     3584B 0.013% 86.02%      3584B 0.013%  golang.org/x/net/http2.NewFramer golang.org/x/net@v0.58.0/http2/frame.go:446 (inline)
+     3328B 0.012% 86.03%      3328B 0.012%  context.(*cancelCtx).propagateCancel context/context.go:502
+     3072B 0.011% 86.04%      3072B 0.011%  crypto/x509.alreadyInChain crypto/x509/verify.go:687
+     3072B 0.011% 86.05%      3072B 0.011%  internal/bytealg.MakeNoZero runtime/slice.go:437
+     3072B 0.011% 86.06%      3072B 0.011%  math/big.nat.make math/big/nat.go:67 (inline)
+     2880B  0.01% 86.07%      2880B  0.01%  github.com/djosh34/tigerstore/internal/server.newOp[go.shape.5f7f4b9a956ac516567c98513b9fe595fb4f7460a7171f8c7f66934312282936,go.shape.*go.etcd.io/etcd/api/v3/etcdserverpb.RangeRequest] github.com/djosh34/tigerstore/internal/server/rpc.go:74
+     2816B  0.01% 86.08%      2816B  0.01%  github.com/djosh34/tigerstore/internal/server.marshal github.com/djosh34/tigerstore/internal/server/stream.go:203
+     2688B 0.0095% 86.09%      2688B 0.0095%  golang.org/x/net/http2.NewFramer.func2 golang.org/x/net@v0.58.0/http2/frame.go:459
+     2592B 0.0092% 86.10%      2592B 0.0092%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:385
+     2560B 0.0091% 86.11%      2560B 0.0091%  context.withCancel context/context.go:278 (inline)
+     2560B 0.0091% 86.12%      2560B 0.0091%  crypto/tls.(*halfConn).encrypt crypto/tls/conn.go:481
+     2560B 0.0091% 86.13%      2560B 0.0091%  fmt.Sprintf fmt/print.go:232
+     2560B 0.0091% 86.14%      2560B 0.0091%  github.com/djosh34/tigerstore/internal/server.(*conn).takeStream github.com/djosh34/tigerstore/internal/server/write.go:143
+     2560B 0.0091% 86.15%      2560B 0.0091%  golang.org/x/net/http2/hpack.NewDecoder golang.org/x/net@v0.58.0/http2/hpack/hpack.go:103
+     2304B 0.0082% 86.16%      2304B 0.0082%  crypto/ecdh.(*PublicKey).Bytes crypto/ecdh/ecdh.go:71 (inline)
+     2304B 0.0082% 86.17%      2304B 0.0082%  crypto/internal/fips140/ecdsa.NewPublicKey[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:196
+     2304B 0.0082% 86.17%      2304B 0.0082%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream github.com/djosh34/tigerstore/internal/server/h2.go:454
+     2048B 0.0073% 86.18%      2048B 0.0073%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1139
+     2048B 0.0073% 86.19%      2048B 0.0073%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:849
+     2048B 0.0073% 86.20%      2048B 0.0073%  crypto/tls.aeadAESGCMTLS13 crypto/tls/cipher_suites.go:562
+     2048B 0.0073% 86.20%      2048B 0.0073%  net.newFD net/fd_unix.go:27 (inline)
+     1960B 0.007% 86.21%      1960B 0.007%  bytes.(*Buffer).String bytes/buffer.go:77 (inline)
+     1920B 0.0068% 86.22%      1920B 0.0068%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:473
+     1904B 0.0068% 86.22%      1904B 0.0068%  github.com/djosh34/tigerstore/internal/node.(*Node).persist github.com/djosh34/tigerstore/internal/node/node.go:464
+     1792B 0.0064% 86.23%      1792B 0.0064%  context.AfterFunc context/context.go:327
+     1792B 0.0064% 86.24%      1792B 0.0064%  context.WithDeadlineCause context/context.go:641
+     1792B 0.0064% 86.24%      1792B 0.0064%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:113
+     1728B 0.0061% 86.25%      3168B 0.011%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).rangeKeys github.com/djosh34/tigerstore/internal/mvcc/ops.go:93
+     1536B 0.0054% 86.25%      1536B 0.0054%  bufio.NewReaderSize bufio/bufio.go:56 (inline)
+     1536B 0.0054% 86.26%      1536B 0.0054%  bytes.NewBuffer bytes/buffer.go:490 (inline)
+     1536B 0.0054% 86.26%      1536B 0.0054%  crypto/internal/fips140/ecdsa.inverse[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:393
+     1536B 0.0054% 86.27%      1536B 0.0054%  crypto/internal/fips140/nistec.(*P256Point).BytesX crypto/internal/fips140/nistec/p256_asm.go:517
+     1536B 0.0054% 86.28%      1536B 0.0054%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:622
+     1536B 0.0054% 86.28%      1536B 0.0054%  crypto/x509.parseName crypto/x509/parser.go:234
+     1536B 0.0054% 86.29%      1536B 0.0054%  crypto/x509/pkix.(*Name).FillFromRDNSequence crypto/x509/pkix/pkix.go:175
+     1536B 0.0054% 86.29%      1536B 0.0054%  golang.org/x/net/http2.parseSettingsFrame golang.org/x/net@v0.58.0/http2/frame.go:793
+     1536B 0.0054% 86.30%      1536B 0.0054%  net.sockaddrToTCP net/tcpsock_posix.go:19
+     1488B 0.0053% 86.30%      1488B 0.0053%  crypto/internal/fips140/aes/gcm.sliceForAppend crypto/internal/fips140/aes/gcm/gcm.go:138 (inline)
+     1440B 0.0051% 86.31%      1440B 0.0051%  github.com/djosh34/tigerstore/internal/mvcc.header github.com/djosh34/tigerstore/internal/mvcc/ops.go:48 (inline)
+     1304B 0.0046% 86.31%      1304B 0.0046%  crypto/tls.(*halfConn).encrypt crypto/tls/conn.go:519
+     1280B 0.0045% 86.32%      1280B 0.0045%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:835
+     1280B 0.0045% 86.32%      1280B 0.0045%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:780
+     1280B 0.0045% 86.33%      1280B 0.0045%  crypto/tls.keyExchangeForCurveID crypto/tls/key_schedule.go:99
+     1280B 0.0045% 86.33%      1280B 0.0045%  github.com/djosh34/tigerstore/internal/server.(*conn).takeStream github.com/djosh34/tigerstore/internal/server/write.go:159
+     1152B 0.0041% 86.33%      1152B 0.0041%  github.com/djosh34/tigerstore/internal/core.(*Node).reply github.com/djosh34/tigerstore/internal/core/node.go:553 (inline)
+     1024B 0.0036% 86.34%      1024B 0.0036%  bufio.NewWriterSize bufio/bufio.go:598 (inline)
+     1024B 0.0036% 86.34%      1024B 0.0036%  bytes.Clone bytes/bytes.go:1395 (inline)
+     1024B 0.0036% 86.35%      1024B 0.0036%  crypto/ecdh.(*x25519Curve).NewPrivateKey crypto/ecdh/x25519.go:62
+     1024B 0.0036% 86.35%      1024B 0.0036%  crypto/ecdh.(*x25519Curve).NewPrivateKey crypto/ecdh/x25519.go:65
+     1024B 0.0036% 86.35%      1024B 0.0036%  crypto/ecdh.(*x25519Curve).NewPublicKey crypto/ecdh/x25519.go:76
+     1024B 0.0036% 86.36%      1024B 0.0036%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:64
+     1024B 0.0036% 86.36%      1024B 0.0036%  crypto/internal/fips140/sha3.(*Digest).sumGeneric crypto/internal/fips140/sha3/sha3.go:161
+     1024B 0.0036% 86.36%      1024B 0.0036%  crypto/internal/fips140/sha512.(*Digest).Sum crypto/internal/fips140/sha512/sha512.go:266
+     1024B 0.0036% 86.37%      5120B 0.018%  crypto/internal/fips140/tls13.extract[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:44
+     1024B 0.0036% 86.37%      1024B 0.0036%  crypto/tls.supportedSignatureAlgorithms crypto/tls/common.go:1778
+     1024B 0.0036% 86.37%      1024B 0.0036%  crypto/x509.newPolicyGraph crypto/x509/verify.go:1084 (inline)
+     1024B 0.0036% 86.38%      1024B 0.0036%  internal/reflectlite.Swapper internal/reflectlite/swapper.go:58
+     1024B 0.0036% 86.38%      1024B 0.0036%  syscall.anyToSockaddr syscall/syscall_linux.go:669
+      960B 0.0034% 86.39%       960B 0.0034%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:474
+      960B 0.0034% 86.39%       960B 0.0034%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:548
+      960B 0.0034% 86.39%       960B 0.0034%  github.com/djosh34/tigerstore/internal/server.(*conn).addCtrl github.com/djosh34/tigerstore/internal/server/h2.go:215
+      960B 0.0034% 86.40%       960B 0.0034%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:43
+      864B 0.0031% 86.40%       864B 0.0031%  github.com/djosh34/tigerstore/internal/core.(*Node).requestReads github.com/djosh34/tigerstore/internal/core/node.go:590
+      864B 0.0031% 86.40%       864B 0.0031%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).ascend github.com/djosh34/tigerstore/internal/mvcc/store.go:113
+      832B 0.003% 86.40%       832B 0.003%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:562
+      800B 0.0028% 86.41%       800B 0.0028%  go.etcd.io/raft/v3.(*raft).sendHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:704
+      800B 0.0028% 86.41%       800B 0.0028%  go.etcd.io/raft/v3.(*raft).sendHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:706
+      768B 0.0027% 86.41%       768B 0.0027%  context.(*cancelCtx).propagateCancel context/context.go:500
+      768B 0.0027% 86.42%     57216B   0.2%  crypto/internal/fips140/ecdsa.Sign[go.shape.*crypto/internal/fips140/nistec.P256Point,go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/ecdsa.go:308
+      768B 0.0027% 86.42%       768B 0.0027%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:56
+      768B 0.0027% 86.42%      1792B 0.0064%  crypto/internal/fips140/ecdsa.signGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:386
+      768B 0.0027% 86.42%       768B 0.0027%  crypto/x509.NewCertPool crypto/x509/cert_pool.go:65 (inline)
+      768B 0.0027% 86.43%       768B 0.0027%  crypto/x509.NewCertPool crypto/x509/cert_pool.go:66 (inline)
+      768B 0.0027% 86.43%       768B 0.0027%  crypto/x509.NewCertPool crypto/x509/cert_pool.go:67 (inline)
+      768B 0.0027% 86.43%       768B 0.0027%  crypto/x509.newPolicyGraph crypto/x509/verify.go:1087 (inline)
+      768B 0.0027% 86.43%       768B 0.0027%  crypto/x509.newPolicyGraph crypto/x509/verify.go:1088 (inline)
+      768B 0.0027% 86.44%       768B 0.0027%  crypto/x509.parseName crypto/x509/parser.go:213
+      768B 0.0027% 86.44%       768B 0.0027%  crypto/x509.parseName crypto/x509/parser.go:237
+      768B 0.0027% 86.44%       768B 0.0027%  crypto/x509.policiesValid crypto/x509/verify.go:1380
+      768B 0.0027% 86.45%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.(*conn).takeStream github.com/djosh34/tigerstore/internal/server/write.go:141
+      768B 0.0027% 86.45%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:115
+      768B 0.0027% 86.45%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:122
+      768B 0.0027% 86.45%       768B 0.0027%  golang.org/x/net/http2.parseGoAwayFrame golang.org/x/net@v0.58.0/http2/frame.go:958
+      768B 0.0027% 86.46%       768B 0.0027%  maps.clone runtime/map.go:326
+      768B 0.0027% 86.46%       768B 0.0027%  sync.(*Pool).pinSlow sync/pool.go:242
+      640B 0.0023% 86.46%       640B 0.0023%  crypto/x509.parseASN1String crypto/x509/parser.go:90
+      640B 0.0023% 86.46%       672B 0.0024%  go.etcd.io/raft/v3.(*raft).tickHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:869
+      576B 0.002% 86.47%       576B 0.002%  go.etcd.io/raft/v3.(*raft).responseToReadIndexReq go.etcd.io/raft/v3@v3.7.0/raft.go:2076
+      512B 0.0018% 86.47%       512B 0.0018%  context.WithCancel context/context.go:243
+      512B 0.0018% 86.47%      2304B 0.0082%  context.WithDeadlineCause context/context.go:653
+      512B 0.0018% 86.47%       512B 0.0018%  crypto/ecdh.(*x25519Curve).GenerateKey crypto/ecdh/x25519.go:42
+      512B 0.0018% 86.47%       512B 0.0018%  crypto/ecdh.(*x25519Curve).NewPrivateKey crypto/ecdh/x25519.go:56
+      512B 0.0018% 86.47%       512B 0.0018%  crypto/ecdh.(*x25519Curve).ecdh crypto/ecdh/x25519.go:83
+      512B 0.0018% 86.48%      1536B 0.0054%  crypto/ecdsa.pointToAffine crypto/ecdsa/ecdsa.go:646
+      512B 0.0018% 86.48%      1536B 0.0054%  crypto/ecdsa.pointToAffine crypto/ecdsa/ecdsa.go:647
+      512B 0.0018% 86.48%       512B 0.0018%  crypto/ecdsa.publicKeyFromFIPS crypto/ecdsa/ecdsa.go:570
+      512B 0.0018% 86.48%       512B 0.0018%  crypto/internal/fips140/ecdsa.Sign[go.shape.*crypto/internal/fips140/nistec.P256Point,go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/ecdsa.go:297
+      512B 0.0018% 86.48%       512B 0.0018%  crypto/internal/fips140/ecdsa.randomPoint[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:229
+      512B 0.0018% 86.49%      2560B 0.0091%  crypto/internal/fips140/hkdf.Extract[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:18
+      512B 0.0018% 86.49%       512B 0.0018%  crypto/internal/fips140/tls13.(*EarlySecret).HandshakeSecret crypto/internal/fips140/tls13/tls13.go:97
+      512B 0.0018% 86.49%       512B 0.0018%  crypto/internal/fips140/tls13.(*HandshakeSecret).MasterSecret crypto/internal/fips140/tls13/tls13.go:122
+      512B 0.0018% 86.49%       512B 0.0018%  crypto/internal/fips140/tls13.(*MasterSecret).ExporterMasterSecret crypto/internal/fips140/tls13/tls13.go:154 (inline)
+      512B 0.0018% 86.49%       512B 0.0018%  crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:74
+      512B 0.0018% 86.49%       512B 0.0018%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1160
+      512B 0.0018% 86.50%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:149
+      512B 0.0018% 86.50%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:234
+      512B 0.0018% 86.50%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:859
+      512B 0.0018% 86.50%       512B 0.0018%  crypto/tls.supportedSignatureAlgorithmsCert crypto/tls/common.go:1841
+      512B 0.0018% 86.50%       512B 0.0018%  crypto/x509.parseCertificate crypto/x509/parser.go:1003
+      512B 0.0018% 86.51%      1152B 0.0041%  crypto/x509.readASN1Any crypto/x509/parser.go:157
+      512B 0.0018% 86.51%       512B 0.0018%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve github.com/djosh34/tigerstore/internal/server/server.go:113
+      512B 0.0018% 86.51%      3504B 0.012%  go.etcd.io/raft/v3.(*unstable).stableTo go.etcd.io/raft/v3@v3.7.0/log_unstable.go:142
+      512B 0.0018% 86.51%       512B 0.0018%  golang.org/x/net/http2.(*Framer).writeUint16 golang.org/x/net@v0.58.0/http2/frame.go:413 (inline)
+      512B 0.0018% 86.51%       512B 0.0018%  time.Time.Format time/format.go:650
+      480B 0.0017% 86.51%       480B 0.0017%  runtime.mallocgc runtime/malloc.go:1131
+      464B 0.0016% 86.52%       464B 0.0016%  encoding/binary.bigEndian.AppendUint64 encoding/binary/binary.go:222 (inline)
+      448B 0.0016% 86.52%       448B 0.0016%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:585
+      432B 0.0015% 86.52%       432B 0.0015%  go.etcd.io/raft/v3.(*readOnly).addRequest go.etcd.io/raft/v3@v3.7.0/read_only.go:61 (inline)
+      384B 0.0014% 86.52%       384B 0.0014%  crypto/internal/fips140/bigmod.NewNat crypto/internal/fips140/bigmod/nat.go:73 (inline)
+      384B 0.0014% 86.52%       384B 0.0014%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:57
+      384B 0.0014% 86.52%       384B 0.0014%  crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:76
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1164
+      384B 0.0014% 86.53%       896B 0.0032%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:225
+      384B 0.0014% 86.53%       896B 0.0032%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:228
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:896
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/tls.(*serverHandshakeStateTLS13).sendSessionTickets crypto/tls/handshake_server_tls13.go:959
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/tls.unmarshalCertificate crypto/tls/handshake_messages.go:1553
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/x509.(*CertPool).Subjects crypto/x509/cert_pool.go:263 (inline)
+      384B 0.0014% 86.53%       384B 0.0014%  crypto/x509.(*Certificate).buildChains crypto/x509/verify.go:811
+      384B 0.0014% 86.54%       384B 0.0014%  crypto/x509.newPolicyGraph crypto/x509/verify.go:1086 (inline)
+      384B 0.0014% 86.54%       384B 0.0014%  crypto/x509.parseSANExtension.func1 crypto/x509/parser.go:505
+      384B 0.0014% 86.54%       384B 0.0014%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:222
+      384B 0.0014% 86.54%       384B 0.0014%  sync.(*WaitGroup).Go sync/waitgroup.go:238
+      352B 0.0012% 86.54%       352B 0.0012%  google.golang.org/protobuf/internal/impl.consumeBytesNoZero google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:5497
+      320B 0.0011% 86.54%       320B 0.0011%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:525
+      320B 0.0011% 86.54%      1600B 0.0057%  go.etcd.io/raft/v3.header go.etcd.io/raft/v3@v3.7.0/logger.go:141 (inline)
+      288B 0.001% 86.54%       288B 0.001%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept go.etcd.io/raft/v3@v3.7.0/rawnode.go:172
+      256B 0.00091% 86.55%       256B 0.00091%  context.AfterFunc context/context.go:331
+      256B 0.00091% 86.55%       256B 0.00091%  context.WithDeadlineCause context/context.go:657
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/tls.(*Config).curvePreferences crypto/tls/common.go:1282
+      256B 0.00091% 86.55%      2304B 0.0082%  crypto/tls.(*Conn).handshakeContext crypto/tls/conn.go:1537
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/tls.(*Conn).processCertsFromClient crypto/tls/handshake_server.go:975
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/tls.(*cipherSuiteTLS13).exportKeyingMaterial crypto/tls/key_schedule.go:49
+      256B 0.00091% 86.55%     14464B 0.051%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:751
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/tls.Server crypto/tls/tls.go:51 (inline)
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/x509.(*CertPool).findPotentialParents crypto/x509/cert_pool.go:169
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/x509.appendToFreshChain crypto/x509/verify.go:670 (inline)
+      256B 0.00091% 86.55%       256B 0.00091%  crypto/x509.parseExtKeyUsageExtension crypto/x509/parser.go:554
+      256B 0.00091% 86.56%       256B 0.00091%  crypto/x509.parseSANExtension.func1 crypto/x509/parser.go:483
+      256B 0.00091% 86.56%       256B 0.00091%  encoding/binary.bigEndian.AppendUint32 encoding/binary/binary.go:192 (inline)
+      256B 0.00091% 86.56%       256B 0.00091%  github.com/djosh34/tigerstore/internal/mvcc.(*keyIndex).kv github.com/djosh34/tigerstore/internal/mvcc/store.go:67 (inline)
+      256B 0.00091% 86.56%       256B 0.00091%  github.com/djosh34/tigerstore/internal/server.(*conn).serve github.com/djosh34/tigerstore/internal/server/h2.go:130
+      256B 0.00091% 86.56%       640B 0.0023%  github.com/djosh34/tigerstore/internal/server.(*conn).serve github.com/djosh34/tigerstore/internal/server/h2.go:131
+      256B 0.00091% 86.56%       256B 0.00091%  golang.org/x/net/http2.(*Framer).startWrite golang.org/x/net@v0.58.0/http2/frame.go:359 (inline)
+      256B 0.00091% 86.56%       256B 0.00091%  golang.org/x/net/http2.NewFramer golang.org/x/net@v0.58.0/http2/frame.go:455 (inline)
+      256B 0.00091% 86.56%       256B 0.00091%  google.golang.org/protobuf/internal/impl.consumeBytes google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:5418
+      256B 0.00091% 86.56%       256B 0.00091%  sync.(*poolChain).pushHead sync/poolqueue.go:226
+      192B 0.00068% 86.56%       192B 0.00068%  crypto/tls.(*Config).supportedVersions crypto/tls/common.go:1234
+      176B 0.00062% 86.56%       176B 0.00062%  go.etcd.io/raft/v3.(*readOnly).heartbeatCtx go.etcd.io/raft/v3@v3.7.0/read_only.go:98 (inline)
+      144B 0.00051% 86.56%       144B 0.00051%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:392
+      128B 0.00045% 86.56%       128B 0.00045%  bytes.(*Buffer).grow bytes/buffer.go:155
+      128B 0.00045% 86.57%       128B 0.00045%  crypto/mlkem.NewEncapsulationKey768 crypto/mlkem/mlkem.go:115
+      128B 0.00045% 86.57%       128B 0.00045%  crypto/tls.(*Conn).processCertsFromClient crypto/tls/handshake_server.go:945
+      128B 0.00045% 86.57%     15360B 0.054%  crypto/x509.(*Certificate).Verify crypto/x509/verify.go:606
+      128B 0.00045% 86.57%       128B 0.00045%  github.com/djosh34/tigerstore/internal/server.(*conn).list github.com/djosh34/tigerstore/internal/server/write.go:26 (inline)
+      128B 0.00045% 86.57%       128B 0.00045%  net.newTCPConn net/tcpsock.go:297
+      128B 0.00045% 86.57%       128B 0.00045%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).addLengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:197
+       96B 0.00034% 86.57%        96B 0.00034%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1715
+       96B 0.00034% 86.57%        96B 0.00034%  golang.org/x/net/http2/hpack.init.func1 golang.org/x/net@v0.58.0/http2/hpack/huffman.go:15
+       96B 0.00034% 86.57%        96B 0.00034%  sync.(*poolChain).pushHead sync/poolqueue.go:225
+       80B 0.00028% 86.57%        80B 0.00028%  fmt.(*buffer).writeString fmt/print.go:108 (inline)
+       80B 0.00028% 86.57%        80B 0.00028%  google.golang.org/protobuf/internal/impl.(*messageState).Interface google.golang.org/protobuf@v1.36.11/internal/impl/message_reflect_gen.go:24
+       72B 0.00026% 86.57%        72B 0.00026%  crypto/tls.init.func1 crypto/tls/conn.go:973
+       64B 0.00023% 86.57%        64B 0.00023%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:444
+       64B 0.00023% 86.57%        64B 0.00023%  crypto/tls.(*clientHelloMsg).unmarshal crypto/tls/handshake_messages.go:601
+       64B 0.00023% 86.57%        64B 0.00023%  crypto/tls.signatureSchemesForPublicKey crypto/tls/auth.go:223
+       48B 0.00017% 86.57%     47152B  0.17%  crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }].func1 crypto/internal/fips140/tls13/tls13.go:76
+       48B 0.00017% 86.57%        48B 0.00017%  github.com/djosh34/tigerstore/internal/server.frameHeader github.com/djosh34/tigerstore/internal/server/h2.go:644 (inline)
+       48B 0.00017% 86.57%        48B 0.00017%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New google.golang.org/protobuf@v1.36.11/internal/impl/message.go:229
+       40B 0.00014% 86.57%        40B 0.00014%  sync.(*Pool).pinSlow sync/pool.go:238
+       32B 0.00011% 86.57%        32B 0.00011%  crypto/tls.sliceForAppend crypto/tls/conn.go:470 (inline)
+       32B 0.00011% 86.57%        32B 0.00011%  fmt.(*buffer).write fmt/print.go:104 (inline)
+       16B 5.7e-05% 86.57%       272B 0.00096%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).rangeKeys.func1 github.com/djosh34/tigerstore/internal/mvcc/ops.go:85
+         0     0% 86.57%      3800B 0.013%  bufio.(*Writer).Flush bufio/bufio.go:642
+         0     0% 86.57%     41984B  0.15%  bytes.(*Buffer).Grow bytes/buffer.go:186 (inline)
+         0     0% 86.57%     24576B 0.087%  bytes.(*Buffer).Write bytes/buffer.go:197
+         0     0% 86.57%       128B 0.00045%  bytes.(*Buffer).WriteByte bytes/buffer.go:307
+         0     0% 86.57%     66560B  0.24%  bytes.(*Buffer).grow bytes/buffer.go:169
+         0     0% 86.57%      1024B 0.0036%  bytes.Repeat bytes/bytes.go:668
+         0     0% 86.57%      1792B 0.0064%  context.(*cancelCtx).propagateCancel context/context.go:479
+         0     0% 86.57%      8448B  0.03%  context.WithCancel context/context.go:242
+         0     0% 86.57%      4352B 0.015%  context.WithDeadline context/context.go:627 (inline)
+         0     0% 86.57%      4352B 0.015%  context.WithTimeout context/context.go:705
+         0     0% 86.57%      5888B 0.021%  context.withCancel context/context.go:279 (inline)
+         0     0% 86.57%    112640B   0.4%  crypto.Hash.New crypto/crypto.go:142
+         0     0% 86.57%      2048B 0.0073%  crypto.SignMessage crypto/crypto.go:267
+         0     0% 86.57%       512B 0.0018%  crypto.SignMessage crypto/crypto.go:269
+         0     0% 86.57%     96512B  0.34%  crypto.SignMessage crypto/crypto.go:271
+         0     0% 86.57%     32768B  0.12%  crypto/aes.NewCipher crypto/aes/aes.go:47
+         0     0% 86.57%       512B 0.0018%  crypto/ecdh.(*PrivateKey).ECDH crypto/ecdh/ecdh.go:135
+         0     0% 86.57%      3072B 0.011%  crypto/ecdh.(*x25519Curve).GenerateKey crypto/ecdh/x25519.go:46
+         0     0% 86.57%       512B 0.0018%  crypto/ecdh.(*x25519Curve).NewPrivateKey crypto/ecdh/x25519.go:64
+         0     0% 86.57%       512B 0.0018%  crypto/ecdh.(*x25519Curve).NewPublicKey crypto/ecdh/x25519.go:78
+         0     0% 86.57%     96512B  0.34%  crypto/ecdsa.(*PrivateKey).Sign crypto/ecdsa/ecdsa.go:337
+         0     0% 86.57%      5888B 0.021%  crypto/ecdsa.ParseUncompressedPublicKey crypto/ecdsa/ecdsa.go:115
+         0     0% 86.57%     96512B  0.34%  crypto/ecdsa.SignASN1 crypto/ecdsa/ecdsa.go:411
+         0     0% 86.57%     17408B 0.062%  crypto/ecdsa.VerifyASN1 crypto/ecdsa/ecdsa.go:527
+         0     0% 86.57%      5376B 0.019%  crypto/ecdsa.addASN1IntBytes crypto/ecdsa/ecdsa.go:496
+         0     0% 86.57%      2304B 0.0082%  crypto/ecdsa.addASN1IntBytes.func1 crypto/ecdsa/ecdsa.go:500
+         0     0% 86.57%      7168B 0.025%  crypto/ecdsa.encodeSignature crypto/ecdsa/ecdsa.go:479
+         0     0% 86.57%      2304B 0.0082%  crypto/ecdsa.encodeSignature.func1 crypto/ecdsa/ecdsa.go:480
+         0     0% 86.57%      3072B 0.011%  crypto/ecdsa.encodeSignature.func1 crypto/ecdsa/ecdsa.go:481
+         0     0% 86.57%      2304B 0.0082%  crypto/ecdsa.parseUncompressedPublicKey[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:126
+         0     0% 86.57%      3584B 0.013%  crypto/ecdsa.parseUncompressedPublicKey[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:130
+         0     0% 86.57%      1280B 0.0045%  crypto/ecdsa.privateKeyToFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:592
+         0     0% 86.57%      3072B 0.011%  crypto/ecdsa.publicKeyFromFIPS crypto/ecdsa/ecdsa.go:566
+         0     0% 86.57%      2560B 0.0091%  crypto/ecdsa.publicKeyToFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:582
+         0     0% 86.57%      4608B 0.016%  crypto/ecdsa.publicKeyToFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:586
+         0     0% 86.57%      1280B 0.0045%  crypto/ecdsa.signFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:425
+         0     0% 86.57%     88064B  0.31%  crypto/ecdsa.signFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:432
+         0     0% 86.57%      7168B 0.025%  crypto/ecdsa.signFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:436
+         0     0% 86.57%      7168B 0.025%  crypto/ecdsa.verifyFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:542
+         0     0% 86.57%     10240B 0.036%  crypto/ecdsa.verifyFIPS[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/ecdsa/ecdsa.go:546
+         0     0% 86.57%      7936B 0.028%  crypto/fips140.WithoutEnforcement crypto/fips140/enforcement.go:23
+         0     0% 86.57%     15360B 0.054%  crypto/hmac.New crypto/hmac/hmac.go:56
+         0     0% 86.57%      1488B 0.0053%  crypto/internal/fips140/aes/gcm.(*GCM).sealAfterIndicator crypto/internal/fips140/aes/gcm/gcm.go:79
+         0     0% 86.57%      1488B 0.0053%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal crypto/internal/fips140/aes/gcm/gcm_nonces.go:281
+         0     0% 86.57%      6656B 0.024%  crypto/internal/fips140/ecdsa.(*hmacDRBG).Generate crypto/internal/fips140/ecdsa/hmacdrbg.go:153
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/ecdsa.(*hmacDRBG).Generate crypto/internal/fips140/ecdsa/hmacdrbg.go:168
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/ecdsa.(*hmacDRBG).Generate crypto/internal/fips140/ecdsa/hmacdrbg.go:170
+         0     0% 86.57%      4608B 0.016%  crypto/internal/fips140/ecdsa.NewPublicKey[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:192
+         0     0% 86.57%     30336B  0.11%  crypto/internal/fips140/ecdsa.Sign[go.shape.*crypto/internal/fips140/nistec.P256Point,go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/ecdsa.go:310
+         0     0% 86.57%     10240B 0.036%  crypto/internal/fips140/ecdsa.Verify[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:459
+         0     0% 86.57%       512B 0.0018%  crypto/internal/fips140/ecdsa.bits2octets[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:336
+         0     0% 86.57%      2048B 0.0073%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:104
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:111
+         0     0% 86.57%      3584B 0.013%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:61
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:67
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:71
+         0     0% 86.57%      2048B 0.0073%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:82
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:89
+         0     0% 86.57%      6656B 0.024%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/ecdsa/hmacdrbg.go:93
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/ecdsa.newDRBG[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }].func1 crypto/internal/fips140/ecdsa/hmacdrbg.go:58
+         0     0% 86.57%     20480B 0.073%  crypto/internal/fips140/ecdsa.randomPoint[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:230
+         0     0% 86.57%      4480B 0.016%  crypto/internal/fips140/ecdsa.randomPoint[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:257
+         0     0% 86.57%      2048B 0.0073%  crypto/internal/fips140/ecdsa.randomPoint[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:258
+         0     0% 86.57%     27520B 0.098%  crypto/internal/fips140/ecdsa.signGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:342
+         0     0% 86.57%       512B 0.0018%  crypto/internal/fips140/ecdsa.signGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:352
+         0     0% 86.57%       512B 0.0018%  crypto/internal/fips140/ecdsa.signGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:354
+         0     0% 86.57%     20480B 0.073%  crypto/internal/fips140/ecdsa.signGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point].func1 crypto/internal/fips140/ecdsa/ecdsa.go:343
+         0     0% 86.57%     30336B  0.11%  crypto/internal/fips140/ecdsa.sign[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa_noasm.go:10 (inline)
+         0     0% 86.57%      3072B 0.011%  crypto/internal/fips140/ecdsa.verifyGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:465
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/ecdsa.verifyGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:490
+         0     0% 86.57%      4096B 0.015%  crypto/internal/fips140/ecdsa.verifyGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:493
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/ecdsa.verifyGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:498
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/ecdsa.verifyGeneric[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa.go:503
+         0     0% 86.57%     10240B 0.036%  crypto/internal/fips140/ecdsa.verify[go.shape.*crypto/internal/fips140/nistec.P256Point] crypto/internal/fips140/ecdsa/ecdsa_noasm.go:14 (inline)
+         0     0% 86.57%    138288B  0.49%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:29
+         0     0% 86.57%      9216B 0.033%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:45
+         0     0% 86.57%     23040B 0.082%  crypto/internal/fips140/hkdf.Extract[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:20
+         0     0% 86.57%      1536B 0.0054%  crypto/internal/fips140/hkdf.Extract[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hkdf/hkdf.go:24
+         0     0% 86.57%      6656B 0.024%  crypto/internal/fips140/hmac.(*HMAC).Reset crypto/internal/fips140/hmac/hmac.go:115
+         0     0% 86.57%      6656B 0.024%  crypto/internal/fips140/hmac.(*HMAC).Reset crypto/internal/fips140/hmac/hmac.go:122
+         0     0% 86.57%     12800B 0.045%  crypto/internal/fips140/hmac.(*HMAC).Sum crypto/internal/fips140/hmac/hmac.go:61
+         0     0% 86.57%     61488B  0.22%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hmac/hmac.go:170
+         0     0% 86.57%     61440B  0.22%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/hmac/hmac.go:171
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/mlkem.(*EncapsulationKey768).Encapsulate crypto/internal/fips140/mlkem/mlkem768.go:338 (inline)
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/mlkem.(*EncapsulationKey768).encapsulate crypto/internal/fips140/mlkem/mlkem768.go:348
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/mlkem.kemEncaps crypto/internal/fips140/mlkem/mlkem768.go:366
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/sha3.(*Digest).Sum crypto/internal/fips140/sha3/sha3.go:148
+         0     0% 86.57%      1024B 0.0036%  crypto/internal/fips140/sha3.(*Digest).sum crypto/internal/fips140/sha3/sha3_arm64.go:42 (inline)
+         0     0% 86.57%     14336B 0.051%  crypto/internal/fips140/tls13.(*EarlySecret).HandshakeSecret crypto/internal/fips140/tls13/tls13.go:96
+         0     0% 86.57%      8192B 0.029%  crypto/internal/fips140/tls13.(*EarlySecret).HandshakeSecret crypto/internal/fips140/tls13/tls13.go:98
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*HandshakeSecret).ClientHandshakeTrafficSecret crypto/internal/fips140/tls13/tls13.go:106 (inline)
+         0     0% 86.57%     14384B 0.051%  crypto/internal/fips140/tls13.(*HandshakeSecret).MasterSecret crypto/internal/fips140/tls13/tls13.go:121
+         0     0% 86.57%     10752B 0.038%  crypto/internal/fips140/tls13.(*HandshakeSecret).MasterSecret crypto/internal/fips140/tls13/tls13.go:123
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*HandshakeSecret).ServerHandshakeTrafficSecret crypto/internal/fips140/tls13/tls13.go:112 (inline)
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*MasterSecret).ClientApplicationTrafficSecret crypto/internal/fips140/tls13/tls13.go:131 (inline)
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*MasterSecret).ExporterMasterSecret crypto/internal/fips140/tls13/tls13.go:155 (inline)
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*MasterSecret).ResumptionMasterSecret crypto/internal/fips140/tls13/tls13.go:143 (inline)
+         0     0% 86.57%     12288B 0.044%  crypto/internal/fips140/tls13.(*MasterSecret).ServerApplicationTrafficSecret crypto/internal/fips140/tls13/tls13.go:137 (inline)
+         0     0% 86.57%     13312B 0.047%  crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:75
+         0     0% 86.57%      4096B 0.015%  crypto/internal/fips140/tls13.deriveSecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:51
+         0     0% 86.57%     98352B  0.35%  crypto/internal/fips140/tls13.deriveSecret[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:53
+         0     0% 86.57%     27136B 0.096%  crypto/internal/fips140/tls13.extract[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }] crypto/internal/fips140/tls13/tls13.go:46
+         0     0% 86.57%      8192B 0.029%  crypto/internal/fips140hash.UnwrapNew[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }].func1 crypto/internal/fips140hash/hash.go:33
+         0     0% 86.57%     19456B 0.069%  crypto/mlkem.(*EncapsulationKey768).Encapsulate crypto/mlkem/mlkem.go:131
+         0     0% 86.57%    104448B  0.37%  crypto/mlkem.NewEncapsulationKey768 crypto/mlkem/mlkem.go:110
+         0     0% 86.57%    112640B   0.4%  crypto/sha256.New crypto/sha256/sha256.go:38
+         0     0% 86.57%     32256B  0.11%  crypto/sha512.New crypto/sha512/sha512.go:53
+         0     0% 86.57%       192B 0.00068%  crypto/tls.(*Config).mutualVersion crypto/tls/common.go:1313
+         0     0% 86.57%   1052400B  3.73%  crypto/tls.(*Conn).HandshakeContext crypto/tls/conn.go:1515 (inline)
+         0     0% 86.57%      3800B 0.013%  crypto/tls.(*Conn).Write crypto/tls/conn.go:1253
+         0     0% 86.57%      7424B 0.026%  crypto/tls.(*Conn).handshakeContext crypto/tls/conn.go:1526
+         0     0% 86.57%   1042672B  3.70%  crypto/tls.(*Conn).handshakeContext crypto/tls/conn.go:1561
+         0     0% 86.57%     56832B   0.2%  crypto/tls.(*Conn).processCertsFromClient crypto/tls/handshake_server.go:948
+         0     0% 86.57%      2304B 0.0082%  crypto/tls.(*Conn).processCertsFromClient crypto/tls/handshake_server.go:974
+         0     0% 86.57%     24320B 0.086%  crypto/tls.(*Conn).processCertsFromClient crypto/tls/handshake_server.go:982
+         0     0% 86.57%    108480B  0.38%  crypto/tls.(*Conn).readClientHello crypto/tls/handshake_server.go:138
+         0     0% 86.57%       192B 0.00068%  crypto/tls.(*Conn).readClientHello crypto/tls/handshake_server.go:191
+         0     0% 86.57%     41984B  0.15%  crypto/tls.(*Conn).readFromUntil crypto/tls/conn.go:817
+         0     0% 86.57%     66560B  0.24%  crypto/tls.(*Conn).readHandshake crypto/tls/conn.go:1094
+         0     0% 86.57%     54464B  0.19%  crypto/tls.(*Conn).readHandshake crypto/tls/conn.go:1119
+         0     0% 86.57%     66560B  0.24%  crypto/tls.(*Conn).readHandshakeBytes crypto/tls/conn.go:1083
+         0     0% 86.57%     66560B  0.24%  crypto/tls.(*Conn).readRecord crypto/tls/conn.go:588 (inline)
+         0     0% 86.57%      9216B 0.033%  crypto/tls.(*Conn).readRecordOrCCS crypto/tls/conn.go:626
+         0     0% 86.57%     32768B  0.12%  crypto/tls.(*Conn).readRecordOrCCS crypto/tls/conn.go:677
+         0     0% 86.57%     24576B 0.087%  crypto/tls.(*Conn).readRecordOrCCS crypto/tls/conn.go:786
+         0     0% 86.57%    108672B  0.39%  crypto/tls.(*Conn).serverHandshake crypto/tls/handshake_server.go:44
+         0     0% 86.57%    934000B  3.31%  crypto/tls.(*Conn).serverHandshake crypto/tls/handshake_server.go:56
+         0     0% 86.57%     80896B  0.29%  crypto/tls.(*Conn).setReadTrafficSecret crypto/tls/conn.go:1696
+         0     0% 86.57%     80896B  0.29%  crypto/tls.(*Conn).setWriteTrafficSecret crypto/tls/conn.go:1704 (inline)
+         0     0% 86.57%      7488B 0.027%  crypto/tls.(*Conn).unmarshalHandshakeMessage crypto/tls/conn.go:1180
+         0     0% 86.57%     98304B  0.35%  crypto/tls.(*Conn).writeHandshakeRecord crypto/tls/conn.go:1057
+         0     0% 86.57%     94720B  0.34%  crypto/tls.(*Conn).writeHandshakeRecord crypto/tls/conn.go:1065
+         0     0% 86.57%        32B 0.00011%  crypto/tls.(*Conn).writeRecordLocked crypto/tls/conn.go:1012
+         0     0% 86.57%      5352B 0.019%  crypto/tls.(*Conn).writeRecordLocked crypto/tls/conn.go:1030
+         0     0% 86.57%     92160B  0.33%  crypto/tls.(*Conn).writeRecordLocked crypto/tls/conn.go:1034
+         0     0% 86.57%       352B 0.0012%  crypto/tls.(*Conn).writeRecordLocked crypto/tls/conn.go:1047
+         0     0% 86.57%       624B 0.0022%  crypto/tls.(*Conn).writeRecordLocked crypto/tls/conn.go:993
+         0     0% 86.57%       352B 0.0012%  crypto/tls.(*Conn).writeRecordLocked.func1 crypto/tls/conn.go:1002
+         0     0% 86.57%       256B 0.00091%  crypto/tls.(*certificateMsgTLS13).marshal crypto/tls/handshake_messages.go:1469
+         0     0% 86.57%     13568B 0.048%  crypto/tls.(*certificateMsgTLS13).marshal crypto/tls/handshake_messages.go:1470
+         0     0% 86.57%     12032B 0.043%  crypto/tls.(*certificateMsgTLS13).marshal.func1 crypto/tls/handshake_messages.go:1480
+         0     0% 86.57%       384B 0.0014%  crypto/tls.(*certificateMsgTLS13).unmarshal crypto/tls/handshake_messages.go:1530
+         0     0% 86.57%       256B 0.00091%  crypto/tls.(*certificateRequestMsgTLS13).marshal crypto/tls/handshake_messages.go:1257
+         0     0% 86.57%     17664B 0.063%  crypto/tls.(*certificateRequestMsgTLS13).marshal crypto/tls/handshake_messages.go:1258
+         0     0% 86.57%     16128B 0.057%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1 crypto/tls/handshake_messages.go:1263
+         0     0% 86.57%       256B 0.00091%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1 crypto/tls/handshake_messages.go:1265
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1 crypto/tls/handshake_messages.go:1278
+         0     0% 86.57%      4096B 0.015%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1 crypto/tls/handshake_messages.go:1279
+         0     0% 86.57%      5120B 0.018%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1 crypto/tls/handshake_messages.go:1289
+         0     0% 86.57%      4608B 0.016%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1 crypto/tls/handshake_messages.go:1299
+         0     0% 86.57%      2560B 0.0091%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.1 crypto/tls/handshake_messages.go:1280
+         0     0% 86.57%      1024B 0.0036%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.1.1 crypto/tls/handshake_messages.go:1282
+         0     0% 86.57%      3584B 0.013%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.2 crypto/tls/handshake_messages.go:1290
+         0     0% 86.57%      2048B 0.0073%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.2.1 crypto/tls/handshake_messages.go:1292
+         0     0% 86.57%      3072B 0.011%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.3 crypto/tls/handshake_messages.go:1300
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.(*certificateRequestMsgTLS13).marshal.func1.1.3.1 crypto/tls/handshake_messages.go:1302
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*certificateVerifyMsg).marshal crypto/tls/handshake_messages.go:1858
+         0     0% 86.57%      8704B 0.031%  crypto/tls.(*certificateVerifyMsg).marshal crypto/tls/handshake_messages.go:1859
+         0     0% 86.57%      5632B  0.02%  crypto/tls.(*certificateVerifyMsg).marshal.func1 crypto/tls/handshake_messages.go:1863
+         0     0% 86.57%      2560B 0.0091%  crypto/tls.(*certificateVerifyMsg).marshal.func1.1 crypto/tls/handshake_messages.go:1864
+         0     0% 86.57%     12800B 0.045%  crypto/tls.(*cipherSuiteTLS13).exportKeyingMaterial crypto/tls/key_schedule.go:48
+         0     0% 86.57%     18176B 0.064%  crypto/tls.(*cipherSuiteTLS13).finishedHash crypto/tls/key_schedule.go:39
+         0     0% 86.57%     15360B 0.054%  crypto/tls.(*cipherSuiteTLS13).finishedHash crypto/tls/key_schedule.go:40
+         0     0% 86.57%      1024B 0.0036%  crypto/tls.(*cipherSuiteTLS13).finishedHash crypto/tls/key_schedule.go:41
+         0     0% 86.57%      1024B 0.0036%  crypto/tls.(*cipherSuiteTLS13).finishedHash crypto/tls/key_schedule.go:42
+         0     0% 86.57%     34816B  0.12%  crypto/tls.(*cipherSuiteTLS13).trafficKey crypto/tls/key_schedule.go:30
+         0     0% 86.57%     34816B  0.12%  crypto/tls.(*cipherSuiteTLS13).trafficKey crypto/tls/key_schedule.go:31
+         0     0% 86.57%      3584B 0.013%  crypto/tls.(*ecdhKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:158
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.(*ecdhKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:162
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*ecdhKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:166
+         0     0% 86.57%      2304B 0.0082%  crypto/tls.(*ecdhKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:170
+         0     0% 86.57%       256B 0.00091%  crypto/tls.(*encryptedExtensionsMsg).marshal crypto/tls/handshake_messages.go:1015
+         0     0% 86.57%      7936B 0.028%  crypto/tls.(*encryptedExtensionsMsg).marshal crypto/tls/handshake_messages.go:1016
+         0     0% 86.57%      6400B 0.023%  crypto/tls.(*encryptedExtensionsMsg).marshal.func1 crypto/tls/handshake_messages.go:1017
+         0     0% 86.57%      4864B 0.017%  crypto/tls.(*encryptedExtensionsMsg).marshal.func1.1 crypto/tls/handshake_messages.go:1020
+         0     0% 86.57%      3072B 0.011%  crypto/tls.(*encryptedExtensionsMsg).marshal.func1.1.1 crypto/tls/handshake_messages.go:1021
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.(*encryptedExtensionsMsg).marshal.func1.1.1.1 crypto/tls/handshake_messages.go:1022
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*finishedMsg).marshal crypto/tls/handshake_messages.go:1701
+         0     0% 86.57%      4608B 0.016%  crypto/tls.(*finishedMsg).marshal crypto/tls/handshake_messages.go:1702
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.(*finishedMsg).marshal.func1 crypto/tls/handshake_messages.go:1703
+         0     0% 86.57%      1488B 0.0053%  crypto/tls.(*halfConn).encrypt crypto/tls/conn.go:529
+         0     0% 86.57%     69632B  0.25%  crypto/tls.(*halfConn).setTrafficSecret crypto/tls/conn.go:233
+         0     0% 86.57%     92160B  0.33%  crypto/tls.(*halfConn).setTrafficSecret crypto/tls/conn.go:234
+         0     0% 86.57%      7936B 0.028%  crypto/tls.(*hybridKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:242
+         0     0% 86.57%    104576B  0.37%  crypto/tls.(*hybridKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:248
+         0     0% 86.57%     19456B 0.069%  crypto/tls.(*hybridKeyExchange).serverSharedSecret crypto/tls/key_schedule.go:252
+         0     0% 86.57%      7936B 0.028%  crypto/tls.(*hybridKeyExchange).serverSharedSecret.func1 crypto/tls/key_schedule.go:243
+         0     0% 86.57%    172160B  0.61%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:70
+         0     0% 86.57%      3904B 0.014%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:76
+         0     0% 86.57%    226688B   0.8%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:80
+         0     0% 86.57%    216448B  0.77%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:83
+         0     0% 86.57%    124464B  0.44%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:86
+         0     0% 86.57%    148736B  0.53%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:95
+         0     0% 86.57%     41600B  0.15%  crypto/tls.(*serverHandshakeStateTLS13).handshake crypto/tls/handshake_server_tls13.go:98
+         0     0% 86.57%      3840B 0.014%  crypto/tls.(*serverHandshakeStateTLS13).pickCertificate crypto/tls/handshake_server_tls13.go:487
+         0     0% 86.57%        64B 0.00023%  crypto/tls.(*serverHandshakeStateTLS13).pickCertificate crypto/tls/handshake_server_tls13.go:499
+         0     0% 86.57%      2048B 0.0073%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:199
+         0     0% 86.57%       256B 0.00091%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:209
+         0     0% 86.57%      1280B 0.0045%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:249
+         0     0% 86.57%    160640B  0.57%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello crypto/tls/handshake_server_tls13.go:254
+         0     0% 86.57%      9600B 0.034%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1048
+         0     0% 86.57%     83840B   0.3%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1059
+         0     0% 86.57%      1792B 0.0064%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1074
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1088
+         0     0% 86.57%      4096B 0.015%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1100
+         0     0% 86.57%     11264B  0.04%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1101
+         0     0% 86.57%      4608B 0.016%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1108
+         0     0% 86.57%     33024B  0.12%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate crypto/tls/handshake_server_tls13.go:1115
+         0     0% 86.57%      1152B 0.0041%  crypto/tls.(*serverHandshakeStateTLS13).readClientFinished crypto/tls/handshake_server_tls13.go:1126
+         0     0% 86.57%     40448B  0.14%  crypto/tls.(*serverHandshakeStateTLS13).readClientFinished crypto/tls/handshake_server_tls13.go:1142
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:838
+         0     0% 86.57%       512B 0.0018%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:839
+         0     0% 86.57%       384B 0.0014%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:841
+         0     0% 86.57%     46592B  0.17%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:844
+         0     0% 86.57%     56832B   0.2%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:855
+         0     0% 86.57%      4096B 0.015%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:868
+         0     0% 86.57%     99072B  0.35%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:873
+         0     0% 86.57%      4608B 0.016%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate crypto/tls/handshake_server_tls13.go:886
+         0     0% 86.57%     17792B 0.063%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:897
+         0     0% 86.57%      2560B 0.0091%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:900
+         0     0% 86.57%     25648B 0.091%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:906
+         0     0% 86.57%     12288B 0.044%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:908
+         0     0% 86.57%     12288B 0.044%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:909
+         0     0% 86.57%     40448B  0.14%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:910
+         0     0% 86.57%     13056B 0.046%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished crypto/tls/handshake_server_tls13.go:927
+         0     0% 86.57%     74240B  0.26%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:741
+         0     0% 86.57%     23040B 0.082%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:753
+         0     0% 86.57%     12288B 0.044%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:755
+         0     0% 86.57%     40448B  0.14%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:756
+         0     0% 86.57%     12288B 0.044%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:757
+         0     0% 86.57%     40448B  0.14%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:758
+         0     0% 86.57%      8192B 0.029%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters crypto/tls/handshake_server_tls13.go:814
+         0     0% 86.57%     17792B 0.063%  crypto/tls.(*serverHandshakeStateTLS13).sendSessionTickets crypto/tls/handshake_server_tls13.go:958
+         0     0% 86.57%      2560B 0.0091%  crypto/tls.(*serverHandshakeStateTLS13).sendSessionTickets crypto/tls/handshake_server_tls13.go:962
+         0     0% 86.57%     12288B 0.044%  crypto/tls.(*serverHandshakeStateTLS13).sendSessionTickets crypto/tls/handshake_server_tls13.go:966
+         0     0% 86.57%       192B 0.00068%  crypto/tls.(*serverHelloMsg).marshal crypto/tls/handshake_messages.go:793
+         0     0% 86.57%      1600B 0.0057%  crypto/tls.(*serverHelloMsg).marshal crypto/tls/handshake_messages.go:794
+         0     0% 86.57%     21760B 0.077%  crypto/tls.(*serverHelloMsg).marshal crypto/tls/handshake_messages.go:800
+         0     0% 86.57%       192B 0.00068%  crypto/tls.(*serverHelloMsg).marshal crypto/tls/handshake_messages.go:853
+         0     0% 86.57%     27456B 0.097%  crypto/tls.(*serverHelloMsg).marshal crypto/tls/handshake_messages.go:854
+         0     0% 86.57%       768B 0.0027%  crypto/tls.(*serverHelloMsg).marshal.func11 crypto/tls/handshake_messages.go:856
+         0     0% 86.57%      3072B 0.011%  crypto/tls.(*serverHelloMsg).marshal.func11 crypto/tls/handshake_messages.go:857
+         0     0% 86.57%     22016B 0.078%  crypto/tls.(*serverHelloMsg).marshal.func11 crypto/tls/handshake_messages.go:864
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.(*serverHelloMsg).marshal.func11.1 crypto/tls/handshake_messages.go:858
+         0     0% 86.57%     20480B 0.073%  crypto/tls.(*serverHelloMsg).marshal.func11.2 crypto/tls/handshake_messages.go:865
+         0     0% 86.57%     19968B 0.071%  crypto/tls.(*serverHelloMsg).marshal.func5 crypto/tls/handshake_messages.go:802
+         0     0% 86.57%     18432B 0.065%  crypto/tls.(*serverHelloMsg).marshal.func5.1 crypto/tls/handshake_messages.go:803
+         0     0% 86.57%      1488B 0.0053%  crypto/tls.(*xorNonceAEAD).Seal crypto/tls/cipher_suites.go:489
+         0     0% 86.57%       768B 0.0027%  crypto/tls.addBytesWithLength crypto/tls/handshake_messages.go:28
+         0     0% 86.57%       768B 0.0027%  crypto/tls.addBytesWithLength.func1 crypto/tls/handshake_messages.go:32
+         0     0% 86.57%     32768B  0.12%  crypto/tls.aeadAESGCMTLS13 crypto/tls/cipher_suites.go:547
+         0     0% 86.57%     57344B   0.2%  crypto/tls.aeadAESGCMTLS13 crypto/tls/cipher_suites.go:556
+         0     0% 86.57%    104576B  0.37%  crypto/tls.keyExchangeForCurveID.func3 crypto/tls/key_schedule.go:84
+         0     0% 86.57%     12032B 0.043%  crypto/tls.marshalCertificate crypto/tls/handshake_messages.go:1487 (inline)
+         0     0% 86.57%      8960B 0.032%  crypto/tls.marshalCertificate.1 crypto/tls/handshake_messages.go:1489
+         0     0% 86.57%      1536B 0.0054%  crypto/tls.marshalCertificate.1 crypto/tls/handshake_messages.go:1492
+         0     0% 86.57%      7168B 0.025%  crypto/tls.marshalCertificate.1.1 crypto/tls/handshake_messages.go:1490
+         0     0% 86.57%       768B 0.0027%  crypto/tls.marshalingFunction.Marshal crypto/tls/handshake_messages.go:22 (inline)
+         0     0% 86.57%        64B 0.00023%  crypto/tls.selectSignatureScheme crypto/tls/auth.go:266
+         0     0% 86.57%      1024B 0.0036%  crypto/tls.signedMessage crypto/tls/auth.go:129
+         0     0% 86.57%      7168B 0.025%  crypto/tls.transcriptMsg crypto/tls/handshake_messages.go:1959
+         0     0% 86.57%      2048B 0.0073%  crypto/tls.verifyHandshakeSignature crypto/tls/auth.go:28
+         0     0% 86.57%       512B 0.0018%  crypto/tls.verifyHandshakeSignature crypto/tls/auth.go:30
+         0     0% 86.57%      8704B 0.031%  crypto/tls.verifyHandshakeSignature crypto/tls/auth.go:38
+         0     0% 86.57%     11264B  0.04%  crypto/x509.(*Certificate).CheckSignatureFrom crypto/x509/x509.go:1018
+         0     0% 86.57%      8960B 0.032%  crypto/x509.(*Certificate).Verify crypto/x509/verify.go:628
+         0     0% 86.57%      8960B 0.032%  crypto/x509.(*Certificate).Verify.func1 crypto/x509/verify.go:629
+         0     0% 86.57%       256B 0.00091%  crypto/x509.(*Certificate).buildChains crypto/x509/verify.go:793
+         0     0% 86.57%     14592B 0.052%  crypto/x509.(*Certificate).buildChains crypto/x509/verify.go:797
+         0     0% 86.57%      3072B 0.011%  crypto/x509.(*Certificate).buildChains.func1 crypto/x509/verify.go:747 (inline)
+         0     0% 86.57%     11264B  0.04%  crypto/x509.(*Certificate).buildChains.func1 crypto/x509/verify.go:751 (inline)
+         0     0% 86.57%       256B 0.00091%  crypto/x509.(*Certificate).buildChains.func1 crypto/x509/verify.go:780 (inline)
+         0     0% 86.57%     56832B   0.2%  crypto/x509.ParseCertificate crypto/x509/parser.go:1159
+         0     0% 86.57%      2048B 0.0073%  crypto/x509.checkSignature crypto/x509/x509.go:1084
+         0     0% 86.57%       512B 0.0018%  crypto/x509.checkSignature crypto/x509/x509.go:1086
+         0     0% 86.57%      8704B 0.031%  crypto/x509.checkSignature crypto/x509/x509.go:1103
+         0     0% 86.57%       640B 0.0023%  crypto/x509.forEachSAN crypto/x509/parser.go:461
+         0     0% 86.57%      2304B 0.0082%  crypto/x509.parseAI crypto/x509/parser.go:245
+         0     0% 86.57%      1024B 0.0036%  crypto/x509.parseCertificate crypto/x509/parser.go:1004
+         0     0% 86.57%      1280B 0.0045%  crypto/x509.parseCertificate crypto/x509/parser.go:1034
+         0     0% 86.57%      2688B 0.0095%  crypto/x509.parseCertificate crypto/x509/parser.go:1045
+         0     0% 86.57%       768B 0.0027%  crypto/x509.parseCertificate crypto/x509/parser.go:1049
+         0     0% 86.57%       512B 0.0018%  crypto/x509.parseCertificate crypto/x509/parser.go:1055
+         0     0% 86.57%      2560B 0.0091%  crypto/x509.parseCertificate crypto/x509/parser.go:1065
+         0     0% 86.57%       768B 0.0027%  crypto/x509.parseCertificate crypto/x509/parser.go:1069
+         0     0% 86.57%      1024B 0.0036%  crypto/x509.parseCertificate crypto/x509/parser.go:1083
+         0     0% 86.57%      7168B 0.025%  crypto/x509.parseCertificate crypto/x509/parser.go:1093
+         0     0% 86.57%      2048B 0.0073%  crypto/x509.parseCertificate crypto/x509/parser.go:1125
+         0     0% 86.57%      2048B 0.0073%  crypto/x509.parseCertificate crypto/x509/parser.go:1129
+         0     0% 86.57%      3456B 0.012%  crypto/x509.parseCertificate crypto/x509/parser.go:1136
+         0     0% 86.57%      2560B 0.0091%  crypto/x509.parseExtKeyUsageExtension crypto/x509/parser.go:545
+         0     0% 86.57%      2048B 0.0073%  crypto/x509.parseExtension crypto/x509/parser.go:293
+         0     0% 86.57%      1024B 0.0036%  crypto/x509.parseName crypto/x509/parser.go:226
+         0     0% 86.57%      1152B 0.0041%  crypto/x509.parseName crypto/x509/parser.go:230
+         0     0% 86.57%      1280B 0.0045%  crypto/x509.parsePublicKey crypto/x509/parser.go:348
+         0     0% 86.57%      5888B 0.021%  crypto/x509.parsePublicKey crypto/x509/parser.go:355
+         0     0% 86.57%       640B 0.0023%  crypto/x509.parseSANExtension crypto/x509/parser.go:470 (inline)
+         0     0% 86.57%       256B 0.00091%  crypto/x509.parseValidity crypto/x509/parser.go:279
+         0     0% 86.57%       256B 0.00091%  crypto/x509.parseValidity crypto/x509/parser.go:283
+         0     0% 86.57%      7424B 0.026%  crypto/x509.policiesValid crypto/x509/verify.go:1206
+         0     0% 86.57%       768B 0.0027%  crypto/x509.policiesValid crypto/x509/verify.go:1385
+         0     0% 86.57%       640B 0.0023%  crypto/x509.processExtensions crypto/x509/parser.go:770
+         0     0% 86.57%      2816B  0.01%  crypto/x509.processExtensions crypto/x509/parser.go:866
+         0     0% 86.57%       512B 0.0018%  crypto/x509.readASN1Time crypto/x509/parser.go:265
+         0     0% 86.57%      2048B 0.0073%  encoding/asn1.ObjectIdentifier.String encoding/asn1/asn1.go:235
+         0     0% 86.57%        32B 0.00011%  fmt.(*fmt).fmtInteger fmt/format.go:322
+         0     0% 86.57%        32B 0.00011%  fmt.(*fmt).pad fmt/format.go:95
+         0     0% 86.57%        80B 0.00028%  fmt.(*pp).doPrintf fmt/print.go:1020
+         0     0% 86.57%        32B 0.00011%  fmt.(*pp).doPrintf fmt/print.go:1062
+         0     0% 86.57%        32B 0.00011%  fmt.(*pp).fmtInteger fmt/print.go:423
+         0     0% 86.57%        32B 0.00011%  fmt.(*pp).printArg fmt/print.go:727
+         0     0% 86.57%       112B 0.0004%  fmt.Sprintf fmt/print.go:231
+         0     0% 86.57%    231504B  0.82%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted github.com/djosh34/tigerstore/internal/core/node.go:602
+         0     0% 86.57%      6264B 0.022%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted github.com/djosh34/tigerstore/internal/core/node.go:620
+         0     0% 86.57%   7136208B 25.31%  github.com/djosh34/tigerstore/internal/core.(*Node).Process github.com/djosh34/tigerstore/internal/core/node.go:648
+         0     0% 86.57%     17024B  0.06%  github.com/djosh34/tigerstore/internal/core.(*Node).Process github.com/djosh34/tigerstore/internal/core/node.go:650
+         0     0% 86.57%   3720744B 13.20%  github.com/djosh34/tigerstore/internal/core.(*Node).Process github.com/djosh34/tigerstore/internal/core/node.go:652
+         0     0% 86.57%   1120192B  3.97%  github.com/djosh34/tigerstore/internal/core.(*Node).Step github.com/djosh34/tigerstore/internal/core/node.go:353 (inline)
+         0     0% 86.57%     16000B 0.057%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:377
+         0     0% 86.57%      7200B 0.026%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit github.com/djosh34/tigerstore/internal/core/node.go:381
+         0     0% 86.57%     24480B 0.087%  github.com/djosh34/tigerstore/internal/core.(*Node).Tick github.com/djosh34/tigerstore/internal/core/node.go:314
+         0     0% 86.57%    320000B  1.13%  github.com/djosh34/tigerstore/internal/core.(*Node).apply github.com/djosh34/tigerstore/internal/core/node.go:839
+         0     0% 86.57%    320000B  1.13%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1 github.com/djosh34/tigerstore/internal/core/node.go:845
+         0     0% 86.57%    192000B  0.68%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut github.com/djosh34/tigerstore/internal/core/node.go:884
+         0     0% 86.57%      6264B 0.022%  github.com/djosh34/tigerstore/internal/core.(*Node).deliver github.com/djosh34/tigerstore/internal/core/node.go:630
+         0     0% 86.57%      1152B 0.0041%  github.com/djosh34/tigerstore/internal/core.(*Node).finish github.com/djosh34/tigerstore/internal/core/node.go:533 (inline)
+         0     0% 86.57%    320000B  1.13%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:738
+         0     0% 86.57%     97752B  0.35%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:744
+         0     0% 86.57%      5456B 0.019%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady github.com/djosh34/tigerstore/internal/core/node.go:747
+         0     0% 86.57%   2304000B  8.17%  github.com/djosh34/tigerstore/internal/core.(*Node).propose github.com/djosh34/tigerstore/internal/core/node.go:566
+         0     0% 86.57%   4832208B 17.14%  github.com/djosh34/tigerstore/internal/core.(*Node).propose github.com/djosh34/tigerstore/internal/core/node.go:571
+         0     0% 86.57%     16160B 0.057%  github.com/djosh34/tigerstore/internal/core.(*Node).requestReads github.com/djosh34/tigerstore/internal/core/node.go:593
+         0     0% 86.57%      4304B 0.015%  github.com/djosh34/tigerstore/internal/core.(*Node).serveRead github.com/djosh34/tigerstore/internal/core/node.go:801
+         0     0% 86.57%      1152B 0.0041%  github.com/djosh34/tigerstore/internal/core.(*Node).serveRead github.com/djosh34/tigerstore/internal/core/node.go:822
+         0     0% 86.57%      5456B 0.019%  github.com/djosh34/tigerstore/internal/core.(*Node).serveReads github.com/djosh34/tigerstore/internal/core/node.go:771
+         0     0% 86.57%     96000B  0.34%  github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut github.com/djosh34/tigerstore/internal/core/state.go:110
+         0     0% 86.57%     96000B  0.34%  github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut github.com/djosh34/tigerstore/internal/core/state.go:114
+         0     0% 86.57%     55296B   0.2%  github.com/djosh34/tigerstore/internal/core.(*storage).append github.com/djosh34/tigerstore/internal/core/storage.go:39
+         0     0% 86.57%    176208B  0.62%  github.com/djosh34/tigerstore/internal/core.(*storage).append github.com/djosh34/tigerstore/internal/core/storage.go:45
+         0     0% 86.57%       176B 0.00062%  github.com/djosh34/tigerstore/internal/core.readCtx github.com/djosh34/tigerstore/internal/core/codec.go:162 (inline)
+         0     0% 86.57%       288B 0.001%  github.com/djosh34/tigerstore/internal/core.readCtx github.com/djosh34/tigerstore/internal/core/codec.go:163 (inline)
+         0     0% 86.57%    320000B  1.13%  github.com/djosh34/tigerstore/internal/core.walkBatch github.com/djosh34/tigerstore/internal/core/codec.go:103
+         0     0% 86.57%     96000B  0.34%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).PutKV github.com/djosh34/tigerstore/internal/mvcc/ops.go:211
+         0     0% 86.57%      4304B 0.015%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).Range github.com/djosh34/tigerstore/internal/mvcc/ops.go:53
+         0     0% 86.57%       272B 0.00096%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).ascend github.com/djosh34/tigerstore/internal/mvcc/store.go:114
+         0     0% 86.57%     96000B  0.34%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).put github.com/djosh34/tigerstore/internal/mvcc/ops.go:258
+         0     0% 86.57%      1136B 0.004%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).rangeKeys github.com/djosh34/tigerstore/internal/mvcc/ops.go:78
+         0     0% 86.57%  12902752B 45.76%  github.com/djosh34/tigerstore/internal/node.(*Node).Run github.com/djosh34/tigerstore/internal/node/node.go:294
+         0     0% 86.57%      1904B 0.0068%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1 github.com/djosh34/tigerstore/internal/node/node.go:293
+         0     0% 86.57%   1455424B  5.16%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:323
+         0     0% 86.57%      5232B 0.019%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:328
+         0     0% 86.57%    237768B  0.84%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:338
+         0     0% 86.57%     24480B 0.087%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:345
+         0     0% 86.57%  10873976B 38.57%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:349
+         0     0% 86.57%    209872B  0.74%  github.com/djosh34/tigerstore/internal/node.(*Node).commit github.com/djosh34/tigerstore/internal/node/node.go:356
+         0     0% 86.57%    340464B  1.21%  github.com/djosh34/tigerstore/internal/node.(*Node).handle github.com/djosh34/tigerstore/internal/node/node.go:426
+         0     0% 86.57%   1120192B  3.97%  github.com/djosh34/tigerstore/internal/node.(*Node).handle github.com/djosh34/tigerstore/internal/node/node.go:443
+         0     0% 86.57%     48432B  0.17%  github.com/djosh34/tigerstore/internal/node.completeAll github.com/djosh34/tigerstore/internal/node/node.go:411
+         0     0% 86.57%   2020576B  7.17%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1 github.com/djosh34/tigerstore/internal/peer/peer.go:196
+         0     0% 86.57%    324752B  1.15%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive github.com/djosh34/tigerstore/internal/peer/peer.go:241
+         0     0% 86.57%      3376B 0.012%  github.com/djosh34/tigerstore/internal/peer.(*sender).run github.com/djosh34/tigerstore/internal/peer/peer.go:357
+         0     0% 86.57%      3376B 0.012%  github.com/djosh34/tigerstore/internal/peer.(*sender).write github.com/djosh34/tigerstore/internal/peer/peer.go:403
+         0     0% 86.57%      4736B 0.017%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve github.com/djosh34/tigerstore/internal/server/server.go:90
+         0     0% 86.57%   8655816B 30.70%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1 github.com/djosh34/tigerstore/internal/server/server.go:115
+         0     0% 86.57%     16640B 0.059%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn github.com/djosh34/tigerstore/internal/server/server.go:126
+         0     0% 86.57%      4352B 0.015%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn github.com/djosh34/tigerstore/internal/server/server.go:127
+         0     0% 86.57%   1052400B  3.73%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn github.com/djosh34/tigerstore/internal/server/server.go:128
+         0     0% 86.57%   2116096B  7.51%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn github.com/djosh34/tigerstore/internal/server/server.go:146
+         0     0% 86.57%   5466328B 19.39%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn github.com/djosh34/tigerstore/internal/server/server.go:151
+         0     0% 86.57%      2880B  0.01%  github.com/djosh34/tigerstore/internal/server.(*conn).admit github.com/djosh34/tigerstore/internal/server/batch.go:65
+         0     0% 86.57%       352B 0.0012%  github.com/djosh34/tigerstore/internal/server.(*conn).admit github.com/djosh34/tigerstore/internal/server/batch.go:66
+         0     0% 86.57%    128000B  0.45%  github.com/djosh34/tigerstore/internal/server.(*conn).complete github.com/djosh34/tigerstore/internal/server/batch.go:190
+         0     0% 86.57%      2816B  0.01%  github.com/djosh34/tigerstore/internal/server.(*conn).complete github.com/djosh34/tigerstore/internal/server/batch.go:192
+         0     0% 86.57%    581312B  2.06%  github.com/djosh34/tigerstore/internal/server.(*conn).complete github.com/djosh34/tigerstore/internal/server/batch.go:214
+         0     0% 86.57%    161440B  0.57%  github.com/djosh34/tigerstore/internal/server.(*conn).flush github.com/djosh34/tigerstore/internal/server/batch.go:112
+         0     0% 86.57%   2304352B  8.17%  github.com/djosh34/tigerstore/internal/server.(*conn).onData github.com/djosh34/tigerstore/internal/server/h2.go:496
+         0     0% 86.57%    293824B  1.04%  github.com/djosh34/tigerstore/internal/server.(*conn).onData github.com/djosh34/tigerstore/internal/server/h2.go:501
+         0     0% 86.57%    293824B  1.04%  github.com/djosh34/tigerstore/internal/server.(*conn).onEnd github.com/djosh34/tigerstore/internal/server/h2.go:523
+         0     0% 86.57%    906368B  3.21%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame github.com/djosh34/tigerstore/internal/server/h2.go:268
+         0     0% 86.57%   2598176B  9.22%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame github.com/djosh34/tigerstore/internal/server/h2.go:270
+         0     0% 86.57%    906368B  3.21%  github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders github.com/djosh34/tigerstore/internal/server/h2.go:397
+         0     0% 86.57%       960B 0.0034%  github.com/djosh34/tigerstore/internal/server.(*conn).onSettings github.com/djosh34/tigerstore/internal/server/h2.go:312
+         0     0% 86.57%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:229
+         0     0% 86.57%       960B 0.0034%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:237
+         0     0% 86.57%    161440B  0.57%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:247
+         0     0% 86.57%   1797336B  6.37%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:251
+         0     0% 86.57%   3504544B 12.43%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop github.com/djosh34/tigerstore/internal/server/h2.go:259
+         0     0% 86.57%   5465432B 19.38%  github.com/djosh34/tigerstore/internal/server.(*conn).serve github.com/djosh34/tigerstore/internal/server/h2.go:135
+         0     0% 86.57%    817848B  2.90%  github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1 github.com/djosh34/tigerstore/internal/server/h2.go:133
+         0     0% 86.57%      4608B 0.016%  github.com/djosh34/tigerstore/internal/server.(*conn).take github.com/djosh34/tigerstore/internal/server/write.go:106
+         0     0% 86.57%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.(*conn).writeCtrl github.com/djosh34/tigerstore/internal/server/write.go:203
+         0     0% 86.57%    808992B  2.87%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:40
+         0     0% 86.57%      4608B 0.016%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:46
+         0     0% 86.57%      1792B 0.0064%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:60
+         0     0% 86.57%       768B 0.0027%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:68
+         0     0% 86.57%       304B 0.0011%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:78
+         0     0% 86.57%       424B 0.0015%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop github.com/djosh34/tigerstore/internal/server/write.go:85
+         0     0% 86.57%       128B 0.00045%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked github.com/djosh34/tigerstore/internal/server/stream.go:300
+         0     0% 86.57%       256B 0.00091%  github.com/djosh34/tigerstore/internal/server.frameHeader github.com/djosh34/tigerstore/internal/server/h2.go:645 (inline)
+         0     0% 86.57%      1536B 0.0054%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:109
+         0     0% 86.57%   1049600B  3.72%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:112
+         0     0% 86.57%   1050112B  3.72%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:114
+         0     0% 86.57%      3840B 0.014%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:120
+         0     0% 86.57%      2560B 0.0091%  github.com/djosh34/tigerstore/internal/server.newConn github.com/djosh34/tigerstore/internal/server/h2.go:121
+         0     0% 86.57%       352B 0.0012%  github.com/djosh34/tigerstore/internal/server.unmarshal github.com/djosh34/tigerstore/internal/server/rpc.go:63
+         0     0% 86.57%      2992B 0.011%  go.etcd.io/raft/v3.(*DefaultLogger).Infof go.etcd.io/raft/v3@v3.7.0/logger.go:103
+         0     0% 86.57%     16080B 0.057%  go.etcd.io/raft/v3.(*RawNode).Propose go.etcd.io/raft/v3@v3.7.0/rawnode.go:92
+         0     0% 86.57%   2977664B 10.56%  go.etcd.io/raft/v3.(*RawNode).Ready go.etcd.io/raft/v3@v3.7.0/rawnode.go:132
+         0     0% 86.57%   1126456B  4.00%  go.etcd.io/raft/v3.(*RawNode).Step go.etcd.io/raft/v3@v3.7.0/rawnode.go:124
+         0     0% 86.57%     24480B 0.087%  go.etcd.io/raft/v3.(*RawNode).Tick go.etcd.io/raft/v3@v3.7.0/rawnode.go:65 (inline)
+         0     0% 86.57%    364224B  1.29%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept go.etcd.io/raft/v3@v3.7.0/rawnode.go:152
+         0     0% 86.57%   1509280B  5.35%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept go.etcd.io/raft/v3@v3.7.0/rawnode.go:167
+         0     0% 86.57%    976000B  3.46%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept go.etcd.io/raft/v3@v3.7.0/rawnode.go:171
+         0     0% 86.57%      3504B 0.012%  go.etcd.io/raft/v3.(*raft).Step go.etcd.io/raft/v3@v3.7.0/raft.go:1199
+         0     0% 86.57%   5325768B 18.89%  go.etcd.io/raft/v3.(*raft).Step go.etcd.io/raft/v3@v3.7.0/raft.go:1265
+         0     0% 86.57%   2496128B  8.85%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:817
+         0     0% 86.57%     16000B 0.057%  go.etcd.io/raft/v3.(*raft).appendEntry go.etcd.io/raft/v3@v3.7.0/raft.go:834
+         0     0% 86.57%   2208096B  7.83%  go.etcd.io/raft/v3.(*raft).bcastAppend go.etcd.io/raft/v3@v3.7.0/raft.go:715 (inline)
+         0     0% 86.57%   2208096B  7.83%  go.etcd.io/raft/v3.(*raft).bcastAppend.func1 go.etcd.io/raft/v3@v3.7.0/raft.go:719
+         0     0% 86.57%     26176B 0.093%  go.etcd.io/raft/v3.(*raft).bcastHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:725
+         0     0% 86.57%     26000B 0.092%  go.etcd.io/raft/v3.(*raft).bcastHeartbeatWithCtx go.etcd.io/raft/v3@v3.7.0/raft.go:729 (inline)
+         0     0% 86.57%     26000B 0.092%  go.etcd.io/raft/v3.(*raft).bcastHeartbeatWithCtx.func1 go.etcd.io/raft/v3@v3.7.0/raft.go:733
+         0     0% 86.57%     64336B  0.23%  go.etcd.io/raft/v3.(*raft).maybeSendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:653
+         0     0% 86.57%   2222632B  7.88%  go.etcd.io/raft/v3.(*raft).sendAppend go.etcd.io/raft/v3@v3.7.0/raft.go:606 (partial-inline)
+         0     0% 86.57%       800B 0.0028%  go.etcd.io/raft/v3.(*raft).sendHeartbeat go.etcd.io/raft/v3@v3.7.0/raft.go:705
+         0     0% 86.57%     16000B 0.057%  go.etcd.io/raft/v3.(*raftLog).append go.etcd.io/raft/v3@v3.7.0/log.go:140
+         0     0% 86.57%      3504B 0.012%  go.etcd.io/raft/v3.(*raftLog).stableTo go.etcd.io/raft/v3@v3.7.0/log.go:367 (inline)
+         0     0% 86.57%     31488B  0.11%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:225
+         0     0% 86.57%    501040B  1.78%  go.etcd.io/raft/v3.newStorageAppendMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:256
+         0     0% 86.57%       160B 0.00057%  go.etcd.io/raft/v3.newStorageAppendRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:268
+         0     0% 86.57%     15408B 0.055%  go.etcd.io/raft/v3.newStorageApplyMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:375
+         0     0% 86.57%     15408B 0.055%  go.etcd.io/raft/v3.newStorageApplyRespMsg go.etcd.io/raft/v3@v3.7.0/rawnode.go:389 (inline)
+         0     0% 86.57%       432B 0.0015%  go.etcd.io/raft/v3.sendMsgReadIndexResponse go.etcd.io/raft/v3@v3.7.0/raft.go:2153
+         0     0% 86.57%      9536B 0.034%  go.etcd.io/raft/v3.sendMsgReadIndexResponse go.etcd.io/raft/v3@v3.7.0/raft.go:2156
+         0     0% 86.57%     16640B 0.059%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1279
+         0     0% 86.57%   3072208B 10.90%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1349
+         0     0% 86.57%   1104000B  3.92%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1352
+         0     0% 86.57%      9968B 0.035%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1370
+         0     0% 86.57%   1104096B  3.92%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1554
+         0     0% 86.57%      1104B 0.0039%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1560
+         0     0% 86.57%     13432B 0.048%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1597
+         0     0% 86.57%      4320B 0.015%  go.etcd.io/raft/v3.stepLeader go.etcd.io/raft/v3@v3.7.0/raft.go:1607
+         0     0% 86.57%   2234096B  7.92%  go.etcd.io/raft/v3/tracker.(*ProgressTracker).Visit go.etcd.io/raft/v3@v3.7.0/tracker/tracker.go:202
+         0     0% 86.57%   1798104B  6.38%  golang.org/x/net/http2.(*Framer).ReadFrame golang.org/x/net@v0.58.0/http2/frame.go:576
+         0     0% 86.57%      2688B 0.0095%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader golang.org/x/net@v0.58.0/http2/frame.go:537
+         0     0% 86.57%    276752B  0.98%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader golang.org/x/net@v0.58.0/http2/frame.go:544
+         0     0% 86.57%   1518664B  5.39%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader golang.org/x/net@v0.58.0/http2/frame.go:556
+         0     0% 86.57%       256B 0.00091%  golang.org/x/net/http2.(*Framer).WriteSettings golang.org/x/net@v0.58.0/http2/frame.go:879
+         0     0% 86.57%       512B 0.0018%  golang.org/x/net/http2.(*Framer).WriteSettings golang.org/x/net@v0.58.0/http2/frame.go:881
+         0     0% 86.57%   1244296B  4.41%  golang.org/x/net/http2.(*Framer).readMetaFrame golang.org/x/net@v0.58.0/http2/frame.go:1793
+         0     0% 86.57%     96864B  0.34%  golang.org/x/net/http2.parseDataFrame golang.org/x/net@v0.58.0/http2/frame.go:657
+         0     0% 86.57%   1244296B  4.41%  golang.org/x/net/http2/hpack.(*Decoder).Write golang.org/x/net@v0.58.0/http2/hpack/hpack.go:261
+         0     0% 86.57%   1226944B  4.35%  golang.org/x/net/http2/hpack.(*Decoder).callEmit golang.org/x/net@v0.58.0/http2/hpack/hpack.go:405
+         0     0% 86.57%       352B 0.0012%  golang.org/x/net/http2/hpack.(*Decoder).decodeString golang.org/x/net@v0.58.0/http2/hpack/hpack.go:512
+         0     0% 86.57%       128B 0.00045%  golang.org/x/net/http2/hpack.(*Decoder).decodeString golang.org/x/net@v0.58.0/http2/hpack/hpack.go:515
+         0     0% 86.57%      1960B 0.007%  golang.org/x/net/http2/hpack.(*Decoder).decodeString golang.org/x/net@v0.58.0/http2/hpack/hpack.go:517
+         0     0% 86.57%   1219104B  4.32%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed golang.org/x/net@v0.58.0/http2/hpack/hpack.go:348
+         0     0% 86.57%       256B 0.00091%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral golang.org/x/net@v0.58.0/http2/hpack/hpack.go:380
+         0     0% 86.57%      2184B 0.0077%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral golang.org/x/net@v0.58.0/http2/hpack/hpack.go:385
+         0     0% 86.57%     14912B 0.053%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral golang.org/x/net@v0.58.0/http2/hpack/hpack.go:392
+         0     0% 86.57%      7840B 0.028%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral golang.org/x/net@v0.58.0/http2/hpack/hpack.go:395
+         0     0% 86.57%   1219104B  4.32%  golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr golang.org/x/net@v0.58.0/http2/hpack/hpack.go:310
+         0     0% 86.57%     25192B 0.089%  golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr golang.org/x/net@v0.58.0/http2/hpack/hpack.go:315
+         0     0% 86.57%     14912B 0.053%  golang.org/x/net/http2/hpack.(*dynamicTable).add golang.org/x/net@v0.58.0/http2/hpack/hpack.go:173
+         0     0% 86.57%       128B 0.00045%  golang.org/x/net/http2/hpack.huffmanDecode golang.org/x/net@v0.58.0/http2/hpack/huffman.go:70
+         0     0% 86.57%    192000B  0.68%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New google.golang.org/protobuf@v1.36.11/internal/impl/message.go:228
+         0     0% 86.57%   2304000B  8.17%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:32
+         0     0% 86.57%   2304000B  8.17%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:79
+         0     0% 86.57%    325104B  1.15%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:81
+         0     0% 86.57%    325104B  1.15%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointer google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:119
+         0     0% 86.57%    325104B  1.15%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:183
+         0     0% 86.57%    192048B  0.68%  google.golang.org/protobuf/internal/impl.(*messageState).New google.golang.org/protobuf@v1.36.11/internal/impl/message_reflect_gen.go:21
+         0     0% 86.57%    192048B  0.68%  google.golang.org/protobuf/proto.Clone google.golang.org/protobuf@v1.36.11/proto/merge.go:57
+         0     0% 86.57%   2304000B  8.17%  google.golang.org/protobuf/proto.Clone google.golang.org/protobuf@v1.36.11/proto/merge.go:58
+         0     0% 86.57%        80B 0.00028%  google.golang.org/protobuf/proto.Clone google.golang.org/protobuf@v1.36.11/proto/merge.go:59
+         0     0% 86.57%    325104B  1.15%  google.golang.org/protobuf/proto.Unmarshal google.golang.org/protobuf@v1.36.11/proto/decode.go:62
+         0     0% 86.57%    325104B  1.15%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal google.golang.org/protobuf@v1.36.11/proto/decode.go:122
+         0     0% 86.57%   2304000B  8.17%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage google.golang.org/protobuf@v1.36.11/proto/merge.go:79
+         0     0% 86.57%       512B 0.0018%  internal/poll.(*FD).Accept internal/poll/fd_unix.go:609
+         0     0% 86.57%       512B 0.0018%  internal/poll.accept internal/poll/sock_cloexec.go:17
+         0     0% 86.57%  12902752B 45.76%  main.main github.com/djosh34/tigerstore/cmd/tigerstore/main.go:52
+         0     0% 86.57%  12902752B 45.76%  main.run github.com/djosh34/tigerstore/cmd/tigerstore/main.go:253
+         0     0% 86.57%      5248B 0.019%  main.run.func1 github.com/djosh34/tigerstore/cmd/tigerstore/main.go:249
+         0     0% 86.57%       768B 0.0027%  maps.Clone[go.shape.map[string]bool,go.shape.string,go.shape.bool] maps/maps.go:55 (inline)
+         0     0% 86.57%      3072B 0.011%  math/big.(*Int).SetBytes math/big/int.go:602 (inline)
+         0     0% 86.57%      3072B 0.011%  math/big.nat.setBytes math/big/nat.go:1074
+         0     0% 86.57%      4736B 0.017%  net.(*TCPListener).Accept net/tcpsock.go:387
+         0     0% 86.57%      4608B 0.016%  net.(*TCPListener).accept net/tcpsock_posix.go:159
+         0     0% 86.57%       128B 0.00045%  net.(*TCPListener).accept net/tcpsock_posix.go:163
+         0     0% 86.57%       512B 0.0018%  net.(*netFD).accept net/fd_unix.go:149
+         0     0% 86.57%      2048B 0.0073%  net.(*netFD).accept net/fd_unix.go:157
+         0     0% 86.57%       512B 0.0018%  net.(*netFD).accept net/fd_unix.go:162
+         0     0% 86.57%      1536B 0.0054%  net.(*netFD).accept net/fd_unix.go:163
+         0     0% 86.57%    192000B  0.68%  reflect.New reflect/value.go:3205
+         0     0% 86.57%  12902752B 45.76%  runtime.main runtime/proc.go:302
+         0     0% 86.57%       480B 0.0017%  runtime.malg runtime/proc.go:5313
+         0     0% 86.57%       480B 0.0017%  runtime.newobject runtime/malloc.go:2141
+         0     0% 86.57%       480B 0.0017%  runtime.newproc.func1 runtime/proc.go:5338
+         0     0% 86.57%       480B 0.0017%  runtime.newproc1 runtime/proc.go:5361
+         0     0% 86.57%       480B 0.0017%  runtime.systemstack runtime/asm_arm64.s:379
+         0     0% 86.57%      8960B 0.032%  slices.DeleteFunc[go.shape.[][]*crypto/x509.Certificate,go.shape.[]*crypto/x509.Certificate] slices/slices.go:242
+         0     0% 86.57%      8960B 0.032%  slices.IndexFunc[go.shape.[][]*crypto/x509.Certificate,go.shape.[]*crypto/x509.Certificate] slices/slices.go:109 (inline)
+         0     0% 86.57%      1024B 0.0036%  sort.SliceStable sort/slice.go:43
+         0     0% 86.57%      2048B 0.0073%  strings.(*Builder).Grow strings/builder.go:81
+         0     0% 86.57%      2048B 0.0073%  strings.(*Builder).grow strings/builder.go:67
+         0     0% 86.57%       808B 0.0029%  sync.(*Pool).Get sync/pool.go:136
+         0     0% 86.57%       168B 0.0006%  sync.(*Pool).Get sync/pool.go:156
+         0     0% 86.57%       352B 0.0012%  sync.(*Pool).Put sync/pool.go:116
+         0     0% 86.57%       808B 0.0029%  sync.(*Pool).pin sync/pool.go:221
+         0     0% 86.57%   2843704B 10.09%  sync.(*WaitGroup).Go.func1 sync/waitgroup.go:258
+         0     0% 86.57%       512B 0.0018%  syscall.Accept4 syscall/syscall_linux.go:701
+         0     0% 86.57%       512B 0.0018%  syscall.Getsockname syscall/syscall_linux.go:715
+         0     0% 86.57%    227808B  0.81%  time.AfterFunc time/sleep.go:178
+         0     0% 86.57%       256B 0.00091%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddASN1 vendor/golang.org/x/crypto/cryptobyte/asn1.go:240
+         0     0% 86.57%      6912B 0.025%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddASN1 vendor/golang.org/x/crypto/cryptobyte/asn1.go:241
+         0     0% 86.57%     54784B  0.19%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddBytes vendor/golang.org/x/crypto/cryptobyte/builder.go:110 (partial-inline)
+         0     0% 86.57%      4032B 0.014%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddUint16 vendor/golang.org/x/crypto/cryptobyte/builder.go:84 (inline)
+         0     0% 86.57%     75072B  0.27%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddUint16LengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:151 (partial-inline)
+         0     0% 86.57%     79936B  0.28%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddUint24LengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:156 (partial-inline)
+         0     0% 86.57%      2240B 0.0079%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddUint8 vendor/golang.org/x/crypto/cryptobyte/builder.go:79 (inline)
+         0     0% 86.57%      4608B 0.016%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddUint8LengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:146 (inline)
+         0     0% 86.57%       768B 0.0027%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).AddValue vendor/golang.org/x/crypto/cryptobyte/builder.go:346 (inline)
+         0     0% 86.57%       768B 0.0027%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).addLengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:194
+         0     0% 86.57%     92928B  0.33%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).addLengthPrefixed vendor/golang.org/x/crypto/cryptobyte/builder.go:209
+         0     0% 86.57%     92928B  0.33%  vendor/golang.org/x/crypto/cryptobyte.(*Builder).callContinuation vendor/golang.org/x/crypto/cryptobyte/builder.go:184
+         0     0% 86.57%      1024B 0.0036%  vendor/golang.org/x/crypto/cryptobyte.(*String).ReadASN1Integer vendor/golang.org/x/crypto/cryptobyte/asn1.go:290
+         0     0% 86.57%       512B 0.0018%  vendor/golang.org/x/crypto/cryptobyte.(*String).ReadASN1UTCTime vendor/golang.org/x/crypto/cryptobyte/asn1.go:534
+         0     0% 86.57%      1024B 0.0036%  vendor/golang.org/x/crypto/cryptobyte.(*String).readASN1BigInt vendor/golang.org/x/crypto/cryptobyte/asn1.go:330

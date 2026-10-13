@@ -1,0 +1,23 @@
+--- /home/runner/work/tigerstore/tigerstore/evidence/alloc50/c64/base-server_test-pristine.go.txt	2026-10-13 10:09:31.766628101 +0000
++++ /home/runner/work/_temp/alloc50/base/internal/server/server_test.go	2026-10-13 10:09:31.767712726 +0000
+@@ -33,6 +33,7 @@
+ 	peerAddrs map[uint64]string
+ 	dirs      map[uint64]string
+ 	running   map[uint64]*running
++	tick      time.Duration // optional fixture clock; zero retains the 10ms test default
+ 	// via, if set, is the address node from dials to reach node to.
+ 	via map[[2]uint64]string
+ }
+@@ -87,7 +88,11 @@
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: 10 * time.Millisecond, Logf: t.Logf})
++	tick := c.tick
++	if tick == 0 {
++		tick = 10 * time.Millisecond
++	}
++	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: tick, Logf: t.Logf})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}

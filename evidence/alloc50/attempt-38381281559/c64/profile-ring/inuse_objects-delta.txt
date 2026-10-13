@@ -1,0 +1,30 @@
+File: experiment
+Build ID: b5661be76f476b97a4fd67a56a4a8878bf39bb2b
+Type: inuse_objects
+Time: 2026-10-13 10:13:14 UTC
+Showing nodes accounting for 7028, 99.67% of 7051 total
+Dropped 53 nodes (cum <= 35)
+      flat  flat%   sum%        cum   cum%
+      2000 28.36% 28.36%       6001 85.11%  go.etcd.io/raft/v3.(*raft).appendEntry
+      2000 28.36% 56.73%       2000 28.36%  google.golang.org/protobuf/internal/impl.mergeBytes
+      2000 28.36% 85.09%       2000 28.36%  reflect.unsafe_New
+       978 13.87% 98.96%       6979 98.98%  go.etcd.io/raft/v3.(*RawNode).Propose
+        50  0.71% 99.67%         50  0.71%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0% 99.67%       6980 98.99%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 99.67%       6979 98.98%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 99.67%       6979 98.98%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 99.67%         50  0.71%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0% 99.67%       6979 98.98%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 99.67%       6000 85.09%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 99.67%       6000 85.09%  go.etcd.io/raft/v3.stepLeader
+         0     0% 99.67%       2000 28.36%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         0     0% 99.67%       2000 28.36%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 99.67%       2000 28.36%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 99.67%       2000 28.36%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 99.67%       4001 56.74%  google.golang.org/protobuf/proto.Clone
+         0     0% 99.67%       2000 28.36%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 99.67%       6979 98.98%  main.main
+         0     0% 99.67%       6979 98.98%  main.run
+         0     0% 99.67%       2000 28.36%  reflect.New
+         0     0% 99.67%       6979 98.98%  runtime.main
+         0     0% 99.67%         54  0.77%  sync.(*WaitGroup).Go.func1

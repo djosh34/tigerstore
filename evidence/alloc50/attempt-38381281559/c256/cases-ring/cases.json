@@ -1,0 +1,60 @@
+{
+  "accepted_payload_bytes": 1572826,
+  "before_slow": {
+    "forced_gc": true,
+    "heap_alloc_bytes": 173717944,
+    "heap_objects": 20266,
+    "heap_inuse_bytes": 178724864,
+    "heap_sys_bytes": 263454720,
+    "mem_profile_rate": 524288,
+    "strategy_env": "ring",
+    "allocator": {
+      "byte_budget": 67108864,
+      "denied_count": 0,
+      "driver_reserve_bytes": 8388608,
+      "fallback_allocations": 0,
+      "held_bytes": 8388608,
+      "held_slots": 0,
+      "mode": 1,
+      "peak_bytes": 10486752,
+      "peak_slots": 272,
+      "per_connection_bytes": 8388608,
+      "per_connection_slots": 256,
+      "slot_budget": 4096,
+      "timer_allocations": 84100,
+      "unmanaged_rpc_count": 60
+    }
+  },
+  "boundary": [
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572863,
+      "payload_bytes": 1572825,
+      "revision": 84098
+    },
+    {
+      "expected_ok": true,
+      "internal_raft_request_bytes": 1572864,
+      "payload_bytes": 1572826,
+      "revision": 84099
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572865,
+      "payload_bytes": 1572827
+    },
+    {
+      "error": "rpc error: code = InvalidArgument desc = etcdserver: request is too large",
+      "expected_ok": false,
+      "internal_raft_request_bytes": 1572902,
+      "payload_bytes": 1572864
+    }
+  ],
+  "reply_reads_after_handshake": 0,
+  "request_limit_bytes": 1572864,
+  "slow_attempted_puts": 4096,
+  "slow_requests": 4096,
+  "stream_receive_window": 0,
+  "valid": false
+}

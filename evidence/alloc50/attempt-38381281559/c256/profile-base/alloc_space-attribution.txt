@@ -1,0 +1,113 @@
+File: base
+Build ID: a9a96873a2506671ca0d1ec3728dbc3f952ca53c
+Type: alloc_space
+Time: 2026-10-13 10:12:29 UTC
+Active filters:
+   ignore=runtime/pprof|main.bench75Observe|net/http\.
+Showing nodes accounting for 22101.10kB, 80.62% of 27415.49kB total
+Dropped 347 nodes (cum <= 137.08kB)
+      flat  flat%   sum%        cum   cum%
+ 2250.34kB  8.21%  8.21%  2250.34kB  8.21%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+    2250kB  8.21% 16.42%     2250kB  8.21%  github.com/djosh34/tigerstore/internal/core.encodeBatch
+    2250kB  8.21% 24.62%     2250kB  8.21%  google.golang.org/protobuf/internal/impl.mergeBytes
+ 1886.12kB  6.88% 31.50%  2169.09kB  7.91%  go.etcd.io/raft/v3.(*raft).maybeSendAppend
+ 1654.66kB  6.04% 37.54%  1973.39kB  7.20%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+ 1198.19kB  4.37% 41.91%  1198.19kB  4.37%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1
+ 1025.50kB  3.74% 45.65%  1025.50kB  3.74%  bufio.NewReaderSize (inline)
+    1025kB  3.74% 49.39%     1025kB  3.74%  bufio.NewWriterSize (inline)
+  952.50kB  3.47% 52.86%  1470.30kB  5.36%  go.etcd.io/raft/v3.newStorageAppendMsg
+  664.41kB  2.42% 55.29%   885.12kB  3.23%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+  625.19kB  2.28% 57.57%  4718.66kB 17.21%  go.etcd.io/raft/v3.(*RawNode).Propose
+  567.56kB  2.07% 59.64%   567.69kB  2.07%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked
+     486kB  1.77% 61.41%   486.06kB  1.77%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+     484kB  1.77% 63.17%  2999.86kB 10.94%  go.etcd.io/raft/v3.(*raft).appendEntry
+  468.11kB  1.71% 64.88%   953.12kB  3.48%  go.etcd.io/raft/v3.newStorageApplyMsg
+  452.48kB  1.65% 66.53%   468.75kB  1.71%  go.etcd.io/raft/v3.newStorageApplyRespMsg (inline)
+  352.86kB  1.29% 67.82%   352.86kB  1.29%  go.etcd.io/raft/v3.(*raft).hardState (inline)
+  313.03kB  1.14% 68.96%   335.69kB  1.22%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+  311.89kB  1.14% 70.10%   725.15kB  2.65%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+  283.78kB  1.04% 71.13%   286.94kB  1.05%  github.com/djosh34/tigerstore/internal/server.(*conn).admit
+  269.59kB  0.98% 72.12%   269.59kB  0.98%  go.etcd.io/raft/v3.(*raft).send
+  268.05kB  0.98% 73.09%  1483.21kB  5.41%  golang.org/x/net/http2.(*Framer).readMetaFrame
+  253.81kB  0.93% 74.02%   253.81kB  0.93%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+  222.47kB  0.81% 74.83%   222.47kB  0.81%  time.newTimer
+  187.50kB  0.68% 75.52%   187.50kB  0.68%  reflect.unsafe_New
+  171.59kB  0.63% 76.14%   171.59kB  0.63%  github.com/djosh34/tigerstore/internal/core.raftHardState (inline)
+  159.69kB  0.58% 76.72%   159.69kB  0.58%  go.etcd.io/raft/v3/raftpb.MessageType.Enum (inline)
+  157.66kB  0.58% 77.30%   157.66kB  0.58%  github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch
+  157.66kB  0.58% 77.87%   204.95kB  0.75%  github.com/djosh34/tigerstore/internal/node.completeAll
+  125.11kB  0.46% 78.33%  2901.39kB 10.58%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+     125kB  0.46% 78.79%   312.50kB  1.14%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut
+     125kB  0.46% 79.24%      125kB  0.46%  github.com/djosh34/tigerstore/internal/server.(*conn).putResponse
+  102.50kB  0.37% 79.62%   222.50kB  0.81%  crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+   94.59kB  0.35% 79.96%   790.03kB  2.88%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+   93.75kB  0.34% 80.30% 12599.16kB 45.96%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+      28kB   0.1% 80.41%   156.88kB  0.57%  crypto/tls.(*hybridKeyExchange).serverSharedSecret
+   17.75kB 0.065% 80.47%   161.75kB  0.59%  crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+      16kB 0.058% 80.53%   177.75kB  0.65%  crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize int; Reset; Size int; Sum []uint8; Write  }]
+    8.25kB  0.03% 80.56%  2066.50kB  7.54%  github.com/djosh34/tigerstore/internal/server.newConn
+    6.75kB 0.025% 80.58%   168.12kB  0.61%  crypto/tls.(*serverHandshakeStateTLS13).processClientHello
+    3.75kB 0.014% 80.60%   211.38kB  0.77%  crypto/tls.(*serverHandshakeStateTLS13).sendServerCertificate
+    1.97kB 0.0072% 80.60%   799.85kB  2.92%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop
+    1.50kB 0.0055% 80.61%   220.38kB   0.8%  crypto/tls.(*serverHandshakeStateTLS13).sendServerParameters
+    0.50kB 0.0018% 80.61%  5338.59kB 19.47%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+    0.38kB 0.0014% 80.61%   121.50kB  0.44%  crypto/tls.(*serverHandshakeStateTLS13).sendServerFinished
+    0.38kB 0.0014% 80.61%  5337.71kB 19.47%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+    0.25kB 0.00091% 80.62%  1026.84kB  3.75%  crypto/tls.(*Conn).handshakeContext
+    0.05kB 0.00017% 80.62%   187.55kB  0.68%  google.golang.org/protobuf/internal/impl.(*MessageInfo).New
+         0     0% 80.62%  1026.84kB  3.75%  crypto/tls.(*Conn).HandshakeContext (inline)
+         0     0% 80.62%  1017.34kB  3.71%  crypto/tls.(*Conn).serverHandshake
+         0     0% 80.62%   187.50kB  0.68%  crypto/tls.(*Conn).writeHandshakeRecord
+         0     0% 80.62%      158kB  0.58%  crypto/tls.(*halfConn).setTrafficSecret
+         0     0% 80.62%   911.22kB  3.32%  crypto/tls.(*serverHandshakeStateTLS13).handshake
+         0     0% 80.62%   145.25kB  0.53%  crypto/tls.(*serverHandshakeStateTLS13).readClientCertificate
+         0     0% 80.62%   235.77kB  0.86%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted
+         0     0% 80.62% 10611.76kB 38.71%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 80.62%  1094.06kB  3.99%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0% 80.62%   312.50kB  1.14%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+         0     0% 80.62%   312.50kB  1.14%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+         0     0% 80.62%  6968.66kB 25.42%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 80.62%   187.50kB  0.68%  github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut
+         0     0% 80.62%   233.59kB  0.85%  github.com/djosh34/tigerstore/internal/core.(*storage).append
+         0     0% 80.62%   312.50kB  1.14%  github.com/djosh34/tigerstore/internal/core.walkBatch
+         0     0% 80.62% 12599.16kB 45.96%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 80.62%  1429.75kB  5.22%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 80.62%  1973.39kB  7.20%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 80.62%  8452.43kB 30.83%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 80.62%  8452.43kB 30.83%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 80.62%   157.66kB  0.58%  github.com/djosh34/tigerstore/internal/server.(*conn).flush
+         0     0% 80.62%  2537.28kB  9.25%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+         0     0% 80.62%   286.94kB  1.05%  github.com/djosh34/tigerstore/internal/server.(*conn).onEnd
+         0     0% 80.62%  3422.41kB 12.48%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 80.62%   885.12kB  3.23%  github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders
+         0     0% 80.62%   799.85kB  2.92%  github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1
+         0     0% 80.62%  2901.39kB 10.58%  go.etcd.io/raft/v3.(*RawNode).Ready
+         0     0% 80.62%  1096.23kB  4.00%  go.etcd.io/raft/v3.(*RawNode).Step
+         0     0% 80.62%  5199.68kB 18.97%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 80.62%  2156.36kB  7.87%  go.etcd.io/raft/v3.(*raft).bcastAppend (inline)
+         0     0% 80.62%  2156.36kB  7.87%  go.etcd.io/raft/v3.(*raft).bcastAppend.func1
+         0     0% 80.62%  2169.09kB  7.91%  go.etcd.io/raft/v3.(*raft).sendAppend
+         0     0% 80.62%  5198.59kB 18.96%  go.etcd.io/raft/v3.stepLeader
+         0     0% 80.62%  2181.24kB  7.96%  go.etcd.io/raft/v3/tracker.(*ProgressTracker).Visit
+         0     0% 80.62%  1756.10kB  6.41%  golang.org/x/net/http2.(*Framer).ReadFrame
+         0     0% 80.62%  1756.10kB  6.41%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader
+         0     0% 80.62%  1215.16kB  4.43%  golang.org/x/net/http2/hpack.(*Decoder).Write
+         0     0% 80.62%  1198.19kB  4.37%  golang.org/x/net/http2/hpack.(*Decoder).callEmit
+         0     0% 80.62%  1190.53kB  4.34%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+         0     0% 80.62%  1215.16kB  4.43%  golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr
+         0     0% 80.62%     2250kB  8.21%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 80.62%     2250kB  8.21%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+         0     0% 80.62%   319.08kB  1.16%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal
+         0     0% 80.62%   319.08kB  1.16%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointer
+         0     0% 80.62%   319.08kB  1.16%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+         0     0% 80.62%   187.55kB  0.68%  google.golang.org/protobuf/internal/impl.(*messageState).New
+         0     0% 80.62%  2437.55kB  8.89%  google.golang.org/protobuf/proto.Clone
+         0     0% 80.62%   319.08kB  1.16%  google.golang.org/protobuf/proto.Unmarshal
+         0     0% 80.62%   319.08kB  1.16%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+         0     0% 80.62%     2250kB  8.21%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+         0     0% 80.62% 12599.16kB 45.96%  main.main
+         0     0% 80.62% 12599.16kB 45.96%  main.run
+         0     0% 80.62%   187.50kB  0.68%  reflect.New
+         0     0% 80.62% 12599.16kB 45.96%  runtime.main
+         0     0% 80.62%  2779.32kB 10.14%  sync.(*WaitGroup).Go.func1
+         0     0% 80.62%   222.47kB  0.81%  time.AfterFunc

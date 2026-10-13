@@ -1,0 +1,12 @@
+--- /home/runner/work/tigerstore/tigerstore/evidence/alloc50/c64/base-main-pristine.go.txt	2026-10-13 10:09:31.777950523 +0000
++++ /home/runner/work/_temp/alloc50/base/cmd/tigerstore/main.go	2026-10-13 10:09:31.797746437 +0000
+@@ -230,6 +230,9 @@
+ 		}
+ 	}
+ 	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls})
++	if err := bench75Observe(n, g); err != nil {
++		return err
++	}
+ 	ln, err := net.Listen("tcp", clientURL.Host)
+ 	if err != nil {
+ 		return errors.Join(err, t.Close())
