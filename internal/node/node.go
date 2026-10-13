@@ -54,6 +54,7 @@ type input struct {
 	watchClose  bool
 	stream      uint64
 	status      chan *pb.StatusResponse
+	metrics     chan core.Metrics
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -122,6 +123,22 @@ func (n *Node) Status(ctx context.Context) (*pb.StatusResponse, error) {
 	}
 }
 
+// Metrics returns the node's metrics.
+func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
+	ch := make(chan core.Metrics, 1)
+	if err := n.put(ctx, input{metrics: ch}); err != nil {
+		return core.Metrics{}, err
+	}
+	select {
+	case m := <-ch:
+		return m, nil
+	case <-ctx.Done():
+		return core.Metrics{}, ctx.Err()
+	case <-n.done:
+		return core.Metrics{}, rpctypes.ErrGRPCStopped
+	}
+}
+
 // OpenWatch starts a watch stream.
 func (n *Node) OpenWatch(ctx context.Context) (*WatchStream, error) {
 	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
@@ -145,6 +162,7 @@ func (n *Node) put(ctx context.Context, in input) error {
 type request struct {
 	id    uint64
 	op    proto.Message
+	chunk bool // a RangeStream chunk; see core.Request.Chunk
 	reply chan core.Reply
 }
 
@@ -278,7 +296,20 @@ func (n *Node) Unreachable(id uint64) {
 
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
-	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+	return n.do(ctx, &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)})
+}
+
+// RangeChunk reads one chunk of a RangeStream: a range that counts keys
+// only up to its limit, as etcd's chunks do.
+func (n *Node) RangeChunk(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, reply: make(chan core.Reply, 1)})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*pb.RangeResponse), nil
+}
+
+func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return nil, err
 	}
@@ -453,6 +484,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.SubmitAll(b.reqs)
 	case in.status != nil:
 		in.status <- n.core.Status()
+	case in.metrics != nil:
+		in.metrics <- n.core.Metrics()
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:
@@ -464,7 +497,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:
 		waiters[in.req.id] = waiter{reply: in.req.reply}
-		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
+		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op, Chunk: in.req.chunk})
 	case in.msg != nil:
 		if err := n.core.Step(in.msg); err != nil {
 			n.logf("step message from %d: %v", in.msg.GetFrom(), err)

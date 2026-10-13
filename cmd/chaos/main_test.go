@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/djosh34/tigerstore/history"
 )
@@ -34,5 +35,24 @@ func TestWithoutLostWrites(t *testing.T) {
 	}
 	if len(h.Ops) != 5 {
 		t.Fatal("the input history changed")
+	}
+}
+
+// TestFaultsOverlapWrites checks that a fault no write overlaps fails the
+// run, and that reads alone do not count.
+func TestFaultsOverlapWrites(t *testing.T) {
+	put := history.Op{Call: int64(2 * time.Second), Return: int64(2100 * time.Millisecond), Req: history.Request{Put: &history.PutRequest{}}}
+	read := history.Op{Call: int64(5 * time.Second), Return: int64(5100 * time.Millisecond), Req: history.Request{Range: &history.RangeRequest{}}}
+	h := &history.History{Ops: []history.Op{put, read}}
+	covered := record{Step: 1, Installed: true, Requested: time.Second, HealedAt: 3 * time.Second}
+	if err := faultsOverlapWrites([]record{covered}, h); err != nil {
+		t.Fatalf("a fault with a write inside: %v", err)
+	}
+	onlyRead := record{Step: 2, Installed: true, Requested: 4 * time.Second, HealedAt: 6 * time.Second}
+	if err := faultsOverlapWrites([]record{covered, onlyRead}, h); err == nil {
+		t.Fatal("a fault that only a read overlaps passed")
+	}
+	if err := faultsOverlapWrites([]record{{Step: 3, Requested: 4 * time.Second}}, h); err != nil {
+		t.Fatalf("a fault that was not installed: %v", err)
 	}
 }

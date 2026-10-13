@@ -23,14 +23,32 @@ type method struct {
 	compact bool
 	unary   func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
 	stream  func(s *Server, st *stream) error
+	// serverStream: stream is a server-streaming call, whose client sends
+	// one request.
+	serverStream bool
+	// idx is the method's place in methodPaths, for its metrics.
+	idx int
 }
+
+// methodPaths are the paths of methods, sorted.
+var methodPaths = func() []string {
+	paths := make([]string, 0, len(methods))
+	for p := range methods {
+		paths = append(paths, p)
+	}
+	slices.Sort(paths)
+	for i, p := range paths {
+		methods[p].idx = i
+	}
+	return paths
+}()
 
 // methods are the etcd methods that are served. Every other method of
 // etcd's services answers Unimplemented, as grpc-go's generated
-// Unimplemented servers do; Kubernetes 1.37 falls back from RangeStream on
-// exactly that code.
+// Unimplemented servers do.
 var methods = map[string]*method{
 	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
+	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream, serverStream: true},
 	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
 	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
 	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},

@@ -114,6 +114,9 @@ type Request struct {
 	// Compact asks for a range's answer as Reply.Range, which the driver
 	// encodes itself, instead of a RangeResponse message.
 	Compact bool
+	// Chunk asks for a range as one chunk of a RangeStream
+	// (mvcc.Store.RangeChunk): no count beyond the limit.
+	Chunk bool
 	// Caller is the client as etcd's size limit for writes sees it.
 	Caller Caller
 }
@@ -209,7 +212,10 @@ type Node struct {
 	term     uint64
 	leader   uint64
 	isLeader bool
-	leaseSeq uint64
+	// leaderChanges counts the leaders this node has seen, as etcd's
+	// etcd_server_leader_changes_seen_total does.
+	leaderChanges int64
+	leaseSeq      uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -745,6 +751,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// A term change clears Raft's pending read requests, so ask the
 			// new leader at once instead of waiting for the retry.
 			n.retryReads(true)
+			n.leaderChanges++
 		}
 		n.leader = rd.Lead
 	}
@@ -862,7 +869,11 @@ func (n *Node) serveRead(p *pending) {
 			return
 		}
 		var r *pb.RangeResponse
-		r, err = n.kv.Range(op)
+		if p.req.Chunk {
+			r, err = n.kv.RangeChunk(op)
+		} else {
+			r, err = n.kv.Range(op)
+		}
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r

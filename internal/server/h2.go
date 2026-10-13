@@ -51,12 +51,14 @@ const (
 // owns the Framer's write side. mu guards everything they share with each
 // other and with the handlers.
 type conn struct {
-	s   *Server
-	nc  net.Conn
-	raw net.Conn // nc without TLS, closed to abort a stuck write
-	fr  *http2.Framer
-	br  *bufio.Reader
-	bw  *bufio.Writer
+	s *Server
+	// metrics count this connection's calls for /metrics.
+	metrics *metrics
+	nc      net.Conn
+	raw     net.Conn // nc without TLS, closed to abort a stuck write
+	fr      *http2.Framer
+	br      *bufio.Reader
+	bw      *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -136,7 +138,7 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
@@ -187,6 +189,7 @@ func (c *conn) close() {
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
+			st.countEnd(codes.Canceled)
 			st.reset = true
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -385,6 +388,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	st := c.streams[id]
 	if st != nil {
 		delete(c.streams, id)
+		st.countEnd(codes.Canceled)
 		st.reset = true
 		if st.deadline != nil {
 			st.deadline.Stop()
@@ -615,6 +619,10 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		return st
 	}
 	c.streams[id] = st
+	if st.rpc != nil {
+		st.calls = &c.metrics.calls[st.rpc.idx]
+		st.calls.started.add(1)
+	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.

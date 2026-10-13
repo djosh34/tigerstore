@@ -7,7 +7,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -485,4 +487,35 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 		}
 	}
 	r.record(do, res, nil)
+}
+
+// rangeStream records a KV.RangeStream: the number of keys in each chunk,
+// and the last chunk's relative header revision, count and more, which
+// only the last chunk carries.
+func (r *run) rangeStream(do string, req *pb.RangeRequest) {
+	r.t.Helper()
+	s, err := r.c.kv.RangeStream(r.ctx, req, grpc.MaxCallRecvMsgSize(64<<20))
+	var chunks []int
+	var last *pb.RangeResponse
+	for err == nil {
+		var m *pb.RangeStreamResponse
+		m, err = s.Recv()
+		if err == nil {
+			chunks = append(chunks, len(m.RangeResponse.Kvs))
+			last = m.RangeResponse
+		}
+	}
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	var res any
+	if err == nil && last != nil {
+		res = struct {
+			Chunks   []int `json:"chunks"`
+			Revision int64 `json:"revision"`
+			Count    int64 `json:"count"`
+			More     bool  `json:"more,omitempty"`
+		}{chunks, r.rel(last.Header.GetRevision()), last.Count, last.More}
+	}
+	r.record(do, res, err)
 }

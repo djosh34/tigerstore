@@ -54,7 +54,7 @@ The `chaos` job in CI runs `cmd/chaos` on three `ubuntu-24.04-arm` runners with 
 5. It heals every fault, stops the random calls, and waits until all three nodes name one leader and report one revision. Then it waits 8 s, longer than the server's 7 s request timeout, writes barriers, reads the final state from every node as the target revision, and waits until every watch reports progress through the target.
 6. It stops the nodes and reads the committed log from private copies of their WALs; the committed prefixes must agree. It runs `check.Linearizable`, `check.Watches`, `check.Durable` and `check.Revisions` on the history. Each checker also fails if the history has no log, no watches, or a target where the log does not end, or if the coverage floor is missed: both CAS outcomes, a multi-key delete, watch puts, deletes and previous values, and successful calls from every client.
 
-Before Porcupine runs, the linearizability input leaves out ambiguous writes that did not take effect: those whose request the committed log holds no more often than successful calls sent it. Porcupine keeps an ambiguous write open until the end of the history, and in the first CI run two seeds, each with 66 to 79 ambiguous calls, timed out after 60 s; with this rule they check in 2 ms. Leaving out an ambiguous call can only make the check stricter. The other three checkers get the whole history.
+The run fails if a fault it installed overlaps no write: a Put, Delete or Txn whose call ran between the fault's install and its heal, so peer heartbeats or a signal to an idle node cannot count as the workload seeing the fault. Before Porcupine runs, the linearizability input leaves out ambiguous writes that did not take effect: those whose request the committed log holds no more often than successful calls sent it. Porcupine keeps an ambiguous write open until the end of the history, and in the first CI run two seeds, each with 66 to 79 ambiguous calls, timed out after 60 s; with this rule they check in 2 ms. Leaving out an ambiguous call can only make the check stricter. The other three checkers get the whole history.
 
 | Fault | What the run does | Evidence that it took effect |
 | --- | --- | --- |
@@ -90,3 +90,13 @@ Not covered yet; these are later pieces of #49:
 - Gray nodes and barely alive clients, with numeric liveness bounds.
 - Several faults at once; the schedule injects one at a time.
 - Nightly long campaigns as many short jobs.
+
+# Kubernetes storage tests
+
+`apiservertest/run.sh <version>` runs the etcd3 storage tests of `k8s.io/apiserver` (`pkg/storage/etcd3/...` and `pkg/storage/testing`) against tigerstore, unchanged. The `apiserver` job in ci runs it for v0.35.0, v0.36.0 and v0.37.0 (Kubernetes 1.35 to 1.37). The 1.37 tests use RangeStream (`TestGetListStreamMultiChunk`, `TestWatchChanSync/RangeStream`, `TestWatchChanSyncStream*`).
+
+`apiservertest/prepare` replaces the module's `testserver/test_server.go`, which embeds etcd, with an adapter that keeps the version's own client recorders. It also changes the one `*embed.Config` in `store_test.go` to the adapter's `Config`. Every `RunEtcd` call starts a fresh 3-node tigerstore over TLS with client certificates through `apiservertest/factory`, because deleting keys would not reset revisions, history, compaction or leases. The factory passes the progress interval the watch tests ask for as `--watch-progress-notify-interval`. `run.sh` fails if the tests still import `go.etcd.io/etcd/server/v3`.
+
+To tell a slow runner from a slow store, the factory starts a 3-node etcd with the same certificates and layout when `ETCD` names its binary, and the `apiserver-compare` workflow (started by hand) runs chosen tests many times against tigerstore and etcd v3.7.2 in turn in one job. It fails if a round ran no test.
+
+No test is skipped. A test that cannot apply to a non-etcd server would be listed here with the reason; none is so far.

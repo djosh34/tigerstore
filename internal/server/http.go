@@ -48,6 +48,8 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) (int, st
 		answer = s.health
 	case "/version":
 		answer = version
+	case "/metrics":
+		answer = s.metricsText
 	default:
 		return http.StatusNotFound, textPlain, "404 page not found\n"
 	}

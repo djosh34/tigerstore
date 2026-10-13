@@ -382,11 +382,11 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	}
 
 	stream, err := pb.NewKVClient(conn).RangeStream(context.Background(), &pb.RangeRequest{Key: []byte("a")})
-	if err == nil {
-		_, err = stream.Recv()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("RangeStream: %v, want Unimplemented", err)
+	if r, err := stream.Recv(); err != nil || len(r.RangeResponse.Kvs) != 1 || string(r.RangeResponse.Kvs[0].Value) != "1" {
+		t.Fatalf("RangeStream: %v, %v", r, err)
 	}
 
 	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{

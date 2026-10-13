@@ -100,6 +100,13 @@ if [ "$health" != '{"health":"true","reason":""}' ]; then
 	echo "/health: got [$health]"
 	exit 1
 fi
+# Prometheus scrapes /metrics; a put was made above.
+metrics=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	"https://127.0.0.1:$((2379 + off))/metrics")
+if ! grep -q '^grpc_server_handled_total{grpc_code="OK",grpc_method="Put"' <<<"$metrics" || ! grep -q '^etcd_server_has_leader 1$' <<<"$metrics"; then
+	echo "/metrics: got [$metrics]"
+	exit 1
+fi
 # A probe that does not offer HTTP/2 gets /health over HTTP/1.1.
 health=$(curl -sf --http1.1 --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	"https://127.0.0.1:$((2379 + off))/health")
