@@ -21,8 +21,7 @@ func (s *Sim) scheduleNetFaults() {
 
 // target is the node an event happens on, or nil.
 func (s *Sim) target(e *event) *node {
-	switch e.kind {
-	case evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate:
+	if e.kind == evTick || e.kind == evDeliver || e.kind == evDiskDone || e.kind == evSubmit || e.kind == evWatchCreate {
 		return s.nodes[e.node]
 	}
 	return nil
