@@ -1,0 +1,38 @@
+name: jepsen2-leader
+on:
+  push:
+    branches: [exp/jepsen2-leader]
+    paths:
+      - .github/workflows/jepsen2-leader.yml
+      - experiments/jepsen2-leader/probe/**
+      - experiments/jepsen2-leader/run.sh
+permissions:
+  contents: read
+jobs:
+  differential:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Refuse late starts
+        run: test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.2
+      - name: Matched direct unary and watch probe
+        run: bash experiments/jepsen2-leader/run.sh
+        env:
+          REPETITION: ${{ matrix.repetition }}
+          GOMAXPROCS: '2'
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leader-differential-${{ matrix.repetition }}
+          path: experiments/jepsen2-leader/evidence
+          retention-days: 14
