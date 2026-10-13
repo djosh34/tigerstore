@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/batchfront"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -229,7 +230,24 @@ func run(args []string, logger *log.Logger) error {
 			sm[len(sm)-1].ClientURLs = []string{f.advertiseClient}
 		}
 	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls})
+	clientConfig := server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls}
+	var g interface {
+		Serve(net.Listener) error
+		Stop() error
+	}
+	var batchServer *batchfront.Server
+	switch os.Getenv("TIGERSTORE_FRONTEND") {
+	case "", "default":
+		g = server.New(n, clientConfig)
+	case "wholebatch":
+		batchServer, err = batchfront.New(n, clientConfig, os.Getenv("TIGERSTORE_BATCH_MODE"))
+		if err != nil {
+			return errors.Join(err, t.Close())
+		}
+		g = batchServer
+	default:
+		return errors.Join(errors.New("TIGERSTORE_FRONTEND must be default or wholebatch"), t.Close())
+	}
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())
@@ -249,5 +267,9 @@ func run(args []string, logger *log.Logger) error {
 	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
 	runErr := n.Run(ctx, t)
 	stopErr := g.Stop()
+	if batchServer != nil && os.Getenv("TIGERSTORE_BATCH_STATS") != "" {
+		st := batchServer.Stats()
+		logger.Printf("wholebatch commands=%d admission_sends=%d completion_batches=%d replies=%d output_highwater=%d", st.Commands, st.AdmissionSends, st.CompletionBatches, st.Replies, st.OutputHighwater)
+	}
 	return errors.Join(runErr, stopErr, <-served, t.Close())
 }

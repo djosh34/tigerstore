@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/batchcmd"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -38,6 +39,7 @@ type Config struct {
 // input is one event for the committer from a client or a peer.
 type input struct {
 	req         *request
+	batch       *batchRequest
 	msg         *raftpb.Message
 	unreachable uint64
 	watchOpen   *WatchStream
@@ -127,6 +129,49 @@ type request struct {
 	id    uint64
 	op    proto.Message
 	reply chan core.Reply
+}
+
+// Completion carries one reply and its frontend stream identity.
+type Completion struct {
+	Tag  uint32
+	Resp proto.Message
+	Err  error
+}
+
+// BatchSink receives all its completions from one core turn in one call.
+// Complete must not wait for a client writer. The slice is borrowed for the call.
+// Implementations must be comparable, normally pointers to connection state.
+type BatchSink interface{ Complete([]Completion) }
+
+type batchRequest struct {
+	base     uint64
+	commands []batchcmd.Command
+	legacy   []proto.Message
+	tags     []uint32
+	sink     BatchSink
+}
+
+type batchWaiter struct {
+	sink BatchSink
+	tag  uint32
+}
+
+// SubmitBatch admits one compact batch. The frontend owns its immutable payloads.
+func (n *Node) SubmitBatch(ctx context.Context, commands []batchcmd.Command, tags []uint32, sink BatchSink) error {
+	if len(commands) != len(tags) || len(tags) == 0 || sink == nil {
+		return errors.New("invalid batch")
+	}
+	base := n.nextID.Add(uint64(len(tags))) - uint64(len(tags)) + 1
+	return n.put(ctx, input{batch: &batchRequest{base: base, commands: commands, tags: tags, sink: sink}})
+}
+
+// SubmitLegacyBatch is the admission/completion ablation and the slow fallback.
+func (n *Node) SubmitLegacyBatch(ctx context.Context, ops []proto.Message, tags []uint32, sink BatchSink) error {
+	if len(ops) != len(tags) || len(tags) == 0 || sink == nil {
+		return errors.New("invalid batch")
+	}
+	base := n.nextID.Add(uint64(len(tags))) - uint64(len(tags)) + 1
+	return n.put(ctx, input{batch: &batchRequest{base: base, legacy: ops, tags: tags, sink: sink}})
 }
 
 // Node is a running node.
@@ -243,6 +288,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
 	waiters := map[uint64]chan core.Reply{}
+	batchWaiters := map[uint64]batchWaiter{}
 	var backlog [][]core.PersistJob
 	streams := map[uint64]*WatchStream{}
 	for {
@@ -257,12 +303,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		select {
 		case in := <-inbox:
-			n.handle(in, waiters, streams)
+			n.handle(in, waiters, batchWaiters, streams)
 		drain:
 			for range 4096 {
 				select {
 				case in := <-n.inbox:
-					n.handle(in, waiters, streams)
+					n.handle(in, waiters, batchWaiters, streams)
 				default:
 					break drain
 				}
@@ -290,11 +336,21 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
+		var completed map[BatchSink][]Completion
 		for _, r := range eff.Replies {
 			if ch, ok := waiters[r.ID]; ok {
 				delete(waiters, r.ID)
 				ch <- r
+			} else if bw, ok := batchWaiters[r.ID]; ok {
+				delete(batchWaiters, r.ID)
+				if completed == nil {
+					completed = make(map[BatchSink][]Completion)
+				}
+				completed[bw.sink] = append(completed[bw.sink], Completion{Tag: bw.tag, Resp: r.Resp, Err: r.Err})
 			}
+		}
+		for sink, replies := range completed {
+			sink.Complete(replies)
 		}
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
@@ -317,7 +373,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	}
 }
 
-func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[uint64]*WatchStream) {
+func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, batchWaiters map[uint64]batchWaiter, streams map[uint64]*WatchStream) {
 	switch {
 	case in.status != nil:
 		in.status <- n.core.Status()
@@ -330,6 +386,18 @@ func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[
 	case in.watchClose:
 		delete(streams, in.stream)
 		n.core.CloseWatchStream(in.stream)
+	case in.batch != nil:
+		b := in.batch
+		for i, tag := range b.tags {
+			batchWaiters[b.base+uint64(i)] = batchWaiter{sink: b.sink, tag: tag}
+		}
+		if b.commands != nil {
+			n.core.SubmitBatch(b.base, b.commands)
+		} else {
+			for i, op := range b.legacy {
+				n.core.Submit(core.Request{ID: b.base + uint64(i), Op: op})
+			}
+		}
 	case in.req != nil:
 		waiters[in.req.id] = in.req.reply
 		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
