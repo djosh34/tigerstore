@@ -73,6 +73,18 @@ func TestReportWatchSpreads(t *testing.T) {
 	}
 }
 
+func TestMixedWatchCPUUnset(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "etcd-rate-1.json", `{"valid":true,"watch":{"events_per_s":100}}`)
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "| - | 1 |") {
+		t.Fatal("unset watch CPU was not a dash")
+	}
+}
+
 func TestReportRefusesInvalidResults(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "etcd-max-1.json", valid)

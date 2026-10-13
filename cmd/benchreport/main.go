@@ -141,7 +141,7 @@ func report(w io.Writer, dir string) error {
 			num(rs, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
 			num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"), len(rs))
 	})
-	p("\nStatistics are min / median / max over the repetitions, not pooled percentiles. Runs is the repetition count. At max every stream is busy. Open loop uses half of etcd's median max rate, or a fixed rate for rate-only mixed-k8s. Latency starts at the scheduled arrival time.\n")
+	p("\nStatistics are min / median / max over the repetitions, not pooled percentiles. Runs is the repetition count. At max every stream is busy. Open loop uses half of etcd's median max rate. Rate-only mixed-k8s first measures one max calibration per store; an explicit rate override is possible. Latency starts at the scheduled arrival time.\n")
 
 	hasWatches := false
 	each(func(_, _, _ string, rs runs) { hasWatches = hasWatches || rs[0].Watch != nil })
@@ -160,7 +160,7 @@ func report(w io.Writer, dir string) error {
 				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P999 })),
 				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Mean })),
 				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Max })),
-				num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f"), len(rs))
+				watchCPU(rs), len(rs))
 		})
 		p("\nEvent latency runs from the mutation's scheduled send time to the event's arrival at the watcher.\n")
 	}
@@ -173,6 +173,15 @@ func report(w io.Writer, dir string) error {
 			num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"), len(rs))
 	})
 	return nil
+}
+
+func watchCPU(rs runs) string {
+	for _, r := range rs {
+		if r.Watch == nil || r.Watch.ServerCPUUsPerEvent == 0 {
+			return "-"
+		}
+	}
+	return num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f")
 }
 
 func watchField(f func(result) float64) func(result) float64 {
