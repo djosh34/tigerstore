@@ -50,6 +50,7 @@ type config struct {
 	drain       time.Duration
 	barrierWait time.Duration
 	maxResponse int
+	dispatch    string
 }
 
 var workloads = []string{"put", "txn", "delete", "range", "watch", "list"}
@@ -66,6 +67,7 @@ func parseFlags(args []string) (config, error) {
 	fs.Float64Var(&cfg.rate, "rate", 0, "open-loop arrivals per second over all connections; 0 keeps every stream busy")
 	fs.IntVar(&cfg.concurrency, "concurrency", 0, "exact global in-flight limit, independent of -conns and -streams; enables experiment dispatcher")
 	fs.StringVar(&cfg.balance, "balance", "", "round-robin dispatches requests, not just connections, across endpoints")
+	fs.StringVar(&cfg.dispatch, "dispatch", "global", "global or connections; connections is a closed-loop, single-endpoint control using the original workers")
 	fs.StringVar(&cfg.arrival, "arrival", "poisson", "poisson or fixed; fixed requires -rate > 0 and enables experiment dispatcher")
 	fs.Int64Var(&cfg.total, "total", 0, "closed-loop measured request count instead of a duration; enables experiment dispatcher")
 	fs.StringVar(&cfg.barrier, "barrier-prefix", "", "publish PREFIX.ready, wait for .go, drain then publish .done, wait for .finish")
@@ -122,6 +124,8 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("-max-response-bytes must be nonnegative")
 	case cfg.concurrency < 0 || cfg.total < 0 || cfg.drain <= 0 || cfg.barrierWait <= 0:
 		return cfg, errors.New("need nonnegative -concurrency and -total, positive -drain and -barrier-timeout")
+	case cfg.dispatch != "global" && cfg.dispatch != "connections":
+		return cfg, errors.New("-dispatch must be global or connections")
 	case cfg.balance != "" && cfg.balance != "round-robin":
 		return cfg, errors.New("-balance must be round-robin")
 	case cfg.arrival != "poisson" && cfg.arrival != "fixed":
@@ -140,6 +144,11 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("experiment open-loop runs need -arrival fixed; use the default dispatcher for Poisson arrivals")
 	case cfg.rate > 1e9 || cfg.rate*cfg.duration.Seconds() > float64(1<<52):
 		return cfg, errors.New("rate or scheduled cohort exceeds nanosecond schedule precision")
+	}
+	if cfg.dispatch == "connections" {
+		if err := cfg.validateConnectionControl(); err != nil {
+			return cfg, err
+		}
 	}
 	return cfg, nil
 }

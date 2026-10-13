@@ -11,7 +11,7 @@ import (
 )
 
 func (cfg config) shaped() bool {
-	return cfg.concurrency > 0 || cfg.balance != "" || cfg.arrival == "fixed" || cfg.total > 0 || cfg.barrier != "" || cfg.workload == "list"
+	return cfg.concurrency > 0 || cfg.balance != "" || cfg.arrival == "fixed" || cfg.total > 0 || cfg.barrier != "" || cfg.workload == "list" || cfg.dispatch == "connections"
 }
 
 type endpointCounts struct {
@@ -162,6 +162,12 @@ func (l *onceLoad) start(c *conn, st *stream) bool {
 func (l *onceLoad) exhausted() bool { return l.sent }
 
 func runShaped(cfg config) (*result, error) {
+	if cfg.dispatch == "connections" {
+		if err := cfg.validateConnectionControl(); err != nil {
+			return nil, err
+		}
+		cfg.streams = cfg.concurrency / cfg.conns
+	}
 	if cfg.rate > 0 && cfg.arrival != "fixed" {
 		return nil, errors.New("experiment open-loop runs need -arrival fixed; the default dispatcher retains Poisson arrivals")
 	}
@@ -201,7 +207,11 @@ func runShaped(cfg config) (*result, error) {
 		}
 	}()
 	for i := range cfg.conns {
-		c, err := dialShared(cfg.endpoints[i%len(cfg.endpoints)], wake, &buffers, cfg.maxResponse)
+		sharedWake := wake
+		if cfg.dispatch == "connections" {
+			sharedWake = nil
+		}
+		c, err := dialShared(cfg.endpoints[i%len(cfg.endpoints)], sharedWake, &buffers, cfg.maxResponse)
 		if err != nil {
 			return nil, err
 		}
@@ -257,6 +267,9 @@ func runShaped(cfg config) (*result, error) {
 		if err != nil {
 			return nil, err
 		}
+		if cfg.dispatch == "connections" {
+			b.limit = cfg.concurrency / cfg.conns
+		}
 		switch cfg.workload {
 		case "put":
 			loads[i] = &putLoad{base: b}
@@ -276,8 +289,14 @@ func runShaped(cfg config) (*result, error) {
 	if err := phaseErrors(workers); err != nil {
 		return nil, fmt.Errorf("connection probes: %w", err)
 	}
+	runDispatch := func(duration time.Duration, total int64) (*shapeResult, [2]cpuSample, error) {
+		if cfg.dispatch == "connections" {
+			return dispatchConnections(cfg, workers, loads, duration)
+		}
+		return dispatch(cfg, workers, loads, wake, duration, total)
+	}
 	if cfg.warmup > 0 {
-		if _, _, err := dispatch(cfg, workers, loads, wake, cfg.warmup, 0); err != nil {
+		if _, _, err := runDispatch(cfg.warmup, 0); err != nil {
 			return nil, fmt.Errorf("warmup: %w", err)
 		}
 		if err := phaseErrors(workers); err != nil {
@@ -299,7 +318,7 @@ func runShaped(cfg config) (*result, error) {
 	// Keep warmup capacity in the baseline but reset measurement peaks.
 	buffers.live.peak.Store(buffers.live.current.Load())
 	buffers.capacity.peak.Store(buffers.capacity.current.Load())
-	shape, samples, phaseErr := dispatch(cfg, workers, loads, wake, cfg.duration, cfg.total)
+	shape, samples, phaseErr := runDispatch(cfg.duration, cfg.total)
 	shape.ResponseBuffers = buffers.snapshot()
 	phaseErr = errors.Join(phaseErr, phaseErrors(workers))
 	// From here to finish there are no RPCs. Only HTTP/2 controls may be

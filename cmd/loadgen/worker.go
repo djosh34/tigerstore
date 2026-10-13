@@ -86,6 +86,12 @@ func (wk *worker) run(l load, p phase) error {
 				c.free = append(c.free, st)
 				break
 			}
+			if wk.stats.active != nil {
+				// Measurement-only instrumentation for the static-connections
+				// control. Admission still uses the original per-conn limit.
+				wk.stats.active.started()
+				wk.stats.sent++
+			}
 			if p.rate > 0 {
 				backlog = backlog[1:]
 			}
@@ -123,7 +129,11 @@ func (wk *worker) run(l load, p phase) error {
 			// Requests still in flight fail too, once: their streams are
 			// forgotten, so a late answer counts nothing.
 			for id, st := range c.streams {
-				inWindow(st.intended)
+				if wk.stats.active != nil {
+					st.h.done(st, t, fmt.Errorf("request unfinished after %v drain", p.drain))
+				} else {
+					inWindow(st.intended)
+				}
 				delete(c.streams, id)
 			}
 			c.mu.Unlock()

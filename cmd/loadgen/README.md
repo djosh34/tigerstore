@@ -33,6 +33,23 @@ Experiment dispatch supports Put, point Range and LIST. Poisson, CAS, Delete and
 
 One writer assigns monotonically increasing request tickets to endpoint ticket modulo endpoint count. It rotates connections within that endpoint and batches frames per connection. If the next endpoint cannot accept a request, it waits rather than favoring another endpoint. This guarantees sent-request counts differ by at most one on a successful run. It does not impose a global socket-write order across independent TCP connections. There is no per-RPC goroutine, channel or global admission mutex.
 
+## Static connection control
+
+`-dispatch connections` keeps the same seed, per-connection probes, drained warmup and sampling barriers, but runs warmup and measurement with the original `worker.run` loops. Use one leader endpoint and a concurrency exactly divisible by the connection count:
+
+```sh
+loadgen -dispatch connections -conns 16 -concurrency 256 \
+  -workload put -keys 4096 -warmup 1s -duration 3s -drain 30s \
+  -endpoints LEADER:PORT -barrier-prefix /path/to/unique-control \
+  -pids PID1,PID2,PID3 -out control.json
+```
+
+Each connection has `concurrency / conns` in-flight slots. The reported `streams_per_conn` reflects that derived limit. Rate-based runs, finite `-total`, multiple endpoints, missing concurrency and nondivisible concurrency are rejected. A server stream limit below the derived per-connection limit also rejects the run.
+
+The control preserves the original workers' batching, wakeups and loop-level timestamps. The shared start/completion meter reports the exact observed global peak without controlling admission. There is no shared dispatcher wake notification. Seed generation and validation do not change. `shape.dispatch` is `static-connections`, not `global-ticket-round-robin`. It retains expected cohort, endpoint counts, latency and CPU-through-drain checks. There is no scheduled-arrival backlog, so its queue report has zero queued depth and only start, arrival-stop and drain-end boundaries.
+
+Compare this against `-dispatch global -conns 16 -concurrency 256` with the same stages, endpoint, workload and server source. The default global dispatcher is unchanged. This control isolates dispatcher and connection scheduling choices; it does not make the two closed-loop arrival histories identical or isolate only the cost of a goroutine or atomic operation.
+
 ## Stage barriers
 
 Each run needs a fresh prefix. The generator rejects an existing `.ready`, `.go`, `.done` or `.finish`. Markers contain JSON; the generator publishes its markers with rename.
