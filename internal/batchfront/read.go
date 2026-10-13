@@ -28,6 +28,8 @@ const maxMessage = core.MaxRequestBytes + (512 << 10)
 type budget struct {
 	input                  int
 	admitted, ready, reset bool
+	http, httpDone         bool
+	timer                  *time.Timer
 }
 type conn struct {
 	net.Conn
@@ -56,9 +58,11 @@ func (c *conn) close() {
 		_ = raw.Close()
 	})
 }
+
 func (c *conn) sendControl(o control) {
 	select {
 	case c.control <- o:
+		c.s.stats.controlSends.Add(1)
 	default:
 		c.close()
 	}
@@ -98,6 +102,9 @@ func (c *conn) reset(id uint32) {
 	c.mu.Lock()
 	if b := c.budgets[id]; b != nil {
 		b.reset = true
+		if b.timer != nil {
+			b.timer.Stop()
+		}
 		// An admitted payload still belongs to the core until completion.
 		if !b.admitted || b.ready {
 			c.inputBytes -= b.input
@@ -119,12 +126,16 @@ func (c *conn) finish(id uint32) {
 	c.mu.Lock()
 	if b := c.budgets[id]; b != nil {
 		c.inputBytes -= b.input
+		if b.timer != nil {
+			b.timer.Stop()
+		}
 		delete(c.budgets, id)
 	}
 	c.mu.Unlock()
 }
 
 type incoming struct {
+	method   string
 	path     string
 	body     []byte
 	received uint32
@@ -177,6 +188,9 @@ func legacy(path string, body []byte) (proto.Message, error) {
 }
 
 func (c *conn) dispatch(id uint32, s *incoming, a *admission) error {
+	if s.method == "GET" {
+		return c.dispatchHTTP(id, s, a)
+	}
 	if len(s.body) < 5 || s.body[0] != 0 || int(binary.BigEndian.Uint32(s.body[1:5])) != len(s.body)-5 {
 		code := codes.InvalidArgument
 		if len(s.body) > 0 && s.body[0] != 0 {
@@ -324,8 +338,11 @@ func (c *conn) readLoop() error {
 				last = v.StreamID
 				s = &incoming{}
 				for _, h := range v.Fields {
-					if h.Name == ":path" {
+					switch h.Name {
+					case ":path":
 						s.path = h.Value
+					case ":method":
+						s.method = h.Value
 					}
 				}
 				streams[v.StreamID] = s

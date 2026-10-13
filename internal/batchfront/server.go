@@ -28,17 +28,20 @@ const (
 )
 
 type counters struct {
-	commands    atomic.Uint64
-	sends       atomic.Uint64
-	completions atomic.Uint64
-	replies     atomic.Uint64
-	highwater   atomic.Uint64
+	commands      atomic.Uint64
+	sends         atomic.Uint64
+	completions   atomic.Uint64
+	replies       atomic.Uint64
+	highwater     atomic.Uint64
+	controlSends  atomic.Uint64
+	responseSends atomic.Uint64
 }
 
 // Stats counts admission and grouped completions. OutputHighwater is the
 // largest per-connection reservation, not a channel length.
 type Stats struct {
 	Commands, AdmissionSends, CompletionBatches, Replies, OutputHighwater uint64
+	ControlSends, ResponseSends                                           uint64
 }
 
 type Server struct {
@@ -75,7 +78,7 @@ func New(n *node.Node, cfg server.Config, mode string) (*Server, error) {
 }
 
 func (s *Server) Stats() Stats {
-	return Stats{s.stats.commands.Load(), s.stats.sends.Load(), s.stats.completions.Load(), s.stats.replies.Load(), s.stats.highwater.Load()}
+	return Stats{Commands: s.stats.commands.Load(), AdmissionSends: s.stats.sends.Load(), CompletionBatches: s.stats.completions.Load(), Replies: s.stats.replies.Load(), OutputHighwater: s.stats.highwater.Load(), ControlSends: s.stats.controlSends.Load(), ResponseSends: s.stats.responseSends.Load()}
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -99,7 +102,7 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 		if s.cfg.TLS != nil {
 			cfg := s.cfg.TLS.Clone()
-			cfg.NextProtos = []string{"h2"}
+			cfg.NextProtos = []string{"h2", "http/1.1"}
 			nc = tls.Server(nc, cfg)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -124,10 +127,11 @@ func (s *Server) Serve(ln net.Listener) error {
 				if err := tc.HandshakeContext(c.ctx); err != nil {
 					return
 				}
-				if tc.ConnectionState().NegotiatedProtocol != "h2" {
+				if err := tc.SetDeadline(time.Time{}); err != nil {
 					return
 				}
-				if err := tc.SetDeadline(time.Time{}); err != nil {
+				if tc.ConnectionState().NegotiatedProtocol != "h2" {
+					c.serveHTTP1()
 					return
 				}
 			}

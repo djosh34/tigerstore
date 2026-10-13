@@ -101,6 +101,12 @@ func (c *conn) Complete(replies []node.Completion) {
 	c.s.stats.replies.Add(uint64(len(replies)))
 	batch := make([]encoded, 0, len(replies))
 	for _, r := range replies {
+		if c.isHTTP(r.Tag) {
+			if e, ok := c.encodeHTTP(r.Tag, healthReply(r.Err)); ok {
+				batch = append(batch, e)
+			}
+			continue
+		}
 		h, t := c.s.successHeader, c.s.successTrailer
 		if r.Err != nil {
 			fields := []hpack.HeaderField{{Name: "grpc-status", Value: strconv.Itoa(int(status.Code(r.Err)))}, {Name: "grpc-message", Value: grpcMessage(status.Convert(r.Err).Message())}}
@@ -135,6 +141,7 @@ func (c *conn) Complete(replies []node.Completion) {
 	}
 	select {
 	case c.out <- batch:
+		c.s.stats.responseSends.Add(1)
 		return
 	default:
 		for _, e := range batch {
@@ -342,7 +349,7 @@ func (c *conn) writeLoop() error {
 							return err
 						}
 					} else {
-						if err := f.WriteData(id, false, frame[9+p.part:9+p.part+m]); err != nil {
+						if err := f.WriteData(id, frame[4]&byte(http2.FlagDataEndStream) != 0 && p.part+m == n, frame[9+p.part:9+p.part+m]); err != nil {
 							return err
 						}
 					}
