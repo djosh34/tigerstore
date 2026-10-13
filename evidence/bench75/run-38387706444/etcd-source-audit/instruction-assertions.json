@@ -1,0 +1,122 @@
+[
+  {
+    "file": "source/pkg/wait/wait.go",
+    "line": 65,
+    "text": "newCh := make(chan any, 1)"
+  },
+  {
+    "file": "source/pkg/wait/wait.go",
+    "line": 83,
+    "text": "ch <- x"
+  },
+  {
+    "file": "source/pkg/wait/wait.go",
+    "line": 84,
+    "text": "close(ch)"
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "line": 1123,
+    "text": "case x := <-ch:"
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "line": 1093,
+    "text": "data, err = proto.Marshal(r)"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 386,
+    "text": "case pm := <-propc:"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 391,
+    "text": "pm.result <- err"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 392,
+    "text": "close(pm.result)"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 528,
+    "text": "pm.result = make(chan error, 1)"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 531,
+    "text": "case ch <- pm:"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "line": 541,
+    "text": "case err := <-pm.result:"
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/raft.go",
+    "line": 817,
+    "text": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)"
+  },
+  {
+    "file": "source/server/storage/wal/wal.go",
+    "line": 976,
+    "text": "b := pbutil.MustMarshalMessage(e)"
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "line": 84,
+    "text": "data, err = proto.Marshal(rec)"
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "line": 89,
+    "text": "data, err = opts.MarshalAppend(e.buf[:0], rec)"
+  },
+  {
+    "file": "source/pkg/ioutil/pagewriter.go",
+    "line": 59,
+    "text": "copy(pw.buf[pw.bufferedBytes:], p)"
+  },
+  {
+    "file": "source/server/etcdserver/apply/apply.go",
+    "line": 29,
+    "text": "pbutil.MustUnmarshalMessage(&raftReq, e.Data)"
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "line": 250,
+    "text": "d, err := proto.Marshal(kv)"
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "line": 142,
+    "text": "if err := proto.Unmarshal(vs[0], kv); err != nil {"
+  },
+  {
+    "file": "source/server/etcdserver/txn/txn.go",
+    "line": 274,
+    "text": "rr, err := rv.Range(context.TODO(), c.Key, mkGteRange(c.RangeEnd), mvcc.RangeOptions{})"
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "line": 5497,
+    "text": "*p.Bytes() = append(([]byte)(nil), v...)"
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "text": "*p.Bytes() = append(emptyBuf[:], v...)"
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "text": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)"
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "text": "return append(AppendVarint(b, uint64(len(v))), v...)"
+  }
+]

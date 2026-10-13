@@ -1,0 +1,101 @@
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:20:// channel to complete various transactions (e.g., an RPC).  It is meant for
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:38:	"google.golang.org/grpc/internal/channelz"
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:90:// recvBuffer is an unbounded channel of recvMsg structs.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:93:// holds a channel of recvMsg structs instead of objects implementing "item"
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:97:	c       chan recvMsg
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:114:	b.c = make(chan recvMsg, 1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:132:		case b.c <- r:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:203:		case b.c <- b.backlog[0]:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:219:// get returns the channel that receives a recvMsg in the buffer.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:222:// recvMsg onto the channel if there is any.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:223:func (b *recvBuffer) get() <-chan recvMsg {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:233:	ctxDone      <-chan struct{} // cache of ctx.Done() (for performance).
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:282:	case <-r.ctxDone:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:284:	case m := <-r.recv.get():
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:291:	case <-r.ctxDone:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:293:	case m := <-r.recv.get():
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:303:	case <-r.ctxDone:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:318:		m := <-r.recv.get()
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:320:	case m := <-r.recv.get():
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:330:	case <-r.ctxDone:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:345:		m := <-r.recv.get()
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:347:	case m := <-r.recv.get():
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:609:	ChannelzParent        *channelz.Server
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:647:	ChannelzParent *channelz.SubChannel
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:724:	// Error returns a channel that is closed when some I/O error
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:729:	Error() <-chan struct{}
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:731:	// GoAway returns a channel that is closed when ClientTransport
+deps/google.golang.org_grpc@v1.83.2/internal/transport/transport.go:734:	GoAway() <-chan struct{}
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:52:	"google.golang.org/grpc/internal/channelz"
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:78:	done            chan struct{}
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:81:	readerDone      chan struct{} // sync point to enable testing.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:82:	loopyWriterDone chan struct{}
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:126:	// Fields below are for channelz metric collection.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:127:	channelz   *channelz.Socket
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:254:	done := make(chan struct{})
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:265:		readerDone:        make(chan struct{}),
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:266:		loopyWriterDone:   make(chan struct{}),
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:286:	t.channelz = channelz.RegisterSocket(
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:287:		&channelz.Socket{
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:288:			SocketType:       channelz.SocketTypeNormal,
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:290:			SocketMetrics:    channelz.SocketMetrics{},
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:294:			SocketOptions:    channelz.GetSocketOption(t.conn),
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:351:		close(t.loopyWriterDone)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:365:			case <-t.readerDone:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:366:			case <-timer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:605:		cancelUpdated := make(chan struct{})
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:607:			<-cancelUpdated
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:615:		close(cancelUpdated)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:618:	if channelz.IsOn() {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:619:		t.channelz.SocketMetrics.StreamsStarted.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:620:		t.channelz.SocketMetrics.LastRemoteStreamCreatedTimestamp.Store(time.Now().UnixNano())
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:647:		close(t.readerDone)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:648:		<-t.loopyWriterDone
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1012:	case <-t.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1211:		// We need to drain the underlying channel in these timers after a call
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1221:		case <-idleTimer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1238:		case <-ageTimer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1242:			case <-ageTimer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1248:			case <-t.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1251:		case <-kpTimer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1267:				if channelz.IsOn() {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1268:					t.channelz.SocketMetrics.KeepAlivesSent.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1281:		case <-t.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1304:	close(t.done)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1308:	channelz.RemoveEntry(t.channelz.ID)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1327:	if isActive && channelz.IsOn() {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1329:			t.channelz.SocketMetrics.StreamsSucceeded.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1331:			t.channelz.SocketMetrics.StreamsFailed.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1441:		case <-t.drainEvent.Done():
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1442:		case <-timer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1443:		case <-t.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1451:func (t *http2Server) socketMetrics() *channelz.EphemeralSocketMetrics {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1452:	return &channelz.EphemeralSocketMetrics{
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1459:	if channelz.IsOn() {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1460:		t.channelz.SocketMetrics.MessagesSent.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1461:		t.channelz.SocketMetrics.LastMessageSentTimestamp.Store(transportinternal.TimeNowFunc())
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1466:	if channelz.IsOn() {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1467:		t.channelz.SocketMetrics.MessagesReceived.Add(1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1468:		t.channelz.SocketMetrics.LastMessageReceivedTimestamp.Store(transportinternal.TimeNowFunc())
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1473:	resp := make(chan uint32, 1)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1478:	case sz := <-resp:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1480:	case <-t.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:1482:	case <-timer.C:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:219:	resp chan uint32
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:308:	wakeupCh chan struct{}   // Unblocks readers waiting for something to read.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:309:	done     <-chan struct{} // Closed when the transport is done.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:324:	trfChan                 atomic.Pointer[chan struct{}]
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:327:func newControlBuffer(done <-chan struct{}) *controlBuffer {
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:329:		wakeupCh: make(chan struct{}, 1),
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:341:		case <-(*ch):
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:342:		case <-c.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:386:			// a throttling channel.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:387:			ch := make(chan struct{})
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:393:		case c.wakeupCh <- struct{}{}:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:421:		case <-c.wakeupCh:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:422:		case <-c.done:
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:442:			// threshold; close and clear the throttling channel.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:444:			close(*ch)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:481:		close(*ch)
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:579:// size is too low to give stream goroutines a chance to fill it up.
+deps/google.golang.org_grpc@v1.83.2/internal/transport/controlbuf.go:799:	o.resp <- l.sendQuota

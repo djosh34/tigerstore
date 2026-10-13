@@ -1,0 +1,52 @@
+[
+  {
+    "module": "go.etcd.io/etcd/api/v3@v3.7.2",
+    "computed_h1": "h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=",
+    "targets": {
+      "main": "9f98137301348baf40b53ff54f33c0576f231253",
+      "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+      "hpack": "1c0208a325b80d0a0ab4867748863ff24c1c6a36",
+      "txn": "97b30fdc1a70b9867a5d0cb026369d5664f3560c"
+    }
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "computed_h1": "h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=",
+    "targets": {
+      "main": "9f98137301348baf40b53ff54f33c0576f231253",
+      "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+      "hpack": "1c0208a325b80d0a0ab4867748863ff24c1c6a36",
+      "txn": "97b30fdc1a70b9867a5d0cb026369d5664f3560c"
+    }
+  },
+  {
+    "module": "golang.org/x/net@v0.58.0",
+    "computed_h1": "h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=",
+    "targets": {
+      "main": "9f98137301348baf40b53ff54f33c0576f231253",
+      "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+      "hpack": "1c0208a325b80d0a0ab4867748863ff24c1c6a36",
+      "txn": "97b30fdc1a70b9867a5d0cb026369d5664f3560c"
+    }
+  },
+  {
+    "module": "google.golang.org/grpc@v1.84.0",
+    "computed_h1": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+    "targets": {
+      "main": "9f98137301348baf40b53ff54f33c0576f231253",
+      "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+      "hpack": "1c0208a325b80d0a0ab4867748863ff24c1c6a36",
+      "txn": "97b30fdc1a70b9867a5d0cb026369d5664f3560c"
+    }
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "computed_h1": "h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=",
+    "targets": {
+      "main": "9f98137301348baf40b53ff54f33c0576f231253",
+      "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+      "hpack": "1c0208a325b80d0a0ab4867748863ff24c1c6a36",
+      "txn": "97b30fdc1a70b9867a5d0cb026369d5664f3560c"
+    }
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "module": "google.golang.org/grpc",
+  "version": "v1.84.0",
+  "url": "https://proxy.golang.org/google.golang.org/grpc/@v/v1.84.0.zip",
+  "h1": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+  "zip_sha256": "a14bebefbac1ec115d9e1f8042006c185d65adf43a91644f3e58df0688831b95",
+  "versions_match": true
+}

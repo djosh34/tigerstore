@@ -1,0 +1,33 @@
+File: third
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: alloc_objects
+Time: 2026-10-13 11:09:46 UTC
+Duration: 20s, Total samples = 10930799 
+Showing nodes accounting for 2306942, 21.10% of 10930799 total
+Showing top 25 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%    5869670 53.70%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0%     0%    5869670 53.70%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0%     0%    5869670 53.70%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0%     0%    5869670 53.70%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0%     0%    3809546 34.85%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0%     0%    3591419 32.86%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+     65537   0.6%   0.6%    3591419 32.86%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   0.6%    3591419 32.86%  main.main
+         0     0%   0.6%    3591419 32.86%  main.run
+         0     0%   0.6%    3591419 32.86%  runtime.main
+         0     0%   0.6%    2144205 19.62%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0%   0.6%    1987237 18.18%  github.com/djosh34/tigerstore/internal/server.(*conn).headerFragment
+   1364578 12.48% 13.08%    1987237 18.18%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+         0     0% 13.08%    1987237 18.18%  github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders
+         0     0% 13.08%    1822309 16.67%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+     54614   0.5% 13.58%    1546489 14.15%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+         0     0% 13.58%    1491875 13.65%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+         0     0% 13.58%    1491875 13.65%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+     98314   0.9% 14.48%    1491875 13.65%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut
+         0     0% 14.48%    1491875 13.65%  github.com/djosh34/tigerstore/internal/core.walkBatch
+         0     0% 14.48%    1469665 13.45%  sync.(*WaitGroup).Go.func1
+         0     0% 14.48%    1463701 13.39%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader
+         0     0% 14.48%    1393561 12.75%  github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut
+    723899  6.62% 21.10%    1297409 11.87%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+         0     0% 21.10%    1297409 11.87%  github.com/djosh34/tigerstore/internal/server.(*conn).completeWaiting

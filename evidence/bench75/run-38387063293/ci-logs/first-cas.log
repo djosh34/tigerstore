@@ -1,0 +1,346 @@
+﻿2026-10-13T10:59:14.8739613Z Current runner version: '2.337.0'
+2026-10-13T10:59:14.8775323Z ##[group]Runner Image Provisioner
+2026-10-13T10:59:14.8776485Z Hosted Compute Agent
+2026-10-13T10:59:14.8777112Z Version: 20261002.596
+2026-10-13T10:59:14.8777944Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-13T10:59:14.8778748Z Build Date: 2026-10-02T22:28:27Z
+2026-10-13T10:59:14.8779492Z Worker ID: {d0f79b9d-306e-4463-88dd-f28928bcb8e6}
+2026-10-13T10:59:14.8780289Z Region: centralus
+2026-10-13T10:59:14.8780882Z Cloud: Azure
+2026-10-13T10:59:14.8781469Z ##[endgroup]
+2026-10-13T10:59:14.8784068Z ##[group]Operating System
+2026-10-13T10:59:14.8784784Z Ubuntu
+2026-10-13T10:59:14.8785456Z 24.04.5
+2026-10-13T10:59:14.8785997Z LTS
+2026-10-13T10:59:14.8786563Z ##[endgroup]
+2026-10-13T10:59:14.8787248Z ##[group]Runner Image
+2026-10-13T10:59:14.8787970Z Image: ubuntu-24.04-arm
+2026-10-13T10:59:14.8788649Z Version: 20261004.142.1
+2026-10-13T10:59:14.8790110Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261004.142/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+2026-10-13T10:59:14.8792281Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261004.142
+2026-10-13T10:59:14.8793281Z ##[endgroup]
+2026-10-13T10:59:14.8794520Z ##[group]GITHUB_TOKEN Permissions
+2026-10-13T10:59:14.8798031Z Contents: read
+2026-10-13T10:59:14.8799306Z Metadata: read
+2026-10-13T10:59:14.8799970Z ##[endgroup]
+2026-10-13T10:59:14.8803377Z Secret source: Actions
+2026-10-13T10:59:14.8804714Z Cache mode: write
+2026-10-13T10:59:14.8805759Z Prepare workflow directory
+2026-10-13T10:59:14.9236834Z Prepare all required actions
+2026-10-13T10:59:14.9290979Z Getting action download info
+2026-10-13T10:59:15.2014849Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-13T10:59:15.3094887Z Download action repository 'actions/setup-go@v7' (SHA:b7ad1dad31e06c5925ef5d2fc7ad053ef454303e)
+2026-10-13T10:59:15.8679745Z Download action repository 'actions/upload-artifact@v6' (SHA:b7c566a772e6b6bfb58ed0dc250532a479d7789f)
+2026-10-13T10:59:16.1504128Z Complete job name: paired (cas, 256)
+2026-10-13T10:59:16.2453086Z ##[group]Run actions/checkout@v7
+2026-10-13T10:59:16.2454655Z with:
+2026-10-13T10:59:16.2455490Z   fetch-depth: 0
+2026-10-13T10:59:16.2456199Z   repository: djosh34/tigerstore
+2026-10-13T10:59:16.2460712Z   token: ***
+2026-10-13T10:59:16.2461330Z   ssh-strict: true
+2026-10-13T10:59:16.2462619Z   ssh-user: git
+2026-10-13T10:59:16.2463372Z   persist-credentials: true
+2026-10-13T10:59:16.2464020Z   clean: true
+2026-10-13T10:59:16.2464808Z   sparse-checkout-cone-mode: true
+2026-10-13T10:59:16.2465523Z   fetch-tags: false
+2026-10-13T10:59:16.2466126Z   show-progress: true
+2026-10-13T10:59:16.2466859Z   lfs: false
+2026-10-13T10:59:16.2467440Z   submodules: false
+2026-10-13T10:59:16.2468157Z   set-safe-directory: true
+2026-10-13T10:59:16.2468962Z   allow-unsafe-pr-checkout: false
+2026-10-13T10:59:16.2470263Z ##[endgroup]
+2026-10-13T10:59:16.3370142Z Syncing repository: djosh34/tigerstore
+2026-10-13T10:59:16.3373654Z ##[group]Getting Git version info
+2026-10-13T10:59:16.3374947Z Working directory is '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T10:59:16.3376552Z [command]/usr/bin/git version
+2026-10-13T10:59:16.3419546Z git version 2.55.0
+2026-10-13T10:59:16.3440565Z ##[endgroup]
+2026-10-13T10:59:16.3452835Z Temporarily overriding HOME='/home/runner/work/_temp/0904a1b9-afea-424b-af05-55ad05d7bc55' before making global git config changes
+2026-10-13T10:59:16.3454699Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T10:59:16.3458450Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T10:59:16.3491976Z Deleting the contents of '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T10:59:16.3496841Z ##[group]Determining repository object format
+2026-10-13T10:59:16.3498321Z ##[endgroup]
+2026-10-13T10:59:16.3500099Z ##[group]Initializing the repository
+2026-10-13T10:59:16.3502871Z [command]/usr/bin/git init /home/runner/work/tigerstore/tigerstore
+2026-10-13T10:59:16.3647043Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-13T10:59:16.3649623Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-13T10:59:16.3651057Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-13T10:59:16.3652730Z hint: call:
+2026-10-13T10:59:16.3653553Z hint:
+2026-10-13T10:59:16.3654585Z hint: 	git config --global init.defaultBranch <name>
+2026-10-13T10:59:16.3655556Z hint:
+2026-10-13T10:59:16.3656424Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-13T10:59:16.3657654Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-13T10:59:16.3658595Z hint:
+2026-10-13T10:59:16.3659291Z hint: 	git branch -m <name>
+2026-10-13T10:59:16.3660052Z hint:
+2026-10-13T10:59:16.3660869Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-13T10:59:16.3662471Z Initialized empty Git repository in /home/runner/work/tigerstore/tigerstore/.git/
+2026-10-13T10:59:16.3665035Z [command]/usr/bin/git remote add origin https://github.com/djosh34/tigerstore
+2026-10-13T10:59:16.3734473Z ##[endgroup]
+2026-10-13T10:59:16.3736195Z ##[group]Disabling automatic garbage collection
+2026-10-13T10:59:16.3737122Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-13T10:59:16.3774271Z ##[endgroup]
+2026-10-13T10:59:16.3775489Z ##[group]Setting up auth
+2026-10-13T10:59:16.3776229Z Removing SSH command configuration
+2026-10-13T10:59:16.3777325Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T10:59:16.3814181Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T10:59:16.4191178Z Removing HTTP extra header
+2026-10-13T10:59:16.4196652Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T10:59:16.4231810Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T10:59:16.4444750Z Removing includeIf entries pointing to credentials config files
+2026-10-13T10:59:16.4449165Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T10:59:16.4483836Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T10:59:16.4713620Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-13T10:59:16.4745995Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path /home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T10:59:16.4825206Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T10:59:16.4867360Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T10:59:16.4905159Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T10:59:16.4940378Z ##[endgroup]
+2026-10-13T10:59:16.4941519Z ##[group]Fetching the repository
+2026-10-13T10:59:16.4947531Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-13T10:59:19.9651869Z From https://github.com/djosh34/tigerstore
+2026-10-13T10:59:19.9653473Z  * [new branch]      exp/49-real-process-chaos -> origin/exp/49-real-process-chaos
+2026-10-13T10:59:19.9654161Z  * [new branch]      exp/50-alloc           -> origin/exp/50-alloc
+2026-10-13T10:59:19.9654942Z  * [new branch]      exp/53-transport-loopback-20261012 -> origin/exp/53-transport-loopback-20261012
+2026-10-13T10:59:19.9655700Z  * [new branch]      exp/bench-68           -> origin/exp/bench-68
+2026-10-13T10:59:19.9656247Z  * [new branch]      exp/bench-75           -> origin/exp/bench-75
+2026-10-13T10:59:19.9656899Z  * [new branch]      exp/index-10m-20261012 -> origin/exp/index-10m-20261012
+2026-10-13T10:59:19.9657515Z  * [new branch]      exp/pre-47-batch256    -> origin/exp/pre-47-batch256
+2026-10-13T10:59:19.9658241Z  * [new branch]      exp/pre-47-groupcommit -> origin/exp/pre-47-groupcommit
+2026-10-13T10:59:19.9658866Z  * [new branch]      exp/pre-47-grpc        -> origin/exp/pre-47-grpc
+2026-10-13T10:59:19.9659430Z  * [new branch]      exp/pre-47-semantics   -> origin/exp/pre-47-semantics
+2026-10-13T10:59:19.9660210Z  * [new branch]      exp/pre-48-conformance -> origin/exp/pre-48-conformance
+2026-10-13T10:59:19.9660841Z  * [new branch]      exp/pre-48-k8s         -> origin/exp/pre-48-k8s
+2026-10-13T10:59:19.9661468Z  * [new branch]      exp/pre-48-storage     -> origin/exp/pre-48-storage
+2026-10-13T10:59:19.9662331Z  * [new branch]      exp/pre-50-bench       -> origin/exp/pre-50-bench
+2026-10-13T10:59:19.9662937Z  * [new branch]      exp/pre-50-compress    -> origin/exp/pre-50-compress
+2026-10-13T10:59:19.9663615Z  * [new branch]      exp/pre-50-frontend    -> origin/exp/pre-50-frontend
+2026-10-13T10:59:19.9664249Z  * [new branch]      exp/pre-50-frontend-native -> origin/exp/pre-50-frontend-native
+2026-10-13T10:59:19.9664940Z  * [new branch]      exp/pre-50-frontend-tuned -> origin/exp/pre-50-frontend-tuned
+2026-10-13T10:59:19.9665563Z  * [new branch]      exp/pre-50-profile     -> origin/exp/pre-50-profile
+2026-10-13T10:59:19.9666200Z  * [new branch]      exp/pre-50-wholebatch  -> origin/exp/pre-50-wholebatch
+2026-10-13T10:59:19.9667188Z  * [new branch]      exp/pre-50-wholebatch-allocator -> origin/exp/pre-50-wholebatch-allocator
+2026-10-13T10:59:19.9668007Z  * [new branch]      exp/pre-50-wholebatch-core -> origin/exp/pre-50-wholebatch-core
+2026-10-13T10:59:19.9668783Z  * [new branch]      exp/pre-50-wholebatch-frontend -> origin/exp/pre-50-wholebatch-frontend
+2026-10-13T10:59:19.9669528Z  * [new branch]      exp/pre-50-wholebatch-harness -> origin/exp/pre-50-wholebatch-harness
+2026-10-13T10:59:19.9670211Z  * [new branch]      exp/pre-50-wholebatch-http -> origin/exp/pre-50-wholebatch-http
+2026-10-13T10:59:19.9670891Z  * [new branch]      exp/pre50-primitives   -> origin/exp/pre50-primitives
+2026-10-13T10:59:19.9671442Z  * [new branch]      main                   -> origin/main
+2026-10-13T10:59:19.9672797Z  * [new branch]      work/50-cold-restart   -> origin/work/50-cold-restart
+2026-10-13T10:59:19.9673662Z  * [new branch]      work/50-hpack          -> origin/work/50-hpack
+2026-10-13T10:59:19.9674592Z  * [new branch]      work/50-txn            -> origin/work/50-txn
+2026-10-13T10:59:19.9676383Z [command]/usr/bin/git branch --list --remote origin/exp/bench-75
+2026-10-13T10:59:19.9702780Z   origin/exp/bench-75
+2026-10-13T10:59:19.9713008Z [command]/usr/bin/git rev-parse refs/remotes/origin/exp/bench-75
+2026-10-13T10:59:19.9741884Z 73c7add8269fc282fa600e2f81bdbd6598f181b9
+2026-10-13T10:59:19.9744515Z ##[endgroup]
+2026-10-13T10:59:19.9745197Z ##[group]Determining the checkout info
+2026-10-13T10:59:19.9746653Z ##[endgroup]
+2026-10-13T10:59:19.9750429Z [command]/usr/bin/git sparse-checkout disable
+2026-10-13T10:59:19.9806460Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-13T10:59:19.9843224Z ##[group]Checking out the ref
+2026-10-13T10:59:19.9846389Z [command]/usr/bin/git checkout --progress --force -B exp/bench-75 refs/remotes/origin/exp/bench-75
+2026-10-13T10:59:20.1278904Z Switched to a new branch 'exp/bench-75'
+2026-10-13T10:59:20.1280416Z branch 'exp/bench-75' set up to track 'origin/exp/bench-75'.
+2026-10-13T10:59:20.1297867Z ##[endgroup]
+2026-10-13T10:59:20.1344297Z [command]/usr/bin/git log -1 --format=%H
+2026-10-13T10:59:20.1373151Z 73c7add8269fc282fa600e2f81bdbd6598f181b9
+2026-10-13T10:59:20.1668442Z ##[group]Run actions/setup-go@v7
+2026-10-13T10:59:20.1669082Z with:
+2026-10-13T10:59:20.1669399Z   go-version: 1.27.2
+2026-10-13T10:59:20.1669877Z   check-latest: false
+2026-10-13T10:59:20.1673088Z   token: ***
+2026-10-13T10:59:20.1673433Z   cache: true
+2026-10-13T10:59:20.1673834Z ##[endgroup]
+2026-10-13T10:59:20.2697760Z Setup go version spec 1.27.2
+2026-10-13T10:59:20.2704885Z Attempting to download 1.27.2...
+2026-10-13T10:59:20.9402296Z matching 1.27.2...
+2026-10-13T10:59:20.9424826Z Acquiring 1.27.2 from https://github.com/actions/go-versions/releases/download/1.27.2-37875086547/go-1.27.2-linux-arm64.tar.gz
+2026-10-13T10:59:21.6060889Z Extracting Go...
+2026-10-13T10:59:21.6172601Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/9ccb4d4c-0cb3-4a57-94c4-435d82b887f8 -f /home/runner/work/_temp/4ebf882a-6767-4d33-bbc5-88d97c66bc62
+2026-10-13T10:59:22.7843766Z Successfully extracted go to /home/runner/work/_temp/9ccb4d4c-0cb3-4a57-94c4-435d82b887f8
+2026-10-13T10:59:22.7844494Z Adding to the cache ...
+2026-10-13T10:59:28.7863443Z Successfully cached go to /opt/hostedtoolcache/go/1.27.2/arm64
+2026-10-13T10:59:28.7870657Z Added go to the path
+2026-10-13T10:59:28.7870964Z Successfully set up Go version 1.27.2
+2026-10-13T10:59:28.8064557Z [command]/opt/hostedtoolcache/go/1.27.2/arm64/bin/go env GOMODCACHE
+2026-10-13T10:59:28.8101828Z [command]/opt/hostedtoolcache/go/1.27.2/arm64/bin/go env GOCACHE
+2026-10-13T10:59:28.8141014Z /home/runner/go/pkg/mod
+2026-10-13T10:59:28.8157110Z /home/runner/.cache/go-build
+2026-10-13T10:59:29.0430256Z Cache hit for: setup-go-Linux-arm64-ubuntu24-arm64-go-1.27.2-8cbff490f0896599ff84db5698cb77d13d11112145a9472b484ec3879d548c84
+2026-10-13T10:59:29.9248994Z Received 13823852 of 13823852 (100.0%), 18.4 MBs/sec
+2026-10-13T10:59:29.9249466Z Cache Size: ~13 MB (13823852 B)
+2026-10-13T10:59:29.9275736Z [command]/usr/bin/tar -xf /home/runner/work/_temp/8ab76cae-0836-4199-abcf-619981ae04f5/cache.tzst -P -C /home/runner/work/tigerstore/tigerstore --use-compress-program unzstd
+2026-10-13T10:59:29.9944581Z Cache restored successfully
+2026-10-13T10:59:29.9956478Z Cache restored from key: setup-go-Linux-arm64-ubuntu24-arm64-go-1.27.2-8cbff490f0896599ff84db5698cb77d13d11112145a9472b484ec3879d548c84
+2026-10-13T10:59:29.9984078Z go version go1.27.2 linux/arm64
+2026-10-13T10:59:29.9984399Z 
+2026-10-13T10:59:29.9984989Z ##[group]go env
+2026-10-13T10:59:30.0111967Z AR='ar'
+2026-10-13T10:59:30.0112541Z CC='gcc'
+2026-10-13T10:59:30.0112858Z CGO_CFLAGS='-O2 -g'
+2026-10-13T10:59:30.0113195Z CGO_CPPFLAGS=''
+2026-10-13T10:59:30.0113466Z CGO_CXXFLAGS='-O2 -g'
+2026-10-13T10:59:30.0114108Z CGO_ENABLED='1'
+2026-10-13T10:59:30.0114467Z CGO_FFLAGS='-O2 -g'
+2026-10-13T10:59:30.0114809Z CGO_LDFLAGS='-O2 -g'
+2026-10-13T10:59:30.0115139Z CXX='g++'
+2026-10-13T10:59:30.0115384Z GCCGO='gccgo'
+2026-10-13T10:59:30.0115621Z GO111MODULE=''
+2026-10-13T10:59:30.0115899Z GOARCH='arm64'
+2026-10-13T10:59:30.0116181Z GOARM64='v8.0'
+2026-10-13T10:59:30.0116465Z GOAUTH='netrc'
+2026-10-13T10:59:30.0116736Z GOBIN='/home/runner/go/bin'
+2026-10-13T10:59:30.0117046Z GOCACHE='/home/runner/.cache/go-build'
+2026-10-13T10:59:30.0117441Z GOCACHEPROG=''
+2026-10-13T10:59:30.0117678Z GODEBUG=''
+2026-10-13T10:59:30.0117965Z GOENV='/home/runner/.config/go/env'
+2026-10-13T10:59:30.0118264Z GOEXE=''
+2026-10-13T10:59:30.0118503Z GOEXPERIMENT=''
+2026-10-13T10:59:30.0118817Z GOFIPS140='off'
+2026-10-13T10:59:30.0119056Z GOFLAGS=''
+2026-10-13T10:59:30.0119790Z GOGCCFLAGS='-fPIC -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build3060865806=/tmp/go-build -gno-record-gcc-switches'
+2026-10-13T10:59:30.0120499Z GOHOSTARCH='arm64'
+2026-10-13T10:59:30.0120747Z GOHOSTOS='linux'
+2026-10-13T10:59:30.0121503Z GOINSECURE=''
+2026-10-13T10:59:30.0122204Z GOMOD='/home/runner/work/tigerstore/tigerstore/go.mod'
+2026-10-13T10:59:30.0122681Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-10-13T10:59:30.0122980Z GONOPROXY=''
+2026-10-13T10:59:30.0123206Z GONOSUMDB=''
+2026-10-13T10:59:30.0123792Z GOOS='linux'
+2026-10-13T10:59:30.0124089Z GOPACKAGESDRIVER=''
+2026-10-13T10:59:30.0124411Z GOPATH='/home/runner/go'
+2026-10-13T10:59:30.0124681Z GOPRIVATE=''
+2026-10-13T10:59:30.0125061Z GOPROXY='https://proxy.golang.org,direct'
+2026-10-13T10:59:30.0125510Z GOROOT='/opt/hostedtoolcache/go/1.27.2/arm64'
+2026-10-13T10:59:30.0125857Z GOSUMDB='sum.golang.org'
+2026-10-13T10:59:30.0126170Z GOTELEMETRY='local'
+2026-10-13T10:59:30.0126477Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-10-13T10:59:30.0126882Z GOTMPDIR=''
+2026-10-13T10:59:30.0127130Z GOTOOLCHAIN='local'
+2026-10-13T10:59:30.0127503Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.2/arm64/pkg/tool/linux_arm64'
+2026-10-13T10:59:30.0127928Z GOVCS=''
+2026-10-13T10:59:30.0128214Z GOVERSION='go1.27.2'
+2026-10-13T10:59:30.0128485Z GOWORK=''
+2026-10-13T10:59:30.0128738Z PKG_CONFIG='pkg-config'
+2026-10-13T10:59:30.0128911Z 
+2026-10-13T10:59:30.0129381Z ##[endgroup]
+2026-10-13T10:59:30.0318173Z ##[group]Run timeout --kill-after=5s 820s bash experiments/bench75/run.sh
+2026-10-13T10:59:30.0318874Z [36;1mtimeout --kill-after=5s 820s bash experiments/bench75/run.sh[0m
+2026-10-13T10:59:30.0452024Z shell: /usr/bin/bash -e {0}
+2026-10-13T10:59:30.0452631Z env:
+2026-10-13T10:59:30.0452914Z   GOTOOLCHAIN: local
+2026-10-13T10:59:30.0453173Z   CLIENTS: 256
+2026-10-13T10:59:30.0453562Z   BASELINE_REF: 8efd83a173394dd94a3981c72b4c51a1f3d061f1
+2026-10-13T10:59:30.0453916Z   WORKLOAD: cas
+2026-10-13T10:59:30.0454287Z   CANDIDATE_REF: 6179f12c2bbaaffc9960782533ad83c292605962
+2026-10-13T10:59:30.0454642Z   SECOND_CANDIDATE_REF: 
+2026-10-13T10:59:30.0455019Z   THIRD_CANDIDATE_REF: 
+2026-10-13T10:59:30.0455390Z   CAPTURE_PROFILES: 0
+2026-10-13T10:59:30.0455668Z ##[endgroup]
+2026-10-13T10:59:30.1435238Z TARGET SOURCE    FSTYPE OPTIONS
+2026-10-13T10:59:30.1436837Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+2026-10-13T10:59:30.1493444Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-10-13T10:59:30.1494486Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-10-13T10:59:30.1494786Z 
+2026-10-13T10:59:30.3215900Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-10-13T10:59:30.3217327Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-10-13T10:59:30.5353955Z 
+2026-10-13T10:59:30.5355173Z 100 20.9M  100 20.9M    0     0  54.2M      0 --:--:-- --:--:-- --:--:-- 54.2M
+2026-10-13T10:59:30.8755931Z /home/runner/work/_temp/bench75/bin/etcd: OK
+2026-10-13T10:59:31.3364434Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+2026-10-13T10:59:31.3373199Z go: downloading go.etcd.io/raft/v3 v3.7.0
+2026-10-13T10:59:31.3390634Z go: downloading google.golang.org/grpc v1.84.0
+2026-10-13T10:59:31.5783251Z go: downloading google.golang.org/protobuf v1.36.11
+2026-10-13T10:59:31.8054967Z go: downloading golang.org/x/net v0.58.0
+2026-10-13T10:59:31.8596140Z go: downloading github.com/golang/protobuf v1.5.4
+2026-10-13T10:59:31.8597578Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+2026-10-13T10:59:31.9175799Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+2026-10-13T10:59:32.1897593Z go: downloading github.com/google/btree v1.1.3
+2026-10-13T10:59:32.1998083Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+2026-10-13T10:59:32.2059965Z go: downloading golang.org/x/sys v0.47.0
+2026-10-13T10:59:32.2120111Z go: downloading golang.org/x/text v0.41.0
+2026-10-13T10:59:46.9214478Z ok  	github.com/djosh34/tigerstore/experiments/bench75/load	0.004s
+2026-10-13T10:59:47.1624446Z certificates in /home/runner/work/_temp/bench75/certs
+2026-10-13T10:59:47.2414866Z cas, 256 clients, repetition 1, baseline
+2026-10-13T10:59:53.0177497Z cas, 256 clients, repetition 1, candidate
+2026-10-13T10:59:59.0009692Z cas, 256 clients, repetition 1, etcd
+2026-10-13T11:00:35.3848698Z cas, 256 clients, repetition 2, etcd
+2026-10-13T11:01:11.8086552Z cas, 256 clients, repetition 2, candidate
+2026-10-13T11:01:18.0325638Z cas, 256 clients, repetition 2, baseline
+2026-10-13T11:01:24.0243528Z cas, 256 clients, repetition 3, baseline
+2026-10-13T11:01:30.0210805Z cas, 256 clients, repetition 3, candidate
+2026-10-13T11:01:35.9538227Z cas, 256 clients, repetition 3, etcd
+2026-10-13T11:02:12.6489893Z cas, 256 clients, repetition 4, etcd
+2026-10-13T11:02:48.9150903Z cas, 256 clients, repetition 4, candidate
+2026-10-13T11:02:55.0964992Z cas, 256 clients, repetition 4, baseline
+2026-10-13T11:03:01.6442256Z cas, 256 clients, repetition 5, baseline
+2026-10-13T11:03:07.4358170Z cas, 256 clients, repetition 5, candidate
+2026-10-13T11:03:13.6126646Z cas, 256 clients, repetition 5, etcd
+2026-10-13T11:03:50.1376567Z cas 256 baseline     26645.0 op/s, p50/p99 8.798/20.555 ms, leader/total CPU 35.667/62.333 us/op, allocations 72.60 objects and 11653.8 bytes/op, leader syscr/syscw 0.6225833333333334/0.35263333333333335
+2026-10-13T11:03:50.1378054Z cas 256 candidate    26471.6 op/s, p50/p99 8.826/19.790 ms, leader/total CPU 35.667/64.500 us/op, allocations 77.22 objects and 9058.4 bytes/op, leader syscr/syscw 0.5990666666666666/0.35331666666666667
+2026-10-13T11:03:50.1379502Z cas 256 etcd          3320.0 op/s, p50/p99 75.598/124.131 ms, leader/total CPU 238.000/325.167 us/op, allocations 333.50 objects and 40832.0 bytes/op, leader syscr/syscw 0.39781666666666665/4.07215
+2026-10-13T11:03:50.2341611Z ##[group]Run actions/upload-artifact@v6
+2026-10-13T11:03:50.2342292Z with:
+2026-10-13T11:03:50.2342659Z   name: bench75-38387063293-cas-256
+2026-10-13T11:03:50.2342990Z   path: evidence/bench75/run-38387063293
+2026-10-13T11:03:50.2343338Z   retention-days: 14
+2026-10-13T11:03:50.2343612Z   if-no-files-found: warn
+2026-10-13T11:03:50.2343930Z   compression-level: 6
+2026-10-13T11:03:50.2344272Z   overwrite: false
+2026-10-13T11:03:50.2344528Z   include-hidden-files: false
+2026-10-13T11:03:50.2344833Z env:
+2026-10-13T11:03:50.2345060Z   GOTOOLCHAIN: local
+2026-10-13T11:03:50.2345339Z ##[endgroup]
+2026-10-13T11:03:50.4261554Z With the provided path, there will be 263 files uploaded
+2026-10-13T11:03:50.4267125Z Artifact name is valid!
+2026-10-13T11:03:50.4267968Z Root directory input is valid!
+2026-10-13T11:03:50.7121244Z Beginning upload of artifact content to blob storage
+2026-10-13T11:03:51.2477808Z Uploaded bytes 534029
+2026-10-13T11:03:51.2876833Z Finished uploading artifact content to blob storage!
+2026-10-13T11:03:51.2877801Z SHA256 digest of uploaded artifact zip is a03da0b3ddfae3bde87e4f166c3d7c97d7c9fbf3ed87443b89c8f18a0c4b220e
+2026-10-13T11:03:51.2882337Z Finalizing artifact upload
+2026-10-13T11:03:51.5933090Z Artifact bench75-38387063293-cas-256.zip successfully finalized. Artifact ID 11807157284
+2026-10-13T11:03:51.5934724Z Artifact bench75-38387063293-cas-256 has been successfully uploaded! Final size is 534029 bytes. Artifact ID is 11807157284
+2026-10-13T11:03:51.5938621Z Artifact download URL: https://github.com/djosh34/tigerstore/actions/runs/38387063293/artifacts/11807157284
+2026-10-13T11:03:51.6153491Z Post job cleanup.
+2026-10-13T11:03:51.7175178Z [command]/opt/hostedtoolcache/go/1.27.2/arm64/bin/go env GOMODCACHE
+2026-10-13T11:03:51.7222002Z [command]/opt/hostedtoolcache/go/1.27.2/arm64/bin/go env GOCACHE
+2026-10-13T11:03:51.7252293Z /home/runner/go/pkg/mod
+2026-10-13T11:03:51.7280722Z /home/runner/.cache/go-build
+2026-10-13T11:03:51.7282386Z Cache hit occurred on the primary key setup-go-Linux-arm64-ubuntu24-arm64-go-1.27.2-8cbff490f0896599ff84db5698cb77d13d11112145a9472b484ec3879d548c84, not saving cache.
+2026-10-13T11:03:51.7435405Z Post job cleanup.
+2026-10-13T11:03:51.8216951Z [command]/usr/bin/git version
+2026-10-13T11:03:51.8273118Z git version 2.55.0
+2026-10-13T11:03:51.8303633Z Temporarily overriding HOME='/home/runner/work/_temp/7c57d008-e469-4685-869e-741d3606442c' before making global git config changes
+2026-10-13T11:03:51.8316744Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T11:03:51.8329426Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T11:03:51.8357685Z Removing SSH command configuration
+2026-10-13T11:03:51.8366034Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T11:03:51.8414227Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T11:03:51.8633131Z Removing HTTP extra header
+2026-10-13T11:03:51.8634323Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T11:03:51.8676180Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T11:03:51.8909909Z Removing includeIf entries pointing to credentials config files
+2026-10-13T11:03:51.8910845Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T11:03:51.8927451Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T11:03:51.8932473Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T11:03:51.8933217Z includeif.gitdir:/github/workspace/.git.path
+2026-10-13T11:03:51.8933652Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T11:03:51.8938039Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T11:03:51.8965841Z /home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T11:03:51.8988298Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-d33117dd\-c02c\-45ae\-a8f9\-d2bc6e0ecbca\.config
+2026-10-13T11:03:51.9047957Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T11:03:51.9078156Z /home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T11:03:51.9086582Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-d33117dd\-c02c\-45ae\-a8f9\-d2bc6e0ecbca\.config
+2026-10-13T11:03:51.9125904Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-13T11:03:51.9155796Z /github/runner_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T11:03:51.9163030Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-d33117dd\-c02c\-45ae\-a8f9\-d2bc6e0ecbca\.config
+2026-10-13T11:03:51.9203282Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T11:03:51.9228827Z /github/runner_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config
+2026-10-13T11:03:51.9236579Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-d33117dd\-c02c\-45ae\-a8f9\-d2bc6e0ecbca\.config
+2026-10-13T11:03:51.9277168Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T11:03:51.9481486Z Removing credentials config '/home/runner/work/_temp/git-credentials-d33117dd-c02c-45ae-a8f9-d2bc6e0ecbca.config'
+2026-10-13T11:03:51.9637449Z Cleaning up orphan processes

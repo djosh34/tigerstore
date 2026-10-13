@@ -1,0 +1,56 @@
+[
+  {
+    "module": "google.golang.org/protobuf",
+    "version": "v1.36.11",
+    "url": "https://proxy.golang.org/google.golang.org/protobuf/@v/v1.36.11.zip",
+    "zip_sha256": "14983d36c56a814ed91b6d652f2b8f895baba1b84eb43b28a0b132c8637cd274",
+    "h1": "h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=",
+    "server_go_sum_match": true,
+    "api_go_sum_match": true
+  },
+  {
+    "module": "google.golang.org/grpc",
+    "version": "v1.83.2",
+    "url": "https://proxy.golang.org/google.golang.org/grpc/@v/v1.83.2.zip",
+    "zip_sha256": "84292905a694e17862d15abc123a6f7f7efa9e1e3a77e80120982ff95b2605ea",
+    "h1": "h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=",
+    "server_go_sum_match": true,
+    "api_go_sum_match": true
+  },
+  {
+    "module": "go.etcd.io/raft/v3",
+    "version": "v3.7.0",
+    "url": "https://proxy.golang.org/go.etcd.io/raft/v3/@v/v3.7.0.zip",
+    "zip_sha256": "1dd9bfb2dc99832d7a236d2a4a39f4a8cdb3fbbbe28187ec8c0a478f7a96cec7",
+    "h1": "h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=",
+    "server_go_sum_match": true,
+    "api_go_sum_match": false
+  },
+  {
+    "module": "go.etcd.io/bbolt",
+    "version": "v1.5.0",
+    "url": "https://proxy.golang.org/go.etcd.io/bbolt/@v/v1.5.0.zip",
+    "zip_sha256": "2c350ca36afba707b917529a8049b001c71915c99c152d5e2600ed4bac6fbc37",
+    "h1": "h1:S7GAl7Fxv12yohbwFfIbQCGDWbQbtDGPET4P/bD4lxU=",
+    "server_go_sum_match": true,
+    "api_go_sum_match": false
+  },
+  {
+    "module": "go.etcd.io/etcd/api/v3",
+    "version": "v3.7.2",
+    "url": "https://proxy.golang.org/go.etcd.io/etcd/api/v3/@v/v3.7.2.zip",
+    "zip_sha256": "b52e6fca1e54f0d47974fe625b2b1ecf1a2d94da703ecaa4bf248976cb120cc3",
+    "h1": "h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=",
+    "server_go_sum_match": false,
+    "api_go_sum_match": false
+  },
+  {
+    "module": "github.com/golang/protobuf",
+    "version": "v1.5.4",
+    "url": "https://proxy.golang.org/github.com/golang/protobuf/@v/v1.5.4.zip",
+    "zip_sha256": "9a2f43d3eac8ceda506ebbeb4f229254b87235ce90346692a0e233614182190b",
+    "h1": "h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=",
+    "server_go_sum_match": true,
+    "api_go_sum_match": true
+  }
+]

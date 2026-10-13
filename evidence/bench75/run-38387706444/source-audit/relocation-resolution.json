@@ -1,0 +1,119 @@
+[
+  {
+    "target": "main",
+    "old_site_id": "release-request",
+    "verified_replacement_id": "release-request",
+    "file": "internal/server/batch.go",
+    "line": 268,
+    "expected": "c.releaseReqLocked(f.st)",
+    "sha": "8efd83a173394dd94a3981c72b4c51a1f3d061f1"
+  },
+  {
+    "target": "wire",
+    "old_site_id": "release-request",
+    "verified_replacement_id": "release-request",
+    "file": "internal/server/batch.go",
+    "line": 268,
+    "expected": "c.releaseReqLocked(f.st)",
+    "sha": "936bc5b69ae8a0c59585521734b41222006a0a2c"
+  },
+  {
+    "target": "hpack",
+    "old_site_id": "batch-core-submit",
+    "verified_replacement_id": "batch-core-submit",
+    "file": "internal/node/node.go",
+    "line": 448,
+    "expected": "n.core.SubmitAll(b.reqs)",
+    "sha": "129e49a842b4802e9a36b74c830b3538525f846f"
+  },
+  {
+    "target": "hpack",
+    "old_site_id": "wire-reply-encode",
+    "verified_replacement_id": "wire-reply-encode",
+    "file": "internal/server/batch.go",
+    "line": 265,
+    "expected": "msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)",
+    "sha": "129e49a842b4802e9a36b74c830b3538525f846f"
+  },
+  {
+    "target": "hpack",
+    "old_site_id": "stream-deadline",
+    "verified_replacement_id": "stream-deadline",
+    "file": "internal/server/h2.go",
+    "line": 593,
+    "expected": "st.deadline = time.AfterFunc(h.timeout, st.expire)",
+    "sha": "129e49a842b4802e9a36b74c830b3538525f846f"
+  },
+  {
+    "target": "hpack",
+    "old_site_id": "manual-response-prefix",
+    "verified_replacement_id": "manual-response-prefix",
+    "file": "internal/server/batch.go",
+    "line": 318,
+    "expected": "b = append(b, 0, 0, 0, 0, 0)",
+    "sha": "129e49a842b4802e9a36b74c830b3538525f846f"
+  },
+  {
+    "target": "hpack",
+    "old_site_id": "release-request",
+    "verified_replacement_id": "release-request",
+    "file": "internal/server/batch.go",
+    "line": 277,
+    "expected": "c.releaseReqLocked(f.st)",
+    "sha": "129e49a842b4802e9a36b74c830b3538525f846f"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "batch-core-submit",
+    "verified_replacement_id": "batch-core-submit",
+    "file": "internal/node/node.go",
+    "line": 448,
+    "expected": "n.core.SubmitAll(b.reqs)",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "wire-reply-encode",
+    "verified_replacement_id": "wire-reply-encode",
+    "file": "internal/server/batch.go",
+    "line": 267,
+    "expected": "msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "stream-deadline",
+    "verified_replacement_id": "stream-deadline",
+    "file": "internal/server/h2.go",
+    "line": 593,
+    "expected": "st.deadline = time.AfterFunc(h.timeout, st.expire)",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "manual-response-prefix",
+    "verified_replacement_id": "manual-response-prefix",
+    "file": "internal/server/batch.go",
+    "line": 320,
+    "expected": "b = append(b, 0, 0, 0, 0, 0)",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "generic-apply-still-exists",
+    "verified_replacement_id": "alias-apply",
+    "file": "internal/core/node.go",
+    "line": 872,
+    "expected": "if err := UnmarshalAlias(b, op); err != nil {",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  {
+    "target": "txn",
+    "old_site_id": "release-request",
+    "verified_replacement_id": "release-request",
+    "file": "internal/server/batch.go",
+    "line": 279,
+    "expected": "c.releaseReqLocked(f.st)",
+    "sha": "6179f12c2bbaaffc9960782533ad83c292605962"
+  }
+]

@@ -1,0 +1,10 @@
+Part of #50. Stacked on #79; the base becomes `main` as the stack merges.
+
+#77 kept Puts in wire form and applied them in place. Kubernetes writes are transactions (compare the mod revision, then put, else range), and those still went through a marshal into the entry and a `proto.Unmarshal` at apply on every replica. That apply copied every key and value, so transaction values sat in memory twice: once in the log, once in the index. This PR closes that gap for every write.
+
+- **`core.UnmarshalAlias`** decodes like `proto.Unmarshal`, but bytes fields are clipped slices of the input instead of copies. It walks the wire format with protowire and sets fields through protoreflect, so protobuf's rules hold without hand-written code per message. The last scalar wins. A repeated message field appends. A singular message field or oneof member that comes again merges into the first, and another oneof member replaces it. Unknown fields and fields of the wrong wire type are kept as unknown. Malformed input fails. `TestUnmarshalAliasMatchesProtobuf` compares it with `proto.Unmarshal` (`proto.Equal`, error or not) on 3,000 random transactions with every compare and operation kind, nested transactions, concatenations of two encodings (which protobuf merges), unknown and mistyped fields, and random truncations. `TestUnmarshalAliasShares` checks that values are slices of the input.
+- **Frontend.** The reader decodes every batched request (Range, DeleteRange, Txn, Compact, the unary Lease calls) with it and passes the body along as `Request.Wire`. Puts keep `ParsePut`.
+- **Entry.** `encodeBatch` appends `Request.Wire` as it is instead of marshaling the request again, so a transaction is encoded once, by its client. A LeaseGrant whose ID the node picks drops its wire form and is marshaled, since its request changed.
+- **Apply.** Every write that is not a put is decoded with `UnmarshalAlias`, so the index keeps keys and values as slices of the entry on every replica.
+
+Local: `go test -race -short` of server, core and node, 48 simulator seeds, the difftest against the recorded etcd v3.7.2 answers, and golangci-lint pass.

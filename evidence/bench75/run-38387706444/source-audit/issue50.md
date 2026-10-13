@@ -1,0 +1,491 @@
+Part of [Map: tigerstore, a faster etcd for Kubernetes](https://github.com/djosh34/tigerstore/issues/1). Outcome issue 4 of 6, after [Brutal real-process chaos](https://github.com/djosh34/tigerstore/issues/49). Follow [Playbook: run plan 1](https://github.com/djosh34/tigerstore/issues/46).
+
+## Goal
+
+tigerstore is measured against etcd honestly, the speed-of-light numbers are known, and the first tournament round has made it faster.
+
+## Done when
+
+- A lean load generator (raw HTTP/2 gRPC, many streams per connection, prebuilt requests, open-loop arrivals with recorded latency) drives both etcd 3.7.2 and tigerstore with Put, CAS Txn, Delete, Range and Watch workloads at 1 KiB and 10 KiB values and Kubernetes-shaped keys. ([Load generator and speed metrics](https://github.com/djosh34/tigerstore/issues/45))
+- Benchmarks run on free `ubuntu-24.04-arm` runners, one benchmark per job, with the core layout reported and identical for etcd ([Core layout on the runner](https://github.com/djosh34/tigerstore/issues/54)), 5 repetitions, etcd and tigerstore back to back in the same job with disk write barriers on, with node-to-node delay of 0, 1, 5 and 10 ms through the fault proxy. They report throughput, latency percentiles and server CPU microseconds per operation, for both stores. etcd's own benchmark tool runs as a second view. At least one run of the same benchmarks also happens on this host, labelled as host results. ([Benchmark venue](https://github.com/djosh34/tigerstore/issues/31))
+- A max-objects test grows the live object count of each store until something fails, with etcd at its 8 GiB suggested quota and again uncapped (quota above the runner's disk), and tigerstore uncapped. The workload and pass rules are written in `docs/performance.md` before the run, and the result names what failed first (memory, disk, latency or errors) and at which count.
+- A kube-burner run (create, update and mass-delete churn) compares both stores at the Kubernetes level.
+- `docs/performance.md` has the measured single-core cost of every step of a request on the runner, the derived upper bound per operation, and the latest results table against etcd.
+- One tournament round of 2 to 3 bold ideas ran as the playbook says, with every idea's numbers posted here. ([How the optimization phase works](https://github.com/djosh34/tigerstore/issues/38))
+- The red team ran after every merged core change, and no red-team `bug` issue is open.
+- Merged as the playbook says.
+
+
+## 6133988913 2026-10-12T22:40:15Z djosh34
+## Pre-work for #50 and the paused load generator
+
+Measured on free `ubuntu-24.04-arm` runners. Nothing merged. Read #46, #1, #26, #28, #54, this issue and `docs/design.md` at main `91c4f97`.
+
+- [Baseline experiment branch](https://github.com/djosh34/tigerstore/tree/exp/pre-50-bench), measured code [`e6a8ddc`](https://github.com/djosh34/tigerstore/tree/e6a8ddce19d6f78981a3019e5d723893dcea08f8/experiments/pre50), successful [run 38316625259](https://github.com/djosh34/tigerstore/actions/runs/38316625259).
+- [Primitive experiment branch](https://github.com/djosh34/tigerstore/tree/exp/pre50-primitives), measured code [`28edcb7`](https://github.com/djosh34/tigerstore/tree/28edcb7fe4d96394e814331d4987961f79857087/experiments/pre50-primitives), successful [run 38316850699](https://github.com/djosh34/tigerstore/actions/runs/38316850699). [Detailed methods, audit and archived raw results](https://github.com/djosh34/tigerstore/tree/cdac73a913de2f9131362f9f39de2464aebbffa0/docs/experiments/pre50-primitives).
+- [Baseline raw results, JSON summaries and load-generator probes](https://github.com/djosh34/tigerstore/tree/exp/pre-50-bench/evidence/pre50). Archives preserve the evidence beyond Actions artifact expiry.
+
+### Runner and barriers
+
+All three successful jobs exposed four Neoverse-N2 cores, one thread per core, AES/PMULL instructions, 128 MiB shared L3, and 16,722,010,112 bytes RAM. Image `ubuntu24-arm64 20261004.142.1`, Linux `6.17.0-1022-azure`. Disk was one 150 GiB virtual `sda`, with ext4 `/dev/sda1` mounted at `/`. Filesystem capacity was 154,894,188,544 bytes and initial available space about 114.58 GB. `ROTA=1` describes the virtual device, not proof of physical spinning media. These are observed allocations, not a promise about future runners.
+
+#26 left `nobarrier` enabled. #28 remounted the existing root filesystem, rather than creating a loop device. I repeated that setup. Exact commands, only on the disposable runner:
+
+```sh
+lscpu
+free -b
+lsblk -b -o NAME,SIZE,TYPE,ROTA,MODEL,MOUNTPOINTS
+df -B1 "$PWD"
+findmnt -T "$PWD"
+sudo mount -o remount,barrier=1 /
+findmnt -T "$PWD" -o TARGET,SOURCE,FSTYPE,OPTIONS
+test "$(findmnt -T "$PWD" -n -o FSTYPE)" = ext4
+! findmnt -T "$PWD" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'
+```
+
+The resulting options were `rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback`. Default-enabled barriers need not appear as `barrier=1`. All data files were on this mount. No loop filesystem was needed or measured. Successful fsync and guest barriers do not prove physical power-loss protection or the hypervisor's persistence contract. Three replicas here share one failure domain.
+
+Five repetitions per disk case, one pinned writer, initialized 64 MiB files, cyclic overwrites, two-second windows. `File.Sync` means fsync, whereas etcd normally uses fdatasync. Values below are medians of per-run statistics, in microseconds per batch.
+
+| Batch | Write+fsync mean wall | Write+fsync CPU | Fsync-only mean wall | Fsync-only CPU | Write+fsync p50 / p99 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 4 KiB | 80.020 | 17.040 | 75.073 | 12.762 | 67.922 / 192.070 |
+| 64 KiB | 186.556 | 27.812 | 174.442 | 16.337 | 90.123 / 4,298.948 |
+| 1 MiB | 2,940.971 | 128.839 | 2,850.996 | 41.696 | 482.711 / 9,158.978 |
+
+Completed write+sync rates were 12,496.8, 5,360.3 and 340.0 batches/s. The probe-pair overhead was 0.852 us and was not subtracted. These tests exclude file growth and segment installation. Do not substitute the 1 MiB p50 for its much larger mean when estimating throughput. The difference from #28's fsync numbers is not a controlled speedup; initialization, VM and workload differ.
+
+### Etcd's own benchmark, five repetitions
+
+Unmodified release etcd **v3.7.2**, upstream commit `68c065e562994b89e333e77b039ad066f933c586`, built with Go **1.26.8**. Etcd SHA-256 `17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d`. Upstream `tools/benchmark` came from that same source commit and was built with Go **1.27.2**. Its SHA-256 was `62d144d8899b4e4d80438a9d2416ac528842c1acc7db427e2abb275f14e3ccca` in both jobs.
+
+Two candidate layouts for #54:
+
+| Layout | Leader n0 | Follower n1 | Follower n2 | Generator |
+| --- | --- | --- | --- | --- |
+| isolated | CPU 0, GOMAXPROCS=1 | CPU 1, GOMAXPROCS=1 | CPU 2, GOMAXPROCS=1 | CPU 3, GOMAXPROCS=1 |
+| leader2 | CPUs 0,1, GOMAXPROCS=2 | CPU 2, GOMAXPROCS=1 | CPU 2, GOMAXPROCS=1 | CPU 3, GOMAXPROCS=1 |
+
+Processes launch with `taskset -c <list>` and the stated `GOMAXPROCS`. Every observed server thread's affinity was checked. The driver transfers leadership to n0 before warmup and checks the leader afterward. No proxy or injected delay. The two layouts ran in separate jobs, not as a paired layout comparison on one allocated VM.
+
+Both client and peer links use certificate-authenticated TLS, with `--tls-min-version=TLS1.3 --tls-max-version=TLS1.3`. Nodes use separate data directories, an 8 GiB quota, default safe WAL/backend persistence, and default heartbeat, election, snapshot and backend batching settings. No auth policy, watches, compaction or defrag. Five fresh clusters per layout; each gets 20,000 warmup Puts, a one-second pause, then 300,000 measured Puts. The measured generator opens fresh connections, so connection setup is included.
+
+Exact measured command, with the test certificate paths abbreviated:
+
+```sh
+GOMAXPROCS=1 taskset -c 3 ./benchmark \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=cert.pem --cert=cert.pem --key=key.pem \
+  --conns=16 --clients=256 --precise \
+  put --key-size=64 --val-size=1024 \
+  --key-space-size=65536 --total=300000
+```
+
+This is closed-loop load against the leader, with random selection from 65,536 binary keys. It is not the Kubernetes-shaped, open-loop workload that the later generator must supply. It is a fixed concurrency measurement, not a demonstrated maximum. All ten windows had zero reported RPC errors, exactly 300,000 leader revision increments and zero leader-change counter increments.
+
+| Layout | Rep | Put/s | Mean ms | p50 ms | p99 ms | p99.9 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| isolated | 1 | 4,499.0 | 56.833 | 51.495 | 115.148 | 250.037 |
+| isolated | 2 | 4,610.6 | 55.443 | 50.815 | 102.892 | 117.531 |
+| isolated | 3 | 4,707.9 | 54.319 | 49.782 | 102.231 | 118.316 |
+| isolated | 4 | 4,698.8 | 54.403 | 49.538 | 102.384 | 124.546 |
+| isolated | 5 | 4,722.7 | 54.148 | 49.429 | 101.927 | 116.686 |
+| leader2 | 1 | 8,278.0 | 30.857 | 25.493 | 90.390 | 313.841 |
+| leader2 | 2 | 9,041.3 | 28.222 | 24.899 | 56.518 | 68.510 |
+| leader2 | 3 | 8,969.0 | 28.458 | 25.092 | 56.591 | 67.994 |
+| leader2 | 4 | 8,997.7 | 28.372 | 24.940 | 57.440 | 70.950 |
+| leader2 | 5 | 9,010.8 | 28.330 | 24.713 | 58.278 | 70.073 |
+
+Median rates are **4,698.8** and **8,997.7 Put/s**. These do not contradict #26's 27k/s. That experiment had different placement, concurrency, 256-byte values, plaintext links and `nobarrier`. This experiment does not isolate which change caused the difference.
+
+### Request costs and conditional one-core budgets
+
+All primitive cases ran five times with one pinned CPU per process and `GOMAXPROCS=1`. Go **1.27.2**, etcd API **3.7.2**, Raft **3.7.0**, grpc-go **1.83.2**, protobuf **1.36.11**, x/net **0.58.0**. The primitive runner was a separate VM from the baseline jobs. Costs are process user+system CPU, not elapsed I/O wait.
+
+The last column is `1,000,000 / CPU_us`, for one invocation per write. It is an implementation budget if that step were the only CPU cost, not a database throughput claim. For fsync, `B` is writes per batch. Overlapping rows must not be added.
+
+| Step | Median CPU us | Wall measurement | CPU-only writes/s/core |
+| --- | ---: | --- | ---: |
+| TLS 1.3 record decrypt, 1 KiB | 0.49799 | 0.49794 us | 2.008M |
+| TLS 1.3 record encrypt, 1 KiB | 0.44795 | 0.44824 us | 2.232M |
+| HTTP/2 DATA frame parse, 1 KiB | 0.12073 | 0.12073 us | 8.283M |
+| gRPC envelope + PutRequest decode | 0.53246 | 0.53254 us | 1.878M |
+| gRPC envelope + PutRequest encode, client-side reference | 0.51119 | 0.51122 us | 1.956M |
+| PutResponse envelope + encode, 11-byte fixture | 0.17009 | 0.17011 us | 5.879M |
+| TLS record encrypt, same small reply | 0.19178 | 0.19183 us | 5.214M |
+| Stock raft.MemoryStorage.Append | 0.03680 | 0.03680 us | 27.17M |
+| Custom entry metadata + 1 KiB copy | 0.03611 | 0.03612 us | 27.69M |
+| Entry protobuf + framed buffered file append, no sync | 0.29794 | 0.29792 us | 3.356M |
+| Fsync of a 64 KiB batch | 16.337 per batch | 174.442 us mean per batch | 61,211 × B |
+| Cached memcpy, 1 KiB | 0.02469 | 0.02469 us | 40.50M |
+| Three-node TLS exchange, memory copies only, leader CPU | 39.727 | Quorum p50 36.889 us, p99 56.266 us | 25,172 |
+| Three-node TLS exchange, fsync before ack, leader CPU | 102.418 | Quorum p50 347.547 us, p99 779.520 us | 9,764 |
+| Complete no-op TLS gRPC Put, 64 workers, server CPU | 19.037 | RPC p50 1,097.850 us, p99 3,152.718 us | 52,529 |
+| Actual etcd isolated leader, median | 184.200 | End-to-end table above | 5,429 |
+| Actual etcd leader2 leader, median | 192.800 | End-to-end table above | 5,187 per core |
+
+TLS measurements use actual `crypto/tls` record processing with `TLS_AES_128_GCM_SHA256`, but memory-backed connections, not sockets. Pure AES-GCM seal/open costs were 0.31844/0.32498 us per KiB. HTTP/2 parsing excludes HPACK, flow control and dispatch. Request codecs allocate fresh messages/buffers; their fixture has a 32-byte key and 1 KiB value, 1,061 encoded bytes. An ordinary server encodes a small PutResponse, not another 1 KiB PutRequest.
+
+`MemoryStorage.Append` retains prebuilt immutable entry pointers without copying the value. It is not `RawNode.Propose`, consensus or durable append. The buffered-file test includes ordinary 64 KiB flushes into page cache, but no fsync, WAL checksum, rotation or recovery format. The final partial-buffer flush is recorded separately. Cached memcpy is not DRAM bandwidth.
+
+The quorum prototype overlaps the leader's local append with sends to both followers. Quorum timing stops after local completion plus the first follower ack. It drains the other follower before the next entry. Measured all-drained rates were 19,191.2/s without fsync and 2,380.5/s with fsync. Follower CPU costs were 22.465/21.509 us and 98.244/82.076 us respectively. These are three-process exchanges, not a Raft implementation or pipelined quorum capacity.
+
+The complete no-op RPC reached 46,779/s with 64 workers, server CPU 19.037 us and client CPU 18.788 us. One worker reached 9,495/s and cost 58.892 server CPU us/op. Scheduling and batching change CPU/op. The complete RPC already includes TLS, HTTP/2 and codecs; do not add those rows again.
+
+For a declared model of 1,088 bytes per stored write, a 64 KiB batch holds 60 writes. Fsync CPU amortizes to `16.337/60 = 0.2723 us/write`. Combining complete no-op RPC, stock memory append, buffered append and this fsync term gives `19.037 + 0.03680 + 0.29794 + 0.2723 = 19.644 us`, or about **50,906 writes/s per leader core before peer replication, real Raft, apply, index and watches**. This is a conditional partial-work budget, not proof that tigerstore can reach it. A full integrated upper bound remains unproven.
+
+At etcd's observed CPU costs, the isolated leader's CPU-only budget is 5,429 Put/s. Two leader cores give 10,373 Put/s at the leader2 cost. Actual throughput was lower because CPU execution is not the only constraint. These are not immutable hardware ceilings, and no CPU profile here attributes etcd's remaining cost to individual subsystems.
+
+### Measuring server CPU per operation
+
+Read `/proc/<pid>/stat` before and after the same successful-operation window. Parse after the final `)` because the command name may contain spaces or parentheses. Fields 14 and 15 are user and system ticks; field 22 is start time. Use `getconf CLK_TCK`, which was 100 here. Reject a missing process or changed start time.
+
+```python
+fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+ticks = int(fields[11]) + int(fields[12])
+starttime = int(fields[19])
+# For matching before/after samples and N successful operations:
+cpu_us_per_op = 1e6 * (after_ticks - before_ticks) / CLK_TCK / N
+occupied_cores = (after_ticks - before_ticks) / CLK_TCK / elapsed_seconds
+```
+
+The process value already includes its threads. Do not sum thread CPU again or add child times. Sum the three process costs only when reporting total server CPU/op, and report the generator separately. It includes process runtime/GC and charged system CPU, but not I/O wait or all asynchronous kernel-worker/IRQ work.
+
+| Layout / rep | Leader CPU us/op | Follower1 | Follower2 | All servers | Generator |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| isolated / 1 | 184.567 | 39.600 | 37.267 | 261.433 | 54.167 |
+| isolated / 2 | 184.200 | 39.367 | 37.100 | 260.667 | 54.400 |
+| isolated / 3 | 182.967 | 39.433 | 36.867 | 259.267 | 54.500 |
+| isolated / 4 | 183.233 | 39.133 | 37.000 | 259.367 | 54.367 |
+| isolated / 5 | 184.500 | 39.733 | 37.367 | 261.600 | 55.000 |
+| leader2 / 1 | 192.800 | 34.533 | 35.067 | 262.400 | 49.433 |
+| leader2 / 2 | 191.933 | 34.667 | 34.267 | 260.867 | 49.033 |
+| leader2 / 3 | 192.967 | 35.033 | 34.233 | 262.233 | 49.933 |
+| leader2 / 4 | 192.533 | 35.100 | 34.433 | 262.067 | 49.367 |
+| leader2 / 5 | 194.533 | 34.500 | 35.167 | 264.200 | 49.700 |
+
+Median aggregate server CPU was 260.667 and 262.233 us/op. Median occupied server cores were 0.860/0.184/0.173 and 1.730/0.313/0.309. Etcd's `process_cpu_seconds_total` deltas agreed with `/proc` within 0.2 us/op; scrapes have different boundaries. A tick over 300,000 operations is 0.0333 us/op. The CPU window surrounds the entire benchmark subprocess, including its setup, drain and output, while the tool's throughput uses its own internal timer. The raw evidence records both intervals. Generator CPU uses `/usr/bin/time` to avoid an exit-time `/proc` race.
+
+### Paused load generator and pitfalls
+
+Remote `work/50-loadgen` did not exist when checked. The local branch did exist at `91c4f97` with uncommitted files. I copied it read-only for inspection and probes; the worker's checkout is untouched. [Snapshot, tests and full findings](https://github.com/djosh34/tigerstore/tree/exp/pre-50-bench/evidence/pre50/loadgen-review).
+
+The later worker should fix these before publishing comparisons:
+
+- Client and peer traffic are still plaintext. The scripts neither enable nor verify barriers, configure delay, nor record the actual layout and binary identity.
+- Latencies include only completions inside the window. A probe with 200 ms responses and a 100 ms window drained six successes but reported zero latency samples and zero unsent. Keep completion-window throughput separate from arrival-cohort latency through drain, and report censored/failed requests.
+- CPU-sampling failure can leave `errors={}` and zero CPU/op in the written result. The reporter also accepts failed runs. Add explicit validity and reject invalid rows.
+- Empty or duplicate unary responses count as successful operations. Require exactly one validated response.
+- Stale repetition files change the chosen offered rate. Failed cluster startup leaves sibling processes running. Use fresh run directories and cleanup traps.
+- Adjacent 10 KiB values share 6,141 bytes. A probe compressed their batch to 42.25% with gzip, versus 100.01% for non-overlapping random data. This proves input correlation, not a server compression gain.
+
+The linked report also covers early closed-loop starts, pre-write service timestamps and accepted NaN/infinite rates. Short tests, vet and race probes passed; they assert the defects, not fixes. Etcd integration tests were not run against this snapshot.
+
+My first baseline run, [38315892754](https://github.com/djosh34/tigerstore/actions/runs/38315892754), completed all ten measurement windows but failed afterward deleting read-only Go module-cache directories. The fix makes the owned tree writable before deletion. The successful rerun above is reported separately; the first run's raw data remains archived. No explanation based only on a green rerun is needed here: the failing cleanup command and permissions are in the original log.
+
+Reproduce on a fresh disposable runner with `LAYOUT=isolated bash experiments/pre50/run.sh`, or `LAYOUT=leader2`, from the baseline branch. The primitive branch runs `timeout 660 bash experiments/pre50-primitives/run.sh` after the remount. Both workflows trigger only on their experiment branches and have 15-minute job limits. Full certificate generation, node flags, commands, hashes, mount checks and raw counters are committed or archived at the links above.
+
+No tigerstore speedup, real crash durability, capacity maximum, delayed-network result or Kubernetes result is established by this pre-work. Both Sol helpers were deleted. Owned caches, temporary files and build output were cleaned. The experiment branches remain for the later worker; nothing should be merged from them.
+
+
+## 6134254344 2026-10-12T23:00:34Z djosh34
+Architect note for the first tournament round: the [custom client gRPC pre-work](https://github.com/djosh34/tigerstore/issues/47#issuecomment-6134109817) measured a per-connection custom HTTP/2 gRPC path on x/net's Framer and HPACK at 3.5 µs server CPU per 1 KiB Put against 9.4 µs for tuned grpc-go v1.84.0 (host results, one core, in-memory backend, no Raft or disk). #47 and #48 stay on grpc-go. The custom path behind the same core adapter, with grpc-go as reference and fallback, is a candidate idea for the first round here.
+
+## 6134373626 2026-10-12T23:10:32Z djosh34
+# Kubernetes compression pre-work for #50 and #52
+
+Two free `ubuntu-24.04-arm` jobs passed. Nothing merged.
+
+- [Experiment branch](https://github.com/djosh34/tigerstore/tree/exp/pre-50-compress).
+- Reported run [38319776822](https://github.com/djosh34/tigerstore/actions/runs/38319776822), measured code [`8dbff21`](https://github.com/djosh34/tigerstore/tree/8dbff21670d0fd9d43bc24804a68ed7203ceaf9b/experiments/compress50), job duration 5m39s.
+- Earlier successful run [38319154255](https://github.com/djosh34/tigerstore/actions/runs/38319154255), code `ef1add6`, duration 5m18s. It used the same measurement method before lint and timeout cleanup, but a different live snapshot. The tables below use only the reported run.
+- [Archived aggregate CSV, versions and workload counters](https://github.com/djosh34/tigerstore/tree/exp/pre-50-compress/evidence/compress50). Each run has 1,550 timing rows, 310 configurations and five repetitions per configuration. Raw values and trained dictionaries were never uploaded or committed. They can contain cluster credentials and were deleted with the disposable runner's temporary files.
+
+Read #46, #1, #50, #52 and `docs/design.md` on main `9c1b938` before the experiment.
+
+## Versions and commands
+
+Runner image `ubuntu24-arm64 20261004.142.1`, Linux `6.17.0-1022-azure`, four Neoverse-N2 cores and 16,722,010,112 bytes RAM. Compression used CPU 0 only, `taskset -c 0`, `GOMAXPROCS=1`. The script deleted kind before timing.
+
+- kind `v0.33.0`, built with Go `1.26.7`.
+- Node image `kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5`.
+- Kubernetes server `v1.37.0`, commit `f54c212e3a2f75d674b717a9b29052b20b60aefc`; kubectl `v1.37.1`, commit `f78e722310e50bcaca9276be22276d9e91d91308`.
+- Stock kind etcd image `registry.k8s.io/etcd:3.7.0-0`, server `3.7.0`, commit `4d71f7c`, built with Go `1.26.5`. This is the corpus source, not an etcd 3.7.2 performance baseline.
+- Benchmark Go `1.27.2`, linux/arm64; `github.com/klauspost/compress v1.20.3`; `github.com/pierrec/lz4/v4 v4.1.33`.
+
+Reproduce from the measured commit on a fresh disposable runner before the deadline:
+
+```sh
+git clone https://github.com/djosh34/tigerstore.git
+cd tigerstore
+git checkout 8dbff21670d0fd9d43bc24804a68ed7203ceaf9b
+timeout 780 bash experiments/compress50/run.sh
+```
+
+The [script](https://github.com/djosh34/tigerstore/blob/8dbff21670d0fd9d43bc24804a68ed7203ceaf9b/experiments/compress50/run.sh) records versions, creates kind, runs `python3 workload.py`, and dumps every current key with:
+
+```sh
+kubectl -n kube-system exec etcd-compression-control-plane -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+  get '' --prefix --write-out=json > "$PRIVATE/dump.json"
+
+GOMAXPROCS=1 taskset -c 0 timeout --kill-after=2s 235s \
+  "$PRIVATE/compressbench" -input "$PRIVATE/dump.json" -out "$OUT"
+```
+
+The Go module passed gofmt, vet, golangci-lint and short tests locally. Both runner jobs passed its tests and all corpus roundtrip checks.
+
+## Corpus and dominant resources
+
+The workload creates 120 applications across 12 namespaces with Deployments, ConfigMaps, fake Secrets, Services, Events, Leases and EndpointSlices. Four apply generations update configuration, roll Deployment templates and renew Leases. It deletes and recreates one application per namespace between generations. Kubernetes creates the Pods, ReplicaSets and controller Events. Server-side apply avoids client-side last-applied JSON duplication. Containers run pause, not a business application.
+
+The atomic etcd snapshot contains **6,261 values and 9,217,907 value bytes**, plus 353,675 key bytes. Values remain exactly as stored. Of these, 6,239 have the Kubernetes protobuf prefix and total 9,198,502 bytes. The other 22 are APIService JSON values, 19,405 bytes. They remain in the measurements rather than being silently excluded or converted.
+
+| Resource | Values | Value bytes | Share |
+| --- | ---: | ---: | ---: |
+| Events | 3,803 | 2,807,967 | 30.46% |
+| ConfigMaps | 385 | 2,681,580 | 29.09% |
+| ReplicaSets | 430 | 1,386,485 | 15.04% |
+| Pods | 129 | 655,067 | 7.11% |
+| EndpointSlices | 362 | 458,784 | 4.98% |
+| Deployments | 122 | 414,004 | 4.49% |
+| Secrets | 121 | 203,225 | 2.20% |
+| Leases | 244 | 161,383 | 1.75% |
+
+Events and ConfigMaps dominate this workload, not necessarily a production cluster. The pre-dump Pod listing had 122 Running and six Pending Pods. Controllers continued reconciling until the dump, so those earlier list counts differ from the atomic snapshot. This is a live-state dump after churn, not MVCC history or a chronological write trace.
+
+## Compression and single-core cost
+
+The table compares the same 4,915 held-out values. A deterministic SHA-256 key split reserved 1,346 values, 1,986,161 bytes, for training. Every value was also measured with every non-dictionary codec in the separate `all` dataset. Training and evaluation keys are disjoint, but their application templates are shared; this is not cross-cluster validation.
+
+Each cell is **compressed bytes as a percentage of original value bytes; encode/decode CPU microseconds per codec call**. For batch 1, a call handles one value. Other calls handle a packed batch with four-byte lengths. Lower is better. Costs are medians of five complete-corpus timing loops, each at least 40ms. CPU means process user plus system time. CSV also contains wall time, per-value cost and allocations.
+
+| Codec | One value | Target 16 values | Target 64 values | Target 256 values |
+| --- | ---: | ---: | ---: | ---: |
+| zstd 1 | 47.02%; 10.02/3.98 | 25.30%; 63.60/18.46 | 17.51%; 193.97/52.94 | 13.52%; 665.33/175.23 |
+| zstd 3 | 46.48%; 13.33/3.99 | 24.95%; 106.03/18.90 | 17.52%; 308.42/50.49 | 13.72%; 1067.62/168.00 |
+| LZ4 | 58.36%; 2.06/0.21 | 34.22%; 28.72/4.00 | 25.79%; 104.32/14.69 | 23.55%; 432.11/55.24 |
+| Snappy | 55.85%; 2.92/0.35 | 33.28%; 45.32/8.12 | 25.42%; 168.02/28.48 | 21.84%; 595.96/101.96 |
+| zstd 1, dictionary | 25.50%; 18.16/3.88 | 19.21%; 74.11/31.80 | 15.54%; 204.77/90.16 | 13.06%; 653.49/276.91 |
+| zstd 3, dictionary | 26.67%; 49.59/3.78 | 19.40%; 153.50/30.44 | 15.62%; 373.76/85.60 | 13.22%; 1194.60/267.64 |
+
+Packing uses a fixed shuffle. Final batches can be short: 308, 77 and 20 calls cover all 4,915 values at targets 16, 64 and 256. Per-call costs above average over those calls, not only full batches. For the entire 6,261-value dump at target 64, plain zstd 1/3, LZ4 and Snappy use 17.48%, 17.49%, 25.75% and 25.38% of original bytes.
+
+Resource-sorted batches compress more: at target 64, held-out plain zstd 1 uses 10.27% rather than shuffled 17.51%. Neither order reproduces Raft arrival order. The code measures both and reports them separately.
+
+The trained zstd 1 and 3 dictionaries occupy 32,897 and 32,913 bytes. Training cost 0.421 and 0.505 CPU seconds, outside timing. Ratios above exclude storing the dictionary. Charging one dictionary to this held-out corpus changes zstd 1's target-64 ratio from 15.54% to 16.00%. At target 256, dictionary storage almost erases its byte advantage: 13.52% including the dictionary versus 13.52% without one. Dictionary distribution, versioning and restart costs are unmeasured.
+
+Codec state and output buffers are warm and reused; every input roundtrips byte-for-byte. Packing, unpacking, dictionary training, keys, commands and Raft metadata are outside timings. Zstd includes frame checksums. LZ4 includes a five-byte raw-length/fallback wrapper. Snappy uses `klauspost/compress/snappy.Encode`, which calls `s2.EncodeSnappyBetter`, not Google's encoder. Formats and checksum overhead differ. Full [methodology](https://github.com/djosh34/tigerstore/blob/exp/pre-50-compress/experiments/compress50/codec/README.md) accompanies the code.
+
+## Does it pay at 1 KiB and 10 KiB?
+
+For real-shaped values, batching makes plain zstd 1 and LZ4 worth testing in the engine. It does not establish an end-to-end win.
+
+The small held-out band contains 621 values of 896 to 1,152 bytes, mean 910.86 bytes, mostly Events. The large band contains 97 ConfigMaps, each 10,834 bytes. No value was resized. At target 64:
+
+| Real size band | Codec | Compressed/original | Encode CPU us/value | Decode CPU us/value | Serial break-even MB/s |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Near 1 KiB | zstd 1 | 8.70% | 1.001 | 0.334 | 623 |
+| Near 1 KiB | LZ4 | 13.43% | 0.425 | 0.081 | 1,560 |
+| Near 10 KiB | zstd 1 | 8.47% | 15.331 | 4.245 | 507 |
+| Near 10 KiB | LZ4 | 18.21% | 8.367 | 1.292 | 917 |
+
+These bands have ten batches and two batches respectively at target 64, including their short tails. The target-256 large-band test has only one 97-value batch and is not evidence for a full 256-value large-object batch. The complete mixed corpus and exact-size controls do contain full 256-value batches.
+
+The final column is a conditional model: bytes saved per value divided by encode plus decode microseconds, in decimal MB/s. Below that serial transfer bandwidth, byte-transfer time saved exceeds these measured CPU costs. This assumes one encode, one decode and no overlap. It is not a measured network or disk speed, and it omits Raft's fanout, fsync fixed cost, pipelining and read amplification.
+
+For **independent random benchmark values**, compression does not pay. Exact 1,024-byte and 10,240-byte random controls expand under every tested codec at every batch size. At target 64, plain zstd 1 stores 100.420% and 100.046% of original value bytes; LZ4 stores 100.398% and 100.040%. Both also expand slightly relative to already-framed input. The repeated-pattern controls compress extremely well, so repeated or overlapping benchmark buffers cannot justify a production gain. Both controls are archived for every codec and batch size.
+
+An uncached point read must decode a whole packed block. On the mixed held-out corpus, plain zstd 1 costs 52.94 CPU us per target-64 block and 175.23 us per target-256 block, compared with 3.98 us for one separately compressed value. That cost is not amortized if a read needs only one member.
+
+## Proven and unproven
+
+Proven here: actual kube-apiserver storage bytes from Kubernetes 1.37, byte ownership by resource, exact codec sizes, successful roundtrips, and warmed single-core compression/decompression costs on two short free-runner jobs. No dictionary result evaluates a training key. Raw corpus and dictionaries did not leave the runner.
+
+My recommendation is to compare plain zstd 1 and LZ4 on packed entries in a later tournament. Zstd 3 adds CPU without a useful mixed-batch size gain here. A dictionary helps small individual objects but usually costs more CPU, and its advantage shrinks with batching. Keep an uncompressed fallback.
+
+The engine speedup remains a guess. No tigerstore integration, three-replica durability comparison, production resource mix, future-cluster dictionary validation, cold-cache read test or capacity gain was measured. Do not close #50 or #52 from this pre-work. The Sol helper was deleted; the experiment branch and aggregate evidence remain.
+
+
+## 6134975020 2026-10-13T00:03:17Z djosh34
+# Three-node Put and Range profiles
+
+[Archived report, raw results, profiles, exact command logs and audits](https://github.com/djosh34/tigerstore/tree/1d90dcebf4ff9c910f7053dc0634d251767fd92b/evidence/pre50profile), evidence commit `1d90dcebf4ff9c910f7053dc0634d251767fd92b`.
+
+Read #46, #1, #50 and `docs/design.md` on main. Nothing merged. Experiment branch: https://github.com/djosh34/tigerstore/tree/exp/pre-50-profile.
+
+## Runs and versions
+
+- Main engine: `08d620707e25182219d8bd23830b11fed14f6c6a`, the #60 merge. The paired measurement used `1186010d5f43007e4fc0d8d51779541e3a018b7d`. Its only server changes are a loopback HTTP pprof listener and an atomic leader-ID query. Core, Raft, peer transport and storage are unchanged. CPU capture, mutex sampling and block sampling are off in the comparison windows; Go's default allocation sampling remains unchanged. This is main with observability, not the byte-identical main executable.
+- Paired run: https://github.com/djosh34/tigerstore/actions/runs/38323686555, passed, 7m03s. Five fresh clusters per store. Each repetition runs both stores back to back on the same VM; odd repetitions run tigerstore first, even repetitions run etcd first. Separate fresh tigerstore clusters then provide Put and Range profiles.
+- Disk-timing follow-up: `bea9ee34347f57abb852a1c6063f8a29661f9612`, https://github.com/djosh34/tigerstore/actions/runs/38324504695, passed, 1m42s. It adds timed file Write/Sync wrappers and profiles both followers. It does not replace the paired numbers. It changes no persistence ordering or batching logic.
+- Stock release etcd v3.7.2, upstream `68c065e562994b89e333e77b039ad066f933c586`, built with Go 1.26.8. Binary SHA-256 `17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d` was checked before running.
+- Tigerstore and generator: Go 1.27.2, linux/arm64, etcd API 3.7.2, Raft 3.7.0, grpc-go 1.84.0, protobuf 1.36.11, x/net 0.58.0, Google B-tree 1.1.3. Each run's `versions.txt` records full module/build information and all executable hashes. The paired tigerstore SHA-256 is `3116f2b0f2b337927a6d5d4a15809ed589098d4ec6983250d4d0cd90ca04ccd2`; generator is `5846c134267e766bb82c5c608dc230b6df02f7c60ac024189caf333ab4872dbc`.
+
+Both free `ubuntu-24.04-arm` jobs had four Neoverse-N2 cores, image `ubuntu24-arm64 20261004.142.1`, kernel `6.17.0-1022-azure`, about 16.72 GB RAM, and ext4 `/dev/sda1` on one 150 GiB virtual disk. The first job had 114.29 GB available. Both remounted `/` with `barrier=1` and rejected `nobarrier` or `barrier=0` afterward. All data directories were on that mount. Guest barriers and successful fsync do not prove host power-loss protection. These are three processes sharing one disk and failure domain.
+
+The isolated layout matches the pre-work: leader CPU 0, followers CPUs 1 and 2, generator CPU 3, all `GOMAXPROCS=1`. The elected leader can be any node ID. The script discovers it, pins all existing threads to the role's core with `taskset -apc`, and checks every server thread's affinity after the load. No proxy or added network delay. Client and peer links use certificate-authenticated TLS 1.3. Etcd uses its safe default persistence and an 8 GiB quota. Neither store has watches, compaction, auth policy or defrag in this workload.
+
+## Workload and measurement
+
+The same direct protobuf/grpc-go client drives both stores: 16 connections, 256 closed-loop workers, leader endpoint only. There are 4,096 keys shaped as `/registry/pods/ns-%03d/pod-%08d`, across 64 namespaces. The deterministic multiplicative permutation visits every key once per 4,096 requests. Values are 1,024-byte SHA-256-derived buffers, different for each key and reused on overwrite. These are synthetic values, not Kubernetes objects. No compression is enabled.
+
+Each cluster gets 4,096 seed Puts, 20,000 warmup Puts, a one-second pause, 60,000 measured Puts, 10,000 warmup Ranges and 100,000 measured Ranges. Range means a present-key, current-revision, linearizable point read, returning and validating all 1 KiB of the value. It is not a prefix LIST, historical or serializable read. Every new client connection completes a probe before measurement. Connection establishment is outside the comparison timer.
+
+CPU is process user plus system ticks from `/proc/PID/stat`, parsed after the final `)`, with process-start identity checks and `CLK_TCK=100`. This excludes I/O wait and kernel-worker, interrupt or hypervisor work not charged to the process. There is no follower catch-up barrier at the CPU boundary, so trailing asynchronous work can fall outside it. Sampling brackets the worker interval, through drain, before result sorting/output. One tick is 0.1667 CPU us per measured Put or 0.1 us per measured Range. Throughput uses successful completions divided by elapsed time through drain. Latencies cover every successful call, including its gRPC context setup and completion. No timeout or error is discarded from validity checks.
+
+All 20 comparison windows passed: no RPC errors, exact expected success counts, Put revision deltas equal to successful calls, Range revision deltas zero, one response term per window, valid point-read contents, unchanged before/after leaders and verified affinities. This is not a full linearizability or durability test. Constant overwrite values cannot distinguish old from new content. Closed-loop clients suppress arrivals while stalled, so these are fixed-concurrency latencies, not open-loop service-level measurements.
+
+## Paired results
+
+These are medians of five per-run statistics, not pooled latency percentiles. `summary.csv` and the raw JSONs retain every repetition.
+
+| Store / operation | Operations/s | Mean ms | p50 ms | p99 ms | p99.9 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Tigerstore Put | 4,693.7 | 54.514 | 54.464 | 111.177 | 158.174 |
+| Etcd Put | 5,051.1 | 50.621 | 48.770 | 85.034 | 134.287 |
+| Tigerstore Range | 27,081.0 | 9.442 | 9.219 | 22.478 | 35.221 |
+| Etcd Range | 8,591.3 | 29.777 | 28.689 | 47.814 | 55.399 |
+
+| Store / operation | Leader CPU us/op | Follower 1 | Follower 2 | All servers | Generator |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Tigerstore Put | 75.667 | 12.333 | 12.167 | 100.000 | 26.500 |
+| Etcd Put | 161.667 | 28.333 | 27.667 | 217.833 | 48.833 |
+| Tigerstore Range | 36.500 | 1.900 | 13.100 | 51.500 | 21.600 |
+| Etcd Range | 116.400 | 1.200 | 1.200 | 118.800 | 42.500 |
+
+Each column is an independent median; the medians of individual nodes need not sum to the median of their per-run totals. Tigerstore's Put rates ranged from 4,355.9 to 5,831.7/s; etcd's ranged from 4,753.7 to 5,158.9/s. Tigerstore is not a demonstrated Put throughput winner. The ratio of median rates is 0.929, with 54.1% less aggregate CPU/op. Its Range ratio is 3.152, with 56.6% less aggregate CPU/op.
+
+Median occupied leader cores were 0.337 and 0.825 for tigerstore and etcd Put; 0.983 and 1.000 for Range. Generator occupancy was 0.124/0.247 for Put and 0.582/0.365 for Range. The generator did not consume its entire core, though this does not prove the fixed concurrency is optimal.
+
+## Profiles and costs per request
+
+The first job captured 30-second CPU, mutex, block and allocation-delta profiles of the leader and the follower on CPU 1. Each profile interval contains a 25-second arrival window plus connection setup, drain and idle margins. Profiling runs are separate from the throughput comparison. Put completed 138,762 operations at 5,549.1/s, with leader/follower process CPU of 76.46/13.62 us/op. Range completed 656,192 operations at 26,242.3/s, with 37.57/2.00 us/op. These are profile-run numbers, not extra benchmark repetitions. Profiled Range uses the seed and Put warmup state at revision 24,097, without a Range warmup; the paired Range windows use revision 84,097 after the measured Puts. Thus history depth and warmup differ. The short paired tigerstore Range windows lasted about 3.7 seconds, so they do not establish long-run behavior.
+
+The table divides sampled CPU nanoseconds by the completed operations. Categories match stack ancestry with `attribute.py`. They are inclusive and overlap: TLS includes socket descendants, gRPC includes codecs, committer includes Raft/index/allocation, and WAL includes write/fsync. Do not sum them. A zero means no matching CPU samples, not proof of zero cost.
+
+| Inclusive CPU us/op | Put leader | Put follower | Range leader | Range follower |
+| --- | ---: | ---: | ---: | ---: |
+| Total sampled CPU | 75.96 | 12.61 | 37.52 | 1.89 |
+| gRPC | 26.59 | 0 | 20.24 | 0 |
+| TLS, including socket work | 11.75 | 2.31 | 12.76 | 0.52 |
+| Cryptographic implementations | 1.44 | 0.36 | 0.62 | 0 |
+| Protobuf | 5.98 | 2.02 | 2.24 | 0.40 |
+| Committer | 10.74 | 3.75 | 5.03 | 0.29 |
+| Raft | 3.68 | 1.08 | 1.55 | 0.14 |
+| Entry encode/decode | 4.04 | 2.09 | 0 | 0 |
+| WAL total | 21.33 | 2.81 | 0 | 0 |
+| WAL Flush/write path | 6.63 | 1.08 | 0 | 0 |
+| File fsync path | 14.34 | 1.59 | 0 | 0 |
+| MVCC/index | 1.44 | 1.51 | 1.07 | 0 |
+| Allocation and GC | 8.00 | 2.45 | 4.56 | 0.34 |
+| Peer transport | 11.10 | 5.40 | 10.23 | 1.43 |
+
+Top flat Put-leader cost was `internal/runtime/syscall/linux.Syscall6`, 38.71% of sampled CPU. Its callers include file fsync/write and socket operations. After that, individual leaves were small: `runtime.memmove` 2.75%, `runtime.nanotime` 2.66%, and AES-GCM encryption 1.14%. The largest useful groups are gRPC and WAL, not encryption arithmetic or B-tree lookup. Put allocation stacks include protobuf value decoding, marshal buffers, protobuf merge copies, grpc-go headers and Raft messages. The leader's commit loop also re-encodes batches and every replica decodes them again at apply. Values and history remain in memory without compaction on this main commit.
+
+Mutex profiling used fraction 1 and block profiling used a 1 ms sampling rate. Total measured mutex delay over each 30-second interval was only 6.704 us for the Put leader, 2.808 us for its follower, 24.435 us for the Range leader and 20.464 us for its follower. These samples came from runtime scheduling locks; no large application-mutex contention appeared with one Go execution core per process. This does not establish the same result with several cores.
+
+Block profiles mainly show channel/select waits. Leader `Node.Do` accumulated about 2,026.68 seconds during Put, about 14.605 ms per completed request, and 1,583.04 seconds during Range, about 2.412 ms/request. Follower waits were mostly the idle committer and peer sender. grpc-go keepalive and the pprof handlers themselves also accumulate idle waits. These are overlapping goroutine waits, not CPU, fsync duration or an additive latency decomposition. Block profiles do not time filesystem syscalls.
+
+The allocation profiles are archived as supporting stack evidence, not exact bytes/op. Go's delayed heap-profile accounting can carry warmup allocation records into the delta; the Range follower profile contains prior write-decode allocations despite no writes in the Range window.
+
+The follow-up profiles both followers. During Range it measured 37.03, 2.14 and 13.68 process CPU us/op. The high-cost follower on CPU 2 had 12.71 sampled CPU us/op, including 9.19 in peer transport, 7.84 in syscall stacks and 7.42 in TLS-with-socket stacks. Those categories overlap. Cryptographic implementation cost was only 0.26 us/op. This identifies where that follower executes, not why its socket/scheduling cost differs from the other follower. No cause for the asymmetry was isolated.
+
+## Disk follow-up and the upper-bound gap
+
+The follow-up used the same workload and core layout, on a new runner, with optional atomic counters around existing file Write/Sync calls. It performed 128,005 profiled Puts in 25.035 seconds. Counter snapshots bracket the generator subprocess, including connection probes and drain; directory syncs are excluded. Segment-header file writes and syncs are included. No file errors occurred.
+
+| Node | File sync calls | Completed Puts / file sync | Mean file write bytes | Mean write wall us | Mean file sync wall us | Sum file sync wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Leader | 70,610 | 1.813 | 1,999.9 | 15.51 | 273.12 | 19.285 |
+| Follower 1 | 3,570 | 35.856 | 39,550.5 | 126.53 | 1,212.92 | 4.330 |
+| Follower 2 | 5,046 | 25.368 | 27,982.6 | 77.08 | 992.71 | 5.009 |
+
+The leader spends roughly 77% of that wall interval inside file fsync. Its accumulated file-sync wall cost is 150.66 us per completed Put; write calls add 8.56 us/op on the same disk goroutine. That is not 150.66 us of CPU or a claim about each request's critical path. In the Range follow-up, all three nodes recorded zero file writes and zero file syncs.
+
+The largest demonstrated mismatch with the benchmark pre-work is durable batching:
+
+- The pre-work's conditional 64 KiB model assumed 60 writes per fsync, amortizing 16.337 CPU us to 0.2723 us/write. Here the leader completed only 1.813 Puts per file sync, including metadata and rotation calls. That is about 33 times as many file syncs per operation as the model assumes. Its first profile attributed 14.34 CPU us/op to fsync, about 53 times that conditional amortized term. Different VMs, growing files and rotation prevent treating the primitive's per-call time as a controlled baseline.
+- The main driver invokes `Process` after arrivals and disk completions; it does not hold new proposals until the previous append completes. The disk worker drains the jobs then queued. The observed small effective leader groups show that this does not achieve the design's assumed append-clocked grouping here. Testing append-clocked batching and hard-state/write coalescing is the first recommendation. A speedup from changing them remains unmeasured.
+- Leader Put CPU of 75.67 us/op gives a CPU-only budget of about 13.2k/s, but measured throughput is 4.69k/s with only 0.337 occupied leader cores at the median. Saving instructions alone will not close that gap. Fsync/grouping and the resulting waiting deserve attention first.
+- The complete no-op RPC reference was 19.037 server CPU us/op, while this profile has 26.59 us/op under grpc-go, plus asynchronous committer, disk and peer work. Those are different loads and definitions, not an exact subtraction. The current compiler/client library and concurrency also differ from the primitive. The integrated RPC path remains worth reducing, especially for Range, where gRPC accounts for about 54% of sampled leader CPU and the leader is nearly fully occupied.
+- The memory-backed TLS primitive's roughly 0.45/0.50 us per KiB encrypt/decrypt is not comparable with the entire 11.75 us TLS stack, which contains sockets and fanout. Actual cryptographic routines cost only 1.44 us per leader Put here. Likewise, `MemoryStorage.Append` at 0.0368 us is not the same work as the 3.68 us real Raft path. Neither comparison justifies blaming encryption or consensus algorithms.
+- MVCC/index is about 1.44 us per Put and 1.07 us per point Range on this 4,096-key dataset. It is not the leading cost here. That says nothing about prefix counts or a many-million-key index. Allocation/GC at about 8.00 us per leader Put remains a secondary target, including repeated protobuf/value copies.
+
+The pre-work's 19.644 us partial-work budget, about 50,906 writes/s/core, excludes real peer replication, Raft, apply, index and watches. This run is about 10.8 times below that rate, but it does not prove a 10.8x achievable gain. No integrated upper bound has been established. The older etcd baseline also used 65,536 binary keys, longer windows and a different client, so its 184.2 leader CPU us/op cannot be compared with this run's 161.67 as a controlled improvement.
+
+## Reproduction and evidence
+
+On a disposable free ARM runner before the deadline:
+
+```sh
+git checkout 1186010d5f43007e4fc0d8d51779541e3a018b7d
+# actions/setup-go installs Go 1.27.2; RUNNER_TEMP is provided by Actions.
+timeout --kill-after=5s 800s bash experiments/pre50profile/run.sh
+
+# Separate diagnostic job, not a replacement baseline.
+git checkout bea9ee34347f57abb852a1c6063f8a29661f9612
+PRE50_DETAIL=1 timeout --kill-after=5s 240s bash experiments/pre50profile/run.sh
+```
+
+The scripts execute and verify:
+
+```sh
+sudo mount -o remount,barrier=1 /
+findmnt -T "$RUNNER_TEMP/pre50profile" -o TARGET,SOURCE,FSTYPE,OPTIONS
+# Server processes: GOMAXPROCS=1 taskset -c <role-core> <binary> <flags>
+# run.py records every complete server and client argv in commands.json.
+GOMAXPROCS=1 taskset -c 3 "$RUNNER_TEMP/pre50profile/bin/load" \
+  -endpoint 127.0.0.1:<leader-client-port> -certdir <cert-directory> \
+  -pids <leader-pid>,<follower1-pid>,<follower2-pid> -hz 100 \
+  -op put -total 60000 -workers 256 -out <result.json>
+# Range uses -op range -total 100000. The default is 16 connections.
+# Profile load uses -total 0 -duration 25s.
+curl 'http://127.0.0.1:<debug-port>/debug/rates?on=1'
+curl 'http://127.0.0.1:<debug-port>/debug/pprof/profile?seconds=30' > cpu.pb.gz
+# Concurrent requests also collect mutex, block and allocs with seconds=30.
+go tool pprof -top <matching-tigerstore-binary> cpu.pb.gz
+```
+
+`raw/` and `detail/` preserve JSONs, CPU/mutex/block/allocation profiles, pprof top output, complete commands, mount evidence, affinities, logs and executable identity. The matching symbol binaries are gzip-compressed with no certificate material. `summary.csv`, `attribution.json` and `detail-attribution.json` reproduce the tables. The generator saved latency aggregates, not individual samples or histograms, so the archived output cannot independently recompute its percentiles. Run `python3 experiments/pre50profile/summarize.py` and `python3 experiments/pre50profile/attribute.py` from the branch root. Use `attribute.py evidence/pre50profile/detail` for the follow-up.
+
+Go recorded `vcs.modified=true` because the scripts created untracked evidence files before building. They did not rewrite tracked source. The follow-up additionally records `git status --short`, showing only untracked evidence, and checks `git diff --exit-code` before compilation. The first run did not archive that clean-diff check. All source changes are in the named experiment commits. Gofmt/gofumpt, go vet, golangci-lint and short tests passed for the changed Go packages before both code pushes. The generator package has no dedicated unit tests; the real-server result checks are the exercised validation here.
+
+Proven here: the stated fixed-workload results on one paired runner, sampled CPU costs, small effective leader disk groups in a separate instrumented run, and no measured write/fsync calls during point Range. Unproven: maximum throughput, production Kubernetes behavior, crash durability, capacity, high-key-count index costs, multi-host performance, or any proposed optimization's gain. Do not close #50 from this pre-work. No tags, PRs or merges were created. Both Sol helpers were deleted after their source and result audits; their reports are archived here.
+
+
+## 6140713007 2026-10-13T07:38:12Z djosh34
+Architect note: by owner instruction (see #46, 2026-10-13T07:35Z) speed work on this outcome now comes before #48 and #49. First pieces: the native gRPC frontend and the whole-batch write path from #74, built from the Astra pre-work posted there.
+
+## 6140814920 2026-10-13T07:44:35Z djosh34
+## Design change: custom client frontend
+
+Decision (owner question, 2026-10-13T07:40Z): the client port is served by our own HTTP/2 gRPC server on x/net's Framer and HPACK, not grpc-go. It answers `GET /health` and `/version` itself on the same TLS port, so etcd's and kubeadm's behaviour stays and the `http.Server` + `grpc.Server.ServeHTTP` adapter from #65 goes away. It serves every RPC kube-apiserver and etcdctl use (KV, Watch, Lease including the keepalive stream, Compact, Maintenance.Status, MemberList; RangeStream stays Unimplemented), and it is the front of the whole-batch write path in #74: frames decode into batch-owned command descriptors with value bytes kept in wire form. grpc-go stays only as a reference in tests. The native grpc-go step from my #74 response is dropped.
+
+Evidence: the [gRPC pre-work](https://github.com/djosh34/tigerstore/issues/47#issuecomment-6134109817) (3.5 µs server CPU per Put for the custom Framer path, 9.4 µs tuned grpc-go, 39.9 µs through an HTTP handler adapter; stock clientv3 and etcdctl worked against it) and the [#74 audit](https://github.com/djosh34/tigerstore/issues/74). The second opinion is that pre-work's own recommendation; its listed gaps (deadlines, require-leader metadata, GOAWAY and drain, byte-bounded queues, slow-consumer isolation, late completions after resets) are part of this piece, checked by the difftest and etcdctl smoke jobs against etcd v3.7.2.
+
+## 6140846333 2026-10-13T07:46:34Z djosh34
+Addendum to the custom frontend Design change (owner question, 2026-10-13T07:50Z). The whole-batch write path must remove each of these, measured per op:
+- **No channel per request.** A connection reader hands the owner one batch per send, and the owner hands each connection writer one completion batch per turn. No per-request reply channel and no per-request inbox event.
+- **Values stored once.** The value bytes live in the log, in wire form. The index holds a reference (segment, offset, length) into the log, not a decoded copy in MVCC, as the starting design said. Reads and watch events copy straight from the log bytes.
+- **Encoded once, decoded never.** The batch is encoded into the Raft entry once on the leader. Apply on every replica walks the entry in place, without a generic protobuf decode per command and without rebuilding request structs.
+- **One allocation lifetime per batch.** Descriptors and reply frames come from batch-owned memory that is released when the last user (Raft, WAL, peers, slow client) lets go, with a byte bound on what slow clients can pin.
+
+Counts of allocations, channel operations and value copies per Put go in each benchmark report next to CPU per op.
+
+## 6140902413 2026-10-13T07:49:59Z djosh34
+Correction to the addendum above (owner, 2026-10-13T07:55Z). Points 1 and 4 were too specific:
+- **Channels are not the problem.** What must go is per-request churn and blocking: creating a channel, request struct or reply object for every request, and any goroutine blocked on a mutex or a full queue in the hot path. Whether hand-off uses long-lived channels, rings or something else is decided by measurement.
+- **Allocation strategy is an experiment, not decided.** Compare at least (a) memory allocated once at startup for the whole runtime: fixed rings of command slots and reply buffers with a fixed byte budget, so a full ring is the backpressure and the hot path allocates nothing; and (b) per-batch arenas recycled from a pool. Report allocations per op, GC CPU, retained bytes, CPU per op and how each handles values up to etcd's 1.5 MiB limit and slow clients. The winner goes in.
+
+Points 2 (values stored once in the log) and 3 (encoded once, applied in place) stand.
+
+## 6142147602 2026-10-13T09:06:01Z djosh34
+Architect decision on simulator seeds failing on main (asked by the #50 worker, 2026-10-13T09:10Z). The `ci` gate draws 800 fresh random seeds per run, and main already fails some (bug #81, a liveness failure on seed 745672193, open as a sub-issue of #47). By the owner's speed-first instruction, #81 stays open for a later #47 worker. A #50 PR may merge when:
+- its `ci` run is green, and
+- every simulator seed that failed in any of its runs, not only the last, was rerun on main at the same seed and fails there the same way, and is filed as a `bug` sub-issue of #47 with the seed and the command (an existing issue may collect several seeds of the same failure). The PR comment lists those seeds and links.
+
+A seed that fails on the PR but passes on main is a regression of that PR and blocks it until fixed. Pushing again to draw new seeds does not clear a failure that was seen. This is the playbook's "blocks every merge except the PR that fixes it" applied to bugs already on main, not a loosening for new ones.

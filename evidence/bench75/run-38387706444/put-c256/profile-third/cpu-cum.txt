@@ -1,0 +1,33 @@
+File: third
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: cpu
+Time: 2026-10-13 11:09:26 UTC
+Duration: 20s, Total samples = 17.22s (86.10%)
+Showing nodes accounting for 7.61s, 44.19% of 17.22s total
+Showing top 25 nodes out of 644
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      7.55s 43.84%  sync.(*WaitGroup).Go.func1
+     7.46s 43.32% 43.32%      7.46s 43.32%  internal/runtime/syscall/linux.Syscall6
+     0.01s 0.058% 43.38%      6.92s 40.19%  syscall.Syscall
+         0     0% 43.38%      6.82s 39.61%  syscall.RawSyscall6
+         0     0% 43.38%      5.54s 32.17%  internal/poll.ignoringEINTRIO (inline)
+         0     0% 43.38%      4.82s 27.99%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 43.38%      4.82s 27.99%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 43.38%      4.82s 27.99%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0% 43.38%      4.82s 27.99%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+     0.01s 0.058% 43.44%      3.36s 19.51%  bufio.(*Writer).Flush
+     0.01s 0.058% 43.50%      3.35s 19.45%  crypto/tls.(*Conn).Write
+     0.01s 0.058% 43.55%      3.33s 19.34%  crypto/tls.(*Conn).writeRecordLocked
+     0.01s 0.058% 43.61%      3.32s 19.28%  internal/poll.(*FD).Write
+         0     0% 43.61%      3.29s 19.11%  syscall.Write (inline)
+         0     0% 43.61%      3.29s 19.11%  syscall.write
+     0.01s 0.058% 43.67%      3.07s 17.83%  io.ReadAtLeast
+         0     0% 43.67%      3.07s 17.83%  io.ReadFull (inline)
+     0.06s  0.35% 44.02%      3.06s 17.77%  bufio.(*Reader).Read
+         0     0% 44.02%      3.06s 17.77%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+     0.01s 0.058% 44.08%      3.06s 17.77%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 44.08%      3.06s 17.77%  main.main
+         0     0% 44.08%      3.06s 17.77%  main.run
+         0     0% 44.08%      3.06s 17.77%  runtime.main
+     0.02s  0.12% 44.19%      2.99s 17.36%  crypto/tls.(*Conn).Read
+         0     0% 44.19%      2.93s 17.02%  crypto/tls.(*Conn).readRecord (inline)

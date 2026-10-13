@@ -1,0 +1,3706 @@
+[
+  {
+    "id": "admission-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted send: 1/Put main, 1/admission batch batch/wire"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 335,
+    "expected": "case in := <-inbox:",
+    "classification": "counted receive: alternative outer inbox receive; admission or inbound peer"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 340,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted receive: alternative drain inbox receive, NOT an extra receipt"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 420,
+    "expected": "w.reply <- r",
+    "classification": "counted main reply send 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 286,
+    "expected": "case rep := <-r.reply:",
+    "classification": "counted main reply receive 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 281,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "creation, not send/receive: 1/Put main; excluded batch/wire Put"
+  },
+  {
+    "id": "completion-direct",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 432,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops"
+  },
+  {
+    "id": "disk-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 353,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 486,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 493,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 507,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 346,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group"
+  },
+  {
+    "id": "tick-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 266,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 274,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "fault/drop-only successful send, excluded normal healthy transport ledger"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 308,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put"
+  },
+  {
+    "id": "watch-close",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 394,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 500,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 503,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization"
+  },
+  {
+    "id": "batch-api",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 190,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "direct API, not channel operation"
+  },
+  {
+    "id": "batch-core-submit",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 447,
+    "expected": "n.core.Submit(*r)",
+    "classification": "descriptor/header handoff: zero payload copies"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 297,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 308,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 314,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 317,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message"
+  },
+  {
+    "id": "peer-drop-control",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 331,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "fault-only receive: dropped queued control message"
+  },
+  {
+    "id": "peer-drop-data",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 333,
+    "expected": "case m := <-s.data:",
+    "classification": "fault-only receive: dropped queued data message"
+  },
+  {
+    "id": "peer-backoff-receive",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 350,
+    "expected": "case <-time.After(backoff):",
+    "classification": "fault-only timer receive, excluded healthy path"
+  },
+  {
+    "id": "peer-shutdown-receive-1",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 320,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-shutdown-receive-2",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 351,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 419,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 241,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 195,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 374,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 216,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send"
+  },
+  {
+    "id": "goaway-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 184,
+    "expected": "c.signal()",
+    "classification": "lifecycle wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 208,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 321,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 336,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "reset-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 364,
+    "expected": "c.signal()",
+    "classification": "reset wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 526,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted copy: 1 full-value equivalent over all request chunks"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy"
+  },
+  {
+    "id": "frontend-decode",
+    "target": "main",
+    "file": "internal/server/rpc.go",
+    "line": 63,
+    "expected": "if err := proto.Unmarshal(b, m); err != nil {",
+    "classification": "counted batch frontend copy 1/Put; wire ordinary Put bypasses this site"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 126,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch"
+  },
+  {
+    "id": "batch-reply-encode",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 261,
+    "expected": "f.msg, f.err = marshal(cp.Resp)",
+    "classification": "zero input-value copies: ordinary reply contains no value; wire bypasses"
+  },
+  {
+    "id": "wire-reply-encode",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 259,
+    "expected": "f.msg, f.err = c.putResponse(&cp.Reply)",
+    "classification": "wire reply branch: no generic PutResponse construction; zero input-value copies"
+  },
+  {
+    "id": "response-proto-encode",
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "line": 207,
+    "expected": "b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)",
+    "classification": "ordinary response materialization: zero input-value copies"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "main",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put"
+  },
+  {
+    "id": "stream-admit",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 534,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 450,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary batch/wire Put creates no per-stream context"
+  },
+  {
+    "id": "stream-deadline",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 469,
+    "expected": "st.deadline = time.AfterFunc(timeout, st.expire)",
+    "classification": "optional timer callback, not a Timer.C send/receive"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets"
+  },
+  {
+    "id": "manual-response-prefix",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 308,
+    "expected": "b := make([]byte, 5, 5+putResponseSize)",
+    "classification": "wire small response buffer, no value bytes"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 309,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted copy: 1 per Put into encoded entry; NOT 1/batch-size per Put"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "main/batch grow; wire whole-batch upper-bound capacity, no encode growth for scoped path"
+  },
+  {
+    "id": "raft-propose",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 571,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 566,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 839,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "main/batch decoded apply vs wire in-place walk"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 844,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 880,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 884,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 905,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy"
+  },
+  {
+    "id": "generic-apply-still-exists",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 851,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "Txn/Delete/lease/etc apply decode still exists; excluded ordinary Put"
+  },
+  {
+    "id": "decode-batch-still-exists",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 145,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "generic helper used by checks, NOT ordinary production Put apply"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data"
+  },
+  {
+    "id": "wire-size",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 501,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "whole client request size plus framing upper bound"
+  },
+  {
+    "id": "wire-check",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 372,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy"
+  },
+  {
+    "id": "index-value",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "zero value copy: store slice header; wire aliases entry, others decoded bytes"
+  },
+  {
+    "id": "index-version-append",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies"
+  },
+  {
+    "id": "index-key",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "zero key bytes copy at insert: retains key slice; key copies are not value copies"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "main",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero value copy: direct MVCC fields path"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "main",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy"
+  },
+  {
+    "id": "wal-write",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal"
+  },
+  {
+    "id": "wal-sync",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here"
+  },
+  {
+    "id": "lib-put-value-field",
+    "target": "main",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is proto3 bytes"
+  },
+  {
+    "id": "lib-put-decoder",
+    "target": "main",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "line": 248,
+    "expected": "if err := dec(in); err != nil {",
+    "classification": "main generated decoder; batch/wire use own frontend"
+  },
+  {
+    "id": "lib-grpc-decode",
+    "target": "main",
+    "file": "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+    "line": 96,
+    "expected": "return proto.Unmarshal(buf.ReadOnlyData(), vv)",
+    "classification": "main default protobuf decode"
+  },
+  {
+    "id": "lib-grpc-materialize",
+    "target": "main",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 115,
+    "expected": "s.CopyTo(*buf)",
+    "classification": "conditional additional main multi-buffer materialization, excluded fixed subtotal"
+  },
+  {
+    "id": "lib-grpc-copyto",
+    "target": "main",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 82,
+    "expected": "off += copy(dst[off:], b.ReadOnlyData())",
+    "classification": "conditional materialization actual byte-copy instruction"
+  },
+  {
+    "id": "lib-proto3-decode-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5497,
+    "expected": "*p.Bytes() = append(([]byte)(nil), v...)",
+    "classification": "counted codec materialization proof for main/batch frontend and apply; removed wire Put"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted receiver Entry.Data decode copy all targets"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "counted bytes encode copy proof main/batch entry encoding and all-target peer encoding"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted leader Entry.Data deep-clone boundary: 1/Put all targets"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted full Entry.Data byte-copy instruction for leader Raft clone"
+  },
+  {
+    "id": "lib-storage-pointer-append1",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 318,
+    "expected": "ms.ents = append(ms.ents[:offset:offset], entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-storage-pointer-append2",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 320,
+    "expected": "ms.ents = append(ms.ents, entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message"
+  },
+  {
+    "id": "lib-proto3-codec-selection",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 278,
+    "expected": "return nil, coderBytesNoZero",
+    "classification": "no-presence bytes coder selection for Put.Value"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers"
+  },
+  {
+    "id": "unstable-append",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers"
+  },
+  {
+    "id": "proto3-bytes-encoder",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5483,
+    "expected": "b = protowire.AppendBytes(b, v)",
+    "classification": "bytes encoders call AppendBytes; not an additional copy"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "main",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 103,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "walkBatch calls apply with capped entry subslice"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 507,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation"
+  },
+  {
+    "id": "completion-cas",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 212,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: CAS, no Go channel and no completion mutex"
+  },
+  {
+    "id": "completion-swap",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 225,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops"
+  },
+  {
+    "id": "charge-request",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 116,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy"
+  },
+  {
+    "id": "charge-reply",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 274,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy"
+  },
+  {
+    "id": "admission-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted send: 1/Put main, 1/admission batch batch/wire"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 335,
+    "expected": "case in := <-inbox:",
+    "classification": "counted receive: alternative outer inbox receive; admission or inbound peer"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 340,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted receive: alternative drain inbox receive, NOT an extra receipt"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 420,
+    "expected": "w.reply <- r",
+    "classification": "counted main reply send 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 286,
+    "expected": "case rep := <-r.reply:",
+    "classification": "counted main reply receive 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 281,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "creation, not send/receive: 1/Put main; excluded batch/wire Put"
+  },
+  {
+    "id": "completion-direct",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 432,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops"
+  },
+  {
+    "id": "disk-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 353,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 486,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 493,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 507,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 346,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group"
+  },
+  {
+    "id": "tick-receive",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 266,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 274,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "fault/drop-only successful send, excluded normal healthy transport ledger"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 308,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put"
+  },
+  {
+    "id": "watch-close",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 394,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 500,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 503,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization"
+  },
+  {
+    "id": "batch-api",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 190,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "direct API, not channel operation"
+  },
+  {
+    "id": "batch-core-submit",
+    "target": "wire",
+    "file": "internal/node/node.go",
+    "line": 447,
+    "expected": "n.core.Submit(*r)",
+    "classification": "descriptor/header handoff: zero payload copies"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 297,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 308,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 314,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 317,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message"
+  },
+  {
+    "id": "peer-drop-control",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 331,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "fault-only receive: dropped queued control message"
+  },
+  {
+    "id": "peer-drop-data",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 333,
+    "expected": "case m := <-s.data:",
+    "classification": "fault-only receive: dropped queued data message"
+  },
+  {
+    "id": "peer-backoff-receive",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 350,
+    "expected": "case <-time.After(backoff):",
+    "classification": "fault-only timer receive, excluded healthy path"
+  },
+  {
+    "id": "peer-shutdown-receive-1",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 320,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-shutdown-receive-2",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 351,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 419,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "wire",
+    "file": "internal/peer/peer.go",
+    "line": 241,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 195,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "wire",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 374,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 216,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send"
+  },
+  {
+    "id": "goaway-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 184,
+    "expected": "c.signal()",
+    "classification": "lifecycle wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 208,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 321,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 336,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "reset-wake-attempt",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 364,
+    "expected": "c.signal()",
+    "classification": "reset wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 526,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "wire",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "wire",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted copy: 1 full-value equivalent over all request chunks"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "wire",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy"
+  },
+  {
+    "id": "frontend-decode",
+    "target": "wire",
+    "file": "internal/server/rpc.go",
+    "line": 63,
+    "expected": "if err := proto.Unmarshal(b, m); err != nil {",
+    "classification": "counted batch frontend copy 1/Put; wire ordinary Put bypasses this site"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 126,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch"
+  },
+  {
+    "id": "batch-reply-encode",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 261,
+    "expected": "f.msg, f.err = marshal(cp.Resp)",
+    "classification": "zero input-value copies: ordinary reply contains no value; wire bypasses"
+  },
+  {
+    "id": "wire-reply-encode",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 259,
+    "expected": "f.msg, f.err = c.putResponse(&cp.Reply)",
+    "classification": "wire reply branch: no generic PutResponse construction; zero input-value copies"
+  },
+  {
+    "id": "response-proto-encode",
+    "target": "wire",
+    "file": "internal/server/stream.go",
+    "line": 207,
+    "expected": "b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)",
+    "classification": "ordinary response materialization: zero input-value copies"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "wire",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "wire",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put"
+  },
+  {
+    "id": "stream-admit",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 534,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 450,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary batch/wire Put creates no per-stream context"
+  },
+  {
+    "id": "stream-deadline",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 469,
+    "expected": "st.deadline = time.AfterFunc(timeout, st.expire)",
+    "classification": "optional timer callback, not a Timer.C send/receive"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "wire",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets"
+  },
+  {
+    "id": "manual-response-prefix",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 308,
+    "expected": "b := make([]byte, 5, 5+putResponseSize)",
+    "classification": "wire small response buffer, no value bytes"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 309,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "wire",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted copy: 1 per Put into encoded entry; NOT 1/batch-size per Put"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "wire",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "main/batch grow; wire whole-batch upper-bound capacity, no encode growth for scoped path"
+  },
+  {
+    "id": "raft-propose",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 571,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 566,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 839,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "main/batch decoded apply vs wire in-place walk"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 844,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 880,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 884,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 905,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy"
+  },
+  {
+    "id": "generic-apply-still-exists",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 851,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "Txn/Delete/lease/etc apply decode still exists; excluded ordinary Put"
+  },
+  {
+    "id": "decode-batch-still-exists",
+    "target": "wire",
+    "file": "internal/core/codec.go",
+    "line": 145,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "generic helper used by checks, NOT ordinary production Put apply"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "wire",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "wire",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "wire",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data"
+  },
+  {
+    "id": "wire-size",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 501,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "whole client request size plus framing upper bound"
+  },
+  {
+    "id": "wire-check",
+    "target": "wire",
+    "file": "internal/core/node.go",
+    "line": 372,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy"
+  },
+  {
+    "id": "index-value",
+    "target": "wire",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "zero value copy: store slice header; wire aliases entry, others decoded bytes"
+  },
+  {
+    "id": "index-version-append",
+    "target": "wire",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies"
+  },
+  {
+    "id": "index-key",
+    "target": "wire",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "zero key bytes copy at insert: retains key slice; key copies are not value copies"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "wire",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero value copy: direct MVCC fields path"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "wire",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "wire",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "wire",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy"
+  },
+  {
+    "id": "wal-write",
+    "target": "wire",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal"
+  },
+  {
+    "id": "wal-sync",
+    "target": "wire",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here"
+  },
+  {
+    "id": "lib-put-value-field",
+    "target": "wire",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is proto3 bytes"
+  },
+  {
+    "id": "lib-put-decoder",
+    "target": "wire",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "line": 248,
+    "expected": "if err := dec(in); err != nil {",
+    "classification": "main generated decoder; batch/wire use own frontend"
+  },
+  {
+    "id": "lib-grpc-decode",
+    "target": "wire",
+    "file": "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+    "line": 96,
+    "expected": "return proto.Unmarshal(buf.ReadOnlyData(), vv)",
+    "classification": "main default protobuf decode"
+  },
+  {
+    "id": "lib-grpc-materialize",
+    "target": "wire",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 115,
+    "expected": "s.CopyTo(*buf)",
+    "classification": "conditional additional main multi-buffer materialization, excluded fixed subtotal"
+  },
+  {
+    "id": "lib-grpc-copyto",
+    "target": "wire",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 82,
+    "expected": "off += copy(dst[off:], b.ReadOnlyData())",
+    "classification": "conditional materialization actual byte-copy instruction"
+  },
+  {
+    "id": "lib-proto3-decode-copy",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5497,
+    "expected": "*p.Bytes() = append(([]byte)(nil), v...)",
+    "classification": "counted codec materialization proof for main/batch frontend and apply; removed wire Put"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted receiver Entry.Data decode copy all targets"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "counted bytes encode copy proof main/batch entry encoding and all-target peer encoding"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted leader Entry.Data deep-clone boundary: 1/Put all targets"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted full Entry.Data byte-copy instruction for leader Raft clone"
+  },
+  {
+    "id": "lib-storage-pointer-append1",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 318,
+    "expected": "ms.ents = append(ms.ents[:offset:offset], entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-storage-pointer-append2",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 320,
+    "expected": "ms.ents = append(ms.ents, entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message"
+  },
+  {
+    "id": "lib-proto3-codec-selection",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 278,
+    "expected": "return nil, coderBytesNoZero",
+    "classification": "no-presence bytes coder selection for Put.Value"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers"
+  },
+  {
+    "id": "unstable-append",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "wire",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers"
+  },
+  {
+    "id": "proto3-bytes-encoder",
+    "target": "wire",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5483,
+    "expected": "b = protowire.AppendBytes(b, v)",
+    "classification": "bytes encoders call AppendBytes; not an additional copy"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "wire",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "wire",
+    "file": "internal/core/codec.go",
+    "line": 103,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "walkBatch calls apply with capped entry subslice"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "wire",
+    "file": "internal/server/h2.go",
+    "line": 507,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation"
+  },
+  {
+    "id": "completion-cas",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 212,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: CAS, no Go channel and no completion mutex"
+  },
+  {
+    "id": "completion-swap",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 225,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops"
+  },
+  {
+    "id": "charge-request",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 116,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy"
+  },
+  {
+    "id": "charge-reply",
+    "target": "wire",
+    "file": "internal/server/batch.go",
+    "line": 274,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy"
+  },
+  {
+    "id": "admission-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted send: 1/Put main, 1/admission batch batch/wire"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 335,
+    "expected": "case in := <-inbox:",
+    "classification": "counted receive: alternative outer inbox receive; admission or inbound peer"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 340,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted receive: alternative drain inbox receive, NOT an extra receipt"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 420,
+    "expected": "w.reply <- r",
+    "classification": "counted main reply send 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 286,
+    "expected": "case rep := <-r.reply:",
+    "classification": "counted main reply receive 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 281,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "creation, not send/receive: 1/Put main; excluded batch/wire Put"
+  },
+  {
+    "id": "completion-direct",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 432,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops"
+  },
+  {
+    "id": "disk-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 353,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 486,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 493,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 507,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 346,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group"
+  },
+  {
+    "id": "tick-receive",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 266,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 274,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "fault/drop-only successful send, excluded normal healthy transport ledger"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 308,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put"
+  },
+  {
+    "id": "watch-close",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 394,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 500,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 503,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization"
+  },
+  {
+    "id": "batch-api",
+    "target": "hpack",
+    "file": "internal/node/node.go",
+    "line": 190,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "direct API, not channel operation"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 297,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 308,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 314,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 317,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message"
+  },
+  {
+    "id": "peer-drop-control",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 331,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "fault-only receive: dropped queued control message"
+  },
+  {
+    "id": "peer-drop-data",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 333,
+    "expected": "case m := <-s.data:",
+    "classification": "fault-only receive: dropped queued data message"
+  },
+  {
+    "id": "peer-backoff-receive",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 350,
+    "expected": "case <-time.After(backoff):",
+    "classification": "fault-only timer receive, excluded healthy path"
+  },
+  {
+    "id": "peer-shutdown-receive-1",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 320,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-shutdown-receive-2",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 351,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 419,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "hpack",
+    "file": "internal/peer/peer.go",
+    "line": 241,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 201,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "hpack",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 392,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 216,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send"
+  },
+  {
+    "id": "goaway-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 190,
+    "expected": "c.signal()",
+    "classification": "lifecycle wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 214,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 339,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 354,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "reset-wake-attempt",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 382,
+    "expected": "c.signal()",
+    "classification": "reset wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 650,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "hpack",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "hpack",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted copy: 1 full-value equivalent over all request chunks"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "hpack",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy"
+  },
+  {
+    "id": "frontend-decode",
+    "target": "hpack",
+    "file": "internal/server/rpc.go",
+    "line": 63,
+    "expected": "if err := proto.Unmarshal(b, m); err != nil {",
+    "classification": "counted batch frontend copy 1/Put; wire ordinary Put bypasses this site"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 126,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch"
+  },
+  {
+    "id": "batch-reply-encode",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 270,
+    "expected": "f.msg, f.err = marshal(cp.Resp)",
+    "classification": "zero input-value copies: ordinary reply contains no value; wire bypasses"
+  },
+  {
+    "id": "response-proto-encode",
+    "target": "hpack",
+    "file": "internal/server/stream.go",
+    "line": 207,
+    "expected": "b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)",
+    "classification": "ordinary response materialization: zero input-value copies"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "hpack",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "hpack",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put"
+  },
+  {
+    "id": "stream-admit",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 658,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 574,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary batch/wire Put creates no per-stream context"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "hpack",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 319,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "hpack",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted copy: 1 per Put into encoded entry; NOT 1/batch-size per Put"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "hpack",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "main/batch grow; wire whole-batch upper-bound capacity, no encode growth for scoped path"
+  },
+  {
+    "id": "raft-propose",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 585,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 580,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 853,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "main/batch decoded apply vs wire in-place walk"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 858,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 894,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 898,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 919,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy"
+  },
+  {
+    "id": "generic-apply-still-exists",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 865,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "Txn/Delete/lease/etc apply decode still exists; excluded ordinary Put"
+  },
+  {
+    "id": "decode-batch-still-exists",
+    "target": "hpack",
+    "file": "internal/core/codec.go",
+    "line": 145,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "generic helper used by checks, NOT ordinary production Put apply"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "hpack",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "hpack",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "hpack",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data"
+  },
+  {
+    "id": "wire-size",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 515,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "whole client request size plus framing upper bound"
+  },
+  {
+    "id": "wire-check",
+    "target": "hpack",
+    "file": "internal/core/node.go",
+    "line": 386,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy"
+  },
+  {
+    "id": "index-value",
+    "target": "hpack",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "zero value copy: store slice header; wire aliases entry, others decoded bytes"
+  },
+  {
+    "id": "index-version-append",
+    "target": "hpack",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies"
+  },
+  {
+    "id": "index-key",
+    "target": "hpack",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "zero key bytes copy at insert: retains key slice; key copies are not value copies"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "hpack",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero value copy: direct MVCC fields path"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "hpack",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "hpack",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "hpack",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy"
+  },
+  {
+    "id": "wal-write",
+    "target": "hpack",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal"
+  },
+  {
+    "id": "wal-sync",
+    "target": "hpack",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here"
+  },
+  {
+    "id": "lib-put-value-field",
+    "target": "hpack",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is proto3 bytes"
+  },
+  {
+    "id": "lib-put-decoder",
+    "target": "hpack",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "line": 248,
+    "expected": "if err := dec(in); err != nil {",
+    "classification": "main generated decoder; batch/wire use own frontend"
+  },
+  {
+    "id": "lib-grpc-decode",
+    "target": "hpack",
+    "file": "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+    "line": 96,
+    "expected": "return proto.Unmarshal(buf.ReadOnlyData(), vv)",
+    "classification": "main default protobuf decode"
+  },
+  {
+    "id": "lib-grpc-materialize",
+    "target": "hpack",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 115,
+    "expected": "s.CopyTo(*buf)",
+    "classification": "conditional additional main multi-buffer materialization, excluded fixed subtotal"
+  },
+  {
+    "id": "lib-grpc-copyto",
+    "target": "hpack",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 82,
+    "expected": "off += copy(dst[off:], b.ReadOnlyData())",
+    "classification": "conditional materialization actual byte-copy instruction"
+  },
+  {
+    "id": "lib-proto3-decode-copy",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5497,
+    "expected": "*p.Bytes() = append(([]byte)(nil), v...)",
+    "classification": "counted codec materialization proof for main/batch frontend and apply; removed wire Put"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted receiver Entry.Data decode copy all targets"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "counted bytes encode copy proof main/batch entry encoding and all-target peer encoding"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted leader Entry.Data deep-clone boundary: 1/Put all targets"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted full Entry.Data byte-copy instruction for leader Raft clone"
+  },
+  {
+    "id": "lib-storage-pointer-append1",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 318,
+    "expected": "ms.ents = append(ms.ents[:offset:offset], entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-storage-pointer-append2",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 320,
+    "expected": "ms.ents = append(ms.ents, entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message"
+  },
+  {
+    "id": "lib-proto3-codec-selection",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 278,
+    "expected": "return nil, coderBytesNoZero",
+    "classification": "no-presence bytes coder selection for Put.Value"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers"
+  },
+  {
+    "id": "unstable-append",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "hpack",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers"
+  },
+  {
+    "id": "proto3-bytes-encoder",
+    "target": "hpack",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5483,
+    "expected": "b = protowire.AppendBytes(b, v)",
+    "classification": "bytes encoders call AppendBytes; not an additional copy"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "hpack",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "hpack",
+    "file": "internal/core/codec.go",
+    "line": 103,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "walkBatch calls apply with capped entry subslice"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "hpack",
+    "file": "internal/server/h2.go",
+    "line": 631,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation"
+  },
+  {
+    "id": "completion-cas",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 212,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: CAS, no Go channel and no completion mutex"
+  },
+  {
+    "id": "completion-swap",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 225,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops"
+  },
+  {
+    "id": "charge-request",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 116,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy"
+  },
+  {
+    "id": "charge-reply",
+    "target": "hpack",
+    "file": "internal/server/batch.go",
+    "line": 283,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy"
+  },
+  {
+    "id": "admission-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted send: 1/Put main, 1/admission batch batch/wire"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 335,
+    "expected": "case in := <-inbox:",
+    "classification": "counted receive: alternative outer inbox receive; admission or inbound peer"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 340,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted receive: alternative drain inbox receive, NOT an extra receipt"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 420,
+    "expected": "w.reply <- r",
+    "classification": "counted main reply send 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 286,
+    "expected": "case rep := <-r.reply:",
+    "classification": "counted main reply receive 1/Put; retained Do only, excluded on batch/wire Put"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 281,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "creation, not send/receive: 1/Put main; excluded batch/wire Put"
+  },
+  {
+    "id": "completion-direct",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 432,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops"
+  },
+  {
+    "id": "disk-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 353,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 486,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 493,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 507,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 346,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group"
+  },
+  {
+    "id": "tick-receive",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 266,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 274,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "fault/drop-only successful send, excluded normal healthy transport ledger"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 308,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put"
+  },
+  {
+    "id": "watch-close",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 394,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 500,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 503,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization"
+  },
+  {
+    "id": "batch-api",
+    "target": "txn",
+    "file": "internal/node/node.go",
+    "line": 190,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "direct API, not channel operation"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 297,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 308,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 314,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 317,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message"
+  },
+  {
+    "id": "peer-drop-control",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 331,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "fault-only receive: dropped queued control message"
+  },
+  {
+    "id": "peer-drop-data",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 333,
+    "expected": "case m := <-s.data:",
+    "classification": "fault-only receive: dropped queued data message"
+  },
+  {
+    "id": "peer-backoff-receive",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 350,
+    "expected": "case <-time.After(backoff):",
+    "classification": "fault-only timer receive, excluded healthy path"
+  },
+  {
+    "id": "peer-shutdown-receive-1",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 320,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-shutdown-receive-2",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 351,
+    "expected": "case <-ctx.Done():",
+    "classification": "shutdown-only receive, excluded"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 419,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "txn",
+    "file": "internal/peer/peer.go",
+    "line": 241,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 201,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "txn",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 392,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 218,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send"
+  },
+  {
+    "id": "goaway-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 190,
+    "expected": "c.signal()",
+    "classification": "lifecycle wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 214,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 339,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 354,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "reset-wake-attempt",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 382,
+    "expected": "c.signal()",
+    "classification": "reset wake attempt; shares writer-wake channel, not separate counted site"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 650,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "txn",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "txn",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted copy: 1 full-value equivalent over all request chunks"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "txn",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy"
+  },
+  {
+    "id": "frontend-decode",
+    "target": "txn",
+    "file": "internal/server/rpc.go",
+    "line": 63,
+    "expected": "if err := proto.Unmarshal(b, m); err != nil {",
+    "classification": "counted batch frontend copy 1/Put; wire ordinary Put bypasses this site"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 128,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch"
+  },
+  {
+    "id": "batch-reply-encode",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 272,
+    "expected": "f.msg, f.err = marshal(cp.Resp)",
+    "classification": "zero input-value copies: ordinary reply contains no value; wire bypasses"
+  },
+  {
+    "id": "response-proto-encode",
+    "target": "txn",
+    "file": "internal/server/stream.go",
+    "line": 207,
+    "expected": "b, err := proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, m)",
+    "classification": "ordinary response materialization: zero input-value copies"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "txn",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "txn",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put"
+  },
+  {
+    "id": "stream-admit",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 658,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 574,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary batch/wire Put creates no per-stream context"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "txn",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 321,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "txn",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted copy: 1 per Put into encoded entry; NOT 1/batch-size per Put"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "txn",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "main/batch grow; wire whole-batch upper-bound capacity, no encode growth for scoped path"
+  },
+  {
+    "id": "raft-propose",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 591,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 586,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 859,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "main/batch decoded apply vs wire in-place walk"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 864,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 901,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 905,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 926,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy"
+  },
+  {
+    "id": "decode-batch-still-exists",
+    "target": "txn",
+    "file": "internal/core/codec.go",
+    "line": 150,
+    "expected": "if err := proto.Unmarshal(b, op); err != nil {",
+    "classification": "generic helper used by checks, NOT ordinary production Put apply"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "txn",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "txn",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "txn",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data"
+  },
+  {
+    "id": "wire-size",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 518,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "whole client request size plus framing upper bound"
+  },
+  {
+    "id": "wire-check",
+    "target": "txn",
+    "file": "internal/core/node.go",
+    "line": 389,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy"
+  },
+  {
+    "id": "index-value",
+    "target": "txn",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "zero value copy: store slice header; wire aliases entry, others decoded bytes"
+  },
+  {
+    "id": "index-version-append",
+    "target": "txn",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies"
+  },
+  {
+    "id": "index-key",
+    "target": "txn",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "zero key bytes copy at insert: retains key slice; key copies are not value copies"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "txn",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero value copy: direct MVCC fields path"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "txn",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "txn",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "txn",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy"
+  },
+  {
+    "id": "wal-write",
+    "target": "txn",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal"
+  },
+  {
+    "id": "wal-sync",
+    "target": "txn",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here"
+  },
+  {
+    "id": "lib-put-value-field",
+    "target": "txn",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is proto3 bytes"
+  },
+  {
+    "id": "lib-put-decoder",
+    "target": "txn",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "line": 248,
+    "expected": "if err := dec(in); err != nil {",
+    "classification": "main generated decoder; batch/wire use own frontend"
+  },
+  {
+    "id": "lib-grpc-decode",
+    "target": "txn",
+    "file": "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+    "line": 96,
+    "expected": "return proto.Unmarshal(buf.ReadOnlyData(), vv)",
+    "classification": "main default protobuf decode"
+  },
+  {
+    "id": "lib-grpc-materialize",
+    "target": "txn",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 115,
+    "expected": "s.CopyTo(*buf)",
+    "classification": "conditional additional main multi-buffer materialization, excluded fixed subtotal"
+  },
+  {
+    "id": "lib-grpc-copyto",
+    "target": "txn",
+    "file": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "line": 82,
+    "expected": "off += copy(dst[off:], b.ReadOnlyData())",
+    "classification": "conditional materialization actual byte-copy instruction"
+  },
+  {
+    "id": "lib-proto3-decode-copy",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5497,
+    "expected": "*p.Bytes() = append(([]byte)(nil), v...)",
+    "classification": "counted codec materialization proof for main/batch frontend and apply; removed wire Put"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted receiver Entry.Data decode copy all targets"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "counted bytes encode copy proof main/batch entry encoding and all-target peer encoding"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted leader Entry.Data deep-clone boundary: 1/Put all targets"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted full Entry.Data byte-copy instruction for leader Raft clone"
+  },
+  {
+    "id": "lib-storage-pointer-append1",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 318,
+    "expected": "ms.ents = append(ms.ents[:offset:offset], entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-storage-pointer-append2",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/storage.go",
+    "line": 320,
+    "expected": "ms.ents = append(ms.ents, entries...)",
+    "classification": "zero Entry.Data copies: append []*Entry pointers"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message"
+  },
+  {
+    "id": "lib-proto3-codec-selection",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 278,
+    "expected": "return nil, coderBytesNoZero",
+    "classification": "no-presence bytes coder selection for Put.Value"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers"
+  },
+  {
+    "id": "unstable-append",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "txn",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers"
+  },
+  {
+    "id": "proto3-bytes-encoder",
+    "target": "txn",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5483,
+    "expected": "b = protowire.AppendBytes(b, v)",
+    "classification": "bytes encoders call AppendBytes; not an additional copy"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "txn",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "txn",
+    "file": "internal/core/codec.go",
+    "line": 108,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "walkBatch calls apply with capped entry subslice"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "txn",
+    "file": "internal/server/h2.go",
+    "line": 631,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation"
+  },
+  {
+    "id": "completion-cas",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 214,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: CAS, no Go channel and no completion mutex"
+  },
+  {
+    "id": "completion-swap",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 227,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops"
+  },
+  {
+    "id": "charge-request",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 118,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy"
+  },
+  {
+    "id": "charge-reply",
+    "target": "txn",
+    "file": "internal/server/batch.go",
+    "line": 285,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy"
+  }
+]

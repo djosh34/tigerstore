@@ -1,0 +1,32 @@
+{
+  "verified_at": "2026-10-13T11:14:32.352659+00:00",
+  "measurement_run": 38387706444,
+  "resolver_timestamp": "2026-10-13T11:04:41Z",
+  "targets": {
+    "main": "8efd83a173394dd94a3981c72b4c51a1f3d061f1",
+    "wire": "936bc5b69ae8a0c59585521734b41222006a0a2c",
+    "hpack": "129e49a842b4802e9a36b74c830b3538525f846f",
+    "txn": "6179f12c2bbaaffc9960782533ad83c292605962"
+  },
+  "verified_exact_sites": 598,
+  "verified_repository_files": 398,
+  "dependency_modules_verified": 5,
+  "same_code_control": "main == PR77 complete Git tree",
+  "put_leader_named_input_materializations": {
+    "main": 4,
+    "wire": 4,
+    "hpack": 4,
+    "txn": 4
+  },
+  "cas_main_leader_named_input_materializations_success_or_compare_failure": 6,
+  "cas_pr80_leader_named_input_materializations_success_or_compare_failure": 4,
+  "cas_compare_failure_extra_returned_stored_value_encode": 1,
+  "normal_fixed_private_channel_sends": 0,
+  "normal_fixed_private_channel_receives": 0,
+  "normal_explicit_repository_channel_closes": 0,
+  "go_executions": 0,
+  "subagents": 0,
+  "github_writes": 0,
+  "repository_writes_by_audit": 0,
+  "scope_note": "Named materializations only; peers conditional and physical transport/growth excluded. Actual A/Q/F/O/I/U/Sw/Rw/Ticks and pass/fail fractions belong to runtime evidence."
+}

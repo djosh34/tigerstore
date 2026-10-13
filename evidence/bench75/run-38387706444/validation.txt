@@ -1,0 +1,4 @@
+put-c64: 25 windows validated
+put-c256: 25 windows validated
+cas-c256: 15 windows validated
+65 comparison windows, 3,900,000 completed operations. Profile and abandoned setup run excluded.

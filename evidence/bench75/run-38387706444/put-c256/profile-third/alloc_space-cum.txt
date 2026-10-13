@@ -1,0 +1,33 @@
+File: third
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: alloc_space
+Time: 2026-10-13 11:09:46 UTC
+Duration: 20s, Total samples = 3568.19MB 
+Showing nodes accounting for 2234.19MB, 62.61% of 3568.19MB total
+Showing top 25 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%  2137.22MB 59.90%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+    1.50MB 0.042% 0.042%  2137.22MB 59.90%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 0.042%  2137.22MB 59.90%  main.main
+         0     0% 0.042%  2137.22MB 59.90%  main.run
+         0     0% 0.042%  2137.22MB 59.90%  runtime.main
+         0     0% 0.042%  1845.87MB 51.73%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 0.042%  1496.37MB 41.94%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 0.042%  1266.42MB 35.49%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 0.042%  1266.42MB 35.49%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0% 0.042%  1266.42MB 35.49%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0% 0.042%  1266.42MB 35.49%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0% 0.042%  1156.42MB 32.41%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 0.042%   852.33MB 23.89%  github.com/djosh34/tigerstore/internal/server.(*conn).onData
+         0     0% 0.042%   762.73MB 21.38%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 0.042%   759.23MB 21.28%  go.etcd.io/raft/v3.stepLeader
+    4.50MB  0.13%  0.17%   755.73MB 21.18%  go.etcd.io/raft/v3.(*RawNode).Propose
+    2.50MB  0.07%  0.24%   744.73MB 20.87%  go.etcd.io/raft/v3.(*raft).appendEntry
+  742.31MB 20.80% 21.04%   742.31MB 20.80%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+         0     0% 21.04%   742.23MB 20.80%  google.golang.org/protobuf/proto.Clone
+         0     0% 21.04%   740.73MB 20.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).merge
+         0     0% 21.04%   740.73MB 20.76%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+  740.73MB 20.76% 41.80%   740.73MB 20.76%  google.golang.org/protobuf/internal/impl.mergeBytes
+         0     0% 41.80%   740.73MB 20.76%  google.golang.org/protobuf/proto.mergeOptions.mergeMessage
+  740.64MB 20.76% 62.56%   740.64MB 20.76%  github.com/djosh34/tigerstore/internal/core.encodeBatch
+       2MB 0.056% 62.61%   325.99MB  9.14%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady

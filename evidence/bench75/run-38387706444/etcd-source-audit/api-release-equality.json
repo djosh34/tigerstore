@@ -1,0 +1,134 @@
+[
+  {
+    "file": "go.mod",
+    "equal": true
+  },
+  {
+    "file": "LICENSE",
+    "equal": true
+  },
+  {
+    "file": ".gomodguard.yaml",
+    "equal": true
+  },
+  {
+    "file": "go.sum",
+    "equal": true
+  },
+  {
+    "file": "versionpb/version.pb.go",
+    "equal": true
+  },
+  {
+    "file": "versionpb/version.proto",
+    "equal": true
+  },
+  {
+    "file": "membershippb/membership.proto",
+    "equal": true
+  },
+  {
+    "file": "membershippb/membership.pb.go",
+    "equal": true
+  },
+  {
+    "file": "mvccpb/kv.pb.go",
+    "equal": true
+  },
+  {
+    "file": "mvccpb/kv.proto",
+    "equal": true
+  },
+  {
+    "file": "mvccpb/deprecated.go",
+    "equal": true
+  },
+  {
+    "file": "mvccpb/extension.go",
+    "equal": true
+  },
+  {
+    "file": "authpb/deprecated.go",
+    "equal": true
+  },
+  {
+    "file": "authpb/auth.proto",
+    "equal": true
+  },
+  {
+    "file": "authpb/auth.pb.go",
+    "equal": true
+  },
+  {
+    "file": "version/version.go",
+    "equal": true
+  },
+  {
+    "file": "version/version_test.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/rpc.proto",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/rpc.pb.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/raft_internal.proto",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/raft_internal.pb.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/util.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/raft_internal_stringer.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/raft_internal_stringer_test.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/etcdserver.proto",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/etcdserver.pb.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/rpc_grpc.pb.go",
+    "equal": true
+  },
+  {
+    "file": "etcdserverpb/gw/rpc.pb.gw.go",
+    "equal": true
+  },
+  {
+    "file": "v3rpc/rpctypes/error.go",
+    "equal": true
+  },
+  {
+    "file": "v3rpc/rpctypes/md.go",
+    "equal": true
+  },
+  {
+    "file": "v3rpc/rpctypes/metadatafields.go",
+    "equal": true
+  },
+  {
+    "file": "v3rpc/rpctypes/doc.go",
+    "equal": true
+  },
+  {
+    "file": "v3rpc/rpctypes/error_test.go",
+    "equal": true
+  }
+]

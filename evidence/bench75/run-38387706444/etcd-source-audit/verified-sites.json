@@ -1,0 +1,4821 @@
+[
+  {
+    "file": "deps/github.com_golang_protobuf@v1.5.4/proto/wire.go",
+    "start": 22,
+    "end": 40,
+    "sha256": "84e9dff5c3cf0eddf5f5050c61c94d863cea3f7b2ae81270d0790959f0ca2581",
+    "binding": "github.com_golang_protobuf@v1.5.4",
+    "lines": [
+      {
+        "line": 22,
+        "text": "func Marshal(m Message) ([]byte, error) {"
+      },
+      {
+        "line": 23,
+        "text": "\tb, err := marshalAppend(nil, m, false)"
+      },
+      {
+        "line": 24,
+        "text": "\tif b == nil {"
+      },
+      {
+        "line": 25,
+        "text": "\t\tb = zeroBytes"
+      },
+      {
+        "line": 26,
+        "text": "\t}"
+      },
+      {
+        "line": 27,
+        "text": "\treturn b, err"
+      },
+      {
+        "line": 28,
+        "text": "}"
+      },
+      {
+        "line": 29,
+        "text": ""
+      },
+      {
+        "line": 30,
+        "text": "var zeroBytes = make([]byte, 0, 0)"
+      },
+      {
+        "line": 31,
+        "text": ""
+      },
+      {
+        "line": 32,
+        "text": "func marshalAppend(buf []byte, m Message, deterministic bool) ([]byte, error) {"
+      },
+      {
+        "line": 33,
+        "text": "\tif m == nil {"
+      },
+      {
+        "line": 34,
+        "text": "\t\treturn nil, ErrNil"
+      },
+      {
+        "line": 35,
+        "text": "\t}"
+      },
+      {
+        "line": 36,
+        "text": "\tmi := MessageV2(m)"
+      },
+      {
+        "line": 37,
+        "text": "\tnbuf, err := protoV2.MarshalOptions{"
+      },
+      {
+        "line": 38,
+        "text": "\t\tDeterministic: deterministic,"
+      },
+      {
+        "line": 39,
+        "text": "\t\tAllowPartial:  true,"
+      },
+      {
+        "line": 40,
+        "text": "\t}.MarshalAppend(buf, mi)"
+      }
+    ]
+  },
+  {
+    "file": "deps/github.com_golang_protobuf@v1.5.4/proto/wire.go",
+    "start": 56,
+    "end": 69,
+    "sha256": "84e9dff5c3cf0eddf5f5050c61c94d863cea3f7b2ae81270d0790959f0ca2581",
+    "binding": "github.com_golang_protobuf@v1.5.4",
+    "lines": [
+      {
+        "line": 56,
+        "text": "func Unmarshal(b []byte, m Message) error {"
+      },
+      {
+        "line": 57,
+        "text": "\tm.Reset()"
+      },
+      {
+        "line": 58,
+        "text": "\treturn UnmarshalMerge(b, m)"
+      },
+      {
+        "line": 59,
+        "text": "}"
+      },
+      {
+        "line": 60,
+        "text": ""
+      },
+      {
+        "line": 61,
+        "text": "// UnmarshalMerge parses a wire-format message in b and places the decoded results in m."
+      },
+      {
+        "line": 62,
+        "text": "func UnmarshalMerge(b []byte, m Message) error {"
+      },
+      {
+        "line": 63,
+        "text": "\tmi := MessageV2(m)"
+      },
+      {
+        "line": 64,
+        "text": "\tout, err := protoV2.UnmarshalOptions{"
+      },
+      {
+        "line": 65,
+        "text": "\t\tAllowPartial: true,"
+      },
+      {
+        "line": 66,
+        "text": "\t\tMerge:        true,"
+      },
+      {
+        "line": 67,
+        "text": "\t}.UnmarshalState(protoiface.UnmarshalInput{"
+      },
+      {
+        "line": 68,
+        "text": "\t\tBuf:     b,"
+      },
+      {
+        "line": 69,
+        "text": "\t\tMessage: mi.ProtoReflect(),"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_bbolt@v1.5.0/bucket.go",
+    "start": 476,
+    "end": 492,
+    "sha256": "40124715d9e7192225dad52d3cbe4d9547af1388f63c4a40a4e3dc9a57f4919a",
+    "binding": "go.etcd.io_bbolt@v1.5.0",
+    "lines": [
+      {
+        "line": 476,
+        "text": "\t// Tip: Use a new variable `newKey` instead of reusing the existing `key` to prevent"
+      },
+      {
+        "line": 477,
+        "text": "\t// it from being marked as leaking, and accordingly cannot be allocated on stack."
+      },
+      {
+        "line": 478,
+        "text": "\tnewKey := cloneBytes(key)"
+      },
+      {
+        "line": 479,
+        "text": ""
+      },
+      {
+        "line": 480,
+        "text": "\t// Move cursor to correct position."
+      },
+      {
+        "line": 481,
+        "text": "\tc := b.Cursor()"
+      },
+      {
+        "line": 482,
+        "text": "\tk, _, flags := c.seek(newKey)"
+      },
+      {
+        "line": 483,
+        "text": ""
+      },
+      {
+        "line": 484,
+        "text": "\t// Return an error if there is an existing key with a bucket value."
+      },
+      {
+        "line": 485,
+        "text": "\tif bytes.Equal(newKey, k) && (flags&common.BucketLeafFlag) != 0 {"
+      },
+      {
+        "line": 486,
+        "text": "\t\treturn errors.ErrIncompatibleValue"
+      },
+      {
+        "line": 487,
+        "text": "\t}"
+      },
+      {
+        "line": 488,
+        "text": ""
+      },
+      {
+        "line": 489,
+        "text": "\t// gofail: var beforeBucketPut struct{}"
+      },
+      {
+        "line": 490,
+        "text": ""
+      },
+      {
+        "line": 491,
+        "text": "\tc.node().put(newKey, newKey, value, 0, 0)"
+      },
+      {
+        "line": 492,
+        "text": ""
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_bbolt@v1.5.0/internal/common/inode.go",
+    "start": 100,
+    "end": 101,
+    "sha256": "dab0a28fcf562dd7a1e917e6e20b177de320267f36990a31a8362c4878d5bfd2",
+    "binding": "go.etcd.io_bbolt@v1.5.0",
+    "lines": [
+      {
+        "line": 100,
+        "text": "\t\tl := copy(b, item.Key())"
+      },
+      {
+        "line": 101,
+        "text": "\t\tcopy(b[l:], item.Value())"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_bbolt@v1.5.0/node.go",
+    "start": 199,
+    "end": 199,
+    "sha256": "99d4adf5b0dc2e57219bac3681913054ac8d2ccc2052b12e7027b2aca27ee309",
+    "binding": "go.etcd.io_bbolt@v1.5.0",
+    "lines": [
+      {
+        "line": 199,
+        "text": "\tcommon.WriteInodeToPage(n.inodes, p)"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_bbolt@v1.5.0/node.go",
+    "start": 334,
+    "end": 334,
+    "sha256": "99d4adf5b0dc2e57219bac3681913054ac8d2ccc2052b12e7027b2aca27ee309",
+    "binding": "go.etcd.io_bbolt@v1.5.0",
+    "lines": [
+      {
+        "line": 334,
+        "text": "\t\tnode.write(p)"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_bbolt@v1.5.0/node.go",
+    "start": 478,
+    "end": 481,
+    "sha256": "99d4adf5b0dc2e57219bac3681913054ac8d2ccc2052b12e7027b2aca27ee309",
+    "binding": "go.etcd.io_bbolt@v1.5.0",
+    "lines": [
+      {
+        "line": 478,
+        "text": ""
+      },
+      {
+        "line": 479,
+        "text": "\t\tvalue := make([]byte, len(inode.Value()))"
+      },
+      {
+        "line": 480,
+        "text": "\t\tcopy(value, inode.Value())"
+      },
+      {
+        "line": 481,
+        "text": "\t\tinode.SetValue(value)"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/log_unstable.go",
+    "start": 200,
+    "end": 218,
+    "sha256": "9cdbd352eefb755342819adb7503f99f41a82259181e0ab929c801947179f3d0",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 200,
+        "text": "func (u *unstable) truncateAndAppend(ents []*pb.Entry) {"
+      },
+      {
+        "line": 201,
+        "text": "\tfromIndex := ents[0].GetIndex()"
+      },
+      {
+        "line": 202,
+        "text": "\tswitch {"
+      },
+      {
+        "line": 203,
+        "text": "\tcase fromIndex == u.offset+uint64(len(u.entries)):"
+      },
+      {
+        "line": 204,
+        "text": "\t\t// fromIndex is the next index in the u.entries, so append directly."
+      },
+      {
+        "line": 205,
+        "text": "\t\tu.entries = append(u.entries, ents...)"
+      },
+      {
+        "line": 206,
+        "text": "\tcase fromIndex <= u.offset:"
+      },
+      {
+        "line": 207,
+        "text": "\t\tu.logger.Infof(\"replace the unstable entries from index %d\", fromIndex)"
+      },
+      {
+        "line": 208,
+        "text": "\t\t// The log is being truncated to before our current offset"
+      },
+      {
+        "line": 209,
+        "text": "\t\t// portion, so set the offset and replace the entries."
+      },
+      {
+        "line": 210,
+        "text": "\t\tu.entries = ents"
+      },
+      {
+        "line": 211,
+        "text": "\t\tu.offset = fromIndex"
+      },
+      {
+        "line": 212,
+        "text": "\t\tu.offsetInProgress = u.offset"
+      },
+      {
+        "line": 213,
+        "text": "\tdefault:"
+      },
+      {
+        "line": 214,
+        "text": "\t\t// Truncate to fromIndex (exclusive), and append the new entries."
+      },
+      {
+        "line": 215,
+        "text": "\t\tu.logger.Infof(\"truncate the unstable entries before index %d\", fromIndex)"
+      },
+      {
+        "line": 216,
+        "text": "\t\tkeep := u.slice(u.offset, fromIndex) // NB: appending to this slice is safe,"
+      },
+      {
+        "line": 217,
+        "text": "\t\tu.entries = append(keep, ents...)    // and will reallocate/copy it"
+      },
+      {
+        "line": 218,
+        "text": "\t\t// Only in-progress entries before fromIndex are still considered to be"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 386,
+    "end": 389,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 386,
+        "text": "\t\tcase pm := <-propc:"
+      },
+      {
+        "line": 387,
+        "text": "\t\t\tm := pm.m"
+      },
+      {
+        "line": 388,
+        "text": "\t\t\tm.From = new(r.id)"
+      },
+      {
+        "line": 389,
+        "text": "\t\t\terr := r.Step(m)"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 391,
+    "end": 393,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 391,
+        "text": "\t\t\t\tpm.result <- err"
+      },
+      {
+        "line": 392,
+        "text": "\t\t\t\tclose(pm.result)"
+      },
+      {
+        "line": 393,
+        "text": "\t\t\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 395,
+    "end": 395,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 395,
+        "text": "\t\t\tif IsResponseMsg(m.GetType()) && !IsLocalMsgTarget(m.GetFrom()) && r.trk.Progress[m.GetFrom()] == nil {"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 433,
+    "end": 433,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 433,
+        "text": "\t\tcase <-n.tickc:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 435,
+    "end": 435,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 435,
+        "text": "\t\tcase readyc <- rd:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 443,
+    "end": 443,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 443,
+        "text": "\t\tcase <-advancec:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 460,
+    "end": 460,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 460,
+        "text": "\tcase n.tickc <- struct{}{}:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 471,
+    "end": 473,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 471,
+        "text": "func (n *node) Propose(ctx context.Context, data []byte) error {"
+      },
+      {
+        "line": 472,
+        "text": "\treturn n.stepWait(ctx, &pb.Message{Type: pb.MsgProp.Enum(), Entries: []*pb.Entry{{Data: data}}})"
+      },
+      {
+        "line": 473,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 508,
+    "end": 510,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 508,
+        "text": "func (n *node) stepWait(ctx context.Context, m *pb.Message) error {"
+      },
+      {
+        "line": 509,
+        "text": "\treturn n.stepWithWaitOption(ctx, m, true)"
+      },
+      {
+        "line": 510,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 517,
+    "end": 517,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 517,
+        "text": "\t\tcase n.recvc <- m:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 528,
+    "end": 528,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 528,
+        "text": "\t\tpm.result = make(chan error, 1)"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 531,
+    "end": 534,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 531,
+        "text": "\tcase ch <- pm:"
+      },
+      {
+        "line": 532,
+        "text": "\t\tif !wait {"
+      },
+      {
+        "line": 533,
+        "text": "\t\t\treturn nil"
+      },
+      {
+        "line": 534,
+        "text": "\t\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 541,
+    "end": 541,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 541,
+        "text": "\tcase err := <-pm.result:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/node.go",
+    "start": 557,
+    "end": 557,
+    "sha256": "311ece789019299836c97ca24908a52ca0e96ea11d3c81109444b41f625607a9",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 557,
+        "text": "\tcase n.advancec <- struct{}{}:"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/raft.go",
+    "start": 812,
+    "end": 820,
+    "sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 812,
+        "text": "func (r *raft) appendEntry(es ...*pb.Entry) (accepted bool) {"
+      },
+      {
+        "line": 813,
+        "text": "\tli := r.raftLog.lastIndex()"
+      },
+      {
+        "line": 814,
+        "text": "\tcloned := make([]*pb.Entry, len(es))"
+      },
+      {
+        "line": 815,
+        "text": "\tfor i := range es {"
+      },
+      {
+        "line": 816,
+        "text": "\t\t// TODO: Consider whether cloning/copying is necessary at all, and aim to eliminate it if possible."
+      },
+      {
+        "line": 817,
+        "text": "\t\tcloned[i] = proto.Clone(es[i]).(*pb.Entry)"
+      },
+      {
+        "line": 818,
+        "text": "\t\tcloned[i].Term = new(r.Term)"
+      },
+      {
+        "line": 819,
+        "text": "\t\tcloned[i].Index = new(li + 1 + uint64(i))"
+      },
+      {
+        "line": 820,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/raftpb/raft.pb.go",
+    "start": 342,
+    "end": 348,
+    "sha256": "d94c220250d54147f849f7c416787be4971903b4c95d93570e7906041513ff99",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 342,
+        "text": ""
+      },
+      {
+        "line": 343,
+        "text": "type Entry struct {"
+      },
+      {
+        "line": 344,
+        "text": "\tstate         protoimpl.MessageState `protogen:\"open.v1\"`"
+      },
+      {
+        "line": 345,
+        "text": "\tTerm          *uint64                `protobuf:\"varint,2,opt,name=Term\" json:\"Term,omitempty\"`"
+      },
+      {
+        "line": 346,
+        "text": "\tIndex         *uint64                `protobuf:\"varint,3,opt,name=Index\" json:\"Index,omitempty\"`"
+      },
+      {
+        "line": 347,
+        "text": "\tType          *EntryType             `protobuf:\"varint,1,opt,name=Type,enum=raftpb.EntryType\" json:\"Type,omitempty\"`"
+      },
+      {
+        "line": 348,
+        "text": "\tData          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`"
+      }
+    ]
+  },
+  {
+    "file": "deps/go.etcd.io_raft_v3@v3.7.0/storage.go",
+    "start": 293,
+    "end": 320,
+    "sha256": "22020183114fe7555bc44ebda1b5b0d67de6534b0c8735c08c8667a0bd245403",
+    "binding": "go.etcd.io_raft_v3@v3.7.0",
+    "lines": [
+      {
+        "line": 293,
+        "text": "func (ms *MemoryStorage) Append(entries []*pb.Entry) error {"
+      },
+      {
+        "line": 294,
+        "text": "\tif len(entries) == 0 {"
+      },
+      {
+        "line": 295,
+        "text": "\t\treturn nil"
+      },
+      {
+        "line": 296,
+        "text": "\t}"
+      },
+      {
+        "line": 297,
+        "text": ""
+      },
+      {
+        "line": 298,
+        "text": "\tms.Lock()"
+      },
+      {
+        "line": 299,
+        "text": "\tdefer ms.Unlock()"
+      },
+      {
+        "line": 300,
+        "text": ""
+      },
+      {
+        "line": 301,
+        "text": "\tfirst := ms.firstIndex()"
+      },
+      {
+        "line": 302,
+        "text": "\tlast := entries[0].GetIndex() + uint64(len(entries)) - 1"
+      },
+      {
+        "line": 303,
+        "text": ""
+      },
+      {
+        "line": 304,
+        "text": "\t// shortcut if there is no new entry."
+      },
+      {
+        "line": 305,
+        "text": "\tif last < first {"
+      },
+      {
+        "line": 306,
+        "text": "\t\treturn nil"
+      },
+      {
+        "line": 307,
+        "text": "\t}"
+      },
+      {
+        "line": 308,
+        "text": "\t// truncate compacted entries"
+      },
+      {
+        "line": 309,
+        "text": "\tif first > entries[0].GetIndex() {"
+      },
+      {
+        "line": 310,
+        "text": "\t\tentries = entries[first-entries[0].GetIndex():]"
+      },
+      {
+        "line": 311,
+        "text": "\t}"
+      },
+      {
+        "line": 312,
+        "text": ""
+      },
+      {
+        "line": 313,
+        "text": "\toffset := entries[0].GetIndex() - ms.ents[0].GetIndex()"
+      },
+      {
+        "line": 314,
+        "text": "\tswitch {"
+      },
+      {
+        "line": 315,
+        "text": "\tcase uint64(len(ms.ents)) > offset:"
+      },
+      {
+        "line": 316,
+        "text": "\t\t// NB: full slice expression protects ms.ents at index >= offset from"
+      },
+      {
+        "line": 317,
+        "text": "\t\t// rewrites, as they may still be referenced from outside MemoryStorage."
+      },
+      {
+        "line": 318,
+        "text": "\t\tms.ents = append(ms.ents[:offset:offset], entries...)"
+      },
+      {
+        "line": 319,
+        "text": "\tcase uint64(len(ms.ents)) == offset:"
+      },
+      {
+        "line": 320,
+        "text": "\t\tms.ents = append(ms.ents, entries...)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/encoding/proto/proto.go",
+    "start": 64,
+    "end": 78,
+    "sha256": "e49a349919237058e91aa19cf2128f78fdbdaae0f8ed169a600ffcc07ff566bd",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 64,
+        "text": "\tmarshalOptions := proto.MarshalOptions{UseCachedSize: true}"
+      },
+      {
+        "line": 65,
+        "text": ""
+      },
+      {
+        "line": 66,
+        "text": "\tif mem.IsBelowBufferPoolingThreshold(size) {"
+      },
+      {
+        "line": 67,
+        "text": "\t\tbuf, err := marshalOptions.Marshal(vv)"
+      },
+      {
+        "line": 68,
+        "text": "\t\tif err != nil {"
+      },
+      {
+        "line": 69,
+        "text": "\t\t\treturn nil, err"
+      },
+      {
+        "line": 70,
+        "text": "\t\t}"
+      },
+      {
+        "line": 71,
+        "text": "\t\tdata = append(data, mem.SliceBuffer(buf))"
+      },
+      {
+        "line": 72,
+        "text": "\t} else {"
+      },
+      {
+        "line": 73,
+        "text": "\t\tpool := mem.DefaultBufferPool()"
+      },
+      {
+        "line": 74,
+        "text": "\t\tbuf := pool.Get(size)"
+      },
+      {
+        "line": 75,
+        "text": "\t\tif _, err := marshalOptions.MarshalAppend((*buf)[:0], vv); err != nil {"
+      },
+      {
+        "line": 76,
+        "text": "\t\t\tpool.Put(buf)"
+      },
+      {
+        "line": 77,
+        "text": "\t\t\treturn nil, err"
+      },
+      {
+        "line": 78,
+        "text": "\t\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/encoding/proto/proto.go",
+    "start": 85,
+    "end": 96,
+    "sha256": "e49a349919237058e91aa19cf2128f78fdbdaae0f8ed169a600ffcc07ff566bd",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 85,
+        "text": "func (c *codecV2) Unmarshal(data mem.BufferSlice, v any) (err error) {"
+      },
+      {
+        "line": 86,
+        "text": "\tvv := messageV2Of(v)"
+      },
+      {
+        "line": 87,
+        "text": "\tif vv == nil {"
+      },
+      {
+        "line": 88,
+        "text": "\t\treturn fmt.Errorf(\"failed to unmarshal, message is %T, want proto.Message\", v)"
+      },
+      {
+        "line": 89,
+        "text": "\t}"
+      },
+      {
+        "line": 90,
+        "text": ""
+      },
+      {
+        "line": 91,
+        "text": "\tbuf := data.MaterializeToBuffer(mem.DefaultBufferPool())"
+      },
+      {
+        "line": 92,
+        "text": "\tdefer buf.Free()"
+      },
+      {
+        "line": 93,
+        "text": "\t// TODO: Upgrade proto.Unmarshal to support mem.BufferSlice. Right now, it's not"
+      },
+      {
+        "line": 94,
+        "text": "\t//  really possible without a major overhaul of the proto package, but the"
+      },
+      {
+        "line": 95,
+        "text": "\t//  vtprotobuf library may be able to support this."
+      },
+      {
+        "line": 96,
+        "text": "\treturn proto.Unmarshal(buf.ReadOnlyData(), vv)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go",
+    "start": 603,
+    "end": 615,
+    "sha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 603,
+        "text": "\t\t// We need to wait for s.cancel to be updated before calling"
+      },
+      {
+        "line": 604,
+        "text": "\t\t// t.closeStream to avoid data races."
+      },
+      {
+        "line": 605,
+        "text": "\t\tcancelUpdated := make(chan struct{})"
+      },
+      {
+        "line": 606,
+        "text": "\t\ttimer := internal.TimeAfterFunc(timeout, func() {"
+      },
+      {
+        "line": 607,
+        "text": "\t\t\t<-cancelUpdated"
+      },
+      {
+        "line": 608,
+        "text": "\t\t\tt.closeStream(s, true, http2.ErrCodeCancel, false)"
+      },
+      {
+        "line": 609,
+        "text": "\t\t})"
+      },
+      {
+        "line": 610,
+        "text": "\t\toldCancel := s.cancel"
+      },
+      {
+        "line": 611,
+        "text": "\t\ts.cancel = func() {"
+      },
+      {
+        "line": 612,
+        "text": "\t\t\toldCancel()"
+      },
+      {
+        "line": 613,
+        "text": "\t\t\ttimer.Stop()"
+      },
+      {
+        "line": 614,
+        "text": "\t\t}"
+      },
+      {
+        "line": 615,
+        "text": "\t\tclose(cancelUpdated)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/mem/buffer_slice.go",
+    "start": 79,
+    "end": 83,
+    "sha256": "eb963947548f5a64d07df1f79d06746adfdb597cef66e6b4207ff4389edd8340",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 79,
+        "text": "func (s BufferSlice) CopyTo(dst []byte) int {"
+      },
+      {
+        "line": 80,
+        "text": "\toff := 0"
+      },
+      {
+        "line": 81,
+        "text": "\tfor _, b := range s {"
+      },
+      {
+        "line": 82,
+        "text": "\t\toff += copy(dst[off:], b.ReadOnlyData())"
+      },
+      {
+        "line": 83,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/mem/buffer_slice.go",
+    "start": 105,
+    "end": 117,
+    "sha256": "eb963947548f5a64d07df1f79d06746adfdb597cef66e6b4207ff4389edd8340",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 105,
+        "text": "func (s BufferSlice) MaterializeToBuffer(pool BufferPool) Buffer {"
+      },
+      {
+        "line": 106,
+        "text": "\tif len(s) == 1 {"
+      },
+      {
+        "line": 107,
+        "text": "\t\ts[0].Ref()"
+      },
+      {
+        "line": 108,
+        "text": "\t\treturn s[0]"
+      },
+      {
+        "line": 109,
+        "text": "\t}"
+      },
+      {
+        "line": 110,
+        "text": "\tsLen := s.Len()"
+      },
+      {
+        "line": 111,
+        "text": "\tif sLen == 0 {"
+      },
+      {
+        "line": 112,
+        "text": "\t\treturn emptyBuffer{}"
+      },
+      {
+        "line": 113,
+        "text": "\t}"
+      },
+      {
+        "line": 114,
+        "text": "\tbuf := pool.Get(sLen)"
+      },
+      {
+        "line": 115,
+        "text": "\ts.CopyTo(*buf)"
+      },
+      {
+        "line": 116,
+        "text": "\treturn NewBuffer(buf, pool)"
+      },
+      {
+        "line": 117,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.83.2/server.go",
+    "start": 1187,
+    "end": 1189,
+    "sha256": "a09f192cb707172d7b9004813f300697e0eab8eb781389978683460ed0ddc49e",
+    "binding": "google.golang.org_grpc@v1.83.2",
+    "lines": [
+      {
+        "line": 1187,
+        "text": ""
+      },
+      {
+        "line": 1188,
+        "text": "func (s *Server) sendResponse(ctx context.Context, stream *transport.ServerStream, msg any, cp Compressor, opts *transport.WriteOptions, comp encoding.Compressor) error {"
+      },
+      {
+        "line": 1189,
+        "text": "\tdata, err := encode(s.getCodec(stream.ContentSubtype()), msg)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_grpc@v1.84.0/internal/transport/http2_client.go",
+    "start": 618,
+    "end": 626,
+    "sha256": "93fc9536fa02161c8559c21da7e26359d06d7ae4368a4ee7a4a6661cfe094491",
+    "binding": "google.golang.org_grpc@v1.84.0",
+    "lines": [
+      {
+        "line": 618,
+        "text": "\t}"
+      },
+      {
+        "line": 619,
+        "text": "\tif dl, ok := ctx.Deadline(); ok {"
+      },
+      {
+        "line": 620,
+        "text": "\t\t// Send out timeout regardless its value. The server can detect timeout context by itself."
+      },
+      {
+        "line": 621,
+        "text": "\t\t// TODO(mmukhi): Perhaps this field should be updated when actually writing out to the wire."
+      },
+      {
+        "line": 622,
+        "text": "\t\ttimeout := time.Until(dl)"
+      },
+      {
+        "line": 623,
+        "text": "\t\tif timeout <= 0 {"
+      },
+      {
+        "line": 624,
+        "text": "\t\t\treturn nil, status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error())"
+      },
+      {
+        "line": 625,
+        "text": "\t\t}"
+      },
+      {
+        "line": 626,
+        "text": "\t\theaderFields = append(headerFields, hpack.HeaderField{Name: \"grpc-timeout\", Value: grpcutil.EncodeDuration(timeout)})"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/encoding/protowire/wire.go",
+    "start": 454,
+    "end": 456,
+    "sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 454,
+        "text": "func AppendBytes(b []byte, v []byte) []byte {"
+      },
+      {
+        "line": 455,
+        "text": "\treturn append(AppendVarint(b, uint64(len(v))), v...)"
+      },
+      {
+        "line": 456,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "start": 5402,
+    "end": 5406,
+    "sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 5402,
+        "text": "func appendBytes(b []byte, p pointer, f *coderFieldInfo, opts marshalOptions) ([]byte, error) {"
+      },
+      {
+        "line": 5403,
+        "text": "\tv := *p.Bytes()"
+      },
+      {
+        "line": 5404,
+        "text": "\tb = protowire.AppendVarint(b, f.wiretag)"
+      },
+      {
+        "line": 5405,
+        "text": "\tb = protowire.AppendBytes(b, v)"
+      },
+      {
+        "line": 5406,
+        "text": "\treturn b, nil"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "start": 5477,
+    "end": 5484,
+    "sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 5477,
+        "text": "func appendBytesNoZero(b []byte, p pointer, f *coderFieldInfo, opts marshalOptions) ([]byte, error) {"
+      },
+      {
+        "line": 5478,
+        "text": "\tv := *p.Bytes()"
+      },
+      {
+        "line": 5479,
+        "text": "\tif len(v) == 0 {"
+      },
+      {
+        "line": 5480,
+        "text": "\t\treturn b, nil"
+      },
+      {
+        "line": 5481,
+        "text": "\t}"
+      },
+      {
+        "line": 5482,
+        "text": "\tb = protowire.AppendVarint(b, f.wiretag)"
+      },
+      {
+        "line": 5483,
+        "text": "\tb = protowire.AppendBytes(b, v)"
+      },
+      {
+        "line": 5484,
+        "text": "\treturn b, nil"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "start": 5488,
+    "end": 5499,
+    "sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 5488,
+        "text": "// The zero value is not decoded."
+      },
+      {
+        "line": 5489,
+        "text": "func consumeBytesNoZero(b []byte, p pointer, wtyp protowire.Type, f *coderFieldInfo, opts unmarshalOptions) (out unmarshalOutput, err error) {"
+      },
+      {
+        "line": 5490,
+        "text": "\tif wtyp != protowire.BytesType {"
+      },
+      {
+        "line": 5491,
+        "text": "\t\treturn out, errUnknown"
+      },
+      {
+        "line": 5492,
+        "text": "\t}"
+      },
+      {
+        "line": 5493,
+        "text": "\tv, n := protowire.ConsumeBytes(b)"
+      },
+      {
+        "line": 5494,
+        "text": "\tif n < 0 {"
+      },
+      {
+        "line": 5495,
+        "text": "\t\treturn out, errDecode"
+      },
+      {
+        "line": 5496,
+        "text": "\t}"
+      },
+      {
+        "line": 5497,
+        "text": "\t*p.Bytes() = append(([]byte)(nil), v...)"
+      },
+      {
+        "line": 5498,
+        "text": "\tout.n = n"
+      },
+      {
+        "line": 5499,
+        "text": "\treturn out, nil"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_tables.go",
+    "start": 124,
+    "end": 125,
+    "sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 124,
+        "text": "\t\tcase protoreflect.MessageKind:"
+      },
+      {
+        "line": 125,
+        "text": "\t\t\treturn getMessageInfo(ft), makeMessageSliceFieldCoder(fd, ft)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_tables.go",
+    "start": 273,
+    "end": 278,
+    "sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 273,
+        "text": "\t\tcase protoreflect.BytesKind:"
+      },
+      {
+        "line": 274,
+        "text": "\t\t\tif ft.Kind() == reflect.String {"
+      },
+      {
+        "line": 275,
+        "text": "\t\t\t\treturn nil, coderStringNoZero"
+      },
+      {
+        "line": 276,
+        "text": "\t\t\t}"
+      },
+      {
+        "line": 277,
+        "text": "\t\t\tif ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Uint8 {"
+      },
+      {
+        "line": 278,
+        "text": "\t\t\t\treturn nil, coderBytesNoZero"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/codec_tables.go",
+    "start": 423,
+    "end": 428,
+    "sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 423,
+        "text": "\t\tcase protoreflect.BytesKind:"
+      },
+      {
+        "line": 424,
+        "text": "\t\t\tif ft.Kind() == reflect.String {"
+      },
+      {
+        "line": 425,
+        "text": "\t\t\t\treturn nil, coderString"
+      },
+      {
+        "line": 426,
+        "text": "\t\t\t}"
+      },
+      {
+        "line": 427,
+        "text": "\t\t\tif ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Uint8 {"
+      },
+      {
+        "line": 428,
+        "text": "\t\t\t\treturn nil, coderBytes"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/internal/impl/merge.go",
+    "start": 187,
+    "end": 195,
+    "sha256": "5406a959d280825d0156c8e2e2857bd4e943a1aa0476a44717339ecb8d580628",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 187,
+        "text": "func mergeBytes(dst, src pointer, _ *coderFieldInfo, _ mergeOptions) {"
+      },
+      {
+        "line": 188,
+        "text": "\t*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)"
+      },
+      {
+        "line": 189,
+        "text": "}"
+      },
+      {
+        "line": 190,
+        "text": ""
+      },
+      {
+        "line": 191,
+        "text": "func mergeBytesNoZero(dst, src pointer, _ *coderFieldInfo, _ mergeOptions) {"
+      },
+      {
+        "line": 192,
+        "text": "\tv := *src.Bytes()"
+      },
+      {
+        "line": 193,
+        "text": "\tif len(v) > 0 {"
+      },
+      {
+        "line": 194,
+        "text": "\t\t*dst.Bytes() = append(emptyBuf[:], v...)"
+      },
+      {
+        "line": 195,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/proto/decode.go",
+    "start": 100,
+    "end": 122,
+    "sha256": "5259b0da78b384fcce573d774277f13e83a1f06b7fd212dd5f6fc617b3941917",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 100,
+        "text": "\tmethods := protoMethods(m)"
+      },
+      {
+        "line": 101,
+        "text": "\tif methods != nil && methods.Unmarshal != nil &&"
+      },
+      {
+        "line": 102,
+        "text": "\t\t!(o.DiscardUnknown && methods.Flags&protoiface.SupportUnmarshalDiscardUnknown == 0) {"
+      },
+      {
+        "line": 103,
+        "text": "\t\tin := protoiface.UnmarshalInput{"
+      },
+      {
+        "line": 104,
+        "text": "\t\t\tMessage:  m,"
+      },
+      {
+        "line": 105,
+        "text": "\t\t\tBuf:      b,"
+      },
+      {
+        "line": 106,
+        "text": "\t\t\tResolver: o.Resolver,"
+      },
+      {
+        "line": 107,
+        "text": "\t\t\tDepth:    o.RecursionLimit,"
+      },
+      {
+        "line": 108,
+        "text": "\t\t}"
+      },
+      {
+        "line": 109,
+        "text": "\t\tif o.DiscardUnknown {"
+      },
+      {
+        "line": 110,
+        "text": "\t\t\tin.Flags |= protoiface.UnmarshalDiscardUnknown"
+      },
+      {
+        "line": 111,
+        "text": "\t\t}"
+      },
+      {
+        "line": 112,
+        "text": ""
+      },
+      {
+        "line": 113,
+        "text": "\t\tif !allowPartial {"
+      },
+      {
+        "line": 114,
+        "text": "\t\t\t// This does not affect how current unmarshal functions work, it just allows them"
+      },
+      {
+        "line": 115,
+        "text": "\t\t\t// to record this for lazy the decoding case."
+      },
+      {
+        "line": 116,
+        "text": "\t\t\tin.Flags |= protoiface.UnmarshalCheckRequired"
+      },
+      {
+        "line": 117,
+        "text": "\t\t}"
+      },
+      {
+        "line": 118,
+        "text": "\t\tif o.NoLazyDecoding {"
+      },
+      {
+        "line": 119,
+        "text": "\t\t\tin.Flags |= protoiface.UnmarshalNoLazyDecoding"
+      },
+      {
+        "line": 120,
+        "text": "\t\t}"
+      },
+      {
+        "line": 121,
+        "text": ""
+      },
+      {
+        "line": 122,
+        "text": "\t\tout, err = methods.Unmarshal(in)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/proto/encode.go",
+    "start": 177,
+    "end": 195,
+    "sha256": "e9a13c44a81991067d003f235234fa8a859ab1f78ff0430212861f5027d5a434",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 177,
+        "text": "\tif methods := protoMethods(m); methods != nil && methods.Marshal != nil &&"
+      },
+      {
+        "line": 178,
+        "text": "\t\t!(o.Deterministic && methods.Flags&protoiface.SupportMarshalDeterministic == 0) {"
+      },
+      {
+        "line": 179,
+        "text": "\t\tin := protoiface.MarshalInput{"
+      },
+      {
+        "line": 180,
+        "text": "\t\t\tMessage: m,"
+      },
+      {
+        "line": 181,
+        "text": "\t\t\tBuf:     b,"
+      },
+      {
+        "line": 182,
+        "text": "\t\t\tFlags:   o.flags(),"
+      },
+      {
+        "line": 183,
+        "text": "\t\t}"
+      },
+      {
+        "line": 184,
+        "text": "\t\tif methods.Size != nil {"
+      },
+      {
+        "line": 185,
+        "text": "\t\t\tsout := methods.Size(protoiface.SizeInput{"
+      },
+      {
+        "line": 186,
+        "text": "\t\t\t\tMessage: m,"
+      },
+      {
+        "line": 187,
+        "text": "\t\t\t\tFlags:   in.Flags,"
+      },
+      {
+        "line": 188,
+        "text": "\t\t\t})"
+      },
+      {
+        "line": 189,
+        "text": "\t\t\tif cap(b) < len(b)+sout.Size {"
+      },
+      {
+        "line": 190,
+        "text": "\t\t\t\tin.Buf = make([]byte, len(b), growcap(cap(b), len(b)+sout.Size))"
+      },
+      {
+        "line": 191,
+        "text": "\t\t\t\tcopy(in.Buf, b)"
+      },
+      {
+        "line": 192,
+        "text": "\t\t\t}"
+      },
+      {
+        "line": 193,
+        "text": "\t\t\tin.Flags |= protoiface.MarshalUseCachedSize"
+      },
+      {
+        "line": 194,
+        "text": "\t\t}"
+      },
+      {
+        "line": 195,
+        "text": "\t\tout, err = methods.Marshal(in)"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/proto/merge.go",
+    "start": 41,
+    "end": 59,
+    "sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 41,
+        "text": "func Clone(m Message) Message {"
+      },
+      {
+        "line": 42,
+        "text": "\t// NOTE: Most usages of Clone assume the following properties:"
+      },
+      {
+        "line": 43,
+        "text": "\t//\tt := reflect.TypeOf(m)"
+      },
+      {
+        "line": 44,
+        "text": "\t//\tt == reflect.TypeOf(m.ProtoReflect().New().Interface())"
+      },
+      {
+        "line": 45,
+        "text": "\t//\tt == reflect.TypeOf(m.ProtoReflect().Type().Zero().Interface())"
+      },
+      {
+        "line": 46,
+        "text": "\t//"
+      },
+      {
+        "line": 47,
+        "text": "\t// Embedding protobuf messages breaks this since the parent type will have"
+      },
+      {
+        "line": 48,
+        "text": "\t// a forwarded ProtoReflect method, but the Interface method will return"
+      },
+      {
+        "line": 49,
+        "text": "\t// the underlying embedded message type."
+      },
+      {
+        "line": 50,
+        "text": "\tif m == nil {"
+      },
+      {
+        "line": 51,
+        "text": "\t\treturn nil"
+      },
+      {
+        "line": 52,
+        "text": "\t}"
+      },
+      {
+        "line": 53,
+        "text": "\tsrc := m.ProtoReflect()"
+      },
+      {
+        "line": 54,
+        "text": "\tif !src.IsValid() {"
+      },
+      {
+        "line": 55,
+        "text": "\t\treturn src.Type().Zero().Interface()"
+      },
+      {
+        "line": 56,
+        "text": "\t}"
+      },
+      {
+        "line": 57,
+        "text": "\tdst := src.New()"
+      },
+      {
+        "line": 58,
+        "text": "\tmergeOptions{}.mergeMessage(dst, src)"
+      },
+      {
+        "line": 59,
+        "text": "\treturn dst.Interface()"
+      }
+    ]
+  },
+  {
+    "file": "deps/google.golang.org_protobuf@v1.36.11/proto/merge.go",
+    "start": 72,
+    "end": 82,
+    "sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7",
+    "binding": "google.golang.org_protobuf@v1.36.11",
+    "lines": [
+      {
+        "line": 72,
+        "text": "func (o mergeOptions) mergeMessage(dst, src protoreflect.Message) {"
+      },
+      {
+        "line": 73,
+        "text": "\tmethods := protoMethods(dst)"
+      },
+      {
+        "line": 74,
+        "text": "\tif methods != nil && methods.Merge != nil {"
+      },
+      {
+        "line": 75,
+        "text": "\t\tin := protoiface.MergeInput{"
+      },
+      {
+        "line": 76,
+        "text": "\t\t\tDestination: dst,"
+      },
+      {
+        "line": 77,
+        "text": "\t\t\tSource:      src,"
+      },
+      {
+        "line": 78,
+        "text": "\t\t}"
+      },
+      {
+        "line": 79,
+        "text": "\t\tout := methods.Merge(in)"
+      },
+      {
+        "line": 80,
+        "text": "\t\tif out.Flags&protoiface.MergeComplete != 0 {"
+      },
+      {
+        "line": 81,
+        "text": "\t\t\treturn"
+      },
+      {
+        "line": 82,
+        "text": "\t\t}"
+      }
+    ]
+  },
+  {
+    "file": "inputs/versions.txt",
+    "start": 18,
+    "end": 18,
+    "sha256": "f9a7aab30c2eacf44219fde0f7a1e956f271239dcf8fbad5a47b93030eca1494",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 18,
+        "text": "\tdep\tgo.etcd.io/etcd/api/v3\tv3.7.2\th1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk="
+      }
+    ]
+  },
+  {
+    "file": "inputs/versions.txt",
+    "start": 43,
+    "end": 43,
+    "sha256": "f9a7aab30c2eacf44219fde0f7a1e956f271239dcf8fbad5a47b93030eca1494",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 43,
+        "text": "\tdep\tgo.etcd.io/etcd/api/v3\tv3.7.2\th1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk="
+      }
+    ]
+  },
+  {
+    "file": "inputs/versions.txt",
+    "start": 67,
+    "end": 67,
+    "sha256": "f9a7aab30c2eacf44219fde0f7a1e956f271239dcf8fbad5a47b93030eca1494",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 67,
+        "text": "\tdep\tgo.etcd.io/etcd/api/v3\tv3.7.2\th1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk="
+      }
+    ]
+  },
+  {
+    "file": "inputs/workload/cas.go",
+    "start": 14,
+    "end": 19,
+    "sha256": "7d21344b5cf934ba8febdf1246628f69a326032a51dd985a65233a33e8656b83",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 14,
+        "text": "func casRequest(key, value []byte, revision int64) *pb.TxnRequest {"
+      },
+      {
+        "line": 15,
+        "text": "\treturn &pb.TxnRequest{"
+      },
+      {
+        "line": 16,
+        "text": "\t\tCompare: []*pb.Compare{{Key: key, Target: pb.Compare_MOD, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_ModRevision{ModRevision: revision}}},"
+      },
+      {
+        "line": 17,
+        "text": "\t\tSuccess: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}},"
+      },
+      {
+        "line": 18,
+        "text": "\t\tFailure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key}}}},"
+      },
+      {
+        "line": 19,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "inputs/workload/cas.go",
+    "start": 22,
+    "end": 46,
+    "sha256": "7d21344b5cf934ba8febdf1246628f69a326032a51dd985a65233a33e8656b83",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 22,
+        "text": "func seedRevisions(client pb.KVClient, keys [][]byte) ([]atomic.Int64, error) {"
+      },
+      {
+        "line": 23,
+        "text": "\tctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)"
+      },
+      {
+        "line": 24,
+        "text": "\tdefer cancel()"
+      },
+      {
+        "line": 25,
+        "text": "\tr, err := client.Range(ctx, &pb.RangeRequest{Key: []byte(\"/registry/pods/\"), RangeEnd: []byte(\"/registry/pods0\"), KeysOnly: true})"
+      },
+      {
+        "line": 26,
+        "text": "\tif err != nil {"
+      },
+      {
+        "line": 27,
+        "text": "\t\treturn nil, err"
+      },
+      {
+        "line": 28,
+        "text": "\t}"
+      },
+      {
+        "line": 29,
+        "text": "\tif r == nil || r.Header == nil || r.More || len(r.Kvs) != len(keys) || r.Count != int64(len(keys)) {"
+      },
+      {
+        "line": 30,
+        "text": "\t\treturn nil, errors.New(\"CAS requires every seeded key to exist\")"
+      },
+      {
+        "line": 31,
+        "text": "\t}"
+      },
+      {
+        "line": 32,
+        "text": "\tbyKey := make(map[string]int64, len(keys))"
+      },
+      {
+        "line": 33,
+        "text": "\tfor _, kv := range r.Kvs {"
+      },
+      {
+        "line": 34,
+        "text": "\t\tif kv.ModRevision <= 0 {"
+      },
+      {
+        "line": 35,
+        "text": "\t\t\treturn nil, errors.New(\"invalid seeded mod revision\")"
+      },
+      {
+        "line": 36,
+        "text": "\t\t}"
+      },
+      {
+        "line": 37,
+        "text": "\t\tbyKey[string(kv.Key)] = kv.ModRevision"
+      },
+      {
+        "line": 38,
+        "text": "\t}"
+      },
+      {
+        "line": 39,
+        "text": "\trevisions := make([]atomic.Int64, len(keys))"
+      },
+      {
+        "line": 40,
+        "text": "\tfor i, key := range keys {"
+      },
+      {
+        "line": 41,
+        "text": "\t\trevision, ok := byKey[string(key)]"
+      },
+      {
+        "line": 42,
+        "text": "\t\tif !ok {"
+      },
+      {
+        "line": 43,
+        "text": "\t\t\treturn nil, fmt.Errorf(\"missing CAS seed key %s\", key)"
+      },
+      {
+        "line": 44,
+        "text": "\t\t}"
+      },
+      {
+        "line": 45,
+        "text": "\t\trevisions[i].Store(revision)"
+      },
+      {
+        "line": 46,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "inputs/workload/main.go",
+    "start": 115,
+    "end": 120,
+    "sha256": "1dc2ad26ce1ff3630d1167da3a1621c4ebe6415113c2cdb3dcd4e24181d90c99",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 115,
+        "text": "\tconst keyspace = 4096"
+      },
+      {
+        "line": 116,
+        "text": "\tkeys := make([][]byte, keyspace)"
+      },
+      {
+        "line": 117,
+        "text": "\tvalues := make([][]byte, keyspace)"
+      },
+      {
+        "line": 118,
+        "text": "\tfor i := range keyspace {"
+      },
+      {
+        "line": 119,
+        "text": "\t\tkeys[i] = []byte(fmt.Sprintf(\"/registry/pods/ns-%03d/pod-%08d\", i%64, i))"
+      },
+      {
+        "line": 120,
+        "text": "\t\tvalues[i] = make([]byte, 1024)"
+      }
+    ]
+  },
+  {
+    "file": "inputs/workload/main.go",
+    "start": 119,
+    "end": 119,
+    "sha256": "1dc2ad26ce1ff3630d1167da3a1621c4ebe6415113c2cdb3dcd4e24181d90c99",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 119,
+        "text": "\t\tkeys[i] = []byte(fmt.Sprintf(\"/registry/pods/ns-%03d/pod-%08d\", i%64, i))"
+      }
+    ]
+  },
+  {
+    "file": "inputs/workload/main.go",
+    "start": 178,
+    "end": 205,
+    "sha256": "1dc2ad26ce1ff3630d1167da3a1621c4ebe6415113c2cdb3dcd4e24181d90c99",
+    "binding": "input-manifest.json",
+    "lines": [
+      {
+        "line": 178,
+        "text": "\t\t\t\tctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)"
+      },
+      {
+        "line": 179,
+        "text": "\t\t\t\tvar err error"
+      },
+      {
+        "line": 180,
+        "text": "\t\t\t\tvar h *pb.ResponseHeader"
+      },
+      {
+        "line": 181,
+        "text": "\t\t\t\tif *op == \"put\" {"
+      },
+      {
+        "line": 182,
+        "text": "\t\t\t\t\tvar r *pb.PutResponse"
+      },
+      {
+        "line": 183,
+        "text": "\t\t\t\t\tr, err = clients[w%*conns].Put(ctx, &pb.PutRequest{Key: keys[k], Value: values[k]})"
+      },
+      {
+        "line": 184,
+        "text": "\t\t\t\t\tif r != nil {"
+      },
+      {
+        "line": 185,
+        "text": "\t\t\t\t\t\th = r.Header"
+      },
+      {
+        "line": 186,
+        "text": "\t\t\t\t\t}"
+      },
+      {
+        "line": 187,
+        "text": "\t\t\t\t} else if *op == \"cas\" {"
+      },
+      {
+        "line": 188,
+        "text": "\t\t\t\t\tvar r *pb.TxnResponse"
+      },
+      {
+        "line": 189,
+        "text": "\t\t\t\t\tr, err = clients[w%*conns].Txn(ctx, casRequest(keys[k], values[k], revisions[k].Load()))"
+      },
+      {
+        "line": 190,
+        "text": "\t\t\t\t\tif r != nil {"
+      },
+      {
+        "line": 191,
+        "text": "\t\t\t\t\t\th = r.Header"
+      },
+      {
+        "line": 192,
+        "text": "\t\t\t\t\t\tif err == nil {"
+      },
+      {
+        "line": 193,
+        "text": "\t\t\t\t\t\t\tvar revision int64"
+      },
+      {
+        "line": 194,
+        "text": "\t\t\t\t\t\t\trevision, err = checkCAS(r, keys[k], values[k])"
+      },
+      {
+        "line": 195,
+        "text": "\t\t\t\t\t\t\tif err == nil {"
+      },
+      {
+        "line": 196,
+        "text": "\t\t\t\t\t\t\t\tstoreRevision(&revisions[k], revision)"
+      },
+      {
+        "line": 197,
+        "text": "\t\t\t\t\t\t\t\tif r.Succeeded {"
+      },
+      {
+        "line": 198,
+        "text": "\t\t\t\t\t\t\t\t\tpasses++"
+      },
+      {
+        "line": 199,
+        "text": "\t\t\t\t\t\t\t\t} else {"
+      },
+      {
+        "line": 200,
+        "text": "\t\t\t\t\t\t\t\t\tfailures++"
+      },
+      {
+        "line": 201,
+        "text": "\t\t\t\t\t\t\t\t}"
+      },
+      {
+        "line": 202,
+        "text": "\t\t\t\t\t\t\t}"
+      },
+      {
+        "line": 203,
+        "text": "\t\t\t\t\t\t}"
+      },
+      {
+        "line": 204,
+        "text": "\t\t\t\t\t}"
+      },
+      {
+        "line": 205,
+        "text": "\t\t\t\t} else {"
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/raft_internal.pb.go",
+    "start": 14,
+    "end": 17,
+    "sha256": "eb6933959deb7828f4b74077218c7924b9e44c3a33ea7a2cc87f9e2a6b8dcbf4",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 14,
+        "text": "\tmembershippb \"go.etcd.io/etcd/api/v3/membershippb\""
+      },
+      {
+        "line": 15,
+        "text": "\t_ \"go.etcd.io/etcd/api/v3/versionpb\""
+      },
+      {
+        "line": 16,
+        "text": "\tprotoreflect \"google.golang.org/protobuf/reflect/protoreflect\""
+      },
+      {
+        "line": 17,
+        "text": "\tprotoimpl \"google.golang.org/protobuf/runtime/protoimpl\""
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/rpc.pb.go",
+    "start": 1,
+    "end": 26,
+    "sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1,
+        "text": "// Code generated by protoc-gen-go. DO NOT EDIT."
+      },
+      {
+        "line": 2,
+        "text": "// versions:"
+      },
+      {
+        "line": 3,
+        "text": "// \tprotoc-gen-go v1.36.11"
+      },
+      {
+        "line": 4,
+        "text": "// \tprotoc        v3.20.3"
+      },
+      {
+        "line": 5,
+        "text": "// source: rpc.proto"
+      },
+      {
+        "line": 6,
+        "text": ""
+      },
+      {
+        "line": 7,
+        "text": "package etcdserverpb"
+      },
+      {
+        "line": 8,
+        "text": ""
+      },
+      {
+        "line": 9,
+        "text": "import ("
+      },
+      {
+        "line": 10,
+        "text": "\treflect \"reflect\""
+      },
+      {
+        "line": 11,
+        "text": "\tsync \"sync\""
+      },
+      {
+        "line": 12,
+        "text": "\tunsafe \"unsafe\""
+      },
+      {
+        "line": 13,
+        "text": ""
+      },
+      {
+        "line": 14,
+        "text": "\t_ \"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options\""
+      },
+      {
+        "line": 15,
+        "text": "\tauthpb \"go.etcd.io/etcd/api/v3/authpb\""
+      },
+      {
+        "line": 16,
+        "text": "\tmvccpb \"go.etcd.io/etcd/api/v3/mvccpb\""
+      },
+      {
+        "line": 17,
+        "text": "\t_ \"go.etcd.io/etcd/api/v3/versionpb\""
+      },
+      {
+        "line": 18,
+        "text": "\t_ \"google.golang.org/genproto/googleapis/api/annotations\""
+      },
+      {
+        "line": 19,
+        "text": "\tprotoreflect \"google.golang.org/protobuf/reflect/protoreflect\""
+      },
+      {
+        "line": 20,
+        "text": "\tprotoimpl \"google.golang.org/protobuf/runtime/protoimpl\""
+      },
+      {
+        "line": 21,
+        "text": ")"
+      },
+      {
+        "line": 22,
+        "text": ""
+      },
+      {
+        "line": 23,
+        "text": "const ("
+      },
+      {
+        "line": 24,
+        "text": "\t// Verify that this generated code is sufficiently up-to-date."
+      },
+      {
+        "line": 25,
+        "text": "\t_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)"
+      },
+      {
+        "line": 26,
+        "text": "\t// Verify that runtime/protoimpl is sufficiently up-to-date."
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/rpc.pb.go",
+    "start": 755,
+    "end": 760,
+    "sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 755,
+        "text": "type PutRequest struct {"
+      },
+      {
+        "line": 756,
+        "text": "\tstate protoimpl.MessageState `protogen:\"open.v1\"`"
+      },
+      {
+        "line": 757,
+        "text": "\t// key is the key, in bytes, to put into the key-value store."
+      },
+      {
+        "line": 758,
+        "text": "\tKey []byte `protobuf:\"bytes,1,opt,name=key,proto3\" json:\"key,omitempty\"`"
+      },
+      {
+        "line": 759,
+        "text": "\t// value is the value, in bytes, to associate with the key in the key-value store."
+      },
+      {
+        "line": 760,
+        "text": "\tValue []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`"
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/rpc.pb.go",
+    "start": 1451,
+    "end": 1462,
+    "sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1451,
+        "text": "type TxnRequest struct {"
+      },
+      {
+        "line": 1452,
+        "text": "\tstate protoimpl.MessageState `protogen:\"open.v1\"`"
+      },
+      {
+        "line": 1453,
+        "text": "\t// compare is a list of predicates representing a conjunction of terms."
+      },
+      {
+        "line": 1454,
+        "text": "\t// If the comparisons succeed, then the success requests will be processed in order,"
+      },
+      {
+        "line": 1455,
+        "text": "\t// and the response will contain their respective responses in order."
+      },
+      {
+        "line": 1456,
+        "text": "\t// If the comparisons fail, then the failure requests will be processed in order,"
+      },
+      {
+        "line": 1457,
+        "text": "\t// and the response will contain their respective responses in order."
+      },
+      {
+        "line": 1458,
+        "text": "\tCompare []*Compare `protobuf:\"bytes,1,rep,name=compare,proto3\" json:\"compare,omitempty\"`"
+      },
+      {
+        "line": 1459,
+        "text": "\t// success is a list of requests which will be applied when compare evaluates to true."
+      },
+      {
+        "line": 1460,
+        "text": "\tSuccess []*RequestOp `protobuf:\"bytes,2,rep,name=success,proto3\" json:\"success,omitempty\"`"
+      },
+      {
+        "line": 1461,
+        "text": "\t// failure is a list of requests which will be applied when compare evaluates to false."
+      },
+      {
+        "line": 1462,
+        "text": "\tFailure       []*RequestOp `protobuf:\"bytes,3,rep,name=failure,proto3\" json:\"failure,omitempty\"`"
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/rpc_grpc.pb.go",
+    "start": 246,
+    "end": 250,
+    "sha256": "daa7241561e7e626f7deb9bc92ade10c2bc09a7a83192a14fbabe9f6b88d1f60",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 246,
+        "text": "func _KV_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {"
+      },
+      {
+        "line": 247,
+        "text": "\tin := new(PutRequest)"
+      },
+      {
+        "line": 248,
+        "text": "\tif err := dec(in); err != nil {"
+      },
+      {
+        "line": 249,
+        "text": "\t\treturn nil, err"
+      },
+      {
+        "line": 250,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "source/api/etcdserverpb/rpc_grpc.pb.go",
+    "start": 282,
+    "end": 286,
+    "sha256": "daa7241561e7e626f7deb9bc92ade10c2bc09a7a83192a14fbabe9f6b88d1f60",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 282,
+        "text": "func _KV_Txn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {"
+      },
+      {
+        "line": 283,
+        "text": "\tin := new(TxnRequest)"
+      },
+      {
+        "line": 284,
+        "text": "\tif err := dec(in); err != nil {"
+      },
+      {
+        "line": 285,
+        "text": "\t\treturn nil, err"
+      },
+      {
+        "line": 286,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "source/api/mvccpb/kv.pb.go",
+    "start": 13,
+    "end": 15,
+    "sha256": "8d847fd2e8ce2392c67d03663c3cbca202a5241be35d3046f6fd72df821833b3",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 13,
+        "text": ""
+      },
+      {
+        "line": 14,
+        "text": "\tprotoreflect \"google.golang.org/protobuf/reflect/protoreflect\""
+      },
+      {
+        "line": 15,
+        "text": "\tprotoimpl \"google.golang.org/protobuf/runtime/protoimpl\""
+      }
+    ]
+  },
+  {
+    "file": "source/api/mvccpb/kv.pb.go",
+    "start": 79,
+    "end": 84,
+    "sha256": "8d847fd2e8ce2392c67d03663c3cbca202a5241be35d3046f6fd72df821833b3",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 79,
+        "text": "\t// version is the version of the key. A deletion resets"
+      },
+      {
+        "line": 80,
+        "text": "\t// the version to zero and any modification of the key"
+      },
+      {
+        "line": 81,
+        "text": "\t// increases its version."
+      },
+      {
+        "line": 82,
+        "text": "\tVersion int64 `protobuf:\"varint,4,opt,name=version,proto3\" json:\"version,omitempty\"`"
+      },
+      {
+        "line": 83,
+        "text": "\t// value is the value held by the key, in bytes."
+      },
+      {
+        "line": 84,
+        "text": "\tValue []byte `protobuf:\"bytes,5,opt,name=value,proto3\" json:\"value,omitempty\"`"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/ioutil/pagewriter.go",
+    "start": 59,
+    "end": 62,
+    "sha256": "c7aa84a8499ad1f6223d37a845e333cc6994ac9e722cc8e533141d3a2924353b",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 59,
+        "text": "\t\tcopy(pw.buf[pw.bufferedBytes:], p)"
+      },
+      {
+        "line": 60,
+        "text": "\t\tpw.bufferedBytes += len(p)"
+      },
+      {
+        "line": 61,
+        "text": "\t\treturn len(p), nil"
+      },
+      {
+        "line": 62,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/ioutil/pagewriter.go",
+    "start": 66,
+    "end": 76,
+    "sha256": "c7aa84a8499ad1f6223d37a845e333cc6994ac9e722cc8e533141d3a2924353b",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 66,
+        "text": "\t\tpartial := slack > len(p)"
+      },
+      {
+        "line": 67,
+        "text": "\t\tif partial {"
+      },
+      {
+        "line": 68,
+        "text": "\t\t\t// not enough data to complete the slack page"
+      },
+      {
+        "line": 69,
+        "text": "\t\t\tslack = len(p)"
+      },
+      {
+        "line": 70,
+        "text": "\t\t}"
+      },
+      {
+        "line": 71,
+        "text": "\t\t// special case: writing to slack page in buffer"
+      },
+      {
+        "line": 72,
+        "text": "\t\tcopy(pw.buf[pw.bufferedBytes:], p[:slack])"
+      },
+      {
+        "line": 73,
+        "text": "\t\tpw.bufferedBytes += slack"
+      },
+      {
+        "line": 74,
+        "text": "\t\tn = slack"
+      },
+      {
+        "line": 75,
+        "text": "\t\tp = p[slack:]"
+      },
+      {
+        "line": 76,
+        "text": "\t\tif partial {"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/ioutil/pagewriter.go",
+    "start": 89,
+    "end": 100,
+    "sha256": "c7aa84a8499ad1f6223d37a845e333cc6994ac9e722cc8e533141d3a2924353b",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 89,
+        "text": "\t\tn += c"
+      },
+      {
+        "line": 90,
+        "text": "\t\tif werr != nil {"
+      },
+      {
+        "line": 91,
+        "text": "\t\t\treturn n, werr"
+      },
+      {
+        "line": 92,
+        "text": "\t\t}"
+      },
+      {
+        "line": 93,
+        "text": "\t\tp = p[pages*pw.pageBytes:]"
+      },
+      {
+        "line": 94,
+        "text": "\t}"
+      },
+      {
+        "line": 95,
+        "text": "\t// write remaining tail to buffer"
+      },
+      {
+        "line": 96,
+        "text": "\tc, werr := pw.Write(p)"
+      },
+      {
+        "line": 97,
+        "text": "\tn += c"
+      },
+      {
+        "line": 98,
+        "text": "\treturn n, werr"
+      },
+      {
+        "line": 99,
+        "text": "}"
+      },
+      {
+        "line": 100,
+        "text": ""
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/pbutil/pbutil.go",
+    "start": 53,
+    "end": 58,
+    "sha256": "f61795ced1b395f337eada0415ccbad7888c0826bd3637b14ff22b8e9026d198",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 53,
+        "text": "func MustMarshalMessage(m proto.Message) []byte {"
+      },
+      {
+        "line": 54,
+        "text": "\td, err := proto.Marshal(m)"
+      },
+      {
+        "line": 55,
+        "text": "\tif err != nil {"
+      },
+      {
+        "line": 56,
+        "text": "\t\tpanic(fmt.Sprintf(\"marshal should never fail (%v)\", err))"
+      },
+      {
+        "line": 57,
+        "text": "\t}"
+      },
+      {
+        "line": 58,
+        "text": "\treturn d"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/pbutil/pbutil.go",
+    "start": 61,
+    "end": 65,
+    "sha256": "f61795ced1b395f337eada0415ccbad7888c0826bd3637b14ff22b8e9026d198",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 61,
+        "text": "func MustUnmarshalMessage(um proto.Message, data []byte) {"
+      },
+      {
+        "line": 62,
+        "text": "\tif err := proto.Unmarshal(data, um); err != nil {"
+      },
+      {
+        "line": 63,
+        "text": "\t\tpanic(fmt.Sprintf(\"unmarshal should never fail (%v)\", err))"
+      },
+      {
+        "line": 64,
+        "text": "\t}"
+      },
+      {
+        "line": 65,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/schedule/schedule.go",
+    "start": 114,
+    "end": 120,
+    "sha256": "0a017f7cf39bd265e72c7f2d519d6768c5973e2c716abea15e7fab0e65e54ea2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 114,
+        "text": "\tif len(f.pendings) == 0 {"
+      },
+      {
+        "line": 115,
+        "text": "\t\tselect {"
+      },
+      {
+        "line": 116,
+        "text": "\t\tcase f.resume <- struct{}{}:"
+      },
+      {
+        "line": 117,
+        "text": "\t\tdefault:"
+      },
+      {
+        "line": 118,
+        "text": "\t\t}"
+      },
+      {
+        "line": 119,
+        "text": "\t}"
+      },
+      {
+        "line": 120,
+        "text": "\tf.pendings = append(f.pendings, j)"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/schedule/schedule.go",
+    "start": 174,
+    "end": 174,
+    "sha256": "0a017f7cf39bd265e72c7f2d519d6768c5973e2c716abea15e7fab0e65e54ea2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 174,
+        "text": "\t\t\tcase <-f.resume:"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/wait/wait.go",
+    "start": 65,
+    "end": 65,
+    "sha256": "93124fec939c6484a54971a063bacbf9a7b9a715296ddd747acaac44d40d4af0",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 65,
+        "text": "\tnewCh := make(chan any, 1)"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/wait/wait.go",
+    "start": 83,
+    "end": 84,
+    "sha256": "93124fec939c6484a54971a063bacbf9a7b9a715296ddd747acaac44d40d4af0",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 83,
+        "text": "\t\tch <- x"
+      },
+      {
+        "line": 84,
+        "text": "\t\tclose(ch)"
+      }
+    ]
+  },
+  {
+    "file": "source/pkg/wait/wait_time.go",
+    "start": 56,
+    "end": 64,
+    "sha256": "11e562c666a6f8dc3b8dda805e29c02d6704d29d549914385aadc7c121e4002b",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 56,
+        "text": "func (tl *timeList) Trigger(deadline uint64) {"
+      },
+      {
+        "line": 57,
+        "text": "\ttl.l.Lock()"
+      },
+      {
+        "line": 58,
+        "text": "\tdefer tl.l.Unlock()"
+      },
+      {
+        "line": 59,
+        "text": "\ttl.lastTriggerDeadline = deadline"
+      },
+      {
+        "line": 60,
+        "text": "\tfor t, ch := range tl.m {"
+      },
+      {
+        "line": 61,
+        "text": "\t\tif t <= deadline {"
+      },
+      {
+        "line": 62,
+        "text": "\t\t\tdelete(tl.m, t)"
+      },
+      {
+        "line": 63,
+        "text": "\t\t\tclose(ch)"
+      },
+      {
+        "line": 64,
+        "text": "\t\t}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msg_codec.go",
+    "start": 38,
+    "end": 38,
+    "sha256": "6cd135371bdaec67b24edc76eacec3659ca1bcfd0e91a75e28f7b663aee43556",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 38,
+        "text": "\t_, err := enc.w.Write(pbutil.MustMarshalMessage(m))"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msg_codec.go",
+    "start": 69,
+    "end": 69,
+    "sha256": "6cd135371bdaec67b24edc76eacec3659ca1bcfd0e91a75e28f7b663aee43556",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 69,
+        "text": "\treturn &m, proto.Unmarshal(buf, &m)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msgappv2_codec.go",
+    "start": 114,
+    "end": 114,
+    "sha256": "cb4a18507ef875e4b809674223d37d583f5187a209947d2a70f2c390ba8a23e1",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 114,
+        "text": "\t\t\t\tb, err := opts.MarshalAppend(enc.buf[:0], m.Entries[i])"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msgappv2_codec.go",
+    "start": 122,
+    "end": 122,
+    "sha256": "cb4a18507ef875e4b809674223d37d583f5187a209947d2a70f2c390ba8a23e1",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 122,
+        "text": "\t\t\t\tif _, err := enc.w.Write(pbutil.MustMarshalMessage(m.Entries[i])); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msgappv2_codec.go",
+    "start": 143,
+    "end": 143,
+    "sha256": "cb4a18507ef875e4b809674223d37d583f5187a209947d2a70f2c390ba8a23e1",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 143,
+        "text": "\t\tif _, err := enc.w.Write(pbutil.MustMarshalMessage(m)); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msgappv2_codec.go",
+    "start": 227,
+    "end": 227,
+    "sha256": "cb4a18507ef875e4b809674223d37d583f5187a209947d2a70f2c390ba8a23e1",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 227,
+        "text": "\t\t\tpbutil.MustUnmarshalMessage(m.Entries[i], buf)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/msgappv2_codec.go",
+    "start": 243,
+    "end": 243,
+    "sha256": "cb4a18507ef875e4b809674223d37d583f5187a209947d2a70f2c390ba8a23e1",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 243,
+        "text": "\t\tpbutil.MustUnmarshalMessage(&m, buf)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/peer.go",
+    "start": 177,
+    "end": 178,
+    "sha256": "e8fd9f9ffb0648c308685b8411b940f0d7cdf202c28e4782c0e8174430b40cb7",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 177,
+        "text": "\t\t\tcase mm := <-p.recvc:"
+      },
+      {
+        "line": 178,
+        "text": "\t\t\t\tif err := r.Process(ctx, mm); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/peer.go",
+    "start": 247,
+    "end": 247,
+    "sha256": "e8fd9f9ffb0648c308685b8411b940f0d7cdf202c28e4782c0e8174430b40cb7",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 247,
+        "text": "\tcase writec <- m:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/stream.go",
+    "start": 207,
+    "end": 207,
+    "sha256": "6c55eeeea44625c477524cee9d4df80a641c28b1843ead8e2f2183f8da045ae6",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 207,
+        "text": "\t\tcase m := <-msgc:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/api/rafthttp/stream.go",
+    "start": 530,
+    "end": 530,
+    "sha256": "6c55eeeea44625c477524cee9d4df80a641c28b1843ead8e2f2183f8da045ae6",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 530,
+        "text": "\t\tcase recvc <- m:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/apply/apply.go",
+    "start": 27,
+    "end": 29,
+    "sha256": "3432a495439627341f70a2d9f76675665d9add63fa599b034869293a1c5be986",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 27,
+        "text": "func Apply(lg *zap.Logger, e *raftpb.Entry, uberApply UberApplier, w wait.Wait, shouldApplyV3 membership.ShouldApplyV3) (ar *Result, id uint64) {"
+      },
+      {
+        "line": 28,
+        "text": "\tvar raftReq pb.InternalRaftRequest"
+      },
+      {
+        "line": 29,
+        "text": "\tpbutil.MustUnmarshalMessage(&raftReq, e.Data)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/apply/apply.go",
+    "start": 40,
+    "end": 46,
+    "sha256": "3432a495439627341f70a2d9f76675665d9add63fa599b034869293a1c5be986",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 40,
+        "text": "\tneedResult := w.IsRegistered(id)"
+      },
+      {
+        "line": 41,
+        "text": "\twrapper := &InternalRaftRequestWrapper{"
+      },
+      {
+        "line": 42,
+        "text": "\t\tInternalRaftRequest: &raftReq,"
+      },
+      {
+        "line": 43,
+        "text": "\t\tSkipRangeExecution:  !needResult && raftReq.Txn != nil,"
+      },
+      {
+        "line": 44,
+        "text": "\t}"
+      },
+      {
+        "line": 45,
+        "text": "\tif needResult || !noSideEffect(&raftReq) {"
+      },
+      {
+        "line": 46,
+        "text": "\t\treturn uberApply.Apply(wrapper, shouldApplyV3), id"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/bootstrap.go",
+    "start": 540,
+    "end": 552,
+    "sha256": "8e260cd55ce8de63a6c398ed104a30405fe6ad306a76686a26a47f7896083115",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 540,
+        "text": "func raftConfig(cfg config.ServerConfig, id uint64, s *raft.MemoryStorage) *raft.Config {"
+      },
+      {
+        "line": 541,
+        "text": "\treturn &raft.Config{"
+      },
+      {
+        "line": 542,
+        "text": "\t\tID:              id,"
+      },
+      {
+        "line": 543,
+        "text": "\t\tElectionTick:    cfg.ElectionTicks,"
+      },
+      {
+        "line": 544,
+        "text": "\t\tHeartbeatTick:   1,"
+      },
+      {
+        "line": 545,
+        "text": "\t\tStorage:         s,"
+      },
+      {
+        "line": 546,
+        "text": "\t\tMaxSizePerMsg:   maxSizePerMsg,"
+      },
+      {
+        "line": 547,
+        "text": "\t\tMaxInflightMsgs: maxInflightMsgs,"
+      },
+      {
+        "line": 548,
+        "text": "\t\tCheckQuorum:     true,"
+      },
+      {
+        "line": 549,
+        "text": "\t\tPreVote:         cfg.PreVote,"
+      },
+      {
+        "line": 550,
+        "text": "\t\tLogger:          NewRaftLoggerZap(cfg.Logger.Named(\"raft\")),"
+      },
+      {
+        "line": 551,
+        "text": "\t}"
+      },
+      {
+        "line": 552,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 183,
+    "end": 183,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 183,
+        "text": "\t\t\tcase <-r.ticker.C:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 185,
+    "end": 185,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 185,
+        "text": "\t\t\tcase rd := <-r.Ready():"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 219,
+    "end": 220,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 219,
+        "text": "\t\t\t\tnotifyc := make(chan struct{}, 1)"
+      },
+      {
+        "line": 220,
+        "text": "\t\t\t\traftAdvancedC := make(chan struct{}, 1)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 232,
+    "end": 232,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 232,
+        "text": "\t\t\t\tcase r.applyc <- ap:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 255,
+    "end": 257,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 255,
+        "text": "\t\t\t\t// gofail: var raftBeforeSave struct{}"
+      },
+      {
+        "line": 256,
+        "text": "\t\t\t\tif err := r.storage.Save(rd.HardState, rd.Entries); err != nil {"
+      },
+      {
+        "line": 257,
+        "text": "\t\t\t\t\tr.lg.Fatal(\"failed to save Raft hard state and entries\", zap.Error(err))"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 302,
+    "end": 302,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 302,
+        "text": "\t\t\t\t\tnotifyc <- struct{}{}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/raft.go",
+    "start": 327,
+    "end": 327,
+    "sha256": "37853a3bdf903810058a335df96e96874673a5974d9e5e5adfea96d9a52bca42",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 327,
+        "text": "\t\t\t\t\tnotifyc <- struct{}{}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/server.go",
+    "start": 843,
+    "end": 843,
+    "sha256": "2313798e367fc6ae74c0a10643124ed9b6b7b1a95eedfc7929addda6f881636d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 843,
+        "text": "\t\tcase ap := <-s.r.apply():"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/server.go",
+    "start": 844,
+    "end": 845,
+    "sha256": "2313798e367fc6ae74c0a10643124ed9b6b7b1a95eedfc7929addda6f881636d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 844,
+        "text": "\t\t\tf := schedule.NewJob(\"server_applyAll\", func(context.Context) { s.applyAll(&ep, &ap) })"
+      },
+      {
+        "line": 845,
+        "text": "\t\t\tsched.Schedule(f)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/server.go",
+    "start": 983,
+    "end": 983,
+    "sha256": "2313798e367fc6ae74c0a10643124ed9b6b7b1a95eedfc7929addda6f881636d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 983,
+        "text": "\t<-apply.notifyc"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/server.go",
+    "start": 1970,
+    "end": 1983,
+    "sha256": "2313798e367fc6ae74c0a10643124ed9b6b7b1a95eedfc7929addda6f881636d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1970,
+        "text": "\tar, id := apply.Apply(s.lg, e, s.uberApply, s.w, shouldApplyV3)"
+      },
+      {
+        "line": 1971,
+        "text": ""
+      },
+      {
+        "line": 1972,
+        "text": "\t// do not re-toApply applied entries."
+      },
+      {
+        "line": 1973,
+        "text": "\tif !shouldApplyV3 {"
+      },
+      {
+        "line": 1974,
+        "text": "\t\treturn"
+      },
+      {
+        "line": 1975,
+        "text": "\t}"
+      },
+      {
+        "line": 1976,
+        "text": ""
+      },
+      {
+        "line": 1977,
+        "text": "\tif ar == nil {"
+      },
+      {
+        "line": 1978,
+        "text": "\t\treturn"
+      },
+      {
+        "line": 1979,
+        "text": "\t}"
+      },
+      {
+        "line": 1980,
+        "text": ""
+      },
+      {
+        "line": 1981,
+        "text": "\tif !errorspkg.Is(ar.Err, errors.ErrNoSpace) || len(s.alarmStore.Get(pb.AlarmType_NOSPACE)) > 0 {"
+      },
+      {
+        "line": 1982,
+        "text": "\t\ts.w.Trigger(id, ar)"
+      },
+      {
+        "line": 1983,
+        "text": "\t\treturn"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/put.go",
+    "start": 52,
+    "end": 66,
+    "sha256": "b11b93fb995c8f5334284061c86bd4f332a261471dc80da8174cdf0d27aed3cc",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 52,
+        "text": "\tval, leaseID := p.Value, lease.LeaseID(p.Lease)"
+      },
+      {
+        "line": 53,
+        "text": ""
+      },
+      {
+        "line": 54,
+        "text": "\tif p.IgnoreValue {"
+      },
+      {
+        "line": 55,
+        "text": "\t\tval = prevKV.KVs[0].Value"
+      },
+      {
+        "line": 56,
+        "text": "\t}"
+      },
+      {
+        "line": 57,
+        "text": "\tif p.IgnoreLease {"
+      },
+      {
+        "line": 58,
+        "text": "\t\tleaseID = lease.LeaseID(prevKV.KVs[0].Lease)"
+      },
+      {
+        "line": 59,
+        "text": "\t}"
+      },
+      {
+        "line": 60,
+        "text": "\tif p.PrevKv {"
+      },
+      {
+        "line": 61,
+        "text": "\t\tif prevKV != nil && len(prevKV.KVs) != 0 {"
+      },
+      {
+        "line": 62,
+        "text": "\t\t\tresp.PrevKv = prevKV.KVs[0]"
+      },
+      {
+        "line": 63,
+        "text": "\t\t}"
+      },
+      {
+        "line": 64,
+        "text": "\t}"
+      },
+      {
+        "line": 65,
+        "text": ""
+      },
+      {
+        "line": 66,
+        "text": "\tresp.Header.Revision = txnWrite.Put(p.Key, val, leaseID)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/put.go",
+    "start": 104,
+    "end": 115,
+    "sha256": "b11b93fb995c8f5334284061c86bd4f332a261471dc80da8174cdf0d27aed3cc",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 104,
+        "text": "func getPrevKV(trace *traceutil.Trace, txnWrite mvcc.ReadView, p *pb.PutRequest) (prevKV *mvcc.RangeResult, err error) {"
+      },
+      {
+        "line": 105,
+        "text": "\tif p.IgnoreValue || p.IgnoreLease || p.PrevKv {"
+      },
+      {
+        "line": 106,
+        "text": "\t\ttrace.StepWithFunction(func() {"
+      },
+      {
+        "line": 107,
+        "text": "\t\t\tprevKV, err = txnWrite.Range(context.TODO(), p.Key, nil, mvcc.RangeOptions{})"
+      },
+      {
+        "line": 108,
+        "text": "\t\t}, \"get previous kv pair\")"
+      },
+      {
+        "line": 109,
+        "text": ""
+      },
+      {
+        "line": 110,
+        "text": "\t\tif err != nil {"
+      },
+      {
+        "line": 111,
+        "text": "\t\t\treturn nil, err"
+      },
+      {
+        "line": 112,
+        "text": "\t\t}"
+      },
+      {
+        "line": 113,
+        "text": "\t}"
+      },
+      {
+        "line": 114,
+        "text": "\treturn prevKV, nil"
+      },
+      {
+        "line": 115,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/range.go",
+    "start": 62,
+    "end": 71,
+    "sha256": "b77f1c62e0de98b43c30d7b3b4c32409c61900f53d07719632779d6249dea74a",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 62,
+        "text": "\tlimit := rangeLimit(r)"
+      },
+      {
+        "line": 63,
+        "text": "\tro := mvcc.RangeOptions{"
+      },
+      {
+        "line": 64,
+        "text": "\t\tLimit:          limit,"
+      },
+      {
+        "line": 65,
+        "text": "\t\tRev:            r.Revision,"
+      },
+      {
+        "line": 66,
+        "text": "\t\tCountOnly:      r.CountOnly,"
+      },
+      {
+        "line": 67,
+        "text": "\t\tFastKeysOnly:   r.KeysOnly && r.SortTarget != pb.RangeRequest_VALUE,"
+      },
+      {
+        "line": 68,
+        "text": "\t\tWithTotalCount: withTotalCount,"
+      },
+      {
+        "line": 69,
+        "text": "\t}"
+      },
+      {
+        "line": 70,
+        "text": ""
+      },
+      {
+        "line": 71,
+        "text": "\trr, err := txnRead.Range(ctx, r.Key, mkGteRange(r.RangeEnd), ro)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/txn.go",
+    "start": 137,
+    "end": 162,
+    "sha256": "6e895f9d3f5794a308881cce4b50878054e6f93e794506ca570042cefa7501bf",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 137,
+        "text": "\treqs := rt.Success"
+      },
+      {
+        "line": 138,
+        "text": "\tif !txnPath[0] {"
+      },
+      {
+        "line": 139,
+        "text": "\t\treqs = rt.Failure"
+      },
+      {
+        "line": 140,
+        "text": "\t}"
+      },
+      {
+        "line": 141,
+        "text": ""
+      },
+      {
+        "line": 142,
+        "text": "\tfor i, req := range reqs {"
+      },
+      {
+        "line": 143,
+        "text": "\t\trespi := tresp.Responses[i].Response"
+      },
+      {
+        "line": 144,
+        "text": "\t\tswitch tv := req.Request.(type) {"
+      },
+      {
+        "line": 145,
+        "text": "\t\tcase *pb.RequestOp_RequestRange:"
+      },
+      {
+        "line": 146,
+        "text": "\t\t\ttrace.StartSubTrace("
+      },
+      {
+        "line": 147,
+        "text": "\t\t\t\ttraceutil.Field{Key: \"req_type\", Value: \"range\"},"
+      },
+      {
+        "line": 148,
+        "text": "\t\t\t\ttraceutil.Field{Key: \"range_begin\", Value: string(tv.RequestRange.Key)},"
+      },
+      {
+        "line": 149,
+        "text": "\t\t\t\ttraceutil.Field{Key: \"range_end\", Value: string(tv.RequestRange.RangeEnd)})"
+      },
+      {
+        "line": 150,
+        "text": "\t\t\tvar resp *pb.RangeResponse"
+      },
+      {
+        "line": 151,
+        "text": "\t\t\tif skipRangeExecution {"
+      },
+      {
+        "line": 152,
+        "text": "\t\t\t\trev := txnWrite.Rev()"
+      },
+      {
+        "line": 153,
+        "text": "\t\t\t\tif len(txnWrite.Changes()) > 0 {"
+      },
+      {
+        "line": 154,
+        "text": "\t\t\t\t\trev++"
+      },
+      {
+        "line": 155,
+        "text": "\t\t\t\t}"
+      },
+      {
+        "line": 156,
+        "text": "\t\t\t\tresp = &pb.RangeResponse{"
+      },
+      {
+        "line": 157,
+        "text": "\t\t\t\t\tHeader: &pb.ResponseHeader{Revision: rev},"
+      },
+      {
+        "line": 158,
+        "text": "\t\t\t\t}"
+      },
+      {
+        "line": 159,
+        "text": "\t\t\t} else {"
+      },
+      {
+        "line": 160,
+        "text": "\t\t\t\tresp, err = executeRange(ctx, lg, txnWrite, tv.RequestRange, true)"
+      },
+      {
+        "line": 161,
+        "text": "\t\t\t\tif err != nil {"
+      },
+      {
+        "line": 162,
+        "text": "\t\t\t\t\treturn 0, fmt.Errorf(\"applyTxn: failed Range: %w\", err)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/txn.go",
+    "start": 151,
+    "end": 162,
+    "sha256": "6e895f9d3f5794a308881cce4b50878054e6f93e794506ca570042cefa7501bf",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 151,
+        "text": "\t\t\tif skipRangeExecution {"
+      },
+      {
+        "line": 152,
+        "text": "\t\t\t\trev := txnWrite.Rev()"
+      },
+      {
+        "line": 153,
+        "text": "\t\t\t\tif len(txnWrite.Changes()) > 0 {"
+      },
+      {
+        "line": 154,
+        "text": "\t\t\t\t\trev++"
+      },
+      {
+        "line": 155,
+        "text": "\t\t\t\t}"
+      },
+      {
+        "line": 156,
+        "text": "\t\t\t\tresp = &pb.RangeResponse{"
+      },
+      {
+        "line": 157,
+        "text": "\t\t\t\t\tHeader: &pb.ResponseHeader{Revision: rev},"
+      },
+      {
+        "line": 158,
+        "text": "\t\t\t\t}"
+      },
+      {
+        "line": 159,
+        "text": "\t\t\t} else {"
+      },
+      {
+        "line": 160,
+        "text": "\t\t\t\tresp, err = executeRange(ctx, lg, txnWrite, tv.RequestRange, true)"
+      },
+      {
+        "line": 161,
+        "text": "\t\t\t\tif err != nil {"
+      },
+      {
+        "line": 162,
+        "text": "\t\t\t\t\treturn 0, fmt.Errorf(\"applyTxn: failed Range: %w\", err)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/txn.go",
+    "start": 268,
+    "end": 291,
+    "sha256": "6e895f9d3f5794a308881cce4b50878054e6f93e794506ca570042cefa7501bf",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 268,
+        "text": "func applyCompare(rv mvcc.ReadView, c *pb.Compare) bool {"
+      },
+      {
+        "line": 269,
+        "text": "\t// TODO: possible optimizations"
+      },
+      {
+        "line": 270,
+        "text": "\t// * chunk reads for large ranges to conserve memory"
+      },
+      {
+        "line": 271,
+        "text": "\t// * rewrite rules for common patterns:"
+      },
+      {
+        "line": 272,
+        "text": "\t//\tex. \"[a, b) createrev > 0\" => \"limit 1 /\\ kvs > 0\""
+      },
+      {
+        "line": 273,
+        "text": "\t// * caching"
+      },
+      {
+        "line": 274,
+        "text": "\trr, err := rv.Range(context.TODO(), c.Key, mkGteRange(c.RangeEnd), mvcc.RangeOptions{})"
+      },
+      {
+        "line": 275,
+        "text": "\tif err != nil {"
+      },
+      {
+        "line": 276,
+        "text": "\t\treturn false"
+      },
+      {
+        "line": 277,
+        "text": "\t}"
+      },
+      {
+        "line": 278,
+        "text": "\tif len(rr.KVs) == 0 {"
+      },
+      {
+        "line": 279,
+        "text": "\t\tif c.Target == pb.Compare_VALUE {"
+      },
+      {
+        "line": 280,
+        "text": "\t\t\t// Always fail if comparing a value on a key/keys that doesn't exist;"
+      },
+      {
+        "line": 281,
+        "text": "\t\t\t// nil == empty string in grpc; no way to represent missing value"
+      },
+      {
+        "line": 282,
+        "text": "\t\t\treturn false"
+      },
+      {
+        "line": 283,
+        "text": "\t\t}"
+      },
+      {
+        "line": 284,
+        "text": "\t\treturn compareKV(c, &mvccpb.KeyValue{})"
+      },
+      {
+        "line": 285,
+        "text": "\t}"
+      },
+      {
+        "line": 286,
+        "text": "\tfor _, kv := range rr.KVs {"
+      },
+      {
+        "line": 287,
+        "text": "\t\tif !compareKV(c, kv) {"
+      },
+      {
+        "line": 288,
+        "text": "\t\t\treturn false"
+      },
+      {
+        "line": 289,
+        "text": "\t\t}"
+      },
+      {
+        "line": 290,
+        "text": "\t}"
+      },
+      {
+        "line": 291,
+        "text": "\treturn true"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/txn/txn.go",
+    "start": 312,
+    "end": 316,
+    "sha256": "6e895f9d3f5794a308881cce4b50878054e6f93e794506ca570042cefa7501bf",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 312,
+        "text": "\t\t}"
+      },
+      {
+        "line": 313,
+        "text": "\t\tresult = compareInt64(ckv.ModRevision, rev)"
+      },
+      {
+        "line": 314,
+        "text": "\tcase pb.Compare_VERSION:"
+      },
+      {
+        "line": 315,
+        "text": "\t\tif tv, _ := c.TargetUnion.(*pb.Compare_Version); tv != nil {"
+      },
+      {
+        "line": 316,
+        "text": "\t\t\trev = tv.Version"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 303,
+    "end": 303,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 303,
+        "text": "\tresp, err := s.raftRequest(ctx, &pb.InternalRaftRequest{Put: r})"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 325,
+    "end": 326,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 325,
+        "text": "func (s *EtcdServer) Txn(ctx context.Context, r *pb.TxnRequest) (*pb.TxnResponse, error) {"
+      },
+      {
+        "line": 326,
+        "text": "\treadOnly := txn.IsTxnReadonly(r)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 375,
+    "end": 375,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 375,
+        "text": "\tresp, err := s.raftRequest(ctx, &pb.InternalRaftRequest{Txn: r})"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 1093,
+    "end": 1093,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1093,
+        "text": "\tdata, err = proto.Marshal(r)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 1106,
+    "end": 1113,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1106,
+        "text": "\tch := s.w.Register(id)"
+      },
+      {
+        "line": 1107,
+        "text": ""
+      },
+      {
+        "line": 1108,
+        "text": "\tcctx, cancel := context.WithTimeout(ctx, s.Cfg.ReqTimeout())"
+      },
+      {
+        "line": 1109,
+        "text": "\tdefer cancel()"
+      },
+      {
+        "line": 1110,
+        "text": ""
+      },
+      {
+        "line": 1111,
+        "text": "\tspan := trace.SpanFromContext(ctx)"
+      },
+      {
+        "line": 1112,
+        "text": "\tspan.AddEvent(\"Send raft proposal\")"
+      },
+      {
+        "line": 1113,
+        "text": "\terr = s.r.Propose(cctx, data)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 1108,
+    "end": 1109,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1108,
+        "text": "\tcctx, cancel := context.WithTimeout(ctx, s.Cfg.ReqTimeout())"
+      },
+      {
+        "line": 1109,
+        "text": "\tdefer cancel()"
+      }
+    ]
+  },
+  {
+    "file": "source/server/etcdserver/v3_server.go",
+    "start": 1123,
+    "end": 1123,
+    "sha256": "fa0e44987280ac775c53f070a44a43af7b70291a4579c329cf9db53e4b9ae495",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 1123,
+        "text": "\tcase x := <-ch:"
+      }
+    ]
+  },
+  {
+    "file": "source/server/go.mod",
+    "start": 25,
+    "end": 42,
+    "sha256": "a3690b8b60b7ef221b50bda3a81ed35f1c81af02cfbacf10ddeffe1dc037f47c",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 25,
+        "text": "\tgo.etcd.io/bbolt v1.5.0"
+      },
+      {
+        "line": 26,
+        "text": "\tgo.etcd.io/etcd/api/v3 v3.7.2"
+      },
+      {
+        "line": 27,
+        "text": "\tgo.etcd.io/etcd/client/pkg/v3 v3.7.2"
+      },
+      {
+        "line": 28,
+        "text": "\tgo.etcd.io/etcd/client/v3 v3.7.2"
+      },
+      {
+        "line": 29,
+        "text": "\tgo.etcd.io/etcd/pkg/v3 v3.7.2"
+      },
+      {
+        "line": 30,
+        "text": "\tgo.etcd.io/raft/v3 v3.7.0"
+      },
+      {
+        "line": 31,
+        "text": "\tgo.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0"
+      },
+      {
+        "line": 32,
+        "text": "\tgo.opentelemetry.io/otel v1.44.0"
+      },
+      {
+        "line": 33,
+        "text": "\tgo.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.43.0"
+      },
+      {
+        "line": 34,
+        "text": "\tgo.opentelemetry.io/otel/sdk v1.44.0"
+      },
+      {
+        "line": 35,
+        "text": "\tgo.opentelemetry.io/otel/trace v1.44.0"
+      },
+      {
+        "line": 36,
+        "text": "\tgo.uber.org/zap v1.27.1"
+      },
+      {
+        "line": 37,
+        "text": "\tgolang.org/x/crypto v0.55.0"
+      },
+      {
+        "line": 38,
+        "text": "\tgolang.org/x/net v0.58.0"
+      },
+      {
+        "line": 39,
+        "text": "\tgolang.org/x/time v0.15.0"
+      },
+      {
+        "line": 40,
+        "text": "\tgoogle.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa"
+      },
+      {
+        "line": 41,
+        "text": "\tgoogle.golang.org/grpc v1.83.2"
+      },
+      {
+        "line": 42,
+        "text": "\tgoogle.golang.org/protobuf v1.36.11"
+      }
+    ]
+  },
+  {
+    "file": "source/server/go.mod",
+    "start": 26,
+    "end": 26,
+    "sha256": "a3690b8b60b7ef221b50bda3a81ed35f1c81af02cfbacf10ddeffe1dc037f47c",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 26,
+        "text": "\tgo.etcd.io/etcd/api/v3 v3.7.2"
+      }
+    ]
+  },
+  {
+    "file": "source/server/go.mod",
+    "start": 77,
+    "end": 82,
+    "sha256": "a3690b8b60b7ef221b50bda3a81ed35f1c81af02cfbacf10ddeffe1dc037f47c",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 77,
+        "text": "replace ("
+      },
+      {
+        "line": 78,
+        "text": "\tgo.etcd.io/etcd/api/v3 => ../api"
+      },
+      {
+        "line": 79,
+        "text": "\tgo.etcd.io/etcd/client/pkg/v3 => ../client/pkg"
+      },
+      {
+        "line": 80,
+        "text": "\tgo.etcd.io/etcd/client/v3 => ../client/v3"
+      },
+      {
+        "line": 81,
+        "text": "\tgo.etcd.io/etcd/pkg/v3 => ../pkg"
+      },
+      {
+        "line": 82,
+        "text": ")"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/backend.go",
+    "start": 251,
+    "end": 251,
+    "sha256": "1f3f9daed3b54e926d49e7b2987d5109d716b2953ddeedfbc1d35c2252c99142",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 251,
+        "text": "\tb.batchTx = newBatchTxBuffered(b)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/batch_tx.go",
+    "start": 163,
+    "end": 163,
+    "sha256": "1029fef579abe7e38c79e983f4c7e17d6e9d7fb3ef03cf78525d9beda6ed7f92",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 163,
+        "text": "\tif err := bucket.Put(key, value); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/batch_tx.go",
+    "start": 187,
+    "end": 205,
+    "sha256": "1029fef579abe7e38c79e983f4c7e17d6e9d7fb3ef03cf78525d9beda6ed7f92",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 187,
+        "text": "\tif limit <= 0 {"
+      },
+      {
+        "line": 188,
+        "text": "\t\tlimit = math.MaxInt64"
+      },
+      {
+        "line": 189,
+        "text": "\t}"
+      },
+      {
+        "line": 190,
+        "text": "\tvar isMatch func(b []byte) bool"
+      },
+      {
+        "line": 191,
+        "text": "\tif len(endKey) > 0 {"
+      },
+      {
+        "line": 192,
+        "text": "\t\tisMatch = func(b []byte) bool { return bytes.Compare(b, endKey) < 0 }"
+      },
+      {
+        "line": 193,
+        "text": "\t} else {"
+      },
+      {
+        "line": 194,
+        "text": "\t\tisMatch = func(b []byte) bool { return bytes.Equal(b, key) }"
+      },
+      {
+        "line": 195,
+        "text": "\t\tlimit = 1"
+      },
+      {
+        "line": 196,
+        "text": "\t}"
+      },
+      {
+        "line": 197,
+        "text": ""
+      },
+      {
+        "line": 198,
+        "text": "\tfor ck, cv := c.Seek(key); ck != nil && isMatch(ck); ck, cv = c.Next() {"
+      },
+      {
+        "line": 199,
+        "text": "\t\tvs = append(vs, cv)"
+      },
+      {
+        "line": 200,
+        "text": "\t\tkeys = append(keys, ck)"
+      },
+      {
+        "line": 201,
+        "text": "\t\tif limit == int64(len(keys)) {"
+      },
+      {
+        "line": 202,
+        "text": "\t\t\tbreak"
+      },
+      {
+        "line": 203,
+        "text": "\t\t}"
+      },
+      {
+        "line": 204,
+        "text": "\t}"
+      },
+      {
+        "line": 205,
+        "text": "\treturn keys, vs"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/batch_tx.go",
+    "start": 393,
+    "end": 395,
+    "sha256": "1029fef579abe7e38c79e983f4c7e17d6e9d7fb3ef03cf78525d9beda6ed7f92",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 393,
+        "text": "func (t *batchTxBuffered) UnsafeSeqPut(bucket Bucket, key []byte, value []byte) {"
+      },
+      {
+        "line": 394,
+        "text": "\tt.batchTx.UnsafeSeqPut(bucket, key, value)"
+      },
+      {
+        "line": 395,
+        "text": "\tt.buf.putSeq(bucket, key, value)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/read_tx.go",
+    "start": 79,
+    "end": 93,
+    "sha256": "eb2ea5cc7e3cf604615841f210ffafabbcb29249c5b1686048b71751b0a8c61d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 79,
+        "text": "\tif endKey == nil {"
+      },
+      {
+        "line": 80,
+        "text": "\t\t// forbid duplicates for single keys"
+      },
+      {
+        "line": 81,
+        "text": "\t\tlimit = 1"
+      },
+      {
+        "line": 82,
+        "text": "\t}"
+      },
+      {
+        "line": 83,
+        "text": "\tif limit <= 0 {"
+      },
+      {
+        "line": 84,
+        "text": "\t\tlimit = math.MaxInt64"
+      },
+      {
+        "line": 85,
+        "text": "\t}"
+      },
+      {
+        "line": 86,
+        "text": "\tif limit > 1 && !bucketType.IsSafeRangeBucket() {"
+      },
+      {
+        "line": 87,
+        "text": "\t\tpanic(\"do not use unsafeRange on non-keys bucket\")"
+      },
+      {
+        "line": 88,
+        "text": "\t}"
+      },
+      {
+        "line": 89,
+        "text": "\tkeys, vals := baseReadTx.buf.Range(bucketType, key, endKey, limit)"
+      },
+      {
+        "line": 90,
+        "text": "\tif int64(len(keys)) == limit {"
+      },
+      {
+        "line": 91,
+        "text": "\t\treturn keys, vals"
+      },
+      {
+        "line": 92,
+        "text": "\t}"
+      },
+      {
+        "line": 93,
+        "text": ""
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/read_tx.go",
+    "start": 120,
+    "end": 121,
+    "sha256": "eb2ea5cc7e3cf604615841f210ffafabbcb29249c5b1686048b71751b0a8c61d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 120,
+        "text": "\tk2, v2 := unsafeRange(c, key, endKey, limit-int64(len(keys)))"
+      },
+      {
+        "line": 121,
+        "text": "\treturn append(k2, keys...), append(v2, vals...)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/backend/tx_buffer.go",
+    "start": 204,
+    "end": 210,
+    "sha256": "36298b2792d79d4cc7a0b560d300a1f953c9c68b1137900305c55d626cc6fac0",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 204,
+        "text": "func (bb *bucketBuffer) add(k, v []byte) {"
+      },
+      {
+        "line": 205,
+        "text": "\tbb.buf[bb.used].key, bb.buf[bb.used].val = k, v"
+      },
+      {
+        "line": 206,
+        "text": "\tbb.used++"
+      },
+      {
+        "line": 207,
+        "text": "\tif bb.used == len(bb.buf) {"
+      },
+      {
+        "line": 208,
+        "text": "\t\tbuf := make([]kv, (3*len(bb.buf))/2)"
+      },
+      {
+        "line": 209,
+        "text": "\t\tcopy(buf, bb.buf)"
+      },
+      {
+        "line": 210,
+        "text": "\t\tbb.buf = buf"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/index.go",
+    "start": 54,
+    "end": 66,
+    "sha256": "c873dae7f6e1b8f442bfcd3ada8adaa522485f463096993360a7e1b38208a8f9",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 54,
+        "text": "func (ti *treeIndex) Put(key []byte, rev Revision) {"
+      },
+      {
+        "line": 55,
+        "text": "\tkeyi := &keyIndex{key: key}"
+      },
+      {
+        "line": 56,
+        "text": ""
+      },
+      {
+        "line": 57,
+        "text": "\tti.Lock()"
+      },
+      {
+        "line": 58,
+        "text": "\tdefer ti.Unlock()"
+      },
+      {
+        "line": 59,
+        "text": "\tokeyi, ok := ti.tree.Get(keyi)"
+      },
+      {
+        "line": 60,
+        "text": "\tif !ok {"
+      },
+      {
+        "line": 61,
+        "text": "\t\tkeyi.put(ti.lg, rev.Main, rev.Sub)"
+      },
+      {
+        "line": 62,
+        "text": "\t\tti.tree.ReplaceOrInsert(keyi)"
+      },
+      {
+        "line": 63,
+        "text": "\t\treturn"
+      },
+      {
+        "line": 64,
+        "text": "\t}"
+      },
+      {
+        "line": 65,
+        "text": "\tokeyi.put(ti.lg, rev.Main, rev.Sub)"
+      },
+      {
+        "line": 66,
+        "text": "}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "start": 130,
+    "end": 130,
+    "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 130,
+        "text": "\t\t\t\tzap.Int64(\"revision-main\", revpair.Main),"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "start": 141,
+    "end": 142,
+    "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 141,
+        "text": "\t\tkv := &mvccpb.KeyValue{}"
+      },
+      {
+        "line": 142,
+        "text": "\t\tif err := proto.Unmarshal(vs[0], kv); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "start": 241,
+    "end": 245,
+    "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 241,
+        "text": "\tkv := &mvccpb.KeyValue{"
+      },
+      {
+        "line": 242,
+        "text": "\t\tKey:            key,"
+      },
+      {
+        "line": 243,
+        "text": "\t\tValue:          value,"
+      },
+      {
+        "line": 244,
+        "text": "\t\tCreateRevision: c,"
+      },
+      {
+        "line": 245,
+        "text": "\t\tModRevision:    rev,"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "start": 241,
+    "end": 259,
+    "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 241,
+        "text": "\tkv := &mvccpb.KeyValue{"
+      },
+      {
+        "line": 242,
+        "text": "\t\tKey:            key,"
+      },
+      {
+        "line": 243,
+        "text": "\t\tValue:          value,"
+      },
+      {
+        "line": 244,
+        "text": "\t\tCreateRevision: c,"
+      },
+      {
+        "line": 245,
+        "text": "\t\tModRevision:    rev,"
+      },
+      {
+        "line": 246,
+        "text": "\t\tVersion:        ver,"
+      },
+      {
+        "line": 247,
+        "text": "\t\tLease:          int64(leaseID),"
+      },
+      {
+        "line": 248,
+        "text": "\t}"
+      },
+      {
+        "line": 249,
+        "text": ""
+      },
+      {
+        "line": 250,
+        "text": "\td, err := proto.Marshal(kv)"
+      },
+      {
+        "line": 251,
+        "text": "\tif err != nil {"
+      },
+      {
+        "line": 252,
+        "text": "\t\ttw.storeTxnCommon.s.lg.Fatal("
+      },
+      {
+        "line": 253,
+        "text": "\t\t\t\"failed to marshal mvccpb.KeyValue\","
+      },
+      {
+        "line": 254,
+        "text": "\t\t\tzap.Error(err),"
+      },
+      {
+        "line": 255,
+        "text": "\t\t)"
+      },
+      {
+        "line": 256,
+        "text": "\t}"
+      },
+      {
+        "line": 257,
+        "text": ""
+      },
+      {
+        "line": 258,
+        "text": "\ttw.trace.Step(\"marshal mvccpb.KeyValue\")"
+      },
+      {
+        "line": 259,
+        "text": "\ttw.tx.UnsafeSeqPut(schema.Key, ibytes, d)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/mvcc/kvstore_txn.go",
+    "start": 259,
+    "end": 259,
+    "sha256": "8127b4ce3049d078257294344d2e929a08034dae42fe35385f5ab0358a372d7d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 259,
+        "text": "\ttw.tx.UnsafeSeqPut(schema.Key, ibytes, d)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/storage.go",
+    "start": 91,
+    "end": 94,
+    "sha256": "30ef7ed7407f481b1f33496246194d396f1a8bdb3573ca95c08518c6ef018d4d",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 91,
+        "text": "func (st *storage) Save(s *raftpb.HardState, ents []*raftpb.Entry) error {"
+      },
+      {
+        "line": 92,
+        "text": "\tst.mux.RLock()"
+      },
+      {
+        "line": 93,
+        "text": "\tdefer st.mux.RUnlock()"
+      },
+      {
+        "line": 94,
+        "text": "\treturn st.w.Save(s, ents)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/decoder.go",
+    "start": 34,
+    "end": 34,
+    "sha256": "93e0ea9427a3cab39975b431c1337c5ed7114b3836c7e18a848b2e744abeb093",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 34,
+        "text": "const minSectorSize = 512"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "start": 36,
+    "end": 36,
+    "sha256": "2d1969c3eb3fdc8fded4a0e5ba69161ffed78c7bf552cbc345365d39c8e6d7e2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 36,
+        "text": "const walPageBytes = 8 * minSectorSize"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "start": 49,
+    "end": 49,
+    "sha256": "2d1969c3eb3fdc8fded4a0e5ba69161ffed78c7bf552cbc345365d39c8e6d7e2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 49,
+        "text": "\t\tbw:  ioutil.NewPageWriter(w, walPageBytes, pageOffset),"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "start": 81,
+    "end": 93,
+    "sha256": "2d1969c3eb3fdc8fded4a0e5ba69161ffed78c7bf552cbc345365d39c8e6d7e2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 81,
+        "text": "\tsize := proto.Size(rec)"
+      },
+      {
+        "line": 82,
+        "text": "\topts := proto.MarshalOptions{UseCachedSize: true}"
+      },
+      {
+        "line": 83,
+        "text": "\tif size > len(e.buf) {"
+      },
+      {
+        "line": 84,
+        "text": "\t\tdata, err = proto.Marshal(rec)"
+      },
+      {
+        "line": 85,
+        "text": "\t\tif err != nil {"
+      },
+      {
+        "line": 86,
+        "text": "\t\t\treturn err"
+      },
+      {
+        "line": 87,
+        "text": "\t\t}"
+      },
+      {
+        "line": 88,
+        "text": "\t} else {"
+      },
+      {
+        "line": 89,
+        "text": "\t\tdata, err = opts.MarshalAppend(e.buf[:0], rec)"
+      },
+      {
+        "line": 90,
+        "text": "\t\tif err != nil {"
+      },
+      {
+        "line": 91,
+        "text": "\t\t\treturn err"
+      },
+      {
+        "line": 92,
+        "text": "\t\t}"
+      },
+      {
+        "line": 93,
+        "text": "\t}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "start": 94,
+    "end": 96,
+    "sha256": "2d1969c3eb3fdc8fded4a0e5ba69161ffed78c7bf552cbc345365d39c8e6d7e2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 94,
+        "text": ""
+      },
+      {
+        "line": 95,
+        "text": "\tdata, lenField := prepareDataWithPadding(data)"
+      },
+      {
+        "line": 96,
+        "text": ""
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/encoder.go",
+    "start": 135,
+    "end": 136,
+    "sha256": "2d1969c3eb3fdc8fded4a0e5ba69161ffed78c7bf552cbc345365d39c8e6d7e2",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 135,
+        "text": "\t// write the record with padding"
+      },
+      {
+        "line": 136,
+        "text": "\tn, err := w.Write(data)"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/wal.go",
+    "start": 974,
+    "end": 978,
+    "sha256": "8a718abf8d04c858223f1ac62c3913cb6625b467595d3a487a86ecd8915e2efa",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 974,
+        "text": "func (w *WAL) saveEntry(e *raftpb.Entry) error {"
+      },
+      {
+        "line": 975,
+        "text": "\t// TODO: add MustMarshalTo to reduce one allocation."
+      },
+      {
+        "line": 976,
+        "text": "\tb := pbutil.MustMarshalMessage(e)"
+      },
+      {
+        "line": 977,
+        "text": "\trec := &walpb.Record{Type: new(EntryType), Data: b}"
+      },
+      {
+        "line": 978,
+        "text": "\tif err := w.encoder.encode(rec); err != nil {"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/wal.go",
+    "start": 995,
+    "end": 1028,
+    "sha256": "8a718abf8d04c858223f1ac62c3913cb6625b467595d3a487a86ecd8915e2efa",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 995,
+        "text": "func (w *WAL) Save(st *raftpb.HardState, ents []*raftpb.Entry) error {"
+      },
+      {
+        "line": 996,
+        "text": "\tw.mu.Lock()"
+      },
+      {
+        "line": 997,
+        "text": "\tdefer w.mu.Unlock()"
+      },
+      {
+        "line": 998,
+        "text": ""
+      },
+      {
+        "line": 999,
+        "text": "\t// short cut, do not call sync"
+      },
+      {
+        "line": 1000,
+        "text": "\tif raft.IsEmptyHardState(st) && len(ents) == 0 {"
+      },
+      {
+        "line": 1001,
+        "text": "\t\treturn nil"
+      },
+      {
+        "line": 1002,
+        "text": "\t}"
+      },
+      {
+        "line": 1003,
+        "text": "\tif st == nil {"
+      },
+      {
+        "line": 1004,
+        "text": "\t\tst = &raftpb.HardState{}"
+      },
+      {
+        "line": 1005,
+        "text": "\t}"
+      },
+      {
+        "line": 1006,
+        "text": "\tif w.state == nil {"
+      },
+      {
+        "line": 1007,
+        "text": "\t\tw.state = &raftpb.HardState{}"
+      },
+      {
+        "line": 1008,
+        "text": "\t}"
+      },
+      {
+        "line": 1009,
+        "text": ""
+      },
+      {
+        "line": 1010,
+        "text": "\tmustSync := raft.MustSync(st, w.state, len(ents))"
+      },
+      {
+        "line": 1011,
+        "text": ""
+      },
+      {
+        "line": 1012,
+        "text": "\t// TODO(xiangli): no more reference operator"
+      },
+      {
+        "line": 1013,
+        "text": "\tfor i := range ents {"
+      },
+      {
+        "line": 1014,
+        "text": "\t\tif err := w.saveEntry(ents[i]); err != nil {"
+      },
+      {
+        "line": 1015,
+        "text": "\t\t\treturn err"
+      },
+      {
+        "line": 1016,
+        "text": "\t\t}"
+      },
+      {
+        "line": 1017,
+        "text": "\t}"
+      },
+      {
+        "line": 1018,
+        "text": "\tif err := w.saveState(st); err != nil {"
+      },
+      {
+        "line": 1019,
+        "text": "\t\treturn err"
+      },
+      {
+        "line": 1020,
+        "text": "\t}"
+      },
+      {
+        "line": 1021,
+        "text": ""
+      },
+      {
+        "line": 1022,
+        "text": "\tcurOff, err := w.tail().Seek(0, io.SeekCurrent)"
+      },
+      {
+        "line": 1023,
+        "text": "\tif err != nil {"
+      },
+      {
+        "line": 1024,
+        "text": "\t\treturn err"
+      },
+      {
+        "line": 1025,
+        "text": "\t}"
+      },
+      {
+        "line": 1026,
+        "text": "\tif curOff < SegmentSizeBytes {"
+      },
+      {
+        "line": 1027,
+        "text": "\t\tif mustSync {"
+      },
+      {
+        "line": 1028,
+        "text": "\t\t\t// gofail: var walBeforeSync struct{}"
+      }
+    ]
+  },
+  {
+    "file": "source/server/storage/wal/walpb/record.pb.go",
+    "start": 27,
+    "end": 32,
+    "sha256": "4fed8b40f973a1d308171ef5cb9297db5c7d16a20e477ab7b3e2be2c1221c796",
+    "binding": "68c065e562994b89e333e77b039ad066f933c586",
+    "lines": [
+      {
+        "line": 27,
+        "text": "\tstate         protoimpl.MessageState `protogen:\"open.v1\"`"
+      },
+      {
+        "line": 28,
+        "text": "\tType          *int64                 `protobuf:\"varint,1,opt,name=type\" json:\"type,omitempty\"`"
+      },
+      {
+        "line": 29,
+        "text": "\tCrc           *uint32                `protobuf:\"varint,2,opt,name=crc\" json:\"crc,omitempty\"`"
+      },
+      {
+        "line": 30,
+        "text": "\tData          []byte                 `protobuf:\"bytes,3,opt,name=data\" json:\"data,omitempty\"`"
+      },
+      {
+        "line": 31,
+        "text": "\tunknownFields protoimpl.UnknownFields"
+      },
+      {
+        "line": 32,
+        "text": "\tsizeCache     protoimpl.SizeCache"
+      }
+    ]
+  }
+]

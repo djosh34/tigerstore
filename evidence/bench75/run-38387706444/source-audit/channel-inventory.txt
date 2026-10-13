@@ -1,0 +1,328 @@
+main internal/server/h2.go:135: 		defer c.close()
+main internal/server/h2.go:146: 		case <-c.ctx.Done():
+main internal/server/h2.go:147: 		case <-time.After(time.Second):
+main internal/server/h2.go:150: 	c.close()
+main internal/server/h2.go:156: func (c *conn) close() {
+main internal/server/h2.go:195: 	case c.wake <- struct{}{}:
+main internal/server/h2.go:218: 		go c.close()
+main internal/server/h2.go:526: 	case st.inSignal <- struct{}{}:
+main internal/server/http.go:109: func (h *http1Conn) goAway() { h.close() }
+main internal/server/http.go:111: func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+main internal/server/server.go:65: 	close()
+main internal/server/server.go:158: 		c.close()
+main internal/server/server.go:166: 	c.close()
+main internal/server/server.go:189: 		close(done)
+main internal/server/server.go:192: 	case <-done:
+main internal/server/server.go:193: 	case <-time.After(stopGrace):
+main internal/server/server.go:196: 			c.close()
+main internal/server/server.go:199: 		<-done
+main internal/server/stream.go:51: 	abort <-chan struct{}
+main internal/server/stream.go:148: 	case st.inSignal <- struct{}{}:
+main internal/server/stream.go:182: 		case <-st.inSignal:
+main internal/server/stream.go:183: 		case <-st.ctx.Done():
+main internal/server/stream.go:257: 			case <-st.space:
+main internal/server/stream.go:259: 			case <-st.abort:
+main internal/server/stream.go:261: 			case <-st.ctx.Done():
+main internal/server/stream.go:363: 		case <-st.ctx.Done():
+main internal/server/stream.go:365: 		case <-ticker.C:
+main internal/server/watch.go:32: 				recvErr <- err
+main internal/server/watch.go:36: 				recvErr <- err
+main internal/server/watch.go:47: 		case r := <-ws.C:
+main internal/server/watch.go:55: 		case <-ws.Done():
+main internal/server/watch.go:57: 		case <-s.n.Done():
+main internal/server/watch.go:59: 		case <-ctx.Done():
+main internal/server/watch.go:61: 		case err := <-recvErr:
+main internal/server/write.go:52: 			case <-c.wake:
+main internal/server/write.go:54: 			case <-nodeDone:
+main internal/server/write.go:58: 			case <-c.ctx.Done():
+main internal/server/write.go:130: 			case st.space <- struct{}{}:
+main internal/node/node.go:89: func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+main internal/node/node.go:104: 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+main internal/node/node.go:105: 	case <-ws.n.done:
+main internal/node/node.go:116: 	case st := <-ch:
+main internal/node/node.go:118: 	case <-ctx.Done():
+main internal/node/node.go:120: 	case <-n.done:
+main internal/node/node.go:136: 	case n.inbox <- in:
+main internal/node/node.go:138: 	case <-ctx.Done():
+main internal/node/node.go:140: 	case <-n.done:
+main internal/node/node.go:192: 	case <-n.done:
+main internal/node/node.go:260: func (n *Node) Done() <-chan struct{} { return n.done }
+main internal/node/node.go:266: 	case n.inbox <- input{msg: m}:
+main internal/node/node.go:267: 	case <-n.done:
+main internal/node/node.go:274: 	case n.inbox <- input{unreachable: id}:
+main internal/node/node.go:286: 	case rep := <-r.reply:
+main internal/node/node.go:288: 	case <-ctx.Done():
+main internal/node/node.go:290: 	case <-n.done:
+main internal/node/node.go:308: 	close(n.done)
+main internal/node/node.go:329: 		var toDisk chan<- []core.PersistJob
+main internal/node/node.go:335: 		case in := <-inbox:
+main internal/node/node.go:340: 				case in := <-n.inbox:
+main internal/node/node.go:346: 		case done := <-n.persisted:
+main internal/node/node.go:353: 		case toDisk <- next:
+main internal/node/node.go:357: 		case <-ticker.C:
+main internal/node/node.go:359: 		case <-ctx.Done():
+main internal/node/node.go:377: 				ws.C <- w.Resp
+main internal/node/node.go:385: 				case ws.C <- w.Resp:
+main internal/node/node.go:394: 				close(ws.done)
+main internal/node/node.go:420: 			w.reply <- r
+main internal/node/node.go:450: 		in.status <- n.core.Status()
+main internal/node/node.go:486: 		case jobs = <-n.persistQ:
+main internal/node/node.go:487: 		case <-ctx.Done():
+main internal/node/node.go:493: 			case js := <-n.persistQ:
+main internal/node/node.go:507: 		case n.persisted <- done:
+main internal/node/node.go:508: 		case <-ctx.Done():
+main internal/peer/peer.go:297: 	case q <- m:
+main internal/peer/peer.go:308: 	case m := <-s.ctrl:
+main internal/peer/peer.go:314: 	case m := <-s.ctrl:
+main internal/peer/peer.go:317: 	case m := <-s.data:
+main internal/peer/peer.go:320: 	case <-ctx.Done():
+main internal/peer/peer.go:331: 		case m := <-s.ctrl:
+main internal/peer/peer.go:333: 		case m := <-s.data:
+main internal/peer/peer.go:350: 			case <-time.After(backoff):
+main internal/peer/peer.go:351: 			case <-ctx.Done():
+wire internal/server/h2.go:135: 		defer c.close()
+wire internal/server/h2.go:146: 		case <-c.ctx.Done():
+wire internal/server/h2.go:147: 		case <-time.After(time.Second):
+wire internal/server/h2.go:150: 	c.close()
+wire internal/server/h2.go:156: func (c *conn) close() {
+wire internal/server/h2.go:195: 	case c.wake <- struct{}{}:
+wire internal/server/h2.go:218: 		go c.close()
+wire internal/server/h2.go:526: 	case st.inSignal <- struct{}{}:
+wire internal/server/http.go:109: func (h *http1Conn) goAway() { h.close() }
+wire internal/server/http.go:111: func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+wire internal/server/server.go:65: 	close()
+wire internal/server/server.go:158: 		c.close()
+wire internal/server/server.go:166: 	c.close()
+wire internal/server/server.go:189: 		close(done)
+wire internal/server/server.go:192: 	case <-done:
+wire internal/server/server.go:193: 	case <-time.After(stopGrace):
+wire internal/server/server.go:196: 			c.close()
+wire internal/server/server.go:199: 		<-done
+wire internal/server/stream.go:51: 	abort <-chan struct{}
+wire internal/server/stream.go:148: 	case st.inSignal <- struct{}{}:
+wire internal/server/stream.go:182: 		case <-st.inSignal:
+wire internal/server/stream.go:183: 		case <-st.ctx.Done():
+wire internal/server/stream.go:257: 			case <-st.space:
+wire internal/server/stream.go:259: 			case <-st.abort:
+wire internal/server/stream.go:261: 			case <-st.ctx.Done():
+wire internal/server/stream.go:363: 		case <-st.ctx.Done():
+wire internal/server/stream.go:365: 		case <-ticker.C:
+wire internal/server/watch.go:32: 				recvErr <- err
+wire internal/server/watch.go:36: 				recvErr <- err
+wire internal/server/watch.go:47: 		case r := <-ws.C:
+wire internal/server/watch.go:55: 		case <-ws.Done():
+wire internal/server/watch.go:57: 		case <-s.n.Done():
+wire internal/server/watch.go:59: 		case <-ctx.Done():
+wire internal/server/watch.go:61: 		case err := <-recvErr:
+wire internal/server/write.go:52: 			case <-c.wake:
+wire internal/server/write.go:54: 			case <-nodeDone:
+wire internal/server/write.go:58: 			case <-c.ctx.Done():
+wire internal/server/write.go:130: 			case st.space <- struct{}{}:
+wire internal/node/node.go:89: func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+wire internal/node/node.go:104: 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+wire internal/node/node.go:105: 	case <-ws.n.done:
+wire internal/node/node.go:116: 	case st := <-ch:
+wire internal/node/node.go:118: 	case <-ctx.Done():
+wire internal/node/node.go:120: 	case <-n.done:
+wire internal/node/node.go:136: 	case n.inbox <- in:
+wire internal/node/node.go:138: 	case <-ctx.Done():
+wire internal/node/node.go:140: 	case <-n.done:
+wire internal/node/node.go:192: 	case <-n.done:
+wire internal/node/node.go:260: func (n *Node) Done() <-chan struct{} { return n.done }
+wire internal/node/node.go:266: 	case n.inbox <- input{msg: m}:
+wire internal/node/node.go:267: 	case <-n.done:
+wire internal/node/node.go:274: 	case n.inbox <- input{unreachable: id}:
+wire internal/node/node.go:286: 	case rep := <-r.reply:
+wire internal/node/node.go:288: 	case <-ctx.Done():
+wire internal/node/node.go:290: 	case <-n.done:
+wire internal/node/node.go:308: 	close(n.done)
+wire internal/node/node.go:329: 		var toDisk chan<- []core.PersistJob
+wire internal/node/node.go:335: 		case in := <-inbox:
+wire internal/node/node.go:340: 				case in := <-n.inbox:
+wire internal/node/node.go:346: 		case done := <-n.persisted:
+wire internal/node/node.go:353: 		case toDisk <- next:
+wire internal/node/node.go:357: 		case <-ticker.C:
+wire internal/node/node.go:359: 		case <-ctx.Done():
+wire internal/node/node.go:377: 				ws.C <- w.Resp
+wire internal/node/node.go:385: 				case ws.C <- w.Resp:
+wire internal/node/node.go:394: 				close(ws.done)
+wire internal/node/node.go:420: 			w.reply <- r
+wire internal/node/node.go:450: 		in.status <- n.core.Status()
+wire internal/node/node.go:486: 		case jobs = <-n.persistQ:
+wire internal/node/node.go:487: 		case <-ctx.Done():
+wire internal/node/node.go:493: 			case js := <-n.persistQ:
+wire internal/node/node.go:507: 		case n.persisted <- done:
+wire internal/node/node.go:508: 		case <-ctx.Done():
+wire internal/peer/peer.go:297: 	case q <- m:
+wire internal/peer/peer.go:308: 	case m := <-s.ctrl:
+wire internal/peer/peer.go:314: 	case m := <-s.ctrl:
+wire internal/peer/peer.go:317: 	case m := <-s.data:
+wire internal/peer/peer.go:320: 	case <-ctx.Done():
+wire internal/peer/peer.go:331: 		case m := <-s.ctrl:
+wire internal/peer/peer.go:333: 		case m := <-s.data:
+wire internal/peer/peer.go:350: 			case <-time.After(backoff):
+wire internal/peer/peer.go:351: 			case <-ctx.Done():
+hpack internal/server/h2.go:141: 		defer c.close()
+hpack internal/server/h2.go:152: 		case <-c.ctx.Done():
+hpack internal/server/h2.go:153: 		case <-time.After(time.Second):
+hpack internal/server/h2.go:156: 	c.close()
+hpack internal/server/h2.go:162: func (c *conn) close() {
+hpack internal/server/h2.go:201: 	case c.wake <- struct{}{}:
+hpack internal/server/h2.go:224: 		go c.close()
+hpack internal/server/h2.go:650: 	case st.inSignal <- struct{}{}:
+hpack internal/server/http.go:109: func (h *http1Conn) goAway() { h.close() }
+hpack internal/server/http.go:111: func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+hpack internal/server/server.go:65: 	close()
+hpack internal/server/server.go:158: 		c.close()
+hpack internal/server/server.go:166: 	c.close()
+hpack internal/server/server.go:189: 		close(done)
+hpack internal/server/server.go:192: 	case <-done:
+hpack internal/server/server.go:193: 	case <-time.After(stopGrace):
+hpack internal/server/server.go:196: 			c.close()
+hpack internal/server/server.go:199: 		<-done
+hpack internal/server/stream.go:51: 	abort <-chan struct{}
+hpack internal/server/stream.go:148: 	case st.inSignal <- struct{}{}:
+hpack internal/server/stream.go:182: 		case <-st.inSignal:
+hpack internal/server/stream.go:183: 		case <-st.ctx.Done():
+hpack internal/server/stream.go:257: 			case <-st.space:
+hpack internal/server/stream.go:259: 			case <-st.abort:
+hpack internal/server/stream.go:261: 			case <-st.ctx.Done():
+hpack internal/server/stream.go:367: 		case <-st.ctx.Done():
+hpack internal/server/stream.go:369: 		case <-ticker.C:
+hpack internal/server/watch.go:32: 				recvErr <- err
+hpack internal/server/watch.go:36: 				recvErr <- err
+hpack internal/server/watch.go:47: 		case r := <-ws.C:
+hpack internal/server/watch.go:55: 		case <-ws.Done():
+hpack internal/server/watch.go:57: 		case <-s.n.Done():
+hpack internal/server/watch.go:59: 		case <-ctx.Done():
+hpack internal/server/watch.go:61: 		case err := <-recvErr:
+hpack internal/server/write.go:52: 			case <-c.wake:
+hpack internal/server/write.go:54: 			case <-nodeDone:
+hpack internal/server/write.go:58: 			case <-c.ctx.Done():
+hpack internal/server/write.go:130: 			case st.space <- struct{}{}:
+hpack internal/node/node.go:89: func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+hpack internal/node/node.go:104: 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+hpack internal/node/node.go:105: 	case <-ws.n.done:
+hpack internal/node/node.go:116: 	case st := <-ch:
+hpack internal/node/node.go:118: 	case <-ctx.Done():
+hpack internal/node/node.go:120: 	case <-n.done:
+hpack internal/node/node.go:136: 	case n.inbox <- in:
+hpack internal/node/node.go:138: 	case <-ctx.Done():
+hpack internal/node/node.go:140: 	case <-n.done:
+hpack internal/node/node.go:192: 	case <-n.done:
+hpack internal/node/node.go:260: func (n *Node) Done() <-chan struct{} { return n.done }
+hpack internal/node/node.go:266: 	case n.inbox <- input{msg: m}:
+hpack internal/node/node.go:267: 	case <-n.done:
+hpack internal/node/node.go:274: 	case n.inbox <- input{unreachable: id}:
+hpack internal/node/node.go:286: 	case rep := <-r.reply:
+hpack internal/node/node.go:288: 	case <-ctx.Done():
+hpack internal/node/node.go:290: 	case <-n.done:
+hpack internal/node/node.go:308: 	close(n.done)
+hpack internal/node/node.go:329: 		var toDisk chan<- []core.PersistJob
+hpack internal/node/node.go:335: 		case in := <-inbox:
+hpack internal/node/node.go:340: 				case in := <-n.inbox:
+hpack internal/node/node.go:346: 		case done := <-n.persisted:
+hpack internal/node/node.go:353: 		case toDisk <- next:
+hpack internal/node/node.go:357: 		case <-ticker.C:
+hpack internal/node/node.go:359: 		case <-ctx.Done():
+hpack internal/node/node.go:377: 				ws.C <- w.Resp
+hpack internal/node/node.go:385: 				case ws.C <- w.Resp:
+hpack internal/node/node.go:394: 				close(ws.done)
+hpack internal/node/node.go:420: 			w.reply <- r
+hpack internal/node/node.go:450: 		in.status <- n.core.Status()
+hpack internal/node/node.go:486: 		case jobs = <-n.persistQ:
+hpack internal/node/node.go:487: 		case <-ctx.Done():
+hpack internal/node/node.go:493: 			case js := <-n.persistQ:
+hpack internal/node/node.go:507: 		case n.persisted <- done:
+hpack internal/node/node.go:508: 		case <-ctx.Done():
+hpack internal/peer/peer.go:297: 	case q <- m:
+hpack internal/peer/peer.go:308: 	case m := <-s.ctrl:
+hpack internal/peer/peer.go:314: 	case m := <-s.ctrl:
+hpack internal/peer/peer.go:317: 	case m := <-s.data:
+hpack internal/peer/peer.go:320: 	case <-ctx.Done():
+hpack internal/peer/peer.go:331: 		case m := <-s.ctrl:
+hpack internal/peer/peer.go:333: 		case m := <-s.data:
+hpack internal/peer/peer.go:350: 			case <-time.After(backoff):
+hpack internal/peer/peer.go:351: 			case <-ctx.Done():
+txn internal/server/h2.go:141: 		defer c.close()
+txn internal/server/h2.go:152: 		case <-c.ctx.Done():
+txn internal/server/h2.go:153: 		case <-time.After(time.Second):
+txn internal/server/h2.go:156: 	c.close()
+txn internal/server/h2.go:162: func (c *conn) close() {
+txn internal/server/h2.go:201: 	case c.wake <- struct{}{}:
+txn internal/server/h2.go:224: 		go c.close()
+txn internal/server/h2.go:650: 	case st.inSignal <- struct{}{}:
+txn internal/server/http.go:109: func (h *http1Conn) goAway() { h.close() }
+txn internal/server/http.go:111: func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+txn internal/server/server.go:65: 	close()
+txn internal/server/server.go:158: 		c.close()
+txn internal/server/server.go:166: 	c.close()
+txn internal/server/server.go:189: 		close(done)
+txn internal/server/server.go:192: 	case <-done:
+txn internal/server/server.go:193: 	case <-time.After(stopGrace):
+txn internal/server/server.go:196: 			c.close()
+txn internal/server/server.go:199: 		<-done
+txn internal/server/stream.go:51: 	abort <-chan struct{}
+txn internal/server/stream.go:148: 	case st.inSignal <- struct{}{}:
+txn internal/server/stream.go:182: 		case <-st.inSignal:
+txn internal/server/stream.go:183: 		case <-st.ctx.Done():
+txn internal/server/stream.go:257: 			case <-st.space:
+txn internal/server/stream.go:259: 			case <-st.abort:
+txn internal/server/stream.go:261: 			case <-st.ctx.Done():
+txn internal/server/stream.go:367: 		case <-st.ctx.Done():
+txn internal/server/stream.go:369: 		case <-ticker.C:
+txn internal/server/watch.go:32: 				recvErr <- err
+txn internal/server/watch.go:36: 				recvErr <- err
+txn internal/server/watch.go:47: 		case r := <-ws.C:
+txn internal/server/watch.go:55: 		case <-ws.Done():
+txn internal/server/watch.go:57: 		case <-s.n.Done():
+txn internal/server/watch.go:59: 		case <-ctx.Done():
+txn internal/server/watch.go:61: 		case err := <-recvErr:
+txn internal/server/write.go:52: 			case <-c.wake:
+txn internal/server/write.go:54: 			case <-nodeDone:
+txn internal/server/write.go:58: 			case <-c.ctx.Done():
+txn internal/server/write.go:130: 			case st.space <- struct{}{}:
+txn internal/node/node.go:89: func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+txn internal/node/node.go:104: 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+txn internal/node/node.go:105: 	case <-ws.n.done:
+txn internal/node/node.go:116: 	case st := <-ch:
+txn internal/node/node.go:118: 	case <-ctx.Done():
+txn internal/node/node.go:120: 	case <-n.done:
+txn internal/node/node.go:136: 	case n.inbox <- in:
+txn internal/node/node.go:138: 	case <-ctx.Done():
+txn internal/node/node.go:140: 	case <-n.done:
+txn internal/node/node.go:192: 	case <-n.done:
+txn internal/node/node.go:260: func (n *Node) Done() <-chan struct{} { return n.done }
+txn internal/node/node.go:266: 	case n.inbox <- input{msg: m}:
+txn internal/node/node.go:267: 	case <-n.done:
+txn internal/node/node.go:274: 	case n.inbox <- input{unreachable: id}:
+txn internal/node/node.go:286: 	case rep := <-r.reply:
+txn internal/node/node.go:288: 	case <-ctx.Done():
+txn internal/node/node.go:290: 	case <-n.done:
+txn internal/node/node.go:308: 	close(n.done)
+txn internal/node/node.go:329: 		var toDisk chan<- []core.PersistJob
+txn internal/node/node.go:335: 		case in := <-inbox:
+txn internal/node/node.go:340: 				case in := <-n.inbox:
+txn internal/node/node.go:346: 		case done := <-n.persisted:
+txn internal/node/node.go:353: 		case toDisk <- next:
+txn internal/node/node.go:357: 		case <-ticker.C:
+txn internal/node/node.go:359: 		case <-ctx.Done():
+txn internal/node/node.go:377: 				ws.C <- w.Resp
+txn internal/node/node.go:385: 				case ws.C <- w.Resp:
+txn internal/node/node.go:394: 				close(ws.done)
+txn internal/node/node.go:420: 			w.reply <- r
+txn internal/node/node.go:450: 		in.status <- n.core.Status()
+txn internal/node/node.go:486: 		case jobs = <-n.persistQ:
+txn internal/node/node.go:487: 		case <-ctx.Done():
+txn internal/node/node.go:493: 			case js := <-n.persistQ:
+txn internal/node/node.go:507: 		case n.persisted <- done:
+txn internal/node/node.go:508: 		case <-ctx.Done():
+txn internal/peer/peer.go:297: 	case q <- m:
+txn internal/peer/peer.go:308: 	case m := <-s.ctrl:
+txn internal/peer/peer.go:314: 	case m := <-s.ctrl:
+txn internal/peer/peer.go:317: 	case m := <-s.data:
+txn internal/peer/peer.go:320: 	case <-ctx.Done():
+txn internal/peer/peer.go:331: 		case m := <-s.ctrl:
+txn internal/peer/peer.go:333: 		case m := <-s.data:
+txn internal/peer/peer.go:350: 			case <-time.After(backoff):
+txn internal/peer/peer.go:351: 			case <-ctx.Done():

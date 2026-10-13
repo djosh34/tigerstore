@@ -1,0 +1,28 @@
+{
+  "verified_at": "2026-10-13T11:36:25.599393+00:00",
+  "release_commit": "68c065e562994b89e333e77b039ad066f933c586",
+  "regular_release_files_checked": 1482,
+  "dependency_files_checked": 3220,
+  "citation_ranges": 135,
+  "instruction_assertions": 24,
+  "stock_buildinfo_pins_match": true,
+  "API_module_files_equal_release": 33,
+  "measurement_totals": {
+    "baseline": {
+      "passed": 300000,
+      "failed": 0,
+      "empty_errors": true
+    },
+    "candidate": {
+      "passed": 300000,
+      "failed": 0,
+      "empty_errors": true
+    },
+    "etcd": {
+      "passed": 300000,
+      "failed": 0,
+      "empty_errors": true
+    }
+  },
+  "no_go_execution": true
+}

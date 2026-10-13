@@ -1,0 +1,107 @@
+[
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/experiments/bench75/load/main.go",
+    "copy": "inputs/workload/main.go",
+    "sha256": "1dc2ad26ce1ff3630d1167da3a1621c4ebe6415113c2cdb3dcd4e24181d90c99"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/experiments/bench75/load/cas.go",
+    "copy": "inputs/workload/cas.go",
+    "sha256": "7d21344b5cf934ba8febdf1246628f69a326032a51dd985a65233a33e8656b83"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/versions.txt",
+    "copy": "inputs/versions.txt",
+    "sha256": "f9a7aab30c2eacf44219fde0f7a1e956f271239dcf8fbad5a47b93030eca1494"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/scratch/bench7980-source-audit/audit.md",
+    "copy": "inputs/tigerstore-audit.md",
+    "sha256": "a28c3a70447475febafc01c497cdf456f2bdd3c24bfe5d534526aa569eb198d5"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/1-baseline/cas.json",
+    "copy": "inputs/results/1-baseline/cas.json",
+    "sha256": "699b5639c76b0c3a8dabe6ca49e563f41336d175843481fdbfbcfb79af1d41d1"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/1-candidate/cas.json",
+    "copy": "inputs/results/1-candidate/cas.json",
+    "sha256": "07d4425b5af7130627fa4dc2a7a1a628b5bdba0c662c9b287cf8a98f6406d875"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/1-etcd/cas.json",
+    "copy": "inputs/results/1-etcd/cas.json",
+    "sha256": "4ad79ce0a0cf7f2370d29e4775b871aa6ad2cd1680d8a53a8ef2a02ade709921"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/2-baseline/cas.json",
+    "copy": "inputs/results/2-baseline/cas.json",
+    "sha256": "084647be13ef7c529d791f2a3947d4197d844f3d40f20626b6f192b82de5e6df"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/2-candidate/cas.json",
+    "copy": "inputs/results/2-candidate/cas.json",
+    "sha256": "94d31392566c67d643823b06f0cf2a70f352ae4735c6ebbaf4a5ab323fa2d770"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/2-etcd/cas.json",
+    "copy": "inputs/results/2-etcd/cas.json",
+    "sha256": "2a580e5cfdb95ffb3406a78a79e181858399c0224fdb102366db6968414ad511"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/3-baseline/cas.json",
+    "copy": "inputs/results/3-baseline/cas.json",
+    "sha256": "65a0f849a964d01c5cd26cd0f84a6f723bb5027d2df832d6a77f2b319ed2c87f"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/3-candidate/cas.json",
+    "copy": "inputs/results/3-candidate/cas.json",
+    "sha256": "072b3121bf00696421c8baefc92922219db6e5bc9fb4b6934ce57bc6c08034d9"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/3-etcd/cas.json",
+    "copy": "inputs/results/3-etcd/cas.json",
+    "sha256": "a98184e3362cff9d872895c499eaa8119b04eca86de8435fac8c794826d63c56"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/4-baseline/cas.json",
+    "copy": "inputs/results/4-baseline/cas.json",
+    "sha256": "ffeb4e9ee81ece1ecffd396f05088acd13cc1d8c4f5b7ab14d7555aa40ebff13"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/4-candidate/cas.json",
+    "copy": "inputs/results/4-candidate/cas.json",
+    "sha256": "ba6df03212cd56d9736e82d4b973c6edbb5cd954ac1071df8e24a8012654638c"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/4-etcd/cas.json",
+    "copy": "inputs/results/4-etcd/cas.json",
+    "sha256": "86e69073c913c4d09b2d28665dfdbe15b9ea960e8035c0a9f26b427db91c81ca"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/5-baseline/cas.json",
+    "copy": "inputs/results/5-baseline/cas.json",
+    "sha256": "b3b21cd2a67ec4c0d2da362b892cfa02c1b8ed6b07dca554b355e8012b2a807e"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/5-candidate/cas.json",
+    "copy": "inputs/results/5-candidate/cas.json",
+    "sha256": "f1523e8e22c57345cdfb573e776ef5d2d8ff5bddcd2aca27b26f8910e8846d75"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/cas-c256/5-etcd/cas.json",
+    "copy": "inputs/results/5-etcd/cas.json",
+    "sha256": "7aa67d0c6300132607e8ebe2f12e44023aaa448316f5bc18b3c175d3e95f2c61"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/etcd-buildinfo.txt",
+    "copy": "inputs/etcd-buildinfo.txt",
+    "sha256": "30f40ec69f30234de01e83cb89dbe64022532a3ec65256a3441e86422a49cef1"
+  },
+  {
+    "original": "/home/joshazimullah.linux/work_mounts/agent_tools/paseo_host/state/worktrees/1fubxbmj/exp-bench-75/evidence/bench75/run-38387706444/etcd-release-sha256.txt",
+    "copy": "inputs/etcd-release-sha256.txt",
+    "sha256": "745333eecf7995d8afb209e8a4868bda0bc8f2f3906de663ca914d5773fccfb9"
+  }
+]

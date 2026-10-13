@@ -1,0 +1,33 @@
+File: third
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: alloc_space
+Time: 2026-10-13 11:09:46 UTC
+Duration: 20s, Total samples = 3568.19MB 
+Showing nodes accounting for 3535.02MB, 99.07% of 3568.19MB total
+Showing top 25 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+  742.31MB 20.80% 20.80%   742.31MB 20.80%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+  740.73MB 20.76% 41.56%   740.73MB 20.76%  google.golang.org/protobuf/internal/impl.mergeBytes
+  740.64MB 20.76% 62.32%   740.64MB 20.76%  github.com/djosh34/tigerstore/internal/core.encodeBatch
+  237.58MB  6.66% 68.98%   304.08MB  8.52%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+  150.04MB  4.20% 73.18%   150.04MB  4.20%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).add (inline)
+  134.62MB  3.77% 76.96%   138.62MB  3.88%  github.com/djosh34/tigerstore/internal/node.completeAll
+  110.95MB  3.11% 80.06%   323.99MB  9.08%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut
+  110.02MB  3.08% 83.15%   110.02MB  3.08%  github.com/djosh34/tigerstore/internal/server.(*conn).admit
+  109.52MB  3.07% 86.22%   136.07MB  3.81%  github.com/djosh34/tigerstore/internal/core.(*Node).SubmitAll
+   76.03MB  2.13% 88.35%   146.04MB  4.09%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+   70.01MB  1.96% 90.31%    70.01MB  1.96%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked
+   66.51MB  1.86% 92.17%    66.51MB  1.86%  time.newTimer
+   45.50MB  1.28% 93.45%    45.50MB  1.28%  github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch
+   34.50MB  0.97% 94.42%    34.50MB  0.97%  golang.org/x/net/http2.(*frameCache).getDataFrame
+   32.50MB  0.91% 95.33%    32.50MB  0.91%  github.com/djosh34/tigerstore/internal/core.(*State).track
+   30.50MB  0.85% 96.18%    30.50MB  0.85%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+      28MB  0.78% 96.97%       28MB  0.78%  golang.org/x/net/http2.parseHeadersFrame
+   15.54MB  0.44% 97.40%    26.55MB  0.74%  github.com/djosh34/tigerstore/internal/core.(*Node).submit
+   13.50MB  0.38% 97.78%    14.50MB  0.41%  go.etcd.io/raft/v3.(*raft).maybeSendAppend
+   12.50MB  0.35% 98.13%       14MB  0.39%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+   11.01MB  0.31% 98.44%    11.01MB  0.31%  github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite
+       8MB  0.22% 98.66%        8MB  0.22%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+       6MB  0.17% 98.83%       14MB  0.39%  go.etcd.io/raft/v3.newStorageAppendMsg
+    4.50MB  0.13% 98.96%   755.73MB 21.18%  go.etcd.io/raft/v3.(*RawNode).Propose
+       4MB  0.11% 99.07%        4MB  0.11%  go.etcd.io/raft/v3.newStorageApplyRespMsg

@@ -1,0 +1,33 @@
+File: third
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: alloc_objects
+Time: 2026-10-13 11:09:46 UTC
+Duration: 20s, Total samples = 10930799 
+Showing nodes accounting for 10487270, 95.94% of 10930799 total
+Showing top 25 nodes out of 132
+      flat  flat%   sum%        cum   cum%
+   1364578 12.48% 12.48%    1987237 18.18%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+   1146637 10.49% 22.97%    1146637 10.49%  github.com/djosh34/tigerstore/internal/server.(*conn).admit
+    753699  6.90% 29.87%     753699  6.90%  golang.org/x/net/http2.(*frameCache).getDataFrame
+    723899  6.62% 36.49%    1297409 11.87%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+    710006  6.50% 42.99%     710006  6.50%  github.com/djosh34/tigerstore/internal/core.(*State).track
+    675672  6.18% 49.17%     675672  6.18%  github.com/djosh34/tigerstore/internal/server.(*stream).receive
+    666313  6.10% 55.26%     666313  6.10%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+    656789  6.01% 61.27%     721487  6.60%  github.com/djosh34/tigerstore/internal/core.(*Node).SubmitAll (inline)
+    622659  5.70% 66.97%     622659  5.70%  time.newTimer
+    611697  5.60% 72.57%     611697  5.60%  golang.org/x/net/http2.parseHeadersFrame
+    596423  5.46% 78.02%     596423  5.46%  github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch
+    573510  5.25% 83.27%     573510  5.25%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked
+    286036  2.62% 85.89%     373421  3.42%  github.com/djosh34/tigerstore/internal/node.completeAll
+    184009  1.68% 87.57%     254593  2.33%  go.etcd.io/raft/v3.newStorageAppendMsg
+    158809  1.45% 89.02%     224345  2.05%  go.etcd.io/raft/v3.(*raft).maybeSendAppend
+     98314   0.9% 89.92%    1491875 13.65%  github.com/djosh34/tigerstore/internal/core.(*Node).applyPut
+     98305   0.9% 90.82%      98305   0.9%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+     87385   0.8% 91.62%      87385   0.8%  github.com/djosh34/tigerstore/internal/server.(*conn).Complete
+     75620  0.69% 92.31%     105261  0.96%  go.etcd.io/raft/v3.(*raft).appendEntry
+     70584  0.65% 92.96%      70584  0.65%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+     65537   0.6% 93.56%    3591419 32.86%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+     65537   0.6% 94.16%     106500  0.97%  go.etcd.io/raft/v3.(*unstable).stableTo
+     65537   0.6% 94.76%      65537   0.6%  golang.org/x/net/http2.parsePingFrame
+     65536   0.6% 95.36%      65536   0.6%  go.etcd.io/raft/v3.(*raft).send
+     64179  0.59% 95.94%      64179  0.59%  github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite

@@ -1,0 +1,29 @@
+File: third-symbols
+Build ID: 6696f4e7e74b6c769ad73ab0f251e330b09fd65a
+Type: cpu
+Time: 2026-10-13 13:09:26 CEST
+Duration: 20s, Total samples = 17.22s (86.10%)
+Showing nodes accounting for 17.22s, 100% of 17.22s total
+----------------------------------------------------------+-------------
+      flat  flat%   sum%        cum   cum%   calls calls% + context 	 	 
+----------------------------------------------------------+-------------
+                                             6.82s 91.42% |   syscall.RawSyscall6
+                                             0.64s  8.58% |   internal/runtime/syscall/linux.EpollWait
+     7.46s 43.32% 43.32%      7.46s 43.32%                | internal/runtime/syscall/linux.Syscall6
+----------------------------------------------------------+-------------
+                                             0.65s   100% |   runtime.netpoll
+     0.01s 0.058% 43.38%      0.65s  3.77%                | internal/runtime/syscall/linux.EpollWait
+                                             0.64s 98.46% |   internal/runtime/syscall/linux.Syscall6
+----------------------------------------------------------+-------------
+                                             3.29s 47.54% |   syscall.write
+                                             2.23s 32.23% |   syscall.read
+                                             1.40s 20.23% |   syscall.Fsync
+     0.01s 0.058% 43.44%      6.92s 40.19%                | syscall.Syscall
+                                             6.82s 98.55% |   syscall.RawSyscall6
+                                             0.05s  0.72% |   runtime.entersyscall
+                                             0.04s  0.58% |   runtime.exitsyscall
+----------------------------------------------------------+-------------
+                                             6.82s   100% |   syscall.Syscall
+         0     0% 43.44%      6.82s 39.61%                | syscall.RawSyscall6
+                                             6.82s   100% |   internal/runtime/syscall/linux.Syscall6
+----------------------------------------------------------+-------------

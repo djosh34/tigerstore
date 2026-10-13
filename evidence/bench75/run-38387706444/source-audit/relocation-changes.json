@@ -1,0 +1,80 @@
+[
+  {
+    "target": "main",
+    "id": "release-request",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "wire",
+    "id": "release-request",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "hpack",
+    "id": "batch-core-submit",
+    "file": "internal/node/node.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "hpack",
+    "id": "wire-reply-encode",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "hpack",
+    "id": "stream-deadline",
+    "file": "internal/server/h2.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "hpack",
+    "id": "manual-response-prefix",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "hpack",
+    "id": "release-request",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "batch-core-submit",
+    "file": "internal/node/node.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "wire-reply-encode",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "stream-deadline",
+    "file": "internal/server/h2.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "manual-response-prefix",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "generic-apply-still-exists",
+    "file": "internal/core/node.go",
+    "status": "removed or changed"
+  },
+  {
+    "target": "txn",
+    "id": "release-request",
+    "file": "internal/server/batch.go",
+    "status": "removed or changed"
+  }
+]
