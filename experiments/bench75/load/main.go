@@ -66,6 +66,7 @@ func run() error {
 	out := flag.String("out", "", "json output")
 	metricsURL := flag.String("metrics-url", "", "leader runtime metrics or Prometheus endpoint")
 	metricsKind := flag.String("metrics-kind", "runtime", "runtime or etcd")
+	readyFile := flag.String("ready-file", "", "optional profile-run arrival-start marker")
 	flag.Parse()
 	if (*op != "put" && *op != "range") || *workers < 1 || *conns < 1 || (*total == 0 && *duration <= 0) {
 		return errors.New("invalid flags")
@@ -207,6 +208,11 @@ func run() error {
 	t := time.Now()
 	if *duration > 0 {
 		deadline = t.Add(*duration)
+	}
+	if *readyFile != "" {
+		if err := os.WriteFile(*readyFile, []byte(t.UTC().Format(time.RFC3339Nano)), 0o644); err != nil {
+			return err
+		}
 	}
 	close(start)
 	wg.Wait()

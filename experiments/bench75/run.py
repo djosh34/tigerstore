@@ -12,7 +12,7 @@ import urllib.request
 
 ROOT = Path.cwd()
 WORKERS = int(os.environ['CLIENTS'])
-OUT = ROOT / f'evidence/bench75/c{WORKERS}'
+OUT = Path(os.environ['BENCH_OUT']) / f'c{WORKERS}'
 TMP = Path(os.environ['RUNNER_TEMP']) / 'bench75'
 CERT = TMP / 'certs'
 BIN = TMP / 'bin'
@@ -42,13 +42,14 @@ def ctl(index, *args):
     return json.loads(p.stdout)
 
 
-def cluster(store, label):
+def cluster(store, label, profile=False):
     check_time()
     dest = OUT / label
     dest.mkdir(parents=True)
     data = TMP / label
     data.mkdir()
     procs = []
+    children = []
     handles = []
     initial = ','.join(f'n{i}=https://127.0.0.1:{2380+100*i}' for i in range(3))
     try:
@@ -71,7 +72,8 @@ def cluster(store, label):
                          '8589934592', '--tls-min-version', 'TLS1.3', '--tls-max-version', 'TLS1.3',
                          '--listen-metrics-urls', f'http://127.0.0.1:{6060+i}',
                          '--logger', 'zap', '--log-level', 'warn']
-            env = os.environ | {'GOMAXPROCS': '1', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}'}
+            env = os.environ | {'GOMAXPROCS': '1', 'PRE50_DEBUG': f'127.0.0.1:{6060+i}',
+                                'BENCH75_PROFILE': '1' if profile else '0'}
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
             check_time()
@@ -116,14 +118,59 @@ def cluster(store, label):
         (dest/'placement.json').write_text(json.dumps({'leader_index':leader,'node_order':order,'pids':pids,'status_before':status},indent=2))
         endpoint = f'127.0.0.1:{2379+leader*100}'
 
-        def load(name, total, workers=WORKERS):
-            check_time()
-            args = ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
+        def load_args(name, total, workers=WORKERS):
+            return ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
                     '-certdir', str(CERT), '-pids', pids, '-hz', sp.check_output(['getconf','CLK_TCK'],text=True).strip(),
                     '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
                     '-metrics-url',f'http://127.0.0.1:{6060+leader}/' + ('metrics' if store == 'etcd' else 'debug/runtime'),
                     '-metrics-kind', 'etcd' if store == 'etcd' else 'runtime']
-            run(args, env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)
+
+        def load(name, total, workers=WORKERS):
+            run(load_args(name, total, workers), env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)
+
+        def capture_profiles():
+            ready = dest/'arrivals-start.txt'
+            args = load_args('profile-load', 0) + ['-duration', '25s', '-ready-file', str(ready)]
+            check_time()
+            COMMANDS.append(args)
+            log = open(dest/'load.log', 'w')
+            handles.append(log)
+            generator = sp.Popen(args, env=os.environ | {'GOMAXPROCS': '1'}, stdout=log, stderr=log)
+            children.append(generator)
+            until = time.monotonic() + 20
+            while not ready.exists():
+                if generator.poll() is not None or time.monotonic() >= until:
+                    raise RuntimeError('profile generator did not become ready')
+                time.sleep(.02)
+            time.sleep(1)
+            captures = []
+            for name, path in [('cpu', 'profile'), ('allocs', 'allocs')]:
+                check_time()
+                args = ['curl', '--fail', '--silent', '--show-error', '--max-time', '35',
+                        f'http://127.0.0.1:{6060+leader}/debug/pprof/{path}?seconds=20',
+                        '--output', str(dest/f'{name}.pb.gz')]
+                COMMANDS.append(args)
+                start = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                process = sp.Popen(args)
+                children.append(process)
+                captures.append((name, process, start))
+            intervals = {}
+            for name, process, start in captures:
+                assert process.wait(timeout=40) == 0, name
+                intervals[name] = {'request_start_utc': start,
+                                   'request_end_observed_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                   'requested_seconds': 20}
+            assert generator.wait(timeout=40) == 0, 'profile generator failed'
+            (dest/'profile-intervals.json').write_text(json.dumps(intervals, indent=2))
+            for kind, file in [('cpu', 'cpu'), ('alloc_space', 'allocs'), ('alloc_objects', 'allocs')]:
+                for cumulative in [False, True]:
+                    args = ['go', 'tool', 'pprof', '-top', '-nodecount=25', '-nodefraction=0',
+                            '-edgefraction=0', f'-sample_index={kind}']
+                    if cumulative:
+                        args.append('-cum')
+                    args += [str(BIN/store), str(dest/f'{file}.pb.gz')]
+                    with open(dest/f'{kind}-{"cum" if cumulative else "flat"}.txt', 'w') as output:
+                        run(args, stdout=output, stderr=sp.STDOUT)
 
         def disk(phase):
             result = []
@@ -174,8 +221,12 @@ def cluster(store, label):
         warmup = json.loads((dest/'warmup.json').read_text())
         terms_before = applied_fence(warmup['revision_after'], 'before')
         before = disk('before')
-        load('put',60000)
-        result = json.loads((dest/'put.json').read_text())
+        if profile:
+            capture_profiles()
+            result = json.loads((dest/'profile-load.json').read_text())
+        else:
+            load('put',60000)
+            result = json.loads((dest/'put.json').read_text())
         terms_after = applied_fence(result['revision_after'], 'after')
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
         after_disk = disk('after')
@@ -193,10 +244,10 @@ def cluster(store, label):
             assert all(a=={core} for a in affinities[str(i)].values()),affinities
         (dest/'affinities.json').write_text(json.dumps(affinities,default=list,indent=2))
     finally:
-        for p in procs:
+        for p in children + procs:
             if p.poll() is None:
                 p.terminate()
-        for p in procs:
+        for p in children + procs:
             try:
                 p.wait(timeout=10)
             except sp.TimeoutExpired:
@@ -222,6 +273,11 @@ def main():
         for store in stores:
             print(f'{WORKERS} clients, repetition {rep}, {store}',flush=True)
             cluster(store,f'{rep}-{store}')
+    if WORKERS == 256 and os.environ.get('CAPTURE_PROFILES') == '1':
+        if not os.environ.get('SECOND_CANDIDATE_REF'):
+            raise RuntimeError('profiling requires a second candidate')
+        print('Separate second-candidate 256-client profile cluster', flush=True)
+        cluster('second', 'profile-second', profile=True)
 
 
 if __name__ == '__main__':

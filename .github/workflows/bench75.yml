@@ -1,10 +1,5 @@
-name: PR 75 and 76 paired Put benchmark
+name: Paired Put benchmark
 on:
-  push:
-    branches: [exp/bench-75]
-    paths:
-      - 'experiments/bench75/**'
-      - '.github/workflows/bench75.yml'
   workflow_dispatch:
     inputs:
       candidate_ref:
@@ -21,6 +16,10 @@ on:
         default: main
         type: string
         required: true
+      capture_profiles:
+        description: Separate 256-client CPU and allocation profiles of the second candidate
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -79,10 +78,11 @@ jobs:
           BASELINE_REF: ${{ needs.resolve.outputs.baseline }}
           CANDIDATE_REF: ${{ needs.resolve.outputs.candidate }}
           SECOND_CANDIDATE_REF: ${{ needs.resolve.outputs.second }}
+          CAPTURE_PROFILES: ${{ inputs.capture_profiles && '1' || '0' }}
         run: timeout --kill-after=5s 820s bash experiments/bench75/run.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: bench75-${{ matrix.clients }}
-          path: evidence/bench75
+          name: bench75-${{ github.run_id }}-${{ matrix.clients }}
+          path: evidence/bench75/run-${{ github.run_id }}
           retention-days: 14

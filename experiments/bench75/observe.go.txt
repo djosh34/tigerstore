@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	pprof "net/http/pprof"
 	"os"
 	"runtime"
 	"runtime/metrics"
@@ -47,6 +48,10 @@ func bench75Observe(n *node.Node) error {
 			log.Printf("debug runtime: %v", err)
 		}
 	})
+	if os.Getenv("BENCH75_PROFILE") == "1" {
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err

@@ -10,7 +10,8 @@ if [[ -n "$SECOND" ]]; then
  SECOND=$(git rev-parse "$SECOND^{commit}")
  SOURCES+=(second)
 fi
-OUT=$PWD/evidence/bench75/c${CLIENTS:?}
+export BENCH_OUT=$PWD/evidence/bench75/run-${GITHUB_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
+OUT=$BENCH_OUT/c${CLIENTS:?}
 PRIVATE=$RUNNER_TEMP/bench75
 [[ ! -e "$OUT" && ! -e "$PRIVATE" ]]
 mkdir -p "$OUT" "$PRIVATE/bin" "$PRIVATE/baseline" "$PRIVATE/candidate"
@@ -64,4 +65,8 @@ printf 'baseline %s\ncandidate %s\nsecond %s\nexperiment %s\n' "$BASELINE" "$CAN
 } > "$OUT/versions.txt"
 bash scripts/dev-certs.sh "$PRIVATE/certs"
 timeout --kill-after=5s 650s taskset -c 3 python3 experiments/bench75/run.py
-python3 experiments/bench75/summarize.py
+if [[ ${CAPTURE_PROFILES:-0} == 1 && $CLIENTS == 256 ]]; then
+ check_time
+ gzip -c "$PRIVATE/bin/second" > "$OUT/profile-second/second-symbols.gz"
+fi
+python3 experiments/bench75/summarize.py "$BENCH_OUT"
