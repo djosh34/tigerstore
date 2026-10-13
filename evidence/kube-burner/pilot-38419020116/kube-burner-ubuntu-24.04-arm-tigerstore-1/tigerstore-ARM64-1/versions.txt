@@ -1,0 +1,122 @@
+Tue Oct 13 15:06:05 UTC 2026
+store=tigerstore rep=1 tigerstore_ref=90870876b6459334c7eddd67c0f9d184267f2eba experiment_ref=116fab403d088d715b7f661db8e1703438747ef0
+ImageOS=ubuntu24-arm64 ImageVersion=20261004.142.1
+Linux runnervmy3dvn 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          32-bit, 64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  4
+On-line CPU(s) list:                     0-3
+Vendor ID:                               ARM
+Model name:                              Neoverse-N2
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Stepping:                                r0p0
+BogoMIPS:                                2000.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16
+L1d cache:                               256 KiB (4 instances)
+L1i cache:                               256 KiB (4 instances)
+L2 cache:                                4 MiB (4 instances)
+L3 cache:                                128 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-3
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     16722010112  1429680128 12298027008    48287744  3317022720 15292329984
+Swap:     3221221376           0  3221221376
+Filesystem        1B-blocks        Used    Available Use% Mounted on
+/dev/root      154894188544 40850104320 114027307008  27% /
+TARGET SOURCE    FSTYPE OPTIONS
+/      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+Client: Docker Engine - Community
+ Version:           28.0.4
+ API version:       1.48
+ Go version:        go1.23.7
+ Git commit:        b8034c0
+ Built:             Tue Mar 25 15:07:55 2025
+ OS/Arch:           linux/arm64
+ Context:           default
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          28.0.4
+  API version:      1.48 (minimum version 1.24)
+  Go version:       go1.23.7
+  Git commit:       6430e49
+  Built:            Tue Mar 25 15:07:55 2025
+  OS/Arch:          linux/arm64
+  Experimental:     false
+ containerd:
+  Version:          v2.3.6
+  GitCommit:        ee2735368117d2eb259779949d5e75cdafec9761
+ runc:
+  Version:          1.5.1
+  GitCommit:        v1.5.1-0-g8f2685a4
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+go version go1.27.2 linux/arm64
+kind v0.33.0 go1.26.7 linux/arm64
+Client Version: v1.37.0
+Kustomize Version: v5.8.1
+etcd Version: 3.7.2
+Git SHA: 68c065e
+Go Version: go1.26.8
+Go OS/Arch: linux/arm64
+Version: 2.8.6
+Git Commit: 7c9ba86b36d89201ee4dd7aa86819010bd31bfb8
+Build Date: 2026-09-22T13:32:40Z
+Go Version: go1.25.14
+OS/Arch: linux arm64
+17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d  /home/runner/work/_temp/burner-bin/etcd
+ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572  /home/runner/work/_temp/burner-bin/etcdctl
+20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2  /home/runner/work/_temp/burner-bin/kind
+0f34232406bb4321f38a105c1ada5e123e4383bd3c859b5e3dd0480fed3966ea  /home/runner/work/_temp/burner-bin/kube-burner
+922df28df248cc00a9e025f947704f1d1482de64ece54cfe57e61f19eaf1eef3  /home/runner/work/_temp/burner-bin/kubectl
+db1488d6b6219fdb53b5c82e0b82beea895b7445a56e4db2b651db82bb38c40f  /home/runner/work/_temp/burner-bin/tigerstore
+/home/runner/work/_temp/burner-bin/tigerstore: go1.27.2
+	path	github.com/djosh34/tigerstore/cmd/tigerstore
+	mod	github.com/djosh34/tigerstore	v0.0.0-20261013145740-90870876b645	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	go.etcd.io/raft/v3	v3.7.0	h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=0
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=90870876b6459334c7eddd67c0f9d184267f2eba
+	build	vcs.time=2026-10-13T14:57:40Z
+	build	vcs.modified=false

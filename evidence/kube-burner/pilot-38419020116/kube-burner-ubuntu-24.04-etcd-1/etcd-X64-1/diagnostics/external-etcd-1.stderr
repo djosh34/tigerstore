@@ -1,0 +1,4 @@
+2026-10-13T15:05:53.663105236Z {"level":"warn","ts":"2026-10-13T15:05:53.662546Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+2026-10-13T15:05:53.663134562Z {"level":"warn","ts":"2026-10-13T15:05:53.662642Z","caller":"embed/config.go:956","msg":"Running http and grpc server on single port. This is not recommended for production."}
+2026-10-13T15:05:53.663397989Z {"level":"warn","ts":"2026-10-13T15:05:53.663305Z","caller":"fileutil/fileutil.go:56","msg":"check file permission","error":"directory \"/data\" exist, but the permission is \"drwxr-xr-x\". The recommended permission is \"-rwx------\" to prevent possible unprivileged access to the data"}
+2026-10-13T15:05:53.696768170Z {"level":"warn","ts":"2026-10-13T15:05:53.696652Z","caller":"auth/store.go:1137","msg":"simple token is not cryptographically signed"}

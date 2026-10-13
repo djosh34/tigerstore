@@ -1,0 +1,2436 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "Starting kubelet.",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "burner-control-plane.18de1f2a20d76855",
+                "namespace": "default",
+                "resourceVersion": "249",
+                "uid": "89a3093d-000a-4a8d-b1e0-0af9b7e7e878"
+            },
+            "reason": "Starting",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "Updated Node Allocatable limit across pods",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "burner-control-plane.18de1f2a24bf4503",
+                "namespace": "default",
+                "resourceVersion": "252",
+                "uid": "d29c818a-9704-4a09-b4e5-c5e665f9f27d"
+            },
+            "reason": "NodeAllocatableEnforced",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane",
+                "uid": "84b022af-122c-4f64-a55d-64914f35f617"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "Node burner-control-plane status is now: NodeHasSufficientMemory",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "burner-control-plane.18de1f2a2ab4044a",
+                "namespace": "default",
+                "resourceVersion": "264",
+                "uid": "99cddf9e-3a88-41f5-aa11-3e3d6d83bf59"
+            },
+            "reason": "NodeHasSufficientMemory",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane",
+                "uid": "84b022af-122c-4f64-a55d-64914f35f617"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "Node burner-control-plane status is now: NodeHasNoDiskPressure",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "burner-control-plane.18de1f2a2ab44220",
+                "namespace": "default",
+                "resourceVersion": "265",
+                "uid": "6e58e61e-0c96-49b9-8c24-7ea2d850afbd"
+            },
+            "reason": "NodeHasNoDiskPressure",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane",
+                "uid": "84b022af-122c-4f64-a55d-64914f35f617"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "Node burner-control-plane status is now: NodeHasSufficientPID",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "burner-control-plane.18de1f2a2ab4590f",
+                "namespace": "default",
+                "resourceVersion": "266",
+                "uid": "2161d0a7-09d3-4c49-bbcb-16cfd16cfda4"
+            },
+            "reason": "NodeHasSufficientPID",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:12Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane",
+                "uid": "84b022af-122c-4f64-a55d-64914f35f617"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:12Z",
+            "message": "Node burner-control-plane event: Registered Node burner-control-plane in Controller",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:12Z",
+                "name": "burner-control-plane.18de1f2b65fe2dd7",
+                "namespace": "default",
+                "resourceVersion": "335",
+                "uid": "cbb58f5b-9c0f-44f5-82a5-ed49983b93f0"
+            },
+            "reason": "RegisteredNode",
+            "reportingComponent": "node-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "node-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "StartKubeProxy",
+            "apiVersion": "v1",
+            "eventTime": "2026-10-13T15:06:15.760186Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-control-plane.18de1f2c0acbd201",
+                "namespace": "default",
+                "resourceVersion": "473",
+                "uid": "1ef04f14-a371-4745-ad90-6aa920170398"
+            },
+            "reason": "Starting",
+            "reportingComponent": "kube-proxy",
+            "reportingInstance": "kube-proxy-burner-control-plane",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:25Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-control-plane",
+                "uid": "84b022af-122c-4f64-a55d-64914f35f617"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:25Z",
+            "message": "Node burner-control-plane status is now: NodeReady",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:25Z",
+                "name": "burner-control-plane.18de1f2e5c987f80",
+                "namespace": "default",
+                "resourceVersion": "530",
+                "uid": "9a7e65a5-f216-4a21-91ca-99f46b9a5d6c"
+            },
+            "reason": "NodeReady",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker status is now: NodeHasSufficientMemory",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker.18de1f2be14a9804",
+                "namespace": "default",
+                "resourceVersion": "429",
+                "uid": "0fdc95c7-98f9-455e-a08b-437e6634c62f"
+            },
+            "reason": "NodeHasSufficientMemory",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker status is now: NodeHasNoDiskPressure",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker.18de1f2be14ac65a",
+                "namespace": "default",
+                "resourceVersion": "436",
+                "uid": "ddd19a08-8fd5-4914-9c6c-e4920b32c77b"
+            },
+            "reason": "NodeHasNoDiskPressure",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker status is now: NodeHasSufficientPID",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker.18de1f2be14af836",
+                "namespace": "default",
+                "resourceVersion": "452",
+                "uid": "46da401d-a274-4435-a6d0-f4898bef7cba"
+            },
+            "reason": "NodeHasSufficientPID",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Updated Node Allocatable limit across pods",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker.18de1f2be50b618f",
+                "namespace": "default",
+                "resourceVersion": "427",
+                "uid": "b3bf884d-f4bf-40a1-905c-9fe07e1933e7"
+            },
+            "reason": "NodeAllocatableEnforced",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker",
+                "uid": "249d097e-7aab-410d-b982-9d6e221dc02f"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Node burner-worker event: Registered Node burner-worker in Controller",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "burner-worker.18de1f2c901433e5",
+                "namespace": "default",
+                "resourceVersion": "494",
+                "uid": "cda3419d-a913-42bb-92fd-736f98901468"
+            },
+            "reason": "RegisteredNode",
+            "reportingComponent": "node-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "node-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "StartKubeProxy",
+            "apiVersion": "v1",
+            "eventTime": "2026-10-13T15:06:19.172965Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:19Z",
+                "name": "burner-worker.18de1f2cd636afa8",
+                "namespace": "default",
+                "resourceVersion": "512",
+                "uid": "69ccd8fa-82e6-4634-a75b-eb8a6efb2b53"
+            },
+            "reason": "Starting",
+            "reportingComponent": "kube-proxy",
+            "reportingInstance": "kube-proxy-burner-worker",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:29Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker",
+                "uid": "249d097e-7aab-410d-b982-9d6e221dc02f"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:29Z",
+            "message": "Node burner-worker status is now: NodeReady",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:29Z",
+                "name": "burner-worker.18de1f2f2a699ba0",
+                "namespace": "default",
+                "resourceVersion": "583",
+                "uid": "3966452d-e437-4993-8a16-cf05f1d700a9"
+            },
+            "reason": "NodeReady",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker2 status is now: NodeHasSufficientMemory",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker2.18de1f2be0049991",
+                "namespace": "default",
+                "resourceVersion": "428",
+                "uid": "98f31d95-b80c-4944-a528-8154ea0a9145"
+            },
+            "reason": "NodeHasSufficientMemory",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker2 status is now: NodeHasNoDiskPressure",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker2.18de1f2be005d8a4",
+                "namespace": "default",
+                "resourceVersion": "438",
+                "uid": "ce341b91-5518-4c69-a554-e9d0d0ce1c2c"
+            },
+            "reason": "NodeHasNoDiskPressure",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Node burner-worker2 status is now: NodeHasSufficientPID",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker2.18de1f2be005f7cb",
+                "namespace": "default",
+                "resourceVersion": "446",
+                "uid": "aa50cf69-8e97-4da5-ae11-1ac5419073be"
+            },
+            "reason": "NodeHasSufficientPID",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Updated Node Allocatable limit across pods",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "burner-worker2.18de1f2be4829485",
+                "namespace": "default",
+                "resourceVersion": "426",
+                "uid": "936e1cbc-e862-4ee6-a456-4a8d378f1f90"
+            },
+            "reason": "NodeAllocatableEnforced",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2",
+                "uid": "a7ef8537-a27a-4675-aa8f-eedbd7d57f01"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Node burner-worker2 event: Registered Node burner-worker2 in Controller",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:17Z",
+                "name": "burner-worker2.18de1f2c9013f29d",
+                "namespace": "default",
+                "resourceVersion": "493",
+                "uid": "ccd5fb52-e370-4776-93d7-77c19eda3de2"
+            },
+            "reason": "RegisteredNode",
+            "reportingComponent": "node-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "node-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "StartKubeProxy",
+            "apiVersion": "v1",
+            "eventTime": "2026-10-13T15:06:18.951471Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "burner-worker2.18de1f2cc902f62c",
+                "namespace": "default",
+                "resourceVersion": "505",
+                "uid": "9596346e-e97b-4964-b801-75919fe32d2c"
+            },
+            "reason": "Starting",
+            "reportingComponent": "kube-proxy",
+            "reportingInstance": "kube-proxy-burner-worker2",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:29Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Node",
+                "name": "burner-worker2",
+                "uid": "a7ef8537-a27a-4675-aa8f-eedbd7d57f01"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:29Z",
+            "message": "Node burner-worker2 status is now: NodeReady",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:29Z",
+                "name": "burner-worker2.18de1f2f2ab5582f",
+                "namespace": "default",
+                "resourceVersion": "585",
+                "uid": "cfbff787-2519-43c6-a6f0-afed3e46e90d"
+            },
+            "reason": "NodeReady",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "392",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2bb4b96dbb",
+                "namespace": "kube-system",
+                "resourceVersion": "401",
+                "uid": "53761ee7-5820-4f17-9aa4-7c92e385c912"
+            },
+            "reason": "FailedScheduling",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:25Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "402",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:25Z",
+            "message": "Successfully assigned kube-system/coredns-559f6c778d-72zvp to burner-control-plane",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:25Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2e5ecda4d8",
+                "namespace": "kube-system",
+                "resourceVersion": "538",
+                "uid": "a06e0362-e979-4048-af84-ffa36689d989"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "534",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container image \"registry.k8s.io/coredns/coredns:v1.14.6\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2e7db0acdf",
+                "namespace": "kube-system",
+                "resourceVersion": "546",
+                "uid": "88322383-5adb-47b1-9a97-e8dd9e301cf7"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:27Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "534",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:27Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:27Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2ea96ad6c4",
+                "namespace": "kube-system",
+                "resourceVersion": "558",
+                "uid": "057b4073-eb5e-420b-856e-c297812e38c3"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:27Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "534",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:27Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:27Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2eb0d5c738",
+                "namespace": "kube-system",
+                "resourceVersion": "564",
+                "uid": "9d59e4c9-b5b0-4abe-b928-0e3271a2a1b1"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:27Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-72zvp",
+                "namespace": "kube-system",
+                "resourceVersion": "534",
+                "uid": "5092a6b2-1153-4b3a-8c79-59c96998d8e9"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:27Z",
+            "message": "Readiness probe failed: Get \"http://10.244.0.4:8181/ready\": dial tcp 10.244.0.4:8181: connect: connection refused",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:27Z",
+                "name": "coredns-559f6c778d-72zvp.18de1f2eb1204393",
+                "namespace": "kube-system",
+                "resourceVersion": "565",
+                "uid": "419a5534-1b3e-484f-bbd6-64bcab2984b9"
+            },
+            "reason": "Unhealthy",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "390",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2bb37f8cd1",
+                "namespace": "kube-system",
+                "resourceVersion": "393",
+                "uid": "cc6ed7ae-d44b-40f7-a88a-13718e4caacc"
+            },
+            "reason": "FailedScheduling",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:25Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "398",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:25Z",
+            "message": "Successfully assigned kube-system/coredns-559f6c778d-dwckl to burner-control-plane",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:25Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2e5e8052bb",
+                "namespace": "kube-system",
+                "resourceVersion": "536",
+                "uid": "38d86f64-896c-4241-8a33-90b2f3a071c3"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "533",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container image \"registry.k8s.io/coredns/coredns:v1.14.6\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2e7b7f2e67",
+                "namespace": "kube-system",
+                "resourceVersion": "544",
+                "uid": "64dd3ca1-b6b9-459d-84da-332766bba137"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "533",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2ea218eaad",
+                "namespace": "kube-system",
+                "resourceVersion": "553",
+                "uid": "73b8fa92-3632-488a-ade1-e4c9133e7112"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:27Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "533",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:27Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:27Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2eabaa3c46",
+                "namespace": "kube-system",
+                "resourceVersion": "559",
+                "uid": "e50450c2-f403-483c-8845-ff94137fa2a9"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:27Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{coredns}",
+                "kind": "Pod",
+                "name": "coredns-559f6c778d-dwckl",
+                "namespace": "kube-system",
+                "resourceVersion": "533",
+                "uid": "7067fac3-8f2e-4255-89bd-4f13b95e519c"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:27Z",
+            "message": "Readiness probe failed: Get \"http://10.244.0.2:8181/ready\": dial tcp 10.244.0.2:8181: connect: connection refused",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:27Z",
+                "name": "coredns-559f6c778d-dwckl.18de1f2eac1f07ae",
+                "namespace": "kube-system",
+                "resourceVersion": "560",
+                "uid": "fe5eba65-d45b-4a96-99cb-7234b4d578cb"
+            },
+            "reason": "Unhealthy",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "coredns-559f6c778d",
+                "namespace": "kube-system",
+                "resourceVersion": "377",
+                "uid": "39edb309-a16c-407e-8900-a4cee88f9b52"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Created pod: coredns-559f6c778d-dwckl",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "coredns-559f6c778d.18de1f2bb37c81d5",
+                "namespace": "kube-system",
+                "resourceVersion": "394",
+                "uid": "66f7f07a-1209-47c7-8596-c703e438a136"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "coredns-559f6c778d",
+                "namespace": "kube-system",
+                "resourceVersion": "377",
+                "uid": "39edb309-a16c-407e-8900-a4cee88f9b52"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Created pod: coredns-559f6c778d-72zvp",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "coredns-559f6c778d.18de1f2bb425671e",
+                "namespace": "kube-system",
+                "resourceVersion": "397",
+                "uid": "8ec39231-df12-4ea8-b8af-e9b6875c21e5"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "coredns",
+                "namespace": "kube-system",
+                "resourceVersion": "258",
+                "uid": "741783a7-23e8-4ef4-8e80-5b8e4b50bd97"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Scaled up replica set coredns-559f6c778d from 0 to 2",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "coredns.18de1f2ba4e1fcbb",
+                "namespace": "kube-system",
+                "resourceVersion": "381",
+                "uid": "3721adae-4c59-4b7b-93b9-65b0a4378c64"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kindnet-788mj",
+                "namespace": "kube-system",
+                "resourceVersion": "434",
+                "uid": "72f48072-f436-4227-945a-28100c7e994e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Successfully assigned kube-system/kindnet-788mj to burner-worker2",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet-788mj.18de1f2bf0f3337b",
+                "namespace": "kube-system",
+                "resourceVersion": "451",
+                "uid": "21a8bc13-aa3c-424b-a9b0-a88c604e9f2a"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-788mj",
+                "namespace": "kube-system",
+                "resourceVersion": "444",
+                "uid": "72f48072-f436-4227-945a-28100c7e994e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Container image \"docker.io/kindest/kindnetd:v20260820-69b56db7\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:17Z",
+                "name": "kindnet-788mj.18de1f2c7051e8f3",
+                "namespace": "kube-system",
+                "resourceVersion": "485",
+                "uid": "36b3efd1-fce3-45fa-a948-0f4423f48458"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-788mj",
+                "namespace": "kube-system",
+                "resourceVersion": "444",
+                "uid": "72f48072-f436-4227-945a-28100c7e994e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kindnet-788mj.18de1f2cc62c8037",
+                "namespace": "kube-system",
+                "resourceVersion": "503",
+                "uid": "319c7870-34f0-4ea5-9f8c-051f6ae17682"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:19Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-788mj",
+                "namespace": "kube-system",
+                "resourceVersion": "444",
+                "uid": "72f48072-f436-4227-945a-28100c7e994e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:19Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:19Z",
+                "name": "kindnet-788mj.18de1f2ccdacc3e7",
+                "namespace": "kube-system",
+                "resourceVersion": "507",
+                "uid": "4014eb87-0cc1-4ede-85b3-8bfc3328f823"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kindnet-7qtx4",
+                "namespace": "kube-system",
+                "resourceVersion": "448",
+                "uid": "7fde2b40-455c-4b97-91b8-44373b5551a3"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Successfully assigned kube-system/kindnet-7qtx4 to burner-worker",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet-7qtx4.18de1f2bf2d4228d",
+                "namespace": "kube-system",
+                "resourceVersion": "462",
+                "uid": "543b544e-4471-49bc-9170-27011e516bbf"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-7qtx4",
+                "namespace": "kube-system",
+                "resourceVersion": "454",
+                "uid": "7fde2b40-455c-4b97-91b8-44373b5551a3"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Container image \"docker.io/kindest/kindnetd:v20260820-69b56db7\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:17Z",
+                "name": "kindnet-7qtx4.18de1f2c790f9c3f",
+                "namespace": "kube-system",
+                "resourceVersion": "487",
+                "uid": "3da90605-0525-4891-abef-2a0f1770b04f"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-7qtx4",
+                "namespace": "kube-system",
+                "resourceVersion": "454",
+                "uid": "7fde2b40-455c-4b97-91b8-44373b5551a3"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kindnet-7qtx4.18de1f2cc7bd814e",
+                "namespace": "kube-system",
+                "resourceVersion": "504",
+                "uid": "509b2318-fe51-4065-b95e-a94297b00911"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:19Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-7qtx4",
+                "namespace": "kube-system",
+                "resourceVersion": "454",
+                "uid": "7fde2b40-455c-4b97-91b8-44373b5551a3"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:19Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:19Z",
+                "name": "kindnet-7qtx4.18de1f2ccdc0f233",
+                "namespace": "kube-system",
+                "resourceVersion": "506",
+                "uid": "2b459631-34a1-4272-b4a8-1e86a62da8aa"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kindnet-fhng7",
+                "namespace": "kube-system",
+                "resourceVersion": "363",
+                "uid": "4e3b4b0f-e584-4a22-9e47-221fe47896a6"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Successfully assigned kube-system/kindnet-fhng7 to burner-control-plane",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kindnet-fhng7.18de1f2ba2690986",
+                "namespace": "kube-system",
+                "resourceVersion": "371",
+                "uid": "021228a5-cdc0-4cf9-a36f-9406df8a741e"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-fhng7",
+                "namespace": "kube-system",
+                "resourceVersion": "366",
+                "uid": "4e3b4b0f-e584-4a22-9e47-221fe47896a6"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Container image \"docker.io/kindest/kindnetd:v20260820-69b56db7\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kindnet-fhng7.18de1f2bc09f388e",
+                "namespace": "kube-system",
+                "resourceVersion": "411",
+                "uid": "c3ca1a08-0c49-4fad-af05-f7603b6c9075"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-fhng7",
+                "namespace": "kube-system",
+                "resourceVersion": "366",
+                "uid": "4e3b4b0f-e584-4a22-9e47-221fe47896a6"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet-fhng7.18de1f2c0035400e",
+                "namespace": "kube-system",
+                "resourceVersion": "468",
+                "uid": "587d9e7a-e13c-4b82-8d1f-4867bd32d517"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kindnet-cni}",
+                "kind": "Pod",
+                "name": "kindnet-fhng7",
+                "namespace": "kube-system",
+                "resourceVersion": "366",
+                "uid": "4e3b4b0f-e584-4a22-9e47-221fe47896a6"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet-fhng7.18de1f2c04d13986",
+                "namespace": "kube-system",
+                "resourceVersion": "469",
+                "uid": "687666b9-006c-4370-8e3a-58fe14c4dde7"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kindnet",
+                "namespace": "kube-system",
+                "resourceVersion": "285",
+                "uid": "3d3e9cd6-2b63-4068-9a5f-0ac9fafeedf0"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Created pod: kindnet-fhng7",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kindnet.18de1f2ba204491f",
+                "namespace": "kube-system",
+                "resourceVersion": "370",
+                "uid": "9bfcea59-074b-4be6-873e-1d5ad44c6464"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kindnet",
+                "namespace": "kube-system",
+                "resourceVersion": "369",
+                "uid": "3d3e9cd6-2b63-4068-9a5f-0ac9fafeedf0"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Created pod: kindnet-788mj",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet.18de1f2beeb6a13d",
+                "namespace": "kube-system",
+                "resourceVersion": "442",
+                "uid": "58dd7e63-0055-497c-a919-a3a66c858046"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kindnet",
+                "namespace": "kube-system",
+                "resourceVersion": "443",
+                "uid": "3d3e9cd6-2b63-4068-9a5f-0ac9fafeedf0"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Created pod: kindnet-7qtx4",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kindnet.18de1f2bf12fd7a4",
+                "namespace": "kube-system",
+                "resourceVersion": "457",
+                "uid": "7b123272-8abb-4d09-9e2a-283ac72cfac9"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:07Z",
+            "involvedObject": {
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "name": "kube-controller-manager",
+                "namespace": "kube-system",
+                "resourceVersion": "236",
+                "uid": "009856c1-00b8-4501-b47f-3a493503b4f0"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:07Z",
+            "message": "burner-control-plane_c27ea51f-37f6-417e-a695-3c18923f655b became leader",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:07Z",
+                "name": "kube-controller-manager.18de1f2a17ac634c",
+                "namespace": "kube-system",
+                "resourceVersion": "238",
+                "uid": "e10a9c32-bf78-4609-bd99-905b1b74a268"
+            },
+            "reason": "LeaderElection",
+            "reportingComponent": "kube-controller-manager",
+            "reportingInstance": "",
+            "source": {
+                "component": "kube-controller-manager"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kube-proxy-hnc4s",
+                "namespace": "kube-system",
+                "resourceVersion": "450",
+                "uid": "652392f5-6f23-4ba2-9dc1-fe2ebe036508"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Successfully assigned kube-system/kube-proxy-hnc4s to burner-worker",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy-hnc4s.18de1f2bf2128a4e",
+                "namespace": "kube-system",
+                "resourceVersion": "461",
+                "uid": "71a31bd5-faee-4be5-aed7-655cded197aa"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-hnc4s",
+                "namespace": "kube-system",
+                "resourceVersion": "453",
+                "uid": "652392f5-6f23-4ba2-9dc1-fe2ebe036508"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Container image \"registry.k8s.io/kube-proxy:v1.37.0\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:17Z",
+                "name": "kube-proxy-hnc4s.18de1f2c80e13cb4",
+                "namespace": "kube-system",
+                "resourceVersion": "490",
+                "uid": "9125a09c-3eca-4957-b75d-a7a8d892b85a"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-hnc4s",
+                "namespace": "kube-system",
+                "resourceVersion": "453",
+                "uid": "652392f5-6f23-4ba2-9dc1-fe2ebe036508"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kube-proxy-hnc4s.18de1f2cb93aaccd",
+                "namespace": "kube-system",
+                "resourceVersion": "498",
+                "uid": "df494c94-e31d-4676-9c89-1dd390cbd4ba"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-hnc4s",
+                "namespace": "kube-system",
+                "resourceVersion": "453",
+                "uid": "652392f5-6f23-4ba2-9dc1-fe2ebe036508"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kube-proxy-hnc4s.18de1f2cc3bc9bde",
+                "namespace": "kube-system",
+                "resourceVersion": "500",
+                "uid": "3e5edf96-7f16-4aaf-a7c1-e88d76034155"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kube-proxy-qg8pd",
+                "namespace": "kube-system",
+                "resourceVersion": "435",
+                "uid": "c9ad3f8b-1414-46ac-ad35-8f98a87f8b63"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Successfully assigned kube-system/kube-proxy-qg8pd to burner-worker2",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy-qg8pd.18de1f2bf0f72cfa",
+                "namespace": "kube-system",
+                "resourceVersion": "458",
+                "uid": "da98c224-13d0-4c5d-8fe5-16d3ae684a01"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-qg8pd",
+                "namespace": "kube-system",
+                "resourceVersion": "445",
+                "uid": "c9ad3f8b-1414-46ac-ad35-8f98a87f8b63"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:17Z",
+            "message": "Container image \"registry.k8s.io/kube-proxy:v1.37.0\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:17Z",
+                "name": "kube-proxy-qg8pd.18de1f2c6e5b41c1",
+                "namespace": "kube-system",
+                "resourceVersion": "483",
+                "uid": "f224946a-1c70-4d0b-bb6c-dc9dd672fab5"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-qg8pd",
+                "namespace": "kube-system",
+                "resourceVersion": "445",
+                "uid": "c9ad3f8b-1414-46ac-ad35-8f98a87f8b63"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kube-proxy-qg8pd.18de1f2ca62dda54",
+                "namespace": "kube-system",
+                "resourceVersion": "495",
+                "uid": "e3000a3f-73fc-4261-9d26-823fae4c997f"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:18Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-qg8pd",
+                "namespace": "kube-system",
+                "resourceVersion": "445",
+                "uid": "c9ad3f8b-1414-46ac-ad35-8f98a87f8b63"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:18Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:18Z",
+                "name": "kube-proxy-qg8pd.18de1f2cb26b4ba8",
+                "namespace": "kube-system",
+                "resourceVersion": "496",
+                "uid": "e68ea834-6784-49fa-a19c-0f21e0512779"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-worker2",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-worker2"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kube-proxy-v9bzp",
+                "namespace": "kube-system",
+                "resourceVersion": "364",
+                "uid": "25bf1915-18da-4704-9789-c81765e2367e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Successfully assigned kube-system/kube-proxy-v9bzp to burner-control-plane",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kube-proxy-v9bzp.18de1f2ba2a40f4d",
+                "namespace": "kube-system",
+                "resourceVersion": "372",
+                "uid": "9ae560d3-62d7-414b-a4a7-2a17436959d6"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-v9bzp",
+                "namespace": "kube-system",
+                "resourceVersion": "367",
+                "uid": "25bf1915-18da-4704-9789-c81765e2367e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Container image \"registry.k8s.io/kube-proxy:v1.37.0\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kube-proxy-v9bzp.18de1f2bbed0a68d",
+                "namespace": "kube-system",
+                "resourceVersion": "408",
+                "uid": "b0459d40-4c3d-43c8-925b-4a905ef0fafd"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-v9bzp",
+                "namespace": "kube-system",
+                "resourceVersion": "367",
+                "uid": "25bf1915-18da-4704-9789-c81765e2367e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy-v9bzp.18de1f2be7a9672b",
+                "namespace": "kube-system",
+                "resourceVersion": "422",
+                "uid": "565432ab-704e-438b-b46f-108bcb7a565e"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-proxy}",
+                "kind": "Pod",
+                "name": "kube-proxy-v9bzp",
+                "namespace": "kube-system",
+                "resourceVersion": "367",
+                "uid": "25bf1915-18da-4704-9789-c81765e2367e"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy-v9bzp.18de1f2bfb463a46",
+                "namespace": "kube-system",
+                "resourceVersion": "464",
+                "uid": "2e2a321a-563a-4deb-bcd3-db7d6c01180f"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "resourceVersion": "262",
+                "uid": "24e939de-6e4f-49e2-8ddb-bd732aa8befd"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Created pod: kube-proxy-v9bzp",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "kube-proxy.18de1f2ba1ec9938",
+                "namespace": "kube-system",
+                "resourceVersion": "365",
+                "uid": "399e523b-80b0-49e3-9c53-559d7f09bc37"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "resourceVersion": "373",
+                "uid": "24e939de-6e4f-49e2-8ddb-bd732aa8befd"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Created pod: kube-proxy-qg8pd",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy.18de1f2beec08947",
+                "namespace": "kube-system",
+                "resourceVersion": "449",
+                "uid": "c8ab3bef-ef76-48e3-9ef5-26eb2262a89f"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:15Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "resourceVersion": "447",
+                "uid": "24e939de-6e4f-49e2-8ddb-bd732aa8befd"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:15Z",
+            "message": "Created pod: kube-proxy-hnc4s",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:15Z",
+                "name": "kube-proxy.18de1f2bf14035a4",
+                "namespace": "kube-system",
+                "resourceVersion": "459",
+                "uid": "03221ed3-c84a-42c6-a95d-321d42fe6388"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:08Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{kube-scheduler}",
+                "kind": "Pod",
+                "name": "kube-scheduler-burner-control-plane",
+                "namespace": "kube-system",
+                "uid": "eed3988ac3febf9e02e36b7571cf29d0"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:09Z",
+            "message": "Readiness probe failed: HTTP probe failed with statuscode: 500",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:08Z",
+                "name": "kube-scheduler-burner-control-plane.18de1f2a40b8e066",
+                "namespace": "kube-system",
+                "resourceVersion": "303",
+                "uid": "14b32d43-48d8-4a89-8a8c-00c429fe9131"
+            },
+            "reason": "Unhealthy",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:13Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "kube-scheduler-burner-control-plane",
+                "namespace": "kube-system",
+                "resourceVersion": "313",
+                "uid": "50c8b3e4-03f1-4662-84c2-f532b4617e0b"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:13Z",
+            "message": "Node is not ready",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:13Z",
+                "name": "kube-scheduler-burner-control-plane.18de1f2b6680b1da",
+                "namespace": "kube-system",
+                "resourceVersion": "338",
+                "uid": "bb2ab158-6b85-4920-9b0c-403c3b271949"
+            },
+            "reason": "NodeNotReady",
+            "reportingComponent": "node-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "node-controller"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:09Z",
+            "involvedObject": {
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "name": "kube-scheduler",
+                "namespace": "kube-system",
+                "resourceVersion": "304",
+                "uid": "ce86fad3-85d7-4924-899f-d935262d08a5"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:09Z",
+            "message": "burner-control-plane_7d9382e6-8ca7-4280-a725-f7b5930f61cb became leader",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:09Z",
+                "name": "kube-scheduler.18de1f2a9fab8dd3",
+                "namespace": "kube-system",
+                "resourceVersion": "305",
+                "uid": "9843dcb3-c7f7-45f4-adc8-4ff7ae576e90"
+            },
+            "reason": "LeaderElection",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq",
+                "namespace": "local-path-storage",
+                "resourceVersion": "391",
+                "uid": "fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq.18de1f2bb58b6414",
+                "namespace": "local-path-storage",
+                "resourceVersion": "406",
+                "uid": "d143cc83-d966-4c36-9698-9a17e4fb5d87"
+            },
+            "reason": "FailedScheduling",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:25Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq",
+                "namespace": "local-path-storage",
+                "resourceVersion": "407",
+                "uid": "fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:25Z",
+            "message": "Successfully assigned local-path-storage/local-path-provisioner-75f7fc7dc5-qw4pq to burner-control-plane",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:25Z",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq.18de1f2e5ec0b4cb",
+                "namespace": "local-path-storage",
+                "resourceVersion": "537",
+                "uid": "922cea98-356f-4bbe-8603-6c5bdc8e71ca"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "",
+            "source": {
+                "component": "default-scheduler"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{local-path-provisioner}",
+                "kind": "Pod",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq",
+                "namespace": "local-path-storage",
+                "resourceVersion": "535",
+                "uid": "fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container image \"docker.io/kindest/local-path-provisioner:v20260820-69b56db7\" already present on machine and can be accessed by the pod",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq.18de1f2e7eb789bb",
+                "namespace": "local-path-storage",
+                "resourceVersion": "548",
+                "uid": "7aac32bd-d689-4e09-badd-670b6e4264a9"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{local-path-provisioner}",
+                "kind": "Pod",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq",
+                "namespace": "local-path-storage",
+                "resourceVersion": "535",
+                "uid": "fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container created",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq.18de1f2e9c0e3481",
+                "namespace": "local-path-storage",
+                "resourceVersion": "550",
+                "uid": "33cf2844-bd21-4aeb-9003-04b01ddf4acd"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:26Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{local-path-provisioner}",
+                "kind": "Pod",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq",
+                "namespace": "local-path-storage",
+                "resourceVersion": "535",
+                "uid": "fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:26Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:26Z",
+                "name": "local-path-provisioner-75f7fc7dc5-qw4pq.18de1f2ea20300fc",
+                "namespace": "local-path-storage",
+                "resourceVersion": "552",
+                "uid": "f96d31f5-7859-47b2-bb92-ec8ca55eedfa"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "burner-control-plane",
+            "source": {
+                "component": "kubelet",
+                "host": "burner-control-plane"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "local-path-provisioner-75f7fc7dc5",
+                "namespace": "local-path-storage",
+                "resourceVersion": "375",
+                "uid": "bb6bace7-a552-46b9-b2bb-ef7fc06ad022"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Created pod: local-path-provisioner-75f7fc7dc5-qw4pq",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "local-path-provisioner-75f7fc7dc5.18de1f2bb3ab9997",
+                "namespace": "local-path-storage",
+                "resourceVersion": "395",
+                "uid": "7d1b58b1-24fa-4476-823a-44fd4c836a7e"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-10-13T15:06:14Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "local-path-provisioner",
+                "namespace": "local-path-storage",
+                "resourceVersion": "296",
+                "uid": "06063dad-f98c-4f9e-a088-85b1b3089421"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-10-13T15:06:14Z",
+            "message": "Scaled up replica set local-path-provisioner-75f7fc7dc5 from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-10-13T15:06:14Z",
+                "name": "local-path-provisioner.18de1f2ba4d08a00",
+                "namespace": "local-path-storage",
+                "resourceVersion": "378",
+                "uid": "b24aadd8-c213-4a62-9fb9-08fafab9941c"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

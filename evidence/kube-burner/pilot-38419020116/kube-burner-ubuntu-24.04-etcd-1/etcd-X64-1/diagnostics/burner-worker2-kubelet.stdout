@@ -1,0 +1,231 @@
+Oct 13 15:06:00 burner-worker2 systemd[1]: kubelet.service - kubelet: The Kubernetes Node Agent skipped, unmet condition check ConditionPathExists=/var/lib/kubelet/config.yaml
+Oct 13 15:06:14 burner-worker2 systemd[1]: Starting kubelet.service - kubelet: The Kubernetes Node Agent...
+Oct 13 15:06:14 burner-worker2 systemd[1]: Started kubelet.service - kubelet: The Kubernetes Node Agent.
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.744857     241 server.go:257] "Effective KubeletConfiguration" config=<
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         address: 0.0.0.0
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         apiVersion: kubelet.config.k8s.io/v1beta1
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         authentication:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           anonymous:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             enabled: false
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           webhook:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             cacheTTL: 2m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             enabled: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           x509:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             clientCAFile: /etc/kubernetes/pki/ca.crt
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         authorization:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           mode: Webhook
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           webhook:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             cacheAuthorizedTTL: 5m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             cacheUnauthorizedTTL: 30s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cgroupDriver: systemd
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cgroupRoot: /kubelet
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cgroupsPerQOS: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         clusterDNS:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         - 10.96.0.10
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         clusterDomain: cluster.local
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         configMapAndSecretChangeDetectionStrategy: Watch
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         containerLogMaxFiles: 5
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         containerLogMaxSize: 10Mi
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         containerLogMaxWorkers: 1
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         containerLogMonitorInterval: 10s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         contentType: application/vnd.kubernetes.protobuf
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cpuCFSQuota: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cpuCFSQuotaPeriod: 100ms
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cpuManagerPolicy: none
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         cpuManagerReconcilePeriod: 10s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         crashLoopBackOff:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           maxContainerRestartPeriod: 5m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableControllerAttachDetach: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableDebugFlagsHandler: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableDebuggingHandlers: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableProfilingHandler: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableServer: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableSystemLogHandler: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enableSystemLogQuery: false
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         enforceNodeAllocatable:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         - pods
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         eventBurst: 100
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         eventRecordQPS: 50
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         evictionHard:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           imagefs.available: 0%
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           nodefs.available: 0%
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           nodefs.inodesFree: 0%
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         evictionPressureTransitionPeriod: 5m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         failCgroupV1: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         failSwapOn: false
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         fileCheckFrequency: 20s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         hairpinMode: promiscuous-bridge
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         healthzBindAddress: 127.0.0.1
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         healthzPort: 10248
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         httpCheckFrequency: 20s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         imageGCHighThresholdPercent: 100
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         imageGCLowThresholdPercent: 80
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         imageMaximumGCAge: 0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         imageMinimumGCAge: 2m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         imagePullCredentialsVerificationPolicy: NeverVerifyPreloadedImages
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         iptablesDropBit: 15
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         iptablesMasqueradeBit: 14
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         kind: KubeletConfiguration
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         kubeAPIBurst: 100
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         kubeAPIQPS: 50
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         localStorageCapacityIsolation: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         logging:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           flushFrequency: 5s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           format: text
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           options:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             json:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:               infoBufferSize: "0"
+Oct 13 15:06:14 burner-worker2 kubelet[241]:             text:
+Oct 13 15:06:14 burner-worker2 kubelet[241]:               infoBufferSize: "0"
+Oct 13 15:06:14 burner-worker2 kubelet[241]:           verbosity: 0
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         makeIPTablesUtilChains: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         maxOpenFiles: 1000000
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         maxPods: 110
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         memoryManagerPolicy: None
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         memoryReservationPolicy: None
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         memorySwap: {}
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         mergeDefaultEvictionSettings: false
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         nodeLeaseDurationSeconds: 40
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         nodeStatusMaxImages: 50
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         nodeStatusReportFrequency: 5m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         nodeStatusUpdateFrequency: 10s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         oomScoreAdj: -999
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         podLogsDir: /var/log/pods
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         podPidsLimit: -1
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         port: 10250
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         providerID: kind://docker/burner/burner-worker2
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         registerNode: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         registryBurst: 10
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         registryPullQPS: 5
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         resolvConf: /etc/resolv.conf
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         rotateCertificates: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         runtimeRequestTimeout: 2m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         seccompDefault: false
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         serializeImagePulls: true
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         shutdownGracePeriod: 0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         shutdownGracePeriodCriticalPods: 0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         staticPodPath: /etc/kubernetes/manifests
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         streamingConnectionIdleTimeout: 4h0m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         syncFrequency: 1m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         topologyManagerPolicy: none
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         topologyManagerScope: container
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         volumePluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         volumeStatsAggPeriod: 1m0s
+Oct 13 15:06:14 burner-worker2 kubelet[241]:  >
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.908180     241 server.go:545] "Kubelet version" kubeletVersion="v1.37.0"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.908205     241 server.go:547] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.908229     241 watchdog_linux.go:94] "Systemd watchdog is not enabled"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.908240     241 watchdog_linux.go:137] "Systemd watchdog is not enabled or the interval is invalid, so health checking will not be started."
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.908892     241 server.go:1036] "Client rotation is on, will bootstrap in background"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.917917     241 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.932848     241 server.go:1502] "Using cgroup driver setting received from the CRI runtime" cgroupDriver="systemd"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.943309     241 server.go:919] "NoSwap is set due to memorySwapBehavior not specified" memorySwapBehavior="" FailSwapOn=false
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.943563     241 swap_util.go:119] "Swap is on" /proc/swaps contents=<
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         Filename                                Type                Size                Used                Priority
+Oct 13 15:06:14 burner-worker2 kubelet[241]:         /swapfile                               file                3145724                0                -2
+Oct 13 15:06:14 burner-worker2 kubelet[241]:  >
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.944106     241 container_manager_linux.go:273] "Container manager verified user specified cgroup-root exists" cgroupRoot=["kubelet"]
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.944236     241 container_manager_linux.go:278] "Creating Container Manager object based on Node Config" nodeConfig={"NodeName":"burner-worker2","RuntimeCgroupsName":"/system.slice/containerd.service","SystemCgroupsName":"","KubeletCgroupsName":"","KubeletOOMScoreAdj":-999,"ContainerRuntime":"","CgroupsPerQOS":true,"CgroupRoot":"/kubelet","CgroupDriver":"systemd","KubeletRootDir":"/var/lib/kubelet","ProtectKernelDefaults":false,"KubeReservedCgroupName":"","SystemReservedCgroupName":"","ReservedSystemCPUs":{},"EnforceNodeAllocatable":{"pods":{}},"KubeReserved":null,"SystemReserved":null,"HardEvictionThresholds":[],"QOSReserved":{},"CPUManagerPolicy":"none","CPUManagerPolicyOptions":null,"TopologyManagerScope":"container","CPUManagerReconcilePeriod":10000000000,"MemoryManagerPolicy":"None","MemoryManagerReservedMemory":null,"MemoryReservationPolicy":"None","MemoryThrottlingFactor":null,"PodPidsLimit":-1,"EnforceCPULimits":true,"CPUCFSQuotaPeriod":100000000,"TopologyManagerPolicy":"none","TopologyManagerPolicyOptions":null,"CgroupVersion":2}
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.944607     241 topology_manager.go:183] "Creating topology manager with none policy"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.944678     241 container_manager_linux.go:310] "Creating device plugin manager"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.944845     241 container_manager_linux.go:319] "Creating Dynamic Resource Allocation (DRA) manager"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.947563     241 state_mem.go:45] "Initialized" logger="CPUManager state memory"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.947777     241 kubelet.go:512] "Attempting to sync node with API server"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.947791     241 kubelet.go:389] "Adding static pod path" path="/etc/kubernetes/manifests"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.947817     241 kubelet.go:400] "Adding apiserver pod source"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.947833     241 apiserver.go:41] "Waiting for node sync before watching apiserver pods"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.986344     241 kuberuntime_manager.go:315] "Container runtime initialized" containerRuntime="containerd" version="v2.3.4" apiVersion="v1"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.992743     241 kubelet.go:1011] "ClusterTrustBundle informer will be started eventually once a trust bundle is requested"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: W1013 15:06:14.998435     241 probe.go:275] Flexvolume plugin directory at /usr/libexec/kubernetes/kubelet-plugins/volume/exec/ does not exist. Recreating.
+Oct 13 15:06:14 burner-worker2 kubelet[241]: E1013 15:06:14.997702     241 reflector.go:227] "Failed to watch" err="failed to list *v1.Service: services is forbidden: User \"system:anonymous\" cannot list resource \"services\" in API group \"\" at the cluster scope" logger="UnhandledError" reflector="k8s.io/client-go/informers/factory.go:178" type="*v1.Service"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: E1013 15:06:14.997643     241 reflector.go:227] "Failed to watch" err="failed to list *v1.Node: nodes \"burner-worker2\" is forbidden: User \"system:anonymous\" cannot list resource \"nodes\" in API group \"\" at the cluster scope" logger="UnhandledError" reflector="k8s.io/client-go/informers/factory.go:178" type="*v1.Node"
+Oct 13 15:06:14 burner-worker2 kubelet[241]: I1013 15:06:14.998607     241 podcertificatemanager.go:340] "podcertificate.IssuingManager starting up"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.002667     241 server.go:1336] "Started kubelet"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.003272     241 server.go:293] "Starting to serve the pods API" endpoint="unix:/var/lib/kubelet/pods-api/pods-api.sock"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.003300     241 server.go:196] "Starting to listen" address="0.0.0.0" port=10250
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.003345     241 ratelimit.go:56] "Setting rate limiting for endpoint" service="podresources" qps=100 burstTokens=10
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.005520     241 server_v1.go:49] "podresources" method="list" useActivePods=true
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.005869     241 server.go:267] "Starting to serve the podresources API" endpoint="unix:/var/lib/kubelet/pod-resources/kubelet.sock"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.007791     241 server.go:365] "Adding debug handlers to kubelet server"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.008448     241 fs_resource_analyzer.go:69] "Starting FS ResourceAnalyzer"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.008592     241 dynamic_serving_content.go:135] "Starting controller" name="kubelet-server-cert-files::/var/lib/kubelet/pki/kubelet.crt::/var/lib/kubelet/pki/kubelet.key"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.012895     241 volume_manager.go:331] "Starting Kubelet Volume Manager"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.008607     241 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.015546     241 desired_state_of_world_populator.go:146] "Desired state populator starts to run"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.016181     241 reconciler.go:29] "Reconciler: start to sync state"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.016292     241 factory.go:222] Registration of the systemd container factory successfully
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.017215     241 factory.go:220] Registration of the crio container factory failed: Get "http://%2Fvar%2Frun%2Fcrio%2Fcrio.sock/info": dial unix /var/run/crio/crio.sock: connect: no such file or directory
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.021289     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.021640     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.028341     241 factory.go:222] Registration of the containerd container factory successfully
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.043628     241 cpu_manager.go:239] "Starting" policy="none"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.043933     241 cpu_manager.go:240] "Reconciling" reconcilePeriod="10s"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.044092     241 state_mem.go:45] "Initialized" logger="CPUManager state checkpoint.CPUManager state memory"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.044318     241 state_checkpoint.go:191] "trying to load v4 CPU manager checkpoint" logger="CPUManager state checkpoint"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.046518     241 policy_none.go:51] "Start"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.046957     241 memory_manager.go:209] "Starting memorymanager" policy="None"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.047563     241 state_mem.go:39] "Initializing new in-memory state store" logger="Memory Manager state checkpoint"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.048474     241 policy_none.go:47] "Start"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.049412     241 controller.go:208] "Failed to ensure lease exists, will retry" err="leases.coordination.k8s.io \"burner-worker2\" is forbidden: User \"system:anonymous\" cannot get resource \"leases\" in API group \"coordination.k8s.io\" in the namespace \"kube-node-lease\"" interval="200ms"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.050221     241 event.go:365] "Server rejected event (will not retry!)" err="events is forbidden: User \"system:anonymous\" cannot create resource \"events\" in API group \"\" in the namespace \"default\"" event="&Event{ObjectMeta:{burner-worker2.18de1f2bdda4934d  default    0 0001-01-01 00:00:00 +0000 UTC <nil> <nil> map[] map[] [] [] []},InvolvedObject:ObjectReference{Kind:Node,Namespace:,Name:burner-worker2,UID:,APIVersion:v1,ResourceVersion:,FieldPath:,},Reason:Starting,Message:Starting kubelet.,Source:EventSource{Component:kubelet,Host:burner-worker2,},FirstTimestamp:2026-10-13 15:06:15.002641229 +0000 UTC m=+0.318743906,LastTimestamp:2026-10-13 15:06:15.002641229 +0000 UTC m=+0.318743906,Count:1,Type:Normal,EventTime:0001-01-01 00:00:00 +0000 UTC,Series:nil,Action:,Related:nil,ReportingController:kubelet,ReportingInstance:burner-worker2,}"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.093611     241 reflector.go:227] "Failed to watch" err="failed to list *v1.CSIDriver: csidrivers.storage.k8s.io is forbidden: User \"system:anonymous\" cannot list resource \"csidrivers\" in API group \"storage.k8s.io\" at the cluster scope" logger="UnhandledError" reflector="k8s.io/client-go/informers/factory.go:178" type="*v1.CSIDriver"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.102088     241 reflector.go:227] "Failed to watch" err="failed to list *v1.PodCertificateRequest: podcertificaterequests.certificates.k8s.io is forbidden: User \"system:anonymous\" cannot list resource \"podcertificaterequests\" in API group \"certificates.k8s.io\" at the cluster scope" logger="UnhandledError" reflector="k8s.io/client-go/informers/factory.go:178" type="*v1.PodCertificateRequest"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.114208     241 manager.go:550] "Failed to read data from checkpoint" err="checkpoint is not found" checkpoint="kubelet_internal_checkpoint"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.117077     241 eviction_manager.go:193] "Eviction manager: starting control loop"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.118858     241 container_log_manager.go:146] "Initializing container log rotate workers" workers=1 monitorPeriod="10s"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.120106     241 eviction_manager.go:280] "eviction manager: failed to check if we have separate container filesystem. Ignoring." err="no imagefs label for configured runtime"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.120382     241 eviction_manager.go:305] "Eviction manager: failed to get summary stats" err="failed to get node info: node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.121303     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.121463     241 plugin_manager.go:121] "Starting Kubelet Plugin Manager"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.133044     241 event.go:365] "Server rejected event (will not retry!)" err="events is forbidden: User \"system:anonymous\" cannot create resource \"events\" in API group \"\" in the namespace \"default\"" event="&Event{ObjectMeta:{burner-worker2.18de1f2be0049991  default    0 0001-01-01 00:00:00 +0000 UTC <nil> <nil> map[] map[] [] [] []},InvolvedObject:ObjectReference{Kind:Node,Namespace:,Name:burner-worker2,UID:,APIVersion:v1,ResourceVersion:,FieldPath:,},Reason:NodeHasSufficientMemory,Message:Node burner-worker2 status is now: NodeHasSufficientMemory,Source:EventSource{Component:kubelet,Host:burner-worker2,},FirstTimestamp:2026-10-13 15:06:15.042488721 +0000 UTC m=+0.358591388,LastTimestamp:2026-10-13 15:06:15.042488721 +0000 UTC m=+0.358591388,Count:1,Type:Normal,EventTime:0001-01-01 00:00:00 +0000 UTC,Series:nil,Action:,Related:nil,ReportingController:kubelet,ReportingInstance:burner-worker2,}"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.137139     241 event.go:365] "Server rejected event (will not retry!)" err="events is forbidden: User \"system:anonymous\" cannot create resource \"events\" in API group \"\" in the namespace \"default\"" event="&Event{ObjectMeta:{burner-worker2.18de1f2be005d8a4  default    0 0001-01-01 00:00:00 +0000 UTC <nil> <nil> map[] map[] [] [] []},InvolvedObject:ObjectReference{Kind:Node,Namespace:,Name:burner-worker2,UID:,APIVersion:v1,ResourceVersion:,FieldPath:,},Reason:NodeHasNoDiskPressure,Message:Node burner-worker2 status is now: NodeHasNoDiskPressure,Source:EventSource{Component:kubelet,Host:burner-worker2,},FirstTimestamp:2026-10-13 15:06:15.042570404 +0000 UTC m=+0.358673061,LastTimestamp:2026-10-13 15:06:15.042570404 +0000 UTC m=+0.358673061,Count:1,Type:Normal,EventTime:0001-01-01 00:00:00 +0000 UTC,Series:nil,Action:,Related:nil,ReportingController:kubelet,ReportingInstance:burner-worker2,}"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.146052     241 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv4"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.148920     241 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv6"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.149081     241 status_manager.go:283] "Starting to sync pod status with apiserver"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.149435     241 kubelet.go:2673] "Starting kubelet main sync loop"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.149575     241 kubelet.go:2697] "Skipping pod synchronization" err="PLEG is not healthy: pleg has yet to be successful"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.222358     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.223243     241 kubelet_node_status.go:75] "Attempting to register node" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.245340     241 kubelet_node_status.go:78] "Successfully registered node" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.245538     241 kubelet_node_status.go:479] "Error updating node status, will retry" err="error getting node \"burner-worker2\": node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.267545     241 kuberuntime_manager.go:2315] "Updating runtime config through cri with podcidr" CIDR="10.244.1.0/24"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.269255     241 kubelet_network.go:48] "Updating Pod CIDR" originalPodCIDR="" newPodCIDR="10.244.1.0/24"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.292264     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.322134     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.393310     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.421378     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.493839     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.521812     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.594105     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.621803     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.695276     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.722397     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.795568     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.822268     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.896624     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.911147     241 transport.go:147] "Certificate rotation detected, shutting down client connections to start using new credentials"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: I1013 15:06:15.911349     241 reflector.go:664] "Warning: watch ended with error" reflector="k8s.io/client-go/informers/factory.go:178" type="*v1.RuntimeClass" err="very short watch: k8s.io/client-go/informers/factory.go:178: Unexpected watch close - watch lasted less than a second and no items received"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.922240     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:15 burner-worker2 kubelet[241]: E1013 15:06:15.996801     241 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-worker2\" not found"
+Oct 13 15:06:16 burner-worker2 kubelet[241]: E1013 15:06:16.021410     241 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-worker2\" not found" node="burner-worker2"
+Oct 13 15:06:16 burner-worker2 kubelet[241]: I1013 15:06:16.951804     241 apiserver.go:51] "Watching apiserver"
+Oct 13 15:06:16 burner-worker2 kubelet[241]: I1013 15:06:16.959955     241 server.go:177] "Pod update broadcasted" podUID="c9ad3f8b-1414-46ac-ad35-8f98a87f8b63" type="ADDED"
+Oct 13 15:06:16 burner-worker2 kubelet[241]: I1013 15:06:16.960464     241 server.go:177] "Pod update broadcasted" podUID="72f48072-f436-4227-945a-28100c7e994e" type="ADDED"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.016754     241 desired_state_of_world_populator.go:154] "Finished populating initial desired state of world"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.027947     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"cni-cfg\" (UniqueName: \"kubernetes.io/host-path/72f48072-f436-4227-945a-28100c7e994e-cni-cfg\") pod \"kindnet-788mj\" (UID: \"72f48072-f436-4227-945a-28100c7e994e\") " pod="kube-system/kindnet-788mj"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028129     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"xtables-lock\" (UniqueName: \"kubernetes.io/host-path/72f48072-f436-4227-945a-28100c7e994e-xtables-lock\") pod \"kindnet-788mj\" (UID: \"72f48072-f436-4227-945a-28100c7e994e\") " pod="kube-system/kindnet-788mj"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028162     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"nri-plugin\" (UniqueName: \"kubernetes.io/host-path/72f48072-f436-4227-945a-28100c7e994e-nri-plugin\") pod \"kindnet-788mj\" (UID: \"72f48072-f436-4227-945a-28100c7e994e\") " pod="kube-system/kindnet-788mj"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028399     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-xnprw\" (UniqueName: \"kubernetes.io/projected/72f48072-f436-4227-945a-28100c7e994e-kube-api-access-xnprw\") pod \"kindnet-788mj\" (UID: \"72f48072-f436-4227-945a-28100c7e994e\") " pod="kube-system/kindnet-788mj"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028634     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"xtables-lock\" (UniqueName: \"kubernetes.io/host-path/c9ad3f8b-1414-46ac-ad35-8f98a87f8b63-xtables-lock\") pod \"kube-proxy-qg8pd\" (UID: \"c9ad3f8b-1414-46ac-ad35-8f98a87f8b63\") " pod="kube-system/kube-proxy-qg8pd"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028668     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"lib-modules\" (UniqueName: \"kubernetes.io/host-path/c9ad3f8b-1414-46ac-ad35-8f98a87f8b63-lib-modules\") pod \"kube-proxy-qg8pd\" (UID: \"c9ad3f8b-1414-46ac-ad35-8f98a87f8b63\") " pod="kube-system/kube-proxy-qg8pd"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028871     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-5zbfd\" (UniqueName: \"kubernetes.io/projected/c9ad3f8b-1414-46ac-ad35-8f98a87f8b63-kube-api-access-5zbfd\") pod \"kube-proxy-qg8pd\" (UID: \"c9ad3f8b-1414-46ac-ad35-8f98a87f8b63\") " pod="kube-system/kube-proxy-qg8pd"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028908     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"lib-modules\" (UniqueName: \"kubernetes.io/host-path/72f48072-f436-4227-945a-28100c7e994e-lib-modules\") pod \"kindnet-788mj\" (UID: \"72f48072-f436-4227-945a-28100c7e994e\") " pod="kube-system/kindnet-788mj"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.028931     241 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-proxy\" (UniqueName: \"kubernetes.io/configmap/c9ad3f8b-1414-46ac-ad35-8f98a87f8b63-kube-proxy\") pod \"kube-proxy-qg8pd\" (UID: \"c9ad3f8b-1414-46ac-ad35-8f98a87f8b63\") " pod="kube-system/kube-proxy-qg8pd"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.429721     241 server.go:177] "Pod update broadcasted" podUID="c9ad3f8b-1414-46ac-ad35-8f98a87f8b63" type="MODIFIED"
+Oct 13 15:06:17 burner-worker2 kubelet[241]: I1013 15:06:17.462902     241 server.go:177] "Pod update broadcasted" podUID="72f48072-f436-4227-945a-28100c7e994e" type="MODIFIED"
+Oct 13 15:06:18 burner-worker2 kubelet[241]: I1013 15:06:18.654662     241 server.go:177] "Pod update broadcasted" podUID="c9ad3f8b-1414-46ac-ad35-8f98a87f8b63" type="MODIFIED"
+Oct 13 15:06:19 burner-worker2 kubelet[241]: I1013 15:06:19.041292     241 server.go:177] "Pod update broadcasted" podUID="72f48072-f436-4227-945a-28100c7e994e" type="MODIFIED"
+Oct 13 15:06:19 burner-worker2 kubelet[241]: I1013 15:06:19.154563     241 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kube-proxy-qg8pd" podStartSLOduration=4.154543804 podStartE2EDuration="4.154543804s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:15 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:18.690144711 +0000 UTC m=+4.006247398" watchObservedRunningTime="2026-10-13 15:06:19.154543804 +0000 UTC m=+4.470646491"
+Oct 13 15:06:19 burner-worker2 kubelet[241]: I1013 15:06:19.154981     241 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kindnet-788mj" podStartSLOduration=4.154969241 podStartE2EDuration="4.154969241s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:15 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:19.131073747 +0000 UTC m=+4.447176434" watchObservedRunningTime="2026-10-13 15:06:19.154969241 +0000 UTC m=+4.471071928"
+Oct 13 15:06:29 burner-worker2 kubelet[241]: I1013 15:06:29.180546     241 kubelet_node_status.go:431] "Fast updating node status as it just became ready"

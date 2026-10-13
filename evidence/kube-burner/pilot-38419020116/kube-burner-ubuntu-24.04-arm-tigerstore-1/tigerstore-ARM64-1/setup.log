@@ -1,0 +1,119 @@
++ set -euo pipefail
+++ date -u +%s
+++ date -u -d 2026-10-13T22:00:00Z +%s
++ [[ 1791903944 -lt 1791928800 ]]
++ : /home/runner/work/_temp /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1 /home/runner/work/_temp/burner-bin tigerstore
++ mkdir -p /home/runner/work/_temp/burner-bin /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1
+++ uname -m
++ arch=aarch64
++ asset_arch=aarch64
++ case "$arch" in
++ arch=arm64
++ asset_arch=arm64
++ curl -fLSs --retry 3 https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-arm64 -o /home/runner/work/_temp/burner-bin/kind
++ curl -fLSs --retry 3 https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-arm64.sha256sum -o /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/kind.sha256sum
+++ awk '{print $1}' /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/kind.sha256sum
++ expected=20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2
++ echo '20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2  /home/runner/work/_temp/burner-bin/kind'
++ sha256sum -c
+/home/runner/work/_temp/burner-bin/kind: OK
++ curl -fLSs --retry 3 https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl -o /home/runner/work/_temp/burner-bin/kubectl
+++ curl -fLSs --retry 3 https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl.sha256
++ expected=922df28df248cc00a9e025f947704f1d1482de64ece54cfe57e61f19eaf1eef3
++ echo '922df28df248cc00a9e025f947704f1d1482de64ece54cfe57e61f19eaf1eef3  /home/runner/work/_temp/burner-bin/kubectl'
++ sha256sum -c
+/home/runner/work/_temp/burner-bin/kubectl: OK
++ curl -fLSs --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz -o /home/runner/work/_temp/etcd.tgz
++ curl -fLSs --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.7.2/SHA256SUMS -o /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/etcd-SHA256SUMS
+++ awk -v file=etcd-v3.7.2-linux-arm64.tar.gz '$2==file {print $1}' /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/etcd-SHA256SUMS
++ expected=5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7
++ echo '5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  /home/runner/work/_temp/etcd.tgz'
++ sha256sum -c
+/home/runner/work/_temp/etcd.tgz: OK
++ tar -xzf /home/runner/work/_temp/etcd.tgz -C /home/runner/work/_temp/burner-bin --strip-components=1 etcd-v3.7.2-linux-arm64/etcd etcd-v3.7.2-linux-arm64/etcdctl
++ asset=kube-burner-V2.8.6-linux-arm64.tar.gz
++ curl -fLSs --retry 3 https://github.com/kube-burner/kube-burner/releases/download/v2.8.6/kube-burner-V2.8.6-linux-arm64.tar.gz -o /home/runner/work/_temp/kube-burner-V2.8.6-linux-arm64.tar.gz
++ curl -fLSs --retry 3 https://github.com/kube-burner/kube-burner/releases/download/v2.8.6/kube-burner-checksums.txt -o /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/kube-burner-checksums.txt
+++ awk -v file=kube-burner-V2.8.6-linux-arm64.tar.gz '$2==file {print $1}' /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-ARM64-1/kube-burner-checksums.txt
++ expected=af7ec035e5d68523f86114cf340f302aefd3deb0c33f3c2792c8bf0ed3465fa3
++ echo 'af7ec035e5d68523f86114cf340f302aefd3deb0c33f3c2792c8bf0ed3465fa3  /home/runner/work/_temp/kube-burner-V2.8.6-linux-arm64.tar.gz'
++ sha256sum -c
+/home/runner/work/_temp/kube-burner-V2.8.6-linux-arm64.tar.gz: OK
++ tar -xzf /home/runner/work/_temp/kube-burner-V2.8.6-linux-arm64.tar.gz -C /home/runner/work/_temp/burner-bin kube-burner
++ chmod +x /home/runner/work/_temp/burner-bin/etcd /home/runner/work/_temp/burner-bin/etcdctl /home/runner/work/_temp/burner-bin/kind /home/runner/work/_temp/burner-bin/kube-burner /home/runner/work/_temp/burner-bin/kubectl
++ export PATH=/home/runner/work/_temp/burner-bin:/home/runner/work/_temp/burner-bin:/home/runner/go/bin:/opt/hostedtoolcache/go/1.27.2/arm64/bin:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ PATH=/home/runner/work/_temp/burner-bin:/home/runner/work/_temp/burner-bin:/home/runner/go/bin:/opt/hostedtoolcache/go/1.27.2/arm64/bin:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
++ [[ tigerstore == tigerstore ]]
++ cd product
+++ git rev-parse HEAD
++ test 90870876b6459334c7eddd67c0f9d184267f2eba = 90870876b6459334c7eddd67c0f9d184267f2eba
++ git diff --exit-code
++ CGO_ENABLED=0
++ GOFLAGS=-p=2
++ GOMEMLIMIT=2GiB
++ go build -trimpath -o /home/runner/work/_temp/burner-bin/tigerstore ./cmd/tigerstore
+go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+go: downloading go.etcd.io/raft/v3 v3.7.0
+go: downloading google.golang.org/grpc v1.84.0
+go: downloading google.golang.org/protobuf v1.36.11
+go: downloading golang.org/x/net v0.58.0
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+go: downloading github.com/google/btree v1.1.3
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+go: downloading golang.org/x/sys v0.47.0
+go: downloading golang.org/x/text v0.41.0
++ sudo mount -o remount,barrier=1 /
+++ findmnt -T /home/runner/work/_temp -n -o FSTYPE
++ test ext4 = ext4
++ findmnt -T /home/runner/work/_temp -n -o OPTIONS
++ grep -Eq 'nobarrier|barrier=0'
++ date -u
+++ git rev-parse HEAD
++ printf 'store=%s rep=%s tigerstore_ref=%s experiment_ref=%s\n' tigerstore 1 90870876b6459334c7eddd67c0f9d184267f2eba 116fab403d088d715b7f661db8e1703438747ef0
++ printf 'ImageOS=%s ImageVersion=%s\n' ubuntu24-arm64 20261004.142.1
++ uname -a
++ lscpu
++ free -b
++ df -B1 /home/runner/work/_temp
++ findmnt -T /home/runner/work/_temp
++ docker version
++ go version
++ kind version
++ kubectl version --client
++ etcd --version
++ kube-burner version
++ sha256sum /home/runner/work/_temp/burner-bin/etcd /home/runner/work/_temp/burner-bin/etcdctl /home/runner/work/_temp/burner-bin/kind /home/runner/work/_temp/burner-bin/kube-burner /home/runner/work/_temp/burner-bin/kubectl /home/runner/work/_temp/burner-bin/tigerstore
++ [[ tigerstore == tigerstore ]]
++ go version -m /home/runner/work/_temp/burner-bin/tigerstore
++ docker pull alpine:3.22
+3.22: Pulling from library/alpine
+16fc4f52163f: Pulling fs layer
+16fc4f52163f: Download complete
+16fc4f52163f: Pull complete
+Digest: sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+Status: Downloaded newer image for alpine:3.22
+docker.io/library/alpine:3.22
++ docker pull kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+docker.io/kindest/node@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5: Pulling from kindest/node
+d441570a95cf: Pulling fs layer
+9f3efb90fca8: Pulling fs layer
+d441570a95cf: Download complete
+9f3efb90fca8: Verifying Checksum
+9f3efb90fca8: Download complete
+d441570a95cf: Pull complete
+9f3efb90fca8: Pull complete
+Digest: sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+Status: Downloaded newer image for kindest/node@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+docker.io/kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
++ docker pull registry.k8s.io/pause:3.10
+3.10: Pulling from pause
+75e060e453aa: Pulling fs layer
+75e060e453aa: Verifying Checksum
+75e060e453aa: Download complete
+75e060e453aa: Pull complete
+Digest: sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+Status: Downloaded newer image for registry.k8s.io/pause:3.10
+registry.k8s.io/pause:3.10
++ docker image inspect alpine:3.22 registry.k8s.io/pause:3.10

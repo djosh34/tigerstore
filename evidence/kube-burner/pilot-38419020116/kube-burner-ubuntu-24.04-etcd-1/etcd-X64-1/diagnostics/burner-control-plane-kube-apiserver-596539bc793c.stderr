@@ -1,0 +1,156 @@
+I1013 15:06:03.949428       1 options.go:261] external host was not specified, using 172.18.0.5
+I1013 15:06:03.952792       1 server.go:151] Version: v1.37.0
+I1013 15:06:03.952868       1 server.go:153] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+E1013 15:06:04.138371       1 options.go:205] The manifest file is empty, ignoring.
+I1013 15:06:04.138469       1 shared_informer.go:503] "Waiting for caches to sync" controller="node_authorizer"
+I1013 15:06:04.169630       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:04.171692       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:04.177935       1 plugins.go:157] Loaded 15 mutating admission controller(s) successfully in the following order: NamespaceLifecycle,LimitRanger,ServiceAccount,NodeRestriction,TaintNodesByCondition,Priority,DefaultTolerationSeconds,DefaultStorageClass,StorageObjectInUseProtection,PodGroupProtection,RuntimeClass,DefaultIngressClass,PodTopologyLabels,MutatingAdmissionPolicy,MutatingAdmissionWebhook.
+I1013 15:06:04.178030       1 plugins.go:160] Loaded 15 validating admission controller(s) successfully in the following order: LimitRanger,ServiceAccount,PodSecurity,Priority,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,ClusterTrustBundleAttest,CertificateSubjectRestriction,NodeDeclaredFeatureValidator,PodResizeValidator,ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,ResourceQuota.
+I1013 15:06:04.178248       1 instance.go:244] Using reconciler: lease
+I1013 15:06:04.205555       1 handler.go:309] Adding GroupVersion apiextensions.k8s.io v1 to ResourceManager
+W1013 15:06:04.205578       1 genericapiserver.go:798] Skipping API apiextensions.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.211482       1 cidrallocator.go:198] starting ServiceCIDR Allocator Controller
+I1013 15:06:04.400702       1 handler.go:309] Adding GroupVersion  v1 to ResourceManager
+I1013 15:06:04.400922       1 apis.go:112] API group "internal.apiserver.k8s.io" is not enabled, skipping.
+I1013 15:06:04.470007       1 apis.go:112] API group "lifecycle.k8s.io" is not enabled, skipping.
+I1013 15:06:04.812904       1 handler.go:309] Adding GroupVersion authentication.k8s.io v1 to ResourceManager
+W1013 15:06:04.812921       1 genericapiserver.go:798] Skipping API authentication.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.812925       1 genericapiserver.go:798] Skipping API authentication.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.813277       1 handler.go:309] Adding GroupVersion authorization.k8s.io v1 to ResourceManager
+W1013 15:06:04.813290       1 genericapiserver.go:798] Skipping API authorization.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.813846       1 handler.go:309] Adding GroupVersion autoscaling v2 to ResourceManager
+I1013 15:06:04.814285       1 handler.go:309] Adding GroupVersion autoscaling v1 to ResourceManager
+I1013 15:06:04.815748       1 handler.go:309] Adding GroupVersion batch v1 to ResourceManager
+W1013 15:06:04.815849       1 genericapiserver.go:798] Skipping API batch/v1beta1 because it has no resources.
+I1013 15:06:04.819389       1 handler.go:309] Adding GroupVersion certificates.k8s.io v1 to ResourceManager
+W1013 15:06:04.819523       1 genericapiserver.go:798] Skipping API certificates.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.819600       1 genericapiserver.go:798] Skipping API certificates.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.820613       1 handler.go:309] Adding GroupVersion coordination.k8s.io v1 to ResourceManager
+W1013 15:06:04.820741       1 genericapiserver.go:798] Skipping API coordination.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.820839       1 genericapiserver.go:798] Skipping API coordination.k8s.io/v1alpha2 because it has no resources.
+I1013 15:06:04.821744       1 handler.go:309] Adding GroupVersion discovery.k8s.io v1 to ResourceManager
+W1013 15:06:04.821867       1 genericapiserver.go:798] Skipping API discovery.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.825784       1 handler.go:309] Adding GroupVersion networking.k8s.io v1 to ResourceManager
+W1013 15:06:04.825929       1 genericapiserver.go:798] Skipping API networking.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.826784       1 handler.go:309] Adding GroupVersion node.k8s.io v1 to ResourceManager
+W1013 15:06:04.826909       1 genericapiserver.go:798] Skipping API node.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.827024       1 genericapiserver.go:798] Skipping API node.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.827951       1 handler.go:309] Adding GroupVersion policy v1 to ResourceManager
+W1013 15:06:04.827969       1 genericapiserver.go:798] Skipping API policy/v1beta1 because it has no resources.
+I1013 15:06:04.829275       1 handler.go:309] Adding GroupVersion rbac.authorization.k8s.io v1 to ResourceManager
+W1013 15:06:04.829292       1 genericapiserver.go:798] Skipping API rbac.authorization.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.829300       1 genericapiserver.go:798] Skipping API rbac.authorization.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.829640       1 handler.go:309] Adding GroupVersion scheduling.k8s.io v1 to ResourceManager
+W1013 15:06:04.829656       1 genericapiserver.go:798] Skipping API scheduling.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.829662       1 genericapiserver.go:798] Skipping API scheduling.k8s.io/v1alpha3 because it has no resources.
+I1013 15:06:04.831253       1 handler.go:309] Adding GroupVersion storage.k8s.io v1 to ResourceManager
+W1013 15:06:04.831273       1 genericapiserver.go:798] Skipping API storage.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.831279       1 genericapiserver.go:798] Skipping API storage.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.831733       1 handler.go:309] Adding GroupVersion storagemigration.k8s.io v1 to ResourceManager
+W1013 15:06:04.831751       1 genericapiserver.go:798] Skipping API storagemigration.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.832562       1 handler.go:309] Adding GroupVersion flowcontrol.apiserver.k8s.io v1 to ResourceManager
+W1013 15:06:04.832579       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta3 because it has no resources.
+W1013 15:06:04.832586       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta2 because it has no resources.
+W1013 15:06:04.832590       1 genericapiserver.go:798] Skipping API flowcontrol.apiserver.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.834607       1 handler.go:309] Adding GroupVersion apps v1 to ResourceManager
+W1013 15:06:04.834625       1 genericapiserver.go:798] Skipping API apps/v1beta2 because it has no resources.
+W1013 15:06:04.834631       1 genericapiserver.go:798] Skipping API apps/v1beta1 because it has no resources.
+I1013 15:06:04.836132       1 handler.go:309] Adding GroupVersion admissionregistration.k8s.io v1 to ResourceManager
+W1013 15:06:04.836188       1 genericapiserver.go:798] Skipping API admissionregistration.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.836198       1 genericapiserver.go:798] Skipping API admissionregistration.k8s.io/v1alpha1 because it has no resources.
+I1013 15:06:04.836564       1 handler.go:309] Adding GroupVersion events.k8s.io v1 to ResourceManager
+W1013 15:06:04.836570       1 genericapiserver.go:798] Skipping API events.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:04.838001       1 handler.go:309] Adding GroupVersion resource.k8s.io v1 to ResourceManager
+W1013 15:06:04.838017       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1beta2 because it has no resources.
+W1013 15:06:04.838023       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1beta1 because it has no resources.
+W1013 15:06:04.838028       1 genericapiserver.go:798] Skipping API resource.k8s.io/v1alpha3 because it has no resources.
+I1013 15:06:04.846408       1 handler.go:309] Adding GroupVersion apiregistration.k8s.io v1 to ResourceManager
+W1013 15:06:04.846560       1 genericapiserver.go:798] Skipping API apiregistration.k8s.io/v1beta1 because it has no resources.
+I1013 15:06:05.154998       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+I1013 15:06:05.155048       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+I1013 15:06:05.155382       1 dynamic_serving_content.go:135] "Starting controller" name="serving-cert::/etc/kubernetes/pki/apiserver.crt::/etc/kubernetes/pki/apiserver.key"
+I1013 15:06:05.155731       1 secure_serving.go:214] Serving securely on [::]:6443
+I1013 15:06:05.155836       1 system_namespaces_controller.go:66] Starting system namespaces controller
+I1013 15:06:05.155867       1 apiservice_controller.go:100] Starting APIServiceRegistrationController
+I1013 15:06:05.155875       1 cache.go:32] Waiting for caches to sync for APIServiceRegistrationController controller
+I1013 15:06:05.155894       1 controller.go:89] "Starting OpenAPI V3 AggregationController"
+I1013 15:06:05.155957       1 apf_controller.go:377] Starting API Priority and Fairness config controller
+I1013 15:06:05.156125       1 cluster_authentication_trust_controller.go:459] Starting cluster_authentication_trust_controller controller
+I1013 15:06:05.156141       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:05.156162       1 dynamic_serving_content.go:135] "Starting controller" name="aggregator-proxy-cert::/etc/kubernetes/pki/front-proxy-client.crt::/etc/kubernetes/pki/front-proxy-client.key"
+I1013 15:06:05.156337       1 controller.go:116] "Deleting old lease on startup" lease="kube-system/apiserver-e5eje5eh4hv2felvionctdfn64"
+I1013 15:06:05.158193       1 gc_controller.go:85] "Starting apiserver lease garbage collector"
+I1013 15:06:05.158216       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:05.158386       1 controller.go:127] "Starting legacy_token_tracking_controller"
+I1013 15:06:05.158404       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:05.158524       1 controller.go:87] "Starting OpenAPI AggregationController"
+I1013 15:06:05.156465       1 storage_readiness_hook.go:70] Storage is ready for all registered resources
+I1013 15:06:05.158502       1 local_available_controller.go:156] Starting LocalAvailability controller
+I1013 15:06:05.169088       1 cache.go:32] Waiting for caches to sync for LocalAvailability controller
+I1013 15:06:05.156485       1 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+I1013 15:06:05.156508       1 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+I1013 15:06:05.156517       1 dynamic_cafile_content.go:161] "Starting controller" name="request-header::/etc/kubernetes/pki/front-proxy-ca.crt"
+I1013 15:06:05.169581       1 default_servicecidr_controller.go:110] "Starting" controller="kubernetes-service-cidr-controller"
+I1013 15:06:05.169597       1 shared_informer.go:524] "Waiting for caches to sync"
+I1013 15:06:05.169624       1 controller.go:142] Starting OpenAPI controller
+I1013 15:06:05.169644       1 controller.go:90] Starting OpenAPI V3 controller
+I1013 15:06:05.169660       1 naming_controller.go:305] Starting NamingConditionController
+I1013 15:06:05.169684       1 nonstructuralschema_controller.go:202] Starting NonStructuralSchemaConditionController
+I1013 15:06:05.169701       1 apiapproval_controller.go:196] Starting KubernetesAPIApprovalPolicyConformantConditionController
+I1013 15:06:05.169715       1 crd_finalizer.go:276] "Starting CRDFinalizer"
+I1013 15:06:05.169734       1 crdregistration_controller.go:114] Starting crd-autoregister controller
+I1013 15:06:05.169739       1 shared_informer.go:503] "Waiting for caches to sync" controller="crd-autoregister"
+I1013 15:06:05.169784       1 repairip.go:210] Starting ipallocator-repair-controller
+I1013 15:06:05.169789       1 shared_informer.go:503] "Waiting for caches to sync" controller="ipallocator-repair-controller"
+I1013 15:06:05.158512       1 remote_available_controller.go:434] Starting RemoteAvailability controller
+I1013 15:06:05.169943       1 cache.go:32] Waiting for caches to sync for RemoteAvailability controller
+I1013 15:06:05.158781       1 customresource_discovery_controller.go:294] Starting DiscoveryController
+I1013 15:06:05.158794       1 aggregator.go:185] waiting for initial CRD sync...
+I1013 15:06:05.256436       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.256485       1 cache.go:39] Caches are synced for APIServiceRegistrationController controller
+I1013 15:06:05.256500       1 apf_controller.go:382] Running API Priority and Fairness config worker
+I1013 15:06:05.256616       1 apf_controller.go:385] Running API Priority and Fairness periodic rebalancing process
+I1013 15:06:05.256697       1 handler_discovery.go:450] Starting ResourceDiscoveryManager
+I1013 15:06:05.258243       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.258500       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.269131       1 cache.go:39] Caches are synced for LocalAvailability controller
+I1013 15:06:05.269715       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.269736       1 policy_source.go:253] refreshing policies
+I1013 15:06:05.270474       1 cache.go:39] Caches are synced for RemoteAvailability controller
+I1013 15:06:05.270502       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.270516       1 default_servicecidr_controller.go:170] "Creating default ServiceCIDR" CIDRs=["10.96.0.0/16"]
+I1013 15:06:05.270683       1 shared_informer.go:510] "Caches are synced" controller="crd-autoregister"
+I1013 15:06:05.270728       1 shared_informer.go:510] "Caches are synced" controller="ipallocator-repair-controller"
+I1013 15:06:05.270759       1 aggregator.go:187] initial CRD sync complete...
+I1013 15:06:05.270767       1 autoregister_controller.go:144] Starting autoregister controller
+I1013 15:06:05.270787       1 cache.go:32] Waiting for caches to sync for autoregister controller
+I1013 15:06:05.270793       1 cache.go:39] Caches are synced for autoregister controller
+I1013 15:06:05.272017       1 shared_informer.go:531] "Caches are synced"
+I1013 15:06:05.272037       1 policy_source.go:253] refreshing policies
+E1013 15:06:05.307022       1 controller.go:208] "Failed to ensure lease exists, will retry" err="namespaces \"kube-system\" not found" interval="200ms"
+E1013 15:06:05.312760       1 controller.go:156] "Error while syncing ConfigMap" err="namespaces \"kube-system\" not found" logger="UnhandledError" configmap="kube-system/kube-apiserver-legacy-service-account-token-tracking"
+I1013 15:06:05.339243       1 shared_informer.go:510] "Caches are synced" controller="node_authorizer"
+I1013 15:06:05.375043       1 default_servicecidr_controller.go:234] "Setting default ServiceCIDR condition Ready to True"
+I1013 15:06:05.375623       1 cidrallocator.go:302] created ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1013 15:06:05.380478       1 default_servicecidr_controller.go:234] "Setting default ServiceCIDR condition Ready to True"
+I1013 15:06:05.380821       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1013 15:06:05.509146       1 controller.go:667] quota admission added evaluator for: leases.coordination.k8s.io
+I1013 15:06:06.161051       1 storage_scheduling.go:189] created PriorityClass system-node-critical with value 2000001000
+I1013 15:06:06.165405       1 storage_scheduling.go:189] created PriorityClass system-cluster-critical with value 2000000000
+I1013 15:06:06.165434       1 storage_scheduling.go:205] all system priority classes are created successfully or already exist.
+I1013 15:06:06.791386       1 controller.go:667] quota admission added evaluator for: roles.rbac.authorization.k8s.io
+I1013 15:06:06.827450       1 controller.go:667] quota admission added evaluator for: rolebindings.rbac.authorization.k8s.io
+I1013 15:06:06.868609       1 alloc.go:329] "allocated clusterIPs" service="default/kubernetes" clusterIPs={"IPv4":"10.96.0.1"}
+W1013 15:06:06.879396       1 lease.go:270] Resetting endpoints for master service "kubernetes" to [172.18.0.5]
+I1013 15:06:06.880754       1 controller.go:667] quota admission added evaluator for: endpoints
+I1013 15:06:06.886005       1 controller.go:667] quota admission added evaluator for: endpointslices.discovery.k8s.io
+I1013 15:06:07.403201       1 controller.go:667] quota admission added evaluator for: serviceaccounts
+I1013 15:06:07.682084       1 controller.go:667] quota admission added evaluator for: deployments.apps
+I1013 15:06:07.689938       1 alloc.go:329] "allocated clusterIPs" service="kube-system/kube-dns" clusterIPs={"IPv4":"10.96.0.10"}
+I1013 15:06:07.695182       1 controller.go:667] quota admission added evaluator for: daemonsets.apps
+I1013 15:06:13.943309       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1013 15:06:13.946137       1 cidrallocator.go:278] updated ClusterIP allocator for Service CIDR 10.96.0.0/16
+I1013 15:06:13.992242       1 controller.go:667] quota admission added evaluator for: controllerrevisions.apps
+I1013 15:06:13.992242       1 controller.go:667] quota admission added evaluator for: controllerrevisions.apps
+I1013 15:06:14.045287       1 controller.go:667] quota admission added evaluator for: replicasets.apps

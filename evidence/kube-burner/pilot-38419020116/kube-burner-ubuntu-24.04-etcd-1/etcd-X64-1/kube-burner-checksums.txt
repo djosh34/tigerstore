@@ -1,0 +1,8 @@
+6e902483904a299cb53bebd28e8e581e17be4866972dd607ac42c7661e59819c  kube-burner-V2.8.6-darwin-arm64.tar.gz
+8e7034525ed6d181ab06cc3c5de20168b84422224d36d24b1f33bab42af5a442  kube-burner-V2.8.6-windows-x86_64.zip
+8f866d5c835dfdcc67889377f2347d25a26ebdbbfd721b6a14433a48923c31db  kube-burner-V2.8.6-windows-arm64.zip
+af7ec035e5d68523f86114cf340f302aefd3deb0c33f3c2792c8bf0ed3465fa3  kube-burner-V2.8.6-linux-arm64.tar.gz
+b18d1db9596ab33cc28784606145f5f8e75a8e2b27715a0998446111959407d6  kube-burner-V2.8.6-darwin-x86_64.tar.gz
+dc0b46d04c06cb6e7e906e8875d02ad20cb54bf69559d52b98f04e1ddd04294f  kube-burner-V2.8.6-linux-s390x.tar.gz
+e0d217c14c2982cb03efd970a3947bb79fe7342ccc71dc79d46b15a6be998714  kube-burner-V2.8.6-linux-ppc64le.tar.gz
+e8970abec3b6fdb007ff0be98d028fb253c96776b588f2845302508c4848eb45  kube-burner-V2.8.6-linux-x86_64.tar.gz

@@ -1,0 +1,382 @@
++ set -euo pipefail
+++ date -u +%s
+++ date -u -d 2026-10-13T22:00:00Z +%s
++ [[ 1791903975 -lt 1791928800 ]]
++ : /home/runner/work/_temp/burner-private /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/tigerstore-X64-1 /home/runner/work/_temp/burner-bin tigerstore
++ mkdir -p /home/runner/work/_temp/burner-private/certs /home/runner/work/_temp/burner-private/data /home/runner/work/_temp/burner-private/kube-certs
++ cd /home/runner/work/_temp/burner-private/certs
++ openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 2 -subj /CN=kube-burner-ca -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign
+......+........+..........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+...+...+.+...+..+.+.........+.........+.....+.+......+..+...+....+.....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.....+......+.........+...................+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+....+...+.+........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+..+.........+....+..+......+....+.........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.....+.......+..+.............+...+..+...+............+...+.+.....+......+...+.......+..+.....................+....+...+...+...........+.........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd1.key -out etcd1.csr -subj /CN=external-etcd-1
+....+.+...+...........+....+..+..........+...+.....+......+...+.......+......+..+.+............+........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.........+....+...+........+.........+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+...............+..........+..+...+.......+........+...+.........+.+......+...+.....+...............+......+.+.....+.+.....+....+...+......+.....+.......+...+.........+.....+..........+.....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.+......+.+...+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.....+............+.+...........+.+..+..........+........+.......+..+....+.........+..+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.....+..........+......+..+...+........................+.+......+...+.....+.......+...+...........+......+.+.....+...+...............+....+......+.....+......+...+.+..+.......+..+...+..........+...........+......+.+........+.+...........+....+...+...+..............+.+...+...........+.+...+..............+.............+...+.....+.+...+...+...+.....+.+........+.............+....................+...+....+..+...+...+....+.....+...+..................+....+......+..+.+.....+..........+......+......+.....+.........+....+.........+..+......+.............+............+........+.+...+..+................+..+.+.........+...+..+......+..........+...........+.+.........+...........+...+.+........+.+.....+....+...+..+.......+......+..............+...............+.+.....+.......+......+..+....+.........+..+....+........+......+....+.....+.+.....+......+.+...+..+...................+.....+.+........+.......+..+..........+......+.....+..........+..+.........+.........+.........+...+.......+...+.....+......................+...+.........+.....+......+....+......+...+.....+.......+..............+...+.......+...+..+.+........+............+.......+..+....+...............+......+......+..+.+..+..........+..+.............+.........+...+..+...+......+.+.....+.+...+........................+..+.....................+...+.......+...+......+.....+....+.....+.+...+..+...+......+....+...............+........+..................+.+........+.+..+..........+........+.+.....+.+..+.+..+..................+....+.................+...+...+....+...+........+...+..............................................+........+..........+...+........+......+......+....+...+..+......+.......+...+..+.+.....+......+.+........+.+.........+..............+...+...+....+...............+..+.............+.....+......+................+.....+.........+.+......+...+..+..........+..+...+..........+........+......+...+.+..+....+........+...............+.......+...+......+...........+....+..+...+....+...+..+...+.............+.....+....+.....+.+.........+...........+.+...........+.......+......+......+......+..+...+.........+..........+......+.....+.............+..+...............+...+.+......+.....+...+..........+..............+......+.......+........+....+..+....+.....+......+.+..+.+.........+.....+...+...+.........+...+.......+...+...+.....+.+.....+....+..+...+.+..................+...+.....+...+....+...........................+...+........+...+.+...+...........+......+...+.............+.........+.....+....+............+..+............+....+.........+...........+......+.+........+.......+..+.+..+.......+..+.+..+..................+.............+...........+..........+.........+..+....+......+..............+.+............+..+...+.......+...+...+..............+...+..........+.....+...+...+.+......+..+......+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 1
++ openssl x509 -req -in etcd1.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd1.crt -extfile etcd1.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-1
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd2.key -out etcd2.csr -subj /CN=external-etcd-2
+..........+.......+...+..+....+.....+.+.....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*........+.......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.......+...+......+.................+.........+...+.......+......+...+............+..+..........+..+....+..+...+......+....+..+.......+.....+..........+...........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.+.........+...........+...+.........+..........+.....+......+.+.........+..+..........+.................+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+.....+.+...+...+..+...+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*......+.+...........+...+....+...+..+.+.....+.+........+............+...+.......+.........+...........+...+...+.......+.....+.+..+.......+...+.....+..................+......+.+...+..+.......+..+.........+.......+...+.....+....+...+.........+.....+...+...+..........+............+...+..+.+...........+....+.....+.+......+.....+..........+........+.........+...+...................+...+...........+.+...+..+.+...+.....+.........+.+.....+....+..+...+...+.........+..............................+....+..+..........+........+.+.....+...+......+.......+...+.........+..+..........+.........+............+.....+.........+.........+....+...+..+......+.+........+...............+...+...+.+.....+...+..........+..+...............+.+.................+...............+.+..+.......+..+....+..............+...+.........+.+........+.+......+...+..+...+......+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 2
++ openssl x509 -req -in etcd2.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd2.crt -extfile etcd2.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-2
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd3.key -out etcd3.csr -subj /CN=external-etcd-3
+......+.....+.......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...............+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...........+.+..+.......+...+.........+......+........+......+.+...+...............+..+...+...................+..................+........+....+.....+...+...+.+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+........+..+.+.....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.........+..+.+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*........................+........+....+......+......+.....+...+......+.......+...+...............+.....+......+.+...+......+.....+.+.....+...............+.........+.+............+...............+.....+.+..+.......+...+..+.......+......+...+.........+........+...+.......+...............+............+...........+.......+..+...+.............+......+...........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 3
++ openssl x509 -req -in etcd3.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd3.crt -extfile etcd3.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-3
++ openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr -subj /CN=kube-apiserver-etcd-client
+.....+.........+......+...+....+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+..+..................+.+......+...+.....+.+.....+...............+.+.....+...+.+.....+......................+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...................+....+...+..+.+...........+.........+......+....+..+...+.+........+.......+.....+.+........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*....+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+..........+...........+...+.........................+.....+.+.....+......+...+...+.........+...+..........+..+......+..........+...+..+.............+.....+.+..............+....+..+....+...........+...+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'extendedKeyUsage=clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n'
++ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out client.crt -extfile client.ext
+Certificate request self-signature ok
+subject=CN = kube-apiserver-etcd-client
++ cp ca.crt client.crt client.key /home/runner/work/_temp/burner-private/kube-certs/
++ cd -
++ docker network create kind
+539158e4cf850eccba43245ed2e966dbf485765c969f6c676d9e772f8a01e6bc
++ cluster=external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380
++ binary=tigerstore
++ [[ tigerstore != etcd ]]
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/1
++ extra=()
++ [[ tigerstore == etcd ]]
++ docker run -d --name external-etcd-1 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/1:/data --entrypoint /bin-etcd/tigerstore alpine:3.22 --name external-etcd-1 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-1:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd1.crt --key-file /certs/etcd1.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd1.crt --peer-key-file /certs/etcd1.key --peer-trusted-ca-file /certs/ca.crt
+1e2381601f6c72f651accb71bdb629300febf7f0d3802dce2c658c07b0922096
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/2
++ extra=()
++ [[ tigerstore == etcd ]]
++ docker run -d --name external-etcd-2 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/2:/data --entrypoint /bin-etcd/tigerstore alpine:3.22 --name external-etcd-2 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-2:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd2.crt --key-file /certs/etcd2.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd2.crt --peer-key-file /certs/etcd2.key --peer-trusted-ca-file /certs/ca.crt
+2878e8cd09b1f164b18f1f2eae75e4fa23dca8c73bfc279a49ae099ac620a62e
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/3
++ extra=()
++ [[ tigerstore == etcd ]]
++ docker run -d --name external-etcd-3 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/3:/data --entrypoint /bin-etcd/tigerstore alpine:3.22 --name external-etcd-3 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-3:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd3.crt --key-file /certs/etcd3.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd3.crt --peer-key-file /certs/etcd3.key --peer-trusted-ca-file /certs/ca.crt
+dd5a5754ee13024b12dfc21b223f6a132d245914b7b233802ac4feb3f203d481
++ endpoints=https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379
++ ctl=(docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "$endpoints" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s)
+++ seq 1 30
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:17.819814Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6cfed794000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:47130', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:17.819826Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6cfed728000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39770', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:17.819852Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6cfed349a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:33234', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:18.869948Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x357dc141c200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48330', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:18.870070Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x357dc1555800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37634', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:18.870157Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x357dc1874000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55696', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:19.920167Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x272cb553a200/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55708', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:19.920423Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x272cb597c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48338', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:19.921076Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x272cb5655800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37642', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:20.971310Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x35f74cda00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37644', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:20.971359Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x35f78a8000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48342', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:20.971706Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x35f7914000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55724', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:22.021568Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3e4483b7c000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55732', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:22.022566Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3e448385d800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37654', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:22.023007Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3e4483778200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48348', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:23.072005Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x28681d774000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55740', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:23.071976Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x28681d428000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48364', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:23.072836Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x28681d301a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37656', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:24.124224Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x38e9cff6c200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48366', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:24.124550Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x38e9d011a000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55750', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:24.125603Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x38e9d002f800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37672', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:25.175817Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x382c73e7c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48378', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:25.176192Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x382c73b28000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55754', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:25.175646Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x382c73a23a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37688', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:26.225060Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x343579a8000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48388', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:26.226534Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x343578ce200/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55770', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:26.227019Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x34357a19800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37692', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:27.277572Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1d5b89f8e200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:48396', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:27.279179Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1d5b8a141800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37704', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:27.279386Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1d5b8a0a8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:55774', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:28.328604Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x4fbe0674000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38918', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:28.329070Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x4fbe0330000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39050', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:28.330370Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x4fbe023fa00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51158', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:29.382147Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2024e937a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51164', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:29.382190Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2024ed7c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39064', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:29.382221Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2024ea28000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38934', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:30.434216Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x376339394000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38942', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:30.434530Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x376338f53a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51170', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:30.434603Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x376339030000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39070', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:31.486309Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f7c8b95ba00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51172', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:31.487153Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f7c8ba28000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38958', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:31.487867Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f7c8bd9c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39084', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:32.535952Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2f9f32ea8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38972', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:32.537773Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2f9f32db9a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51186', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:32.537791Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2f9f331fc000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39096', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:33.585949Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x15bdd58dda00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51194', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:33.587502Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x15bdd5d1c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39108', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:33.587765Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x15bdd59a8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38976', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:34.634822Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2a3eb230000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39118', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:34.635138Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2a3eb133a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51208', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:34.636556Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x2a3eb574000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:38992', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:35.684263Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x30633d428000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:39008', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:35.684263Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x30633d2ffa00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51214', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:35.685217Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x30633d77c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39122', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:36.734109Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x267f8877c000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:39132', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:36.734143Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x267f88345a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:51224', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:36.735105Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x267f88428000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:39012', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:37.784903Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x24d5a7828000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36896', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:37.785074Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x24d5a7c94000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60372', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:37.785794Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x24d5a7771a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37596', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:38.834749Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x336572afc000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60378', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:38.834912Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3365727cd800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37598', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:38.835179Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x336572728000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36910', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:39.884960Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x114e6ebb7a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37610', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:39.886576Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x114e6eca8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36922', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:39.886881Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x114e6effc000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60380', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:40.935264Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6f1c21aa200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60390', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:40.935665Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6f1c22d5800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37618', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:40.936977Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x6f1c25f4000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36934', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:41.985548Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x152035eb0000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60392', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:41.987906Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x152035dc6200/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36938', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:41.988115Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x152035f41800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37628', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:43.037524Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x39c1757f4000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36940', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:43.037832Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x39c1754b0000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60400', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:43.038045Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x39c175399a00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37646', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:44.087553Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x212df1bd5800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37658', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:44.088646Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x212df1ab6200/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36950', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:44.088943Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x212df1efc000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60402', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:45.140314Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x32ce370a8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36956', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:45.141560Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x32ce36faa200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60414', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:45.141804Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x32ce37141800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37666', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:46.190970Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1b2f44514000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36962', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:46.190989Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1b2f4406fa00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37676', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:46.191178Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1b2f44130000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60426', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:47.241164Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f2c10472200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:60440', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:47.241518Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f2c10619800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:37686', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:47.242647Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x1f2c105ce000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:36972', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:48.290308Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3a32144fc200/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:57032', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:48.290375Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3a32145dd800/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:33512', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:48.290834Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x3a3214914000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:32858', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster
++ sleep 1
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+{"level":"warn","ts":"2026-10-13T15:06:49.340370Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x36ac1f2ada00/external-etcd-3:2379","peer":"Peer{Addr: '172.18.0.4:2379', LocalAddr: '172.18.0.2:33522', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:49.341873Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x36ac1f6fc000/external-etcd-2:2379","peer":"Peer{Addr: '172.18.0.3:2379', LocalAddr: '172.18.0.2:57038', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+{"level":"warn","ts":"2026-10-13T15:06:49.341969Z","logger":"client","caller":"v3/retry_interceptor.go:68","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0x36ac1f3a8000/external-etcd-1:2379","peer":"Peer{Addr: '172.18.0.2:2379', LocalAddr: '172.18.0.2:32862', AuthInfo: 'tls'}","method":"/etcdserverpb.Maintenance/Alarm","attempt":0,"error":"rpc error: code = Unimplemented desc = method Alarm not implemented"}
+https://external-etcd-3:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-2:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+https://external-etcd-1:2379 is unhealthy: failed to commit proposal: Unable to fetch the alarm list
+Error: unhealthy cluster

@@ -1,0 +1,117 @@
+[
+    {
+        "Id": "sha256:e09dd31eab4f4aeaade69891673134f31880ef51c6ee514b0cea072df06d7547",
+        "RepoTags": [
+            "alpine:3.22"
+        ],
+        "RepoDigests": [
+            "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
+        ],
+        "Parent": "",
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-17T20:37:30.780047516Z",
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": [
+                "/bin/sh"
+            ],
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": null
+        },
+        "Architecture": "arm64",
+        "Variant": "v8",
+        "Os": "linux",
+        "Size": 8534983,
+        "GraphDriver": {
+            "Data": {
+                "MergedDir": "/var/lib/docker/overlay2/235ccc707857773057c269567a31c7f5332aebf75b6a2ef232769a6083dc3a8e/merged",
+                "UpperDir": "/var/lib/docker/overlay2/235ccc707857773057c269567a31c7f5332aebf75b6a2ef232769a6083dc3a8e/diff",
+                "WorkDir": "/var/lib/docker/overlay2/235ccc707857773057c269567a31c7f5332aebf75b6a2ef232769a6083dc3a8e/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:9fd9b3248f2fb670edfab1393d1d1e8cd828eb9c65de376b2fcc23268a45d500"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "0001-01-01T00:00:00Z"
+        }
+    },
+    {
+        "Id": "sha256:afb61768ce381961ca0beff95337601f29dc70ff3ed14e5e4b3e5699057e6aa8",
+        "RepoTags": [
+            "registry.k8s.io/pause:3.10"
+        ],
+        "RepoDigests": [
+            "registry.k8s.io/pause@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a"
+        ],
+        "Parent": "",
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2024-05-23T20:42:12.971366706Z",
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "65535:65535",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": null,
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/pause"
+            ],
+            "OnBuild": null,
+            "Labels": null
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 514000,
+        "GraphDriver": {
+            "Data": {
+                "MergedDir": "/var/lib/docker/overlay2/4fbe024b63d13a7ad9ae7317f53bfc5d903d5616b9dbf83712e6e1bb7700f974/merged",
+                "UpperDir": "/var/lib/docker/overlay2/4fbe024b63d13a7ad9ae7317f53bfc5d903d5616b9dbf83712e6e1bb7700f974/diff",
+                "WorkDir": "/var/lib/docker/overlay2/4fbe024b63d13a7ad9ae7317f53bfc5d903d5616b9dbf83712e6e1bb7700f974/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:1975aab740f75a0e29b0dc8da5e898fcd3d70a5792becd9a847b4c7515cf154f"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "0001-01-01T00:00:00Z"
+        }
+    }
+]

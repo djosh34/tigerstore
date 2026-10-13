@@ -37,11 +37,21 @@ for n in 1 2 3; do
 done
 endpoints='https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379'
 ctl=(docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "$endpoints" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s)
-for attempt in $(seq 1 30); do
-  if "${ctl[@]}" endpoint health; then break; fi
-  sleep 1
+# Keep endpoint-health compatibility failures visible, but readiness for both
+# stores uses linearizable reads. Tigerstore main lacks Maintenance.Alarm.
+set +e
+"${ctl[@]}" endpoint health > "$OUT/endpoint-health.stdout" 2> "$OUT/endpoint-health.stderr"
+health_rc=$?
+set -e
+printf '%s\n' "$health_rc" > "$OUT/endpoint-health.exit"
+for n in 1 2 3; do
+  ready=0
+  for _ in $(seq 1 30); do
+    if docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "https://external-etcd-$n:2379" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=5s get burner-ready; then ready=1; break; fi
+    sleep 1
+  done
+  test "$ready" = 1
 done
-"${ctl[@]}" endpoint health
 "${ctl[@]}" endpoint status -w json > "$OUT/etcd-status-boot.json"
 python3 - "$PRIVATE" "$OUT" <<'PY'
 import sys

@@ -1,0 +1,6 @@
+E1013 15:06:49.519193    6305 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=20s\": dial tcp [::1]:8080: connect: connection refused"
+E1013 15:06:49.519480    6305 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=20s\": dial tcp [::1]:8080: connect: connection refused"
+E1013 15:06:49.520780    6305 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=20s\": dial tcp [::1]:8080: connect: connection refused"
+E1013 15:06:49.520990    6305 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=20s\": dial tcp [::1]:8080: connect: connection refused"
+E1013 15:06:49.522262    6305 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=20s\": dial tcp [::1]:8080: connect: connection refused"
+The connection to the server localhost:8080 was refused - did you specify the right host or port?

@@ -1,0 +1,139 @@
++ set -euo pipefail
+++ date -u +%s
+++ date -u -d 2026-10-13T22:00:00Z +%s
++ [[ 1791903952 -lt 1791928800 ]]
++ : /home/runner/work/_temp/burner-private /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/etcd-X64-1 /home/runner/work/_temp/burner-bin etcd
++ mkdir -p /home/runner/work/_temp/burner-private/certs /home/runner/work/_temp/burner-private/data /home/runner/work/_temp/burner-private/kube-certs
++ cd /home/runner/work/_temp/burner-private/certs
++ openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 2 -subj /CN=kube-burner-ca -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign
+....+...+.................+....+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+..+...+....+...+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+.............+..+............+.+........+.....................+.+..............................+........+.+...+..+.+..+.+...........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+....+...+.+......+......+.....+.........+.+...+...............+......+...+........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+........+.........+.+........+.+..................+...+.....+...+.+...+......+..+.......+..+.+...+..+....+........+.+..............+......+....+...+..+.+...........+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*......+........+.+.........+.................+.+...+.....+.........+...+....+......+..+...+...+....+......+...........+....+.................+.......+...+..+...+.........+..........+.....+.+...+..+....+........+...+.........+.+...+..............+.+..+...............+.......+...+..+...............+............+.+..+.......+...+............+......+.....+.............+..+.........+....+..+...+.........+.+..+.........+..........+...............+.....+...+...+......................+..+...+...+.......+...........+.+...+...+.....+....+......+........+.+......+..+.+............+.....+...+....+........+............+.+......+...+..+....+..+...+............+.............+.....+.+.........+.........+..+.+..+............+................+............+..+...................+.....+....+...+..+.+...............+.........+............+......+...+..............+...+.......+......+..+...+...............+.........+......+.......+........+....+..+.+..+............+.+........+.......+............+.....+......+....+........+....+.....+....+...............+...........+.........+.+...+..+.+...+...........+.+.........+........+...+...+.......+.....+...+.+......+........+.......+...+..+...+....+..+...............+.+........+......+...+.+.........+......+..+............+...+...+.+...+..+.+..+............+.+..+...+...+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd1.key -out etcd1.csr -subj /CN=external-etcd-1
+..+.+..+...+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+.......+........+....+.........+......+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*....+.....+................+...............+..+...+...+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.........+...+..+.+..+............+......+...+.+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+....+.....+...................+.....+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*......+..+.........+.+..+.............+.....+..........+...+......+........+.....................+.+...+...+..+.+...........+...+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 1
++ openssl x509 -req -in etcd1.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd1.crt -extfile etcd1.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-1
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd2.key -out etcd2.csr -subj /CN=external-etcd-2
+..+...+......+....+..+..........+...+...+...+..+...+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+.......+.....+.+..+.............+..+....+.........+.....+.+...+............+.........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+...............+...........+..........+...+...........+...+.......+.....+.+..............+.+...+.........+.....+...+.......+..+....+.....+.+......+..+......+....+......+.....+.+...............+...+........+....+...+..+.........+................+.....+....+..+....+......+...+......+...+......+..............+...+...+............+.......+........+...+.......+.....+....+...+.....................+.....+.+......+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+..+......+...+..+...+............+....+........+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+..+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.....+................+..+.+..............+.+.....+.+.....+.+........+......+...+................+...............+.........+..+....+..+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 2
++ openssl x509 -req -in etcd2.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd2.crt -extfile etcd2.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-2
++ for n in 1 2 3
++ openssl req -newkey rsa:2048 -nodes -keyout etcd3.key -out etcd3.csr -subj /CN=external-etcd-3
+...+.+.....+.+..+..........+.....+......+.......+...+.....+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.......+...+.......+..+......+................+......+..+...+.......+............+...+..+..................+.+..+...................+...+.....+.+...........+.+...............+..+.+.....+....+........+....+.....+.........+....+...+.....+....+...............+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.+.........+....+............+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+.........+...+..................+.+........+..........+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..........+.........+..+.........+....+..+....+...........+.....................+....+...+.....+...+...+.+..............+.+.....+...+...+.......+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'subjectAltName=DNS:external-etcd-%s,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' 3
++ openssl x509 -req -in etcd3.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out etcd3.crt -extfile etcd3.ext
+Certificate request self-signature ok
+subject=CN = external-etcd-3
++ openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr -subj /CN=kube-apiserver-etcd-client
+............+.+...+..+...+....+......+..+.........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*....+...+..+...+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+....+...+..+...+......+.+.....+.+........+....+...+..+...+...+....+..................+..+.......+........+.+............+............+..+....+.....+.+.....+.............+.....+...+.......+...+.....+.......+...+...+...........+....+.....+.........+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.+......+...+....+......+..+.......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+....+...+...+..+............+.....................+......+...............+.+............+......+..+....+...........+...+.......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*..+...+........+...+.......+..+.......+.....+......+...+............+.........+......+.......+.....+................+......+...+.....+..........+...+........+......+.............+...+..............+.+..............+.+...+..+.......+.....+...+.............+.........+..+.+........+......+...+..........+.....+...+.......+..................+...+..+.........+.........+.......+.......................+.........+............+...+...+...+.+.....+....+.........+..+....+......+........................+.........+..+...+.+.....+......+....+.........+..+...+......+......+.+............+...+..+.+......+..................+...+..+.+......+...+............+......+..+.............+.........+......+.....+.........+...............+......+...+....+.................+.........+.+......+..+.+.....+......+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
++ printf 'extendedKeyUsage=clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n'
++ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -out client.crt -extfile client.ext
+Certificate request self-signature ok
+subject=CN = kube-apiserver-etcd-client
++ cp ca.crt client.crt client.key /home/runner/work/_temp/burner-private/kube-certs/
++ cd -
++ docker network create kind
+5f14ef74fd3cb68442fd6b5c585ec88ca465d4db27d394f65b8d5e9b9885c511
++ cluster=external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380
++ binary=etcd
++ [[ etcd != etcd ]]
++ binary=etcd
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/1
++ extra=()
++ [[ etcd == etcd ]]
++ extra=(--initial-advertise-peer-urls "https://external-etcd-$n:2380" --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn)
++ docker run -d --name external-etcd-1 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/1:/data --entrypoint /bin-etcd/etcd alpine:3.22 --name external-etcd-1 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-1:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd1.crt --key-file /certs/etcd1.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd1.crt --peer-key-file /certs/etcd1.key --peer-trusted-ca-file /certs/ca.crt --initial-advertise-peer-urls https://external-etcd-1:2380 --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn
+d6019b86f533d5c78074697754332a4071882e28e80785711626f19a8459d6a5
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/2
++ extra=()
++ [[ etcd == etcd ]]
++ extra=(--initial-advertise-peer-urls "https://external-etcd-$n:2380" --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn)
++ docker run -d --name external-etcd-2 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/2:/data --entrypoint /bin-etcd/etcd alpine:3.22 --name external-etcd-2 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-2:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd2.crt --key-file /certs/etcd2.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd2.crt --peer-key-file /certs/etcd2.key --peer-trusted-ca-file /certs/ca.crt --initial-advertise-peer-urls https://external-etcd-2:2380 --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn
+4927e868cb08e189ca32e499bcb3139e35e61355c6a85c8c98823a45cca4297b
++ for n in 1 2 3
++ mkdir -p /home/runner/work/_temp/burner-private/data/3
++ extra=()
++ [[ etcd == etcd ]]
++ extra=(--initial-advertise-peer-urls "https://external-etcd-$n:2380" --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn)
++ docker run -d --name external-etcd-3 --network kind -v /home/runner/work/_temp/burner-bin:/bin-etcd:ro -v /home/runner/work/_temp/burner-private/certs:/certs:ro -v /home/runner/work/_temp/burner-private/data/3:/data --entrypoint /bin-etcd/etcd alpine:3.22 --name external-etcd-3 --data-dir /data --listen-client-urls https://0.0.0.0:2379 --advertise-client-urls https://external-etcd-3:2379 --listen-peer-urls https://0.0.0.0:2380 --initial-cluster external-etcd-1=https://external-etcd-1:2380,external-etcd-2=https://external-etcd-2:2380,external-etcd-3=https://external-etcd-3:2380 --initial-cluster-token kube-burner --cert-file /certs/etcd3.crt --key-file /certs/etcd3.key --trusted-ca-file /certs/ca.crt --client-cert-auth --peer-cert-file /certs/etcd3.crt --peer-key-file /certs/etcd3.key --peer-trusted-ca-file /certs/ca.crt --initial-advertise-peer-urls https://external-etcd-3:2380 --initial-cluster-state new --peer-client-cert-auth --quota-backend-bytes 8589934592 --logger zap --log-level warn
+ff96fe68479a443c67053b85ef8dcbdd972994c018db5b44712c2ee861832db0
++ endpoints=https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379
++ ctl=(docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints "$endpoints" --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s)
+++ seq 1 30
++ for attempt in $(seq 1 30)
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+https://external-etcd-2:2379 is healthy: successfully committed proposal: took = 385.372121ms
+https://external-etcd-3:2379 is healthy: successfully committed proposal: took = 387.433983ms
+https://external-etcd-1:2379 is healthy: successfully committed proposal: took = 386.44617ms
++ break
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint health
+https://external-etcd-2:2379 is healthy: successfully committed proposal: took = 10.259763ms
+https://external-etcd-3:2379 is healthy: successfully committed proposal: took = 13.011555ms
+https://external-etcd-1:2379 is healthy: successfully committed proposal: took = 15.159334ms
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s endpoint status -w json
++ python3 - /home/runner/work/_temp/burner-private /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/etcd-X64-1
++ kind create cluster --name burner --retain --image kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 --config /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/etcd-X64-1/kind.yaml --wait 180s
+Creating cluster "burner" ...
+ • Ensuring node image (kindest/node:v1.37.0) 🖼️  ...
+ ✓ Ensuring node image (kindest/node:v1.37.0) 🖼️
+ • Preparing nodes 📦 📦 📦   ...
+ ✓ Preparing nodes 📦 📦 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Installing StorageClass 💾  ...
+ ✓ Installing StorageClass 💾
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+ • Waiting ≤ 3m0s for control-plane = Ready ⏳  ...
+ ✓ Waiting ≤ 3m0s for control-plane = Ready ⏳
+ • Ready after 11s 💚
+Set kubectl context to "kind-burner"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-burner
+
+Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂
++ kubectl wait --for=condition=Ready nodes --all --timeout=180s
+node/burner-control-plane condition met
+node/burner-worker condition met
+node/burner-worker2 condition met
++ kubectl -n kube-system rollout status deployment/coredns --timeout=180s
+deployment "coredns" successfully rolled out
++ kind load docker-image --name burner registry.k8s.io/pause:3.10
+Image: "registry.k8s.io/pause:3.10" with ID "sha256:873ed75102791e5b0b8a7fcd41606c92fcec98d56d05ead4ac5131650004c136" found to be already present on all nodes.
++ kubectl version -o json
++ kubectl get nodes -o wide
++ kubectl get --raw '/readyz?verbose'
++ for n in 1 2 3
++ docker exec burner-control-plane curl -fsS --cacert /etc/kubernetes/pki/external/ca.crt --cert /etc/kubernetes/pki/external/client.crt --key /etc/kubernetes/pki/external/client.key https://external-etcd-1:2379/version
++ for n in 1 2 3
++ docker exec burner-control-plane curl -fsS --cacert /etc/kubernetes/pki/external/ca.crt --cert /etc/kubernetes/pki/external/client.crt --key /etc/kubernetes/pki/external/client.key https://external-etcd-2:2379/version
++ for n in 1 2 3
++ docker exec burner-control-plane curl -fsS --cacert /etc/kubernetes/pki/external/ca.crt --cert /etc/kubernetes/pki/external/client.crt --key /etc/kubernetes/pki/external/client.key https://external-etcd-3:2379/version
++ docker exec burner-control-plane test '!' -e /etc/kubernetes/manifests/etcd.yaml
++ kubectl create configmap burner-proof --from-literal=backend=external
+configmap/burner-proof created
++ docker exec external-etcd-1 /bin-etcd/etcdctl --endpoints https://external-etcd-1:2379,https://external-etcd-2:2379,https://external-etcd-3:2379 --cacert /certs/ca.crt --cert /certs/client.crt --key /certs/client.key --command-timeout=10s get /registry/configmaps/default/burner-proof --count-only -w fields
++ grep -qx '"Count" : 1' /home/runner/work/tigerstore/tigerstore/evidence/kube-burner/etcd-X64-1/proof-key-count.txt
++ kubectl delete configmap burner-proof
+configmap "burner-proof" deleted from default namespace

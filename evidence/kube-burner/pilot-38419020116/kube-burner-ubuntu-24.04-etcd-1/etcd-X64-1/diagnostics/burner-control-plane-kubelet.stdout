@@ -1,0 +1,535 @@
+Oct 13 15:06:01 burner-control-plane systemd[1]: kubelet.service - kubelet: The Kubernetes Node Agent skipped, unmet condition check ConditionPathExists=/var/lib/kubelet/config.yaml
+Oct 13 15:06:02 burner-control-plane systemd[1]: Starting kubelet.service - kubelet: The Kubernetes Node Agent...
+Oct 13 15:06:02 burner-control-plane systemd[1]: Started kubelet.service - kubelet: The Kubernetes Node Agent.
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.540750     242 server.go:257] "Effective KubeletConfiguration" config=<
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         address: 0.0.0.0
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         apiVersion: kubelet.config.k8s.io/v1beta1
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         authentication:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           anonymous:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             enabled: false
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           webhook:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             cacheTTL: 2m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             enabled: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           x509:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             clientCAFile: /etc/kubernetes/pki/ca.crt
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         authorization:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           mode: Webhook
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           webhook:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             cacheAuthorizedTTL: 5m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             cacheUnauthorizedTTL: 30s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cgroupDriver: systemd
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cgroupRoot: /kubelet
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cgroupsPerQOS: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         clusterDNS:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         - 10.96.0.10
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         clusterDomain: cluster.local
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         configMapAndSecretChangeDetectionStrategy: Watch
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         containerLogMaxFiles: 5
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         containerLogMaxSize: 10Mi
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         containerLogMaxWorkers: 1
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         containerLogMonitorInterval: 10s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         contentType: application/vnd.kubernetes.protobuf
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cpuCFSQuota: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cpuCFSQuotaPeriod: 100ms
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cpuManagerPolicy: none
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         cpuManagerReconcilePeriod: 10s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         crashLoopBackOff:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           maxContainerRestartPeriod: 5m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableControllerAttachDetach: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableDebugFlagsHandler: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableDebuggingHandlers: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableProfilingHandler: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableServer: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableSystemLogHandler: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enableSystemLogQuery: false
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         enforceNodeAllocatable:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         - pods
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         eventBurst: 100
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         eventRecordQPS: 50
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         evictionHard:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           imagefs.available: 0%
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           nodefs.available: 0%
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           nodefs.inodesFree: 0%
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         evictionPressureTransitionPeriod: 5m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         failCgroupV1: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         failSwapOn: false
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         fileCheckFrequency: 20s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         hairpinMode: promiscuous-bridge
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         healthzBindAddress: 127.0.0.1
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         healthzPort: 10248
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         httpCheckFrequency: 20s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         imageGCHighThresholdPercent: 100
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         imageGCLowThresholdPercent: 80
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         imageMaximumGCAge: 0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         imageMinimumGCAge: 2m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         imagePullCredentialsVerificationPolicy: NeverVerifyPreloadedImages
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         iptablesDropBit: 15
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         iptablesMasqueradeBit: 14
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         kind: KubeletConfiguration
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         kubeAPIBurst: 100
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         kubeAPIQPS: 50
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         localStorageCapacityIsolation: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         logging:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           flushFrequency: 5s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           format: text
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           options:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             json:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:               infoBufferSize: "0"
+Oct 13 15:06:02 burner-control-plane kubelet[242]:             text:
+Oct 13 15:06:02 burner-control-plane kubelet[242]:               infoBufferSize: "0"
+Oct 13 15:06:02 burner-control-plane kubelet[242]:           verbosity: 0
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         makeIPTablesUtilChains: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         maxOpenFiles: 1000000
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         maxPods: 110
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         memoryManagerPolicy: None
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         memoryReservationPolicy: None
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         memorySwap: {}
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         mergeDefaultEvictionSettings: false
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         nodeLeaseDurationSeconds: 40
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         nodeStatusMaxImages: 50
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         nodeStatusReportFrequency: 5m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         nodeStatusUpdateFrequency: 10s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         oomScoreAdj: -999
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         podLogsDir: /var/log/pods
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         podPidsLimit: -1
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         port: 10250
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         providerID: kind://docker/burner/burner-control-plane
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         registerNode: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         registryBurst: 10
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         registryPullQPS: 5
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         resolvConf: /etc/resolv.conf
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         rotateCertificates: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         runtimeRequestTimeout: 2m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         seccompDefault: false
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         serializeImagePulls: true
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         shutdownGracePeriod: 0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         shutdownGracePeriodCriticalPods: 0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         staticPodPath: /etc/kubernetes/manifests
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         streamingConnectionIdleTimeout: 4h0m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         syncFrequency: 1m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         topologyManagerPolicy: none
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         topologyManagerScope: container
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         volumePluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         volumeStatsAggPeriod: 1m0s
+Oct 13 15:06:02 burner-control-plane kubelet[242]:  >
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.738410     242 server.go:545] "Kubelet version" kubeletVersion="v1.37.0"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.738428     242 server.go:547] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.738447     242 watchdog_linux.go:94] "Systemd watchdog is not enabled"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.738454     242 watchdog_linux.go:137] "Systemd watchdog is not enabled or the interval is invalid, so health checking will not be started."
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.738816     242 server.go:1036] "Client rotation is on, will bootstrap in background"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.742588     242 certificate_manager.go:605] "Failed while requesting a signed certificate from the control plane" err="cannot create certificate signing request: Post \"https://172.18.0.5:6443/apis/certificates.k8s.io/v1/certificatesigningrequests\": dial tcp 172.18.0.5:6443: connect: connection refused" logger="kubernetes.io/kube-apiserver-client-kubelet.UnhandledError"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.742845     242 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.748363     242 server.go:1502] "Using cgroup driver setting received from the CRI runtime" cgroupDriver="systemd"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.752715     242 server.go:919] "NoSwap is set due to memorySwapBehavior not specified" memorySwapBehavior="" FailSwapOn=false
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.752813     242 swap_util.go:119] "Swap is on" /proc/swaps contents=<
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         Filename                                Type                Size                Used                Priority
+Oct 13 15:06:02 burner-control-plane kubelet[242]:         /swapfile                               file                3145724                0                -2
+Oct 13 15:06:02 burner-control-plane kubelet[242]:  >
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.753098     242 container_manager_linux.go:273] "Container manager verified user specified cgroup-root exists" cgroupRoot=["kubelet"]
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.753128     242 container_manager_linux.go:278] "Creating Container Manager object based on Node Config" nodeConfig={"NodeName":"burner-control-plane","RuntimeCgroupsName":"/system.slice/containerd.service","SystemCgroupsName":"","KubeletCgroupsName":"","KubeletOOMScoreAdj":-999,"ContainerRuntime":"","CgroupsPerQOS":true,"CgroupRoot":"/kubelet","CgroupDriver":"systemd","KubeletRootDir":"/var/lib/kubelet","ProtectKernelDefaults":false,"KubeReservedCgroupName":"","SystemReservedCgroupName":"","ReservedSystemCPUs":{},"EnforceNodeAllocatable":{"pods":{}},"KubeReserved":null,"SystemReserved":null,"HardEvictionThresholds":[],"QOSReserved":{},"CPUManagerPolicy":"none","CPUManagerPolicyOptions":null,"TopologyManagerScope":"container","CPUManagerReconcilePeriod":10000000000,"MemoryManagerPolicy":"None","MemoryManagerReservedMemory":null,"MemoryReservationPolicy":"None","MemoryThrottlingFactor":null,"PodPidsLimit":-1,"EnforceCPULimits":true,"CPUCFSQuotaPeriod":100000000,"TopologyManagerPolicy":"none","TopologyManagerPolicyOptions":null,"CgroupVersion":2}
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.753264     242 topology_manager.go:183] "Creating topology manager with none policy"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.753276     242 container_manager_linux.go:310] "Creating device plugin manager"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.753375     242 container_manager_linux.go:319] "Creating Dynamic Resource Allocation (DRA) manager"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754016     242 state_mem.go:45] "Initialized" logger="CPUManager state memory"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754189     242 kubelet.go:512] "Attempting to sync node with API server"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754214     242 kubelet.go:389] "Adding static pod path" path="/etc/kubernetes/manifests"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754242     242 kubelet.go:400] "Adding apiserver pod source"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754260     242 apiserver.go:41] "Waiting for node sync before watching apiserver pods"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.754744     242 kuberuntime_manager.go:315] "Container runtime initialized" containerRuntime="containerd" version="v2.3.4" apiVersion="v1"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.755945     242 kubelet.go:1011] "ClusterTrustBundle informer will be started eventually once a trust bundle is requested"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: W1013 15:06:02.756104     242 probe.go:275] Flexvolume plugin directory at /usr/libexec/kubernetes/kubelet-plugins/volume/exec/ does not exist. Recreating.
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.756253     242 podcertificatemanager.go:340] "podcertificate.IssuingManager starting up"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.757836     242 server.go:1336] "Started kubelet"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.757997     242 ratelimit.go:56] "Setting rate limiting for endpoint" service="podresources" qps=100 burstTokens=10
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.758117     242 server_v1.go:49] "podresources" method="list" useActivePods=true
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.758391     242 server.go:267] "Starting to serve the podresources API" endpoint="unix:/var/lib/kubelet/pod-resources/kubelet.sock"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.758391     242 server.go:293] "Starting to serve the pods API" endpoint="unix:/var/lib/kubelet/pods-api/pods-api.sock"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.757891     242 server.go:196] "Starting to listen" address="0.0.0.0" port=10250
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.759056     242 event.go:374] "Unable to write event (may retry after sleeping)" err="Post \"https://172.18.0.5:6443/api/v1/namespaces/default/events\": dial tcp 172.18.0.5:6443: connect: connection refused" event="&Event{ObjectMeta:{burner-control-plane.18de1f2903cb6007  default    0 0001-01-01 00:00:00 +0000 UTC <nil> <nil> map[] map[] [] [] []},InvolvedObject:ObjectReference{Kind:Node,Namespace:,Name:burner-control-plane,UID:,APIVersion:v1,ResourceVersion:,FieldPath:,},Reason:Starting,Message:Starting kubelet.,Source:EventSource{Component:kubelet,Host:burner-control-plane,},FirstTimestamp:2026-10-13 15:06:02.757816327 +0000 UTC m=+0.241890208,LastTimestamp:2026-10-13 15:06:02.757816327 +0000 UTC m=+0.241890208,Count:1,Type:Normal,EventTime:0001-01-01 00:00:00 +0000 UTC,Series:nil,Action:,Related:nil,ReportingController:kubelet,ReportingInstance:burner-control-plane,}"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.759306     242 fs_resource_analyzer.go:69] "Starting FS ResourceAnalyzer"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.759490     242 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.759558     242 server.go:365] "Adding debug handlers to kubelet server"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.759351     242 dynamic_serving_content.go:135] "Starting controller" name="kubelet-server-cert-files::/var/lib/kubelet/pki/kubelet.crt::/var/lib/kubelet/pki/kubelet.key"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.760427     242 volume_manager.go:331] "Starting Kubelet Volume Manager"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.760388     242 kubelet_node_status.go:396] "Error getting the current node from lister" err="node \"burner-control-plane\" not found"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.761894     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.761894     242 reconciler.go:29] "Reconciler: start to sync state"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.760563     242 desired_state_of_world_populator.go:146] "Desired state populator starts to run"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.762040     242 controller.go:208] "Failed to ensure lease exists, will retry" err="Get \"https://172.18.0.5:6443/apis/coordination.k8s.io/v1/namespaces/kube-node-lease/leases/burner-control-plane?timeout=10s\": dial tcp 172.18.0.5:6443: connect: connection refused" interval="200ms"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.762715     242 factory.go:222] Registration of the systemd container factory successfully
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.762851     242 factory.go:220] Registration of the crio container factory failed: Get "http://%2Fvar%2Frun%2Fcrio%2Fcrio.sock/info": dial unix /var/run/crio/crio.sock: connect: no such file or directory
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.764641     242 factory.go:222] Registration of the containerd container factory successfully
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.770080     242 cpu_manager.go:239] "Starting" policy="none"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.770198     242 cpu_manager.go:240] "Reconciling" reconcilePeriod="10s"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.770276     242 state_mem.go:45] "Initialized" logger="CPUManager state checkpoint.CPUManager state memory"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.770294     242 state_checkpoint.go:191] "trying to load v4 CPU manager checkpoint" logger="CPUManager state checkpoint"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.771047     242 policy_none.go:51] "Start"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.771082     242 memory_manager.go:209] "Starting memorymanager" policy="None"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.771096     242 state_mem.go:39] "Initializing new in-memory state store" logger="Memory Manager state checkpoint"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.771709     242 policy_none.go:47] "Start"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.779786     242 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv4"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.780920     242 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv6"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.780948     242 status_manager.go:283] "Starting to sync pod status with apiserver"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.780997     242 kubelet.go:2673] "Starting kubelet main sync loop"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.781036     242 kubelet.go:2697] "Skipping pod synchronization" err="[container runtime status check may not have completed yet, PLEG is not healthy: pleg has yet to be successful]"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.834596     242 manager.go:550] "Failed to read data from checkpoint" err="checkpoint is not found" checkpoint="kubelet_internal_checkpoint"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.834704     242 eviction_manager.go:193] "Eviction manager: starting control loop"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.834722     242 container_log_manager.go:146] "Initializing container log rotate workers" workers=1 monitorPeriod="10s"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.834932     242 plugin_manager.go:121] "Starting Kubelet Plugin Manager"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.835692     242 eviction_manager.go:280] "eviction manager: failed to check if we have separate container filesystem. Ignoring." err="no imagefs label for configured runtime"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.835719     242 eviction_manager.go:305] "Eviction manager: failed to get summary stats" err="failed to get node info: node \"burner-control-plane\" not found"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.862518     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.883654     242 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="ADDED"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.884455     242 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="ADDED"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.885554     242 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="ADDED"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.895655     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.899604     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.902235     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.935801     242 kubelet_node_status.go:75] "Attempting to register node" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.936080     242 kubelet_node_status.go:108] "Unable to register node with API server" err="Post \"https://172.18.0.5:6443/api/v1/nodes\": dial tcp 172.18.0.5:6443: connect: connection refused" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.962433     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962612     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"ca-certs\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-ca-certs\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962646     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"etc-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-etc-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962675     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-local-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-usr-local-share-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962701     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"k8s-certs\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-k8s-certs\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: E1013 15:06:02.962646     242 controller.go:208] "Failed to ensure lease exists, will retry" err="Get \"https://172.18.0.5:6443/apis/coordination.k8s.io/v1/namespaces/kube-node-lease/leases/burner-control-plane?timeout=10s\": dial tcp 172.18.0.5:6443: connect: connection refused" interval="400ms"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962759     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-local-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-usr-local-share-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962789     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"k8s-certs\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-k8s-certs\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962820     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kubeconfig\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-kubeconfig\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962851     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kubeconfig\" (UniqueName: \"kubernetes.io/host-path/eed3988ac3febf9e02e36b7571cf29d0-kubeconfig\") pod \"kube-scheduler-burner-control-plane\" (UID: \"eed3988ac3febf9e02e36b7571cf29d0\") " pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962872     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"ca-certs\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-ca-certs\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962898     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"etc-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-etc-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:02 burner-control-plane kubelet[242]: I1013 15:06:02.962950     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-usr-share-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.062215     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.063484     242 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-usr-share-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.136908     242 kubelet_node_status.go:75] "Attempting to register node" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.137155     242 kubelet_node_status.go:108] "Unable to register node with API server" err="Post \"https://172.18.0.5:6443/api/v1/nodes\": dial tcp 172.18.0.5:6443: connect: connection refused" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.162498     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.261971     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.339057     242 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.339226     242 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.343438     242 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.362567     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.363934     242 controller.go:208] "Failed to ensure lease exists, will retry" err="Get \"https://172.18.0.5:6443/apis/coordination.k8s.io/v1/namespaces/kube-node-lease/leases/burner-control-plane?timeout=10s\": dial tcp 172.18.0.5:6443: connect: connection refused" interval="800ms"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.462749     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.538827     242 kubelet_node_status.go:75] "Attempting to register node" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.539170     242 kubelet_node_status.go:108] "Unable to register node with API server" err="Post \"https://172.18.0.5:6443/api/v1/nodes\": dial tcp 172.18.0.5:6443: connect: connection refused" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.562531     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.662747     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.761944     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.854102     242 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.854365     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.862602     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.875912     242 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.876232     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: I1013 15:06:03.908697     242 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.908932     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:03 burner-control-plane kubelet[242]: E1013 15:06:03.962706     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.062487     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.162617     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.262614     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: I1013 15:06:04.340676     242 kubelet_node_status.go:75] "Attempting to register node" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.362640     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.462483     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.562056     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.663109     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.763039     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.796928     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.796966     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.797356     242 kubelet.go:3575] "No need to create a mirror pod, since failed to get node info from the cluster" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.862969     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:04 burner-control-plane kubelet[242]: E1013 15:06:04.962138     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.062781     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.163376     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.232729     242 nodelease.go:50] "Failed to get node when trying to set owner ref to the node lease" err="nodes \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.262929     242 kubelet.go:3596] "Unable to register mirror pod because node is not registered yet" err="node \"burner-control-plane\" not found" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.312966     242 kubelet_node_status.go:78] "Successfully registered node" node="burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.362856     242 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.377204     242 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-controller-manager-burner-control-plane\" is forbidden: no PriorityClass with name system-node-critical was found" pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.377236     242 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.381117     242 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-scheduler-burner-control-plane\" is forbidden: no PriorityClass with name system-node-critical was found" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.381166     242 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.383603     242 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-apiserver-burner-control-plane\" is forbidden: no PriorityClass with name system-node-critical was found" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.756444     242 apiserver.go:51] "Watching apiserver"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.762751     242 desired_state_of_world_populator.go:154] "Finished populating initial desired state of world"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.797345     242 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: I1013 15:06:05.797521     242 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.798731     242 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-scheduler-burner-control-plane\" is forbidden: no PriorityClass with name system-node-critical was found" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:05 burner-control-plane kubelet[242]: E1013 15:06:05.798747     242 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-apiserver-burner-control-plane\" is forbidden: no PriorityClass with name system-node-critical was found" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.403845     242 podcertificatemanager.go:351] "podcertificate.IssuingManager shut down"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.404026     242 volume_manager.go:341] "Shutting down Kubelet Volume Manager"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.404111     242 tlsconfig.go:258] "Shutting down DynamicServingCertificateController"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.404146     242 server.go:302] "Shutting down pods API server"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.404276     242 eviction_manager.go:224] "Eviction manager: monitoring loop exiting" err="context canceled"
+Oct 13 15:06:07 burner-control-plane kubelet[242]: I1013 15:06:07.404308     242 dynamic_cafile_content.go:175] "Shutting down controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+Oct 13 15:06:07 burner-control-plane systemd[1]: Stopping kubelet.service - kubelet: The Kubernetes Node Agent...
+Oct 13 15:06:07 burner-control-plane systemd[1]: kubelet.service: Deactivated successfully.
+Oct 13 15:06:07 burner-control-plane systemd[1]: Stopped kubelet.service - kubelet: The Kubernetes Node Agent.
+Oct 13 15:06:07 burner-control-plane systemd[1]: Starting kubelet.service - kubelet: The Kubernetes Node Agent...
+Oct 13 15:06:07 burner-control-plane systemd[1]: Started kubelet.service - kubelet: The Kubernetes Node Agent.
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.515938     585 server.go:257] "Effective KubeletConfiguration" config=<
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         address: 0.0.0.0
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         apiVersion: kubelet.config.k8s.io/v1beta1
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         authentication:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           anonymous:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             enabled: false
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           webhook:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             cacheTTL: 2m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             enabled: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           x509:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             clientCAFile: /etc/kubernetes/pki/ca.crt
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         authorization:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           mode: Webhook
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           webhook:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             cacheAuthorizedTTL: 5m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             cacheUnauthorizedTTL: 30s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cgroupDriver: systemd
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cgroupRoot: /kubelet
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cgroupsPerQOS: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         clusterDNS:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         - 10.96.0.10
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         clusterDomain: cluster.local
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         configMapAndSecretChangeDetectionStrategy: Watch
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         containerLogMaxFiles: 5
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         containerLogMaxSize: 10Mi
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         containerLogMaxWorkers: 1
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         containerLogMonitorInterval: 10s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         contentType: application/vnd.kubernetes.protobuf
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cpuCFSQuota: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cpuCFSQuotaPeriod: 100ms
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cpuManagerPolicy: none
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         cpuManagerReconcilePeriod: 10s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         crashLoopBackOff:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           maxContainerRestartPeriod: 5m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableControllerAttachDetach: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableDebugFlagsHandler: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableDebuggingHandlers: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableProfilingHandler: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableServer: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableSystemLogHandler: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enableSystemLogQuery: false
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         enforceNodeAllocatable:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         - pods
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         eventBurst: 100
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         eventRecordQPS: 50
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         evictionHard:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           imagefs.available: 0%
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           nodefs.available: 0%
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           nodefs.inodesFree: 0%
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         evictionPressureTransitionPeriod: 5m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         failCgroupV1: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         failSwapOn: false
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         fileCheckFrequency: 20s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         hairpinMode: promiscuous-bridge
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         healthzBindAddress: 127.0.0.1
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         healthzPort: 10248
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         httpCheckFrequency: 20s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         imageGCHighThresholdPercent: 100
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         imageGCLowThresholdPercent: 80
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         imageMaximumGCAge: 0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         imageMinimumGCAge: 2m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         imagePullCredentialsVerificationPolicy: NeverVerifyPreloadedImages
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         iptablesDropBit: 15
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         iptablesMasqueradeBit: 14
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         kind: KubeletConfiguration
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         kubeAPIBurst: 100
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         kubeAPIQPS: 50
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         localStorageCapacityIsolation: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         logging:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           flushFrequency: 5s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           format: text
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           options:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             json:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:               infoBufferSize: "0"
+Oct 13 15:06:07 burner-control-plane kubelet[585]:             text:
+Oct 13 15:06:07 burner-control-plane kubelet[585]:               infoBufferSize: "0"
+Oct 13 15:06:07 burner-control-plane kubelet[585]:           verbosity: 0
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         makeIPTablesUtilChains: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         maxOpenFiles: 1000000
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         maxPods: 110
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         memoryManagerPolicy: None
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         memoryReservationPolicy: None
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         memorySwap: {}
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         mergeDefaultEvictionSettings: false
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         nodeLeaseDurationSeconds: 40
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         nodeStatusMaxImages: 50
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         nodeStatusReportFrequency: 5m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         nodeStatusUpdateFrequency: 10s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         oomScoreAdj: -999
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         podLogsDir: /var/log/pods
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         podPidsLimit: -1
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         port: 10250
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         providerID: kind://docker/burner/burner-control-plane
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         registerNode: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         registryBurst: 10
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         registryPullQPS: 5
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         resolvConf: /etc/resolv.conf
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         rotateCertificates: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         runtimeRequestTimeout: 2m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         seccompDefault: false
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         serializeImagePulls: true
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         shutdownGracePeriod: 0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         shutdownGracePeriodCriticalPods: 0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         staticPodPath: /etc/kubernetes/manifests
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         streamingConnectionIdleTimeout: 4h0m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         syncFrequency: 1m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         topologyManagerPolicy: none
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         topologyManagerScope: container
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         volumePluginDir: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         volumeStatsAggPeriod: 1m0s
+Oct 13 15:06:07 burner-control-plane kubelet[585]:  >
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.520740     585 server.go:545] "Kubelet version" kubeletVersion="v1.37.0"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.520757     585 server.go:547] "Golang settings" GOGC="" GOMAXPROCS="" GOTRACEBACK=""
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.520775     585 watchdog_linux.go:94] "Systemd watchdog is not enabled"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.520784     585 watchdog_linux.go:137] "Systemd watchdog is not enabled or the interval is invalid, so health checking will not be started."
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.521595     585 server.go:1036] "Client rotation is on, will bootstrap in background"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.523455     585 certificate_store.go:147] "Loading cert/key pair from a file" filePath="/var/lib/kubelet/pki/kubelet-client-current.pem"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.525290     585 dynamic_cafile_content.go:161] "Starting controller" name="client-ca-bundle::/etc/kubernetes/pki/ca.crt"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.528368     585 server.go:1502] "Using cgroup driver setting received from the CRI runtime" cgroupDriver="systemd"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531432     585 server.go:919] "NoSwap is set due to memorySwapBehavior not specified" memorySwapBehavior="" FailSwapOn=false
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531512     585 swap_util.go:119] "Swap is on" /proc/swaps contents=<
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         Filename                                Type                Size                Used                Priority
+Oct 13 15:06:07 burner-control-plane kubelet[585]:         /swapfile                               file                3145724                0                -2
+Oct 13 15:06:07 burner-control-plane kubelet[585]:  >
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531708     585 container_manager_linux.go:273] "Container manager verified user specified cgroup-root exists" cgroupRoot=["kubelet"]
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531733     585 container_manager_linux.go:278] "Creating Container Manager object based on Node Config" nodeConfig={"NodeName":"burner-control-plane","RuntimeCgroupsName":"/system.slice/containerd.service","SystemCgroupsName":"","KubeletCgroupsName":"","KubeletOOMScoreAdj":-999,"ContainerRuntime":"","CgroupsPerQOS":true,"CgroupRoot":"/kubelet","CgroupDriver":"systemd","KubeletRootDir":"/var/lib/kubelet","ProtectKernelDefaults":false,"KubeReservedCgroupName":"","SystemReservedCgroupName":"","ReservedSystemCPUs":{},"EnforceNodeAllocatable":{"pods":{}},"KubeReserved":null,"SystemReserved":null,"HardEvictionThresholds":[],"QOSReserved":{},"CPUManagerPolicy":"none","CPUManagerPolicyOptions":null,"TopologyManagerScope":"container","CPUManagerReconcilePeriod":10000000000,"MemoryManagerPolicy":"None","MemoryManagerReservedMemory":null,"MemoryReservationPolicy":"None","MemoryThrottlingFactor":null,"PodPidsLimit":-1,"EnforceCPULimits":true,"CPUCFSQuotaPeriod":100000000,"TopologyManagerPolicy":"none","TopologyManagerPolicyOptions":null,"CgroupVersion":2}
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531838     585 topology_manager.go:183] "Creating topology manager with none policy"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531845     585 container_manager_linux.go:310] "Creating device plugin manager"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.531870     585 container_manager_linux.go:319] "Creating Dynamic Resource Allocation (DRA) manager"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.532045     585 state_mem.go:45] "Initialized" logger="CPUManager state memory"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.532206     585 kubelet.go:512] "Attempting to sync node with API server"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.532228     585 kubelet.go:389] "Adding static pod path" path="/etc/kubernetes/manifests"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.532250     585 kubelet.go:400] "Adding apiserver pod source"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.532267     585 apiserver.go:41] "Waiting for node sync before watching apiserver pods"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.533087     585 kuberuntime_manager.go:315] "Container runtime initialized" containerRuntime="containerd" version="v2.3.4" apiVersion="v1"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.536439     585 kubelet.go:1011] "ClusterTrustBundle informer will be started eventually once a trust bundle is requested"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.536933     585 podcertificatemanager.go:340] "podcertificate.IssuingManager starting up"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.540139     585 server.go:1336] "Started kubelet"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.540393     585 server.go:196] "Starting to listen" address="0.0.0.0" port=10250
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.541023     585 ratelimit.go:56] "Setting rate limiting for endpoint" service="podresources" qps=100 burstTokens=10
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.541347     585 server_v1.go:49] "podresources" method="list" useActivePods=true
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.542143     585 server.go:267] "Starting to serve the podresources API" endpoint="unix:/var/lib/kubelet/pod-resources/kubelet.sock"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.542872     585 server.go:293] "Starting to serve the pods API" endpoint="unix:/var/lib/kubelet/pods-api/pods-api.sock"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.548016     585 fs_resource_analyzer.go:69] "Starting FS ResourceAnalyzer"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.549471     585 server.go:365] "Adding debug handlers to kubelet server"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.551836     585 dynamic_serving_content.go:135] "Starting controller" name="kubelet-server-cert-files::/var/lib/kubelet/pki/kubelet.crt::/var/lib/kubelet/pki/kubelet.key"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.551916     585 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.553935     585 volume_manager.go:331] "Starting Kubelet Volume Manager"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.554308     585 desired_state_of_world_populator.go:146] "Desired state populator starts to run"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.554641     585 reconciler.go:29] "Reconciler: start to sync state"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.554810     585 factory.go:222] Registration of the systemd container factory successfully
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.555094     585 factory.go:220] Registration of the crio container factory failed: Get "http://%2Fvar%2Frun%2Fcrio%2Fcrio.sock/info": dial unix /var/run/crio/crio.sock: connect: no such file or directory
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.556922     585 factory.go:222] Registration of the containerd container factory successfully
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.559076     585 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv6"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.568556     585 kubelet_network_linux.go:53] "Initialized iptables rules." protocol="IPv4"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.568642     585 status_manager.go:283] "Starting to sync pod status with apiserver"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.568667     585 kubelet.go:2673] "Starting kubelet main sync loop"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: E1013 15:06:07.568698     585 kubelet.go:2697] "Skipping pod synchronization" err="[container runtime status check may not have completed yet, PLEG is not healthy: pleg has yet to be successful]"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594088     585 cpu_manager.go:239] "Starting" policy="none"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594104     585 cpu_manager.go:240] "Reconciling" reconcilePeriod="10s"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594124     585 state_mem.go:45] "Initialized" logger="CPUManager state checkpoint.CPUManager state memory"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594137     585 state_checkpoint.go:191] "trying to load v4 CPU manager checkpoint" logger="CPUManager state checkpoint"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594313     585 state_mem.go:142] "Updated default CPUSet" logger="CPUManager state checkpoint.CPUManager state memory" cpuSet=""
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594337     585 state_mem.go:160] "Updated CPUSet assignments" logger="CPUManager state checkpoint.CPUManager state memory" assignments="{}"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594350     585 policy_none.go:51] "Start"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594367     585 memory_manager.go:209] "Starting memorymanager" policy="None"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594382     585 state_mem.go:39] "Initializing new in-memory state store" logger="Memory Manager state checkpoint"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594575     585 state_mem.go:109] "Updated machine memory state" logger="Memory Manager state checkpoint"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.594593     585 policy_none.go:47] "Start"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: E1013 15:06:07.603032     585 manager.go:550] "Failed to read data from checkpoint" err="checkpoint is not found" checkpoint="kubelet_internal_checkpoint"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.603174     585 eviction_manager.go:193] "Eviction manager: starting control loop"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.603187     585 container_log_manager.go:146] "Initializing container log rotate workers" workers=1 monitorPeriod="10s"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.603746     585 plugin_manager.go:121] "Starting Kubelet Plugin Manager"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: E1013 15:06:07.604356     585 eviction_manager.go:280] "eviction manager: failed to check if we have separate container filesystem. Ignoring." err="no imagefs label for configured runtime"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.669873     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="ADDED"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.670024     585 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="ADDED"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.670058     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.670254     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.670402     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="ADDED"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.670573     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.705606     585 kubelet_node_status.go:75] "Attempting to register node" node="burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.713134     585 kubelet_node_status.go:125] "Node was previously registered" node="burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.713233     585 kubelet_node_status.go:78] "Successfully registered node" node="burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.855944     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-usr-share-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856032     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"ca-certs\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-ca-certs\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856059     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"k8s-certs\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-k8s-certs\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856084     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"etc-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-etc-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856108     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-local-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-usr-local-share-ca-certificates\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856133     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"etc-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-etc-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856156     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kubeconfig\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-kubeconfig\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856180     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-local-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-usr-local-share-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856220     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"usr-share-ca-certificates\" (UniqueName: \"kubernetes.io/host-path/0bdafdda388c8e0af59aed326d332033-usr-share-ca-certificates\") pod \"kube-controller-manager-burner-control-plane\" (UID: \"0bdafdda388c8e0af59aed326d332033\") " pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856243     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kubeconfig\" (UniqueName: \"kubernetes.io/host-path/eed3988ac3febf9e02e36b7571cf29d0-kubeconfig\") pod \"kube-scheduler-burner-control-plane\" (UID: \"eed3988ac3febf9e02e36b7571cf29d0\") " pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856291     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"ca-certs\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-ca-certs\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:07 burner-control-plane kubelet[585]: I1013 15:06:07.856339     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"k8s-certs\" (UniqueName: \"kubernetes.io/host-path/c507dd6d72a2ecb19352fdb570dfee77-k8s-certs\") pod \"kube-apiserver-burner-control-plane\" (UID: \"c507dd6d72a2ecb19352fdb570dfee77\") " pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.071588     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.533178     585 apiserver.go:51] "Watching apiserver"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.554799     585 desired_state_of_world_populator.go:154] "Finished populating initial desired state of world"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.578820     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.578812     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.579377     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.580273     585 kubelet.go:3579] "Creating a mirror pod for static pod" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: E1013 15:06:08.587301     585 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-scheduler-burner-control-plane\" already exists" pod="kube-system/kube-scheduler-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: E1013 15:06:08.593026     585 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-apiserver-burner-control-plane\" already exists" pod="kube-system/kube-apiserver-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: E1013 15:06:08.594724     585 kubelet.go:3581] "Failed creating a mirror pod" err="pods \"kube-controller-manager-burner-control-plane\" already exists" pod="kube-system/kube-controller-manager-burner-control-plane"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.611168     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kube-scheduler-burner-control-plane" podStartSLOduration=1.611153855 podStartE2EDuration="1.611153855s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:07 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:08.610611711 +0000 UTC m=+1.122510347" watchObservedRunningTime="2026-10-13 15:06:08.611153855 +0000 UTC m=+1.123052501"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.627455     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kube-apiserver-burner-control-plane" podStartSLOduration=1.6274405280000002 podStartE2EDuration="1.627440528s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:07 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:08.627174498 +0000 UTC m=+1.139073134" watchObservedRunningTime="2026-10-13 15:06:08.627440528 +0000 UTC m=+1.139339184"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.627544     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kube-controller-manager-burner-control-plane" podStartSLOduration=1.62753748 podStartE2EDuration="1.62753748s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:07 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:08.618601464 +0000 UTC m=+1.130500090" watchObservedRunningTime="2026-10-13 15:06:08.62753748 +0000 UTC m=+1.139436136"
+Oct 13 15:06:08 burner-control-plane kubelet[585]: I1013 15:06:08.957015     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:10 burner-control-plane kubelet[585]: I1013 15:06:10.586349     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:12 burner-control-plane kubelet[585]: I1013 15:06:12.002210     585 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:12 burner-control-plane kubelet[585]: I1013 15:06:12.002376     585 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:12 burner-control-plane kubelet[585]: I1013 15:06:12.711675     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:12 burner-control-plane kubelet[585]: I1013 15:06:12.711849     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:13 burner-control-plane kubelet[585]: I1013 15:06:13.012913     585 kuberuntime_manager.go:2315] "Updating runtime config through cri with podcidr" CIDR="10.244.0.0/24"
+Oct 13 15:06:13 burner-control-plane kubelet[585]: I1013 15:06:13.014827     585 kubelet_network.go:48] "Updating Pod CIDR" originalPodCIDR="" newPodCIDR="10.244.0.0/24"
+Oct 13 15:06:13 burner-control-plane kubelet[585]: I1013 15:06:13.969287     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:13 burner-control-plane kubelet[585]: I1013 15:06:13.969448     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.014940     585 server.go:177] "Pod update broadcasted" podUID="4e3b4b0f-e584-4a22-9e47-221fe47896a6" type="ADDED"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.015761     585 server.go:177] "Pod update broadcasted" podUID="25bf1915-18da-4704-9789-c81765e2367e" type="ADDED"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090245     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"xtables-lock\" (UniqueName: \"kubernetes.io/host-path/4e3b4b0f-e584-4a22-9e47-221fe47896a6-xtables-lock\") pod \"kindnet-fhng7\" (UID: \"4e3b4b0f-e584-4a22-9e47-221fe47896a6\") " pod="kube-system/kindnet-fhng7"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090287     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"lib-modules\" (UniqueName: \"kubernetes.io/host-path/25bf1915-18da-4704-9789-c81765e2367e-lib-modules\") pod \"kube-proxy-v9bzp\" (UID: \"25bf1915-18da-4704-9789-c81765e2367e\") " pod="kube-system/kube-proxy-v9bzp"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090314     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"lib-modules\" (UniqueName: \"kubernetes.io/host-path/4e3b4b0f-e584-4a22-9e47-221fe47896a6-lib-modules\") pod \"kindnet-fhng7\" (UID: \"4e3b4b0f-e584-4a22-9e47-221fe47896a6\") " pod="kube-system/kindnet-fhng7"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090336     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-kz75r\" (UniqueName: \"kubernetes.io/projected/25bf1915-18da-4704-9789-c81765e2367e-kube-api-access-kz75r\") pod \"kube-proxy-v9bzp\" (UID: \"25bf1915-18da-4704-9789-c81765e2367e\") " pod="kube-system/kube-proxy-v9bzp"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090401     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"nri-plugin\" (UniqueName: \"kubernetes.io/host-path/4e3b4b0f-e584-4a22-9e47-221fe47896a6-nri-plugin\") pod \"kindnet-fhng7\" (UID: \"4e3b4b0f-e584-4a22-9e47-221fe47896a6\") " pod="kube-system/kindnet-fhng7"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090427     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"cni-cfg\" (UniqueName: \"kubernetes.io/host-path/4e3b4b0f-e584-4a22-9e47-221fe47896a6-cni-cfg\") pod \"kindnet-fhng7\" (UID: \"4e3b4b0f-e584-4a22-9e47-221fe47896a6\") " pod="kube-system/kindnet-fhng7"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090450     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-v4mtj\" (UniqueName: \"kubernetes.io/projected/4e3b4b0f-e584-4a22-9e47-221fe47896a6-kube-api-access-v4mtj\") pod \"kindnet-fhng7\" (UID: \"4e3b4b0f-e584-4a22-9e47-221fe47896a6\") " pod="kube-system/kindnet-fhng7"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090471     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-proxy\" (UniqueName: \"kubernetes.io/configmap/25bf1915-18da-4704-9789-c81765e2367e-kube-proxy\") pod \"kube-proxy-v9bzp\" (UID: \"25bf1915-18da-4704-9789-c81765e2367e\") " pod="kube-system/kube-proxy-v9bzp"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.090494     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"xtables-lock\" (UniqueName: \"kubernetes.io/host-path/25bf1915-18da-4704-9789-c81765e2367e-xtables-lock\") pod \"kube-proxy-v9bzp\" (UID: \"25bf1915-18da-4704-9789-c81765e2367e\") " pod="kube-system/kube-proxy-v9bzp"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.484670     585 server.go:177] "Pod update broadcasted" podUID="25bf1915-18da-4704-9789-c81765e2367e" type="MODIFIED"
+Oct 13 15:06:14 burner-control-plane kubelet[585]: I1013 15:06:14.503123     585 server.go:177] "Pod update broadcasted" podUID="4e3b4b0f-e584-4a22-9e47-221fe47896a6" type="MODIFIED"
+Oct 13 15:06:15 burner-control-plane kubelet[585]: I1013 15:06:15.508306     585 server.go:177] "Pod update broadcasted" podUID="25bf1915-18da-4704-9789-c81765e2367e" type="MODIFIED"
+Oct 13 15:06:15 burner-control-plane kubelet[585]: I1013 15:06:15.530320     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kube-proxy-v9bzp" podStartSLOduration=2.53030497 podStartE2EDuration="2.53030497s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:13 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:15.530092481 +0000 UTC m=+8.041991117" watchObservedRunningTime="2026-10-13 15:06:15.53030497 +0000 UTC m=+8.042203606"
+Oct 13 15:06:15 burner-control-plane kubelet[585]: I1013 15:06:15.664295     585 server.go:177] "Pod update broadcasted" podUID="4e3b4b0f-e584-4a22-9e47-221fe47896a6" type="MODIFIED"
+Oct 13 15:06:15 burner-control-plane kubelet[585]: I1013 15:06:15.682107     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/kindnet-fhng7" podStartSLOduration=2.682041701 podStartE2EDuration="2.682041701s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=true podCreationTimestamp="2026-10-13 15:06:13 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:15.680683592 +0000 UTC m=+8.192582228" watchObservedRunningTime="2026-10-13 15:06:15.682041701 +0000 UTC m=+8.193940327"
+Oct 13 15:06:22 burner-control-plane kubelet[585]: I1013 15:06:22.009753     585 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:22 burner-control-plane kubelet[585]: I1013 15:06:22.009942     585 server.go:177] "Pod update broadcasted" podUID="0bdafdda388c8e0af59aed326d332033" type="MODIFIED"
+Oct 13 15:06:22 burner-control-plane kubelet[585]: I1013 15:06:22.717924     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:22 burner-control-plane kubelet[585]: I1013 15:06:22.718163     585 server.go:177] "Pod update broadcasted" podUID="c507dd6d72a2ecb19352fdb570dfee77" type="MODIFIED"
+Oct 13 15:06:23 burner-control-plane kubelet[585]: I1013 15:06:23.974947     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:23 burner-control-plane kubelet[585]: I1013 15:06:23.975154     585 server.go:177] "Pod update broadcasted" podUID="eed3988ac3febf9e02e36b7571cf29d0" type="MODIFIED"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.722561     585 kubelet_node_status.go:431] "Fast updating node status as it just became ready"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.756494     585 server.go:177] "Pod update broadcasted" podUID="7067fac3-8f2e-4255-89bd-4f13b95e519c" type="ADDED"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.764032     585 server.go:177] "Pod update broadcasted" podUID="5092a6b2-1153-4b3a-8c79-59c96998d8e9" type="ADDED"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.766120     585 server.go:177] "Pod update broadcasted" podUID="fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a" type="ADDED"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.797776     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-c8kkb\" (UniqueName: \"kubernetes.io/projected/7067fac3-8f2e-4255-89bd-4f13b95e519c-kube-api-access-c8kkb\") pod \"coredns-559f6c778d-dwckl\" (UID: \"7067fac3-8f2e-4255-89bd-4f13b95e519c\") " pod="kube-system/coredns-559f6c778d-dwckl"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.797914     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"config-volume\" (UniqueName: \"kubernetes.io/configmap/fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a-config-volume\") pod \"local-path-provisioner-75f7fc7dc5-qw4pq\" (UID: \"fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a\") " pod="local-path-storage/local-path-provisioner-75f7fc7dc5-qw4pq"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.797936     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-s5vn4\" (UniqueName: \"kubernetes.io/projected/fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a-kube-api-access-s5vn4\") pod \"local-path-provisioner-75f7fc7dc5-qw4pq\" (UID: \"fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a\") " pod="local-path-storage/local-path-provisioner-75f7fc7dc5-qw4pq"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.797956     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"config-volume\" (UniqueName: \"kubernetes.io/configmap/5092a6b2-1153-4b3a-8c79-59c96998d8e9-config-volume\") pod \"coredns-559f6c778d-72zvp\" (UID: \"5092a6b2-1153-4b3a-8c79-59c96998d8e9\") " pod="kube-system/coredns-559f6c778d-72zvp"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.798079     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"config-volume\" (UniqueName: \"kubernetes.io/configmap/7067fac3-8f2e-4255-89bd-4f13b95e519c-config-volume\") pod \"coredns-559f6c778d-dwckl\" (UID: \"7067fac3-8f2e-4255-89bd-4f13b95e519c\") " pod="kube-system/coredns-559f6c778d-dwckl"
+Oct 13 15:06:25 burner-control-plane kubelet[585]: I1013 15:06:25.798125     585 reconciler_common.go:251] "operationExecutor.VerifyControllerAttachedVolume started for volume \"kube-api-access-bvvtx\" (UniqueName: \"kubernetes.io/projected/5092a6b2-1153-4b3a-8c79-59c96998d8e9-kube-api-access-bvvtx\") pod \"coredns-559f6c778d-72zvp\" (UID: \"5092a6b2-1153-4b3a-8c79-59c96998d8e9\") " pod="kube-system/coredns-559f6c778d-72zvp"
+Oct 13 15:06:26 burner-control-plane kubelet[585]: I1013 15:06:26.239898     585 server.go:177] "Pod update broadcasted" podUID="7067fac3-8f2e-4255-89bd-4f13b95e519c" type="MODIFIED"
+Oct 13 15:06:26 burner-control-plane kubelet[585]: I1013 15:06:26.273334     585 server.go:177] "Pod update broadcasted" podUID="5092a6b2-1153-4b3a-8c79-59c96998d8e9" type="MODIFIED"
+Oct 13 15:06:26 burner-control-plane kubelet[585]: I1013 15:06:26.294375     585 server.go:177] "Pod update broadcasted" podUID="fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a" type="MODIFIED"
+Oct 13 15:06:26 burner-control-plane kubelet[585]: I1013 15:06:26.892605     585 server.go:177] "Pod update broadcasted" podUID="fe4cd2fc-9b0b-4b6e-8671-51bafaa0e15a" type="MODIFIED"
+Oct 13 15:06:26 burner-control-plane kubelet[585]: I1013 15:06:26.910579     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="local-path-storage/local-path-provisioner-75f7fc7dc5-qw4pq" podStartSLOduration=12.910564732 podStartE2EDuration="12.910564732s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=false podCreationTimestamp="2026-10-13 15:06:14 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:26.910280794 +0000 UTC m=+19.422179430" watchObservedRunningTime="2026-10-13 15:06:26.910564732 +0000 UTC m=+19.422463368"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.055603     585 server.go:177] "Pod update broadcasted" podUID="7067fac3-8f2e-4255-89bd-4f13b95e519c" type="MODIFIED"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.074791     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/coredns-559f6c778d-dwckl" podStartSLOduration=13.074777967 podStartE2EDuration="13.074777967s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=false podCreationTimestamp="2026-10-13 15:06:14 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:27.074231914 +0000 UTC m=+19.586130549" watchObservedRunningTime="2026-10-13 15:06:27.074777967 +0000 UTC m=+19.586676613"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.139930     585 server.go:177] "Pod update broadcasted" podUID="5092a6b2-1153-4b3a-8c79-59c96998d8e9" type="MODIFIED"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.157858     585 pod_startup_latency_tracker.go:144] "Observed pod startup duration" pod="kube-system/coredns-559f6c778d-72zvp" podStartSLOduration=13.157842298 podStartE2EDuration="13.157842298s" totalImagesPullingTime="0s" totalInitContainerRuntime="0s" isStatefulPod=false podCreationTimestamp="2026-10-13 15:06:14 +0000 UTC" imagePullSessionsCount=0 imagePullSessionsStartsCount=0 observedRunningTime="2026-10-13 15:06:27.154882391 +0000 UTC m=+19.666781047" watchObservedRunningTime="2026-10-13 15:06:27.157842298 +0000 UTC m=+19.669740924"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.626593     585 server.go:177] "Pod update broadcasted" podUID="5092a6b2-1153-4b3a-8c79-59c96998d8e9" type="MODIFIED"
+Oct 13 15:06:27 burner-control-plane kubelet[585]: I1013 15:06:27.626752     585 server.go:177] "Pod update broadcasted" podUID="7067fac3-8f2e-4255-89bd-4f13b95e519c" type="MODIFIED"
+Oct 13 15:06:28 burner-control-plane kubelet[585]: I1013 15:06:28.627761     585 server.go:177] "Pod update broadcasted" podUID="5092a6b2-1153-4b3a-8c79-59c96998d8e9" type="MODIFIED"
+Oct 13 15:06:29 burner-control-plane kubelet[585]: I1013 15:06:29.629330     585 server.go:177] "Pod update broadcasted" podUID="7067fac3-8f2e-4255-89bd-4f13b95e519c" type="MODIFIED"

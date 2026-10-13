@@ -8,6 +8,7 @@ export KUBECONFIG="$PRIVATE/kubeconfig" PATH="$BIN:$PATH"
 mkdir -p "$OUT" "$PRIVATE" "$BIN"
 script="$PWD/experiments/kube-burner"
 start=$(date +%s.%N)
+# shellcheck disable=SC2317 # The EXIT trap calls this function.
 cleanup() {
   rc=$?
   trap - EXIT

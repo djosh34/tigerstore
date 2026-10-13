@@ -1,0 +1,5 @@
+Deleting cluster "burner" ...
+Deleted nodes: ["burner-control-plane" "burner-worker" "burner-worker2"]
+external-etcd-1
+external-etcd-2
+external-etcd-3

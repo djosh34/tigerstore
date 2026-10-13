@@ -28,7 +28,11 @@ if [[ "$STORE" == tigerstore ]]; then
 fi
 sudo mount -o remount,barrier=1 /
 test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
-! findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'
+options=$(findmnt -T "$RUNNER_TEMP" -n -o OPTIONS)
+if grep -Eq 'nobarrier|barrier=0' <<< "$options"; then
+  echo "Unsafe mount options: $options" >&2
+  exit 1
+fi
 {
   date -u; printf 'store=%s rep=%s tigerstore_ref=%s experiment_ref=%s\n' "$STORE" "$REP" "$TIGERSTORE_REF" "$(git rev-parse HEAD)"
   printf 'ImageOS=%s ImageVersion=%s\n' "${ImageOS:-}" "${ImageVersion:-}"
