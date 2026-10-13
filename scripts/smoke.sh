@@ -78,6 +78,9 @@ expect "" get leased
 rev=$(ctl put c0 marker -w json | grep -o '"revision":[0-9]*' | cut -d: -f2)
 ctl compaction "$rev" | grep -q "compacted revision $rev"
 ctl member list | grep -q started
+# endpoint health reads a key and then lists the alarms on every node.
+ctl endpoint health
+expect "" alarm list
 # endpoint status reads Maintenance.Status from every node; the table
 # divides by the database size, so a zero size would crash etcdctl.
 ctl endpoint status -w table

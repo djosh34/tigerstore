@@ -412,50 +412,55 @@ func leases(r *run) {
 	r.revoke("revoke lease 0", 0)
 }
 
-// maxRequestSize finds the largest value a put and a txn put accept for one
-// key, and records the requests one byte below, at and above it.
+// maxRequestSize finds the largest value a put and a put inside a
+// transaction accept, for keys of several lengths, and records the requests
+// one byte below, at and above it. etcd limits the marshaled request with
+// its header, so the key's length and the client's certificate identity
+// (#99) both count.
 func maxRequestSize(r *run) {
-	key := r.key("big")
-	accepts := func(n int, txn bool) bool {
-		value := bytes.Repeat([]byte("x"), n)
-		var err error
-		if txn {
-			_, err = r.c.kv.Txn(r.ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}}})
-		} else {
-			_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: key, Value: value})
-		}
-		if err != nil && !strings.Contains(err.Error(), "too large") && !strings.Contains(err.Error(), "larger than max") {
-			r.t.Fatalf("put of %d bytes: %v", n, err)
-		}
-		return err == nil
-	}
-	largest := func(txn bool) int {
-		lo, hi := 0, 4<<20
-		if !accepts(lo, txn) || accepts(hi, txn) {
-			r.t.Fatalf("the limit is not between %d and %d bytes", lo, hi)
-		}
-		for hi-lo > 1 {
-			mid := (lo + hi) / 2
-			if accepts(mid, txn) {
-				lo = mid
+	for _, name := range []string{"b", "big", strings.Repeat("k", 100), strings.Repeat("k", 3000)} {
+		key := r.key(name)
+		accepts := func(n int, txn bool) bool {
+			value := bytes.Repeat([]byte("x"), n)
+			var err error
+			if txn {
+				_, err = r.c.kv.Txn(r.ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}}})
 			} else {
-				hi = mid
+				_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: key, Value: value})
 			}
+			if err != nil && !strings.Contains(err.Error(), "too large") && !strings.Contains(err.Error(), "larger than max") {
+				r.t.Fatalf("put of %d bytes: %v", n, err)
+			}
+			return err == nil
 		}
-		return lo
-	}
-	n := largest(false)
-	// The probes wrote revisions; count from here.
-	r.rebase()
-	r.record(fmt.Sprintf("largest put value for a key of %d bytes", len(key)), n, nil)
-	for _, size := range []int{n - 1, n, n + 1} {
-		r.put(fmt.Sprintf("put %s of the largest size", relSize(size-n)), &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)})
-	}
-	t := largest(true)
-	r.rebase()
-	r.record(fmt.Sprintf("largest txn put value for a key of %d bytes", len(key)), t, nil)
-	for _, size := range []int{t - 1, t, t + 1} {
-		r.txn(fmt.Sprintf("txn put %s of the largest size", relSize(size-t)), &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)}}}}})
+		largest := func(txn bool) int {
+			lo, hi := 0, 4<<20
+			if !accepts(lo, txn) || accepts(hi, txn) {
+				r.t.Fatalf("the limit is not between %d and %d bytes", lo, hi)
+			}
+			for hi-lo > 1 {
+				mid := (lo + hi) / 2
+				if accepts(mid, txn) {
+					lo = mid
+				} else {
+					hi = mid
+				}
+			}
+			return lo
+		}
+		n := largest(false)
+		// The probes wrote revisions; count from here.
+		r.rebase()
+		r.record(fmt.Sprintf("largest put value for a key of %d bytes", len(key)), n, nil)
+		for _, size := range []int{n - 1, n, n + 1} {
+			r.put(fmt.Sprintf("put %s of the largest size, key of %d bytes", relSize(size-n), len(key)), &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)})
+		}
+		t := largest(true)
+		r.rebase()
+		r.record(fmt.Sprintf("largest txn put value for a key of %d bytes", len(key)), t, nil)
+		for _, size := range []int{t - 1, t, t + 1} {
+			r.txn(fmt.Sprintf("txn put %s of the largest size, key of %d bytes", relSize(size-t), len(key)), &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)}}}}})
+		}
 	}
 }
 
