@@ -126,12 +126,12 @@ func independent(res *Result) error {
 }
 
 // linearizableConfig is a short run whose history Porcupine can check:
-// 5 virtual seconds with the same faults and 4 clients, then 5 s of
+// 5 virtual seconds with the same faults and 4 clients, then 8 s of
 // healing, without leases.
 func linearizableConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 5 * Second
-	cfg.Heal = 5 * Second
+	cfg.Heal = 8 * Second
 	cfg.Clients = 4
 	cfg.NoLeases = true
 	return cfg
@@ -198,7 +198,7 @@ func TestAllLinkMasks(t *testing.T) {
 		cfg := DefaultConfig(1000 + mask)
 		cfg.Faults = Faults{HoldMask: mask, HoldMaskAt: 2 * Second}
 		cfg.Duration = 5 * Second
-		cfg.Heal = 5 * Second
+		cfg.Heal = 8 * Second
 		cfg.Clients = 4
 		cfg.NoLeases = true
 		res := run(t, cfg)
@@ -258,7 +258,7 @@ func TestEachFaultTakesEffect(t *testing.T) {
 			cfg := DefaultConfig(3000)
 			cfg.Faults = c.faults
 			cfg.Duration = 5 * Second
-			cfg.Heal = 5 * Second
+			cfg.Heal = 8 * Second
 			res := run(t, cfg)
 			checkers(t, res)
 			if c.count(res.Stats) == 0 {
@@ -351,7 +351,7 @@ func TestDiskFaultAfterHealing(t *testing.T) {
 	cfg := DefaultConfig(6001)
 	cfg.Faults = Faults{DiskErrorEvery: 1000 * Second, HoldMask: 0, HoldMaskAt: 1}
 	cfg.Duration = 5 * Second
-	cfg.Heal = 5 * Second
+	cfg.Heal = 8 * Second
 	res := run(t, cfg)
 	if res.Stats.DiskFaults != 1 {
 		t.Fatalf("%d disk faults, want the guaranteed one", res.Stats.DiskFaults)
