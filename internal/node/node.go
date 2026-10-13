@@ -37,12 +37,16 @@ type Config struct {
 	// WatchQueue is how many responses a watch stream may fall behind
 	// before it is closed; 0 means watchQueue.
 	WatchQueue int
+	// WatchBytes is how many bytes of responses a watch stream may fall
+	// behind before it is closed; 0 means watchBytes.
+	WatchBytes int64
 	Logf       func(format string, args ...any)
 }
 
 // input is one event for the committer from a client or a peer.
 type input struct {
 	req         *request
+	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
 	watchOpen   *WatchStream
@@ -51,6 +55,10 @@ type input struct {
 	stream      uint64
 	status      chan *pb.StatusResponse
 }
+
+// watchBytes is how many bytes of responses a watch stream may fall
+// behind before the node closes it, whatever their count.
+const watchBytes = 64 << 20
 
 // watchQueue is how many responses a watch stream may fall behind before
 // the node closes it. The client then reconnects and resumes.
@@ -65,11 +73,17 @@ var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream 
 type WatchStream struct {
 	n  *Node
 	id uint64
-	// C carries the responses in order.
-	C    chan *pb.WatchResponse
-	done chan struct{}
-	err  error
+	// C carries the responses in order. Whoever takes one calls Taken.
+	C chan *pb.WatchResponse
+	// queued is the size of the responses in C.
+	queued atomic.Int64
+	done   chan struct{}
+	err    error
 }
+
+// Taken reports that a response from C was taken, so its bytes no longer
+// count against the stream's limit.
+func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.queued.Add(-int64(proto.Size(r))) }
 
 // Done is closed when the node dropped the stream; Err then says why.
 func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
@@ -134,6 +148,58 @@ type request struct {
 	reply chan core.Reply
 }
 
+// Completer takes the replies to the requests it handed the node with
+// SubmitBatch. The committer calls Complete once per turn with every reply
+// for it that is ready, in a slice that the completer then owns. Complete
+// must not block.
+type Completer interface {
+	Complete([]Completion)
+}
+
+// Completion is the reply to one request of a batch.
+type Completion struct {
+	Tag any
+	core.Reply
+}
+
+// batch is requests that one client connection hands the committer at
+// once. Their IDs are first, first+1, and so on.
+type batch struct {
+	first uint64
+	reqs  []core.Request
+	tags  []any
+	to    Completer
+}
+
+// waiter is who waits for the reply to a request: a Do call, or a
+// completer with its tag.
+type waiter struct {
+	reply chan core.Reply
+	to    Completer
+	tag   any
+}
+
+// SubmitBatch hands the committer every request in reqs with one inbox
+// send, so a client connection does not pay a channel, a goroutine and a
+// reply channel per request. The node sets their IDs. tags[i] comes back
+// with the reply to reqs[i] through to.Complete. It waits while the inbox
+// is full, which slows down the client connection; it fails only if ctx
+// ends or the node stopped, and then none of the requests was taken. A
+// batch handed over as the node stops may never be answered: the caller
+// fails such requests once Done is closed.
+func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {
+	select {
+	case <-n.done:
+		// put could still win the race for a free inbox, and nobody reads
+		// it any more.
+		return rpctypes.ErrGRPCStopped
+	default:
+	}
+	k := uint64(len(reqs))
+	b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}
+	return n.put(ctx, input{batch: b})
+}
+
 // Node is a running node.
 type Node struct {
 	cfg       Config
@@ -183,6 +249,9 @@ func (n *Node) logf(format string, args ...any) {
 
 // ID is the node's Raft ID.
 func (n *Node) ID() uint64 { return n.cfg.Core.ID }
+
+// ClusterID is the cluster ID in the node's response headers.
+func (n *Node) ClusterID() uint64 { return n.cfg.Core.ClusterID }
 
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
@@ -247,7 +316,9 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	ticker := time.NewTicker(n.cfg.Tick)
 	defer ticker.Stop()
-	waiters := map[uint64]chan core.Reply{}
+	waiters := map[uint64]waiter{}
+	var groups []completions
+	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
 	streams := map[uint64]*WatchStream{}
 	for {
@@ -295,12 +366,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
-		for _, r := range eff.Replies {
-			if ch, ok := waiters[r.ID]; ok {
-				delete(waiters, r.ID)
-				ch <- r
-			}
-		}
+		groups = completeAll(eff.Replies, waiters, groups, groupOf)
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
 			if !ok {
@@ -311,9 +377,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				ws.C <- w.Resp
 				continue
 			}
-			select {
-			case ws.C <- w.Resp:
-			default:
+			// A stream falls too far behind by count or by bytes.
+			size := int64(proto.Size(w.Resp))
+			sent := false
+			if ws.queued.Add(size) <= cmp.Or(n.cfg.WatchBytes, watchBytes) {
+				select {
+				case ws.C <- w.Resp:
+					sent = true
+				default:
+				}
+			}
+			if !sent {
 				delete(streams, w.Stream)
 				n.core.CloseWatchStream(w.Stream)
 				ws.err = ErrWatchTooSlow
@@ -327,8 +401,51 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	}
 }
 
-func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[uint64]*WatchStream) {
+// completions are the replies of one turn for one completer.
+type completions struct {
+	to Completer
+	cs []Completion
+}
+
+// completeAll hands every reply to its waiter: a Do call gets its own,
+// and each completer gets all of its replies in one Complete call.
+func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []completions, groupOf map[Completer]int) []completions {
+	for _, r := range replies {
+		w, ok := waiters[r.ID]
+		if !ok {
+			continue
+		}
+		delete(waiters, r.ID)
+		if w.reply != nil {
+			w.reply <- r
+			continue
+		}
+		i, ok := groupOf[w.to]
+		if !ok {
+			i = len(groups)
+			groupOf[w.to] = i
+			groups = append(groups, completions{to: w.to})
+		}
+		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
+	}
+	for _, g := range groups {
+		g.to.Complete(g.cs)
+	}
+	clear(groupOf)
+	clear(groups)
+	return groups[:0]
+}
+
+func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
 	switch {
+	case in.batch != nil:
+		b := in.batch
+		for i := range b.reqs {
+			r := &b.reqs[i]
+			r.ID = b.first + uint64(i)
+			waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}
+			n.core.Submit(*r)
+		}
 	case in.status != nil:
 		in.status <- n.core.Status()
 	case in.watchOpen != nil:
@@ -341,7 +458,7 @@ func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[
 		delete(streams, in.stream)
 		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:
-		waiters[in.req.id] = in.req.reply
+		waiters[in.req.id] = waiter{reply: in.req.reply}
 		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
 	case in.msg != nil:
 		if err := n.core.Step(in.msg); err != nil {

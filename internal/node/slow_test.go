@@ -111,3 +111,56 @@ func TestSlowWatcherIsCut(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestWatchBytesBound closes a watch stream that is behind by more bytes
+// than its limit, although its count of responses is far below the queue.
+func TestWatchBytesBound(t *testing.T) {
+	cfg := core.DefaultConfig(1, []uint64{1})
+	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: 50 * time.Millisecond, WatchBytes: 8 << 10, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ran := make(chan error, 1)
+	go func() { ran <- n.Run(ctx, noPeers{}) }()
+	defer func() {
+		cancel()
+		if err := <-ran; err != nil {
+			t.Error(err)
+		}
+	}()
+	put := func(i int) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := n.Do(ctx, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i), Value: make([]byte, 1024)})
+		return err
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for put(0) != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("the node never took a write")
+		}
+	}
+	ws, err := n.OpenWatch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+		Key: []byte("k"), RangeEnd: []byte("l"),
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 20; i++ {
+		if err := put(i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-ws.Done():
+		if !errors.Is(ws.Err(), ErrWatchTooSlow) {
+			t.Fatalf("the stream ended with %v", ws.Err())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("a stream behind by 20 KiB was not closed; %d responses queued", len(ws.C))
+	}
+}

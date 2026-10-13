@@ -234,6 +234,9 @@ func (t *TCP) receive(c net.Conn) error {
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return err
 		}
+		// buf is reused for the next frame. That is safe because
+		// Unmarshal copies bytes fields: the entries' data, which the
+		// index keeps slices of once they apply, is the message's own.
 		m := &raftpb.Message{}
 		if err := proto.Unmarshal(buf, m); err != nil {
 			return err

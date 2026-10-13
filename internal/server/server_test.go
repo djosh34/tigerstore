@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,6 +42,8 @@ type cluster struct {
 type running struct {
 	addr string
 	stop func()
+	// stopNode stops the node but leaves its client port open.
+	stopNode func()
 }
 
 func freeAddr(t *testing.T) string {
@@ -116,11 +119,17 @@ func (c *cluster) start(id uint64) {
 	served := make(chan error, 1)
 	go func() { ran <- n.Run(ctx, tr) }()
 	go func() { served <- g.Serve(ln) }()
-	c.running[id] = &running{addr: ln.Addr().String(), stop: func() {
-		cancel()
-		if err := <-ran; err != nil {
-			t.Errorf("node %d: %v", id, err)
-		}
+	var once sync.Once
+	stopNode := func() {
+		once.Do(func() {
+			cancel()
+			if err := <-ran; err != nil {
+				t.Errorf("node %d: %v", id, err)
+			}
+		})
+	}
+	c.running[id] = &running{addr: ln.Addr().String(), stopNode: stopNode, stop: func() {
+		stopNode()
 		stopErr := g.Stop()
 		if err := errors.Join(stopErr, <-served, tr.Close()); err != nil {
 			t.Errorf("node %d: %v", id, err)
@@ -129,6 +138,11 @@ func (c *cluster) start(id uint64) {
 }
 
 func (c *cluster) client(id uint64, cert tls.Certificate) pb.KVClient {
+	return pb.NewKVClient(c.dial(id, cert))
+}
+
+// dial opens a gRPC client connection to node id, closed with the test.
+func (c *cluster) dial(id uint64, cert tls.Certificate) *grpc.ClientConn {
 	conn, err := grpc.NewClient(c.running[id].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
 	})))
@@ -136,7 +150,7 @@ func (c *cluster) client(id uint64, cert tls.Certificate) pb.KVClient {
 		c.t.Fatal(err)
 	}
 	c.t.Cleanup(func() { conn.Close() }) //nolint:errcheck // closing a test client
-	return pb.NewKVClient(conn)
+	return conn
 }
 
 // retry runs fn until it succeeds or 10 s pass; the cluster needs a moment
@@ -367,6 +381,11 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	}
 	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
 		t.Fatalf("/health = %d %q", code, body)
+	}
+	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
+		t.Fatalf("HEAD /version over HTTP/2: %v %v", resp, err)
+	} else if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
 	}
 	// Without a quorum there is no leader for long, and /health says so.
 	c.running[2].stop()

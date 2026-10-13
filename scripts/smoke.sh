@@ -62,6 +62,22 @@ if [ "$(cat "$work/watch.out")" != "$want" ]; then
 	echo "etcdctl watch: got [$(cat "$work/watch.out")], want [$want]"
 	exit 1
 fi
+# Leases, with the keepalive stream, and compaction.
+lease=$(ctl lease grant 60 | awk '{print $2}')
+ctl lease keep-alive --once "$lease" | grep -q "keepalived with TTL(60)" || {
+	echo "lease keep-alive did not renew $lease"
+	exit 1
+}
+expect OK put --lease="$lease" leased v
+ctl lease timetolive "$lease" --keys | grep -q leased || {
+	echo "lease timetolive does not list the leased key"
+	exit 1
+}
+ctl lease revoke "$lease" | grep -q revoked
+expect "" get leased
+rev=$(ctl put c0 marker -w json | grep -o '"revision":[0-9]*' | cut -d: -f2)
+ctl compaction "$rev" | grep -q "compacted revision $rev"
+ctl member list | grep -q started
 # endpoint status reads Maintenance.Status from every node; the table
 # divides by the database size, so a zero size would crash etcdctl.
 ctl endpoint status -w table
@@ -79,6 +95,13 @@ health=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" 
 	"https://127.0.0.1:$((2379 + off))/health")
 if [ "$health" != '{"health":"true","reason":""}' ]; then
 	echo "/health: got [$health]"
+	exit 1
+fi
+# A probe that does not offer HTTP/2 gets /health over HTTP/1.1.
+health=$(curl -sf --http1.1 --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	"https://127.0.0.1:$((2379 + off))/health")
+if [ "$health" != '{"health":"true","reason":""}' ]; then
+	echo "/health over HTTP/1.1: got [$health]"
 	exit 1
 fi
 if etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) --cacert "$work/certs/ca.pem" \

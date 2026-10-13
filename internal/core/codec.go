@@ -31,11 +31,15 @@ const (
 
 var errBadBatch = errors.New("core: malformed batch")
 
-func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
-	buf := binary.AppendUvarint(nil, uint64(len(ps)))
+// encodeBatch packs writes into the data of one Raft entry. A Put in wire
+// form goes in as the client sent it; other writes are marshaled.
+func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
+	buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))
 	for _, p := range ps {
 		var kind byte
 		switch p.req.Op.(type) {
+		case nil:
+			kind = kindPut
 		case *pb.PutRequest:
 			kind = kindPut
 		case *pb.DeleteRangeRequest:
@@ -59,9 +63,14 @@ func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
 		buf = binary.AppendUvarint(buf, boot)
 		buf = binary.AppendUvarint(buf, p.req.ID)
 		buf = append(buf, kind)
+		if p.req.Op == nil {
+			buf = binary.AppendUvarint(buf, uint64(len(p.req.Put.Wire)))
+			buf = append(buf, p.req.Put.Wire...)
+			continue
+		}
 		buf = binary.AppendUvarint(buf, uint64(proto.Size(p.req.Op)))
 		var err error
-		buf, err = proto.MarshalOptions{Deterministic: true}.MarshalAppend(buf, p.req.Op)
+		buf, err = proto.MarshalOptions{Deterministic: true, UseCachedSize: true}.MarshalAppend(buf, p.req.Op)
 		if err != nil {
 			return nil, err
 		}
@@ -69,8 +78,9 @@ func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
 	return buf, nil
 }
 
-// DecodeBatch calls fn for every write in the data of a Raft entry.
-func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
+// walkBatch calls fn for every write in the data of a Raft entry, with
+// the write's bytes in place.
+func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte) error) error {
 	n, data, ok := uvarint(data)
 	if !ok {
 		return errBadBatch
@@ -90,39 +100,53 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 		if size, data, ok = uvarint(data[1:]); !ok || size > uint64(len(data)) {
 			return errBadBatch
 		}
-		var op proto.Message
-		switch kind {
-		case kindPut:
-			op = &pb.PutRequest{}
-		case kindDelete:
-			op = &pb.DeleteRangeRequest{}
-		case kindTxn:
-			op = &pb.TxnRequest{}
-		case kindCompact:
-			op = &pb.CompactionRequest{}
-		case kindGrant:
-			op = &pb.LeaseGrantRequest{}
-		case kindRevoke:
-			op = &pb.LeaseRevokeRequest{}
-		case kindRenew:
-			op = &pb.LeaseKeepAliveRequest{}
-		case kindExpiry:
-			op = &pb.LeaseCheckpoint{}
-		default:
-			return errBadBatch
-		}
-		if err := proto.Unmarshal(data[:size], op); err != nil {
-			return fmt.Errorf("%w: %w", errBadBatch, err)
-		}
-		data = data[size:]
-		if err := fn(origin, boot, id, op); err != nil {
+		if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {
 			return err
 		}
+		data = data[size:]
 	}
 	if len(data) != 0 {
 		return errBadBatch
 	}
 	return nil
+}
+
+// newOp returns an empty request of an entry kind.
+func newOp(kind byte) (proto.Message, error) {
+	switch kind {
+	case kindPut:
+		return &pb.PutRequest{}, nil
+	case kindDelete:
+		return &pb.DeleteRangeRequest{}, nil
+	case kindTxn:
+		return &pb.TxnRequest{}, nil
+	case kindCompact:
+		return &pb.CompactionRequest{}, nil
+	case kindGrant:
+		return &pb.LeaseGrantRequest{}, nil
+	case kindRevoke:
+		return &pb.LeaseRevokeRequest{}, nil
+	case kindRenew:
+		return &pb.LeaseKeepAliveRequest{}, nil
+	case kindExpiry:
+		return &pb.LeaseCheckpoint{}, nil
+	}
+	return nil, errBadBatch
+}
+
+// DecodeBatch calls fn for every write in the data of a Raft entry,
+// decoded. The checks use it; the core applies writes in place.
+func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
+	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte) error {
+		op, err := newOp(kind)
+		if err != nil {
+			return err
+		}
+		if err := proto.Unmarshal(b, op); err != nil {
+			return fmt.Errorf("%w: %w", errBadBatch, err)
+		}
+		return fn(origin, boot, id, op)
+	})
 }
 
 func uvarint(b []byte) (uint64, []byte, bool) {
