@@ -37,6 +37,9 @@ type cluster struct {
 	via map[[2]uint64]string
 	// tick is the Raft tick, 10 ms unless setup changes it.
 	tick time.Duration
+	// peerLns are the peer listeners of nodes not started yet, held open
+	// from the start so that no other process takes their ports.
+	peerLns map[uint64]net.Listener
 }
 
 type running struct {
@@ -46,14 +49,25 @@ type running struct {
 	stopNode func()
 }
 
-func freeAddr(t *testing.T) string {
+// listenPeer listens on addr, or on a free port if addr is empty. A port
+// that a stopped node just released can be busy for a moment, so it
+// retries for a while.
+func listenPeer(t *testing.T, addr string) net.Listener {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	if addr == "" {
+		addr = "127.0.0.1:0"
 	}
-	defer ln.Close() //nolint:errcheck // only the port number is needed
-	return ln.Addr().String()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func newCluster(t *testing.T) *cluster { return newClusterWith(t, nil) }
@@ -64,9 +78,11 @@ func newClusterWith(t *testing.T, setup func(*cluster)) *cluster {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &cluster{t: t, ca: ca, peerAddrs: map[uint64]string{}, dirs: map[uint64]string{}, running: map[uint64]*running{}, tick: 10 * time.Millisecond}
+	c := &cluster{t: t, ca: ca, peerAddrs: map[uint64]string{}, dirs: map[uint64]string{}, running: map[uint64]*running{}, tick: 10 * time.Millisecond, peerLns: map[uint64]net.Listener{}}
 	for id := uint64(1); id <= 3; id++ {
-		c.peerAddrs[id] = freeAddr(t)
+		ln := listenPeer(t, "")
+		c.peerLns[id] = ln
+		c.peerAddrs[id] = ln.Addr().String()
 		c.dirs[id] = t.TempDir()
 	}
 	if setup != nil {
@@ -102,7 +118,13 @@ func (c *cluster) start(id uint64) {
 			}
 		}
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listen: c.peerAddrs[id], Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable})
+	pln, ok := c.peerLns[id]
+	delete(c.peerLns, id)
+	if !ok {
+		// A restart: the stopped transport closed its listener.
+		pln = listenPeer(t, c.peerAddrs[id])
+	}
+	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable})
 	if err != nil {
 		t.Fatal(err)
 	}
