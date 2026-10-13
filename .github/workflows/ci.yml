@@ -145,6 +145,22 @@ jobs:
       - run: etcdctl version
       - run: scripts/smoke.sh
 
+  # The k8s.io/apiserver etcd3 storage tests of each supported Kubernetes
+  # version, unchanged, against a fresh 3-node TLS tigerstore per test.
+  apiserver:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [v0.35.0, v0.36.0, v0.37.0]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: apiservertest/run.sh ${{ matrix.version }}
+
   # Sequential differential tests: the same requests against a fresh etcd
   # v3.7.2 and a fresh 3-node tigerstore, compared with etcd's recorded
   # answers in difftest/testdata.
@@ -189,7 +205,7 @@ jobs:
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, difftest, planted]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, planted]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

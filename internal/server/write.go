@@ -156,6 +156,7 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				}
 				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n]})
 				it.b = it.b[n:]
+				it.started = true
 				c.sendWin -= int64(n)
 				st.sendWin -= int64(n)
 				st.queued -= n

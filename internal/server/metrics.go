@@ -151,7 +151,10 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 func callLabels(path string) string {
 	service, name, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 	typ := "unary"
-	if methods[path].stream != nil {
+	switch m := methods[path]; {
+	case m.serverStream:
+		typ = "server_stream"
+	case m.stream != nil:
 		typ = "bidi_stream"
 	}
 	return fmt.Sprintf("grpc_method=%q,grpc_service=%q,grpc_type=%q", name, service, typ)
