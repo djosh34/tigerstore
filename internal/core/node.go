@@ -869,7 +869,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 				return err
 			}
 			// The op's values are slices of the entry, the one copy.
-			if err := UnmarshalAlias(b, op); err != nil {
+			if err := DecodeAlias(b, op); err != nil {
 				return fmt.Errorf("%w: %w", errBadBatch, err)
 			}
 			resp, err := n.applyOp(op)

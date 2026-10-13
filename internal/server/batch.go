@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"slices"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http2"
@@ -64,11 +66,16 @@ func (c *conn) admit(st *stream) {
 		req.Put = put
 	} else {
 		// The body goes into the Raft entry as it is if the request is a
-		// write. The decoded request is only for checking it, so the
-		// generated decoder, about 1.6 times faster than UnmarshalAlias,
-		// does it; apply decodes the entry without copies.
+		// write; apply decodes the entry again without copies. Here the
+		// request is decoded to check it, by the fastest decoder for its
+		// type.
 		req.Op, req.Wire = st.rpc.op(), st.body
-		if err := unmarshal(st.body, req.Op); err != nil {
+		if _, ok := req.Op.(*pb.TxnRequest); ok {
+			if err := core.DecodeAlias(st.body, req.Op); err != nil {
+				st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+				return
+			}
+		} else if err := unmarshal(st.body, req.Op); err != nil {
 			st.finish(err)
 			return
 		}

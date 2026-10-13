@@ -90,17 +90,27 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 			in = append(append([]byte{}, in...), 0x3a, 2, 'u', 'v', 0x08, 0x05)
 		}
 		for _, cut := range []int{len(in), r.IntN(len(in) + 1)} {
-			want, got := &pb.TxnRequest{}, &pb.TxnRequest{}
+			want := &pb.TxnRequest{}
 			wantErr := proto.Unmarshal(in[:cut], want)
-			err := UnmarshalAlias(in[:cut], got)
-			if (err != nil) != (wantErr != nil) {
-				t.Fatalf("case %d cut %d: unmarshalAlias error %v, protobuf error %v", i, cut, err, wantErr)
-			}
-			if err == nil && !proto.Equal(got, want) {
-				t.Fatalf("case %d cut %d:\n got %v\nwant %v", i, cut, got, want)
+			for name, decode := range txnDecoders {
+				got := &pb.TxnRequest{}
+				err := decode(in[:cut], got)
+				if (err != nil) != (wantErr != nil) {
+					t.Fatalf("%s, case %d cut %d: error %v, protobuf error %v", name, i, cut, err, wantErr)
+				}
+				if err == nil && !proto.Equal(got, want) {
+					t.Fatalf("%s, case %d cut %d:\n got %v\nwant %v", name, i, cut, got, want)
+				}
 			}
 		}
 	}
+}
+
+// txnDecoders are the decoders that must match proto.Unmarshal on
+// transactions.
+var txnDecoders = map[string]func([]byte, *pb.TxnRequest) error{
+	"UnmarshalAlias": func(b []byte, m *pb.TxnRequest) error { return UnmarshalAlias(b, m) },
+	"decodeTxnAlias": decodeTxnAlias,
 }
 
 // TestUnmarshalAliasShares checks that values are slices of the input.
@@ -109,8 +119,11 @@ func TestUnmarshalAliasShares(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := &pb.TxnRequest{}
+	got, fast := &pb.TxnRequest{}, &pb.TxnRequest{}
 	if err := UnmarshalAlias(in, got); err != nil {
+		t.Fatal(err)
+	}
+	if err := decodeTxnAlias(in, fast); err != nil {
 		t.Fatal(err)
 	}
 	i := bytes.Index(in, []byte("value"))
@@ -118,8 +131,10 @@ func TestUnmarshalAliasShares(t *testing.T) {
 		t.Fatal("the encoding does not hold the value")
 	}
 	copy(in[i:], "VALUE")
-	if v := got.Success[0].GetRequestPut().Value; string(v) != "VALUE" || cap(v) != len(v) {
-		t.Fatalf("value %q with capacity %d is not a clipped slice of the input", v, cap(v))
+	for _, m := range []*pb.TxnRequest{got, fast} {
+		if v := m.Success[0].GetRequestPut().Value; string(v) != "VALUE" || cap(v) != len(v) {
+			t.Fatalf("value %q with capacity %d is not a clipped slice of the input", v, cap(v))
+		}
 	}
 }
 
@@ -153,9 +168,11 @@ func TestUnmarshalAliasDepth(t *testing.T) {
 		replaced = protowire.AppendBytes(replaced, append(op, put...))
 		for _, b := range [][]byte{in, replaced} {
 			wantErr := proto.Unmarshal(b, &pb.TxnRequest{})
-			err := UnmarshalAlias(b, &pb.TxnRequest{})
-			if (err != nil) != (wantErr != nil) {
-				t.Fatalf("%d levels: UnmarshalAlias error %v, protobuf error %v", levels, err, wantErr)
+			for name, decode := range txnDecoders {
+				err := decode(b, &pb.TxnRequest{})
+				if (err != nil) != (wantErr != nil) {
+					t.Fatalf("%d levels: %s error %v, protobuf error %v", levels, name, err, wantErr)
+				}
 			}
 		}
 	}
