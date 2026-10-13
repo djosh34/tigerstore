@@ -1,0 +1,112 @@
+name: Correctness round 2 semantics
+on:
+  push:
+    branches: [exp/correct-round2-semantics]
+    paths:
+      - '.github/workflows/correct-round2-semantics.yml'
+      - 'experiments/correct-round2-semantics/client/**'
+      - 'experiments/correct-round2-semantics/runner.py'
+      - 'experiments/correct-round2-semantics/run-checks.py'
+      - 'experiments/correct-round2-semantics/campaign.json'
+      - 'experiments/correct-round2-semantics/product.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      cases: ${{ steps.plan.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          echo "cases=$(jq -c . experiments/correct-round2-semantics/campaign.json)" >> "$GITHUB_OUTPUT"
+  semantics:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.cases) }}
+    name: ${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.seed }}-${{ matrix.rep }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Record attempt before setup
+        shell: bash
+        run: |
+          mkdir -p evidence
+          printf 'product=5d964228952d6983ba273bc2e6813770aad796c6\ntooling=%s\n' "$GITHUB_SHA" > evidence/commits.txt
+          printf '%s\n' '${{ toJSON(matrix) }}' > evidence/attempt.json
+          date -u --iso-8601=seconds > evidence/started.txt
+          uname -a > evidence/runner.txt
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build pinned main and checked experiment client
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          mkdir -p bin
+          product=$(jq -r .commit experiments/correct-round2-semantics/product.json)
+          git worktree add --detach "$RUNNER_TEMP/product" "$product"
+          (cd "$RUNNER_TEMP/product" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
+          (cd experiments/correct-round2-semantics && go test -parallel 2 ./client && go vet ./client && go build -o "$GITHUB_WORKSPACE/bin/semantic-client" ./client)
+          go version >> evidence/commits.txt
+      - name: Install stock etcd v3.7.2
+        shell: bash
+        run: |
+          case "$(uname -m)" in
+            aarch64) arch=arm64; checksum=5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7;;
+            x86_64) arch=amd64; checksum=3a3679bc51a4ee9d30bccea1da7cd4fe62c6fc1d2ca1255068d2c53bf3026135;;
+            *) exit 1;;
+          esac
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" "https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-$arch.tar.gz"
+          echo "$checksum  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-$arch/etcd" bin/etcd
+      - name: Record runner and enable barriers
+        shell: bash
+        run: |
+          sudo mount -o remount,barrier=1 /
+          { lscpu; free -b; findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS; iptables --version; bin/etcd --version; } >> evidence/runner.txt
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          ! findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'
+      - name: Run semantic faults
+        id: faults
+        shell: bash
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
+          sudo -E python3 experiments/correct-round2-semantics/runner.py \
+            --target '${{ matrix.target }}' --scenario '${{ matrix.scenario }}' \
+            --server "$PWD/bin/${{ matrix.target }}" --client "$PWD/bin/semantic-client" \
+            --out "$PWD/evidence/run" --seed '${{ matrix.seed }}' --repetition '${{ matrix.rep }}' \
+            --watchers '${{ matrix.watchers }}' 2>&1 | tee evidence/controller.log
+      - name: Check every recorded history including failures
+        if: always()
+        shell: bash
+        run: |
+          sudo -E python3 experiments/correct-round2-semantics/run-checks.py \
+            --client "$PWD/bin/semantic-client" --backend '${{ matrix.target }}' --out "$PWD/evidence/run" \
+            2>&1 | tee evidence/checks.log
+      - name: Record all outcomes
+        if: always()
+        shell: bash
+        run: |
+          printf '%s\n' '${{ toJSON(steps) }}' > evidence/steps.json
+          sudo chmod -R a+rX evidence
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: correct-round2-semantics-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: evidence
+          retention-days: 30
