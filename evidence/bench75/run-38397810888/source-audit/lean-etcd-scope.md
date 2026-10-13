@@ -1,0 +1,12 @@
+# FINAL lean-vs-grpc etcd scope addendum
+
+Bound to parent-confirmed Actions run **38397810888**, resolved **2026-10-13T12:30:50Z**. Generator/harness **e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f**, engine `experiments/bench75/load/newlean.go`.
+
+- Timed raw measured RPCs omit `grpc-timeout`. Stock etcd/Raft fixed request core remains **3 sends, 3 selected receives, 2 closes, 2 fresh reply channels**.
+- Stock grpc `cancelUpdated` deadline-sync channel creation/callback/close is inside `if timeoutSet` (`evidence/bench75/run-38387706444/etcd-source-audit/deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go:602-615`). Without the timed raw header it does **not** execute. Ten-second grpc control probes/cache Range deadlines are **outside the timed cohort**.
+- The earlier asserted always-single `WriteData(id,true,wire)` framing description is **superseded** by the final committed source and parent's final clarification. The engine calls `WriteData(id, end == len(p.request), p.request[p.sent:end])` in a flow-credit/maxFrame loop. A sub-4-KiB request fits one frame when credit suffices; partial credit can fragment DATA. TLS record/socket segmentation is distinct from HTTP/2 DATA-frame segmentation.
+- grpc codec coalescing **C remains conditional, not asserted zero**. Actual one-buffer recvReader/parser/Materialize input is not proved for every operation in this potentially fragmented path. No old fragmentation or single-frame assumption is imported.
+- Stock etcd Put's **8 known immediate new-value stages include WAL PageWriter staging**, exactly as in the prior verified audit. Conditional C is additional. Deferred bbolt leaf-page serialization and peers remain separate occurrence populations, excluded from that immediate subtotal. These are not physical-copy totals.
+- Committed raw-client response credit is coalesced at **64 KiB** for the connection and sufficiently large still-open streams; cached 10-second write deadline renews only with **<=5 seconds remaining**. These change client framing/control/timer populations, not Tiger's named server value-stage counts. Exact sites and file hashes are in `workload-sites.md/json` and `workload-manifest.json`.
+
+Prior stock etcd source/release/dependency proof is reused by reference, with hashes in `reference-manifest.json`. Prior measured failures, old client deadline clause and old client framing are not silently reused. No mutable-source warning applies to the final committed generator. No code, benchmark or test was executed by this source audit.

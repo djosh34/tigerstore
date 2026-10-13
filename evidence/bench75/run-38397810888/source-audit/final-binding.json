@@ -1,0 +1,10 @@
+{
+  "status": "FINAL",
+  "parent_confirmed": true,
+  "actions_run": "38397810888",
+  "resolved_utc": "2026-10-13T12:30:50Z",
+  "targets": {
+    "main": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "pr80": "67ff792a72f78e83cb6905563dcb6bc0e9bb2764"
+  }
+}

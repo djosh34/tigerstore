@@ -1,0 +1,170 @@
+{
+  "active_connections": 16,
+  "cas_compare_failed": 0,
+  "cas_compare_passed": 60000,
+  "clock_hz": 100,
+  "connection_outstanding_limits": [
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16
+  ],
+  "conns": 16,
+  "control_connections": 1,
+  "cpu_after": [
+    {
+      "PID": 6546,
+      "Ticks": 175,
+      "Start": 20750,
+      "Syscr": 22536,
+      "Syscw": 21878
+    },
+    {
+      "PID": 6545,
+      "Ticks": 80,
+      "Start": 20750,
+      "Syscr": 7145,
+      "Syscw": 2943
+    },
+    {
+      "PID": 6547,
+      "Ticks": 75,
+      "Start": 20750,
+      "Syscr": 6721,
+      "Syscw": 2913
+    },
+    {
+      "PID": 6594,
+      "Ticks": 45,
+      "Start": 21083,
+      "Syscr": 7821,
+      "Syscw": 7624
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 6546,
+      "Ticks": 56,
+      "Start": 20750,
+      "Syscr": 8565,
+      "Syscw": 7347
+    },
+    {
+      "PID": 6545,
+      "Ticks": 26,
+      "Start": 20750,
+      "Syscr": 2332,
+      "Syscw": 1141
+    },
+    {
+      "PID": 6547,
+      "Ticks": 23,
+      "Start": 20750,
+      "Syscr": 2294,
+      "Syscw": 1138
+    },
+    {
+      "PID": 6594,
+      "Ticks": 5,
+      "Start": 21083,
+      "Syscr": 231,
+      "Syscw": 77
+    }
+  ],
+  "cpu_us_op": [
+    19.833333333333332,
+    9,
+    8.666666666666666,
+    6.666666666666667
+  ],
+  "effective_generator": "lean",
+  "elapsed_s": 1.305049023,
+  "errors": {},
+  "generator": "lean",
+  "generator_base_commit": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+  "generator_source": "exp/pre-47-grpc:experiments/grpc/lean.go sha256:9553545389d7ae3d246af1ecf03acc26b7a3f167a7f33883c046054c6ed1f07e; bench75/newlean.go adaptation v1",
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 5278254,
+      "allocated_bytes": 829554496,
+      "heap_object_bytes": 142065120,
+      "gc_cpu_seconds": 0.145778436,
+      "runtime_nonidle_cpu_seconds": 3.214544128999999,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.145778436,
+        "/cpu/classes/idle:cpu-seconds": 6.088520988,
+        "/cpu/classes/total:cpu-seconds": 9.303065117,
+        "/gc/heap/allocs:bytes": 829554496,
+        "/gc/heap/allocs:objects": 5278254,
+        "/memory/classes/heap/objects:bytes": 142065120
+      }
+    },
+    "before": {
+      "allocated_objects": 1417714,
+      "allocated_bytes": 236007304,
+      "heap_object_bytes": 56186816,
+      "gc_cpu_seconds": 0.049208135,
+      "runtime_nonidle_cpu_seconds": 1.0016273250000003,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.049208135,
+        "/cpu/classes/idle:cpu-seconds": 3.497239286,
+        "/cpu/classes/total:cpu-seconds": 4.498866611,
+        "/gc/heap/allocs:bytes": 236007304,
+        "/gc/heap/allocs:objects": 1417714,
+        "/memory/classes/heap/objects:bytes": 56186816
+      }
+    },
+    "bytes_per_op": 9892.4532,
+    "bytes_per_put": 9892.4532,
+    "gc_cpu_share": 0.043639372625957996,
+    "gc_cpu_us_per_op": 1.6095050166666667,
+    "gc_cpu_us_per_put": 1.6095050166666667,
+    "heap_bytes_after": 142065120,
+    "objects_per_op": 64.34233333333333,
+    "objects_per_put": 64.34233333333333
+  },
+  "leader_syscr_per_op": 0.23285,
+  "leader_syscw_per_op": 0.24218333333333333,
+  "max_ms": 16.186957,
+  "mean_ms": 5.5440854434833335,
+  "occupied_cores": [
+    0.911843140776789,
+    0.4137775596802236,
+    0.39845246487725233,
+    0.3065018960594249
+  ],
+  "op": "cas",
+  "ops_s": 45975.28440891373,
+  "p50_ms": 5.255621,
+  "p90_ms": 6.960975,
+  "p999_ms": 14.99646,
+  "p99_ms": 11.106694,
+  "revision_after": 84145,
+  "revision_before": 24145,
+  "start_utc": "2026-10-13T12:34:07.019417691Z",
+  "successes": 60000,
+  "terms": {
+    "1": 60000
+  },
+  "total_connections": 17,
+  "untimed_warm_rpcs": 16,
+  "untimed_warm_writes": 16,
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}

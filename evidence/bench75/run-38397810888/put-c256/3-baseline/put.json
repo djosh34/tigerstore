@@ -1,0 +1,168 @@
+{
+  "active_connections": 16,
+  "clock_hz": 100,
+  "connection_outstanding_limits": [
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16
+  ],
+  "conns": 16,
+  "control_connections": 1,
+  "cpu_after": [
+    {
+      "PID": 5996,
+      "Ticks": 109,
+      "Start": 12089,
+      "Syscr": 18680,
+      "Syscw": 21207
+    },
+    {
+      "PID": 5994,
+      "Ticks": 50,
+      "Start": 12089,
+      "Syscr": 6479,
+      "Syscw": 3024
+    },
+    {
+      "PID": 5995,
+      "Ticks": 43,
+      "Start": 12089,
+      "Syscr": 6488,
+      "Syscw": 3000
+    },
+    {
+      "PID": 6044,
+      "Ticks": 38,
+      "Start": 12376,
+      "Syscr": 7741,
+      "Syscw": 7605
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 5996,
+      "Ticks": 38,
+      "Start": 12089,
+      "Syscr": 7509,
+      "Syscw": 7130
+    },
+    {
+      "PID": 5994,
+      "Ticks": 18,
+      "Start": 12089,
+      "Syscr": 2346,
+      "Syscw": 1170
+    },
+    {
+      "PID": 5995,
+      "Ticks": 15,
+      "Start": 12089,
+      "Syscr": 2278,
+      "Syscw": 1151
+    },
+    {
+      "PID": 6044,
+      "Ticks": 4,
+      "Start": 12376,
+      "Syscr": 209,
+      "Syscw": 73
+    }
+  ],
+  "cpu_us_op": [
+    11.833333333333334,
+    5.333333333333333,
+    4.666666666666667,
+    5.666666666666667
+  ],
+  "effective_generator": "lean",
+  "elapsed_s": 0.781753947,
+  "errors": {},
+  "generator": "lean",
+  "generator_base_commit": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+  "generator_source": "exp/pre-47-grpc:experiments/grpc/lean.go sha256:9553545389d7ae3d246af1ecf03acc26b7a3f167a7f33883c046054c6ed1f07e; bench75/newlean.go adaptation v1",
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 988366,
+      "allocated_bytes": 467313672,
+      "heap_object_bytes": 125740248,
+      "gc_cpu_seconds": 0.055254671,
+      "runtime_nonidle_cpu_seconds": 2.0659503179999996,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.055254671,
+        "/cpu/classes/idle:cpu-seconds": 5.32071381,
+        "/cpu/classes/total:cpu-seconds": 7.386664128,
+        "/gc/heap/allocs:bytes": 467313672,
+        "/gc/heap/allocs:objects": 988366,
+        "/memory/classes/heap/objects:bytes": 125740248
+      }
+    },
+    "before": {
+      "allocated_objects": 334698,
+      "allocated_bytes": 144669952,
+      "heap_object_bytes": 62189608,
+      "gc_cpu_seconds": 0.020283735,
+      "runtime_nonidle_cpu_seconds": 0.6192728609999998,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.020283735,
+        "/cpu/classes/idle:cpu-seconds": 2.881621491,
+        "/cpu/classes/total:cpu-seconds": 3.500894352,
+        "/gc/heap/allocs:bytes": 144669952,
+        "/gc/heap/allocs:objects": 334698,
+        "/memory/classes/heap/objects:bytes": 62189608
+      }
+    },
+    "bytes_per_op": 5377.395333333333,
+    "bytes_per_put": 5377.395333333333,
+    "gc_cpu_share": 0.024173277761941375,
+    "gc_cpu_us_per_op": 0.5828489333333332,
+    "gc_cpu_us_per_put": 0.5828489333333332,
+    "heap_bytes_after": 125740248,
+    "objects_per_op": 10.894466666666666,
+    "objects_per_put": 10.894466666666666
+  },
+  "leader_syscr_per_op": 0.18618333333333334,
+  "leader_syscw_per_op": 0.23461666666666667,
+  "max_ms": 9.669397,
+  "mean_ms": 3.3204482182833335,
+  "occupied_cores": [
+    0.9082141544978986,
+    0.40933595695679936,
+    0.35816896233719947,
+    0.43491945426659934
+  ],
+  "op": "put",
+  "ops_s": 76750.49192939988,
+  "p50_ms": 3.172929,
+  "p90_ms": 4.366269,
+  "p999_ms": 8.60091,
+  "p99_ms": 7.137449,
+  "revision_after": 84145,
+  "revision_before": 24145,
+  "start_utc": "2026-10-13T12:32:37.12772535Z",
+  "successes": 60000,
+  "terms": {
+    "1": 60000
+  },
+  "total_connections": 17,
+  "untimed_warm_rpcs": 16,
+  "untimed_warm_writes": 16,
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}

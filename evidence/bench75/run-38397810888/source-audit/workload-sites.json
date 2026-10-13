@@ -1,0 +1,392 @@
+[
+  {
+    "id": "tls-config",
+    "file": "experiments/bench75/load/main.go",
+    "line": 96,
+    "expected": "cfg := &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13}",
+    "description": "client certificate + roots; TLS1.3 min/max",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "workers",
+    "file": "experiments/bench75/load/main.go",
+    "line": 72,
+    "expected": "workers := flag.Int(\"workers\", 256, \"closed-loop concurrency\")",
+    "description": "256 total closed-loop slots by default",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "connections",
+    "file": "experiments/bench75/load/main.go",
+    "line": 73,
+    "expected": "conns := flag.Int(\"conns\", 16, \"connections\")",
+    "description": "16 active raw connections by default",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "control-count",
+    "file": "experiments/bench75/load/main.go",
+    "line": 100,
+    "expected": "controlConns = 1",
+    "description": "one grpc control connection when lean enabled",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "keyspace",
+    "file": "experiments/bench75/load/main.go",
+    "line": 121,
+    "expected": "const keyspace = 4096",
+    "description": "4096 keys",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "keys",
+    "file": "experiments/bench75/load/main.go",
+    "line": 125,
+    "expected": "keys[i] = []byte(fmt.Sprintf(\"/registry/pods/ns-%03d/pod-%08d\", i%64, i))",
+    "description": "Kubernetes-shaped key naming",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "values",
+    "file": "experiments/bench75/load/main.go",
+    "line": 128,
+    "expected": "s := sha256.Sum256([]byte(fmt.Sprintf(\"pre50-independent-%d-%d\", i, j)))",
+    "description": "32 independent SHA256 chunks per 1KiB constant per-key value",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "cache-seed",
+    "file": "experiments/bench75/load/main.go",
+    "line": 139,
+    "expected": "revisions, e = seedRevisions(clients[0], keys)",
+    "description": "untimed CAS cache seed before pool construction",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "raw-pool",
+    "file": "experiments/bench75/load/main.go",
+    "line": 146,
+    "expected": "lean, e = newLeanPool(*endpoint, cfg, *op, *workers, *conns, keys, values, revisions)",
+    "description": "pool construction warms raw connections before before probe",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "before-revision",
+    "file": "experiments/bench75/load/main.go",
+    "line": 153,
+    "expected": "before, e := probe()",
+    "description": "revision fence after startup writes",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "before-cpu",
+    "file": "experiments/bench75/load/main.go",
+    "line": 262,
+    "expected": "pre[i], e = sample(p)",
+    "description": "CPU/io sampling after warm and before start",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "start",
+    "file": "experiments/bench75/load/main.go",
+    "line": 279,
+    "expected": "close(start)",
+    "description": "timed phase start after snapshots",
+    "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "compare",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 16,
+    "expected": "Compare: []*pb.Compare{{Key: key, Target: pb.Compare_MOD, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_ModRevision{ModRevision: revision}}},",
+    "description": "positive cached MOD EQUAL comparison",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "success-put",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 17,
+    "expected": "Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}},",
+    "description": "one same-key Put on success",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "failure-range",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 18,
+    "expected": "Failure: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key}}}},",
+    "description": "one same-key value-returning point Range on failure",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "seed-range",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 25,
+    "expected": "r, err := client.Range(ctx, &pb.RangeRequest{Key: []byte(\"/registry/pods/\"), RangeEnd: []byte(\"/registry/pods0\"), KeysOnly: true})",
+    "description": "untimed keys-only prefix cache seeding",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "validate-range",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 67,
+    "expected": "if q == nil || q.Header == nil || q.Header.Revision != r.Header.Revision || (q.Header.RaftTerm != 0 && q.Header.RaftTerm != r.Header.RaftTerm) || q.More || q.Count != 1 || len(q.Kvs) != 1 || q.Kvs[0] == nil || !bytes.Equal(q.Kvs[0].Key, key) || !bytes.Equal(q.Kvs[0].Value, value) || q.Kvs[0].ModRevision <= 0 || q.Kvs[0].ModRevision > r.Header.Revision {",
+    "description": "fallback validates shape, keys, exact values and positive revision",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "revision-monotonic",
+    "file": "experiments/bench75/load/cas.go",
+    "line": 76,
+    "expected": "if slot.CompareAndSwap(old, revision) {",
+    "description": "shared cache only advances monotonically",
+    "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "templates",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 42,
+    "expected": "func leanTemplates(keys, values [][]byte, op string) ([]leanTemplate, error) {",
+    "description": "prebuilt Put or CAS compare/branches templates",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "cas-revision",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 75,
+    "expected": "n := binary.PutUvarint(v[:], uint64(revision))",
+    "description": "minimal dynamic positive ModRevision varint",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "cas-length",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 77,
+    "expected": "dst = binary.AppendUvarint(dst, uint64(len(t.compare)+n))",
+    "description": "dynamic Compare byte length",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "global-claim",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 128,
+    "expected": "if p.next.CompareAndSwap(i, i+1) {",
+    "description": "bounded global operation claim, no retries",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "active-connections",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 198,
+    "expected": "for _, slots := range leanSlotCounts(workers, conns) {",
+    "description": "active raw connection population from min(workers,conns) slot counts",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "connection-slots",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 182,
+    "expected": "counts[i] = workers / len(counts)",
+    "description": "total concurrency evenly spread across raw connections",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "warm-rpc",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 224,
+    "expected": "l.commands <- leanCommand{phase: &leanPhase{start: start, total: 1, warm: true}, warmKey: i}",
+    "description": "one untimed raw RPC per connection",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "fields",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 253,
+    "expected": "l.fields = []hpack.HeaderField{{Name: \":method\", Value: \"POST\"}, {Name: \":scheme\", Value: \"https\"}, {Name: \":path\", Value: path}, {Name: \":authority\", Value: authority}, {Name: \"content-type\", Value: \"application/grpc\"}, {Name: \"te\", Value: \"trailers\"}, {Name: \"user-agent\", Value: \"bench75-lean/1\"}}",
+    "description": "complete timed field list; no grpc-timeout",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "first-headers",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 296,
+    "expected": "l.firstHeaders = bytes.Clone(l.headerBuf.Bytes())",
+    "description": "prebuilt first HPACK block",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "warm-headers",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 303,
+    "expected": "l.headers = bytes.Clone(l.headerBuf.Bytes())",
+    "description": "prebuilt warmed HPACK block",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "permutation",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 551,
+    "expected": "k := int((i * 2654435761) % uint64(len(l.keys)))",
+    "description": "global multiplicative permutation",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "cached-revision",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 561,
+    "expected": "p.scratch, err = l.templates[k].casWire(p.scratch, l.revisions[k].Load())",
+    "description": "uses shared positive cached revision without timed pre-read",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "data-framing",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 589,
+    "expected": "if err := l.f.WriteData(id, end == len(p.request), p.request[p.sent:end]); err != nil {",
+    "description": "actual DATA can fragment according to flow credit/maxFrame; no unconditional single-frame assertion",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "receive-credit-size",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 30,
+    "expected": "const leanReceiveCredit = 64 << 10",
+    "description": "64KiB response credit threshold",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "connection-credit",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 709,
+    "expected": "if l.received >= leanReceiveCredit {",
+    "description": "coalesced connection receive credit, includes padding",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "stream-credit",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 717,
+    "expected": "if p.received >= leanReceiveCredit && !ev.end {",
+    "description": "coalesced stream receive credit for sufficiently large open replies",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "deadline-renewal",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 278,
+    "expected": "if l.writeDeadline.Sub(now) > leanTimeout/2 {",
+    "description": "renew 10s write deadline only when remaining time <=5s",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "response-cache",
+    "file": "experiments/bench75/load/newlean.go",
+    "line": 733,
+    "expected": "storeRevision(&l.revisions[p.key], revision)",
+    "description": "valid response monotonically refreshes shared cache",
+    "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "five-reps",
+    "file": "experiments/bench75/run.py",
+    "line": 277,
+    "expected": "for rep in range(1,6):",
+    "description": "five paired repetitions",
+    "sha256": "a98ed8628cfb87c922dff025d66cb0a913fe6252ee4449a8545186a34bc3defc",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "lean-env",
+    "file": ".github/workflows/bench75.yml",
+    "line": 98,
+    "expected": "GENERATOR: lean",
+    "description": "Actions timed generator choice",
+    "sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  },
+  {
+    "id": "matrix",
+    "file": ".github/workflows/bench75.yml",
+    "line": 88,
+    "expected": "include: ${{ fromJSON(inputs.suite == 'put-cas-256' && '[{\"workload\":\"put\",\"clients\":256},{\"workload\":\"cas\",\"clients\":256}]' || inputs.suite == 'put-64-256' && '[{\"workload\":\"put\",\"clients\":64},{\"workload\":\"put\",\"clients\":256}]' || '[{\"workload\":\"put\",\"clients\":64},{\"workload\":\"put\",\"clients\":256},{\"workload\":\"cas\",\"clients\":256}]') }}",
+    "description": "Put256 and CAS256 requested default suite",
+    "sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e",
+    "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+    "status": "FINAL immutable generator source, parent-confirmed"
+  }
+]

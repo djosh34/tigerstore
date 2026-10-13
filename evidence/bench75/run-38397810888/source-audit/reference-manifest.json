@@ -1,0 +1,77 @@
+{
+  "references": [
+    {
+      "path": "evidence/bench75/run-38387706444/source-audit/audit.md",
+      "sha256": "a28c3a70447475febafc01c497cdf456f2bdd3c24bfe5d534526aa569eb198d5"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/source-audit/dependency-integrity.json",
+      "sha256": "c9958773d32b450b1d1f1be209a4862c95bc221fffd87028b59bddc892d117e6"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/source-audit/dependency-proof.md",
+      "sha256": "8e3059784c3d671b63a0d30559f89b0fd26c9ab5369eefbb1adcd2fbacaf3755"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/source-audit/dependency-source-manifest.json",
+      "sha256": "c78ba3d46e89cd90e698c5c71fba7a0a60628a9f6bf5228c89a473b3c3894519"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/audit.md",
+      "sha256": "6a7eb9c711ce35246d66214cee1cda56501c5064fb492a73ba897b4da6cee781"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/verified-sites.md",
+      "sha256": "d573ff3ee0dd0e1b31d4778ab8f4ae7ab8ba5893b65f6abe4128c9f280aa34c1"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/verification.json",
+      "sha256": "113bc8565cef25c0f351d75c1c904cf079eac952ed1c60eabb362318daa4c2d3"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/dependency-integrity.json",
+      "sha256": "89c3fa5fc2910c47033735a070d4ec1cebd3e29ca02807800c6ffbc5c580a7fc"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/client-dependency-integrity.json",
+      "sha256": "6c31baf59d6b92a5e8e6675ab1eb7d7c7841d7932fc524d52bf1ff92f6c0e573"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/release-tag.json",
+      "sha256": "b9134753823b413d1ffcfd336b97ebb69b9bfb7407034d75639e429648038a1d"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/release-tag-object.json",
+      "sha256": "528957804017ded04d37674e47dda2531689a6d2cabf502efac19d3b43c04f9e"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/source/server/go.mod",
+      "sha256": "a3690b8b60b7ef221b50bda3a81ed35f1c81af02cfbacf10ddeffe1dc037f47c"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-source-audit/deps/google.golang.org_grpc@v1.83.2/internal/transport/http2_server.go",
+      "sha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-buildinfo.txt",
+      "sha256": "30f40ec69f30234de01e83cb89dbe64022532a3ec65256a3441e86422a49cef1"
+    },
+    {
+      "path": "evidence/bench75/run-38387706444/etcd-release-sha256.txt",
+      "sha256": "745333eecf7995d8afb209e8a4868bda0bc8f2f3906de663ca914d5773fccfb9"
+    }
+  ],
+  "pins": [
+    {
+      "target": "main",
+      "go.mod": "byte-identical to prior verified hpack/go.mod",
+      "go.sum": "byte-identical to prior verified hpack/go.sum"
+    },
+    {
+      "target": "pr80",
+      "go.mod": "byte-identical to prior verified hpack/go.mod",
+      "go.sum": "byte-identical to prior verified hpack/go.sum"
+    }
+  ],
+  "notes": "Prior etcd measurements/failure counts and grpc-timeout claims are not this run. Release source and pins reused, no refetch."
+}

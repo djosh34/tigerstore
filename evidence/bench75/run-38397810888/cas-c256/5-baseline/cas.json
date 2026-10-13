@@ -1,0 +1,170 @@
+{
+  "active_connections": 16,
+  "cas_compare_failed": 0,
+  "cas_compare_passed": 60000,
+  "clock_hz": 100,
+  "connection_outstanding_limits": [
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16
+  ],
+  "conns": 16,
+  "control_connections": 1,
+  "cpu_after": [
+    {
+      "PID": 6483,
+      "Ticks": 171,
+      "Start": 20263,
+      "Syscr": 22699,
+      "Syscw": 21849
+    },
+    {
+      "PID": 6484,
+      "Ticks": 70,
+      "Start": 20263,
+      "Syscr": 6743,
+      "Syscw": 2889
+    },
+    {
+      "PID": 6485,
+      "Ticks": 67,
+      "Start": 20264,
+      "Syscr": 6531,
+      "Syscw": 2861
+    },
+    {
+      "PID": 6532,
+      "Ticks": 45,
+      "Start": 20601,
+      "Syscr": 7859,
+      "Syscw": 7622
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 6483,
+      "Ticks": 54,
+      "Start": 20263,
+      "Syscr": 8497,
+      "Syscw": 7359
+    },
+    {
+      "PID": 6484,
+      "Ticks": 23,
+      "Start": 20263,
+      "Syscr": 2232,
+      "Syscw": 1115
+    },
+    {
+      "PID": 6485,
+      "Ticks": 21,
+      "Start": 20264,
+      "Syscr": 2272,
+      "Syscw": 1115
+    },
+    {
+      "PID": 6532,
+      "Ticks": 5,
+      "Start": 20601,
+      "Syscr": 229,
+      "Syscw": 77
+    }
+  ],
+  "cpu_us_op": [
+    19.5,
+    7.833333333333333,
+    7.666666666666667,
+    6.666666666666667
+  ],
+  "effective_generator": "lean",
+  "elapsed_s": 1.31177578,
+  "errors": {},
+  "generator": "lean",
+  "generator_base_commit": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+  "generator_source": "exp/pre-47-grpc:experiments/grpc/lean.go sha256:9553545389d7ae3d246af1ecf03acc26b7a3f167a7f33883c046054c6ed1f07e; bench75/newlean.go adaptation v1",
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 4722655,
+      "allocated_bytes": 886932120,
+      "heap_object_bytes": 218792696,
+      "gc_cpu_seconds": 0.127095818,
+      "runtime_nonidle_cpu_seconds": 3.3126216470000003,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.127095818,
+        "/cpu/classes/idle:cpu-seconds": 6.159005573,
+        "/cpu/classes/total:cpu-seconds": 9.47162722,
+        "/gc/heap/allocs:bytes": 886932120,
+        "/gc/heap/allocs:objects": 4722655,
+        "/memory/classes/heap/objects:bytes": 218792696
+      }
+    },
+    "before": {
+      "allocated_objects": 1277135,
+      "allocated_bytes": 249602520,
+      "heap_object_bytes": 88478736,
+      "gc_cpu_seconds": 0.038304633,
+      "runtime_nonidle_cpu_seconds": 0.9596424230000005,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.038304633,
+        "/cpu/classes/idle:cpu-seconds": 3.534524421,
+        "/cpu/classes/total:cpu-seconds": 4.494166844,
+        "/gc/heap/allocs:bytes": 249602520,
+        "/gc/heap/allocs:objects": 1277135,
+        "/memory/classes/heap/objects:bytes": 88478736
+      }
+    },
+    "bytes_per_op": 10622.16,
+    "bytes_per_put": 10622.16,
+    "gc_cpu_share": 0.03773564343209858,
+    "gc_cpu_us_per_op": 1.4798530833333332,
+    "gc_cpu_us_per_put": 1.4798530833333332,
+    "heap_bytes_after": 218792696,
+    "objects_per_op": 57.425333333333334,
+    "objects_per_put": 57.425333333333334
+  },
+  "leader_syscr_per_op": 0.2367,
+  "leader_syscw_per_op": 0.2415,
+  "max_ms": 17.619776,
+  "mean_ms": 5.573440684016666,
+  "occupied_cores": [
+    0.8919207213903583,
+    0.3582929393619388,
+    0.3506696853329614,
+    0.3049301611590969
+  ],
+  "op": "cas",
+  "ops_s": 45739.52417386453,
+  "p50_ms": 5.298334,
+  "p90_ms": 7.188503,
+  "p999_ms": 14.661898,
+  "p99_ms": 12.234893,
+  "revision_after": 84145,
+  "revision_before": 24145,
+  "start_utc": "2026-10-13T12:34:02.201564326Z",
+  "successes": 60000,
+  "terms": {
+    "1": 60000
+  },
+  "total_connections": 17,
+  "untimed_warm_rpcs": 16,
+  "untimed_warm_writes": 16,
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}

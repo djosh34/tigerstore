@@ -1,0 +1,10 @@
+{
+  "status": "FINAL",
+  "targets": {
+    "main": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "pr80": "67ff792a72f78e83cb6905563dcb6bc0e9bb2764"
+  },
+  "verified_sites": 314,
+  "method": "Selected Git show byte equality, exact site assertions, unchanged dependency source hashes and go.mod/go.sum equality; no Go execution",
+  "verified_utc": "2026-10-13T12:34:25.150456+00:00"
+}

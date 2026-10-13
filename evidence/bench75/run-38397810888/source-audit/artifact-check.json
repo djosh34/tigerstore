@@ -1,0 +1,10 @@
+{
+  "server_binding": "FINAL",
+  "generator_binding": "FINAL immutable generator source, parent-confirmed",
+  "final_ready": true,
+  "verified_server_sites": 314,
+  "verified_workload_sites": 39,
+  "checked_utc": "2026-10-13T12:39:12.009938+00:00",
+  "source_only": true,
+  "writes_owned_root_only": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit"
+}

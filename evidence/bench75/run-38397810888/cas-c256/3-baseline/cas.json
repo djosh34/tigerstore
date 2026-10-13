@@ -1,0 +1,170 @@
+{
+  "active_connections": 16,
+  "cas_compare_failed": 0,
+  "cas_compare_passed": 60000,
+  "clock_hz": 100,
+  "connection_outstanding_limits": [
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16,
+    16
+  ],
+  "conns": 16,
+  "control_connections": 1,
+  "cpu_after": [
+    {
+      "PID": 6005,
+      "Ticks": 170,
+      "Start": 12819,
+      "Syscr": 23150,
+      "Syscw": 21806
+    },
+    {
+      "PID": 6003,
+      "Ticks": 69,
+      "Start": 12819,
+      "Syscr": 6938,
+      "Syscw": 2951
+    },
+    {
+      "PID": 6004,
+      "Ticks": 68,
+      "Start": 12819,
+      "Syscr": 6461,
+      "Syscw": 2891
+    },
+    {
+      "PID": 6052,
+      "Ticks": 45,
+      "Start": 13127,
+      "Syscr": 7834,
+      "Syscw": 7624
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 6005,
+      "Ticks": 55,
+      "Start": 12819,
+      "Syscr": 8666,
+      "Syscw": 7363
+    },
+    {
+      "PID": 6003,
+      "Ticks": 22,
+      "Start": 12819,
+      "Syscr": 2349,
+      "Syscw": 1191
+    },
+    {
+      "PID": 6004,
+      "Ticks": 21,
+      "Start": 12819,
+      "Syscr": 2209,
+      "Syscw": 1150
+    },
+    {
+      "PID": 6052,
+      "Ticks": 6,
+      "Start": 13127,
+      "Syscr": 228,
+      "Syscw": 77
+    }
+  ],
+  "cpu_us_op": [
+    19.166666666666668,
+    7.833333333333333,
+    7.833333333333333,
+    6.5
+  ],
+  "effective_generator": "lean",
+  "elapsed_s": 1.323164729,
+  "errors": {},
+  "generator": "lean",
+  "generator_base_commit": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+  "generator_source": "exp/pre-47-grpc:experiments/grpc/lean.go sha256:9553545389d7ae3d246af1ecf03acc26b7a3f167a7f33883c046054c6ed1f07e; bench75/newlean.go adaptation v1",
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 4718883,
+      "allocated_bytes": 886129768,
+      "heap_object_bytes": 273355936,
+      "gc_cpu_seconds": 0.113882429,
+      "runtime_nonidle_cpu_seconds": 2.9572887160000008,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.113882429,
+        "/cpu/classes/idle:cpu-seconds": 5.620711966,
+        "/cpu/classes/total:cpu-seconds": 8.578000682,
+        "/gc/heap/allocs:bytes": 886129768,
+        "/gc/heap/allocs:objects": 4718883,
+        "/memory/classes/heap/objects:bytes": 273355936
+      }
+    },
+    "before": {
+      "allocated_objects": 1276220,
+      "allocated_bytes": 249625040,
+      "heap_object_bytes": 83401568,
+      "gc_cpu_seconds": 0.043735204,
+      "runtime_nonidle_cpu_seconds": 0.9372117449999999,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.043735204,
+        "/cpu/classes/idle:cpu-seconds": 2.979508275,
+        "/cpu/classes/total:cpu-seconds": 3.91672002,
+        "/gc/heap/allocs:bytes": 249625040,
+        "/gc/heap/allocs:objects": 1276220,
+        "/memory/classes/heap/objects:bytes": 83401568
+      }
+    },
+    "bytes_per_op": 10608.412133333333,
+    "bytes_per_put": 10608.412133333333,
+    "gc_cpu_share": 0.034725025831701326,
+    "gc_cpu_us_per_op": 1.1691204166666664,
+    "gc_cpu_us_per_put": 1.1691204166666664,
+    "heap_bytes_after": 273355936,
+    "objects_per_op": 57.377716666666664,
+    "objects_per_put": 57.377716666666664
+  },
+  "leader_syscr_per_op": 0.2414,
+  "leader_syscw_per_op": 0.24071666666666666,
+  "max_ms": 15.728969,
+  "mean_ms": 5.620687001249999,
+  "occupied_cores": [
+    0.869128366858092,
+    0.3552089847159159,
+    0.3552089847159159,
+    0.29474788093448345
+  ],
+  "op": "cas",
+  "ops_s": 45345.82783607437,
+  "p50_ms": 5.334097,
+  "p90_ms": 7.103582,
+  "p999_ms": 15.032409,
+  "p99_ms": 11.948406,
+  "revision_after": 84145,
+  "revision_before": 24145,
+  "start_utc": "2026-10-13T12:32:47.460328357Z",
+  "successes": 60000,
+  "terms": {
+    "1": 60000
+  },
+  "total_connections": 17,
+  "untimed_warm_rpcs": 16,
+  "untimed_warm_writes": 16,
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}

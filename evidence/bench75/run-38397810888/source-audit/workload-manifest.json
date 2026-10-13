@@ -1,0 +1,62 @@
+{
+  "status": "FINAL immutable generator source, parent-confirmed",
+  "observed_utc": "2026-10-13T12:39:11.665899+00:00",
+  "engine_path": "experiments/bench75/load/newlean.go",
+  "files": [
+    {
+      "path": "workload/base/experiments/grpc/lean.go",
+      "sha256": "9553545389d7ae3d246af1ecf03acc26b7a3f167a7f33883c046054c6ed1f07e",
+      "commit": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+      "repo_path": "experiments/grpc/lean.go"
+    },
+    {
+      "path": "workload/observed/experiments/bench75/load/main.go",
+      "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "experiments/bench75/load/main.go",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/experiments/bench75/load/cas.go",
+      "sha256": "c90fc8922b40b15cdea57287a93a382082b725b8e5e11db3567be22cfb1be437",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "experiments/bench75/load/cas.go",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/experiments/bench75/load/newlean.go",
+      "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "experiments/bench75/load/newlean.go",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/.github/workflows/bench75.yml",
+      "sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": ".github/workflows/bench75.yml",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/experiments/bench75/run.py",
+      "sha256": "a98ed8628cfb87c922dff025d66cb0a913fe6252ee4449a8545186a34bc3defc",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "experiments/bench75/run.py",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/go.mod",
+      "sha256": "be477057cd223acd83ca0284395c321ffb634e557815c27a6fc92c912518c222",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "go.mod",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    },
+    {
+      "path": "workload/observed/go.sum",
+      "sha256": "e46e53039cefc3989fec6156d03679b787723aa3cad4eea8e1a395a91e96935b",
+      "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+      "repo_path": "go.sum",
+      "status": "FINAL immutable generator source, parent-confirmed"
+    }
+  ]
+}

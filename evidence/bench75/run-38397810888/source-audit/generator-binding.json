@@ -1,0 +1,9 @@
+{
+  "status": "FINAL",
+  "parent_confirmed": true,
+  "actions_run": "38397810888",
+  "commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+  "engine_path": "experiments/bench75/load/newlean.go",
+  "framing_scope": "DATA may fragment for actual flow credit; no unconditional single-frame claim; codec coalescing C conditional",
+  "profiles_requested": false
+}

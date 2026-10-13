@@ -1,0 +1,13 @@
+{
+  "final_main": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+  "excluded_preliminary_main": "549e0c9c9918a80a320eb886ab1b3480ae73fa69",
+  "complete_git_diff_changed_paths": [
+    "internal/peer/peer_test.go",
+    "internal/peer/stall_test.go"
+  ],
+  "production_source_changed": false,
+  "dependency_pins_changed": false,
+  "method": "Read-only git diff --stat and complete git diff internal/go.mod/go.sum; final selected production sources extracted and reverified by Git show at FINAL SHA",
+  "tests_executed": false,
+  "note": "All report and verified-site bindings use FINAL aa9d9b6, never the preliminary source observation SHA."
+}
