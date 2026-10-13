@@ -228,6 +228,9 @@ def cluster(variant, label):
         time.sleep(8)
         if store != 'etcd':
             retained = [json.loads(http(6060+i, '/debug/alloc?gc=1')) for i in order]
+            for snapshot, i in zip(retained, order):
+                status_text = Path(f'/proc/{procs[i].pid}/status').read_text()
+                snapshot['rss_bytes'] = int(re.search(r'^VmRSS:\s+(\d+) kB$', status_text, re.M)[1])*1024
             (dest/'retained.json').write_text(json.dumps({'forced_gc': True, 'quiet_seconds': 8, 'nodes': retained}, indent=2))
         else:
             for i in order:
