@@ -76,8 +76,8 @@ type WatchStream struct {
 	C chan *pb.WatchResponse
 	// queued is the size of the responses in C.
 	queued atomic.Int64
-	done chan struct{}
-	err  error
+	done   chan struct{}
+	err    error
 }
 
 // Taken reports that a response from C was taken, so its bytes no longer
