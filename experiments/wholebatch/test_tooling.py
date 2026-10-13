@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic artifact and source-overlay checks. No server or benchmark runs."""
 import contextlib
+import csv
 import io
 import json
 from pathlib import Path
@@ -53,6 +54,13 @@ class ToolingTest(unittest.TestCase):
                 summarize(root)
             self.assertIn('1000.0', (root/'summary.csv').read_text())
             self.assertIn('p95_ms', (root/'runs.csv').read_text())
+            with (root/'paired.csv').open() as f:
+                pairs = list(csv.DictReader(f))
+            for candidate, baseline in (('admit', 'rpc'), ('full', 'admit')):
+                selected = [p for p in pairs if p['candidate'] == candidate and p['baseline'] == baseline]
+                self.assertEqual(len(selected), 5)
+                self.assertTrue(all(float(p['ops_s_ratio']) == 1 for p in selected))
+                self.assertIn(f'{candidate}/{baseline}', (root/'summary.md').read_text())
             (root/'5-full/put.json').unlink()
             with self.assertRaises(AssertionError), contextlib.redirect_stdout(io.StringIO()):
                 summarize(root)

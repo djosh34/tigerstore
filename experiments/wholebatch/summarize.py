@@ -91,7 +91,11 @@ def summarize(root):
     for r in rows:
         if r['store'] not in ('rpc', 'admit', 'full'):
             continue
-        for baseline in ('main', 'etcd', 'native'):
+        baselines = ['main', 'etcd', 'native']
+        previous_stage = {'admit': 'rpc', 'full': 'admit'}.get(r['store'])
+        if previous_stage:
+            baselines.append(previous_stage)
+        for baseline in baselines:
             b = [b for b in rows if b['clients'] == r['clients'] and b['rep'] == r['rep'] and b['store'] == baseline]
             if not b:
                 continue
@@ -114,7 +118,17 @@ def summarize(root):
     for r in medians:
         for role in ROLES:
             report.append(f"| {r['clients']} | {r['store']} | {role} | {r[role+'_cpu_us_op']:.3f} | {r[role+'_allocs_op']:.3f} | {r[role+'_bytes_op']:.1f} | {r[role+'_puts_per_fsync']:.3f} |")
+    report += ['', 'Stage ratios divide the later stage by the earlier stage within each repetition, then take the median ratio.',
+               '| Clients | Stages | Put/s ratio | Total CPU/op ratio | Allocs/op ratio | Bytes/op ratio | p95 ratio | p99 ratio |',
+               '| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+    for clients in sorted({r['clients'] for r in rows}):
+        for candidate, baseline in (('admit', 'rpc'), ('full', 'admit')):
+            selected = [p for p in pairs if p['clients'] == clients and p['candidate'] == candidate and p['baseline'] == baseline]
+            assert len(selected) == 5, (clients, candidate, baseline)
+            values = [median(p[k+'_ratio'] for p in selected) for k in ('ops_s', 'server_cpu_us_op', 'server_allocs_op', 'server_bytes_op', 'p95_ms', 'p99_ms')]
+            report.append(f'| {clients} | {candidate}/{baseline} | ' + ' | '.join(f'{v:.3f}' for v in values) + ' |')
     report += ['', 'CPU is process user+system time from /proc, not owner-goroutine CPU.',
+               'CPU and allocation windows do not wait for follower catch-up. Follower cost can fall outside those windows.',
                'Allocation counters bracket the CPU window and include small debug scrape overhead. They count all process allocations, not retained bytes.',
                'Fsync deltas enclose the fully applied cohort on all nodes. etcd also fences on its post-WAL.Save committed gauge.',
                'Tigerstore file syncs exclude directory syncs. etcd counts WAL fsync observations; backend commits are separate in runs.csv.',
