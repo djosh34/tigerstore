@@ -4,7 +4,9 @@ import (
 	"github.com/djosh34/tigerstore/history"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestStampedExpiryNormalization(t *testing.T) {
@@ -57,6 +59,31 @@ func TestLeaseAndCompactionFence(t *testing.T) {
 		t.Fatalf("revision %d error %v", rev, e)
 	}
 }
+func TestFourVerdictsWithMissingLog(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "raw.json")
+	out := filepath.Join(dir, "checks.json")
+	h := history.History{Target: 2, Ops: []history.Op{{Client: 0, Call: 1, Return: 2, Req: history.Request{Put: &history.PutRequest{Key: "k", Value: "v"}}, Resp: &history.Response{Revision: 2, Put: &history.PutResponse{}}}}, Watches: []history.Watch{{Client: 100, Req: history.WatchRequest{Key: "k", StartRevision: 1, PrevKV: true}}}}
+	if e := save(in, h); e != nil {
+		t.Fatal(e)
+	}
+	if e := runChecks(config{history: in, out: out, checkerTimeout: time.Second}); e == nil {
+		t.Fatal("missing log passed")
+	}
+	var results []checkerResult
+	if e := load(out, &results); e != nil {
+		t.Fatal(e)
+	}
+	if len(results) != 4 {
+		t.Fatalf("got %d checker results", len(results))
+	}
+	for i, name := range []string{"Linearizable", "Watches", "Durable", "Revisions"} {
+		if results[i].Name != name || results[i].Passed {
+			t.Fatalf("missing log verdict %+v", results[i])
+		}
+	}
+}
+
 func TestNormalizationFailsClosed(t *testing.T) {
 	n := newNormalizer()
 	if _, e := n.normalize(&pb.AlarmRequest{}, false); e == nil {

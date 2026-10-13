@@ -167,6 +167,8 @@ func semantics(c config) (err error) {
 		Healthy []int `json:"healthy"`
 	}
 	compacted := false
+	compactRevision := int64(0)
+	var canceledAfterBarrier []int
 	grantedDuringFault := false
 	blackholeGrant := false
 	seq := 3
@@ -263,6 +265,7 @@ func semantics(c config) (err error) {
 							return fmt.Errorf("old revision %d not rejected as compacted: %+v", rev-1, old)
 						}
 						compacted = true
+						compactRevision = rev
 						if e := os.WriteFile(filepath.Join(c.out, "compacted-during-fault"), []byte(fmt.Sprintf("%d\n", rev)), 0644); e != nil {
 							return e
 						}
@@ -274,6 +277,25 @@ func semantics(c config) (err error) {
 	}
 	if c.scenario == "compaction" && !compacted {
 		return errors.New("compaction did not acknowledge during the fault")
+	}
+	if c.scenario == "compaction" {
+		// A watch created on a paused/lagging member may legitimately replay
+		// retained history before that member applies compaction. Keep it checked.
+		// New cancellation probes require an apply barrier on every member first.
+		for i := range cs {
+			if _, e := must(i, history.Request{Range: &history.RangeRequest{Key: prefix, End: end}}); e != nil {
+				return e
+			}
+			old := call(i, history.Request{Range: &history.RangeRequest{Key: prefix, End: end, Revision: compactRevision - 1}})
+			if old.Err == nil || old.Err.Code != "OutOfRange" {
+				return fmt.Errorf("member %d retained compacted revision after apply barrier: %+v", i, old)
+			}
+			r.mu.Lock()
+			canceledAfterBarrier = append(canceledAfterBarrier, len(r.h.Watches))
+			r.mu.Unlock()
+			addWatch(i, compactRevision-1)
+		}
+		assertions = append(assertions, "every member rejected compacted historical Range after its linearizable apply barrier")
 	}
 	if c.scenario == "lease" {
 		if !grantedDuringFault || !blackholeGrant {
@@ -458,18 +480,21 @@ func semantics(c config) (err error) {
 		assertions = append(assertions, "each watch received exactly two deletes from fault-time lease at one revision with prev_kv")
 	}
 	if c.scenario == "compaction" {
-		canceled := 0
-		for _, w := range r.h.Watches {
-			for _, v := range w.Responses {
-				if v.Canceled && v.CompactRevision > 0 {
-					canceled++
+		if len(canceledAfterBarrier) != 3 {
+			return errors.New("missing old-revision cancellation probes")
+		}
+		for _, i := range canceledAfterBarrier {
+			cancels := 0
+			for _, v := range r.h.Watches[i].Responses {
+				if v.Canceled && v.CompactRevision == compactRevision {
+					cancels++
 				}
 			}
+			if cancels != 1 {
+				return fmt.Errorf("old-revision watch %d after apply barrier has %d cancellations, want exactly one at %d", i, cancels, compactRevision)
+			}
 		}
-		if canceled != 3 {
-			return fmt.Errorf("expected three old-revision cancels, got %d", canceled)
-		}
-		assertions = append(assertions, "three old-revision watches canceled and three C+1 watches reached target")
+		assertions = append(assertions, "three old-revision watches canceled after apply barriers; during-fault watches replayed or canceled legally; three C+1 watches reached target")
 	}
 	return errors.Join(r.errs...)
 }

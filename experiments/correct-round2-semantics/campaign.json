@@ -1,38 +1,6 @@
 [
   {
     "target": "tigerstore",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 3
-  },
-  {
-    "target": "etcd",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 3
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 3
-  },
-  {
-    "target": "etcd",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 3
-  },
-  {
-    "target": "tigerstore",
     "scenario": "compaction",
     "runner": "ubuntu-24.04-arm",
     "seed": 4901,
@@ -65,70 +33,6 @@
   },
   {
     "target": "tigerstore",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 192
-  },
-  {
-    "target": "etcd",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 192
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 192
-  },
-  {
-    "target": "etcd",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 1,
-    "watchers": 192
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 3
-  },
-  {
-    "target": "etcd",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 3
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 3
-  },
-  {
-    "target": "etcd",
-    "scenario": "lease",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 3
-  },
-  {
-    "target": "tigerstore",
     "scenario": "compaction",
     "runner": "ubuntu-24.04-arm",
     "seed": 4901,
@@ -158,37 +62,5 @@
     "seed": 4901,
     "rep": 2,
     "watchers": 12
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 192
-  },
-  {
-    "target": "etcd",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04-arm",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 192
-  },
-  {
-    "target": "tigerstore",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 192
-  },
-  {
-    "target": "etcd",
-    "scenario": "watchers",
-    "runner": "ubuntu-24.04",
-    "seed": 4901,
-    "rep": 2,
-    "watchers": 192
   }
 ]
