@@ -1,0 +1,10 @@
+{
+  "ref": "refs/tags/v3.7.2",
+  "node_id": "MDM6UmVmMTEyMjUwMTQ6cmVmcy90YWdzL3YzLjcuMg==",
+  "url": "https://api.github.com/repos/etcd-io/etcd/git/refs/tags/v3.7.2",
+  "object": {
+    "sha": "cb9b1aa2b1237b59255d65773c34ab0cd9df3679",
+    "type": "tag",
+    "url": "https://api.github.com/repos/etcd-io/etcd/git/tags/cb9b1aa2b1237b59255d65773c34ab0cd9df3679"
+  }
+}

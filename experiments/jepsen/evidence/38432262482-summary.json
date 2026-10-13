@@ -1,0 +1,296 @@
+[
+  {
+    "directory": "jepsen-tigerstore-register-kill-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": "unknown",
+    "stats": {
+      "valid?": true,
+      "count": 1653,
+      "ok-count": 1210,
+      "fail-count": 314,
+      "info-count": 129,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 421,
+          "ok-count": 64,
+          "fail-count": 290,
+          "info-count": 67
+        },
+        "read": {
+          "valid?": true,
+          "count": 824,
+          "ok-count": 799,
+          "fail-count": 24,
+          "info-count": 1
+        },
+        "write": {
+          "valid?": true,
+          "count": 408,
+          "ok-count": 347,
+          "fail-count": 0,
+          "info-count": 61
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":kill": 18,
+      ":start": 20
+    },
+    "status": "fail"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-none-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis none --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2670,
+      "ok-count": 2152,
+      "fail-count": 518,
+      "info-count": 0,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 635,
+          "ok-count": 117,
+          "fail-count": 518,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 1357,
+          "ok-count": 1357,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 678,
+          "ok-count": 678,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-partition-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis partition --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": "unknown",
+    "stats": {
+      "valid?": true,
+      "count": 2348,
+      "ok-count": 891,
+      "fail-count": 221,
+      "info-count": 1236,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 806,
+          "ok-count": 32,
+          "fail-count": 191,
+          "info-count": 583
+        },
+        "read": {
+          "valid?": true,
+          "count": 690,
+          "ok-count": 660,
+          "fail-count": 30,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 852,
+          "ok-count": 199,
+          "fail-count": 0,
+          "info-count": 653
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":start-partition": 20,
+      ":stop-partition": 22
+    },
+    "status": "fail"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-pause-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2117,
+      "ok-count": 1811,
+      "fail-count": 281,
+      "info-count": 25,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 355,
+          "ok-count": 69,
+          "fail-count": 275,
+          "info-count": 11
+        },
+        "read": {
+          "valid?": true,
+          "count": 1433,
+          "ok-count": 1427,
+          "fail-count": 6,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 329,
+          "ok-count": 315,
+          "fail-count": 0,
+          "info-count": 14
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":pause": 18,
+      ":resume": 20
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-set-kill-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1620,
+      "ok-count": 1591,
+      "fail-count": 24,
+      "info-count": 5,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 247,
+          "ok-count": 242,
+          "fail-count": 0,
+          "info-count": 5
+        },
+        "read": {
+          "valid?": true,
+          "count": 1373,
+          "ok-count": 1349,
+          "fail-count": 24,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":kill": 22,
+      ":start": 24
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-set-none-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis none --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2749,
+      "ok-count": 2749,
+      "fail-count": 0,
+      "info-count": 0,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 417,
+          "ok-count": 417,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 2332,
+          "ok-count": 2332,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-set-partition-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis partition --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1394,
+      "ok-count": 1334,
+      "fail-count": 48,
+      "info-count": 12,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 160,
+          "ok-count": 148,
+          "fail-count": 0,
+          "info-count": 12
+        },
+        "read": {
+          "valid?": true,
+          "count": 1234,
+          "ok-count": 1186,
+          "fail-count": 48,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":start-partition": 16,
+      ":stop-partition": 18
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-set-pause-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1868,
+      "ok-count": 1854,
+      "fail-count": 12,
+      "info-count": 2,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 270,
+          "ok-count": 268,
+          "fail-count": 0,
+          "info-count": 2
+        },
+        "read": {
+          "valid?": true,
+          "count": 1598,
+          "ok-count": 1586,
+          "fail-count": 12,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":pause": 18,
+      ":resume": 20
+    },
+    "status": "pass"
+  }
+]

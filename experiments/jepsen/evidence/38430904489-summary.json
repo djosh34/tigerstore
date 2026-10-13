@@ -1,0 +1,296 @@
+[
+  {
+    "directory": "jepsen-etcd-register-kill-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1607,
+      "ok-count": 1291,
+      "fail-count": 291,
+      "info-count": 25,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 347,
+          "ok-count": 57,
+          "fail-count": 274,
+          "info-count": 16
+        },
+        "read": {
+          "valid?": true,
+          "count": 875,
+          "ok-count": 858,
+          "fail-count": 17,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 385,
+          "ok-count": 376,
+          "fail-count": 0,
+          "info-count": 9
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":kill": 18,
+      ":start": 18
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-register-none-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis none --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2704,
+      "ok-count": 2201,
+      "fail-count": 503,
+      "info-count": 0,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 650,
+          "ok-count": 147,
+          "fail-count": 503,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 1341,
+          "ok-count": 1341,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 713,
+          "ok-count": 713,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-register-partition-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis partition --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1744,
+      "ok-count": 1376,
+      "fail-count": 348,
+      "info-count": 20,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 428,
+          "ok-count": 88,
+          "fail-count": 329,
+          "info-count": 11
+        },
+        "read": {
+          "valid?": true,
+          "count": 912,
+          "ok-count": 893,
+          "fail-count": 19,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 404,
+          "ok-count": 395,
+          "fail-count": 0,
+          "info-count": 9
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":start-partition": 20,
+      ":stop-partition": 20
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-register-pause-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1818,
+      "ok-count": 1439,
+      "fail-count": 365,
+      "info-count": 14,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 443,
+          "ok-count": 79,
+          "fail-count": 355,
+          "info-count": 9
+        },
+        "read": {
+          "valid?": true,
+          "count": 968,
+          "ok-count": 958,
+          "fail-count": 10,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 407,
+          "ok-count": 402,
+          "fail-count": 0,
+          "info-count": 5
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":pause": 16,
+      ":resume": 18
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-set-kill-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1793,
+      "ok-count": 1759,
+      "fail-count": 27,
+      "info-count": 7,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 393,
+          "ok-count": 386,
+          "fail-count": 0,
+          "info-count": 7
+        },
+        "read": {
+          "valid?": true,
+          "count": 1400,
+          "ok-count": 1373,
+          "fail-count": 27,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":kill": 20,
+      ":start": 20
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-set-none-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis none --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2698,
+      "ok-count": 2698,
+      "fail-count": 0,
+      "info-count": 0,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 412,
+          "ok-count": 412,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 2286,
+          "ok-count": 2286,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-set-partition-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis partition --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1686,
+      "ok-count": 1642,
+      "fail-count": 39,
+      "info-count": 5,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 262,
+          "ok-count": 257,
+          "fail-count": 0,
+          "info-count": 5
+        },
+        "read": {
+          "valid?": true,
+          "count": 1424,
+          "ok-count": 1385,
+          "fail-count": 39,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":start-partition": 16,
+      ":stop-partition": 18
+    },
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-etcd-set-pause-rep1-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 200",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2093,
+      "ok-count": 2073,
+      "fail-count": 17,
+      "info-count": 3,
+      "by-f": {
+        "add": {
+          "valid?": true,
+          "count": 321,
+          "ok-count": 318,
+          "fail-count": 0,
+          "info-count": 3
+        },
+        "read": {
+          "valid?": true,
+          "count": 1772,
+          "ok-count": 1755,
+          "fail-count": 17,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":pause": 14,
+      ":resume": 16
+    },
+    "status": "pass"
+  }
+]
