@@ -179,8 +179,9 @@ func TestByteCapSendsAnEntryEarly(t *testing.T) {
 	if len(sent) == 0 {
 		t.Fatal("20 empty writes waited without limit behind one append")
 	}
+	// An empty keepalive counts only its framing, so 9 fit in 400 bytes.
 	for _, n := range sent {
-		if n*(batchFraming+2) > 400+batchFraming+2 {
+		if n*batchFraming > s.n.cfg.MaxBatchBytes {
 			t.Fatalf("an entry of %d writes went past the cap", n)
 		}
 	}

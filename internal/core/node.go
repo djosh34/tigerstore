@@ -474,9 +474,10 @@ func (n *Node) propose() {
 		}
 		return
 	}
-	// The next local append with entries carries this batch; writes wait
-	// until it is durable (ownIndex).
-	n.awaitOwn = true
+	// On the leader, the next local append with entries carries this
+	// batch; writes wait until it is durable (ownIndex). A follower only
+	// forwards, so nothing waits.
+	n.awaitOwn = n.isLeader
 }
 
 // requestReads asks Raft for one read index for all queued reads.
