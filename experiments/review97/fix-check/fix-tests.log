@@ -1,0 +1,296 @@
+=== RUN   TestRangeStream
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 10.238582ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 11.537503ms
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:43478: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:47206: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:47216: EOF
+--- PASS: TestRangeStream (0.34s)
+=== RUN   TestRangeStreamPinnedAndCompacted
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409625 bytes in 16.420064ms
+    server_test.go:111: node 2: slow write to the log: 3 entries, 1228875 bytes in 11.213669ms
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:50800: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:50796: EOF
+--- PASS: TestRangeStreamPinnedAndCompacted (0.43s)
+=== RUN   TestRangeStreamWithoutRequest
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:46924: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:46908: EOF
+--- PASS: TestRangeStreamWithoutRequest (0.02s)
+=== RUN   TestReview97SnapshotCancel
+=== RUN   TestReview97SnapshotCancel/etcd
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+=== RUN   TestReview97SnapshotCancel/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:37202: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:45398: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:37206: EOF
+--- PASS: TestReview97SnapshotCancel (3.04s)
+    --- PASS: TestReview97SnapshotCancel/etcd (1.33s)
+    --- PASS: TestReview97SnapshotCancel/tiger (1.71s)
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:60344: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:33706: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:60360: EOF
+--- PASS: TestReview97Boundary (2.38s)
+    --- PASS: TestReview97Boundary/etcd (1.06s)
+    --- PASS: TestReview97Boundary/tiger (1.32s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=25 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:55070: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:51446: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:51460: EOF
+--- PASS: TestReview97Compaction (4.15s)
+    --- PASS: TestReview97Compaction/etcd (1.79s)
+    --- PASS: TestReview97Compaction/tiger (2.37s)
+=== RUN   TestRangeStream
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 14.566723ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 14.560098ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 10.501832ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 10.518124ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 10.782334ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 13.570552ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 15.182851ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 15.266101ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 14.313723ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 13.217343ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 15.987771ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 20.805248ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 20.10162ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 20.279871ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 12.616674ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 15.08785ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 23 bytes in 15.083684ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 14.16943ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 14.156055ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 23 bytes in 10.109123ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 10.337165ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 10.336082ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 13.569969ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 13.407344ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 23 bytes in 15.155475ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 15.28631ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 15.266643ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 14.313055ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 23 bytes in 13.657053ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 23 bytes in 13.857304ms
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:58208: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:42830: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:58202: EOF
+    server_test.go:111: node 2: peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 127.0.0.1:53592->127.0.0.1:40937: write: broken pipe
+--- PASS: TestRangeStream (0.67s)
+=== RUN   TestRangeStreamPinnedAndCompacted
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 10.18579ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 11.986672ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 12.350464ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 17.253608ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 10.764458ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 409626 bytes in 14.655974ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 14.724599ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 14.258597ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 409626 bytes in 17.423692ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 23.7183ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 15.125017ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 15.582352ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 12.946967ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 13.275677ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 16.547939ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 10.753292ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 409626 bytes in 10.778209ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 16.184271ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 15.717977ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 409626 bytes in 20.349246ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 10.168831ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 22.497504ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 15.212059ms
+    server_test.go:111: node 2: slow write to the log: 0 entries, 0 bytes in 15.251142ms
+    server_test.go:111: node 1: slow write to the log: 1 entries, 409626 bytes in 13.199134ms
+    server_test.go:111: node 3: slow write to the log: 1 entries, 409626 bytes in 13.286051ms
+    server_test.go:111: node 2: slow write to the log: 1 entries, 409626 bytes in 18.949949ms
+    server_test.go:111: node 3: slow write to the log: 0 entries, 0 bytes in 12.696466ms
+    server_test.go:111: node 1: slow write to the log: 0 entries, 0 bytes in 12.732924ms
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:50366: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:56074: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:56084: EOF
+--- PASS: TestRangeStreamPinnedAndCompacted (0.55s)
+=== RUN   TestRangeStreamWithoutRequest
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:53384: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:32924: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:32938: EOF
+--- PASS: TestRangeStreamWithoutRequest (0.02s)
+=== RUN   TestReview97SnapshotCancel
+=== RUN   TestReview97SnapshotCancel/etcd
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+=== RUN   TestReview97SnapshotCancel/tiger
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:41070: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:45288: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:41076: EOF
+--- PASS: TestReview97SnapshotCancel (2.61s)
+    --- PASS: TestReview97SnapshotCancel/etcd (1.41s)
+    --- PASS: TestReview97SnapshotCancel/tiger (1.20s)
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:47226: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:47212: EOF
+--- PASS: TestReview97Boundary (2.47s)
+    --- PASS: TestReview97Boundary/etcd (1.08s)
+    --- PASS: TestReview97Boundary/tiger (1.39s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=25 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:54560: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:49920: EOF
+--- PASS: TestReview97Compaction (2.66s)
+    --- PASS: TestReview97Compaction/etcd (1.26s)
+    --- PASS: TestReview97Compaction/tiger (1.40s)
+=== RUN   TestRangeStream
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:33074: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:41778: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:33058: EOF
+--- PASS: TestRangeStream (0.35s)
+=== RUN   TestRangeStreamPinnedAndCompacted
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:52460: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:49824: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:52470: EOF
+--- PASS: TestRangeStreamPinnedAndCompacted (0.39s)
+=== RUN   TestRangeStreamWithoutRequest
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:46234: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:36994: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:37004: EOF
+--- PASS: TestRangeStreamWithoutRequest (0.01s)
+=== RUN   TestReview97SnapshotCancel
+=== RUN   TestReview97SnapshotCancel/etcd
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+=== RUN   TestReview97SnapshotCancel/tiger
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:52618: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:53640: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:52630: EOF
+--- PASS: TestReview97SnapshotCancel (3.00s)
+    --- PASS: TestReview97SnapshotCancel/etcd (1.17s)
+    --- PASS: TestReview97SnapshotCancel/tiger (1.83s)
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:55048: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:41686: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:41700: EOF
+--- PASS: TestReview97Boundary (2.59s)
+    --- PASS: TestReview97Boundary/etcd (1.10s)
+    --- PASS: TestReview97Boundary/tiger (1.49s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=25 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:54618: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:40470: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:40472: EOF
+--- PASS: TestReview97Compaction (2.56s)
+    --- PASS: TestReview97Compaction/etcd (1.25s)
+    --- PASS: TestReview97Compaction/tiger (1.31s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/server	28.248s

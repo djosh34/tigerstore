@@ -1,0 +1,2 @@
+started 3 nodes; logs in data/node*.log
+ok  	github.com/djosh34/tigerstore/difftest	3.058s
