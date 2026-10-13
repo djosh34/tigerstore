@@ -1,0 +1,14 @@
+=== RUN   TestAllocationPath
+    allocation_path_test.go:138: {
+          "allocated_bytes_per_put": 19757.90625,
+          "heap_alloc_after_forced_gc": 15115608,
+          "leader_id": 2,
+          "mallocs_per_put": 326.05859375,
+          "mem_profile_rate": 1,
+          "scope": "in-process client plus leader and two followers, not leader-only",
+          "strategy": "",
+          "successful_puts": 256,
+          "value_bytes": 1024
+        }
+--- PASS: TestAllocationPath (0.86s)
+PASS
