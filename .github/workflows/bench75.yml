@@ -1,15 +1,19 @@
-name: Paired Put benchmark
+name: Paired Put and CAS benchmark
 on:
   workflow_dispatch:
     inputs:
       candidate_ref:
         description: First candidate branch, tag or commit
-        default: work/50-frontend
+        default: work/50-wire
         type: string
         required: true
       second_candidate_ref:
         description: Optional second candidate branch, tag or commit
-        default: work/50-batch
+        default: work/50-hpack
+        type: string
+      third_candidate_ref:
+        description: Optional third candidate, also the CAS candidate
+        default: work/50-txn
         type: string
       baseline_ref:
         description: Baseline branch, tag or commit
@@ -17,7 +21,7 @@ on:
         type: string
         required: true
       capture_profiles:
-        description: Separate 256-client CPU and allocation profiles of the second candidate
+        description: Separate 256-client CPU and allocation profiles of the last candidate
         default: false
         type: boolean
 permissions:
@@ -31,6 +35,7 @@ jobs:
       baseline: ${{ steps.refs.outputs.baseline }}
       candidate: ${{ steps.refs.outputs.candidate }}
       second: ${{ steps.refs.outputs.second }}
+      third: ${{ steps.refs.outputs.third }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,8 +43,9 @@ jobs:
       - id: refs
         env:
           BASELINE_REF: ${{ inputs.baseline_ref || 'main' }}
-          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-frontend' }}
-          SECOND_REF: ${{ github.event_name == 'push' && 'work/50-batch' || inputs.second_candidate_ref }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-wire' }}
+          SECOND_REF: ${{ inputs.second_candidate_ref }}
+          THIRD_REF: ${{ inputs.third_candidate_ref }}
         run: |
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           resolve() {
@@ -54,8 +60,11 @@ jobs:
           if [ -n "$SECOND_REF" ]; then
             echo "second=$(resolve "$SECOND_REF")" >> "$GITHUB_OUTPUT"
           fi
+          if [ -n "$THIRD_REF" ]; then
+            echo "third=$(resolve "$THIRD_REF")" >> "$GITHUB_OUTPUT"
+          fi
           date -u +%FT%TZ
-          grep -E '^(baseline|candidate|second)=' "$GITHUB_OUTPUT"
+          grep -E '^(baseline|candidate|second|third)=' "$GITHUB_OUTPUT"
   paired:
     needs: resolve
     if: github.ref == 'refs/heads/exp/bench-75'
@@ -64,7 +73,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        clients: [64, 256]
+        include:
+          - {workload: put, clients: 64}
+          - {workload: put, clients: 256}
+          - {workload: cas, clients: 256}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,13 +88,15 @@ jobs:
         env:
           CLIENTS: ${{ matrix.clients }}
           BASELINE_REF: ${{ needs.resolve.outputs.baseline }}
-          CANDIDATE_REF: ${{ needs.resolve.outputs.candidate }}
-          SECOND_CANDIDATE_REF: ${{ needs.resolve.outputs.second }}
-          CAPTURE_PROFILES: ${{ inputs.capture_profiles && '1' || '0' }}
+          WORKLOAD: ${{ matrix.workload }}
+          CANDIDATE_REF: ${{ matrix.workload == 'cas' && (needs.resolve.outputs.third || needs.resolve.outputs.candidate) || needs.resolve.outputs.candidate }}
+          SECOND_CANDIDATE_REF: ${{ matrix.workload == 'put' && needs.resolve.outputs.second || '' }}
+          THIRD_CANDIDATE_REF: ${{ matrix.workload == 'put' && needs.resolve.outputs.third || '' }}
+          CAPTURE_PROFILES: ${{ inputs.capture_profiles && matrix.workload == 'put' && matrix.clients == 256 && '1' || '0' }}
         run: timeout --kill-after=5s 820s bash experiments/bench75/run.sh
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: bench75-${{ github.run_id }}-${{ matrix.clients }}
+          name: bench75-${{ github.run_id }}-${{ matrix.workload }}-${{ matrix.clients }}
           path: evidence/bench75/run-${{ github.run_id }}
           retention-days: 14

@@ -10,15 +10,22 @@ if [[ -n "$SECOND" ]]; then
  SECOND=$(git rev-parse "$SECOND^{commit}")
  SOURCES+=(second)
 fi
+THIRD=${THIRD_CANDIDATE_REF:-}
+if [[ -n "$THIRD" ]]; then
+ THIRD=$(git rev-parse "$THIRD^{commit}")
+ SOURCES+=(third)
+fi
+export PROFILE_STORE=${SOURCES[-1]}
+export WORKLOAD=${WORKLOAD:-put}
 export BENCH_OUT=$PWD/evidence/bench75/run-${GITHUB_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
-OUT=$BENCH_OUT/c${CLIENTS:?}
+OUT=$BENCH_OUT/$WORKLOAD-c${CLIENTS:?}
 PRIVATE=$RUNNER_TEMP/bench75
 [[ ! -e "$OUT" && ! -e "$PRIVATE" ]]
 mkdir -p "$OUT" "$PRIVATE/bin" "$PRIVATE/baseline" "$PRIVATE/candidate"
 trap 'rm -rf "$PRIVATE"' EXIT
 {
  date -u +%FT%TZ
- printf 'baseline %s\ncandidate %s\nsecond %s\nexperiment %s\n' "$BASELINE" "$CANDIDATE" "$SECOND" "$(git rev-parse HEAD)"
+ printf 'baseline %s\ncandidate %s\nsecond %s\nthird %s\nexperiment %s\n' "$BASELINE" "$CANDIDATE" "$SECOND" "$THIRD" "$(git rev-parse HEAD)"
  uname -a
  lscpu
  free -b
@@ -44,6 +51,10 @@ if [[ -n "$SECOND" ]]; then
  mkdir -p "$PRIVATE/second"
  git archive "$SECOND" | tar -x -C "$PRIVATE/second"
 fi
+if [[ -n "$THIRD" ]]; then
+ mkdir -p "$PRIVATE/third"
+ git archive "$THIRD" | tar -x -C "$PRIVATE/third"
+fi
 for source in "${SOURCES[@]}"; do
  check_time
  python3 experiments/bench75/install-observe.py "$PRIVATE/$source"
@@ -53,7 +64,7 @@ check_time
 go build -o "$PRIVATE/bin/load" ./experiments/bench75/load
 check_time
 go test -short ./experiments/bench75/load
-printf 'baseline %s\ncandidate %s\nsecond %s\nexperiment %s\n' "$BASELINE" "$CANDIDATE" "$SECOND" "$(git rev-parse HEAD)" > "$OUT/sources.txt"
+printf 'baseline %s\ncandidate %s\nsecond %s\nthird %s\nexperiment %s\n' "$BASELINE" "$CANDIDATE" "$SECOND" "$THIRD" "$(git rev-parse HEAD)" > "$OUT/sources.txt"
 {
  "$PRIVATE/bin/etcd" --version
  "$PRIVATE/bin/etcdctl" version
@@ -61,12 +72,13 @@ printf 'baseline %s\ncandidate %s\nsecond %s\nexperiment %s\n' "$BASELINE" "$CAN
  go version -m "$PRIVATE/bin/baseline"
  go version -m "$PRIVATE/bin/candidate"
  if [[ -n "$SECOND" ]]; then go version -m "$PRIVATE/bin/second"; fi
+ if [[ -n "$THIRD" ]]; then go version -m "$PRIVATE/bin/third"; fi
  go version -m "$PRIVATE/bin/load"
 } > "$OUT/versions.txt"
 bash scripts/dev-certs.sh "$PRIVATE/certs"
 timeout --kill-after=5s 650s taskset -c 3 python3 experiments/bench75/run.py
-if [[ ${CAPTURE_PROFILES:-0} == 1 && $CLIENTS == 256 ]]; then
+if [[ ${CAPTURE_PROFILES:-0} == 1 && $CLIENTS == 256 && $WORKLOAD == put ]]; then
  check_time
- gzip -c "$PRIVATE/bin/second" > "$OUT/profile-second/second-symbols.gz"
+ gzip -c "$PRIVATE/bin/$PROFILE_STORE" > "$OUT/profile-$PROFILE_STORE/candidate-symbols.gz"
 fi
 python3 experiments/bench75/summarize.py "$BENCH_OUT"

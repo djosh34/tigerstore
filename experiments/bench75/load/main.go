@@ -29,6 +29,7 @@ import (
 type cpu struct {
 	PID          int
 	Ticks, Start uint64
+	Syscr, Syscw uint64
 }
 
 func sample(pid int) (cpu, error) {
@@ -50,13 +51,21 @@ func sample(pid int) (cpu, error) {
 		return cpu{}, e
 	}
 	st, e := strconv.ParseUint(s[19], 10, 64)
-	return cpu{pid, u + k, st}, e
+	if e != nil {
+		return cpu{}, e
+	}
+	io, e := os.ReadFile(fmt.Sprintf("/proc/%d/io", pid))
+	if e != nil {
+		return cpu{}, e
+	}
+	r, w, e := parseIO(io)
+	return cpu{PID: pid, Ticks: u + k, Start: st, Syscr: r, Syscw: w}, e
 }
 
 func run() error {
 	endpoint := flag.String("endpoint", "127.0.0.1:2379", "leader endpoint")
 	certdir := flag.String("certdir", "", "cert directory")
-	op := flag.String("op", "put", "put or range")
+	op := flag.String("op", "put", "put, range or cas")
 	total := flag.Uint64("total", 60000, "operations, zero for duration")
 	duration := flag.Duration("duration", 0, "arrival duration, drain included in elapsed")
 	workers := flag.Int("workers", 256, "closed-loop concurrency")
@@ -68,7 +77,7 @@ func run() error {
 	metricsKind := flag.String("metrics-kind", "runtime", "runtime or etcd")
 	readyFile := flag.String("ready-file", "", "optional profile-run arrival-start marker")
 	flag.Parse()
-	if (*op != "put" && *op != "range") || *workers < 1 || *conns < 1 || (*total == 0 && *duration <= 0) {
+	if (*op != "put" && *op != "range" && *op != "cas") || *workers < 1 || *conns < 1 || (*total == 0 && *duration <= 0) {
 		return errors.New("invalid flags")
 	}
 	ca, e := os.ReadFile(*certdir + "/ca.pem")
@@ -123,6 +132,13 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	var revisions []atomic.Int64
+	if *op == "cas" {
+		revisions, e = seedRevisions(clients[0], keys)
+		if e != nil {
+			return e
+		}
+	}
 	pids := []int{}
 	if *pidstr != "" {
 		for p := range strings.SplitSeq(*pidstr, ",") {
@@ -142,6 +158,8 @@ func run() error {
 	latencies := make([][]int64, *workers)
 	errs := make([]map[string]int, *workers)
 	terms := make([]map[uint64]int, *workers)
+	casPasses := make([]uint64, *workers)
+	casFailures := make([]uint64, *workers)
 	var deadline time.Time
 	for w := range *workers {
 		wg.Go(func() {
@@ -149,6 +167,7 @@ func run() error {
 			local := make([]int64, 0, 1024)
 			em := map[string]int{}
 			tm := map[uint64]int{}
+			var passes, failures uint64
 			for {
 				i := next.Add(1) - 1
 				if (*total > 0 && i >= *total) || (!deadline.IsZero() && !time.Now().Before(deadline)) {
@@ -164,6 +183,24 @@ func run() error {
 					r, err = clients[w%*conns].Put(ctx, &pb.PutRequest{Key: keys[k], Value: values[k]})
 					if r != nil {
 						h = r.Header
+					}
+				} else if *op == "cas" {
+					var r *pb.TxnResponse
+					r, err = clients[w%*conns].Txn(ctx, casRequest(keys[k], values[k], revisions[k].Load()))
+					if r != nil {
+						h = r.Header
+						if err == nil {
+							var revision int64
+							revision, err = checkCAS(r, keys[k], values[k])
+							if err == nil {
+								storeRevision(&revisions[k], revision)
+								if r.Succeeded {
+									passes++
+								} else {
+									failures++
+								}
+							}
+						}
 					}
 				} else {
 					var r *pb.RangeResponse
@@ -190,6 +227,7 @@ func run() error {
 			latencies[w] = local
 			errs[w] = em
 			terms[w] = tm
+			casPasses[w], casFailures[w] = passes, failures
 		})
 	}
 	var heapBefore, heapAfter heapSnapshot
@@ -225,6 +263,9 @@ func run() error {
 		if pre[i].Start != post[i].Start {
 			return errors.New("process restarted")
 		}
+		if post[i].Ticks < pre[i].Ticks || post[i].Syscr < pre[i].Syscr || post[i].Syscw < pre[i].Syscw {
+			return errors.New("process counter decreased")
+		}
 	}
 	if *metricsURL != "" {
 		heapAfter, e = sampleHeap(*metricsURL, *metricsKind)
@@ -239,7 +280,10 @@ func run() error {
 	all := []int64{}
 	em := map[string]int{}
 	tm := map[uint64]int{}
+	var casPassed, casFailed uint64
 	for i := range *workers {
+		casPassed += casPasses[i]
+		casFailed += casFailures[i]
 		all = append(all, latencies[i]...)
 		for k, n := range errs[i] {
 			em[k] += n
@@ -265,8 +309,15 @@ func run() error {
 		occup[i] = secs / elapsed
 	}
 	delta := after.Header.Revision - before.Header.Revision
-	valid := len(em) == 0 && len(tm) == 1 && (*total == 0 || uint64(len(all)) == *total) && ((*op == "put" && delta == int64(len(all))) || (*op == "range" && delta == 0))
+	valid := len(em) == 0 && len(tm) == 1 && (*total == 0 || uint64(len(all)) == *total) && ((*op == "put" && delta == int64(len(all))) || (*op == "range" && delta == 0) || (*op == "cas" && delta == int64(casPassed) && casPassed+casFailed == uint64(len(all))))
 	result := map[string]any{"valid": valid, "op": *op, "successes": len(all), "errors": em, "terms": tm, "elapsed_s": elapsed, "ops_s": float64(len(all)) / elapsed, "mean_ms": sum / float64(len(all)) / 1e6, "p50_ms": pct(.5), "p90_ms": pct(.9), "p99_ms": pct(.99), "p999_ms": pct(.999), "max_ms": float64(all[len(all)-1]) / 1e6, "cpu_us_op": cpus, "occupied_cores": occup, "cpu_before": pre, "cpu_after": post, "revision_before": before.Header.Revision, "revision_after": after.Header.Revision, "workers": *workers, "conns": *conns, "keyspace": keyspace, "value_bytes": 1024, "clock_hz": *hz, "start_utc": t.UTC().Format(time.RFC3339Nano)}
+	if *op == "cas" {
+		result["cas_compare_passed"], result["cas_compare_failed"] = casPassed, casFailed
+	}
+	if len(pids) > 1 {
+		result["leader_syscr_per_op"] = float64(post[0].Syscr-pre[0].Syscr) / float64(len(all))
+		result["leader_syscw_per_op"] = float64(post[0].Syscw-pre[0].Syscw) / float64(len(all))
+	}
 	if *metricsURL != "" {
 		delta, err := heapDelta(heapBefore, heapAfter, len(all))
 		if err != nil {

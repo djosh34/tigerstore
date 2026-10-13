@@ -12,7 +12,9 @@ import urllib.request
 
 ROOT = Path.cwd()
 WORKERS = int(os.environ['CLIENTS'])
-OUT = Path(os.environ['BENCH_OUT']) / f'c{WORKERS}'
+WORKLOAD = os.environ.get('WORKLOAD', 'put')
+assert WORKLOAD in ('put', 'cas'), WORKLOAD
+OUT = Path(os.environ['BENCH_OUT']) / f'{WORKLOAD}-c{WORKERS}'
 TMP = Path(os.environ['RUNNER_TEMP']) / 'bench75'
 CERT = TMP / 'certs'
 BIN = TMP / 'bin'
@@ -118,15 +120,15 @@ def cluster(store, label, profile=False):
         (dest/'placement.json').write_text(json.dumps({'leader_index':leader,'node_order':order,'pids':pids,'status_before':status},indent=2))
         endpoint = f'127.0.0.1:{2379+leader*100}'
 
-        def load_args(name, total, workers=WORKERS):
+        def load_args(name, total, workers=WORKERS, op=WORKLOAD):
             return ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
                     '-certdir', str(CERT), '-pids', pids, '-hz', sp.check_output(['getconf','CLK_TCK'],text=True).strip(),
-                    '-op','put','-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
+                    '-op',op,'-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
                     '-metrics-url',f'http://127.0.0.1:{6060+leader}/' + ('metrics' if store == 'etcd' else 'debug/runtime'),
                     '-metrics-kind', 'etcd' if store == 'etcd' else 'runtime']
 
-        def load(name, total, workers=WORKERS):
-            run(load_args(name, total, workers), env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)
+        def load(name, total, workers=WORKERS, op=WORKLOAD):
+            run(load_args(name, total, workers, op), env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)
 
         def capture_profiles():
             ready = dest/'arrivals-start.txt'
@@ -171,6 +173,9 @@ def cluster(store, label, profile=False):
                     args += [str(BIN/store), str(dest/f'{file}.pb.gz')]
                     with open(dest/f'{kind}-{"cum" if cumulative else "flat"}.txt', 'w') as output:
                         run(args, stdout=output, stderr=sp.STDOUT)
+            with open(dest/'cpu-peek-Syscall6.txt', 'w') as output:
+                run(['go', 'tool', 'pprof', '-nodefraction=0', '-edgefraction=0', '-peek=Syscall6',
+                     str(BIN/store), str(dest/'cpu.pb.gz')], stdout=output, stderr=sp.STDOUT)
 
         def disk(phase):
             result = []
@@ -215,7 +220,7 @@ def cluster(store, label, profile=False):
                     raise RuntimeError(f'catch-up failed: {revision}, {observed}')
                 time.sleep(.02)
 
-        load('seed',4096,workers=64)
+        load('seed',4096,workers=64,op='put')
         load('warmup',20000)
         time.sleep(1)
         warmup = json.loads((dest/'warmup.json').read_text())
@@ -225,8 +230,8 @@ def cluster(store, label, profile=False):
             capture_profiles()
             result = json.loads((dest/'profile-load.json').read_text())
         else:
-            load('put',60000)
-            result = json.loads((dest/'put.json').read_text())
+            load(WORKLOAD,60000)
+            result = json.loads((dest/f'{WORKLOAD}.json').read_text())
         terms_after = applied_fence(result['revision_after'], 'after')
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
         after_disk = disk('after')
@@ -267,17 +272,18 @@ def main():
         stores = ['baseline', 'candidate']
         if os.environ.get('SECOND_CANDIDATE_REF'):
             stores.append('second')
+        if os.environ.get('THIRD_CANDIDATE_REF'):
+            stores.append('third')
         stores.append('etcd')
         if rep % 2 == 0:
             stores.reverse()
         for store in stores:
-            print(f'{WORKERS} clients, repetition {rep}, {store}',flush=True)
+            print(f'{WORKLOAD}, {WORKERS} clients, repetition {rep}, {store}',flush=True)
             cluster(store,f'{rep}-{store}')
-    if WORKERS == 256 and os.environ.get('CAPTURE_PROFILES') == '1':
-        if not os.environ.get('SECOND_CANDIDATE_REF'):
-            raise RuntimeError('profiling requires a second candidate')
-        print('Separate second-candidate 256-client profile cluster', flush=True)
-        cluster('second', 'profile-second', profile=True)
+    if WORKLOAD == 'put' and WORKERS == 256 and os.environ.get('CAPTURE_PROFILES') == '1':
+        store = os.environ['PROFILE_STORE']
+        print(f'Separate {store} 256-client profile cluster', flush=True)
+        cluster(store, f'profile-{store}', profile=True)
 
 
 if __name__ == '__main__':

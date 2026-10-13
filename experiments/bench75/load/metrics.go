@@ -89,6 +89,9 @@ func heapDelta(before, after heapSnapshot, n int) (map[string]any, error) {
 		"before":           before,
 		"after":            after,
 	}
+	// Keep the original JSON names for the archived Put-only reports.
+	result["objects_per_op"] = result["objects_per_put"]
+	result["bytes_per_op"] = result["bytes_per_put"]
 	if before.HasGCCPU && after.HasGCCPU {
 		gc, busy := after.GCCPU-before.GCCPU, after.BusyCPU-before.BusyCPU
 		if gc < 0 || busy <= 0 {
@@ -96,6 +99,7 @@ func heapDelta(before, after heapSnapshot, n int) (map[string]any, error) {
 		}
 		result["gc_cpu_share"] = gc / busy
 		result["gc_cpu_us_per_put"] = gc * 1e6 / float64(n)
+		result["gc_cpu_us_per_op"] = result["gc_cpu_us_per_put"]
 	} else {
 		result["gc_cpu_share"] = nil
 	}
