@@ -73,7 +73,7 @@ var plantedCases = map[string]plantedCase{
 	"B08":  {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
-	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states`},
+	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},

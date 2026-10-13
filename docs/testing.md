@@ -19,7 +19,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B08 | Compaction drops the tombstone at the compaction revision | Same as B06a | 32 | planted; its CI job must catch it |
 | B09a | Each changed key of a write gets its own revision | A read or the replayed log disagrees with the model | 16 | planted; its CI job must catch it |
 | B09b | A recreated key keeps its old version and create revision | Same as B09a | 16 | planted; its CI job must catch it |
-| B10 | Followers expire leases on their own clock | Nodes that applied the same log hold different states, or a read disagrees with the model | 64 | planted; its CI job must catch it |
+| B10 | Followers expire leases on their own clock | Nodes that applied the same log hold different states, a read disagrees with the model, or a watch sees a delete no replicated expiry made | 64 | planted; its CI job must catch it |
 | B11 | The disk driver treats a failed fsync as success | A node recovers less than it reported durable, or recovery refuses the log | 64 | planted; its CI job must catch it |
 | B12 | The WAL keeps going after a short write | Same as B11 (see deviations) | 256 | planted; its CI job must catch it |
 | B15 | The history treats a timed-out call as certainly aborted | The durability checker finds a committed write that no client sent | 32 | planted; its CI job must catch it |
