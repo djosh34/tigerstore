@@ -17,7 +17,7 @@ on:
         description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, or mixed-k8s (Kubernetes 1.37 dump sizes)
         default: put-1k txn-1k mixed-k8s
       modes:
-        description: max, rate (half etcd max, or fixed 500/s for rate-only mixed-k8s), or both
+        description: max, rate (half etcd max), or both; mixed-k8s always runs rate-only at fixed 500/s
         default: max rate
       reps:
         description: repetitions
@@ -105,7 +105,7 @@ jobs:
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || 'max rate' }}
+          MODES: ${{ matrix.bench == 'mixed-k8s' && 'rate' || inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '5' }}
         run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
       # A failed run leaves no comparison: the report would be over the

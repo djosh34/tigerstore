@@ -18,9 +18,9 @@
 # mixed-k8s uses the Kubernetes 1.37 dump sizes, not a fixed byte size.
 # Preload has a separate 300 Txns/s arrival rate to limit setup bursts.
 # Its mix is get/list/update/create/delete = 25/10/40/15/10, plus watches
-# on each resource. MIX overrides it. With rate only, MIXED_RATE defaults
-# to 500 arrivals/s, fixed for every target. With max, rate is half etcd's
-# median max as for the other workloads.
+# on each resource. MIX overrides it. Mixed is rate-only; MIXED_RATE
+# defaults to 500 arrivals/s, fixed for every target. This avoids a second
+# set of 1M-key preloads and keeps the job within its 45-minute limit.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -41,7 +41,9 @@ bench=$1
 out=$2
 read -r -a targets <<<"${TARGETS:-etcd}"
 read -r -a layout <<<"${LAYOUT:-3 0 1 2}"
-read -r -a modes <<<"${MODES:-max rate}"
+default_modes="max rate"
+if [ "$bench" = mixed-k8s ]; then default_modes=rate; fi
+read -r -a modes <<<"${MODES:-$default_modes}"
 reps=${REPS:-5}
 data=${DATA:-/tmp/bench-data}
 bins=$(realpath "${BINS:-bin}")
@@ -81,6 +83,10 @@ keys=10000 warmup=3s duration=10s
 # streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
 concurrency=()
 if [ "$workload" = mixed ]; then
+	if [ "${#modes[@]}" -ne 1 ] || [ "${modes[0]}" != rate ]; then
+		echo "mixed-k8s is rate-only; use MODES=rate" >&2
+		exit 2
+	fi
 	keys=1000000
 	concurrency=(-conns 6 -streams 16 -mix "${MIX:-25,10,40,15,10}")
 	# ~1.47 GB values per replica before log/index overhead. Three nodes
