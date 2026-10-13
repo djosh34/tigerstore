@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -151,7 +152,7 @@ func TestForwardedWritesDoNotHoldLocalOnes(t *testing.T) {
 				return
 			}
 		}
-		held = append(first.Persist, second.Persist...)
+		held = slices.Concat(first.Persist, second.Persist)
 		s.n.Tick()
 	}
 	t.Fatal("a local write never went out while forwarded proposals kept arriving")
