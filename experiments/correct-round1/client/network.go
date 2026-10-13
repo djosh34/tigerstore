@@ -330,7 +330,7 @@ func workload(c config) (err error) {
 		watchWG.Add(1)
 		go func(i int, cl *clientv3.Client) { defer watchWG.Done(); r.watch(watchCtx, cl, i, prefix) }(i, cl)
 	}
-	extraBytes := 0
+	extraBytes := []int{0, 0, 0}
 	if c.nearLimit {
 		extraBytes, err = probeLimit(r, cs, c, prefix)
 		if err != nil {
@@ -394,7 +394,7 @@ func workload(c config) (err error) {
 					}
 				}
 				if c.nearLimit {
-					fitLimit(&q, identity, extraBytes)
+					fitLimit(&q, identity, extraBytes[i])
 				}
 				op := r.call(cl, i, q, c.requestTimeout)
 				if op.Resp != nil {

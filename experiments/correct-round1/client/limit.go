@@ -53,7 +53,7 @@ func fitLimit(q *history.Request, identity string, extra int) {
 	n := capBytes + extra - framedSize(*q)
 	p.Value = p.Value[:len(p.Value)+n]
 }
-func probeLimit(r *recorder, cs []*clientv3.Client, c config, prefix string) (extra int, err error) {
+func probeLimit(r *recorder, cs []*clientv3.Client, c config, prefix string) (extras []int, err error) {
 	var evidence []map[string]any
 	record := func(label string, cl *clientv3.Client, id int, q history.Request) history.Op {
 		op := r.call(cl, id, q, c.requestTimeout)
@@ -65,25 +65,54 @@ func probeLimit(r *recorder, cs []*clientv3.Client, c config, prefix string) (ex
 		q := history.Request{Put: &history.PutRequest{Key: prefix + "k0", Value: strings.Repeat("z", capBytes), PrevKV: true}}
 		op := record("exact-1.5-MiB-rejection", cl, 30+i, q)
 		if op.Err == nil || op.Err.Ambiguous || !strings.Contains(op.Err.Message, "request is too large") {
-			return 0, fmt.Errorf("exact limit did not return definite request-too-large: %+v", op.Err)
+			return nil, fmt.Errorf("exact limit did not return definite request-too-large: %+v", op.Err)
 		}
 	}
-	largest := -1
-	for extra := 0; extra <= 10; extra++ {
-		q := history.Request{Put: &history.PutRequest{Key: prefix + "k0", Value: "probe", PrevKV: true}}
-		fitLimit(&q, fmt.Sprintf("probe-%d:", extra), extra)
-		op := record("boundary-scan", cs[0], 33, q)
-		if op.Resp != nil {
-			largest = extra
-			continue
+	// A stock etcd member can add TLS-derived username bytes to the header,
+	// even with auth disabled. Measure each pinned member instead of assuming
+	// that the strict-ID sizing used by tigerstore is the complete header.
+	for i, cl := range cs {
+		low, high := -64, 10
+		probe := func(extra int) (bool, error) {
+			q := history.Request{Put: &history.PutRequest{Key: prefix + "k0", Value: "probe", PrevKV: true}}
+			fitLimit(&q, fmt.Sprintf("probe-c%d-e%d:", i, extra), extra)
+			op := record("boundary-search", cl, 33+i, q)
+			if op.Resp != nil {
+				return true, nil
+			}
+			if op.Err == nil || op.Err.Ambiguous || !strings.Contains(op.Err.Message, "request is too large") {
+				return false, fmt.Errorf("limit probe ambiguous or unexpected: %+v", op.Err)
+			}
+			return false, nil
 		}
-		if op.Err == nil || op.Err.Ambiguous || !strings.Contains(op.Err.Message, "request is too large") {
-			return 0, fmt.Errorf("limit probe ambiguous or unexpected: %+v", op.Err)
+		ok, e := probe(low)
+		if e != nil {
+			return nil, e
 		}
-		if largest < 0 {
-			return 0, errors.New("strict near-limit payload rejected")
+		if !ok {
+			return nil, errors.New("lower limit bracket rejected")
 		}
-		return largest, nil
+		ok, e = probe(high)
+		if e != nil {
+			return nil, e
+		}
+		if ok {
+			return nil, errors.New("upper limit bracket admitted")
+		}
+		for high-low > 1 {
+			mid := (low + high) / 2
+			ok, e = probe(mid)
+			if e != nil {
+				return nil, e
+			}
+			if ok {
+				low = mid
+			} else {
+				high = mid
+			}
+		}
+		extras = append(extras, low)
+		evidence = append(evidence, map[string]any{"label": "largest-admitted-allowance", "client": i, "extra_bytes": low, "rejected_extra_bytes": high})
 	}
-	return 0, errors.New("no near-limit rejection boundary within ten bytes")
+	return extras, nil
 }

@@ -123,6 +123,21 @@ jobs:
             'run_id': os.environ['GITHUB_RUN_ID'], 'product': '5d964228952d6983ba273bc2e6813770aad796c6'}, indent=2)+'\n')
           PY
           sudo chmod -R a+rX evidence
+      - name: Create compact permanent evidence
+        if: always()
+        shell: bash
+        env:
+          NAME: clocks-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.role }}-${{ matrix.seed }}-${{ matrix.rep }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/compact-source"
+          ln -s "$PWD/evidence" "$RUNNER_TEMP/compact-source/$NAME"
+          python3 experiments/correct-round2-clocks/archive-results.py "$RUNNER_TEMP/compact-source" compact
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: compact-clocks-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.role }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: compact
+          retention-days: 30
       - uses: actions/upload-artifact@v6
         if: always()
         with:
