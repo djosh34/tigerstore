@@ -67,8 +67,11 @@ type stream struct {
 	// reqHeld is above 0 while the node has the request and has not
 	// answered.
 	reqHeld, replyHeld int
-	ended              bool // the writer took the end of the stream
-	reset              bool // the stream or connection is gone; output is dropped
+	// calls counts this call for /metrics; counted is set once its end is.
+	calls   *callMetrics
+	counted bool
+	ended   bool // the writer took the end of the stream
+	reset   bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte
@@ -132,6 +135,7 @@ func (st *stream) receive(d []byte) error {
 		if len(st.msg) < cap(st.msg) {
 			return nil
 		}
+		st.c.metrics.received.add(int64(len(st.msg)))
 		st.deliver(st.msg)
 		st.msg, st.hdrN = nil, 0
 	}
@@ -275,6 +279,13 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 // pushLocked queues output as push does. c.mu is held and the caller
 // signals the writer.
 func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+	if end {
+		code := codes.OK
+		if s != nil {
+			code = s.Code()
+		}
+		st.countEnd(code)
+	}
 	if st.reset || st.c.closed {
 		return
 	}
@@ -283,6 +294,7 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 		st.out = make([]outItem, 0, 3)
 	}
 	if msg != nil {
+		st.c.metrics.sent.add(int64(len(msg) - 5))
 		if !st.headersQueued {
 			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
 			st.headersQueued = true

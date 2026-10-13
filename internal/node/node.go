@@ -54,6 +54,7 @@ type input struct {
 	watchClose  bool
 	stream      uint64
 	status      chan *pb.StatusResponse
+	metrics     chan core.Metrics
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -119,6 +120,22 @@ func (n *Node) Status(ctx context.Context) (*pb.StatusResponse, error) {
 		return nil, ctx.Err()
 	case <-n.done:
 		return nil, rpctypes.ErrGRPCStopped
+	}
+}
+
+// Metrics returns the node's metrics.
+func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
+	ch := make(chan core.Metrics, 1)
+	if err := n.put(ctx, input{metrics: ch}); err != nil {
+		return core.Metrics{}, err
+	}
+	select {
+	case m := <-ch:
+		return m, nil
+	case <-ctx.Done():
+		return core.Metrics{}, ctx.Err()
+	case <-n.done:
+		return core.Metrics{}, rpctypes.ErrGRPCStopped
 	}
 }
 
@@ -467,6 +484,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.SubmitAll(b.reqs)
 	case in.status != nil:
 		in.status <- n.core.Status()
+	case in.metrics != nil:
+		in.metrics <- n.core.Metrics()
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:

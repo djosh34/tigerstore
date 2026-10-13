@@ -212,7 +212,10 @@ type Node struct {
 	term     uint64
 	leader   uint64
 	isLeader bool
-	leaseSeq uint64
+	// leaderChanges counts the leaders this node has seen, as etcd's
+	// etcd_server_leader_changes_seen_total does.
+	leaderChanges int64
+	leaseSeq      uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -748,6 +751,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// A term change clears Raft's pending read requests, so ask the
 			// new leader at once instead of waiting for the retry.
 			n.retryReads(true)
+			n.leaderChanges++
 		}
 		n.leader = rd.Lead
 	}

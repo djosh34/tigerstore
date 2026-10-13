@@ -120,6 +120,7 @@ func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 // rangeResult answers r. Without total, the walk stops at the pushed-down
 // limit and Count holds only the keys it saw.
 func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error) {
+	w.s.counts.Ranges++
 	cur := w.cur()
 	at := r.Revision
 	if at <= 0 {
@@ -275,6 +276,8 @@ func (s *Store) Put(p *pb.PutRequest) (*pb.PutResponse, error) {
 func (s *Store) PutKV(op *PutOp) (*mvccpb.KeyValue, error) {
 	w := s.start()
 	if err := w.checkPut(op); err != nil {
+		// etcd reads the previous version before this check fails.
+		w.countPrevRead(op)
 		return nil, err
 	}
 	prev := w.put(op)
@@ -296,6 +299,14 @@ func (w *writer) checkPut(p *PutOp) error {
 		}
 	}
 	return nil
+}
+
+// countPrevRead counts the read of the previous version that etcd makes
+// for a put with prev_kv, ignore_value or ignore_lease.
+func (w *writer) countPrevRead(p *PutOp) {
+	if p.PrevKv || p.IgnoreValue || p.IgnoreLease {
+		w.s.counts.Ranges++
+	}
 }
 
 // latest returns the newest version of key if the key exists now.
@@ -323,6 +334,8 @@ func (w *writer) add(k *keyIndex, v version) {
 
 // put writes one key and returns its previous version if p asks for it.
 func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
+	w.s.counts.Puts++
+	w.countPrevRead(p)
 	var prevKV *mvccpb.KeyValue
 	k, prev := w.latest(p.Key)
 	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}
@@ -359,6 +372,11 @@ func (s *Store) DeleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse, 
 }
 
 func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
+	w.s.counts.Deletes++
+	if d.PrevKv {
+		// etcd reads the previous values with a range.
+		w.s.counts.Ranges++
+	}
 	resp := &pb.DeleteRangeResponse{}
 	var del []*keyIndex
 	w.s.ascend(d.Key, d.RangeEnd, func(k *keyIndex) bool {
@@ -423,6 +441,8 @@ func (w *writer) applyCompares(cs []*pb.Compare) bool {
 }
 
 func (w *writer) applyCompare(c *pb.Compare) bool {
+	// etcd reads each compare's keys with a range.
+	w.s.counts.Ranges++
 	end := c.RangeEnd
 	matched := false
 	ok := true
@@ -503,6 +523,9 @@ func (w *writer) checkTxn(r *pb.TxnRequest, path []bool) (int, error) {
 			err = w.checkRange(t.RequestRange)
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
+			// etcd's check of a put in a transaction reads the previous
+			// version once more.
+			w.countPrevRead(&op)
 			err = w.checkPut(&op)
 		case *pb.RequestOp_RequestTxn:
 			var sub int
