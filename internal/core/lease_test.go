@@ -140,3 +140,46 @@ func TestKeepAliveBeforeExpiryKeepsTheLease(t *testing.T) {
 		t.Fatalf("after a keepalive answered with TTL 2: keys %q, leases %v", s.keys(), s.n.Leases())
 	}
 }
+
+// TestStaleExpiryLeavesANewGrant revokes and grants an ID again while the
+// leader's expiry of the old lease is on its way: the new lease stays.
+func TestStaleExpiryLeavesANewGrant(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 2})
+	for range 20 {
+		s.n.Tick()
+		s.run()
+	}
+	s.n.Submit(Request{ID: 2, Op: &pb.LeaseRevokeRequest{ID: 7}})
+	s.n.Submit(Request{ID: 3, Op: &pb.LeaseGrantRequest{ID: 7, TTL: 60}})
+	s.n.Tick()
+	for _, r := range s.run() {
+		if r.Err != nil {
+			t.Fatalf("request %d: %v", r.ID, r.Err)
+		}
+	}
+	if leases := s.n.Leases(); len(leases) != 1 || leases[0] != 7 {
+		t.Fatalf("leases after revoke and grant again = %v, want [7]", leases)
+	}
+}
+
+// TestLeaseNeverExpiresEarly grants a 2 s lease part way into a tick: it
+// must outlive 20 more ticks, the whole TTL whatever the phase.
+func TestLeaseNeverExpiresEarly(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.ok(1, &pb.LeaseGrantRequest{ID: 1, TTL: 2})
+	for range 20 {
+		s.n.Tick()
+		s.run()
+	}
+	if len(s.n.Leases()) != 1 {
+		t.Fatal("a 2 s lease expired after 20 ticks of 100 ms")
+	}
+	for range 3 {
+		s.n.Tick()
+		s.run()
+	}
+	if len(s.n.Leases()) != 0 {
+		t.Fatal("a 2 s lease lived 2.3 s")
+	}
+}

@@ -19,26 +19,27 @@ import (
 // maxLeaseTTL is etcd's largest lease TTL in seconds.
 const maxLeaseTTL = 9_000_000_000
 
-// lease is a granted lease, the keys attached to it, and the number of
-// keepalives applied to it. expiry and revokeAt are not replicated state:
-// only the leader sets them, to the tick the lease expires at (0 when not
-// armed) and the tick it last proposed the lease's expiry.
+// lease is a granted lease, the keys attached to it, and its stamp: the
+// value of the state's stamp counter at its last grant or keepalive.
+// expiry and revokeAt are not replicated state: only the leader sets them,
+// to the tick the lease expires at (0 when not armed) and the tick it
+// last proposed the lease's expiry.
 type lease struct {
 	id, ttl  int64
 	keys     map[string]struct{}
-	renewals int64
+	stamp    int64
 	expiry   int64
 	revokeAt int64
 }
 
 // newExpiry is the leader's decision that a lease expired. It goes in the
 // log as a LeaseCheckpoint, etcd's only message with a lease ID and a
-// number: Remaining_TTL carries the count of keepalives the leader had
-// applied when it decided. The expiry applies only if that count is still
-// current, so a keepalive that commits first keeps the lease, on every
-// replica.
-func newExpiry(id, renewals int64) *pb.LeaseCheckpoint {
-	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: renewals}
+// number: Remaining_TTL carries the lease's stamp when the leader decided.
+// The expiry applies only if the stamp is still current, so a keepalive
+// that commits first keeps the lease, and a later grant of the same ID is
+// a new lease that the old expiry cannot touch, on every replica.
+func newExpiry(id, stamp int64) *pb.LeaseCheckpoint {
+	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: stamp}
 }
 
 // State is the replicated state machine: the key index and the leases.
@@ -48,6 +49,8 @@ type State struct {
 	kv     *mvcc.Store
 	leases map[int64]*lease
 	minTTL int64
+	// stamps counts grants and keepalives, to stamp leases.
+	stamps int64
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
@@ -100,7 +103,8 @@ func (st *State) track() {
 }
 
 // Apply runs one committed write and returns its response with the header
-// revision set. An expiry that no longer applies returns nil and nil. Errors from etcd's set of answers leave the state unchanged
+// revision set. An expiry that no longer applies returns nil and nil.
+// Errors from etcd's set of answers leave the state unchanged
 // and are the same on every replica; any other error is a bug.
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	st.changes = nil
@@ -141,14 +145,15 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		resp := &pb.LeaseKeepAliveResponse{Header: header(st.kv.Rev()), ID: op.ID}
 		if l, ok := st.leases[op.ID]; ok {
 			resp.TTL = l.ttl
-			l.renewals++
+			st.stamps++
+			l.stamp = st.stamps
 		}
 		return resp, nil
 	case *pb.LeaseCheckpoint:
 		// An expiry. A nil response means it no longer applies: the lease
 		// is gone or was renewed after the leader decided.
 		l, ok := st.leases[op.ID]
-		if !ok || l.renewals != op.Remaining_TTL {
+		if !ok || l.stamp != op.Remaining_TTL {
 			return nil, nil
 		}
 		return st.revoke(op.ID)
@@ -168,7 +173,8 @@ func (st *State) grant(r *pb.LeaseGrantRequest) (proto.Message, error) {
 	if _, ok := st.leases[r.ID]; ok {
 		return nil, rpctypes.ErrGRPCLeaseExist
 	}
-	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}}
+	st.stamps++
+	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}, stamp: st.stamps}
 	st.leases[r.ID] = l
 	return &pb.LeaseGrantResponse{Header: header(st.kv.Rev()), ID: l.id, TTL: l.ttl}, nil
 }
