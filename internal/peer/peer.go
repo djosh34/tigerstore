@@ -269,9 +269,11 @@ type sender struct {
 	// ctrlBytes and dataBytes are the estimated bytes in each queue.
 	ctrlBytes, dataBytes atomic.Int64
 	// Writer only: messages that waited longer than slowQueue since the
-	// last report, the longest wait among them, and the report's time.
+	// last report, the longest wait among them, the last one's type, and
+	// the report's time.
 	slow       int
 	slowest    time.Duration
+	last       raftpb.MessageType
 	slowReport time.Time
 }
 
@@ -356,11 +358,21 @@ func (s *sender) waited(q queued) {
 	if d > s.slowest {
 		s.slowest = d
 	}
-	if time.Since(s.slowReport) < time.Second {
+	s.last = q.m.GetType()
+	if time.Since(s.slowReport) >= time.Second {
+		s.reportWaits()
+	}
+}
+
+// reportWaits logs the long waits counted since the last report. The
+// writer also calls it when a connection ends, so the waits right before
+// a failure are not lost.
+func (s *sender) reportWaits() {
+	if s.slow == 0 {
 		return
 	}
-	s.t.logf("peer: %d messages to %d waited over %v in their queue, the longest %v; the last a %s of %d bytes",
-		s.slow, s.id, slowQueue, s.slowest, q.m.GetType(), size(q.m))
+	s.t.logf("peer: %d messages to %d waited over %v in their queue, the longest %v; the last a %s",
+		s.slow, s.id, slowQueue, s.slowest, s.last)
 	s.slow, s.slowest, s.slowReport = 0, 0, time.Now()
 }
 
@@ -396,7 +408,9 @@ func (s *sender) run() {
 			continue
 		}
 		backoff = 50 * time.Millisecond
-		if err := s.write(ctx, c); err != nil && ctx.Err() == nil {
+		err = s.write(ctx, c)
+		s.reportWaits()
+		if err != nil && ctx.Err() == nil {
 			s.t.logf("peer: send to %d: %v", s.id, err)
 			s.drop()
 		}

@@ -321,6 +321,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
 	streams := map[uint64]*WatchStream{}
+	var term uint64 // the term logged last
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
@@ -394,9 +395,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				close(ws.done)
 			}
 		}
-		if l := n.core.Leader(); l != n.leader.Load() {
-			n.logf("leader is %d at term %d", l, n.core.Term())
+		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
+			n.logf("leader is %d at term %d", l, tm)
 			n.leader.Store(l)
+			term = tm
 		}
 		if err != nil {
 			return err

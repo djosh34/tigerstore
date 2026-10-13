@@ -75,6 +75,7 @@ jobs:
       - run: go test -count=20 -run 'TestLargeValuesAtRealTicks$' ./internal/server
         env:
           TIGERSTORE_STRESS: 10s
+          GOMEMLIMIT: 8GiB
 
   determinism-lint:
     runs-on: ubuntu-24.04-arm
