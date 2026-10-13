@@ -1,0 +1,23 @@
+package osfs
+
+// Counts completed file calls. Directory syncs bypass these methods.
+import "sync/atomic"
+
+var pre50Writes, pre50WriteBytes, pre50Syncs atomic.Uint64
+
+func Pre50Stats() map[string]uint64 {
+	return map[string]uint64{"writes": pre50Writes.Load(), "write_bytes": pre50WriteBytes.Load(), "syncs": pre50Syncs.Load()}
+}
+
+func (f file) Write(b []byte) (int, error) {
+	n, err := f.File.Write(b)
+	pre50WriteBytes.Add(uint64(n))
+	pre50Writes.Add(1)
+	return n, err
+}
+
+func (f file) Sync() error {
+	err := f.File.Sync()
+	pre50Syncs.Add(1)
+	return err
+}
