@@ -5,6 +5,7 @@
 package node
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"math/rand/v2"
@@ -23,6 +24,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -32,7 +34,10 @@ type Config struct {
 	DataDir string
 	// Tick is the length of one Raft tick.
 	Tick time.Duration
-	Logf func(format string, args ...any)
+	// WatchQueue is how many responses a watch stream may fall behind
+	// before it is closed; 0 means watchQueue.
+	WatchQueue int
+	Logf       func(format string, args ...any)
 }
 
 // input is one event for the committer from a client or a peer.
@@ -105,7 +110,7 @@ func (n *Node) Status(ctx context.Context) (*pb.StatusResponse, error) {
 
 // OpenWatch starts a watch stream.
 func (n *Node) OpenWatch(ctx context.Context) (*WatchStream, error) {
-	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, watchQueue), done: make(chan struct{})}
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
 	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
 		return nil, err
 	}
@@ -299,6 +304,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
 			if !ok {
+				continue
+			}
+			if planted.On("B13") {
+				// Planted: wait for a slow watcher instead of closing it.
+				ws.C <- w.Resp
 				continue
 			}
 			select {

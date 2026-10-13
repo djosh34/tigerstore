@@ -328,8 +328,12 @@ func (w *WAL) newSegment() error {
 	if err := f.Sync(); err != nil {
 		return errors.Join(err, f.Close())
 	}
-	if err := w.fs.SyncDir(); err != nil {
-		return errors.Join(err, f.Close())
+	// Planted: B05 takes records into the new segment before its directory
+	// entry is durable.
+	if !planted.On("B05") {
+		if err := w.fs.SyncDir(); err != nil {
+			return errors.Join(err, f.Close())
+		}
 	}
 	w.seq, w.seg, w.size = seq, f, int64(headerSize)
 	return nil
@@ -402,6 +406,12 @@ func (w *WAL) Sync() error {
 	}
 	if !w.dirty {
 		return nil
+	}
+	if planted.On("B16") && w.size >= w.maxSize {
+		// Planted: move on to a new segment without the old one's last
+		// sync.
+		w.dirty = false
+		return errors.Join(w.seg.Close(), w.newSegment())
 	}
 	if err := w.seg.Sync(); err != nil {
 		return err

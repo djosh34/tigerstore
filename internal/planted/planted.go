@@ -13,6 +13,7 @@ var Bugs = map[string]string{
 	"B04a": "WAL recovery accepts a record whose checksum does not verify",
 	"B04c": "WAL recovery skips checksums, and a payload bit flips so that the record still decodes",
 	"B04b": "WAL recovery cuts the record before a torn tail too",
+	"B05":  "a new WAL segment takes records before its directory entry is synced",
 	"B06a": "a watcher drops the last event of a write that changes several keys",
 	"B06b": "a watcher gets the first event of every write twice",
 	"B06c": "watch events of updates and deletes lose their previous value",
@@ -24,7 +25,10 @@ var Bugs = map[string]string{
 	"B10":  "followers expire leases on their own clock, without the log",
 	"B11":  "the disk driver treats a failed fsync as success",
 	"B12":  "the WAL keeps going after a short write",
+	"B13":  "the node driver waits for a slow watch stream instead of closing it",
+	"B14":  "the peer writer has no write deadline",
 	"B15":  "the history treats a call that timed out as certainly aborted",
+	"B16":  "WAL rotation moves to a new segment without the old one's last sync",
 	"B17":  "the leader's stalled-disk watchdog never fires",
 	"B18":  "closing a watch stream leaves its watchers in place",
 }

@@ -22,6 +22,8 @@ import (
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Transport sends Raft messages to peers. Send never blocks: when a peer's
@@ -386,7 +388,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
 	var hdr [8]byte
 	binary.BigEndian.PutUint64(hdr[:], s.t.cfg.ID)
-	if err := c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
 		return err
 	}
 	if _, err := w.Write(hdr[:]); err != nil {
@@ -416,7 +418,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 			return err
 		}
 		binary.BigEndian.PutUint32(hdr[:4], uint32(len(buf)))
-		if err := c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		if err := c.SetWriteDeadline(writeDeadline()); err != nil {
 			return err
 		}
 		if _, err := w.Write(hdr[:4]); err != nil {
@@ -426,4 +428,14 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 			return err
 		}
 	}
+}
+
+// writeDeadline is when a write that has not finished fails the
+// connection, so that a stalled peer is dropped and reported.
+func writeDeadline() time.Time {
+	if planted.On("B14") {
+		// Planted: no deadline; a stalled peer holds the writer.
+		return time.Time{}
+	}
+	return time.Now().Add(writeTimeout)
 }
