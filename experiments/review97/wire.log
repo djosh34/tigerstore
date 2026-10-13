@@ -1,0 +1,110 @@
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 10 10]
+    review97_test.go:100: wire chunks differ from stock etcd: [10 10 10]
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:38774: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:38804: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:38806: EOF
+--- FAIL: TestReview97Boundary (2.42s)
+    --- PASS: TestReview97Boundary/etcd (1.11s)
+    --- FAIL: TestReview97Boundary/tiger (1.31s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=15 terminal=rpc error: code = Internal desc = unexpected EOF
+    review97_test.go:141: want OutOfRange, got rpc error: code = Internal desc = unexpected EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:49288: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:51964: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:51980: EOF
+--- FAIL: TestReview97Compaction (3.17s)
+    --- PASS: TestReview97Compaction/etcd (1.48s)
+    --- FAIL: TestReview97Compaction/tiger (1.69s)
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 10 10]
+    review97_test.go:100: wire chunks differ from stock etcd: [10 10 10]
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:53444: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:34866: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:34870: EOF
+--- FAIL: TestReview97Boundary (2.30s)
+    --- PASS: TestReview97Boundary/etcd (1.11s)
+    --- FAIL: TestReview97Boundary/tiger (1.19s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=15 terminal=rpc error: code = Internal desc = unexpected EOF
+    review97_test.go:141: want OutOfRange, got rpc error: code = Internal desc = unexpected EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:48986: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:48994: EOF
+--- FAIL: TestReview97Compaction (3.05s)
+    --- PASS: TestReview97Compaction/etcd (1.43s)
+    --- FAIL: TestReview97Compaction/tiger (1.62s)
+=== RUN   TestReview97Boundary
+=== RUN   TestReview97Boundary/etcd
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 20]
+=== RUN   TestReview97Boundary/tiger
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 2 at term 1
+    server_test.go:111: node 1: leader is 2 at term 1
+    server_test.go:111: node 3: leader is 2 at term 1
+    review97_test.go:98: initial internal etcd response target=786431 adjusted-value=78653 chunks=[10 10 10]
+    review97_test.go:100: wire chunks differ from stock etcd: [10 10 10]
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:38226: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:51332: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:51336: EOF
+--- FAIL: TestReview97Boundary (2.29s)
+    --- PASS: TestReview97Boundary/etcd (1.10s)
+    --- FAIL: TestReview97Boundary/tiger (1.19s)
+=== RUN   TestReview97Compaction
+=== RUN   TestReview97Compaction/etcd
+    review97_test.go:139: pinned=81 compacted=82 keys=20 terminal=rpc error: code = OutOfRange desc = etcdserver: mvcc: required revision has been compacted
+=== RUN   TestReview97Compaction/tiger
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 1 at term 1
+    server_test.go:111: node 3: leader is 1 at term 1
+    server_test.go:111: node 2: leader is 1 at term 1
+    review97_test.go:139: pinned=81 compacted=82 keys=15 terminal=rpc error: code = Internal desc = unexpected EOF
+    review97_test.go:141: want OutOfRange, got rpc error: code = Internal desc = unexpected EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:48902: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:34664: EOF
+    server_test.go:111: node 1: peer: receive from 127.0.0.1:34676: EOF
+--- FAIL: TestReview97Compaction (2.98s)
+    --- PASS: TestReview97Compaction/etcd (1.28s)
+    --- FAIL: TestReview97Compaction/tiger (1.70s)
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/server	16.225s
+FAIL

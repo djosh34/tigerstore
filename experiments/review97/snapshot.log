@@ -1,0 +1,19 @@
+=== RUN   TestReview97SnapshotCancel
+=== RUN   TestReview97SnapshotCancel/etcd
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+=== RUN   TestReview97SnapshotCancel/tiger
+    server_test.go:111: node 3: leader is 0 at term 1
+    server_test.go:111: node 1: leader is 0 at term 1
+    server_test.go:111: node 2: leader is 0 at term 1
+    server_test.go:111: node 3: leader is 3 at term 1
+    server_test.go:111: node 2: leader is 3 at term 1
+    server_test.go:111: node 1: leader is 3 at term 1
+    review97_snapshot_test.go:70: snapshot=81, concurrent update/delete/inserts, keys=60 count=80 more=true
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:33166: EOF
+    server_test.go:111: node 2: peer: receive from 127.0.0.1:50650: EOF
+    server_test.go:111: node 3: peer: receive from 127.0.0.1:33168: EOF
+--- PASS: TestReview97SnapshotCancel (2.90s)
+    --- PASS: TestReview97SnapshotCancel/etcd (1.30s)
+    --- PASS: TestReview97SnapshotCancel/tiger (1.60s)
+PASS
+ok  	github.com/djosh34/tigerstore/internal/server	2.905s
