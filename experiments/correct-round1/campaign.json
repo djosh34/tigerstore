@@ -1,4 +1,11 @@
 [
-  {"target":"tigerstore","scenario":"signals","seed":49,"rep":1,"duration":65},
-  {"target":"etcd","scenario":"signals","seed":49,"rep":1,"duration":65}
+  {"target":"tigerstore","scenario":"signals","seed":49,"rep":2,"duration":65},
+  {"target":"etcd","scenario":"signals","seed":49,"rep":2,"duration":65},
+  {"target":"tigerstore","scenario":"netem","seed":49,"rep":1,"duration":65},
+  {"target":"etcd","scenario":"netem","seed":49,"rep":1,"duration":65},
+  {"target":"tigerstore","scenario":"disk","seed":49,"rep":1,"duration":65},
+  {"target":"etcd","scenario":"disk","seed":49,"rep":1,"duration":90,"value_size":131072},
+  {"target":"tigerstore","scenario":"mixed","seed":49,"rep":1,"duration":90},
+  {"target":"tigerstore","scenario":"mixed","seed":50,"rep":1,"duration":90},
+  {"target":"tigerstore","scenario":"mixed","seed":51,"rep":1,"duration":90}
 ]
