@@ -179,6 +179,9 @@ def once(kind, rep, rate=None):
             before = snapshot(kind, pids, ports)
             before['status'] = before_status
             before['affinity'] = affinities(pids)
+            before['generator_affinity'] = sorted(os.sched_getaffinity(process.pid))
+            if before['generator_affinity'] != [3]:
+                raise RuntimeError('generator not pinned to CPU3')
             (dst/'before.json').write_text(json.dumps(before))
             errors = []
             def sample():
@@ -230,9 +233,22 @@ def once(kind, rep, rate=None):
             load = json.loads((dst/'load.json').read_text())
             revision_delta = int(after_status[0]['Status']['header']['revision']) - int(before_status[0]['Status']['header']['revision'])
             expected = load['cohort'] if workload == 'put' else 0
+            invariant_errors = []
+            for i, (a, b) in enumerate(zip(before['proc'],after['proc'])):
+                if a['starttime'] != b['starttime']:
+                    invariant_errors.append(f'node {i} changed process identity')
+            if kind != 'etcd':
+                for snap in [before,after]:
+                    for node in snap['nodes']:
+                        for operation in ['write','fsync']:
+                            counters = node['files'][operation]
+                            if counters['errors'] or sum(counters['wall_ns_buckets']) != counters['calls']:
+                                invariant_errors.append(f'file {operation} error or inconsistent fenced histogram')
+            if load['latency_us']['count'] != load['cohort'] or load['cohort_failed'] or load['unsent']:
+                invariant_errors.append('arrival cohort incomplete')
             audit = {'revision_delta': revision_delta, 'expected': expected,
-                     'sampling_errors': errors, 'returncode': process.returncode,
-                     'valid': bool(load['valid']) and not errors and process.returncode == 0 and revision_delta == expected}
+                     'sampling_errors': errors, 'invariant_errors': invariant_errors, 'returncode': process.returncode,
+                     'valid': bool(load['valid']) and not errors and not invariant_errors and process.returncode == 0 and revision_delta == expected}
             (dst/'audit.json').write_text(json.dumps(audit, indent=2))
             if not audit['valid']:
                 raise RuntimeError(f'invalid window {label}: {audit}')
