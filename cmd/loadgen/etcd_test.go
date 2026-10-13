@@ -125,6 +125,9 @@ func TestEtcdWorkloads(t *testing.T) {
 		if tc.workload == "watch" && (res.Watch.Events < res.Ops*3/2 || res.Watch.Latency.Count == 0) {
 			t.Fatalf("%+v: %d events for %d puts and 3 watchers", tc, res.Watch.Events, res.Ops)
 		}
+		if tc.workload == "mixed" && (res.Watch == nil || res.Watch.ServerCPUUsPerEvent != 0) {
+			t.Fatal("mixed attributed total CPU to watch events")
+		}
 		t.Log(res.oneLine())
 	}
 }

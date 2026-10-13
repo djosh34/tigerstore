@@ -1,6 +1,9 @@
 package main
 
-import "math/rand/v2"
+import (
+	"math"
+	"math/rand/v2"
+)
 
 // Kubernetes 1.37 dump from #50 comment 6134373626, inventory.csv at
 // exp/pre-50-compress:evidence/compress50/run-38319776822/inventory.csv.
@@ -58,13 +61,50 @@ var k8sSizes = []sizeBin{
 	{"storageclasses", "1_to_895", 1, 841, 841, 841.0 / 1},
 }
 
-// Draw at the observed endpoints, weighted to preserve the bin's mean.
-// A uniform min-to-max draw would distort the dump, especially Events.
+// The inventory has no finer within-bin histogram. Model each nonconstant
+// bin with a scaled beta distribution: alpha=8*p, beta=8*(1-p), where
+// p=(mean-min)/(max-min). Its support uses the exact observed min/max and
+// its expectation is the exact bin mean. Stochastic integer rounding keeps
+// that expectation. This is a smooth fitted model, not an empirical draw.
 func (b sizeBin) draw(r *rand.Rand) int {
-	if r.Float64()*float64(b.max-b.min) < b.mean-float64(b.min) {
+	if b.min == b.max {
+		return b.min
+	}
+	p := (b.mean - float64(b.min)) / float64(b.max-b.min)
+	if p <= 0 {
+		return b.min
+	}
+	if p >= 1 {
 		return b.max
 	}
-	return b.min
+	a, c := gammaDraw(r, 8*p), gammaDraw(r, 8*(1-p))
+	x := float64(b.min) + float64(b.max-b.min)*a/(a+c)
+	n := int(x)
+	if r.Float64() < x-float64(n) {
+		n++
+	}
+	return n
+}
+
+// Marsaglia-Tsang gamma sampler, with the shape-raising identity below 1.
+func gammaDraw(r *rand.Rand, shape float64) float64 {
+	if shape < 1 {
+		return gammaDraw(r, shape+1) * math.Pow(r.Float64(), 1/shape)
+	}
+	d := shape - 1.0/3
+	c := 1 / math.Sqrt(9*d)
+	for {
+		x := r.NormFloat64()
+		v := 1 + c*x
+		if v <= 0 {
+			continue
+		}
+		v = v * v * v
+		u := r.Float64()
+		if u < 1-0.0331*x*x*x*x || math.Log(u) < 0.5*x*x+d*(1-v+math.Log(v)) {
+			return d * v
+		}
+	}
 }
 
 func drawBin(r *rand.Rand, resource string) int {

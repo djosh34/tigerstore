@@ -151,7 +151,7 @@ type watchResult struct {
 	Events              int64   `json:"events"`
 	EventsPerS          float64 `json:"events_per_s"`
 	Latency             latency `json:"latency_us"`
-	ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
+	ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event,omitempty"`
 }
 
 func main() {

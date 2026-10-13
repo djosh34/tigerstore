@@ -37,7 +37,7 @@ func mixedResponse(rev int64, deleted bool) []byte {
 	inner := newMsg()
 	if deleted {
 		inner.varint(delDeleted, 1)
-		op.sub(3, inner)
+		op.sub(opResponseDeleteRange, inner)
 	} else {
 		op.sub(opResponsePut, inner)
 	}
@@ -48,19 +48,19 @@ func mixedResponse(rev int64, deleted bool) []byte {
 func TestMixedTransitions(t *testing.T) {
 	w, c := testMixed(t, 1)
 	k := w.live[0]
-	for i, op := range []int{2, 4, 3, 2} {
+	for i, op := range []int{mixedUpdate, mixedDelete, mixedCreate, mixedUpdate} {
 		w.pending = &mixedCall{op: op, key: k, value: []byte("next random value")}
 		st := c.newStream(w)
 		st.msgs = 1
 		if !w.start(c, st) {
 			t.Fatal("call could not start")
 		}
-		if err := w.message(st, mixedResponse(int64(i+3), op == 4)); err != nil {
+		if err := w.message(st, mixedResponse(int64(i+3), op == mixedDelete)); err != nil {
 			t.Fatal(err)
 		}
 		w.done(st, 10, nil)
 		delete(c.streams, st.id)
-		if op == 4 {
+		if op == mixedDelete {
 			if len(w.live) != 0 || k.mod != 0 || len(w.absent) != 1 {
 				t.Fatal("delete did not make key absent")
 			}
@@ -68,7 +68,7 @@ func TestMixedTransitions(t *testing.T) {
 		} else if len(w.live) != 1 || k.mod != int64(i+3) {
 			t.Fatal("create/update did not restore tracked key")
 		}
-		if op == 3 && (k.create != int64(i+3) || k.version != 1) {
+		if op == mixedCreate && (k.create != int64(i+3) || k.version != 1) {
 			t.Fatal("recreate did not reset create revision and version")
 		}
 	}
@@ -82,15 +82,15 @@ func TestMixedLocks(t *testing.T) {
 	k := w.live[0]
 	group := &w.groups[k.group]
 	update := c.newStream(w)
-	w.pending = &mixedCall{op: 2, key: k, value: []byte("new")}
+	w.pending = &mixedCall{op: mixedUpdate, key: k, value: []byte("new")}
 	if !w.start(c, update) {
 		t.Fatal("update did not start")
 	}
-	w.pending = &mixedCall{op: 2, key: k, value: []byte("again")}
+	w.pending = &mixedCall{op: mixedUpdate, key: k, value: []byte("again")}
 	if w.start(c, c.newStream(w)) {
 		t.Fatal("key in flight twice")
 	}
-	w.pending = &mixedCall{op: 1, key: k, group: group}
+	w.pending = &mixedCall{op: mixedList, key: k, group: group}
 	if w.start(c, c.newStream(w)) {
 		t.Fatal("LIST raced a namespace mutation")
 	}
@@ -98,24 +98,100 @@ func TestMixedLocks(t *testing.T) {
 	w.done(update, 10, nil)
 	delete(c.streams, update.id)
 	list := c.newStream(w)
+	w.pending = &mixedCall{op: mixedList, key: k, group: group}
 	if !w.start(c, list) {
 		t.Fatal("LIST did not start after mutation drained")
 	}
-	w.pending = &mixedCall{op: 2, key: k, value: []byte("again")}
+	w.pending = &mixedCall{op: mixedUpdate, key: k, value: []byte("again")}
 	if w.start(c, c.newStream(w)) {
 		t.Fatal("mutation raced LIST")
 	}
 	list.msgs = 1
 	w.done(list, 10, nil)
 	delete(c.streams, list.id)
+	w.pending = &mixedCall{op: mixedUpdate, key: k, value: []byte("again")}
 	if !w.start(c, c.newStream(w)) {
 		t.Fatal("LIST did not release namespace")
 	}
 }
 
+func TestMixedChooseSkipsLockedGroups(t *testing.T) {
+	w, c := testMixed(t, 20)
+	locked := &w.groups[w.live[0].group]
+	locked.listing = true
+	for _, op := range []int{mixedGet, mixedUpdate, mixedDelete, mixedList, mixedCreate} {
+		w.mix = [5]int{}
+		w.mix[op] = 100
+		for range 100 {
+			call := w.choose()
+			if call == nil {
+				t.Fatal("available groups skipped")
+			}
+			if w.groups[call.key.group].listing {
+				t.Fatal("selected a listing group")
+			}
+			if op == mixedList && w.groups[call.key.group].active != 0 {
+				t.Fatal("selected an active LIST group")
+			}
+		}
+	}
+	locked.listing = false
+	locked.active = 1
+	w.mix = [5]int{0, 100, 0, 0, 0}
+	for range 100 {
+		call := w.choose()
+		if call == nil || w.groups[call.key.group].active != 0 {
+			t.Fatal("LIST waits on an active group")
+		}
+	}
+	w.pending = &mixedCall{op: mixedList, key: w.live[0], group: locked}
+	if w.start(c, c.newStream(w)) || w.pending != nil {
+		t.Fatal("blocked pending call retained")
+	}
+}
+
+func TestMixedSecondDeleteMessage(t *testing.T) {
+	w, c := testMixed(t, 1)
+	k := w.live[0]
+	w.pending = &mixedCall{op: mixedDelete, key: k}
+	st := c.newStream(w)
+	st.msgs = 1
+	if !w.start(c, st) {
+		t.Fatal("delete did not start")
+	}
+	if err := w.message(st, mixedResponse(3, true)); err != nil {
+		t.Fatal(err)
+	}
+	st.msgs = 2
+	if err := w.message(st, mixedResponse(4, true)); err == nil {
+		t.Fatal("second delete response accepted")
+	}
+	if len(w.live) != 0 || len(w.absent) != 1 || len(w.ledger.expected) != 1 {
+		t.Fatal("second message changed model")
+	}
+	if err := w.writes.add(4); err != nil {
+		t.Fatal("second message changed revision set")
+	}
+}
+
+func TestMixedSecondPreloadMessage(t *testing.T) {
+	w, _ := testMixed(t, 1)
+	k := w.live[0]
+	p := &mixedPreload{w: w}
+	st := &stream{id: 1, msgs: 1}
+	w.calls[1] = mixedCall{batch: []*mixedKey{k}}
+	if err := p.message(st, mixedResponse(3, false)); err != nil {
+		t.Fatal(err)
+	}
+	st.msgs = 2
+	if err := p.message(st, mixedResponse(4, false)); err == nil || k.mod != 3 {
+		t.Fatal("second preload message changed model")
+	}
+}
+
 func TestMixedRequestShapes(t *testing.T) {
 	k := &mixedKey{key: []byte("/registry/pods/ns/name"), mod: 17}
-	for _, op := range []int{2, 3, 4} {
+	for _, op := range []int{mixedUpdate, mixedCreate, mixedDelete} {
 		m := mixedTxn(k, op, []byte("value"))
 		cmp, err := bytesField(m.b, txnCompare)
 		if err != nil {
@@ -128,10 +204,10 @@ func TestMixedRequestShapes(t *testing.T) {
 		field := protowire.Number(cmpModRevision)
 		want := uint64(17)
 		wantTarget := uint64(cmpTargetMod)
-		if op == 3 {
-			field = 5
+		if op == mixedCreate {
+			field = cmpCreateRevision
 			want = 0
-			wantTarget = 1
+			wantTarget = cmpTargetCreate
 		}
 		rev, err := varintField(cmp, field)
 		if err != nil {
@@ -149,8 +225,8 @@ func TestMixedRequestShapes(t *testing.T) {
 			t.Fatal(err)
 		}
 		operation := protowire.Number(opPut)
-		if op == 4 {
-			operation = 3
+		if op == mixedDelete {
+			operation = opDeleteRange
 		}
 		inner, err := bytesField(branch, operation)
 		if err != nil || inner == nil {
@@ -248,7 +324,7 @@ func TestMixedReadsAbsentKeys(t *testing.T) {
 	w.absent = []*mixedKey{k}
 	w.mix = [5]int{100, 0, 0, 0, 0}
 	call := w.choose()
-	if call.op != 0 || call.key != k {
+	if call.op != mixedGet || call.key != k {
 		t.Fatal("GET with no live keys did not read a known absent key")
 	}
 	st := &stream{id: 1}
@@ -291,7 +367,7 @@ func TestMixedWatchRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for field, want := range map[protowire.Number]uint64{3: 17, watchPrevKV: 1, watchProgress: 1} {
+	for field, want := range map[protowire.Number]uint64{watchStartRevision: 17, watchPrevKV: 1, watchProgress: 1} {
 		got, err := varintField(create, field)
 		if err != nil || got != want {
 			t.Fatalf("watch field %d = %d, want %d: %v", field, got, want, err)

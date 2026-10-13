@@ -28,39 +28,48 @@ const (
 	txnSuccess = 2
 	txnFailure = 3
 
-	cmpTarget      = 2 // Compare
-	cmpKey         = 3
-	cmpModRevision = 6
-	cmpTargetMod   = 2 // Compare.CompareTarget MOD; result EQUAL is the default 0
+	cmpTargetCreate   = 1 // Compare.CompareTarget CREATE
+	cmpCreateRevision = 5 // Compare.create_revision
+	cmpTarget         = 2 // Compare
+	cmpKey            = 3
+	cmpModRevision    = 6
+	cmpTargetMod      = 2 // Compare.CompareTarget MOD; result EQUAL is the default 0
 
-	opRange = 1 // RequestOp
-	opPut   = 2
+	opRange       = 1 // RequestOp
+	opPut         = 2
+	opDeleteRange = 3
 
-	watchCreate      = 1 // WatchRequest
-	watchKey         = 1 // WatchCreateRequest
-	watchRangeEnd    = 2
-	watchProgress    = 4
-	watchPrevKV      = 6
-	respHeader       = 1 // field 1 of every response
-	txnSucceeded     = 2 // TxnResponse
-	txnResponses     = 3
-	opResponsePut    = 2 // ResponseOp
-	rangeKVs         = 2 // RangeResponse
-	rangeMore        = 3
-	rangeCount       = 4
-	delDeleted       = 2 // DeleteRangeResponse
-	watchCreated     = 3 // WatchResponse
-	watchCanceled    = 4
-	watchCompactRev  = 5
-	watchCancelMsg   = 6
-	watchEvents      = 11
-	eventType        = 1 // mvccpb.Event
-	eventKV          = 2
-	kvKey            = 1 // mvccpb.KeyValue
-	kvModRevision    = 3
-	kvValue          = 5
-	eventTypeDelete  = 1
-	revisionVarintSz = 9 // a revision written as a padded varint, see putRevision
+	watchCreate           = 1 // WatchRequest
+	watchKey              = 1 // WatchCreateRequest
+	watchRangeEnd         = 2
+	watchStartRevision    = 3
+	watchProgress         = 4
+	watchPrevKV           = 6
+	respHeader            = 1 // field 1 of every response
+	txnSucceeded          = 2 // TxnResponse
+	txnResponses          = 3
+	opResponsePut         = 2
+	opResponseDeleteRange = 3 // ResponseOp
+	rangeKVs              = 2 // RangeResponse
+	rangeMore             = 3
+	rangeCount            = 4
+	delDeleted            = 2 // DeleteRangeResponse
+	watchCreated          = 3 // WatchResponse
+	watchCanceled         = 4
+	watchCompactRev       = 5
+	watchCancelMsg        = 6
+	watchEvents           = 11
+	eventType             = 1 // mvccpb.Event
+	eventKV               = 2
+	eventPrevKV           = 3
+	kvCreateRevision      = 2
+	kvVersion             = 4
+	kvLease               = 6
+	kvKey                 = 1 // mvccpb.KeyValue
+	kvModRevision         = 3
+	kvValue               = 5
+	eventTypeDelete       = 1
+	revisionVarintSz      = 9 // a revision written as a padded varint, see putRevision
 )
 
 // msg builds one protobuf message and remembers where the variable parts
@@ -215,7 +224,7 @@ func newTemplate(authority, path string, m *msg, endStream bool) (*template, err
 	// carry their key/value bytes before framing and need no patches.
 	offset := func(pos int) int {
 		p := pos + grpcPrefixLen
-		return t.data + frameHeaderLen + p + (p/maxDataFrame)*frameHeaderLen
+		return t.data + frameHeaderLen + p
 	}
 	for _, k := range m.keys {
 		t.keys = append(t.keys, offset(k))
@@ -293,7 +302,7 @@ func watchRequestFrom(prefix []byte, revision int64) *msg {
 	c.bytes(watchKey, prefix)
 	c.bytes(watchRangeEnd, prefixEnd(prefix))
 	if revision != 0 {
-		c.varint(3, uint64(revision))
+		c.varint(watchStartRevision, uint64(revision))
 	}
 	c.varint(watchProgress, 1)
 	c.varint(watchPrevKV, 1)

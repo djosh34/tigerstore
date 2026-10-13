@@ -25,7 +25,7 @@ func TestK8sSizes(t *testing.T) {
 			sum += n
 		}
 		got := float64(sum) / samples
-		// Six standard errors for the endpoint-weighted Bernoulli draw.
+		// Six standard errors using the maximum variance of any bounded draw.
 		variance := (b.mean - float64(b.min)) * (float64(b.max) - b.mean)
 		tolerance := 6*math.Sqrt(variance/samples) + 0.01
 		if math.Abs(got-b.mean) > tolerance {
@@ -56,6 +56,40 @@ func TestK8sSizes(t *testing.T) {
 	}
 }
 
+func TestK8sSizesHaveInteriorDraws(t *testing.T) {
+	r := rand.New(rand.NewPCG(3, 4))
+	seen := map[int]bool{}
+	b := k8sSizes[21] // Events: 490..890 bytes, not only those endpoints.
+	for range 1000 {
+		seen[b.draw(r)] = true
+	}
+	if len(seen) < 50 {
+		t.Fatalf("only %d distinct sizes", len(seen))
+	}
+}
+
+func TestMixedScopes(t *testing.T) {
+	for _, r := range k8sResources() {
+		key := mixedName(r, 2, 3, 4)
+		parts := bytes.Split(key, []byte("/"))
+		want := 5
+		if clusterScoped(r) {
+			want = 4
+		}
+		if len(parts) != want || !bytes.HasPrefix(key, mixedPrefix(r, 2, 3)) {
+			t.Fatalf("wrong scope for %s: %s", r, key)
+		}
+	}
+	for _, r := range []string{"apiservices", "clusterroles", "minions", "namespaces", "storageclasses", "csinodes"} {
+		if !clusterScoped(r) {
+			t.Fatalf("%s should be cluster scoped", r)
+		}
+	}
+	if clusterScoped("pods") {
+		t.Fatal("pods should be namespaced")
+	}
+}
+
 func TestMixedOwnership(t *testing.T) {
 	seen := map[string]int{}
 	cfg := config{keys: 2000, conns: 6, mix: defaultMix, seed: 1}
@@ -67,7 +101,7 @@ func TestMixedOwnership(t *testing.T) {
 		}
 		// Include newly created keys, not only the preload.
 		for range 100 {
-			w.live = append(w.live, w.newKey(owner, max(1, 1024/cfg.conns)))
+			w.live = append(w.live, w.newKey())
 		}
 		for _, k := range w.live {
 			key := string(k.key)

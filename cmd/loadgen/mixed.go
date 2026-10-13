@@ -18,6 +18,14 @@ import (
 // get, list, update, create, delete. Watches run alongside these arrivals.
 const defaultMix = "25,10,40,15,10"
 
+const (
+	mixedGet = iota
+	mixedList
+	mixedUpdate
+	mixedCreate
+	mixedDelete
+)
+
 func parseMix(s string) ([5]int, error) {
 	var mix [5]int
 	parts := strings.Split(s, ",")
@@ -68,6 +76,7 @@ type mixedCall struct {
 type mixedLoad struct {
 	wk           *worker
 	ownerID      int
+	namespaces   int
 	resources    []string
 	cfg          config
 	writes       *revisionSet
@@ -82,33 +91,42 @@ type mixedLoad struct {
 	mix          [5]int
 }
 
-// Namespace ownership also makes LIST validation exact: a LIST waits for
-// its namespace's outstanding calls, then blocks mutations there until its
-// response completes. Other namespaces continue sending in parallel.
+// Ownership makes LIST validation exact without holding back other groups.
+func mixedPrefix(resource string, owner, namespace int) []byte {
+	if clusterScoped(resource) {
+		return fmt.Appendf(nil, "/registry/%s/bench-%03d-%04d-", resource, owner, namespace)
+	}
+	return fmt.Appendf(nil, "/registry/%s/bench-%03d-%04d/", resource, owner, namespace)
+}
+
 func mixedName(resource string, owner, namespace, id int) []byte {
-	return fmt.Appendf(nil, "/registry/%s/bench-%03d-%04d/object-%012d", resource, owner, namespace, id)
+	return fmt.Appendf(mixedPrefix(resource, owner, namespace), "object-%012d", id)
+}
+
+func clusterScoped(resource string) bool {
+	switch resource {
+	case "apiservices", "certificatesigningrequests", "clusterrolebindings", "clusterroles", "csinodes", "flowschemas", "minions", "namespaces", "priorityclasses", "prioritylevelconfigurations", "storageclasses":
+		return true
+	default:
+		return false
+	}
 }
 
 func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger *mixedLedger) (*mixedLoad, error) {
-	if cfg.mix == "" {
-		cfg.mix = defaultMix
-	}
 	mix, err := parseMix(cfg.mix)
 	if err != nil {
 		return nil, err
 	}
 	w := &mixedLoad{wk: wk, ownerID: owner, resources: k8sResources(), cfg: cfg, writes: writes, ledger: ledger, pool: *makeValues(33365, cfg.seed+uint64(owner)), calls: make(map[uint32]mixedCall), mix: mix}
-	resources := k8sResources()
-	// About 1,024 namespaces across the connections. A common resource has
-	// more than a 500-key page at 1M, so LIST tests count and more too.
-	namespaces := max(1, 1024/cfg.conns)
-	for _, r := range resources {
-		for ns := range namespaces {
-			w.groups = append(w.groups, mixedGroup{prefix: fmt.Appendf(nil, "/registry/%s/bench-%03d-%04d/", r, owner, ns)})
+	// About 1,024 namespaces (or cluster-scoped name groups) overall.
+	w.namespaces = max(1, 1024/cfg.conns)
+	for _, r := range w.resources {
+		for ns := range w.namespaces {
+			w.groups = append(w.groups, mixedGroup{prefix: mixedPrefix(r, owner, ns)})
 		}
 	}
 	for id := owner; id < cfg.keys; id += cfg.conns {
-		k := w.newKey(owner, namespaces)
+		k := w.newKey()
 		k.liveIndex = len(w.live)
 		w.live = append(w.live, k)
 	}
@@ -116,13 +134,23 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 	return w, nil
 }
 
-func (w *mixedLoad) newKey(owner, namespaces int) *mixedKey {
+func (w *mixedLoad) newKey() *mixedKey {
 	bin := drawBin(w.wk.rng, "")
 	resource := k8sSizes[bin].resource
-	resources := w.resources
-	ns := w.next % namespaces
-	group := slices.Index(resources, resource)*namespaces + ns
-	k := &mixedKey{key: mixedName(resource, owner, ns, w.next), bin: bin, group: group}
+	base := slices.Index(w.resources, resource) * w.namespaces
+	group := -1
+	for offset := range w.namespaces {
+		candidate := base + (w.next+offset)%w.namespaces
+		if !w.groups[candidate].listing {
+			group = candidate
+			break
+		}
+	}
+	if group < 0 {
+		return nil
+	}
+	ns := group % w.namespaces
+	k := &mixedKey{key: mixedName(resource, w.ownerID, ns, w.next), bin: bin, group: group}
 	w.next++
 	w.groups[group].keys = append(w.groups[group].keys, k)
 	return k
@@ -136,10 +164,10 @@ func (w *mixedLoad) value(k *mixedKey) []byte {
 
 func mixedTxn(k *mixedKey, op int, value []byte) *msg {
 	cmp := newMsg()
-	if op == 3 {
-		cmp.varint(cmpTarget, 1)
+	if op == mixedCreate {
+		cmp.varint(cmpTarget, cmpTargetCreate)
 		cmp.bytes(cmpKey, k.key)
-		cmp.varint(5, 0)
+		cmp.varint(cmpCreateRevision, 0)
 	} else {
 		cmp.varint(cmpTarget, cmpTargetMod)
 		cmp.bytes(cmpKey, k.key)
@@ -148,8 +176,8 @@ func mixedTxn(k *mixedKey, op int, value []byte) *msg {
 	branch := newMsg()
 	mutation := newMsg()
 	mutation.bytes(putKey, k.key)
-	if op == 4 {
-		branch.sub(3, mutation)
+	if op == mixedDelete {
+		branch.sub(opDeleteRange, mutation)
 	} else {
 		mutation.bytes(putValue, value)
 		branch.sub(opPut, mutation)
@@ -160,9 +188,25 @@ func mixedTxn(k *mixedKey, op int, value []byte) *msg {
 	return m
 }
 
+func (w *mixedLoad) eligible(keys []*mixedKey, op int) int {
+	if len(keys) == 0 {
+		return -1
+	}
+	start := w.wk.rng.IntN(len(keys))
+	for offset := range len(keys) {
+		i := (start + offset) % len(keys)
+		k := keys[i]
+		g := &w.groups[k.group]
+		if !k.busy && !g.listing && (op != mixedList || g.active == 0) {
+			return i
+		}
+	}
+	return -1
+}
+
 func (w *mixedLoad) choose() *mixedCall {
 	n := w.wk.rng.IntN(100)
-	op := 0
+	op := mixedGet
 	for i, p := range w.mix {
 		n -= p
 		if n < 0 {
@@ -170,48 +214,46 @@ func (w *mixedLoad) choose() *mixedCall {
 			break
 		}
 	}
-	if op == 3 {
+	if len(w.live) == 0 && op != mixedGet {
+		op = mixedCreate
+	}
+	if op == mixedCreate {
 		var k *mixedKey
 		if len(w.absent) > 0 && w.wk.rng.IntN(2) == 0 {
-			k = w.absent[len(w.absent)-1]
-			w.absent = w.absent[:len(w.absent)-1]
-		} else {
-			k = w.newKey(w.owner(), max(1, 1024/w.cfg.conns))
+			if i := w.eligible(w.absent, op); i >= 0 {
+				k = w.absent[i]
+				w.absent[i] = w.absent[len(w.absent)-1]
+				w.absent = w.absent[:len(w.absent)-1]
+			}
+		}
+		if k == nil {
+			k = w.newKey()
+		}
+		if k == nil {
+			return nil
 		}
 		return &mixedCall{op: op, key: k, value: w.value(k)}
 	}
-	// Check absence too: a delete event alone does not prove the key
-	// disappeared from Range. Ten percent of GETs use known absent keys.
-	if op == 0 && len(w.absent) > 0 && (len(w.live) == 0 || w.wk.rng.IntN(10) == 0) {
-		return &mixedCall{op: op, key: w.absent[w.wk.rng.IntN(len(w.absent))]}
-	}
-	if len(w.live) == 0 {
-		k := w.newKey(w.owner(), max(1, 1024/w.cfg.conns))
-		return &mixedCall{op: 3, key: k, value: w.value(k)}
-	}
-	index := w.wk.rng.IntN(len(w.live))
-	var k *mixedKey
-	for offset := range len(w.live) {
-		candidate := w.live[(index+offset)%len(w.live)]
-		if !candidate.busy {
-			k = candidate
-			break
+	// Check deletes by Range too, not only by their watch events.
+	if op == mixedGet && len(w.absent) > 0 && (len(w.live) == 0 || w.wk.rng.IntN(10) == 0) {
+		if i := w.eligible(w.absent, op); i >= 0 {
+			return &mixedCall{op: op, key: w.absent[i]}
 		}
 	}
-	if k == nil {
+	i := w.eligible(w.live, op)
+	if i < 0 {
 		return nil
 	}
+	k := w.live[i]
 	call := &mixedCall{op: op, key: k}
-	if op == 1 {
+	if op == mixedList {
 		call.group = &w.groups[k.group]
 	}
-	if op == 2 {
+	if op == mixedUpdate {
 		call.value = w.value(k)
 	}
 	return call
 }
-
-func (w *mixedLoad) owner() int { return w.ownerID }
 
 func (w *mixedLoad) start(c *conn, st *stream) bool {
 	if w.pending == nil {
@@ -222,19 +264,20 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 	}
 	call := w.pending
 	g := &w.groups[call.key.group]
-	if call.key.busy || g.listing || (call.op == 1 && g.active != 0) {
+	if call.key.busy || g.listing || (call.op == mixedList && g.active != 0) {
+		w.pending = nil
 		return false
 	}
 	m := newMsg()
 	path := "/etcdserverpb.KV/Range"
 	switch call.op {
-	case 0:
+	case mixedGet:
 		m.bytes(rangeKey, call.key.key)
-	case 1:
+	case mixedList:
 		m.bytes(rangeKey, g.prefix)
 		m.bytes(rangeEnd, prefixEnd(g.prefix))
 		m.varint(rangeLimit, 500)
-	case 2, 3, 4:
+	case mixedUpdate, mixedCreate, mixedDelete:
 		m = mixedTxn(call.key, call.op, call.value)
 		path = "/etcdserverpb.KV/Txn"
 	}
@@ -251,15 +294,16 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 	w.calls[st.id] = *call
 	call.key.busy = true
 	g.active++
-	if call.op == 1 {
+	if call.op == mixedList {
 		g.listing = true
 	}
 	w.pending = nil
 	return true
 }
+
 func (w *mixedLoad) exhausted() bool { return false }
 
-// checkKV validates all of the stored fields, not only key and size.
+// checkMixedKV validates all of the stored fields, not only key and size.
 func checkMixedKV(m []byte, k *mixedKey) error {
 	key, err := bytesField(m, kvKey)
 	if err != nil {
@@ -275,7 +319,7 @@ func checkMixedKV(m []byte, k *mixedKey) error {
 	for _, f := range []struct {
 		field protowire.Number
 		want  int64
-	}{{2, k.create}, {3, k.mod}, {4, k.version}, {6, 0}} {
+	}{{kvCreateRevision, k.create}, {kvModRevision, k.mod}, {kvVersion, k.version}, {kvLease, 0}} {
 		v, err := varintField(m, f.field)
 		if err != nil {
 			return err
@@ -321,6 +365,9 @@ func checkMixedRange(m []byte, keys []*mixedKey, page int) error {
 }
 
 func (w *mixedLoad) message(st *stream, m []byte) error {
+	if st.msgs > 1 {
+		return errors.New("mixed unary call returned a second message")
+	}
 	call := w.calls[st.id]
 	k := call.key
 	rev, err := responseRevision(m)
@@ -330,14 +377,14 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	if rev < k.mod || rev < call.floor {
 		return errors.New("mixed response revision went backwards")
 	}
-	if call.op == 0 {
+	if call.op == mixedGet {
 		w.ledger.revisionMax(rev)
 		if k.mod == 0 {
 			return checkMixedRange(m, nil, 1)
 		}
 		return checkMixedRange(m, []*mixedKey{k}, 1)
 	}
-	if call.op == 1 {
+	if call.op == mixedList {
 		var live []*mixedKey
 		for _, k := range call.group.keys {
 			if k.mod != 0 {
@@ -367,8 +414,8 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		}
 		responses++
 		field := protowire.Number(opResponsePut)
-		if call.op == 4 {
-			field = 3
+		if call.op == mixedDelete {
+			field = opResponseDeleteRange
 		}
 		inner, err := bytesField(b, field)
 		if err != nil {
@@ -377,7 +424,7 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		if inner == nil {
 			return errors.New("mixed txn returned wrong operation")
 		}
-		if call.op == 4 {
+		if call.op == mixedDelete {
 			deleted, err := varintField(inner, delDeleted)
 			if err != nil {
 				return err
@@ -402,13 +449,13 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	}
 	w.ledger.revisionMax(rev)
 	prev := *k
-	if call.op == 4 {
+	if call.op == mixedDelete {
 		k.value = nil
 		k.mod = rev
 		k.create = 0
 		k.version = 0
 	} else {
-		if call.op == 3 {
+		if call.op == mixedCreate {
 			k.create = rev
 			k.version = 0
 		}
@@ -416,16 +463,16 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		k.version++
 		k.value = call.value
 	}
-	w.ledger.expect(rev, k, &prev, call.op == 4, st.intended)
+	w.ledger.expect(rev, k, &prev, call.op == mixedDelete, st.intended)
 	switch call.op {
-	case 4:
+	case mixedDelete:
 		last := w.live[len(w.live)-1]
 		w.live[k.liveIndex] = last
 		last.liveIndex = k.liveIndex
 		w.live = w.live[:len(w.live)-1]
 		k.mod = 0
 		w.absent = append(w.absent, k)
-	case 3:
+	case mixedCreate:
 		k.liveIndex = len(w.live)
 		w.live = append(w.live, k)
 	}
@@ -438,7 +485,7 @@ func (w *mixedLoad) done(st *stream, at int64, err error) {
 	call.key.busy = false
 	g := &w.groups[call.key.group]
 	g.active--
-	if call.op == 1 {
+	if call.op == mixedList {
 		g.listing = false
 	}
 	w.wk.stats.complete(st, at, err)
@@ -493,6 +540,9 @@ func (p *mixedPreload) start(c *conn, st *stream) bool {
 }
 
 func (p *mixedPreload) message(st *stream, m []byte) error {
+	if st.msgs > 1 {
+		return errors.New("preload unary call returned a second message")
+	}
 	rev, err := responseRevision(m)
 	if err != nil {
 		return err
@@ -564,11 +614,11 @@ func mixedKV(k *mixedKey) *msg {
 	m := newMsg()
 	m.bytes(kvKey, k.key)
 	if k.create != 0 {
-		m.varint(2, uint64(k.create))
+		m.varint(kvCreateRevision, uint64(k.create))
 	}
 	m.varint(kvModRevision, uint64(k.mod))
 	if k.version != 0 {
-		m.varint(4, uint64(k.version))
+		m.varint(kvVersion, uint64(k.version))
 	}
 	if len(k.value) > 0 {
 		m.bytes(kvValue, k.value)
@@ -583,7 +633,7 @@ func eventDigest(k, prev *mixedKey, deleted bool) [32]byte {
 	}
 	m.sub(eventKV, mixedKV(k))
 	if prev.mod != 0 {
-		m.sub(3, mixedKV(prev))
+		m.sub(eventPrevKV, mixedKV(prev))
 	}
 	return sha256.Sum256(m.b)
 }
@@ -701,7 +751,7 @@ func (w *mixedWatch) response(m []byte) error {
 			if typ != 0 {
 				canonical.varint(eventType, typ)
 			}
-			for _, field := range []protowire.Number{eventKV, 3} {
+			for _, field := range []protowire.Number{eventKV, eventPrevKV} {
 				raw, err := bytesField(b, field)
 				if err != nil {
 					return err
@@ -710,7 +760,7 @@ func (w *mixedWatch) response(m []byte) error {
 					continue
 				}
 				km := newMsg()
-				for _, f := range []protowire.Number{kvKey, 2, 3, 4, kvValue, 6} {
+				for _, f := range []protowire.Number{kvKey, kvCreateRevision, kvModRevision, kvVersion, kvValue, kvLease} {
 					if f == kvKey || f == kvValue {
 						val, err := bytesField(raw, f)
 						if err != nil {
@@ -927,9 +977,6 @@ func runMixed(cfg config) (*result, error) {
 	}
 	res.Watch = &watchResult{Watchers: len(watches), Events: ledger.events, EventsPerS: float64(ledger.events) / cfg.duration.Seconds(), Latency: ledger.lat.summary()}
 	ledger.mu.Unlock()
-	if res.Ops > 0 {
-		res.Watch.ServerCPUUsPerEvent = res.ServerCPUUsPerOp * float64(res.Ops) / float64(max(1, res.Watch.Events))
-	}
 	err := errors.Join(phaseErr, sampleErr)
 	if len(cfg.pids) == 0 {
 		err = errors.Join(err, errors.New("no server pids"))
