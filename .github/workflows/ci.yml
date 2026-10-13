@@ -61,6 +61,22 @@ jobs:
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
       - run: go test -race ./...
 
+  # Values near the request limit from clients on every node at a real
+  # node's 100 ms ticks, failing if a leader entry waits one election
+  # timeout to commit (#88). Its own job: every value stays in memory.
+  stress:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -count=20 -run 'TestLargeValuesAtRealTicks$' ./internal/server
+        env:
+          TIGERSTORE_STRESS: 10s
+          GOMEMLIMIT: 8GiB
+
   determinism-lint:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
@@ -173,7 +189,7 @@ jobs:
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, determinism-lint, sim, smoke, difftest, planted]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, difftest, planted]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
