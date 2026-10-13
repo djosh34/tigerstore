@@ -1,0 +1,7 @@
+{
+  "kind": "tigerstore",
+  "leader": "127.0.0.1:40030",
+  "term": "1",
+  "pids_leader_first": "4468,4466,4467",
+  "cpus_leader_first": "0 1 2"
+}

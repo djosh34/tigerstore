@@ -1,0 +1,72 @@
+{
+  "valid": true,
+  "label": "etcd",
+  "workload": "mixed",
+  "value_size": 0,
+  "keys": 1000000,
+  "live_keys": 1000348,
+  "size_source": "k8s-1.37-dump",
+  "mix": "25,10,40,15,10",
+  "endpoints": [
+    "127.0.0.1:40010",
+    "127.0.0.1:40020",
+    "127.0.0.1:40030"
+  ],
+  "conns": 6,
+  "streams_per_conn": 16,
+  "offered_rate": 500,
+  "warmup_s": 3,
+  "duration_s": 10,
+  "ops": 5026,
+  "throughput": 502.6,
+  "latency_us": {
+    "count": 5026,
+    "mean": 2348.146230998806,
+    "p50": 1716.223,
+    "p90": 3710.975,
+    "p99": 16416.767,
+    "p999": 23920.639,
+    "max": 29433.562
+  },
+  "service_latency_us": {
+    "count": 5026,
+    "mean": 1911.2662095105452,
+    "p50": 1241.087,
+    "p90": 3186.687,
+    "p99": 16154.623,
+    "p999": 23658.495,
+    "max": 29430.412
+  },
+  "cohort": 5026,
+  "cohort_failed": 0,
+  "unsent": 0,
+  "watch": {
+    "watchers": 27,
+    "events": 3276,
+    "events_per_s": 327.6,
+    "latency_us": {
+      "count": 3276,
+      "mean": 2181.2404664224664,
+      "p50": 1650.687,
+      "p90": 2826.239,
+      "p99": 15630.335,
+      "p999": 23134.207,
+      "max": 28111.895
+    },
+    "server_cpu_us_per_event": 2380.952380952381
+  },
+  "server_cpu_us_per_op": 1551.9299641862317,
+  "server_cpu_us_per_op_by_node": [
+    571.0306406685237,
+    501.39275766016715,
+    479.5065658575408
+  ],
+  "server_cores_by_node": [
+    0.2869936383268167,
+    0.2519944141406195,
+    0.24099465796781472
+  ],
+  "client_cpu_us_per_op": 147.49542379625944,
+  "client_cores": 0.07412955679976624,
+  "errors": {}
+}
