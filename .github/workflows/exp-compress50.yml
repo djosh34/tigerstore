@@ -1,29 +1,34 @@
-name: Compression dump experiment
+name: Value size histogram experiment
 on:
   push:
-    branches: [exp/pre-50-compress]
+    branches: [exp/size-histogram]
     paths:
-      - 'experiments/compress50/**'
+      - 'experiments/size-histogram/**'
       - '.github/workflows/exp-compress50.yml'
 permissions:
   contents: read
 jobs:
-  compression:
+  histogram:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
+      - name: Refuse starts after the deadline
+        run: test "$(date -u +%s)" -lt 1791928800
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27.2'
           cache: false
-      - name: Create, churn, dump and measure
-        run: timeout 780 bash experiments/compress50/run.sh
-      - name: Upload aggregate data only
-        if: always()
+      - name: Create, churn and export lengths only
+        run: timeout --kill-after=10s 780s bash experiments/size-histogram/run.sh
+      - name: Upload the aggregate histogram and run metadata only
         uses: actions/upload-artifact@v4
         with:
-          name: compression-results
-          path: experiments/compress50/results/
+          name: size-histogram
+          path: |
+            experiments/size-histogram/results/histogram.csv
+            experiments/size-histogram/results/environment.txt
+            experiments/size-histogram/results/kubernetes-version.json
+            experiments/size-histogram/results/workload.jsonl
           retention-days: 7
           if-no-files-found: error
