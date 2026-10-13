@@ -1,0 +1,1962 @@
+{
+  "compact-below-current": [
+    {
+      "do": "put a=1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put a=2",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a=3",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "compact at R-1",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "range a at 1",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "range a at 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 3",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "watch a from 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "canceled": true,
+        "compactRevision": 2
+      }
+    },
+    {
+      "do": "watch a from 2 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch a from 3 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "compact at R-1 again",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "compact at R-2",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    }
+  ],
+  "compact-at-current": [
+    {
+      "do": "put a=1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put a=2",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a=3",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "compact at R",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "range a at 1",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "range a at 2",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "range a at 3",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "watch a from 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "canceled": true,
+        "compactRevision": 3
+      }
+    },
+    {
+      "do": "watch a from 2 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "canceled": true,
+        "compactRevision": 3
+      }
+    },
+    {
+      "do": "watch a from 3 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "compact at R again",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    }
+  ],
+  "compact-above-current": [
+    {
+      "do": "put a=1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put a=2",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a=3",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "compact at R+1",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "range a at 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 3",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "watch a from 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch a from 2 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch a from 3 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "compact-physical": [
+    {
+      "do": "put a=1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put a=2",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a=3",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "physical compact at R-1",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "range a at 1",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "range a at 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 3",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "3",
+            "create": 1,
+            "mod": 3,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range a at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "watch a from 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "canceled": true,
+        "compactRevision": 2
+      }
+    },
+    {
+      "do": "watch a from 2 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch a from 3 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "3",
+              "create": 1,
+              "mod": 3,
+              "version": 3
+            },
+            "prevKV": {
+              "key": "a",
+              "value": "2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "kubernetes-shapes": [
+    {
+      "do": "create a: mod(a) = 0",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "create a again",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": false,
+        "ops": [
+          {
+            "range": {
+              "revision": 1,
+              "kvs": [
+                {
+                  "key": "pods/a",
+                  "value": "a1",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "update a: mod(a) = 1",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "stale update a: mod(a) = 1",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": false,
+        "ops": [
+          {
+            "range": {
+              "revision": 2,
+              "kvs": [
+                {
+                  "key": "pods/a",
+                  "value": "a2",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "create b",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "create c",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete b: mod(b) = 3",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "succeeded": true,
+        "ops": [
+          {
+            "deleted": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete b again",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "succeeded": false,
+        "ops": [
+          {
+            "range": {
+              "revision": 5,
+              "count": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete missing key",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "deleted": 0
+      }
+    },
+    {
+      "do": "list pods",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/a",
+            "value": "a2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          {
+            "key": "pods/c",
+            "value": "c1",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "list pods, limit 1",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/a",
+            "value": "a2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 2,
+        "more": true
+      }
+    },
+    {
+      "do": "list pods at 3, limit 1",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/a",
+            "value": "a2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 2,
+        "more": true
+      }
+    },
+    {
+      "do": "list pods at 3 from b",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/b",
+            "value": "b1",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "count pods",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "count": 2
+      }
+    },
+    {
+      "do": "count pods, limit 1",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "count": 2
+      }
+    },
+    {
+      "do": "list pod keys",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/a",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          },
+          {
+            "key": "pods/c",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "serializable get a",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "pods/a",
+            "value": "a2",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "watch pods from 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/a",
+              "value": "a1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/a",
+              "value": "a2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            },
+            "prevKV": {
+              "key": "pods/a",
+              "value": "a1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/b",
+              "value": "b1",
+              "create": 3,
+              "mod": 3,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/c",
+              "value": "c1",
+              "create": 4,
+              "mod": 4,
+              "version": 1
+            }
+          },
+          {
+            "type": "DELETE",
+            "kv": {
+              "key": "pods/b",
+              "create": 0,
+              "mod": 5,
+              "version": 0
+            },
+            "prevKV": {
+              "key": "pods/b",
+              "value": "b1",
+              "create": 3,
+              "mod": 3,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch pods from 1 without prev_kv",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/a",
+              "value": "a1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/a",
+              "value": "a2",
+              "create": 1,
+              "mod": 2,
+              "version": 2
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/b",
+              "value": "b1",
+              "create": 3,
+              "mod": 3,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "pods/c",
+              "value": "c1",
+              "create": 4,
+              "mod": 4,
+              "version": 1
+            }
+          },
+          {
+            "type": "DELETE",
+            "kv": {
+              "key": "pods/b",
+              "create": 0,
+              "mod": 5,
+              "version": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch pods from a future revision",
+      "code": "OK",
+      "result": {
+        "created": true
+      }
+    },
+    {
+      "do": "compactor: version(lock) = 0",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "compactor: version(lock) = 0 again",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": false,
+        "ops": [
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "compact_rev_key",
+                  "value": "5",
+                  "create": 6,
+                  "mod": 6,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "compactor: version(lock) = 1",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "read-only txn",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 7,
+              "kvs": [
+                {
+                  "key": "pods/a",
+                  "value": "a2",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          },
+          {
+            "range": {
+              "revision": 7,
+              "kvs": [
+                {
+                  "key": "pods/c",
+                  "value": "c1",
+                  "create": 4,
+                  "mod": 4,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn writing two keys",
+      "code": "OK",
+      "result": {
+        "revision": 8,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "range": {
+              "revision": 8,
+              "kvs": [
+                {
+                  "key": "pods/a",
+                  "value": "a4",
+                  "create": 1,
+                  "mod": 8,
+                  "version": 3
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "put a with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "prevKV": {
+          "key": "pods/a",
+          "value": "a4",
+          "create": 1,
+          "mod": 8,
+          "version": 3
+        }
+      }
+    },
+    {
+      "do": "delete pods with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 10,
+        "deleted": 2,
+        "prevKVs": [
+          {
+            "key": "pods/a",
+            "value": "a5",
+            "create": 1,
+            "mod": 9,
+            "version": 4
+          },
+          {
+            "key": "pods/c",
+            "value": "c2",
+            "create": 4,
+            "mod": 8,
+            "version": 2
+          }
+        ]
+      }
+    }
+  ],
+  "error-codes": [
+    {
+      "do": "put k",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "range empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "delete empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "range at a future revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "range at revision -1",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range with limit -1",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range with an end before the key",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "count": 0
+      }
+    },
+    {
+      "do": "put with a missing lease",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "put ignore_value on a missing key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key not found"
+    },
+    {
+      "do": "put ignore_lease on a missing key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key not found"
+    },
+    {
+      "do": "put ignore_value with a value",
+      "code": "InvalidArgument",
+      "message": "etcdserver: value is provided"
+    },
+    {
+      "do": "put ignore_value on k",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "txn putting one key twice",
+      "code": "InvalidArgument",
+      "message": "etcdserver: duplicate key given in txn request"
+    },
+    {
+      "do": "txn putting and deleting one key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: duplicate key given in txn request"
+    },
+    {
+      "do": "txn reading one key twice",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 2,
+              "kvs": [
+                {
+                  "key": "k",
+                  "value": "v",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          },
+          {
+            "range": {
+              "revision": 2,
+              "kvs": [
+                {
+                  "key": "k",
+                  "value": "v",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn with 128 operations",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          },
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn with 129 operations",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "txn with 129 operations in the branch not taken",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "txn with a historical range at a compacted revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "compact at revision 0",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "compact at revision -1",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    }
+  ],
+  "leases": [
+    {
+      "do": "grant with an explicit ID",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant the same ID again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: lease already exists"
+    },
+    {
+      "do": "grant with a TTL of 1 s",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 2
+      }
+    },
+    {
+      "do": "grant with a TTL of 9000000001 s",
+      "code": "OutOfRange",
+      "message": "etcdserver: too large lease TTL"
+    },
+    {
+      "do": "grant with a TTL of 0",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 3,
+        "ttl": 2
+      }
+    },
+    {
+      "do": "grant with a negative ID",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 4,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "put k with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put j with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put j without a lease",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put ignore_lease on k",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "range keys",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "kvs": [
+          {
+            "key": "j",
+            "value": "w",
+            "create": 2,
+            "mod": 3,
+            "version": 2
+          },
+          {
+            "key": "k",
+            "value": "w",
+            "create": 1,
+            "mod": 4,
+            "version": 2,
+            "lease": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "revoke the lease",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "range keys after the revoke",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "j",
+            "value": "w",
+            "create": 2,
+            "mod": 3,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "revoke the lease again",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "grant a lease for no keys",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "lease": 5,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "revoke a lease without keys",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "revoke lease 0",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    }
+  ],
+  "max-request-size": [
+    {
+      "do": "largest put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572801
+    },
+    {
+      "do": "put one byte below of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 17
+      }
+    },
+    {
+      "do": "put exactly of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 18
+      }
+    },
+    {
+      "do": "put one byte above of the largest size",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572793
+    },
+    {
+      "do": "txn put one byte below of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 37,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 38,
+        "succeeded": true,
+        "ops": [
+          {
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    }
+  ]
+}
