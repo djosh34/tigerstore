@@ -203,7 +203,7 @@ func TestMixedRateFlags(t *testing.T) {
 }
 
 func TestVariableValuePoolWrap(t *testing.T) {
-	v := values{pool: make([]byte, 100), size: 8, off: 90}
+	v := values{pool: make([]byte, 100), size: 8, off: 80}
 	if len(v.next()) != 8 {
 		t.Fatal("short value")
 	}
