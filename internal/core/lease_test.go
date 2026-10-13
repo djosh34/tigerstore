@@ -121,7 +121,7 @@ func TestKeepAliveBeforeExpiryKeepsTheLease(t *testing.T) {
 	s := startSingle(t, simfs.New(), 1)
 	s.ok(1, &pb.LeaseGrantRequest{ID: 1, TTL: 2})
 	s.ok(2, &pb.PutRequest{Key: []byte("a"), Value: []byte("1"), Lease: 1})
-	for range 19 {
+	for range 20 {
 		s.n.Tick()
 		s.run()
 	}

@@ -5,6 +5,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -31,5 +33,28 @@ func TestConversionRefusesWhatTheFormatCannotHold(t *testing.T) {
 	}}
 	if _, err := watchResponse(bad); err == nil {
 		t.Error("a watch event of unknown type converted without error")
+	}
+}
+
+// TestUncommittedAmbiguousWritesAreLeftOut keeps an ambiguous write that
+// is in the committed log and leaves out one that is not.
+func TestUncommittedAmbiguousWritesAreLeftOut(t *testing.T) {
+	put := func(v string) *pb.PutRequest { return &pb.PutRequest{Key: []byte("a"), Value: []byte(v)} }
+	timeout := status.Error(codes.DeadlineExceeded, "timeout")
+	res := &Result{
+		Clients: 2,
+		History: []*Record{
+			{Client: 0, Call: 1, Return: 2, req: put("in"), Err: timeout, Ambiguous: true},
+			{Client: 1, Call: 1, Return: 2, req: put("out"), Err: timeout, Ambiguous: true},
+		},
+		Log:      []proto.Message{put("in")},
+		FinalRev: 2,
+	}
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Ops) != 1 || h.Ops[0].Req.Put.Value != "in" {
+		t.Fatalf("got ops %+v, want only the committed put", h.Ops)
 	}
 }
