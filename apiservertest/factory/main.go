@@ -2,11 +2,14 @@
 // the k8s.io/apiserver storage tests' RunEtcd, through the adapter in
 // apiservertest. It prints the client endpoints as one comma-separated
 // line, keeps the cluster up until SIGINT or SIGTERM, then stops every
-// node and exits 0 if all of them stopped cleanly.
+// node and exits 0 if all of them stopped cleanly. With ETCD set, it
+// starts a 3-node etcd with the same certificates and layout instead, to
+// compare the two on the same machine.
 //
 // Environment:
 //
 //	TIGERSTORE                      the tigerstore binary
+//	ETCD                            an etcd binary to run instead
 //	STORAGE_TEST_CERTS              certificates made by scripts/dev-certs.sh
 //	STORAGE_TEST_DATA_DIR           a fresh directory for the nodes' data
 //	STORAGE_TEST_PROGRESS_INTERVAL  the watch progress interval, 0s for the default
@@ -25,8 +28,9 @@ import (
 	"time"
 )
 
-// stopTimeout is how long a node may take to stop after SIGINT.
-const stopTimeout = 4 * time.Second
+// stopTimeout is how long a node may take to stop after SIGINT: etcd can
+// take several seconds. The adapter waits 10 s for the factory.
+const stopTimeout = 8 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -37,8 +41,12 @@ func main() {
 
 func run() error {
 	bin, certs, dir := os.Getenv("TIGERSTORE"), os.Getenv("STORAGE_TEST_CERTS"), os.Getenv("STORAGE_TEST_DATA_DIR")
+	etcd := os.Getenv("ETCD")
+	if etcd != "" {
+		bin = etcd
+	}
 	if bin == "" || certs == "" || dir == "" {
-		return errors.New("set TIGERSTORE, STORAGE_TEST_CERTS and STORAGE_TEST_DATA_DIR")
+		return errors.New("set TIGERSTORE or ETCD, STORAGE_TEST_CERTS and STORAGE_TEST_DATA_DIR")
 	}
 	ports, err := freePorts(6)
 	if err != nil {
@@ -63,6 +71,12 @@ func run() error {
 			"--trusted-ca-file", filepath.Join(certs, "ca.pem"), "--client-cert-auth",
 			"--peer-cert-file", filepath.Join(certs, name+".pem"), "--peer-key-file", filepath.Join(certs, name+"-key.pem"),
 			"--peer-trusted-ca-file", filepath.Join(certs, "ca.pem"),
+		}
+		if etcd != "" {
+			peer := cluster[i][len(name)+1:]
+			args = append(args, "--advertise-client-urls", endpoints[i], "--listen-peer-urls", peer,
+				"--initial-advertise-peer-urls", peer, "--initial-cluster-state", "new",
+				"--peer-client-cert-auth", "--log-level", "error")
 		}
 		if iv := os.Getenv("STORAGE_TEST_PROGRESS_INTERVAL"); iv != "" && iv != "0s" {
 			args = append(args, "--watch-progress-notify-interval", iv)
@@ -119,7 +133,9 @@ func stop(nodes []*exec.Cmd, exited chan error, running int) error {
 	for range running {
 		select {
 		case err := <-exited:
-			errs = append(errs, err)
+			if !interrupted(err) {
+				errs = append(errs, err)
+			}
 		case <-timeout:
 			for _, cmd := range nodes {
 				_ = cmd.Process.Kill()
@@ -128,4 +144,18 @@ func stop(nodes []*exec.Cmd, exited chan error, running int) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// interrupted reports whether a node exited cleanly or was ended by the
+// SIGINT it was sent, as etcd is.
+func interrupted(err error) bool {
+	var exit *exec.ExitError
+	if err == nil {
+		return true
+	}
+	if !errors.As(err, &exit) {
+		return false
+	}
+	ws, ok := exit.Sys().(syscall.WaitStatus)
+	return ok && ws.Signaled() && ws.Signal() == syscall.SIGINT
 }
