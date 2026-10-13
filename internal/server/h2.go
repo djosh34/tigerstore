@@ -450,6 +450,13 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
+	if c.closed {
+		// The connection closed while the reader decoded these headers:
+		// the stream is dead from the start and arms no timer.
+		st.reset = true
+		c.mu.Unlock()
+		return st
+	}
 	c.streams[id] = st
 	if grpc && hasTimeout {
 		// The deadline ends the call whether or not its request is
