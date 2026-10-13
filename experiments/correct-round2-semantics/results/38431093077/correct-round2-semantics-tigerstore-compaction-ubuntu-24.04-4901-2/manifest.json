@@ -1,0 +1,147 @@
+[
+  {
+    "path": "attempt.json",
+    "sha256": "c30a07557fe172800b790ea292d269b206ec6b90d9dd3034a4779228504d4ae9",
+    "bytes": 131
+  },
+  {
+    "path": "checks.log",
+    "sha256": "190fdaec2d8ba2382997eb7ab6b8b071ac56e2f66baac9eda3561008819b7206",
+    "bytes": 6202
+  },
+  {
+    "path": "commits.txt",
+    "sha256": "6c90e9fdba4fbaacf6176ce6cc48ac6868ca157b01ac6d2a14740be906a50c99",
+    "bytes": 130
+  },
+  {
+    "path": "controller.log",
+    "sha256": "e09480a723d6823635fdb1d04bb4fcc69e306c8b73b1266d9ff2f25d1868c7f6",
+    "bytes": 51
+  },
+  {
+    "path": "run/check-original.json",
+    "sha256": "5b87f7f4176a79b5787263417c17fce664067dd02f9e945383c78b75559f3360",
+    "bytes": 2973
+  },
+  {
+    "path": "run/check-original.json.coverage.json",
+    "sha256": "baa0b14c57e70303133bac84f3548f2674387bc5ad53152906d3ab9d519b3cb3",
+    "bytes": 392
+  },
+  {
+    "path": "run/commands.jsonl",
+    "sha256": "6bd5552d11b987280c7d92e73a6b24ba2ee3a4d97347a49deda01508fd7c7f29",
+    "bytes": 19411
+  },
+  {
+    "path": "run/faults.json",
+    "sha256": "5f9757f5a5fdb0d5d1321d4a285c47dc90c02c558b8d54aaee302a6232b75c65",
+    "bytes": 25272
+  },
+  {
+    "path": "run/history-original.json",
+    "sha256": "b9bbcf395f217bc261b32dc77c6a7db2263443e480cc135b5253e03141e09344",
+    "bytes": 942128
+  },
+  {
+    "path": "run/history-original.json.normalization.json",
+    "sha256": "bfe56960415ba4e6cc9bac5b8f70e6584edfd635577af4d6ada392aeab2fb13d",
+    "bytes": 32279
+  },
+  {
+    "path": "run/history-original.json.oracle.json",
+    "sha256": "595d1ce78a780ce4f9d792dddad96796a08bb9808555529d798d0eb226608e03",
+    "bytes": 366
+  },
+  {
+    "path": "run/n1-1.log",
+    "sha256": "5ca1124c70e8a5f0b6d0c615ce4b28387da6acec1c42ad9597c554abb17a85e0",
+    "bytes": 1192
+  },
+  {
+    "path": "run/n2-1.log",
+    "sha256": "a484cbf7667e7c65d5bd8fd980df9b5268b99d0b2494ae1448170eff0422740c",
+    "bytes": 710
+  },
+  {
+    "path": "run/n2-2.log",
+    "sha256": "db9d1a5b39f4504b8381da680ed3f2a05041d12b882489673d7dec38243fe6bc",
+    "bytes": 325
+  },
+  {
+    "path": "run/n3-1.log",
+    "sha256": "1cfd13e48573de6379833e13daf62b67e53216acefced0a87aa891616417eb49",
+    "bytes": 1069
+  },
+  {
+    "path": "run/offline-results.json",
+    "sha256": "65cce970ea29e1501fbb254a2ada9e1da74142868ccde8618da33e0ad9036c0b",
+    "bytes": 6259
+  },
+  {
+    "path": "run/oracles.json",
+    "sha256": "850b850b952fdff0ba83ef824c6deb8cef9065a00fe5709a0f7b0499f6b1f1f3",
+    "bytes": 371
+  },
+  {
+    "path": "run/result.json",
+    "sha256": "ae11c038fbd3b5201f53003b2326314ad9f17d4040da1603cdd659d97a07a622",
+    "bytes": 68
+  },
+  {
+    "path": "run/stopped.json",
+    "sha256": "da80b5178d3cffd44fa4369a6c2dc5c28ed72140a715ea7359beffae198fd77c",
+    "bytes": 1079
+  },
+  {
+    "path": "run/workload/assertions.json",
+    "sha256": "09d75471302aeef2c69a973dc8d77d394fabe3e34d5dc32ec50ae797cb8291b4",
+    "bytes": 55
+  },
+  {
+    "path": "run/workload/fault-live.json",
+    "sha256": "64d0b7b09af74616f3c2a2d8cc2a3d18bd104ca6762c5169ce780cc69296211c",
+    "bytes": 51
+  },
+  {
+    "path": "run/workload/history.json",
+    "sha256": "facde91aca3093d0ce9b50262f87d4928b800ee68c61f5eb9c56e4d1571590f1",
+    "bytes": 915545
+  },
+  {
+    "path": "run/workload/lease-diagnostics.json",
+    "sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
+    "bytes": 5
+  },
+  {
+    "path": "run/workload/receipt.json",
+    "sha256": "6e0a024e89d8d0c24bdb95b45825e46ca536d25d3b4a4a44f64cd505c36b1f8b",
+    "bytes": 1358
+  },
+  {
+    "path": "run/workload/watch-responses.json",
+    "sha256": "20bfc42484159b666cdea3da9b90d9112a320f54463dfec89ed19937fcb370f3",
+    "bytes": 727054
+  },
+  {
+    "path": "run/workload.log",
+    "sha256": "9032775e78e35ae7de4ef5826c26da58b9e97d1963a87a39110e20b509e1d45b",
+    "bytes": 3483
+  },
+  {
+    "path": "runner.txt",
+    "sha256": "def66843d7553ffd8a69e3de35c21d73c4634f277ae8d722d81ad3299ec796e0",
+    "bytes": 3760
+  },
+  {
+    "path": "started.txt",
+    "sha256": "161f9574bc703bd84f591a0069ee748bf250a696cfae6301c9207fb8db8bf37c",
+    "bytes": 26
+  },
+  {
+    "path": "steps.json",
+    "sha256": "53a52d6fa9308e4595015f6190853814086c09581c7cab1ab258306ff83c34cc",
+    "bytes": 95
+  }
+]

@@ -1,0 +1,71 @@
+{
+  "artifact": "correct-round2-semantics-etcd-lease-ubuntu-24.04-arm-4901-2",
+  "attempt": {
+    "target": "etcd",
+    "scenario": "lease",
+    "runner": "ubuntu-24.04-arm",
+    "seed": 4901,
+    "rep": 2,
+    "watchers": 3
+  },
+  "reached_controller": true,
+  "recorded_history": true,
+  "controller_pass": false,
+  "passed": false,
+  "offline_pass": false,
+  "oracle_sets": 1,
+  "checker_verdicts": 4,
+  "checker_passes": 0,
+  "operations": 142,
+  "target": 57,
+  "watches": 3,
+  "faults": {
+    "peer-blackhole": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "stop-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "kill-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ]
+  },
+  "failures": [
+    "semantic workload failed; see workload.log"
+  ],
+  "checker_failures": [
+    {
+      "name": "Linearizable",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target\nlinearizability check of 142 operations timed out after 30s",
+      "seconds": 30.011447712
+    },
+    {
+      "name": "Watches",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target",
+      "seconds": 0.000212251
+    },
+    {
+      "name": "Durable",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target",
+      "seconds": 0.000310309
+    },
+    {
+      "name": "Revisions",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target",
+      "seconds": 0.000361426
+    }
+  ]
+}

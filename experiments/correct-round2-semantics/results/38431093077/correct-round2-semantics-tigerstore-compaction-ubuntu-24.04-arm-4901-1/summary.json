@@ -1,0 +1,71 @@
+{
+  "artifact": "correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-1",
+  "attempt": {
+    "target": "tigerstore",
+    "scenario": "compaction",
+    "runner": "ubuntu-24.04-arm",
+    "seed": 4901,
+    "rep": 1,
+    "watchers": 12
+  },
+  "reached_controller": true,
+  "recorded_history": true,
+  "controller_pass": false,
+  "passed": false,
+  "offline_pass": false,
+  "oracle_sets": 1,
+  "checker_verdicts": 4,
+  "checker_passes": 0,
+  "operations": 100,
+  "target": 56,
+  "watches": 18,
+  "faults": {
+    "peer-blackhole": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "stop-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "kill-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ]
+  },
+  "failures": [
+    "semantic workload failed; see workload.log"
+  ],
+  "checker_failures": [
+    {
+      "name": "Linearizable",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target\nwatch 3 has no progress through target\nwatch 4 has no progress through target\nwatch 5 has no progress through target\nwatch 6 has no progress through target\nwatch 7 has no progress through target\nwatch 8 has no progress through target\nwatch 9 has no progress through target\nwatch 10 has no progress through target\nwatch 11 has no progress through target\nwatch 13 has no progress through target\nwatch 15 has no progress through target\nwatch 16 has no progress through target\nwatch 17 has no progress through target",
+      "seconds": 0.00027176
+    },
+    {
+      "name": "Watches",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target\nwatch 3 has no progress through target\nwatch 4 has no progress through target\nwatch 5 has no progress through target\nwatch 6 has no progress through target\nwatch 7 has no progress through target\nwatch 8 has no progress through target\nwatch 9 has no progress through target\nwatch 10 has no progress through target\nwatch 11 has no progress through target\nwatch 13 has no progress through target\nwatch 15 has no progress through target\nwatch 16 has no progress through target\nwatch 17 has no progress through target",
+      "seconds": 0.000679404
+    },
+    {
+      "name": "Durable",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target\nwatch 3 has no progress through target\nwatch 4 has no progress through target\nwatch 5 has no progress through target\nwatch 6 has no progress through target\nwatch 7 has no progress through target\nwatch 8 has no progress through target\nwatch 9 has no progress through target\nwatch 10 has no progress through target\nwatch 11 has no progress through target\nwatch 13 has no progress through target\nwatch 15 has no progress through target\nwatch 16 has no progress through target\nwatch 17 has no progress through target",
+      "seconds": 0.000483286
+    },
+    {
+      "name": "Revisions",
+      "passed": false,
+      "error": "watch 0 has no progress through target\nwatch 1 has no progress through target\nwatch 2 has no progress through target\nwatch 3 has no progress through target\nwatch 4 has no progress through target\nwatch 5 has no progress through target\nwatch 6 has no progress through target\nwatch 7 has no progress through target\nwatch 8 has no progress through target\nwatch 9 has no progress through target\nwatch 10 has no progress through target\nwatch 11 has no progress through target\nwatch 13 has no progress through target\nwatch 15 has no progress through target\nwatch 16 has no progress through target\nwatch 17 has no progress through target",
+      "seconds": 0.001528804
+    }
+  ]
+}
