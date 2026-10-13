@@ -405,19 +405,34 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 	}()
 	var id, header int64
 	ahead := false
+	// A server ignores a progress request while the watch catches up, so
+	// the client asks again every 100 ms; only the answer ends the step.
+	ask := time.NewTicker(100 * time.Millisecond)
+	defer ask.Stop()
 	for !res.Canceled {
 		var quiet <-chan time.Time
 		if ahead {
 			quiet = time.After(500 * time.Millisecond)
 		}
 		var resp *pb.WatchResponse
-		select {
-		case got := <-recvs:
-			if got.err != nil {
-				r.t.Fatalf("%s: no progress notification to end the watch: %v", do, got.err)
+	wait:
+		for {
+			select {
+			case got := <-recvs:
+				if got.err != nil {
+					r.t.Fatalf("%s: no progress notification to end the watch: %v", do, got.err)
+				}
+				resp = got.resp
+				break wait
+			case <-ask.C:
+				if res.Created && !ahead {
+					if err := stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}); err != nil {
+						r.t.Fatalf("%s: %v", do, err)
+					}
+				}
+			case <-quiet:
+				break wait
 			}
-			resp = got.resp
-		case <-quiet:
 		}
 		if resp == nil {
 			break
