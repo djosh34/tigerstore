@@ -3,13 +3,13 @@
 package difftest
 
 import (
-	"errors"
-	"io"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
