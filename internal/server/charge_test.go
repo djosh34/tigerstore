@@ -33,7 +33,7 @@ func drain(c *conn) {
 // leaves a connection holding nothing once its calls are over.
 func TestCallCharges(t *testing.T) {
 	reply := func(c *conn, st *stream) {
-		c.Complete([]node.Completion{{Tag: st, Reply: core.Reply{Resp: &pb.RangeResponse{Header: &pb.ResponseHeader{}}}}})
+		c.Complete([]node.Completion{{Tag: st, Resp: &pb.RangeResponse{Header: &pb.ResponseHeader{}}}})
 		c.complete(c.takeCompletions())
 	}
 	charge := func(c *conn, st *stream) {
