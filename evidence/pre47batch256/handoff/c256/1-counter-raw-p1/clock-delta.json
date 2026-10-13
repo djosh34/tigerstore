@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 14113,
+    "entries": 37024,
+    "entry_bytes": 64837093,
+    "entry_groups": 37024,
+    "groups": 37596,
+    "arrivals_per_append": {
+      "n": 37596,
+      "zero_fraction": 0.9948132780082988,
+      "mean": 0.37538567932758804,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 256
+    },
+    "completion_deferred": {
+      "n": 37596,
+      "zero_fraction": 0.9946004894137674,
+      "mean": 0.38770081923608896,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 256
+    },
+    "completion_inbox": {
+      "n": 37596,
+      "zero_fraction": 0.9998404085541015,
+      "mean": 0.015427173103521652,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 175
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 37024,
+    "entry_bytes": 64837093,
+    "entry_groups": 1318,
+    "groups": 1400,
+    "arrivals_per_append": {
+      "n": 1400,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1400,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1400,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 37024,
+    "entry_bytes": 64837093,
+    "entry_groups": 1307,
+    "groups": 1377,
+    "arrivals_per_append": {
+      "n": 1377,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1377,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1377,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  }
+]

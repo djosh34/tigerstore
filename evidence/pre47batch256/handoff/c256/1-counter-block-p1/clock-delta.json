@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 59882,
+    "entries": 954,
+    "entry_bytes": 64741133,
+    "entry_groups": 954,
+    "groups": 976,
+    "arrivals_per_append": {
+      "n": 976,
+      "zero_fraction": 0.125,
+      "mean": 61.35450819672131,
+      "p50": 39,
+      "p99": 212,
+      "max_bucket": 238
+    },
+    "completion_deferred": {
+      "n": 976,
+      "zero_fraction": 0.125,
+      "mean": 61.372950819672134,
+      "p50": 39,
+      "p99": 212,
+      "max_bucket": 238
+    },
+    "completion_inbox": {
+      "n": 976,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 954,
+    "entry_bytes": 64741133,
+    "entry_groups": 949,
+    "groups": 1018,
+    "arrivals_per_append": {
+      "n": 1018,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1018,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1018,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 954,
+    "entry_bytes": 64741133,
+    "entry_groups": 947,
+    "groups": 992,
+    "arrivals_per_append": {
+      "n": 992,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 992,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 992,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  }
+]

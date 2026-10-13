@@ -1,0 +1,48 @@
+{
+  "before": [
+    {
+      "sync_ns": 604740900,
+      "syncs": 521,
+      "write_bytes": 26032847,
+      "write_ns": 122329560,
+      "writes": 521
+    },
+    {
+      "sync_ns": 250285970,
+      "syncs": 588,
+      "write_bytes": 26032715,
+      "write_ns": 23830052,
+      "writes": 588
+    },
+    {
+      "sync_ns": 206820524,
+      "syncs": 571,
+      "write_bytes": 26032781,
+      "write_ns": 27261257,
+      "writes": 571
+    }
+  ],
+  "after": [
+    {
+      "sync_ns": 885880851,
+      "syncs": 1051,
+      "write_bytes": 39011650,
+      "write_ns": 142059914,
+      "writes": 1051
+    },
+    {
+      "sync_ns": 360197288,
+      "syncs": 818,
+      "write_bytes": 39011320,
+      "write_ns": 35642080,
+      "writes": 818
+    },
+    {
+      "sync_ns": 288331137,
+      "syncs": 789,
+      "write_bytes": 39011419,
+      "write_ns": 38462119,
+      "writes": 789
+    }
+  ]
+}

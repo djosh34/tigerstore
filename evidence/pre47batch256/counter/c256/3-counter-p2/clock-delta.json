@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 51035,
+    "entries": 1128,
+    "entry_bytes": 64741307,
+    "entry_groups": 1128,
+    "groups": 1170,
+    "arrivals_per_append": {
+      "n": 1170,
+      "zero_fraction": 0.14786324786324787,
+      "mean": 43.61965811965812,
+      "p50": 17,
+      "p99": 229,
+      "max_bucket": 255
+    },
+    "completion_deferred": {
+      "n": 1170,
+      "zero_fraction": 0.13418803418803418,
+      "mean": 50.88974358974359,
+      "p50": 20,
+      "p99": 231,
+      "max_bucket": 255
+    },
+    "completion_inbox": {
+      "n": 1170,
+      "zero_fraction": 0.9965811965811966,
+      "mean": 0.07264957264957266,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 34
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 1128,
+    "entry_bytes": 64741307,
+    "entry_groups": 802,
+    "groups": 975,
+    "arrivals_per_append": {
+      "n": 975,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 975,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 975,
+      "zero_fraction": 0.9969230769230769,
+      "mean": 0.003076923076923077,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 1
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 1128,
+    "entry_bytes": 64741307,
+    "entry_groups": 827,
+    "groups": 966,
+    "arrivals_per_append": {
+      "n": 966,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 966,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 966,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  }
+]

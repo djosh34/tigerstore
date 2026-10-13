@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 23072,
+    "entries": 29887,
+    "entry_bytes": 64829971,
+    "entry_groups": 29887,
+    "groups": 30345,
+    "arrivals_per_append": {
+      "n": 30345,
+      "zero_fraction": 0.989289833580491,
+      "mean": 0.760322952710496,
+      "p50": 0,
+      "p99": 2,
+      "max_bucket": 239
+    },
+    "completion_deferred": {
+      "n": 30345,
+      "zero_fraction": 0.9889602899983523,
+      "mean": 0.7746251441753171,
+      "p50": 0,
+      "p99": 3,
+      "max_bucket": 239
+    },
+    "completion_inbox": {
+      "n": 30345,
+      "zero_fraction": 0.9998352282089307,
+      "mean": 0.017268083704069865,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 302
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 29887,
+    "entry_bytes": 64829971,
+    "entry_groups": 1261,
+    "groups": 1373,
+    "arrivals_per_append": {
+      "n": 1373,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1373,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1373,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 29887,
+    "entry_bytes": 64829971,
+    "entry_groups": 1247,
+    "groups": 1334,
+    "arrivals_per_append": {
+      "n": 1334,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1334,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1334,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  }
+]

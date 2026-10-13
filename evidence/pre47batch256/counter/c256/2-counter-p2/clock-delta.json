@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 53971,
+    "entries": 910,
+    "entry_bytes": 64801094,
+    "entry_groups": 910,
+    "groups": 962,
+    "arrivals_per_append": {
+      "n": 962,
+      "zero_fraction": 0.1340956340956341,
+      "mean": 56.102910602910605,
+      "p50": 34,
+      "p99": 221,
+      "max_bucket": 256
+    },
+    "completion_deferred": {
+      "n": 962,
+      "zero_fraction": 0.1257796257796258,
+      "mean": 62.13201663201663,
+      "p50": 41,
+      "p99": 233,
+      "max_bucket": 256
+    },
+    "completion_inbox": {
+      "n": 962,
+      "zero_fraction": 0.997920997920998,
+      "mean": 0.010395010395010396,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 7
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 910,
+    "entry_bytes": 64801094,
+    "entry_groups": 778,
+    "groups": 954,
+    "arrivals_per_append": {
+      "n": 954,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 954,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 954,
+      "zero_fraction": 0.9968553459119497,
+      "mean": 0.0041928721174004195,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 2
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 910,
+    "entry_bytes": 64801094,
+    "entry_groups": 820,
+    "groups": 987,
+    "arrivals_per_append": {
+      "n": 987,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 987,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 987,
+      "zero_fraction": 0.9979736575481256,
+      "mean": 0.00303951367781155,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 2
+    }
+  }
+]

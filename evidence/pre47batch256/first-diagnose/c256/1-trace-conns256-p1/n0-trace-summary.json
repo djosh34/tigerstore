@@ -1,0 +1,183 @@
+{
+  "file": "evidence/pre47batch256/first-diagnose/c256/1-trace-conns256-p1/n0-trace.json.gz",
+  "wall_s": 2.429282793,
+  "counts": {
+    "turn_process": 848,
+    "process_begin": 848,
+    "process_end": 848,
+    "recv": 9085,
+    "turn_input": 549,
+    "step": 9085,
+    "ready": 548,
+    "send": 9085,
+    "peer_write": 9085,
+    "peer_flush_begin": 566,
+    "peer_flush_end": 566,
+    "group_entry": 4520,
+    "group": 285,
+    "disk_enqueue": 285,
+    "persist_start": 285,
+    "sync_start": 285,
+    "fsync_begin": 285,
+    "fsync_end": 285,
+    "persist_end": 285,
+    "completion": 285,
+    "apply_begin": 132,
+    "apply_req": 12000,
+    "apply_end": 132,
+    "group_hs": 132,
+    "grpc_tag_conn": 1,
+    "grpc_conn_begin": 1,
+    "grpc_tag_rpc": 1,
+    "grpc_in_header": 1,
+    "grpc_begin": 1,
+    "grpc_in_payload": 1,
+    "arrival": 1,
+    "handle_req": 1,
+    "submit": 1,
+    "reply": 1,
+    "do_reply": 1,
+    "grpc_out_header": 1,
+    "grpc_out_payload": 1,
+    "grpc_out_trailer": 1,
+    "grpc_end": 1,
+    "grpc_end_result": 1,
+    "grpc_conn_end": 1
+  },
+  "timing_us": {
+    "arrival_submit": {
+      "n": 1,
+      "mean": 3.256,
+      "p50": 3.256,
+      "p90": 3.256,
+      "p99": 3.256,
+      "max": 3.256
+    },
+    "submit_apply": {
+      "n": 0
+    },
+    "apply_reply": {
+      "n": 0
+    },
+    "reply_do": {
+      "n": 1,
+      "mean": 1.112,
+      "p50": 1.112,
+      "p90": 1.112,
+      "p99": 1.112,
+      "max": 1.112
+    },
+    "process": {
+      "n": 848,
+      "mean": 29.528060141509435,
+      "p50": 0.72,
+      "p90": 89.722,
+      "p99": 450.933,
+      "max": 594.833
+    },
+    "apply": {
+      "n": 132,
+      "mean": 172.6785909090909,
+      "p50": 123.843,
+      "p90": 373.466,
+      "p99": 555.632,
+      "max": 565.4
+    },
+    "fsync": {
+      "n": 285,
+      "mean": 394.9055894736842,
+      "p50": 330.857,
+      "p90": 543.472,
+      "p99": 2320.187,
+      "max": 2673.278
+    },
+    "persist": {
+      "n": 285,
+      "mean": 433.38903157894737,
+      "p50": 376.89,
+      "p90": 599.937,
+      "p99": 2328.683,
+      "max": 2691.919
+    },
+    "completion": {
+      "n": 285,
+      "mean": 3.131273684210526,
+      "p50": 3.088,
+      "p90": 4.168,
+      "p99": 8.848,
+      "max": 21.361
+    },
+    "send_to_peer_write": {
+      "n": 9085,
+      "mean": 83.99529025866813,
+      "p50": 73.994,
+      "p90": 156.141,
+      "p99": 253.943,
+      "max": 296.969
+    },
+    "first_follower_ack_minus_local_persist_end": {
+      "n": 0
+    },
+    "first_apply_minus_local_persist_end": {
+      "n": 0
+    }
+  },
+  "arrivals_during_fsync": 0,
+  "grpc_begins_during_fsync": 0,
+  "fsync_arrivals": {
+    "n": 285,
+    "mean": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "fsync_no_arrivals_fraction": 1.0,
+  "fsync_wall_s": 0.112548093,
+  "group_requests": {
+    "n": 285,
+    "mean": 42.10526315789474,
+    "p50": 26,
+    "p90": 109,
+    "p99": 136,
+    "max": 198
+  },
+  "empty_entry_groups": 17,
+  "group_entries": {
+    "n": 285,
+    "mean": 15.859649122807017,
+    "p50": 1,
+    "p90": 77,
+    "p99": 128,
+    "max": 129
+  },
+  "completion_inbox": {
+    "n": 285,
+    "mean": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "completion_deferred": {
+    "n": 285,
+    "mean": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "arrival_inbox": {
+    "n": 1,
+    "mean": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "groups_checked_for_overlap": 0,
+  "next_group_before_this_group_first_ack": 0,
+  "next_group_before_this_group_first_apply": 0,
+  "grpc_active_max": 1,
+  "grpc_conn_active_max": 1
+}

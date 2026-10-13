@@ -1,0 +1,25 @@
+{
+  "connections": 1,
+  "settings": {
+    "h2_out_settings_frame": [
+      16384
+    ],
+    "h2_out_settings_streams": [
+      1048576
+    ]
+  },
+  "min_request_credit": 65492,
+  "min_response_credit": 64433,
+  "per_connection": {
+    "2": {
+      "request": 65535,
+      "response": 64433,
+      "min_request": 65492,
+      "min_response": 64433,
+      "request_bytes": 43,
+      "response_bytes": 1102,
+      "request_updates": 1,
+      "response_updates": 0
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "valid_windows": {
+    "isolate": 24,
+    "handoff": 12,
+    "diagnose": 2,
+    "isolate-long": 12,
+    "counter": 15,
+    "paired": 45,
+    "first-diagnose": 8
+  },
+  "total_valid": 118,
+  "checks": "valid client result, zero errors, disk counters, affinity and status output, barrier-enabled ext4 mount"
+}

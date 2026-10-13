@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 15004,
+    "entries": 37371,
+    "entry_bytes": 64777433,
+    "entry_groups": 37371,
+    "groups": 37947,
+    "arrivals_per_append": {
+      "n": 37947,
+      "zero_fraction": 0.994755843676707,
+      "mean": 0.3953935752496904,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 224
+    },
+    "completion_deferred": {
+      "n": 37947,
+      "zero_fraction": 0.9946504334993543,
+      "mean": 0.40013703323055844,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 224
+    },
+    "completion_inbox": {
+      "n": 37947,
+      "zero_fraction": 0.9997628271009567,
+      "mean": 0.041030911534508656,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 492
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 37371,
+    "entry_bytes": 64777433,
+    "entry_groups": 1259,
+    "groups": 1346,
+    "arrivals_per_append": {
+      "n": 1346,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1346,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1346,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 37371,
+    "entry_bytes": 64777433,
+    "entry_groups": 1251,
+    "groups": 1331,
+    "arrivals_per_append": {
+      "n": 1331,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1331,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1331,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    }
+  }
+]

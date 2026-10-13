@@ -1,0 +1,98 @@
+[
+  {
+    "arrivals": 60019,
+    "arrivals_during_append": 53150,
+    "entries": 970,
+    "entry_bytes": 64741144,
+    "entry_groups": 970,
+    "groups": 1032,
+    "arrivals_per_append": {
+      "n": 1032,
+      "zero_fraction": 0.15503875968992248,
+      "mean": 51.501937984496124,
+      "p50": 22,
+      "p99": 212,
+      "max_bucket": 238
+    },
+    "completion_deferred": {
+      "n": 1032,
+      "zero_fraction": 0.14534883720930233,
+      "mean": 57.406976744186046,
+      "p50": 29,
+      "p99": 222,
+      "max_bucket": 245
+    },
+    "completion_inbox": {
+      "n": 1032,
+      "zero_fraction": 0.9922480620155039,
+      "mean": 0.2625968992248062,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 86
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 970,
+    "entry_bytes": 64741144,
+    "entry_groups": 795,
+    "groups": 1008,
+    "arrivals_per_append": {
+      "n": 1008,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1008,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1008,
+      "zero_fraction": 0.9990079365079365,
+      "mean": 0.000992063492063492,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 1
+    }
+  },
+  {
+    "arrivals": 1,
+    "arrivals_during_append": 0,
+    "entries": 970,
+    "entry_bytes": 64741144,
+    "entry_groups": 813,
+    "groups": 1004,
+    "arrivals_per_append": {
+      "n": 1004,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_deferred": {
+      "n": 1004,
+      "zero_fraction": 1.0,
+      "mean": 0.0,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 0
+    },
+    "completion_inbox": {
+      "n": 1004,
+      "zero_fraction": 0.99800796812749,
+      "mean": 0.00298804780876494,
+      "p50": 0,
+      "p99": 0,
+      "max_bucket": 2
+    }
+  }
+]

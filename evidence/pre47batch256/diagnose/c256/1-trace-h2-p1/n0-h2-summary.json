@@ -1,0 +1,185 @@
+{
+  "connections": 17,
+  "settings": {
+    "h2_out_settings_frame": [
+      16384
+    ],
+    "h2_out_settings_streams": [
+      1048576
+    ]
+  },
+  "min_request_credit": 32427,
+  "min_response_credit": 64043,
+  "per_connection": {
+    "34": {
+      "request": 65535,
+      "response": 65535,
+      "min_request": 32427,
+      "min_response": 64043,
+      "request_bytes": 802169,
+      "response_bytes": 21756,
+      "request_updates": 61,
+      "response_updates": 58
+    },
+    "35": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 787135,
+      "response_bytes": 19188,
+      "request_updates": 60,
+      "response_updates": 54
+    },
+    "36": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 815971,
+      "response_bytes": 19890,
+      "request_updates": 59,
+      "response_updates": 56
+    },
+    "37": {
+      "request": 65535,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 804223,
+      "response_bytes": 19604,
+      "request_updates": 56,
+      "response_updates": 56
+    },
+    "38": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 807427,
+      "response_bytes": 19682,
+      "request_updates": 52,
+      "response_updates": 51
+    },
+    "39": {
+      "request": 65535,
+      "response": 65535,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 826651,
+      "response_bytes": 20150,
+      "request_updates": 55,
+      "response_updates": 54
+    },
+    "40": {
+      "request": 55923,
+      "response": 65301,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 782863,
+      "response_bytes": 19084,
+      "request_updates": 57,
+      "response_updates": 52
+    },
+    "41": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 789271,
+      "response_bytes": 19240,
+      "request_updates": 57,
+      "response_updates": 53
+    },
+    "42": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 812767,
+      "response_bytes": 19812,
+      "request_updates": 54,
+      "response_updates": 54
+    },
+    "43": {
+      "request": 58059,
+      "response": 65353,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 794611,
+      "response_bytes": 19370,
+      "request_updates": 62,
+      "response_updates": 59
+    },
+    "44": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 809563,
+      "response_bytes": 19734,
+      "request_updates": 55,
+      "response_updates": 52
+    },
+    "45": {
+      "request": 55923,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 817039,
+      "response_bytes": 19916,
+      "request_updates": 69,
+      "response_updates": 64
+    },
+    "46": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 790339,
+      "response_bytes": 19266,
+      "request_updates": 55,
+      "response_updates": 54
+    },
+    "47": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 803155,
+      "response_bytes": 19578,
+      "request_updates": 53,
+      "response_updates": 52
+    },
+    "48": {
+      "request": 49515,
+      "response": 65145,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 775387,
+      "response_bytes": 18902,
+      "request_updates": 56,
+      "response_updates": 54
+    },
+    "49": {
+      "request": 61263,
+      "response": 65301,
+      "min_request": 32427,
+      "min_response": 64729,
+      "request_bytes": 797815,
+      "response_bytes": 19448,
+      "request_updates": 70,
+      "response_updates": 61
+    },
+    "50": {
+      "request": 65535,
+      "response": 64433,
+      "min_request": 65492,
+      "min_response": 64433,
+      "request_bytes": 43,
+      "response_bytes": 1102,
+      "request_updates": 1,
+      "response_updates": 0
+    }
+  }
+}

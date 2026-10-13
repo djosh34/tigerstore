@@ -1,0 +1,7 @@
+{
+  "GOMAXPROCS": "1",
+  "PRE50_DEBUG": "127.0.0.1:6062",
+  "PRE50_DISK_TIMING": "1",
+  "PRE47_TRACE": "1",
+  "PRE47_H2_TRACE": "1"
+}

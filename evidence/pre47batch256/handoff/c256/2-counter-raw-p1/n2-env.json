@@ -1,0 +1,7 @@
+{
+  "GOMAXPROCS": "1",
+  "PRE50_DEBUG": "127.0.0.1:6062",
+  "PRE50_DISK_TIMING": "1",
+  "PRE47_COUNTERS": "1",
+  "PRE47_FSYNC_MODE": "raw"
+}

@@ -1,0 +1,92 @@
+etcd Version: 3.7.2
+Git SHA: 68c065e
+Go Version: go1.26.8
+Go OS/Arch: linux/arm64
+etcdctl version: 3.7.2
+API version: 3.7
+17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d  /home/runner/work/_temp/pre47batch256/bin/etcd
+ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572  /home/runner/work/_temp/pre47batch256/bin/etcdctl
+0dee5c0553ace0482cec03a4cddbf12e21d11fc35df1efab20fb2002a1fbaf9e  /home/runner/work/_temp/pre47batch256/bin/load
+1fea8a68c56b6e602d9c9821d503d8c7ad5ea33cd7e1c35a2f16675d91cf2b2a  /home/runner/work/_temp/pre47batch256/bin/prototype
+cf0f417aee40aba2c70606233971bc80189867be791d5f8a710fcf96cd66fd4e  /home/runner/work/_temp/pre47batch256/bin/tigerstore
+/home/runner/work/_temp/pre47batch256/bin/prototype: go1.27.2
+	path	github.com/djosh34/tigerstore/cmd/tigerstore
+	mod	github.com/djosh34/tigerstore	(devel)	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	go.etcd.io/raft/v3	v3.7.0	h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+/home/runner/work/_temp/pre47batch256/bin/tigerstore: go1.27.2
+	path	github.com/djosh34/tigerstore/cmd/tigerstore
+	mod	github.com/djosh34/tigerstore	v0.0.0-20261013023401-fc51d109fd77+dirty	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	go.etcd.io/raft/v3	v3.7.0	h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=fc51d109fd7717b8b62223267f5beff3691b87d4
+	build	vcs.time=2026-10-13T02:34:01Z
+	build	vcs.modified=true
+/home/runner/work/_temp/pre47batch256/bin/load: go1.27.2
+	path	github.com/djosh34/tigerstore/experiments/pre50profile/load
+	mod	github.com/djosh34/tigerstore	v0.0.0-20261013023401-fc51d109fd77+dirty	
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=
+	dep	go.etcd.io/etcd/api/v3	v3.7.2	h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=
+	dep	golang.org/x/net	v0.58.0	h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=
+	dep	golang.org/x/sys	v0.47.0	h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260706201446-f0a921348800	h1:admdQBe8jR3VWhBsUrAOaF2Qw6K/+p5pSm1GN8+6Fw4=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260706201446-f0a921348800	h1:qEHAMpSaUhtD0p3NbEEI83HwNGFxEwaSJ1G9PLnCBZE=
+	dep	google.golang.org/grpc	v1.84.0	h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=fc51d109fd7717b8b62223267f5beff3691b87d4
+	build	vcs.time=2026-10-13T02:34:01Z
+	build	vcs.modified=true

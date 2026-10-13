@@ -1,0 +1,20 @@
+Local focused checks, executable source fc51d109fd7717b8b62223267f5beff3691b87d4.
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB; private TMPDIR and GOCACHE under this task's build directory.
+
+Passed before the final measurement push:
+go test -short ./internal/osfs ./internal/node ./internal/server ./internal/core ./internal/peer ./internal/expclock ./cmd/tigerstore
+go vet ./internal/osfs ./internal/node ./internal/server ./internal/core ./internal/peer ./internal/expclock ./cmd/tigerstore
+golangci-lint run ./internal/osfs/... ./internal/node/... ./internal/server/... ./internal/core/... ./internal/peer/... ./internal/expclock/... ./cmd/tigerstore/...
+Final lint output: 0 issues.
+Initial lint checks found import/declaration formatting, EOF/EINTR comparisons and an HTTP status literal. Those were corrected before the final source commit.
+
+Final integrated race command, also GOMAXPROCS=2:
+go test -race -count=1 ./internal/node ./internal/osfs ./internal/server
+ok github.com/djosh34/tigerstore/internal/node 1.051s
+ok github.com/djosh34/tigerstore/internal/osfs 1.036s
+ok github.com/djosh34/tigerstore/internal/server 2.411s
+
+Each runner's run.sh also passed:
+go test -short ./internal/node ./internal/core ./internal/wal ./experiments/pre50profile/load
+
+No full crash campaign or changed-driver simulator campaign was run. These checks do not repair or certify the prototype's blanket Ready gate.

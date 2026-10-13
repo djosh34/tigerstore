@@ -1,0 +1,2 @@
+tigerstore 2026/10/13 02:34:38.376229 node n1 (raft ID 2) serving clients on https://127.0.0.1:2479, peers on 127.0.0.1:2480
+tigerstore 2026/10/13 02:34:47.185889 peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 127.0.0.1:56656->127.0.0.1:2380: write: connection reset by peer
