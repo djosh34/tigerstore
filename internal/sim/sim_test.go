@@ -9,6 +9,8 @@ import (
 	"testing/cryptotest"
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/core"
+
 	"github.com/djosh34/tigerstore/check"
 )
 
@@ -52,6 +54,8 @@ func TestSeeds(t *testing.T) {
 		})
 		out = f
 	}
+	var total Stats
+	ran := 0
 	for seed := *firstSeed; seed < *firstSeed+uint64(n); seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			a := run(t, DefaultConfig(seed))
@@ -60,9 +64,12 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
+			ran++
+			total.Fenced += st.Fenced
+			total.StalledStops += st.StalledStops
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -71,6 +78,11 @@ func TestSeeds(t *testing.T) {
 				}
 			}
 		})
+	}
+	// Corruption and a leader stalled long enough to stop are rare in one
+	// run, but a set of seeds must see both.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0) {
+		t.Fatalf("%d seeds fenced %d damaged nodes and stopped %d stalled leaders; both must happen", ran, total.Fenced, total.StalledStops)
 	}
 }
 
@@ -129,5 +141,31 @@ func TestLinearizable(t *testing.T) {
 			}
 			t.Logf("%d ops checked in %v", len(h.Ops), time.Since(start))
 		})
+	}
+}
+
+// TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
+// with no other fault. The leader still heartbeats, so only its own
+// watchdog can make way. It must stop within core.StallTicks election
+// timeouts of the stall, plus a tick for an append already queued and one
+// for the next client write, and every call that starts 10 election
+// timeouts after the stall must succeed.
+func TestStalledLeaderIsReplaced(t *testing.T) {
+	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.StallLeaderAt = 5 * Second
+		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
+		cfg.Duration = 25 * Second
+		res := run(t, cfg)
+		if len(res.StallStops) == 0 {
+			t.Fatalf("seed %d: the stalled leader never stopped", seed)
+		}
+		limit := cfg.StallLeaderAt + core.StallTicks*election + 2*TickTime
+		if stop := res.StallStops[0]; stop < cfg.StallLeaderAt || stop > limit {
+			t.Fatalf("seed %d: the stalled leader stopped at %d ms, want between %d and %d ms",
+				seed, stop/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
+		}
 	}
 }

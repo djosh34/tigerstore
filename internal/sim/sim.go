@@ -51,6 +51,12 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
+	// StallLeaderAt, if set, stalls the disk of whichever node leads at
+	// that time until healing.
+	StallLeaderAt int64
+	// LiveFrom, if set, is when the liveness rule starts instead of
+	// LiveAfter into healing.
+	LiveFrom int64
 	// NoLeases leaves leases out of the workload. Porcupine's runs need
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
@@ -73,6 +79,17 @@ type Faults struct {
 	// SlowDisk is the chance in percent that one disk write takes 20 to
 	// 100 ms instead of under 1 ms.
 	SlowDisk int
+	// DiskErrorEvery is the mean time between failed writes or syncs:
+	// EIO on a write or a sync, or a short write with ENOSPC. The node
+	// stops, never retries, and restarts from its disk.
+	DiskErrorEvery int64
+	// StallEvery is the mean time between disk stalls of 1.5 to 4 s.
+	StallEvery int64
+	// Corrupt damages one node's synced bytes at a crash, once per run
+	// and only sometimes; that node must refuse to start.
+	Corrupt bool
+	// Checkpoint takes the erase-one-disk checkpoint during the faults.
+	Checkpoint bool
 }
 
 // DefaultConfig is a run of 20 virtual seconds with crashes, link changes,
@@ -91,6 +108,11 @@ func DefaultConfig(seed uint64) Config {
 			LinkEvery:  2 * Second,
 			MaxDelay:   5 * Millisecond,
 			SlowDisk:   2,
+
+			DiskErrorEvery: 6 * Second,
+			StallEvery:     8 * Second,
+			Corrupt:        true,
+			Checkpoint:     true,
 		},
 	}
 }
@@ -104,6 +126,11 @@ const (
 	evCrash
 	evCrashOnce
 	evLinksOnce
+	evDiskFault
+	evDiskFaultOnce
+	evStall
+	evStallLeader
+	evCheckpoint
 	evRestart
 	evLinks
 	evHeal
@@ -200,6 +227,16 @@ type node struct {
 
 	nextStream uint64
 	streams    map[uint64]*watchClient
+
+	// stallUntil holds back disk writes until then; stalls keeps every
+	// stall window, for the liveness rule.
+	stallUntil int64
+	stalls     [][2]int64
+	// syncing is the event that ends the disk write in flight.
+	syncing *event
+	// corrupted is set when the run damaged the disk on purpose; fenced
+	// when the node then refused to start and stays down.
+	corrupted, fenced bool
 }
 
 type link struct {
@@ -227,6 +264,15 @@ type Sim struct {
 	// expiredAt is when a lease first expired on any node.
 	expiredAt    map[int64]int64
 	expiredOrder []int64
+	checkpoints  []*checkpoint
+	// applied is the highest index any node has applied.
+	applied    uint64
+	stallStops []int64
+	// diskFaultDue arms a disk fault at the next append with entries,
+	// after healing too; lateFaultAt is when such a fault fired after
+	// healing, which moves the start of the liveness rule.
+	diskFaultDue bool
+	lateFaultAt  int64
 	history      []*Record
 	stats        Stats
 	err          error
@@ -242,6 +288,11 @@ type Stats struct {
 	Compactions, WatchCompacted int
 	// Revokes counts lease revokes in the log, expiries included.
 	Revokes int
+	// DiskFaults counts failed writes and syncs that stopped a node,
+	// StalledStops leaders that stopped on a stalled disk, Fenced nodes
+	// that found their disk damaged, and ColdRestarts the erase-one-disk
+	// restarts checked.
+	DiskFaults, StalledStops, Fenced, ColdRestarts int
 }
 
 // Result is the outcome of a run.
@@ -253,6 +304,8 @@ type Result struct {
 	Log     []proto.Message
 	Watches []WatchResult
 	Stats   Stats
+	// StallStops are the times leaders stopped on a stalled disk.
+	StallStops []int64
 	// FinalRev is the revision of the converged cluster at the end.
 	FinalRev int64
 	// Clients is the number of request clients.
@@ -262,28 +315,10 @@ type Result struct {
 // Run runs one seed and checks it. The error describes the first broken
 // rule.
 func Run(cfg Config) (*Result, error) {
-	s := &Sim{
-		cfg:       cfg,
-		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
-		trace:     fnv.New64a(),
-		expiredAt: map[int64]int64{},
-		healAt:    cfg.Duration,
-		stopAt:    cfg.Duration + cfg.Heal,
-	}
-	// After the clients stop, give the cluster time to settle: leases
-	// still expire for up to leaseGrace, and the watch events of the last
-	// expiry need time to arrive.
-	s.endAt = s.stopAt + leaseGrace + 2*Second
-	ids := []uint64{1, 2, 3}
-	s.links = make([][]link, len(ids))
-	for i, id := range ids {
-		s.links[i] = make([]link, len(ids))
-		for j := range s.links[i] {
-			s.links[i][j].up = true
-		}
-		n := &node{idx: i, id: id, disk: simfs.New(), reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}}
-		s.nodes = append(s.nodes, n)
-		if err := s.start(n); err != nil {
+	s := newSim(cfg)
+	for i := range 3 {
+		s.addNode(i, simfs.New())
+		if err := s.start(s.nodes[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -299,12 +334,55 @@ func Run(cfg Config) (*Result, error) {
 		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evCrashOnce})
 	}
 	if cfg.Faults.LinkEvery > 0 {
-		s.push(&event{at: s.exp(cfg.Faults.LinkEvery), kind: evLinks})
+		s.push(&event{at: min(s.exp(cfg.Faults.LinkEvery), 3*cfg.Faults.LinkEvery), kind: evLinks})
 		// One change at a uniform time, so that no run goes without.
 		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evLinksOnce})
 	}
+	s.scheduleDiskFaults()
+	if cfg.StallLeaderAt > 0 {
+		s.push(&event{at: cfg.StallLeaderAt, kind: evStallLeader})
+	}
 	s.push(&event{at: s.healAt, kind: evHeal})
+	if err := s.loop(); err != nil {
+		return nil, err
+	}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, Clients: cfg.Clients}
+	if err := s.check(res); err != nil {
+		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
+	}
+	return res, nil
+}
 
+// newSim sets up an empty run.
+func newSim(cfg Config) *Sim {
+	s := &Sim{
+		cfg:       cfg,
+		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+		trace:     fnv.New64a(),
+		expiredAt: map[int64]int64{},
+		healAt:    cfg.Duration,
+		stopAt:    cfg.Duration + cfg.Heal,
+	}
+	// After the clients stop, give the cluster time to settle: leases
+	// still expire for up to leaseGrace, and the watch events of the last
+	// expiry need time to arrive.
+	s.endAt = s.stopAt + leaseGrace + 2*Second
+	s.links = make([][]link, 3)
+	for i := range s.links {
+		s.links[i] = make([]link, 3)
+		for j := range s.links[i] {
+			s.links[i][j].up = true
+		}
+	}
+	return s
+}
+
+func (s *Sim) addNode(i int, disk *simfs.Disk) {
+	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}})
+}
+
+// loop runs events until the end.
+func (s *Sim) loop() error {
 	for len(s.q) > 0 && s.err == nil {
 		e := s.q.pop()
 		if e.at > s.endAt {
@@ -316,13 +394,9 @@ func Run(cfg Config) (*Result, error) {
 		s.handle(e)
 	}
 	if s.err != nil {
-		return nil, fmt.Errorf("seed %d at %d ms: %w", cfg.Seed, s.now/Millisecond, s.err)
+		return fmt.Errorf("seed %d at %d ms: %w", s.cfg.Seed, s.now/Millisecond, s.err)
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, Clients: cfg.Clients}
-	if err := s.check(res); err != nil {
-		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
-	}
-	return res, nil
+	return nil
 }
 
 func (s *Sim) push(e *event) {
@@ -376,6 +450,25 @@ func (s *Sim) handle(e *event) {
 		}
 	case evCrashOnce:
 		s.crashRandom()
+	case evDiskFault:
+		s.injectDiskFault()
+		if !s.healed {
+			s.push(&event{at: s.exp(s.cfg.Faults.DiskErrorEvery), kind: evDiskFault})
+		}
+	case evDiskFaultOnce:
+		// Armed on the next disk write, since a node picked now may write
+		// nothing until healing. Again every 500 ms until one has fired:
+		// an armed fault can stay unused, on a node that is then fenced.
+		if s.stats.DiskFaults == 0 && !s.healed {
+			s.diskFaultDue = true
+			s.push(&event{at: s.now + 500*Millisecond, kind: evDiskFaultOnce})
+		}
+	case evStall:
+		s.injectStall()
+	case evStallLeader:
+		s.stallLeader()
+	case evCheckpoint:
+		s.takeCheckpoint()
 	case evRestart:
 		n := s.nodes[e.node]
 		if !n.up && n.gen == e.gen {
@@ -416,11 +509,40 @@ func (s *Sim) handle(e *event) {
 
 // start opens a node from its disk, as a process start does.
 func (s *Sim) start(n *node) error {
+	if n.fenced {
+		return nil
+	}
 	w, rec, err := wal.Open(n.disk)
+	if errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace) {
+		// An injected fault hit recovery, which can write: a failed boot.
+		// The node tries again later from what its disk holds.
+		s.stats.DiskFaults++
+		n.disk.ClearFaults()
+		n.disk.Crash(s.rng)
+		s.mix(0xfb, uint64(n.idx))
+		s.push(&event{at: s.now + 1 + s.rng.Int64N(Second), kind: evRestart, node: n.idx, gen: n.gen})
+		return nil
+	}
+	if n.corrupted {
+		// The disk was damaged on purpose; the node must notice and stay
+		// down, as an operator would replace the disk.
+		if err == nil {
+			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
+		}
+		if !errors.Is(err, wal.ErrCorrupt) {
+			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
+		}
+		n.fenced = true
+		s.stats.Fenced++
+		s.mix(0xfe, uint64(n.idx))
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	w.SetSegmentBytes(256 << 10)
+	// Small segments, so that most of the log is in sealed ones, where
+	// any damage is detectable.
+	w.SetSegmentBytes(32 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
 	// Progress notifications every 2 s instead of 10 minutes, so runs see
@@ -432,7 +554,7 @@ func (s *Sim) start(n *node) error {
 	}
 	n.gen++
 	n.log, n.core, n.up = w, c, true
-	n.diskQ, n.diskBusy = nil, false
+	n.diskQ, n.diskBusy, n.syncing = nil, false, nil
 	s.mix(0xb007, uint64(n.idx), uint64(len(rec.Entries)), rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
 	s.process(n)
@@ -458,6 +580,13 @@ func (s *Sim) process(n *node) {
 			s.expiredOrder = append(s.expiredOrder, id)
 		}
 	}
+	s.applied = max(s.applied, n.core.Applied())
+	if errors.Is(err, core.ErrDiskStalled) {
+		s.stats.StalledStops++
+		s.stallStops = append(s.stallStops, s.now)
+		s.stopNode(n)
+		return
+	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)
 		return
@@ -472,11 +601,20 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	if s.diskFaultDue && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
+		// Only an append with entries surely writes, and a write fault
+		// fires in the Flush below; a sync can stall until healing. It
+		// replaces a fault that waits for a sync. If no node appended
+		// during the faults, it fires after healing, when clients still
+		// write.
+		s.diskFaultDue = false
+		s.armDiskFault(n, 1+s.rng.IntN(2))
+	}
 	for _, j := range jobs {
 		n.log.Append(j.HardState, j.Entries)
 	}
 	if err := n.log.Flush(); err != nil {
-		s.fail("node %d write: %w", n.id, err)
+		s.diskFailed(n, err)
 		return
 	}
 	n.diskBusy = true
@@ -485,16 +623,19 @@ func (s *Sim) startDisk(n *node) {
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
-	s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs})
+	lat = max(lat, n.stallUntil-s.now)
+	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs}
+	s.push(n.syncing)
 }
 
 func (s *Sim) diskDone(e *event) {
 	n := s.nodes[e.node]
-	if !n.up || n.gen != e.gen {
+	if !n.up || n.gen != e.gen || n.syncing != e {
 		return
 	}
+	n.syncing = nil
 	if err := n.log.Sync(); err != nil {
-		s.fail("node %d sync: %w", n.id, err)
+		s.diskFailed(n, err)
 		return
 	}
 	n.diskBusy = false
@@ -580,6 +721,7 @@ func (s *Sim) crashRandom() {
 	}
 	n := up[s.rng.IntN(len(up))]
 	s.crash(n)
+	s.maybeCorrupt(n)
 	s.push(&event{at: s.now + 1 + s.rng.Int64N(s.cfg.Faults.MaxDown), kind: evRestart, node: n.idx, gen: n.gen})
 }
 
@@ -616,7 +758,9 @@ func (s *Sim) changeLinks() {
 		mask = s.rng.Uint64() & mask
 	}
 	s.setLinks(mask)
-	s.push(&event{at: s.exp(s.cfg.Faults.LinkEvery), kind: evLinks})
+	// At most three times the mean, so that one random partition cannot
+	// hold through most of the faults; TestAllLinkMasks holds each mask.
+	s.push(&event{at: min(s.exp(s.cfg.Faults.LinkEvery), s.now+3*s.cfg.Faults.LinkEvery), kind: evLinks})
 }
 
 // setLinks sets the six directed links between three nodes from a mask:
@@ -644,7 +788,19 @@ func (s *Sim) heal() {
 	s.healed = true
 	s.setLinks(1<<6 - 1)
 	for _, n := range s.nodes {
-		if !n.up {
+		if n.stallUntil > s.now && len(n.stalls) > 0 {
+			n.stalls[len(n.stalls)-1][1] = s.now
+			if n.syncing != nil {
+				// The stalled write finishes now instead.
+				e := *n.syncing
+				e.at = s.now + 50*Microsecond + s.rng.Int64N(950*Microsecond)
+				n.syncing = &e
+				s.push(n.syncing)
+			}
+		}
+		n.stallUntil = 0
+		n.disk.ClearFaults()
+		if !n.up && !n.fenced {
 			if err := s.start(n); err != nil {
 				s.fail("%w", err)
 				return

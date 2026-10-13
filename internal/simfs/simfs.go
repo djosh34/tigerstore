@@ -7,6 +7,7 @@
 package simfs
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"maps"
@@ -49,6 +50,9 @@ type Disk struct {
 	// Fault, if set, runs before every operation. A non-nil result fails
 	// the operation without changing anything.
 	Fault func(op Op, name string) error
+
+	// short, when set, makes the next write a short one.
+	short *rand.Rand
 }
 
 // New returns an empty disk.
@@ -80,6 +84,73 @@ func (d *Disk) Crash(rng *rand.Rand) {
 		f.cut = false
 		d.names[name] = f
 	}
+}
+
+// Durable returns a new disk that holds only this disk's durable state, as
+// a copy taken by pulling the power.
+func (d *Disk) Durable() *Disk {
+	c := New()
+	for _, name := range sortedNames(d.durable) {
+		f := d.durable[name]
+		g := &file{data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
+		c.names[name] = g
+		c.durable[name] = g
+	}
+	return c
+}
+
+// Corrupt copies 16 to 64 synced bytes from a random file and offset over
+// synced bytes of another place, like a write that landed at the wrong
+// offset. It leaves the last file by name alone: the WAL names segments in
+// order, and damage in the newest one can look the same as a torn write,
+// which recovery cuts off. It reports whether it changed anything.
+func (d *Disk) Corrupt(rng *rand.Rand) bool {
+	names := sortedNames(d.durable)
+	if len(names) < 2 {
+		return false
+	}
+	var targets []string
+	for _, name := range names[:len(names)-1] {
+		if len(d.durable[name].durable) >= 64 {
+			targets = append(targets, name)
+		}
+	}
+	if len(targets) == 0 {
+		return false
+	}
+	f := d.durable[targets[rng.IntN(len(targets))]]
+	n := 16 + rng.IntN(49)
+	src := d.durable[names[rng.IntN(len(names))]].durable
+	if len(src) < n || len(f.durable) < n {
+		return false
+	}
+	from := rng.IntN(len(src) - n + 1)
+	at := rng.IntN(len(f.durable) - n + 1)
+	if bytes.Equal(f.durable[at:at+n], src[from:from+n]) {
+		return false
+	}
+	copy(f.durable[at:at+n], slices.Clone(src[from:from+n]))
+	f.data = slices.Clone(f.durable)
+	f.cut = false
+	return true
+}
+
+// ErrNoSpace is the error of a write that ran out of space.
+var ErrNoSpace = errors.New("simfs: no space left on device")
+
+// ErrIO is the error of a failed write or sync.
+var ErrIO = errors.New("simfs: input/output error")
+
+// ClearFaults removes the fault hook and a pending short write.
+func (d *Disk) ClearFaults() {
+	d.Fault = nil
+	d.short = nil
+}
+
+// ShortWrite makes the next write store only a prefix of its bytes and fail
+// with ErrNoSpace, as a full disk does.
+func (d *Disk) ShortWrite(rng *rand.Rand) {
+	d.short = rng
 }
 
 // Erase removes everything, as if the disk was replaced.
@@ -196,6 +267,12 @@ func (h *Handle) ReadAll() ([]byte, error) {
 func (h *Handle) Write(p []byte) (int, error) {
 	if err := h.check(OpWrite); err != nil {
 		return 0, err
+	}
+	if rng := h.d.short; rng != nil {
+		h.d.short = nil
+		n := rng.IntN(len(p) + 1)
+		h.f.data = append(h.f.data, p[:n]...)
+		return n, ErrNoSpace
 	}
 	h.f.data = append(h.f.data, p...)
 	return len(p), nil

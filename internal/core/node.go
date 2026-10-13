@@ -29,6 +29,13 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
+// ErrDiskStalled stops a leader whose local append took longer than
+// StallTicks election timeouts.
+var ErrDiskStalled = errors.New("core: the leader's disk stalled; stopping so that another node can lead")
+
+// StallTicks is how many election timeouts a leader's append may take.
+const StallTicks = 2
+
 // MaxRequestBytes is etcd's default --max-request-bytes.
 const MaxRequestBytes = 1536 * 1024
 
@@ -99,6 +106,8 @@ type PersistJob struct {
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
 	msg       *raftpb.Message
+	// newVote is set when the job changes the term or the vote.
+	newVote bool
 }
 
 // Effects is what the core asks its driver to do.
@@ -147,6 +156,20 @@ type Node struct {
 	leader   uint64
 	isLeader bool
 	leaseSeq uint64
+	// voteTerm and vote are the newest term and vote sent to disk.
+	// unsyncedVotes counts appends that change them and are not yet
+	// durable; while any is, messages to peers wait in held. Raft with
+	// async storage writes sends a candidate's vote requests before its
+	// own term and vote are durable, so it can win, lose its term in a
+	// failed write, and win the same term again with another log. held
+	// keeps at most maxHeld messages.
+	voteTerm, vote uint64
+	unsyncedVotes  int
+	held           []*raftpb.Message
+	// appending holds the tick at which each local append with entries
+	// went to disk, oldest first; appends finish in order. If the oldest
+	// gets too old on the leader, its disk is stalled and it fences itself.
+	appending []int64
 	// ownIndex is the last index of the append that carries the leader's
 	// last batch of writes, and durable the last index on disk. While
 	// ownIndex is ahead, new writes wait. awaitOwn marks that the next
@@ -210,6 +233,8 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 		state:    state,
 		kv:       state.Store(),
 		term:     rec.HardState.Term,
+		voteTerm: rec.HardState.Term,
+		vote:     rec.HardState.Vote,
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
 	}, nil
@@ -267,6 +292,13 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
+	if n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
+		// A leader whose disk stalls still heartbeats, so the others would
+		// never elect a replacement. It stops instead; the healthy pair
+		// elects, and a restart brings it back from its log.
+		n.fail(ErrDiskStalled)
+		return
+	}
 	n.retryReads(false)
 	n.expireLeases()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
@@ -507,6 +539,14 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	if len(job.Entries) > 0 {
 		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
+		n.appending = n.appending[1:]
+	}
+	if job.newVote {
+		n.unsyncedVotes--
+		if n.unsyncedVotes == 0 {
+			n.out.Send = append(n.out.Send, n.held...)
+			n.held = nil
+		}
 	}
 	n.deliver(job.msg.GetResponses())
 }
@@ -515,7 +555,7 @@ func (n *Node) Persisted(job PersistJob) {
 func (n *Node) deliver(msgs []*raftpb.Message) {
 	for _, m := range msgs {
 		if m.GetTo() != n.cfg.ID {
-			n.out.Send = append(n.out.Send, m)
+			n.send(m)
 			continue
 		}
 		if err := n.rn.Step(m); err != nil {
@@ -582,6 +622,16 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, rs := range rd.ReadStates {
 		n.readIndexKnown(rs)
 	}
+	// Appends first, so that a term or vote change also holds back the
+	// messages of the same Ready.
+	var newVotes []*raftpb.Message
+	for _, m := range rd.Messages {
+		if m.GetTo() == raft.LocalAppendThread && m.Vote != nil && (m.GetTerm() != n.voteTerm || m.GetVote() != n.vote) {
+			n.voteTerm, n.vote = m.GetTerm(), m.GetVote()
+			n.unsyncedVotes++
+			newVotes = append(newVotes, m)
+		}
+	}
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
 		case raft.LocalAppendThread:
@@ -592,8 +642,12 @@ func (n *Node) handleReady(rd raft.Ready) {
 			job := PersistJob{Entries: m.Entries, msg: m}
 			if m.Vote != nil {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
+				job.newVote = slices.Contains(newVotes, m)
 			}
 			n.out.Persist = append(n.out.Persist, job)
+			if len(job.Entries) > 0 {
+				n.appending = append(n.appending, n.now)
+			}
 			if len(job.Entries) > 0 && n.awaitOwn {
 				n.ownIndex = job.Entries[len(job.Entries)-1].GetIndex()
 				n.awaitOwn = false
@@ -605,7 +659,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			}
 			n.deliver(m.GetResponses())
 		default:
-			n.out.Send = append(n.out.Send, m)
+			n.send(m)
 		}
 	}
 	n.serveReads()
@@ -760,4 +814,22 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 func isAnswer(err error) bool {
 	_, ok := status.FromError(err)
 	return ok
+}
+
+// maxHeld bounds the messages held while a term or vote change is not yet
+// durable, such as on a candidate whose disk stalls.
+const maxHeld = 1024
+
+// send puts a message to a peer out, or holds it while a term or vote
+// change is not yet durable.
+func (n *Node) send(m *raftpb.Message) {
+	if n.unsyncedVotes > 0 {
+		// Raft resends what it loses, so past the bound the newest
+		// messages are dropped instead of held.
+		if len(n.held) < maxHeld {
+			n.held = append(n.held, m)
+		}
+		return
+	}
+	n.out.Send = append(n.out.Send, m)
 }
