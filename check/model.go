@@ -47,6 +47,34 @@ type state struct {
 	leases    []int64 // sorted
 	rev       int64
 	compacted int64
+	// sum is a fingerprint of the state, kept only by the Porcupine
+	// model, where comparing sets of states is the hot path. It must be
+	// recomputed after every change: same and states.equal rely on it,
+	// and a stale sum could make two different sets compare equal.
+	sum uint64
+}
+
+// fingerprint hashes the state FNV-style, one 64-bit word at a time.
+// Values count only by length, so equal fingerprints still need equal to
+// confirm.
+func (s *state) fingerprint() uint64 {
+	h := uint64(14695981039346656037)
+	mix := func(v int64) {
+		h = (h ^ uint64(v)) * 1099511628211
+	}
+	mix(s.rev)
+	mix(s.compacted)
+	for _, l := range s.leases {
+		mix(l)
+	}
+	for _, kv := range s.kvs {
+		mix(kv.Version)
+		mix(kv.ModRevision)
+		mix(kv.CreateRevision)
+		mix(kv.Lease)
+		mix(int64(len(kv.Value)))
+	}
+	return h
 }
 
 func newState(keys []string) *state {
