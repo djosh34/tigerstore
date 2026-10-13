@@ -13,7 +13,7 @@ import (
 // testConn is a connection with no socket, for the accounting of calls.
 func testConn() *conn {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &conn{ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, maxFrame: 16384, sendWin: 1 << 30}
+	return &conn{ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30}
 }
 
 func testCall(c *conn, id uint32) *stream {
@@ -39,6 +39,7 @@ func TestCallCharges(t *testing.T) {
 	charge := func(c *conn, st *stream) {
 		c.mu.Lock()
 		c.chargeLocked(&st.reqHeld, st.reqSize+callCost)
+		c.atNode[st] = struct{}{}
 		c.mu.Unlock()
 	}
 	for name, run := range map[string]func(c *conn, st *stream){
@@ -70,6 +71,26 @@ func TestCallCharges(t *testing.T) {
 			c.resetStream(st.id, 0)
 			reply(c, st)
 		},
+		"reset, then the node stops": func(c *conn, st *stream) {
+			charge(c, st)
+			c.resetStream(st.id, 0)
+			c.nodeStopped()
+		},
+		"deadline, sent, then the node stops": func(c *conn, st *stream) {
+			charge(c, st)
+			st.expire()
+			drain(c)
+			c.nodeStopped()
+		},
+		"reply waiting for the writer": func(c *conn, st *stream) {
+			charge(c, st)
+			c.Complete([]node.Completion{{Tag: st, Resp: &pb.RangeResponse{Header: &pb.ResponseHeader{}, Count: 1 << 40}}})
+			if c.waitingReplies.Load() == 0 {
+				t.Error("a reply waiting for the writer counts nothing")
+			}
+			c.complete(c.takeCompletions())
+			drain(c)
+		},
 		"deadline before the batch goes out": func(c *conn, st *stream) {
 			st.expire()
 			c.batch = opBatch{reqs: []core.Request{{Op: &pb.RangeRequest{}}}, tags: []any{st}}
@@ -82,7 +103,7 @@ func TestCallCharges(t *testing.T) {
 		c := testConn()
 		st := testCall(c, 1)
 		run(c, st)
-		if c.held != 0 || st.reqHeld != 0 || st.replyHeld != 0 {
+		if c.held != 0 || st.reqHeld != 0 || st.replyHeld != 0 || c.waitingReplies.Load() != 0 || len(c.atNode) != 0 {
 			t.Errorf("%s: the connection holds %d bytes, the call %d and %d", name, c.held, st.reqHeld, st.replyHeld)
 		}
 	}
