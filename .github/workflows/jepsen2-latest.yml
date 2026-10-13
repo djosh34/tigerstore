@@ -1,0 +1,42 @@
+name: Jepsen round 2 latest main
+on:
+  push:
+    branches: [exp/jepsen2]
+    paths: ['.github/workflows/jepsen2-latest.yml']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        nemesis: [kill, partition, 'kill,pause', 'partition,pause', 'kill,partition,pause']
+        ops: [200, 50]
+        repetition: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+      - name: Tigerstore main register
+        shell: bash
+        env:
+          PRODUCT_SHA: 2b072ac7e7acb4aeef1a6e794145914201607b8c
+        run: bash experiments/jepsen2/run.sh tigerstore register '${{ matrix.nemesis }}' 90 '${{ matrix.ops }}'
+      - name: Require definite verdict and observed faults
+        if: always()
+        shell: bash
+        run: |
+          pip install edn_format==0.7.5
+          python3 experiments/jepsen/summarize.py experiments/jepsen2/results > experiments/jepsen2/results/summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jepsen2-latest-tigerstore-${{ matrix.nemesis }}-ops${{ matrix.ops }}-rep${{ matrix.repetition }}
+          path: experiments/jepsen2/results
+          retention-days: 14

@@ -1,0 +1,165 @@
+{
+  "executed_commit": "a0d1b2c19aed096560050a2930b09cc8de149914",
+  "members": [
+    {
+      "path": "artifacts/MODEL_PROVENANCE.md",
+      "sha256": "64dad8cf09350bb0ff823b7e1f879e0d7ada59bac2f67852087b95e335e5b269",
+      "bytes": 1904
+    },
+    {
+      "path": "artifacts/knossos-history.clj",
+      "sha256": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780",
+      "bytes": 14065
+    },
+    {
+      "path": "artifacts/original-upstream-register.clj",
+      "sha256": "02d9feff2d36ab137887d760184db6375cf83d5520158b0a322418af3aa58c92",
+      "bytes": 4577
+    },
+    {
+      "path": "artifacts/replay-versioned-register.clj",
+      "sha256": "dd15acc854ed10d274c5501b13dad173a591629c96d34b390d561e91440083fa",
+      "bytes": 1799
+    },
+    {
+      "path": "artifacts/supplied-checker-register.clj",
+      "sha256": "72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668",
+      "bytes": 4694
+    },
+    {
+      "path": "artifacts/upstream-source-verification.json",
+      "sha256": "5e76ac513e8550012642de16af7ae296b1d8f2585f569b050a3958c5e8af1ef5",
+      "bytes": 1074
+    },
+    {
+      "path": "executed-source/.github/workflows/jepsen2-solver.yml",
+      "sha256": "3e000854d002701da1e4f3bbfadfb9940726cf3dd4ff676cb56eb439ac7fb211",
+      "bytes": 5715
+    },
+    {
+      "path": "executed-source/commit.json",
+      "sha256": "854fa442d2a25bcfc5bfaf6b212c7e6c08de7cba169ff376d6398727eef91bda",
+      "bytes": 1663
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/EVIDENCE.md",
+      "sha256": "f71fa4bfba3ed35cc1969fee84a27c29312281c1d61cb1b7ef0206500f510e58",
+      "bytes": 6427
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/README.md",
+      "sha256": "a54dd0350aa0df90ecbab3564c4c3418c8c152cb3b977c2c351c7b7bda6e257a",
+      "bytes": 5764
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/archive-evidence.py",
+      "sha256": "8c72398ee7a5a83a33568510a46819378883cc7dd573f383daca6fd1ad13c6d1",
+      "bytes": 3139
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/history_io.py",
+      "sha256": "836e09a4b31577d26196d8113215354b39818cc7a152dee9cf1ddd6b4c491bab",
+      "bytes": 4566
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/project.clj",
+      "sha256": "67c5e3565c3b9db3d1d8f696fcf82cc23a4b9bfe3116409cfdc6effbc61003b3",
+      "bytes": 281
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/src/offline/verify.clj",
+      "sha256": "48aa4adf16d4e200b37b4236d522416ea7d8cbe868d55978cebe29cc76edad2d",
+      "bytes": 7955
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/offline/src/offline/versioned_register.clj",
+      "sha256": "dd15acc854ed10d274c5501b13dad173a591629c96d34b390d561e91440083fa",
+      "bytes": 1799
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/prepare-fresh.py",
+      "sha256": "ec440252b410ce020f743933e465b66b29f757368a12ed2916c9100cb95f0400",
+      "bytes": 3987
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/prepare.py",
+      "sha256": "8c02901aed29270bbe9f6a3dfe098d11e034cb246e02d041c02e390cfc63ae18",
+      "bytes": 3060
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/projections.py",
+      "sha256": "7595f9cdf7eb2b894be29872c4130d951c581401d139e328ae2c9f8571d5a1d5",
+      "bytes": 2890
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/run-case.py",
+      "sha256": "c687532c2689f1dad0932d05352499d490a71b5ef52833a625ddf625b3e7a771",
+      "bytes": 6269
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/selftest.py",
+      "sha256": "017fed854d94039abd070c6112ef291893141d0867352e6f3d6e9771665772ab",
+      "bytes": 11155
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/snapshot-sources.py",
+      "sha256": "77d53e9c9c8c89ea66f462200019f3b6596f817965de1d31fd2002f20dc8b23b",
+      "bytes": 2182
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/solve.py",
+      "sha256": "881b36a705368b8c5fc98f86aa2716dbbf5487753bba6a6e0f07785caf4e86fe",
+      "bytes": 8412
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/sources/knossos_history.clj",
+      "sha256": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780",
+      "bytes": 14065
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/sources/register.clj",
+      "sha256": "72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668",
+      "bytes": 4694
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/summarize.py",
+      "sha256": "93acb2c7ccd1e11659b2cd5298f8e19309777914c7986f326e0450c2711e1643",
+      "bytes": 4758
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/verify-archives.py",
+      "sha256": "0cd907d8469cf70eb4f4e385bd01c618a6bfddb00c956cb3b14e659b093b837d",
+      "bytes": 1244
+    },
+    {
+      "path": "executed-source/experiments/jepsen2-solver/verify.py",
+      "sha256": "c3f253344e01e86b47d47396c8d492a270a752eaa4cd02cc581658ccb9963740",
+      "bytes": 5677
+    },
+    {
+      "path": "executed-source/manifest.json",
+      "sha256": "836464af03617030d0c8768ae7ba29621931aa93ddc2f34fbe3c3fdab2ce07ee",
+      "bytes": 4964
+    },
+    {
+      "path": "executed-source/tree.json",
+      "sha256": "4d95cf6c05157e0f02670f54e7600381c7f3f2cb5294d5ea24263731c56ce5a1",
+      "bytes": 166393
+    },
+    {
+      "path": "MODEL_PROVENANCE.md",
+      "sha256": "64dad8cf09350bb0ff823b7e1f879e0d7ada59bac2f67852087b95e335e5b269",
+      "bytes": 1904
+    },
+    {
+      "path": "upstream-source-verification.json",
+      "sha256": "5e76ac513e8550012642de16af7ae296b1d8f2585f569b050a3958c5e8af1ef5",
+      "bytes": 1074
+    },
+    {
+      "path": "EVIDENCE.md",
+      "sha256": "828a5b6329ff011c801ac023b33b425104013594fd3eb4bf0a8f3696d7ae44bc",
+      "bytes": 8342
+    }
+  ]
+}

@@ -26,6 +26,24 @@
       "members_manifest": "fresh-first-success-38445539009.members.json",
       "members_manifest_sha256": "5df5d7fd398bbdbc52a42840b931f08ceecb1b37188e92bfca0bba4792255270",
       "executed_commit": "82989021aabe01bd06a9af26b291e04fe772ed8e"
+    },
+    {
+      "path": "fresh40-success-38448351446.tar.gz",
+      "sha256": "fcfbf62dcd185d1e8e0f0913bb85c4e09764d1e0fb54542cc02c40e2c95375e8",
+      "bytes": 30869427,
+      "member_count": 31593,
+      "members_manifest": "fresh40-success-38448351446.members.json",
+      "members_manifest_sha256": "a1c9251d139897033c31cc136b6886d0e5b94e860022fd9c1653390f60a4f637",
+      "executed_commit": "a0d1b2c19aed096560050a2930b09cc8de149914"
+    },
+    {
+      "path": "model-source-provenance.tar.gz",
+      "sha256": "260a46525e46d4788d44d37ce39ca4483b08d6bdccd20244254f72ab18d3f827",
+      "bytes": 75096,
+      "member_count": 32,
+      "members_manifest": "model-source-provenance.members.json",
+      "members_manifest_sha256": "866fee097a527c6a05e0b95c63a9cd1e93bc9700e6d0f48074c73a6446586e17",
+      "executed_commit": "a0d1b2c19aed096560050a2930b09cc8de149914"
     }
   ]
 }

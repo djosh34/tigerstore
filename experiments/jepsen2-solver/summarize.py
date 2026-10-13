@@ -22,6 +22,7 @@ def aggregate(root, run_id, artifacts):
         assert model['record_identical'] is True
         source = directory / 'case/input/history.edn'
         members = {m['path']: m['sha256'] for m in manifest['members']}
+        retained = {m['path']: m.get('retained_from_archive', True) for m in manifest['members']}
         assert sha(source) == members['history.edn']
         expected_keys = manifest['keys']
         assert summary['coverage_complete'] is True and summary['valid'] is True
@@ -54,6 +55,7 @@ def aggregate(root, run_id, artifacts):
                 'final_version': py['final_version'], 'phase': r['solve']['phase'],
                 'json_witness_sha256': json_sha, 'edn_witness_sha256': edn_sha,
                 'full_sha256': r['full_sha256'], 'independent_sha256': r['independent_sha256'],
+                'saved_projection_retained_from_archive': retained[f'independent/{key}/history.edn'],
                 'artifact_relative_path': f'case/{key}'})
         artifact = artifact_map[directory.name]
         cases.append({'id': case_id, 'case': manifest['case'], 'original_run': manifest['run'],
@@ -64,11 +66,14 @@ def aggregate(root, run_id, artifacts):
             'keys': key_results})
     assert cases
     return {'scope': 'versioned register model only, original fault and other checks unchanged',
+        'audit_tool_sha256': sha(Path(__file__)),
         'run_id': run_id, 'run_url': f'https://github.com/djosh34/tigerstore/actions/runs/{run_id}',
         'cases': cases, 'case_count': len(cases), 'key_count': sum(c['key_count'] for c in cases),
         'all_retained_cases_valid': True,
         'operation_count': sum(k['operations'] for c in cases for k in c['keys']),
-        'included_info_count': sum(k['included_infos'] for c in cases for k in c['keys'])}
+        'included_info_count': sum(k['included_infos'] for c in cases for k in c['keys']),
+        'generated_projection_count': sum(not k['saved_projection_retained_from_archive']
+                                          for c in cases for k in c['keys'])}
 
 
 if __name__ == '__main__':

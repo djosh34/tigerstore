@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 DEADLINE = dt.datetime.fromisoformat('2026-10-13T22:00:00+00:00')
 ROOT = Path(__file__).resolve().parent
@@ -20,7 +21,7 @@ def api(endpoint):
     return json.loads(subprocess.check_output(['gh', 'api', 'repos/' + REPO + '/' + endpoint]))
 
 
-for commit in COMMITS:
+for commit in (sys.argv[1:] or COMMITS):
     dest = ROOT / 'executed-sources' / commit
     dest.mkdir(parents=True, exist_ok=True)
     metadata = api('git/commits/' + commit)

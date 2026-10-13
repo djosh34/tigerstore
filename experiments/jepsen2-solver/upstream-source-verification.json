@@ -1,0 +1,22 @@
+[
+  {
+    "repository": "jepsen-io/etcd",
+    "commit": "b47cc401f27bfb7c28afd9ac088b5f0dca4501b8",
+    "path": "src/jepsen/etcd/register.clj",
+    "git_blob_sha": "bffd0d999afdd77ed6a7bef76c729710199c01dc",
+    "pinned_full_source_sha256": "02d9feff2d36ab137887d760184db6375cf83d5520158b0a322418af3aa58c92",
+    "copied_checker_source_sha256": "72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668",
+    "model_record_sha256": "9d4bbb5a3652132be1553cc3f7acb66b5c845b9a82c0922b6d77c9bfe6dd2919",
+    "model_record_identical": true,
+    "whole_file_identical": false,
+    "difference": "Only workload checker configuration differs: the supplied source has concurrency-limit 1 and WGL; client, model, generator are identical."
+  },
+  {
+    "repository": "jepsen-io/knossos",
+    "commit": "9242b067e78fc414832ac6acab8af44ddb5e0d60",
+    "path": "src/knossos/history.clj",
+    "git_blob_sha": "e197eaeaf720867506153e2c357053c734e2e0d2",
+    "source_sha256": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780",
+    "whole_file_identical": true
+  }
+]

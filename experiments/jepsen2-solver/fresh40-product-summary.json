@@ -1,0 +1,16 @@
+{
+  "etcd": {
+    "cases": 20,
+    "keys": 410,
+    "calls": 31522,
+    "infos": 73,
+    "generated": 0
+  },
+  "tigerstore": {
+    "cases": 20,
+    "keys": 452,
+    "calls": 35967,
+    "infos": 61,
+    "generated": 46
+  }
+}

@@ -50,3 +50,17 @@ The first run passed 18 fixed tests and 80 exhaustive differential cases. Every 
 Every artifact contains complete original full and independent histories under `case/input`, per-operation decisions in `case/KEY/witness.json` and `witness.edn`, both independent validation outputs, solver attempts/statistics, and `case/summary.json`. A solve's own `solve.json` remains a SAT-candidate record with `valid: unknown`; only `result.json` and the case summary can state a validated pass.
 
 No product changes, comments, or issues were made. All actual solves and JVMs ran on GitHub runners. A model-level register pass does not replace fault coverage or other checker components.
+
+## Full fresh matrix
+
+Run https://github.com/djosh34/tigerstore/actions/runs/38448351446 completed successfully. Its exact executed source/workflow commit is `a0d1b2c19aed096560050a2930b09cc8de149914`. Parent input commit is `4b88f1226647df31f394f5453739b3345ad9e3ce`, and the enforced source archive SHA-256 is `bdd0e6efba7c45fa22cc92b20be28ac1c853fef4f502bc7890af420717679857`.
+
+`fresh40-report.md` is generated from the audited `fresh40-verdicts.json`. Its totals, product subtotals, case rows, and artifact links come directly from that JSON. `fresh40-product-summary.json` retains the derived product totals. The original fault-coverage failure remains separate and does not become a pass through these register certificates.
+
+`evidence/fresh40-success-38448351446.tar.gz` permanently retains all runner inputs, certificates, verifier outputs, exact executed source snapshots, regression/differential/rejection tests, and complete logs. Its archive/member hashes are in `evidence/manifest.json` and the matching sidecar. Older permanent archives remain unchanged.
+
+## Source provenance clarification
+
+`MODEL_PROVENANCE.md` and `upstream-source-verification.json` retain the independent comparison with original GitHub blobs. The supplied register source differs from the whole original upstream file only in the existing WGL/concurrency checker wrapper. Its exact `VersionedRegister` record is byte-identical to both original upstream and the Clojure replay. The parent independently confirmed the same record hash.
+
+Legacy `model-source.json` outputs called the supplied checker-configured file hash `upstream_source_sha256`. These original outputs remain unchanged. Later runs record original source, copied checker-source, and model-record hashes separately. This is a provenance-label correction, not a model or certificate change. The original pinned source is retained as `sources/pinned_register.clj`.

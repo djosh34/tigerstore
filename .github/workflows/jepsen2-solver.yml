@@ -64,11 +64,13 @@ jobs:
           from pathlib import Path
           import hashlib,json
           p=Path('experiments/jepsen2-solver')
-          upstream=(p/'sources/register.clj').read_text()
-          exact=upstream[upstream.index('(defrecord VersionedRegister'):upstream.index('(defn r   ')]
+          upstream=(p/'sources/pinned_register.clj').read_text()
+          copied=(p/'sources/register.clj').read_text()
+          exact=upstream[upstream.index('(defrecord VersionedRegister'):upstream.index('(defn r   ')].strip()
+          copied_record=copied[copied.index('(defrecord VersionedRegister'):copied.index('(defn r   ')].strip()
           replay=(p/'offline/src/offline/versioned_register.clj').read_text()
-          assert replay[replay.index('(defrecord VersionedRegister'):].strip()==exact.strip()
-          Path('solver-results/model-source.json').write_text(json.dumps({'upstream_commit':'b47cc401f27bfb7c28afd9ac088b5f0dca4501b8','upstream_source_sha256':hashlib.sha256(upstream.encode()).hexdigest(),'record_identical':True},indent=2)+'\n')
+          assert replay[replay.index('(defrecord VersionedRegister'):].strip()==exact==copied_record
+          Path('solver-results/model-source.json').write_text(json.dumps({'upstream_commit':'b47cc401f27bfb7c28afd9ac088b5f0dca4501b8','upstream_source_sha256':hashlib.sha256(upstream.encode()).hexdigest(),'copied_checker_source_sha256':hashlib.sha256(copied.encode()).hexdigest(),'model_record_sha256':hashlib.sha256(exact.encode()).hexdigest(),'record_identical':True},indent=2)+'\n')
           PY
       - name: Regression, small-history differential tests, and exact-model replay
         run: |
