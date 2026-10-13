@@ -34,7 +34,15 @@ func (c *conn) writeLoop() error {
 	var frames []wframe
 	var ctrl []ctrlFrame
 	var hdr []byte
+	nodeDone := c.s.n.Done()
 	for {
+		c.mu.Lock()
+		comps := c.completions
+		c.completions = nil
+		c.mu.Unlock()
+		if comps != nil {
+			c.complete(comps)
+		}
 		c.mu.Lock()
 		ctrl = append(ctrl[:0], c.ctrl...)
 		clear(c.ctrl)
@@ -48,6 +56,10 @@ func (c *conn) writeLoop() error {
 			}
 			select {
 			case <-c.wake:
+				continue
+			case <-nodeDone:
+				nodeDone = nil
+				c.nodeStopped()
 				continue
 			case <-c.ctx.Done():
 				return nil

@@ -15,9 +15,11 @@ import (
 
 // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
 type stream struct {
-	c          *conn
-	id         uint32
-	ctx        context.Context // ends with the call: done, reset, timed out or connection closed
+	c  *conn
+	id uint32
+	// ctx ends with the call: done, reset, timed out or connection
+	// closed. Calls that the node runs have none.
+	ctx        context.Context
 	cancel     context.CancelFunc
 	rpc        *method // nil for HTTP requests
 	needLeader bool    // etcd's "hasleader" metadata
@@ -50,6 +52,7 @@ type stream struct {
 	queued        int  // message bytes in out
 	listed        bool // in c.ready
 	headersQueued bool
+	inflight      int  // request bytes the node holds; see conn.inflight
 	ended         bool // the writer took the end of the stream
 	reset         bool // the stream or connection is gone; output is dropped
 }
@@ -108,7 +111,7 @@ func (st *stream) receive(d []byte) error {
 }
 
 func (st *stream) deliver(m []byte) {
-	if st.rpc.unary != nil {
+	if st.rpc.stream == nil {
 		st.body = m
 		st.msgs++
 		return
@@ -229,32 +232,41 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 				return st.ctx.Err()
 			}
 		}
-		if msg != nil {
-			if !st.headersQueued {
-				st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
-				st.headersQueued = true
-			}
-			st.out = append(st.out, outItem{kind: outData, b: msg})
-			st.queued += len(msg)
-		}
-		if end {
-			var block []byte
-			switch {
-			case !st.headersQueued:
-				block = statusBlock(s, true)
-			case s == nil:
-				block = okTrailers
-			default:
-				block = statusBlock(s, false)
-			}
-			st.headersQueued = true
-			st.out = append(st.out, outItem{kind: outTrailers, b: block})
-		}
-		c.list(st)
+		st.pushLocked(msg, end, s)
 		c.mu.Unlock()
 		c.signal()
 		return nil
 	}
+}
+
+// pushLocked queues output as push does. c.mu is held and the caller
+// signals the writer.
+func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+	if st.reset || st.c.closed {
+		return
+	}
+	if msg != nil {
+		if !st.headersQueued {
+			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
+			st.headersQueued = true
+		}
+		st.out = append(st.out, outItem{kind: outData, b: msg})
+		st.queued += len(msg)
+	}
+	if end {
+		var block []byte
+		switch {
+		case !st.headersQueued:
+			block = statusBlock(s, true)
+		case s == nil:
+			block = okTrailers
+		default:
+			block = statusBlock(s, false)
+		}
+		st.headersQueued = true
+		st.out = append(st.out, outItem{kind: outTrailers, b: block})
+	}
+	st.c.list(st)
 }
 
 // pushHTTP queues a whole HTTP response.
@@ -283,6 +295,7 @@ func (c *conn) runUnary(st *stream) {
 		return
 	}
 	resp, err := st.rpc.unary(st.ctx, c.s, st.body)
+	st.body = nil
 	if err != nil {
 		st.finish(err)
 		return

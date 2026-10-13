@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // HTTP/2 limits of one client connection.
@@ -39,6 +40,8 @@ const (
 	// writeTimeout drops a client that stops reading from its socket.
 	writeTimeout = 20 * time.Second
 	ioBuffer     = 64 << 10
+	// frameHeaderLen is the size of an HTTP/2 frame header.
+	frameHeaderLen = 9
 )
 
 // conn is one HTTP/2 client connection. The reader goroutine owns the
@@ -50,6 +53,7 @@ type conn struct {
 	nc  net.Conn
 	raw net.Conn // nc without TLS, closed to abort a stuck write
 	fr  *http2.Framer
+	br  *bufio.Reader
 	bw  *bufio.Writer
 
 	ctx    context.Context // ends when the connection closes
@@ -60,6 +64,7 @@ type conn struct {
 	// Reader only.
 	maxID      uint32 // highest client stream ID seen
 	recvCredit int    // connection bytes received and not yet credited back
+	batch      opBatch
 
 	mu        sync.Mutex
 	streams   map[uint32]*stream
@@ -70,6 +75,12 @@ type conn struct {
 	maxFrame  int         // the client's largest frame payload
 	closed    bool
 	goingAway bool
+	// completions are replies from the node for the writer to encode.
+	completions [][]node.Completion
+	// inflight is the request bytes the node holds; room is signaled when
+	// it shrinks (capacity 1).
+	inflight int
+	room     chan struct{}
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -98,12 +109,14 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
+		room:     make(chan struct{}, 1),
+		br:       bufio.NewReaderSize(nc, ioBuffer),
 		streams:  map[uint32]*stream{},
 		sendWin:  65535,
 		initWin:  65535,
 		maxFrame: 16384,
 	}
-	c.fr = http2.NewFramer(c.bw, bufio.NewReaderSize(nc, ioBuffer))
+	c.fr = http2.NewFramer(c.bw, c.br)
 	c.fr.ReadMetaHeaders = hpack.NewDecoder(4096, nil)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
@@ -191,7 +204,7 @@ func (c *conn) readLoop() error {
 		return err
 	}
 	preface := make([]byte, len(http2.ClientPreface))
-	if _, err := io.ReadFull(c.nc, preface); err != nil {
+	if _, err := io.ReadFull(c.br, preface); err != nil {
 		return err
 	}
 	if string(preface) != http2.ClientPreface {
@@ -222,6 +235,11 @@ func (c *conn) readLoop() error {
 		}
 		if err := c.onFrame(f); err != nil {
 			return err
+		}
+		if c.batchDue() {
+			if err := c.flush(); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -310,7 +328,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
 	}
 	c.mu.Unlock()
-	if st != nil {
+	if st != nil && st.cancel != nil {
 		st.cancel()
 	}
 	c.signal()
@@ -384,26 +402,31 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 		}
 	}
 	st := &stream{c: c, id: id, needLeader: needLeader}
-	if timeout > 0 {
-		st.ctx, st.cancel = context.WithTimeout(c.ctx, timeout)
+	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
+	if grpc {
+		st.rpc = methods[path]
 	} else {
-		st.ctx, st.cancel = context.WithCancel(c.ctx)
+		st.httpMethod, st.httpPath = method, path
+		if st.httpPath == "" {
+			st.httpPath = "/"
+		}
+	}
+	// A call that the node runs needs no context of its own: the node
+	// answers it within its request timeout, a client enforces its own
+	// deadline, and a reset drops the reply.
+	if !grpc || (st.rpc != nil && st.rpc.op == nil) {
+		if timeout > 0 {
+			st.ctx, st.cancel = context.WithTimeout(c.ctx, timeout)
+		} else {
+			st.ctx, st.cancel = context.WithCancel(c.ctx)
+		}
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
 	c.streams[id] = st
 	c.mu.Unlock()
-
-	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
-	if !grpc {
-		st.httpMethod, st.httpPath = method, path
-		if st.httpPath == "" {
-			st.httpPath = "/"
-		}
-		return st
-	}
-	st.rpc = methods[path]
 	switch {
+	case !grpc:
 	case st.rpc == nil:
 		st.finish(unknownMethod(path))
 	case st.rpc.stream != nil:
@@ -448,6 +471,8 @@ func (c *conn) onEnd(st *stream) error {
 	case st.done.Load():
 	case st.httpPath != "":
 		go c.runHTTP(st)
+	case st.rpc.op != nil:
+		c.admit(st)
 	case st.rpc.unary != nil:
 		go c.runUnary(st)
 	}

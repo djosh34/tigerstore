@@ -275,8 +275,12 @@ func TestRawFrames(t *testing.T) {
 		t.Helper()
 		hb.Reset()
 		for _, f := range []hpack.HeaderField{
-			{Name: ":method", Value: "POST"}, {Name: ":scheme", Value: "https"}, {Name: ":path", Value: path},
-			{Name: ":authority", Value: "localhost"}, {Name: "content-type", Value: "application/grpc"}, {Name: "te", Value: "trailers"},
+			{Name: ":method", Value: "POST"},
+			{Name: ":scheme", Value: "https"},
+			{Name: ":path", Value: path},
+			{Name: ":authority", Value: "localhost"},
+			{Name: "content-type", Value: "application/grpc"},
+			{Name: "te", Value: "trailers"},
 		} {
 			must(enc.WriteField(f))
 		}
@@ -332,5 +336,46 @@ func TestRawFrames(t *testing.T) {
 			}
 			break
 		}
+	}
+}
+
+// TestNodeStopsUnderLoad stops a node while a connection has calls
+// waiting on it: every call gets an answer, none hangs.
+func TestNodeStopsUnderLoad(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 89)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
+	})
+	// Without the other two, writes wait for a quorum that never comes.
+	c.running[2].stop()
+	c.running[3].stop()
+	delete(c.running, 2)
+	delete(c.running, 3)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	errs := make(chan error, 50)
+	for range 50 {
+		wg.Go(func() {
+			_, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
+			errs <- err
+		})
+	}
+	time.Sleep(200 * time.Millisecond)
+	c.running[1].stopNode()
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+			t.Fatalf("put while the node stopped: %v", err)
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatal("calls hung after the node stopped")
 	}
 }
