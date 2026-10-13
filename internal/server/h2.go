@@ -161,6 +161,9 @@ func (c *conn) close() {
 		c.closed = true
 		for _, st := range c.streams {
 			st.reset = true
+			if st.deadline != nil {
+				st.deadline.Stop()
+			}
 		}
 		c.ready = nil
 		c.mu.Unlock()
