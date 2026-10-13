@@ -142,10 +142,7 @@ func (s *Sim) stopNode(n *node) {
 		// first LiveAfter of healing counts, so the bound stays fixed: a
 		// node that keeps stopping later fails the rule.
 		s.lateStopAt = s.now
-		if live := s.liveFrom() + 3*Second; live > s.stopAt {
-			s.endAt += live - s.stopAt
-			s.stopAt = live
-		}
+		s.extendLiveness()
 	}
 	s.crash(n)
 	s.push(&event{at: s.now + 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)), kind: evRestart, node: n.idx, gen: n.gen})

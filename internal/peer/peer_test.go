@@ -233,7 +233,7 @@ func TestQueueByType(t *testing.T) {
 func TestControlQueueIsCapped(t *testing.T) {
 	var dropped atomic.Int64
 	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }}}
-	s := &sender{t: tr, id: 2, ctrl: make(chan *raftpb.Message, controlQueue), data: make(chan *raftpb.Message, dataQueue)}
+	s := &sender{t: tr, id: 2, ctrl: make(chan queued, controlQueue), data: make(chan queued, dataQueue)}
 	big := make([]byte, 1<<20)
 	for range 100 {
 		s.send(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), Context: big})

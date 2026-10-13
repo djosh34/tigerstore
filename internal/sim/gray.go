@@ -82,6 +82,21 @@ func (s *Sim) switchGray() {
 	s.push(&event{at: min(s.grayEnd, s.now+Second+s.rng.Int64N(2*Second)), kind: evGraySwitch})
 }
 
+// graySyncEnded records the end of a gray fsync. One that outlasted
+// healing moves the start of the liveness rule: until it ends, its node's
+// term and vote changes and the peer messages behind them are held. A
+// crashed node's canceled fsync never gets here. The gray network fault
+// does not move the rule, though it can outlast healing too: votes and
+// heartbeats pass a gray node, and its end is the first append after
+// healing, which can come only after an election that the rule must
+// still bound.
+func (s *Sim) graySyncEnded() {
+	if s.healed && s.now > s.healAt {
+		s.grayHealedAt = max(s.grayHealedAt, s.now)
+		s.extendLiveness()
+	}
+}
+
 // grayLeader makes the leader gray until healing, without slow fsyncs, so
 // only the commit watchdog can make way.
 func (s *Sim) grayLeader() {
