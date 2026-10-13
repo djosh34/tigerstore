@@ -28,39 +28,48 @@ const (
 	txnSuccess = 2
 	txnFailure = 3
 
-	cmpTarget      = 2 // Compare
-	cmpKey         = 3
-	cmpModRevision = 6
-	cmpTargetMod   = 2 // Compare.CompareTarget MOD; result EQUAL is the default 0
+	cmpTargetCreate   = 1 // Compare.CompareTarget CREATE
+	cmpCreateRevision = 5 // Compare.create_revision
+	cmpTarget         = 2 // Compare
+	cmpKey            = 3
+	cmpModRevision    = 6
+	cmpTargetMod      = 2 // Compare.CompareTarget MOD; result EQUAL is the default 0
 
-	opRange = 1 // RequestOp
-	opPut   = 2
+	opRange       = 1 // RequestOp
+	opPut         = 2
+	opDeleteRange = 3
 
-	watchCreate      = 1 // WatchRequest
-	watchKey         = 1 // WatchCreateRequest
-	watchRangeEnd    = 2
-	watchProgress    = 4
-	watchPrevKV      = 6
-	respHeader       = 1 // field 1 of every response
-	txnSucceeded     = 2 // TxnResponse
-	txnResponses     = 3
-	opResponsePut    = 2 // ResponseOp
-	rangeKVs         = 2 // RangeResponse
-	rangeMore        = 3
-	rangeCount       = 4
-	delDeleted       = 2 // DeleteRangeResponse
-	watchCreated     = 3 // WatchResponse
-	watchCanceled    = 4
-	watchCompactRev  = 5
-	watchCancelMsg   = 6
-	watchEvents      = 11
-	eventType        = 1 // mvccpb.Event
-	eventKV          = 2
-	kvKey            = 1 // mvccpb.KeyValue
-	kvModRevision    = 3
-	kvValue          = 5
-	eventTypeDelete  = 1
-	revisionVarintSz = 9 // a revision written as a padded varint, see putRevision
+	watchCreate           = 1 // WatchRequest
+	watchKey              = 1 // WatchCreateRequest
+	watchRangeEnd         = 2
+	watchStartRevision    = 3
+	watchProgress         = 4
+	watchPrevKV           = 6
+	respHeader            = 1 // field 1 of every response
+	txnSucceeded          = 2 // TxnResponse
+	txnResponses          = 3
+	opResponsePut         = 2
+	opResponseDeleteRange = 3 // ResponseOp
+	rangeKVs              = 2 // RangeResponse
+	rangeMore             = 3
+	rangeCount            = 4
+	delDeleted            = 2 // DeleteRangeResponse
+	watchCreated          = 3 // WatchResponse
+	watchCanceled         = 4
+	watchCompactRev       = 5
+	watchCancelMsg        = 6
+	watchEvents           = 11
+	eventType             = 1 // mvccpb.Event
+	eventKV               = 2
+	eventPrevKV           = 3
+	kvCreateRevision      = 2
+	kvVersion             = 4
+	kvLease               = 6
+	kvKey                 = 1 // mvccpb.KeyValue
+	kvModRevision         = 3
+	kvValue               = 5
+	eventTypeDelete       = 1
+	revisionVarintSz      = 9 // a revision written as a padded varint, see putRevision
 )
 
 // msg builds one protobuf message and remembers where the variable parts
@@ -142,9 +151,9 @@ func putRevision(b []byte, v int64) []byte {
 
 func patchRevision(b []byte, v int64) { putRevision(b[:0], v) }
 
-// template is a complete prebuilt gRPC request: an HTTP/2 HEADERS frame and
-// one DATA frame. The stream ids, keys, value and revision are patched in
-// per request.
+// template is a prebuilt gRPC request: HEADERS and one or more DATA
+// frames. Patchable fixed-size requests fit one DATA frame. Mixed builds
+// the variable-size message before framing, so no patch crosses a frame.
 type template struct {
 	b       []byte
 	data    int // offset of the DATA frame header
@@ -152,13 +161,14 @@ type template struct {
 	keys    []int
 	value   int
 	rev     int
+	frames  []int // DATA frame headers, for patching every stream ID
 }
 
 const (
 	frameHeaderLen = 9
 	grpcPrefixLen  = 5
 	// maxDataFrame is the HTTP/2 minimum of SETTINGS_MAX_FRAME_SIZE, which
-	// every server accepts, so each request fits in one DATA frame.
+	// every server accepts.
 	maxDataFrame = 16384
 )
 
@@ -186,31 +196,44 @@ func headerBlock(authority, path string) []byte {
 // A unary call ends the stream with the request; a watch keeps it open.
 func newTemplate(authority, path string, m *msg, endStream bool) (*template, error) {
 	payload := grpcPrefixLen + len(m.b)
-	if payload > maxDataFrame {
-		return nil, fmt.Errorf("request of %d bytes does not fit one %d byte DATA frame", payload, maxDataFrame)
+	if payload > maxDataFrame && (len(m.keys) > 0 || m.value >= 0 || m.rev >= 0) {
+		return nil, errors.New("patchable request must fit one DATA frame")
+	}
+	if payload > 60<<10 {
+		return nil, fmt.Errorf("request of %d bytes exceeds the 60 KiB generator limit", payload)
 	}
 	block := headerBlock(authority, path)
 	t := &template{dataLen: payload, value: -1, rev: -1}
 	t.b = appendFrameHeader(t.b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
 	t.b = append(t.b, block...)
 	t.data = len(t.b)
-	var flags http2.Flags
-	if endStream {
-		flags = http2.FlagDataEndStream
+	p := binary.BigEndian.AppendUint32([]byte{0}, uint32(len(m.b)))
+	p = append(p, m.b...)
+	for pos := 0; pos < len(p); {
+		n := min(maxDataFrame, len(p)-pos)
+		var flags http2.Flags
+		if endStream && pos+n == len(p) {
+			flags = http2.FlagDataEndStream
+		}
+		t.frames = append(t.frames, len(t.b))
+		t.b = appendFrameHeader(t.b, n, http2.FrameData, flags)
+		t.b = append(t.b, p[pos:pos+n]...)
+		pos += n
 	}
-	t.b = appendFrameHeader(t.b, payload, http2.FrameData, flags)
-	t.b = append(t.b, 0)
-	t.b = binary.BigEndian.AppendUint32(t.b, uint32(len(m.b)))
-	off := len(t.b)
-	t.b = append(t.b, m.b...)
+	// Patchable fields must not cross a frame boundary. Mixed requests
+	// carry their key/value bytes before framing and need no patches.
+	offset := func(pos int) int {
+		p := pos + grpcPrefixLen
+		return t.data + frameHeaderLen + p
+	}
 	for _, k := range m.keys {
-		t.keys = append(t.keys, off+k)
+		t.keys = append(t.keys, offset(k))
 	}
 	if m.value >= 0 {
-		t.value = off + m.value
+		t.value = offset(m.value)
 	}
 	if m.rev >= 0 {
-		t.rev = off + m.rev
+		t.rev = offset(m.rev)
 	}
 	return t, nil
 }
@@ -272,10 +295,15 @@ func casRequest(keyLen, valueLen int) *msg {
 
 // watchRequest watches every key under prefix with previous values and
 // progress notifications, as kube-apiserver does.
-func watchRequest(prefix []byte) *msg {
+func watchRequest(prefix []byte) *msg { return watchRequestFrom(prefix, 0) }
+
+func watchRequestFrom(prefix []byte, revision int64) *msg {
 	c := newMsg()
 	c.bytes(watchKey, prefix)
 	c.bytes(watchRangeEnd, prefixEnd(prefix))
+	if revision != 0 {
+		c.varint(watchStartRevision, uint64(revision))
+	}
 	c.varint(watchProgress, 1)
 	c.varint(watchPrevKV, 1)
 	m := newMsg()

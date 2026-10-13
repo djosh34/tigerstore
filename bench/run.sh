@@ -14,7 +14,13 @@
 #
 # Each repetition runs every target once, in TARGETS order on odd
 # repetitions and reversed on even ones, so drift on the runner does not
-# favour one target. The generator drives the leader only.
+# favour one target. Mixed drives all three endpoints; others use the leader.
+# mixed-k8s uses the Kubernetes 1.37 dump sizes, not a fixed byte size.
+# Preload has a separate 300 Txns/s arrival rate to limit setup bursts.
+# Its mix is get/list/update/create/delete = 25/10/40/15/10, plus watches
+# on each resource. MIX overrides it. A mixed rate-only job first runs one
+# max calibration per store, then offers half of etcd's median max rate
+# to all stores for REPS repetitions. MIXED_RATE can override that rate.
 #
 # Environment:
 #   TARGETS     target names in order (default "etcd"); target <name> runs
@@ -35,7 +41,9 @@ bench=$1
 out=$2
 read -r -a targets <<<"${TARGETS:-etcd}"
 read -r -a layout <<<"${LAYOUT:-3 0 1 2}"
-read -r -a modes <<<"${MODES:-max rate}"
+default_modes="max rate"
+if [ "$bench" = mixed-k8s ]; then default_modes=rate; fi
+read -r -a modes <<<"${MODES:-$default_modes}"
 reps=${REPS:-5}
 data=${DATA:-/tmp/bench-data}
 bins=$(realpath "${BINS:-bin}")
@@ -48,6 +56,10 @@ workload=${bench%-*}
 case ${bench##*-} in
 1k) size=1024 ;;
 10k) size=10240 ;;
+k8s)
+	if [ "$workload" != mixed ]; then echo "k8s size needs mixed" >&2; exit 2; fi
+	size=1024 # ignored by mixed; values come from the dump table
+	;;
 *)
 	echo "unknown size in $bench" >&2
 	exit 2
@@ -70,6 +82,15 @@ keys=10000 warmup=3s duration=10s
 # Each answer is about half a megabyte, so at max only 2 connections × 16
 # streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
 concurrency=()
+if [ "$workload" = mixed ]; then
+	keys=1000000
+	concurrency=(-conns 6 -streams 16)
+	if [ -n "${MIX+x}" ]; then concurrency+=(-mix "$MIX"); fi
+	# ~1.47 GB values per replica before log/index overhead. Three nodes
+	# run sequentially by target, never concurrently across targets. Keep
+	# growing-log churn short on the 16 GB runner, without resizing values.
+	export BENCH_GOMEMLIMIT=3GiB
+fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)
@@ -103,9 +124,10 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 	"$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
 	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
-	local status=0
+	local status=0 endpoint_file=leader
+	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
 	taskset -c "${layout[0]}" "$loadgen" \
-		-endpoints "$(cat "$dir/leader")" \
+		-endpoints "$(cat "$dir/$endpoint_file")" \
 		-cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
 		-pids "$(cat "$dir/pids")" \
 		-label "$target" \
@@ -122,6 +144,16 @@ once() {
 		# did not change during the run.
 		"$here/cluster.sh" check "$dir" || status=$?
 	fi
+	# Keep logs and a post-run memory/disk sample outside the CPU window.
+	for node in 1 2 3; do
+		cp "$dir/n$node.log" "$out/$bench/$target-$mode-$rep-n$node.log" || status=1
+	done
+	{
+		echo "target=$target mode=$mode rep=$rep"
+		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz
+		free -b
+		du -sb "$dir"
+	} >"$out/$bench/$target-$mode-$rep.resources" || status=1
 	"$here/cluster.sh" stop "$dir"
 	return "$status"
 }
@@ -141,6 +173,13 @@ if [[ " ${modes[*]} " == *" max "* ]]; then
 	done
 fi
 
+if [ "$workload" = mixed ] && [[ " ${modes[*]} " == *" rate "* ]] && [[ " ${modes[*]} " != *" max "* ]]; then
+	# One measured max point per store, with the same mixed concurrency.
+	for target in $(order 1); do
+		once "$target" max 1 -keys "$keys" "${concurrency[@]}"
+	done
+fi
+
 if [[ " ${modes[*]} " == *" rate "* ]]; then
 	# Half of etcd's median max throughput, or of the first target's
 	# without etcd, so every target gets the same open-loop load.
@@ -148,7 +187,13 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	if [[ " ${targets[*]} " != *" etcd "* ]]; then
 		ref=${targets[0]}
 	fi
-	rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "$out/$bench/$ref"-max-*.json)
+	if [[ " ${modes[*]} " == *" max "* ]] || [ "$workload" = mixed ]; then
+		rate=$(jq -s 'map(.throughput) | sort | .[length / 2 | floor] / 2 | floor' "$out/$bench/$ref"-max-*.json)
+	else
+		echo "rate-only needs max results" >&2
+		exit 2
+	fi
+	if [ "$workload" = mixed ] && [ -n "${MIXED_RATE+x}" ]; then rate=$MIXED_RATE; fi
 	if [ "$workload" = delete ]; then
 		keys=$(awk -v r="$rate" -v w="${warmup%s}" -v d="${duration%s}" 'BEGIN { print int(r * (w + d) * 1.2) + 10000 }')
 	fi

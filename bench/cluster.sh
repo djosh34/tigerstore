@@ -115,7 +115,7 @@ start() {
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
 				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth)
 		fi
-		taskset -c "${cpus[i - 1]}" "$bin" \
+		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
 			--data-dir "$dir/n$i" \
 			--listen-client-urls "$client" \

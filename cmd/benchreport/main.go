@@ -1,6 +1,5 @@
 // Command benchreport turns the loadgen results written by bench/run.sh into
-// Markdown tables: the median of the repetitions, with the range of
-// throughput.
+// Markdown tables with min, median and max of every per-run statistic.
 //
 //	benchreport <dir>
 //
@@ -25,6 +24,9 @@ type result struct {
 	OfferedRate float64 `json:"offered_rate"`
 	Throughput  float64 `json:"throughput"`
 	Latency     struct {
+		Mean float64 `json:"mean"`
+		P90  float64 `json:"p90"`
+		Max  float64 `json:"max"`
 		P50  float64 `json:"p50"`
 		P99  float64 `json:"p99"`
 		P999 float64 `json:"p999"`
@@ -34,10 +36,15 @@ type result struct {
 	ServerCores      []float64 `json:"server_cores_by_node"`
 	ClientCPUUsPerOp float64   `json:"client_cpu_us_per_op"`
 	Watch            *struct {
-		EventsPerS float64 `json:"events_per_s"`
-		Latency    struct {
-			P50 float64 `json:"p50"`
-			P99 float64 `json:"p99"`
+		EventsPerS          float64 `json:"events_per_s"`
+		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
+		Latency             struct {
+			Mean float64 `json:"mean"`
+			P90  float64 `json:"p90"`
+			P999 float64 `json:"p999"`
+			Max  float64 `json:"max"`
+			P50  float64 `json:"p50"`
+			P99  float64 `json:"p99"`
 		} `json:"latency_us"`
 	} `json:"watch"`
 }
@@ -107,70 +114,74 @@ func report(w io.Writer, dir string) error {
 		return boolCmp(b == "etcd", a == "etcd")
 	})
 
-	var watches []string
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("| Benchmark | Store | Max ops/s | p50 / p99 ms closed loop at max | Server CPU us/op at max | Open-loop ops/s | p50 / p99 / p99.9 ms open loop | Server CPU us/op open loop | Runs |\n")
-	p("|---|---|---|---|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		for _, target := range targets {
-			mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-			if len(mx) == 0 && len(rt) == 0 {
-				continue
-			}
-			if strings.HasPrefix(bench, "watch") {
-				watches = append(watches, bench)
-			}
-			p("| %s | %s | %s | %s / %s | %s | %s | %s / %s / %s | %s | %d + %d |\n",
-				bench, target,
-				spread(mx, func(r result) float64 { return r.Throughput }),
-				ms(mx, func(r result) float64 { return r.Latency.P50 }),
-				ms(mx, func(r result) float64 { return r.Latency.P99 }),
-				num(mx, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
-				spread(rt, func(r result) float64 { return r.Throughput }),
-				ms(rt, func(r result) float64 { return r.Latency.P50 }),
-				ms(rt, func(r result) float64 { return r.Latency.P99 }),
-				ms(rt, func(r result) float64 { return r.Latency.P999 }),
-				num(rt, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
-				len(mx), len(rt))
-		}
-	}
-	p("\nMedians of the runs; throughput shows the lowest and highest run in brackets. At max every stream is busy, so its latency is the number of streams divided by the throughput, not a latency at a given load. Open loop offers half of etcd's median max throughput, with latency counted from each request's scheduled send time.\n")
-
-	if len(watches) > 0 {
-		p("\n| Watch benchmark | Store | Events/s at max | Event p50 / p99 ms at max | Events/s open loop | Event p50 / p99 ms open loop |\n")
-		p("|---|---|---|---|---|---|\n")
-		for _, bench := range slices.Compact(watches) {
+	each := func(f func(bench, target, mode string, rs runs)) {
+		for _, bench := range benches {
 			for _, target := range targets {
-				mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-				if len(mx) == 0 && len(rt) == 0 {
-					continue
+				for _, mode := range []string{"max", "rate"} {
+					rs := all[key{bench, target, mode}]
+					if len(rs) > 0 {
+						f(bench, target, mode, rs)
+					}
 				}
-				p("| %s | %s | %s | %s / %s | %s | %s / %s |\n", bench, target,
-					spread(mx, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
-					ms(mx, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
-					ms(mx, watchField(func(r result) float64 { return r.Watch.Latency.P99 })),
-					spread(rt, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
-					ms(rt, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
-					ms(rt, watchField(func(r result) float64 { return r.Watch.Latency.P99 })))
 			}
 		}
-		p("\nEvent latency runs from the put's scheduled send time to the event's arrival at the watcher.\n")
+	}
+	p("| Benchmark | Store | Mode | Ops/s | p50 ms | p90 ms | p99 ms | p99.9 ms | Mean ms | Max ms | Server CPU us/op | Generator CPU us/op | Runs |\n")
+	p("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	each(func(bench, target, mode string, rs runs) {
+		p("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode,
+			spread(rs, func(r result) float64 { return r.Throughput }),
+			ms(rs, func(r result) float64 { return r.Latency.P50 }),
+			ms(rs, func(r result) float64 { return r.Latency.P90 }),
+			ms(rs, func(r result) float64 { return r.Latency.P99 }),
+			ms(rs, func(r result) float64 { return r.Latency.P999 }),
+			ms(rs, func(r result) float64 { return r.Latency.Mean }),
+			ms(rs, func(r result) float64 { return r.Latency.Max }),
+			num(rs, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
+			num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"), len(rs))
+	})
+	p("\nStatistics are min / median / max over the repetitions, not pooled percentiles. Runs is the repetition count. At max every stream is busy. Open loop uses half of etcd's median max rate. Rate-only mixed-k8s first measures one max calibration per store; an explicit rate override is possible. Latency starts at the scheduled arrival time.\n")
+
+	hasWatches := false
+	each(func(_, _, _ string, rs runs) { hasWatches = hasWatches || rs[0].Watch != nil })
+	if hasWatches {
+		p("\n| Watch benchmark | Store | Mode | Events/s | p50 ms | p90 ms | p99 ms | p99.9 ms | Mean ms | Max ms | Server CPU us/event | Runs |\n")
+		p("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+		each(func(bench, target, mode string, rs runs) {
+			if rs[0].Watch == nil {
+				return
+			}
+			p("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode,
+				spread(rs, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P90 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P99 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P999 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Mean })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Max })),
+				watchCPU(rs), len(rs))
+		})
+		p("\nEvent latency runs from the mutation's scheduled send time to the event's arrival at the watcher.\n")
 	}
 
-	p("\n| Benchmark | Store | Server cores per node at max | Generator CPU us/op at max | Open-loop arrivals left unsent |\n")
-	p("|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		for _, target := range targets {
-			mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-			if len(mx) == 0 && len(rt) == 0 {
-				continue
-			}
-			p("| %s | %s | %s | %s | %s |\n", bench, target, cores(mx),
-				num(mx, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"),
-				num(rt, func(r result) float64 { return float64(r.Unsent) }, "%.0f"))
+	p("\n| Benchmark | Store | Mode | Server cores per node | Offered ops/s | Unsent | Runs |\n")
+	p("|---|---|---|---|---|---|---|\n")
+	each(func(bench, target, mode string, rs runs) {
+		p("| %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode, cores(rs),
+			spread(rs, func(r result) float64 { return r.OfferedRate }),
+			num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"), len(rs))
+	})
+	return nil
+}
+
+func watchCPU(rs runs) string {
+	for _, r := range rs {
+		if r.Watch == nil || r.Watch.ServerCPUUsPerEvent == 0 {
+			return "-"
 		}
 	}
-	return nil
+	return num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f")
 }
 
 func watchField(f func(result) float64) func(result) float64 {
@@ -184,7 +195,7 @@ func watchField(f func(result) float64) func(result) float64 {
 
 // benchOrder sorts by workload in the order of the issue, then by size.
 func benchOrder(a, b string) int {
-	order := []string{"put", "txn", "delete", "range", "watch"}
+	order := []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
 	wa, sa, _ := strings.Cut(a, "-")
 	wb, sb, _ := strings.Cut(b, "-")
 	if c := slices.Index(order, wa) - slices.Index(order, wb); c != 0 {
@@ -222,8 +233,8 @@ func num(rs runs, f func(result) float64, format string) string {
 	if len(rs) == 0 {
 		return "-"
 	}
-	m, _, _ := median(rs, f)
-	return fmt.Sprintf(format, m)
+	m, lo, hi := median(rs, f)
+	return fmt.Sprintf(format, lo) + " / " + fmt.Sprintf(format, m) + " / " + fmt.Sprintf(format, hi)
 }
 
 func ms(rs runs, f func(result) float64) string {
@@ -235,7 +246,7 @@ func spread(rs runs, f func(result) float64) string {
 		return "-"
 	}
 	m, lo, hi := median(rs, f)
-	return fmt.Sprintf("%s (%s to %s)", thousands(m), thousands(lo), thousands(hi))
+	return fmt.Sprintf("%s / %s / %s", thousands(lo), thousands(m), thousands(hi))
 }
 
 func cores(rs runs) string {
@@ -251,7 +262,7 @@ func cores(rs runs) string {
 			return 0
 		}, "%.2f"))
 	}
-	return strings.Join(s, " / ")
+	return strings.Join(s, "; ")
 }
 
 // thousands formats v rounded to an integer with comma separators.

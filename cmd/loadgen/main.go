@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -23,36 +24,40 @@ import (
 )
 
 type config struct {
-	endpoints []string
-	workload  string
-	valueSize int
-	keys      int
-	conns     int
-	streams   int
-	rate      float64
-	warmup    time.Duration
-	duration  time.Duration
-	watchers  int
-	page      int
-	pids      []int
-	label     string
-	seed      uint64
-	out       string
-	cacert    string
-	cert, key string
+	endpoints   []string
+	workload    string
+	mix         string
+	valueSize   int
+	keys        int
+	conns       int
+	streams     int
+	rate        float64
+	preloadRate float64
+	warmup      time.Duration
+	duration    time.Duration
+	watchers    int
+	page        int
+	pids        []int
+	label       string
+	seed        uint64
+	out         string
+	cacert      string
+	cert, key   string
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "list", "watch"}
+var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
 	fs := flag.NewFlagSet("loadgen", flag.ContinueOnError)
 	endpoints := fs.String("endpoints", "127.0.0.1:2379", "comma-separated host:port of the cluster's client endpoints; connections go round robin")
 	fs.StringVar(&cfg.workload, "workload", "put", "one of "+strings.Join(workloads, ", "))
+	fs.StringVar(&cfg.mix, "mix", defaultMix, "mixed percentages: get,list,update,create,delete; watches on every resource prefix")
 	fs.IntVar(&cfg.valueSize, "value-size", 1024, "value size in bytes")
 	fs.IntVar(&cfg.keys, "keys", 10000, "number of keys; delete deletes each once, so it needs at least as many as it sends")
 	fs.IntVar(&cfg.conns, "conns", 6, "HTTP/2 connections for requests")
 	fs.IntVar(&cfg.streams, "streams", 256, "requests in flight per connection at most")
+	fs.Float64Var(&cfg.preloadRate, "preload-rate", 300, "mixed preload Txns per second across all connections; 0 keeps the preload slots busy")
 	fs.Float64Var(&cfg.rate, "rate", 0, "open-loop arrivals per second over all connections; 0 keeps every stream busy")
 	fs.DurationVar(&cfg.warmup, "warmup", 2*time.Second, "load before the measurement window")
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
@@ -87,8 +92,11 @@ func parseFlags(args []string) (config, error) {
 		return cfg, errors.New("-value-size must be at least 8, to hold the watch timestamp")
 	case cfg.workload == "watch" && cfg.watchers < 1:
 		return cfg, errors.New("watch needs -watchers >= 1")
-	case cfg.rate < 0 || cfg.duration <= 0 || cfg.warmup < 0:
-		return cfg, errors.New("need -rate >= 0, -duration > 0 and -warmup >= 0")
+	case cfg.rate < 0 || cfg.preloadRate < 0 || math.IsNaN(cfg.rate) || math.IsInf(cfg.rate, 0) || math.IsNaN(cfg.preloadRate) || math.IsInf(cfg.preloadRate, 0) || cfg.duration <= 0 || cfg.warmup < 0:
+		return cfg, errors.New("need finite non-negative -rate and -preload-rate, -duration > 0 and -warmup >= 0")
+	}
+	if _, err := parseMix(cfg.mix); err != nil {
+		return cfg, err
 	}
 	return cfg, nil
 }
@@ -103,6 +111,9 @@ type result struct {
 	Workload       string   `json:"workload"`
 	ValueSize      int      `json:"value_size"`
 	Keys           int      `json:"keys"`
+	LiveKeys       int      `json:"live_keys,omitempty"`
+	SizeSource     string   `json:"size_source,omitempty"`
+	Mix            string   `json:"mix,omitempty"`
 	Endpoints      []string `json:"endpoints"`
 	Conns          int      `json:"conns"`
 	StreamsPerConn int      `json:"streams_per_conn"`
@@ -140,7 +151,7 @@ type watchResult struct {
 	Events              int64   `json:"events"`
 	EventsPerS          float64 `json:"events_per_s"`
 	Latency             latency `json:"latency_us"`
-	ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
+	ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event,omitempty"`
 }
 
 func main() {
@@ -203,6 +214,9 @@ func run(cfg config) (*result, error) {
 			return nil, err
 		}
 		clientTLS = c
+	}
+	if cfg.workload == "mixed" {
+		return runMixed(cfg)
 	}
 	ks := makeKeys(cfg.keys)
 	vals := makeValues(cfg.valueSize, cfg.seed)

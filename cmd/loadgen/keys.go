@@ -77,6 +77,11 @@ func makeValues(size int, seed uint64) *values {
 // compression benchmark needs values drawn afresh. Each connection has
 // its own cursor, so next needs no lock.
 func (v *values) next() []byte {
+	// Mixed changes size between calls, so the previous call's wrap check
+	// cannot guarantee this window still fits.
+	if v.off+v.size > len(v.pool) {
+		v.off = 0
+	}
 	b := v.pool[v.off : v.off+v.size]
 	v.off += v.size
 	if v.off+v.size > len(v.pool) {
