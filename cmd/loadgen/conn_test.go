@@ -109,18 +109,23 @@ func (fs *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // the worker's stats.
 func fakeRun(t *testing.T, fs *fakeServer, path string, valueSize int, rate float64, d time.Duration) *stats {
 	t.Helper()
+	// Everything is built before the dial, as the generator does: nothing
+	// answers the server's pings until wk.run starts, and building the
+	// value pool takes over 50 ms under -race (#102).
+	ks := makeKeys(100)
+	tpl, err := newTemplate(fs.addr, path, putRequest(ks.size, valueSize), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vals := makeValues(valueSize, 1)
+	writes := newRevisionSet()
 	c, err := dial(fs.addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.close()
 	wk := newWorker(c, 1)
-	ks := makeKeys(100)
-	tpl, err := newTemplate(c.addr, path, putRequest(ks.size, valueSize), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b := base{tpl: tpl, ks: ks, vals: *makeValues(valueSize, 1), rng: wk.rng, stats: &wk.stats, limit: 64, writes: newRevisionSet()}
+	b := base{tpl: tpl, ks: ks, vals: *vals, rng: wk.rng, stats: &wk.stats, limit: 64, writes: writes}
 	for k := range ks.n {
 		b.own = append(b.own, k)
 	}
@@ -185,12 +190,8 @@ func TestFakeServerErrors(t *testing.T) {
 // TestFakeServerPings sends so slowly that the server pings between
 // requests, and closes the connection if a ping goes unanswered.
 func TestFakeServerPings(t *testing.T) {
-	// The server pings after 20 ms without frames and closes the
-	// connection when an ack takes 500 ms. A client that never answers
-	// fails within the 2 s run; 500 ms leaves room for a slow runner,
-	// where 50 ms did not (#102).
-	fs := startFake(t, 0, 500*time.Millisecond)
-	s := fakeRun(t, fs, "/ok", 1024, 10, 2*time.Second)
+	fs := startFake(t, 0, 50*time.Millisecond)
+	s := fakeRun(t, fs, "/ok", 1024, 10, time.Second)
 	if len(s.errs) > 0 || s.ops < 3 {
 		t.Fatalf("ops %d, errors %v", s.ops, s.errs)
 	}
