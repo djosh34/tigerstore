@@ -1,0 +1,170 @@
+[
+  {
+    "directory": "jepsen-tigerstore-register-clock-1",
+    "command": "",
+    "coverage_errors": [],
+    "status": "blocked",
+    "reason": "BLOCKED: Docker shares CLOCK_REALTIME across the nodes and control. Independent clock skew requires VMs. The upstream clock nemesis was not run."
+  },
+  {
+    "directory": "jepsen-tigerstore-register-kill-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5",
+    "coverage_errors": [],
+    "valid": "unknown",
+    "stats": {
+      "valid?": true,
+      "count": 1636,
+      "ok-count": 1291,
+      "fail-count": 257,
+      "info-count": 88,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 332,
+          "ok-count": 52,
+          "fail-count": 235,
+          "info-count": 45
+        },
+        "read": {
+          "valid?": true,
+          "count": 911,
+          "ok-count": 889,
+          "fail-count": 22,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 393,
+          "ok-count": 350,
+          "fail-count": 0,
+          "info-count": 43
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":kill": 18,
+      ":start": 20
+    },
+    "status": "fail"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-none-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis none --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2659,
+      "ok-count": 2124,
+      "fail-count": 535,
+      "info-count": 0,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 664,
+          "ok-count": 129,
+          "fail-count": 535,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 1327,
+          "ok-count": 1327,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 668,
+          "ok-count": 668,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-partition-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis partition --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5",
+    "coverage_errors": [],
+    "valid": "unknown",
+    "stats": {
+      "valid?": true,
+      "count": 2389,
+      "ok-count": 1568,
+      "fail-count": 307,
+      "info-count": 514,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 612,
+          "ok-count": 63,
+          "fail-count": 291,
+          "info-count": 258
+        },
+        "read": {
+          "valid?": true,
+          "count": 1159,
+          "ok-count": 1143,
+          "fail-count": 16,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 618,
+          "ok-count": 362,
+          "fail-count": 0,
+          "info-count": 256
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":start-partition": 22,
+      ":stop-partition": 22
+    },
+    "status": "fail"
+  },
+  {
+    "directory": "jepsen-tigerstore-register-pause-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 2138,
+      "ok-count": 1784,
+      "fail-count": 333,
+      "info-count": 21,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 398,
+          "ok-count": 63,
+          "fail-count": 326,
+          "info-count": 9
+        },
+        "read": {
+          "valid?": true,
+          "count": 1305,
+          "ok-count": 1298,
+          "fail-count": 7,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 435,
+          "ok-count": 423,
+          "fail-count": 0,
+          "info-count": 12
+        }
+      }
+    },
+    "nemesis_counts": {
+      ":pause": 22,
+      ":resume": 22
+    },
+    "status": "pass"
+  }
+]

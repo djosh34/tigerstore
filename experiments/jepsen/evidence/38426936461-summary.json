@@ -1,0 +1,40 @@
+[
+  {
+    "directory": "jepsen-etcd-register-none-1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --strict-host-key-checking false --version 3.7.2 --workload register --nemesis none --concurrency 2n --rate 30 --time-limit 60 --nemesis-interval 5",
+    "coverage_errors": [],
+    "valid": true,
+    "stats": {
+      "valid?": true,
+      "count": 1772,
+      "ok-count": 1391,
+      "fail-count": 381,
+      "info-count": 0,
+      "by-f": {
+        "cas": {
+          "valid?": true,
+          "count": 458,
+          "ok-count": 77,
+          "fail-count": 381,
+          "info-count": 0
+        },
+        "read": {
+          "valid?": true,
+          "count": 888,
+          "ok-count": 888,
+          "fail-count": 0,
+          "info-count": 0
+        },
+        "write": {
+          "valid?": true,
+          "count": 426,
+          "ok-count": 426,
+          "fail-count": 0,
+          "info-count": 0
+        }
+      }
+    },
+    "nemesis_counts": {},
+    "status": "pass"
+  }
+]
