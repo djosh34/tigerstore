@@ -47,7 +47,8 @@ jobs:
           product=$(jq -r .commit experiments/correct-round1/product.json)
           git worktree add --detach "$RUNNER_TEMP/product" "$product"
           (cd "$RUNNER_TEMP/product" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
-          (cd experiments/correct-round1 && go build -o "$GITHUB_WORKSPACE/bin/chaos-client" ./client)
+          (cd experiments/correct-round1 && go test -parallel 2 ./client && go vet ./client && go build -o "$GITHUB_WORKSPACE/bin/chaos-client" ./client)
+          python3 -m unittest discover -s experiments/correct-round1 -p 'test_*.py'
           printf 'product=%s\ntooling=%s\n' "$product" "$GITHUB_SHA" > evidence/commits.txt
           go version >> evidence/commits.txt
       - name: Install stock etcd v3.7.2
@@ -81,12 +82,18 @@ jobs:
           REP: ${{ matrix.rep }}
           DURATION: ${{ matrix.duration }}
           VALUE_SIZE: ${{ matrix.value_size || 1024 }}
+          PAUSE_SECONDS: ${{ matrix.pause_seconds || 1.5 }}
+          KILL_SECONDS: ${{ matrix.kill_seconds || 1.2 }}
+          NETEM_ROLE: ${{ matrix.netem_role || 'follower' }}
+          NETEM_HOLD_SECONDS: ${{ matrix.netem_hold_seconds || 1.5 }}
         run: |
           test "$(date -u +%s)" -lt "$(date -u -d 2026-10-13T22:00:00Z +%s)"
           sudo -E python3 experiments/correct-round1/runner.py \
             --target "$TARGET" --scenario "$SCENARIO" \
             --server "$PWD/bin/$TARGET" --client "$PWD/bin/chaos-client" \
             --out "$PWD/evidence/run" --seed "$SEED" --repetition "$REP" --duration "$DURATION" --value-size "$VALUE_SIZE" \
+            --pause-seconds "$PAUSE_SECONDS" --kill-seconds "$KILL_SECONDS" \
+            --netem-role "$NETEM_ROLE" --netem-hold-seconds "$NETEM_HOLD_SECONDS" \
             2>&1 | tee evidence/controller.log
       - name: Check every available history
         if: always() && steps.faults.outcome != 'skipped'
