@@ -1,0 +1,120 @@
+{
+  "clock_hz": 100,
+  "conns": 16,
+  "cpu_after": [
+    {
+      "PID": 5656,
+      "Ticks": 269,
+      "Start": 11802
+    },
+    {
+      "PID": 5655,
+      "Ticks": 71,
+      "Start": 11802
+    },
+    {
+      "PID": 5657,
+      "Ticks": 66,
+      "Start": 11802
+    },
+    {
+      "PID": 5705,
+      "Ticks": 153,
+      "Start": 12135
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 5656,
+      "Ticks": 87,
+      "Start": 11802
+    },
+    {
+      "PID": 5655,
+      "Ticks": 24,
+      "Start": 11802
+    },
+    {
+      "PID": 5657,
+      "Ticks": 22,
+      "Start": 11802
+    },
+    {
+      "PID": 5705,
+      "Ticks": 5,
+      "Start": 12135
+    }
+  ],
+  "cpu_us_op": [
+    30.333333333333332,
+    7.833333333333333,
+    7.333333333333333,
+    24.666666666666668
+  ],
+  "elapsed_s": 1.8932022389999998,
+  "errors": {},
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 3392956,
+      "allocated_bytes": 1195672152,
+      "heap_object_bytes": 231700200,
+      "gc_cpu_seconds": 0.143953981,
+      "runtime_nonidle_cpu_seconds": 5.052828623999999,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.143953981,
+        "/cpu/classes/idle:cpu-seconds": 5.353925417,
+        "/cpu/classes/total:cpu-seconds": 10.406754041,
+        "/gc/heap/allocs:bytes": 1195672152,
+        "/gc/heap/allocs:objects": 3392956,
+        "/memory/classes/heap/objects:bytes": 231700200
+      }
+    },
+    "before": {
+      "allocated_objects": 1026364,
+      "allocated_bytes": 353634544,
+      "heap_object_bytes": 78653696,
+      "gc_cpu_seconds": 0.049844807,
+      "runtime_nonidle_cpu_seconds": 1.5743270109999994,
+      "has_gc_cpu": true,
+      "raw": {
+        "/cpu/classes/gc/total:cpu-seconds": 0.049844807,
+        "/cpu/classes/idle:cpu-seconds": 2.933281882,
+        "/cpu/classes/total:cpu-seconds": 4.507608893,
+        "/gc/heap/allocs:bytes": 353634544,
+        "/gc/heap/allocs:objects": 1026364,
+        "/memory/classes/heap/objects:bytes": 78653696
+      }
+    },
+    "bytes_per_put": 14033.960133333334,
+    "gc_cpu_share": 0.02705451498090193,
+    "gc_cpu_us_per_put": 1.5684862333333336,
+    "heap_bytes_after": 231700200,
+    "objects_per_put": 39.4432
+  },
+  "max_ms": 29.159554,
+  "mean_ms": 8.05263914645,
+  "occupied_cores": [
+    0.9613341683777716,
+    0.2482566258997542,
+    0.2324104582891316,
+    0.7817442687907153
+  ],
+  "op": "put",
+  "ops_s": 31692.335221245216,
+  "p50_ms": 7.312693,
+  "p90_ms": 11.438938,
+  "p999_ms": 23.597596,
+  "p99_ms": 18.625862,
+  "revision_after": 84097,
+  "revision_before": 24097,
+  "start_utc": "2026-10-13T08:24:16.397428174Z",
+  "successes": 60000,
+  "terms": {
+    "1": 60000
+  },
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}
