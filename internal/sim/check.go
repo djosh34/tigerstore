@@ -515,7 +515,7 @@ const leaseGrace = 8 * Second
 // checkLeasesExpire requires every lease still granted at the end to have
 // been granted or kept alive within leaseGrace, so leases do expire, and
 // no lease to expire before its TTL ran out since its last successful
-// grant or renewal, less one tick of the leader's clock.
+// grant or renewal.
 func (s *Sim) checkLeasesExpire(res *Result) error {
 	renewed := map[int64]int64{}
 	ttl := map[int64]int64{}
@@ -532,7 +532,7 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 	}
 	for _, id := range s.expiredOrder {
 		at := s.expiredAt[id]
-		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second-TickTime {
+		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second {
 			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
 				id, ttl[id], at/Millisecond, t/Millisecond)
 		}
