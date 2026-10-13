@@ -145,8 +145,8 @@ type Node struct {
 	// appending counts the local appends with entries that are on their way
 	// to disk. While the leader has one, it holds new proposals.
 	appending int
-	waiting  map[uint64]*pending // writes by request ID
-	timeouts []*pending          // every waiting request in deadline order
+	waiting   map[uint64]*pending // writes by request ID
+	timeouts  []*pending          // every waiting request in deadline order
 
 	proposals   []*pending
 	propBytes   int
