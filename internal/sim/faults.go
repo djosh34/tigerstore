@@ -16,9 +16,10 @@ func (s *Sim) scheduleDiskFaults() {
 	if f.DiskErrorEvery > 0 {
 		s.push(&event{at: s.exp(f.DiskErrorEvery), kind: evDiskFault})
 		// One more fault, due early in the faults and armed on the next
-		// append with entries of any node, so that no run goes without:
-		// later, a run that lost a node to corruption may append nothing
-		// for many seconds. TestSeeds checks that one fired.
+		// append with entries of any node, so that no run goes without: a
+		// run that lost a node to corruption, or holds a partition, may
+		// append nothing for many seconds. It stays due after healing.
+		// TestSeeds checks that one fired.
 		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/4), kind: evDiskFaultOnce})
 	}
 	if f.StallEvery > 0 {
@@ -116,6 +117,9 @@ func (s *Sim) diskFailed(n *node, err error) {
 		return
 	}
 	s.stats.DiskFaults++
+	if s.healed {
+		s.lateFaultAt = s.now
+	}
 	n.disk.Fault = nil
 	s.stopNode(n)
 }

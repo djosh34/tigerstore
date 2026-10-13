@@ -339,8 +339,11 @@ type Sim struct {
 	// applied is the highest index any node has applied.
 	applied    uint64
 	stallStops []int64
-	// diskFaultDue arms a disk fault at the next append with entries.
+	// diskFaultDue arms a disk fault at the next append with entries,
+	// after healing too; lateFaultAt is when such a fault fired after
+	// healing, which moves the start of the liveness rule.
 	diskFaultDue bool
+	lateFaultAt  int64
 	history      []*Record
 	stats        Stats
 	err          error
@@ -365,9 +368,6 @@ type Stats struct {
 	// clock jumps, HalfOpens half-open links, and Asymmetric the links
 	// that drew a delay at least 10 times that of the other direction.
 	Pauses, LinkStalls, ClockJumps, HalfOpens, Asymmetric int
-	// DiskFaultIdle is 1 when the run's guaranteed disk fault stayed due
-	// because no node appended entries from then until healing.
-	DiskFaultIdle int
 }
 
 // Result is the outcome of a run.
@@ -731,10 +731,12 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
-	if s.diskFaultDue && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
+	if s.diskFaultDue && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
 		// Only an append with entries surely writes, and a write fault
 		// fires in the Flush below; a sync can stall until healing. It
-		// replaces a fault that waits for a sync.
+		// replaces a fault that waits for a sync. If no node appended
+		// during the faults, it fires after healing, when clients still
+		// write.
 		s.diskFaultDue = false
 		s.armDiskFault(n, 1+s.rng.IntN(2))
 	}
@@ -959,10 +961,6 @@ func (s *Sim) setLinks(mask uint64) {
 }
 
 func (s *Sim) heal() {
-	if s.diskFaultDue {
-		// No node appended entries from the time the fault was due.
-		s.stats.DiskFaultIdle++
-	}
 	s.healed = true
 	s.setLinks(1<<6 - 1)
 	// Link stalls and pauses end on their own, within 2 s, before the
