@@ -1,5 +1,7 @@
 # Saved register evidence analysis
 
+This report analyzes the round-1 inputs. Original unknown labels below remain unchanged. See [the final round-2 report](../REPORT.md) for the certificate verdicts and newest-main reruns.
+
 ## Finding
 
 The eight unresolved tigerstore register histories contain many more ambiguous operations, mostly fast `etcdserver: no leader` responses. They do not show generally slower requests than the matched etcd controls.

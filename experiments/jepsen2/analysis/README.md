@@ -51,6 +51,8 @@ Do not place input artifacts beneath the chosen output directory. All output loc
 
 ## Output files
 
+This directory retains derived tables, source pins, fault-edge logs and checker excerpts. Full original histories and server evidence remain in `../../jepsen/evidence` archives. The commands above regenerate the extracted files and `operations.json`; those duplicates are not committed here. For fresh histories whose online results are missing, `../summarize-fresh.py` still counts the complete raw history and checks fault observations without inventing a checker verdict.
+
 - `REPORT.md` is the written analysis of the original evidence.
 - `tables.md` contains generated per-history totals, per-operation counts, latency summaries, and fault-edge summaries with links to every primary case's edge log.
 - `summary.json` records case selection, original verdicts, independent-key counts, checker log measurements, commands, and hashes.
