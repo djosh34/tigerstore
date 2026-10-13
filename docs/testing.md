@@ -42,3 +42,11 @@ The owner approved these on #47:
 - There is no forced seed-0 schedule; each bug runs the full fault mix from seed 1.
 
 B05 and B16 target code this design lacks (snapshots, segment cleaning), so, as the owner decided, each is replaced by the nearest real bug in the WAL. For B05 that is the same class: new on-disk state, here a segment, used before its metadata is synced. B16's class, destroying durable data before its replacement is durable, has no instance here: rotation is the only step in a segment's life, and the WAL's only unlink (a newest segment with no header) needs header damage to be reached. So B16 plants the nearest step, rotation without the old segment's last sync, which is closer to the B02/B11 class of reporting data durable without an fsync. B13 and B14 are in `internal/node` and `internal/peer`, which the simulator does not run; each of those packages has its own `TestPlanted` with one fixed scenario, and it counts only the scenario's own detecting failure as a catch.
+
+# Kubernetes storage tests
+
+`apiservertest/run.sh <version>` runs the etcd3 storage tests of `k8s.io/apiserver` (`pkg/storage/etcd3/...` and `pkg/storage/testing`) against tigerstore, unchanged. The `apiserver` job in ci runs it for v0.35.0 and v0.36.0 (Kubernetes 1.35 and 1.36). v0.37.0 joins once tigerstore serves RangeStream, which its tests use: `TestGetListStreamMultiChunk`, `TestWatchChanSync/RangeStream` and the `TestWatchChanSyncStream*` tests fail until then.
+
+`apiservertest/prepare` replaces the module's `testserver/test_server.go`, which embeds etcd, with an adapter that keeps the version's own client recorders. It also changes the one `*embed.Config` in `store_test.go` to the adapter's `Config`. Every `RunEtcd` call starts a fresh 3-node tigerstore over TLS with client certificates through `apiservertest/factory`, because deleting keys would not reset revisions, history, compaction or leases. The factory passes the progress interval the watch tests ask for as `--watch-progress-notify-interval`. `run.sh` fails if the tests still import `go.etcd.io/etcd/server/v3`.
+
+No test is skipped. A test that cannot apply to a non-etcd server would be listed here with the reason; none is so far.
