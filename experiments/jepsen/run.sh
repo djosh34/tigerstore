@@ -2,6 +2,7 @@
 # Runner only. Never run Docker, builds, or faults on the agent host.
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true ]] || { echo 'GitHub runner required' >&2; exit 2; }
+(( $(date -u +%s) < $(date -ud 2026-10-13T22:00:00Z +%s) )) || { echo 'Deadline reached' >&2; exit 2; }
 STORE=${1:?store}; WORKLOAD=${2:?workload}; NEMESIS=${3:?nemesis}; DURATION=${4:-60}
 export STORE
 root=$PWD
@@ -40,6 +41,12 @@ p = Path('.jepsen/docker/jepsen-compose.yaml')
 s = p.read_text()
 s = s.replace('      n4:\n        condition: service_healthy\n      n5:\n        condition: service_healthy\n', '')
 s = s[:s.index('  n4:\n')]
+for image, digest in {
+    'jepsen-control': '2fb9cff3b4376cf06a0b44d3f49083706e0cca42b862c64c4cf8046ecc255b22',
+    'jepsen-node': '47db15309b20752318b1807a68b273b70c637a1b09509b611faf0ede4ddedfce',
+    'jepsen-setup': '795057327afbb271a2581db54ada313677d01f739187808a406dfd15698ffc84',
+}.items():
+    s = s.replace('${JEPSEN_REGISTRY:-}' + image, 'ghcr.io/nurturenature/jepsen-docker/' + image + '@sha256:' + digest)
 p.write_text(s)
 PY
 export JEPSEN_REGISTRY=ghcr.io/nurturenature/jepsen-docker/
@@ -48,6 +55,7 @@ cleanup() {
   rc=$?
   trap - EXIT
   set +e
+  if [[ -n ${observer:-} ]]; then kill "$observer"; wait "$observer"; fi
   docker cp jepsen-control:/jepsen/etcd/store "$out/store"
   "${compose[@]}" logs --no-color > "$out/containers.log" 2>&1
   docker inspect jepsen-control jepsen-n1 jepsen-n2 jepsen-n3 > "$out/containers.json"
@@ -57,9 +65,7 @@ cleanup() {
 }
 trap cleanup EXIT
 "${compose[@]}" pull
-for image in jepsen-control jepsen-node jepsen-setup; do
-  docker image inspect "$JEPSEN_REGISTRY$image" --format '{{json .RepoDigests}}'
-done
+docker image ls --digests --no-trunc
 "${compose[@]}" up -d --wait --wait-timeout 120
 sans=DNS:n1,DNS:n2,DNS:n3
 for node in n1 n2 n3; do
@@ -78,11 +84,25 @@ docker cp .jepsen/etcd jepsen-control:/jepsen/etcd
 for node in control n1 n2 n3; do
   docker exec "jepsen-$node" sh -c 'hostname; readlink /proc/self/ns/time; date -u +%s.%N'
 done
+if [[ $NEMESIS == *clock* ]]; then
+  printf '%s\n' 'BLOCKED: Docker shares CLOCK_REALTIME across the nodes and control. Independent clock skew requires VMs. The upstream clock nemesis was not run.' | tee "$out/clock-blocked.txt"
+  exit 3
+fi
+# Independent observations; the upstream fault generators and implementations stay unchanged.
+(
+  while true; do
+    for node in n1 n2 n3; do
+      docker exec "jepsen-$node" sh -c 'date -u +%FT%T.%N; hostname; ps -C etcd -o pid=,stat=; iptables-save -c' >> "$out/fault-observer-$node.log" 2>&1 || true
+    done
+    sleep 1
+  done
+) &
+observer=$!
 docker exec jepsen-control java -version
 docker exec -w /jepsen/etcd jepsen-control lein version
 timeout --signal=TERM --kill-after=15s 360s docker exec -e LEIN_ROOT=true -w /jepsen/etcd jepsen-control lein deps
-printf '%s\n' "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --strict-host-key-checking false --version 3.7.2 --workload $WORKLOAD --nemesis $NEMESIS --concurrency 2n --rate 30 --time-limit $DURATION --nemesis-interval 5" > "$out/command.txt"
+printf '%s\n' "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload $WORKLOAD --nemesis $NEMESIS --concurrency 2n --rate 30 --time-limit $DURATION --nemesis-interval 5" > "$out/command.txt"
 timeout --signal=TERM --kill-after=20s 480s docker exec -e LEIN_ROOT=true -e STORE="$STORE" -w /jepsen/etcd jepsen-control \
   lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa \
-  --strict-host-key-checking false --version 3.7.2 --workload "$WORKLOAD" --nemesis "$NEMESIS" \
+  --version 3.7.2 --workload "$WORKLOAD" --nemesis "$NEMESIS" \
   --concurrency 2n --rate 30 --time-limit "$DURATION" --nemesis-interval 5

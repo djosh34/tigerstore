@@ -2,7 +2,7 @@ name: Jepsen external store experiment
 on:
   push:
     branches: [exp/jepsen]
-    paths: ['experiments/jepsen/**', '.github/workflows/jepsen-experiment.yml']
+    paths: ['experiments/jepsen/run.sh', 'experiments/jepsen/patch-db.py', '.github/workflows/jepsen-experiment.yml']
 permissions:
   contents: read
 jobs:
@@ -11,10 +11,15 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         store: [etcd]
-        workload: [register]
-        nemesis: [none]
+        workload: [register, set, append, watch]
+        nemesis: [none, partition, kill, pause]
+        include:
+          - store: etcd
+            workload: register
+            nemesis: clock
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,7 +30,7 @@ jobs:
           go-version: '1.27.2'
       - name: Run upstream Jepsen
         shell: bash
-        run: bash experiments/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 60
+        run: bash experiments/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90
       - uses: actions/upload-artifact@v4
         if: always()
         with:
