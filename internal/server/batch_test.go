@@ -76,7 +76,7 @@ func TestHeaderDecodeAllocs(t *testing.T) {
 	first := encode()
 	// The same fields again are all indexed.
 	again := encode()
-	c := &conn{}
+	c := &conn{metrics: newMetrics()}
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	decode := func(b []byte) {
 		c.hdr = reqHeaders{}
