@@ -1,6 +1,8 @@
 package server
 
 import (
+	"slices"
+
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
@@ -86,12 +88,24 @@ func (c *conn) flush() error {
 	b := c.batch
 	c.batch = opBatch{}
 	c.mu.Lock()
-	for _, tag := range b.tags {
+	// A call that ended at its deadline before this does not go out.
+	keep := 0
+	for i, tag := range b.tags {
 		st := tag.(*stream)
-		st.atNode = true
-		c.holdLocked(st, st.reqSize+callCost)
+		if st.done.Load() || st.reset {
+			continue
+		}
+		b.ops[keep], b.tags[keep] = b.ops[i], tag
+		keep++
+		c.chargeLocked(&st.reqHeld, st.reqSize+callCost)
 	}
 	c.mu.Unlock()
+	clear(b.ops[keep:])
+	clear(b.tags[keep:])
+	b.ops, b.tags = b.ops[:keep], b.tags[:keep]
+	if keep == 0 {
+		return nil
+	}
 	err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c)
 	if err == nil {
 		return nil
@@ -102,7 +116,7 @@ func (c *conn) flush() error {
 	// The node stopped; it takes no more requests.
 	c.mu.Lock()
 	for _, tag := range b.tags {
-		tag.(*stream).atNode = false
+		c.releaseLocked(&tag.(*stream).reqHeld)
 	}
 	c.mu.Unlock()
 	for _, tag := range b.tags {
@@ -111,17 +125,22 @@ func (c *conn) flush() error {
 	return nil
 }
 
-// holdLocked adds n bytes to what a call holds. c.mu is held.
-func (c *conn) holdLocked(st *stream, n int) {
-	st.held += n
+// A call holds two charges against maxHeld: its request bytes plus
+// callCost from when the reader hands it to the node until the node
+// answers (reqHeld), and its reply bytes from then until the reply is
+// sent or the call is reset (replyHeld).
+
+// chargeLocked adds n bytes to one of a call's charges. c.mu is held.
+func (c *conn) chargeLocked(charge *int, n int) {
+	*charge += n
 	c.held += n
 }
 
-// releaseLocked frees what a call held once it ended, and credits back
-// the connection's receive window if that waited for it. c.mu is held.
-func (c *conn) releaseLocked(st *stream) {
-	c.held -= st.held
-	st.held = 0
+// releaseLocked frees one of a call's charges and credits back the
+// connection's receive window if that waited for it. c.mu is held.
+func (c *conn) releaseLocked(charge *int) {
+	c.held -= *charge
+	*charge = 0
 	c.creditLocked()
 }
 
@@ -134,23 +153,35 @@ func (c *conn) creditLocked() {
 	}
 }
 
-// Complete takes replies from the node's committer. It only queues them,
-// under a lock of their own that nothing holds for long; the writer
-// encodes them.
+// completed is one Complete call's replies in a list the committer pushes
+// onto without a lock.
+type completed struct {
+	cs   []node.Completion
+	next *completed
+}
+
+// Complete takes replies from the node's committer. It pushes them onto a
+// lock-free list, so the committer never waits, and wakes the writer,
+// which encodes them. Until then each call's request charge covers it.
 func (c *conn) Complete(cs []node.Completion) {
-	c.compMu.Lock()
-	c.completions = append(c.completions, cs)
-	c.compMu.Unlock()
+	n := &completed{cs: cs}
+	for {
+		n.next = c.completions.Load()
+		if c.completions.CompareAndSwap(n.next, n) {
+			break
+		}
+	}
 	c.signal()
 }
 
-// takeCompletions returns the replies the node queued.
+// takeCompletions returns the replies the node queued, oldest first.
 func (c *conn) takeCompletions() [][]node.Completion {
-	c.compMu.Lock()
-	defer c.compMu.Unlock()
-	cs := c.completions
-	c.completions = nil
-	return cs
+	var out [][]node.Completion
+	for n := c.completions.Swap(nil); n != nil; n = n.next {
+		out = append(out, n.cs)
+	}
+	slices.Reverse(out)
+	return out
 }
 
 // finished is one encoded reply, or an error, for a stream.
@@ -175,17 +206,13 @@ func (c *conn) complete(batches [][]node.Completion) {
 	}
 	c.mu.Lock()
 	for _, f := range out {
-		f.st.atNode = false
-		if f.st.reset {
-			// The client reset the call; its reply is dropped.
-			c.releaseLocked(f.st)
+		c.releaseLocked(&f.st.reqHeld)
+		if f.st.reset || f.st.done.Swap(true) {
+			// Reset by the client or ended at its deadline: the reply is
+			// dropped.
 			continue
 		}
-		if f.st.done.Swap(true) {
-			// Ended already, at its deadline; endStream releases it.
-			continue
-		}
-		c.holdLocked(f.st, len(f.msg))
+		c.chargeLocked(&f.st.replyHeld, len(f.msg))
 		var s *status.Status
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
@@ -205,8 +232,8 @@ func (c *conn) nodeStopped() {
 	c.mu.Lock()
 	var held []*stream
 	for _, st := range c.streams {
-		if st.atNode {
-			st.atNode = false
+		if st.reqHeld > 0 {
+			c.releaseLocked(&st.reqHeld)
 			held = append(held, st)
 		}
 	}

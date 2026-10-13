@@ -62,10 +62,12 @@ type stream struct {
 	queued        int  // message bytes in out
 	listed        bool // in c.ready
 	headersQueued bool
-	held          int  // bytes the call holds; see maxHeld
-	atNode        bool // the node has the request and has not answered
-	ended         bool // the writer took the end of the stream
-	reset         bool // the stream or connection is gone; output is dropped
+	// reqHeld and replyHeld are the call's charges; see chargeLocked.
+	// reqHeld is above 0 while the node has the request and has not
+	// answered.
+	reqHeld, replyHeld int
+	ended              bool // the writer took the end of the stream
+	reset              bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte

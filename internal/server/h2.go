@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -17,7 +18,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
-	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // HTTP/2 limits of one client connection.
@@ -79,10 +79,8 @@ type conn struct {
 	// held is the bytes the connection's calls hold; see maxHeld.
 	held int
 
-	// compMu guards completions, the replies from the node for the writer
-	// to encode. The node's committer takes it, so nothing holds it long.
-	compMu      sync.Mutex
-	completions [][]node.Completion
+	// completions are the replies from the node for the writer to encode.
+	completions atomic.Pointer[completed]
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -345,11 +343,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		if st.deadline != nil {
 			st.deadline.Stop()
 		}
-		// A call the node still runs keeps its request bytes until its
+		// A call the node still runs keeps its request charge until its
 		// reply comes and is dropped.
-		if !st.atNode {
-			c.releaseLocked(st)
-		}
+		c.releaseLocked(&st.replyHeld)
 		st.out = nil
 		st.queued = 0
 	}
