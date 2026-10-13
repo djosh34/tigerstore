@@ -14,12 +14,8 @@ jobs:
       max-parallel: 4
       matrix:
         store: [tigerstore]
-        workload: [register]
+        workload: [set, append, watch]
         nemesis: [none, partition, kill, pause]
-        include:
-          - store: tigerstore
-            workload: register
-            nemesis: clock
     steps:
       - uses: actions/checkout@v4
         with:
