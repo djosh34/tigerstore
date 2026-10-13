@@ -33,6 +33,7 @@ type config struct {
 	warmup    time.Duration
 	duration  time.Duration
 	watchers  int
+	page      int
 	pids      []int
 	label     string
 	seed      uint64
@@ -41,7 +42,7 @@ type config struct {
 	cert, key string
 }
 
-var workloads = []string{"put", "txn", "delete", "range", "watch"}
+var workloads = []string{"put", "txn", "delete", "range", "list", "watch"}
 
 func parseFlags(args []string) (config, error) {
 	var cfg config
@@ -56,6 +57,7 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.warmup, "warmup", 2*time.Second, "load before the measurement window")
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
+	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
@@ -237,7 +239,7 @@ func run(cfg config) (*result, error) {
 
 	var revs []int64
 	var putVals [][]byte
-	if cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "delete" {
+	if cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "list" || cfg.workload == "delete" {
 		revs = make([]int64, cfg.keys)
 		putVals = make([][]byte, cfg.keys)
 		loads := make([]load, len(workers))
@@ -274,6 +276,8 @@ func run(cfg config) (*result, error) {
 			m = deleteRequest(ks.size)
 		case "range":
 			m = rangeRequest(ks.size)
+		case "list":
+			m = listRequest(len(listPrefix(0)), cfg.page)
 		}
 		b, err := base(i, kvPath(cfg.workload), m)
 		if err != nil {
@@ -290,6 +294,8 @@ func run(cfg config) (*result, error) {
 			loads[i] = &deleteLoad{base: b}
 		case "range":
 			loads[i] = &rangeLoad{base: b, valueSize: cfg.valueSize, want: putVals}
+		case "list":
+			loads[i] = newListLoad(b, cfg.page, cfg.valueSize)
 		}
 	}
 
@@ -388,7 +394,7 @@ func kvPath(workload string) string {
 		return "/etcdserverpb.KV/Txn"
 	case "delete":
 		return "/etcdserverpb.KV/DeleteRange"
-	case "range":
+	case "range", "list":
 		return "/etcdserverpb.KV/Range"
 	default:
 		return "/etcdserverpb.KV/Put"

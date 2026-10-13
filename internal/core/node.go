@@ -10,6 +10,7 @@
 package core
 
 import (
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,6 +77,10 @@ type Config struct {
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
+	// CommitStallElections is how many election timeouts a leader's entry
+	// may wait to commit before the leader stops; 0 means
+	// CommitStallTicks. Tests set it lower to catch shorter stalls.
+	CommitStallElections int
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -106,6 +111,9 @@ type Request struct {
 	// Wire, if set, is Op in the client's encoding, decoded with
 	// UnmarshalAlias. It goes into the Raft entry as it is.
 	Wire []byte
+	// Compact asks for a range's answer as Reply.Range, which the driver
+	// encodes itself, instead of a RangeResponse message.
+	Compact bool
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -118,6 +126,8 @@ type Reply struct {
 	Rev    int64
 	Term   uint64
 	PrevKv *mvccpb.KeyValue
+	// Range is the answer to a Compact range.
+	Range mvcc.RangeResult
 }
 
 // PersistJob is one disk write: entries and a hard state to append and
@@ -817,6 +827,17 @@ func (n *Node) serveRead(p *pending) {
 	var err error
 	switch op := p.req.Op.(type) {
 	case *pb.RangeRequest:
+		if p.req.Compact {
+			res, err := n.kv.RangeKVs(op)
+			if err != nil {
+				n.finish(p, nil, err)
+				return
+			}
+			if n.settle(p) {
+				n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Term: n.term, Range: res})
+			}
+			return
+		}
 		var r *pb.RangeResponse
 		r, err = n.kv.Range(op)
 		if err == nil {
@@ -972,7 +993,7 @@ type proposedAt struct {
 }
 
 // commitStalled drops the leader's appends that have committed and reports
-// whether the oldest one left has waited CommitStallTicks election
+// whether the oldest one left has waited CommitStallElections election
 // timeouts.
 func (n *Node) commitStalled() bool {
 	commit := n.rn.BasicStatus().GetCommit()
@@ -981,7 +1002,8 @@ func (n *Node) commitStalled() bool {
 		i++
 	}
 	n.uncommitted = n.uncommitted[i:]
-	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= CommitStallTicks*int64(n.cfg.ElectionTicks)
+	limit := int64(cmp.Or(n.cfg.CommitStallElections, CommitStallTicks)) * int64(n.cfg.ElectionTicks)
+	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet

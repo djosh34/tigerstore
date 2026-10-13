@@ -14,7 +14,7 @@ on:
         description: tigerstore ref to compare against
         default: main
       benchmarks:
-        description: space-separated <workload>-<size> (workload put, txn, delete, range or watch; size 1k or 10k)
+        description: space-separated <workload>-<size> (workload put, txn, delete, range, list or watch; size 1k or 10k)
         default: put-1k txn-1k
       modes:
         description: max (every stream busy), rate (open loop at half of etcd's max), or both

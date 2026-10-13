@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/binary"
+	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
@@ -54,7 +56,7 @@ func (c *conn) admit(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	var req core.Request
+	req := core.Request{Compact: st.rpc.compact}
 	if st.rpc.wirePut {
 		// The put stays in its wire form; the node copies it into the
 		// Raft entry as it is.
@@ -70,14 +72,17 @@ func (c *conn) admit(st *stream) {
 		// request is decoded to check it, by the fastest decoder for its
 		// type.
 		req.Op, req.Wire = st.rpc.op(), st.body
-		if _, ok := req.Op.(*pb.TxnRequest); ok {
+		switch req.Op.(type) {
+		case *pb.TxnRequest, *pb.RangeRequest:
 			if err := core.DecodeAlias(st.body, req.Op); err != nil {
 				st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
 				return
 			}
-		} else if err := unmarshal(st.body, req.Op); err != nil {
-			st.finish(err)
-			return
+		default:
+			if err := unmarshal(st.body, req.Op); err != nil {
+				st.finish(err)
+				return
+			}
 		}
 	}
 	st.reqSize = len(st.body)
@@ -197,16 +202,22 @@ type completed struct {
 	next  *completed
 }
 
-// replyEstimate is the size counted for a reply that has no message, an
-// error.
+// replyEstimate is the size counted for a reply that is an error or a
+// put in wire form.
 const replyEstimate = 64
 
-// estimate is the size a reply will take once encoded.
+// estimate is the size a reply will take once encoded. A range answer
+// counts its header at its largest.
 func estimate(cp *node.Completion) int64 {
-	if cp.Resp == nil {
+	switch {
+	case cp.Err != nil:
 		return replyEstimate
+	case cp.Resp != nil:
+		return int64(proto.Size(cp.Resp))
+	case cp.Tag.(*stream).rpc.compact:
+		return 5 + int64(rangeReplySize(math.MaxUint64, math.MaxUint64, cp.Term, &cp.Range))
 	}
-	return int64(proto.Size(cp.Resp))
+	return replyEstimate
 }
 
 // Complete takes replies from the node's committer. It pushes them onto a
@@ -277,6 +288,8 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 				if f.err = err; err == nil {
 					f.msg = msg
 				}
+			case f.st.rpc.compact && cp.Resp == nil:
+				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
@@ -327,7 +340,7 @@ func (c *conn) nodeStopped() {
 func (c *conn) appendPutReply(b []byte, r *core.Reply) ([]byte, error) {
 	start := len(b)
 	b = append(b, 0, 0, 0, 0, 0)
-	b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)
+	b, err := appendPutResponse(b, c.cluster, c.member, r.Rev, r.Term, r.PrevKv)
 	if err != nil {
 		return b[:start], status.Errorf(codes.Internal, "grpc: error while marshaling: %v", err)
 	}
@@ -343,20 +356,122 @@ const putResponseSize = 2 + 4*(1+binary.MaxVarintLen64)
 // with the cluster, member, revision and term, and the previous key if
 // there is one.
 func appendPutResponse(b []byte, cluster, member uint64, rev int64, term uint64, prev *mvccpb.KeyValue) ([]byte, error) {
-	var h [4 * (1 + binary.MaxVarintLen64)]byte
-	hb := h[:0]
-	for i, v := range [...]uint64{cluster, member, uint64(rev), term} {
-		if v != 0 {
-			hb = protowire.AppendTag(hb, protowire.Number(i+1), protowire.VarintType)
-			hb = protowire.AppendVarint(hb, v)
-		}
-	}
-	b = protowire.AppendTag(b, 1, protowire.BytesType)
-	b = protowire.AppendBytes(b, hb)
+	b = appendHeader(b, cluster, member, rev, term)
 	if prev == nil {
 		return b, nil
 	}
 	b = protowire.AppendTag(b, 2, protowire.BytesType)
 	b = protowire.AppendVarint(b, uint64(proto.Size(prev)))
 	return proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(b, prev)
+}
+
+// appendHeader appends field 1 of a response, its ResponseHeader.
+func appendHeader(b []byte, cluster, member uint64, rev int64, term uint64) []byte {
+	b = protowire.AppendTag(b, 1, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(headerSize(cluster, member, rev, term)))
+	for i, v := range [...]uint64{cluster, member, uint64(rev), term} {
+		if v != 0 {
+			b = protowire.AppendTag(b, protowire.Number(i+1), protowire.VarintType)
+			b = protowire.AppendVarint(b, v)
+		}
+	}
+	return b
+}
+
+func headerSize(cluster, member uint64, rev int64, term uint64) int {
+	n := 0
+	for _, v := range [...]uint64{cluster, member, uint64(rev), term} {
+		if v != 0 {
+			n += 1 + protowire.SizeVarint(v)
+		}
+	}
+	return n
+}
+
+// rangeReplySize is the size of the RangeResponse appendRangeReply
+// encodes.
+func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) int {
+	size := 1 + protowire.SizeBytes(headerSize(cluster, member, res.Rev, term))
+	for i := range res.KVs {
+		size += 1 + protowire.SizeBytes(kvSize(&res.KVs[i]))
+	}
+	if res.More {
+		size += 2
+	}
+	if res.Count != 0 {
+		size += 1 + protowire.SizeVarint(uint64(res.Count))
+	}
+	return size
+}
+
+// appendRangeReply encodes the gRPC message of a RangeResponse built from
+// the index's values: the value bytes are copied once, here, into the
+// reply, with no KeyValue message per key.
+func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
+	size := rangeReplySize(cluster, member, term, res)
+	if size > 1<<31-1 {
+		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	}
+	b := make([]byte, 0, 5+size)
+	b = append(b, 0)
+	b = binary.BigEndian.AppendUint32(b, uint32(size))
+	b = appendHeader(b, cluster, member, res.Rev, term)
+	for i := range res.KVs {
+		kv := &res.KVs[i]
+		b = protowire.AppendTag(b, 2, protowire.BytesType)
+		b = protowire.AppendVarint(b, uint64(kvSize(kv)))
+		b = appendKV(b, kv)
+	}
+	if res.More {
+		b = protowire.AppendTag(b, 3, protowire.VarintType)
+		b = protowire.AppendVarint(b, 1)
+	}
+	if res.Count != 0 {
+		b = protowire.AppendTag(b, 4, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(res.Count))
+	}
+	return b, nil
+}
+
+// kvSize is the size of a KeyValue message; fields at their zero value
+// are left out, as protobuf does.
+func kvSize(kv *mvcc.KV) int {
+	n := 0
+	if len(kv.Key) > 0 {
+		n += 1 + protowire.SizeBytes(len(kv.Key))
+	}
+	for _, v := range [...]int64{kv.CreateRevision, kv.ModRevision, kv.Version} {
+		if v != 0 {
+			n += 1 + protowire.SizeVarint(uint64(v))
+		}
+	}
+	if len(kv.Value) > 0 {
+		n += 1 + protowire.SizeBytes(len(kv.Value))
+	}
+	if kv.Lease != 0 {
+		n += 1 + protowire.SizeVarint(uint64(kv.Lease))
+	}
+	return n
+}
+
+func appendKV(b []byte, kv *mvcc.KV) []byte {
+	if len(kv.Key) > 0 {
+		b = protowire.AppendTag(b, 1, protowire.BytesType)
+		b = protowire.AppendBytes(b, kv.Key)
+	}
+	for i, v := range [...]int64{kv.CreateRevision, kv.ModRevision, kv.Version} {
+		if v != 0 {
+			b = protowire.AppendTag(b, protowire.Number(i+2), protowire.VarintType)
+			b = protowire.AppendVarint(b, uint64(v))
+		}
+	}
+	if len(kv.Value) > 0 {
+		b = protowire.AppendTag(b, 5, protowire.BytesType)
+		b = protowire.AppendBytes(b, kv.Value)
+	}
+	if kv.Lease != 0 {
+		b = protowire.AppendTag(b, 6, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(kv.Lease))
+	}
+	return b
 }

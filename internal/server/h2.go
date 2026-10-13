@@ -56,6 +56,8 @@ type conn struct {
 	fr  *http2.Framer
 	br  *bufio.Reader
 	bw  *bufio.Writer
+	// cluster and member go in every response header.
+	cluster, member uint64
 
 	ctx    context.Context // ends when the connection closes
 	cancel context.CancelFunc
@@ -116,6 +118,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
 		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
+		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
 		br:       bufio.NewReaderSize(nc, ioBuffer),
