@@ -7,12 +7,14 @@ from pathlib import Path, PurePosixPath
 import re
 import tarfile
 
+from history_io import isint, read_events
 from projections import materialize
 
 p = argparse.ArgumentParser()
 p.add_argument('archive', type=Path)
 p.add_argument('sha256')
 p.add_argument('output', type=Path)
+p.add_argument('--case', type=int, help='Generate/check projections only for this selected case')
 a = p.parse_args()
 assert re.fullmatch('[0-9a-f]{64}', a.sha256), 'Explicit fresh archive SHA-256 required'
 with a.archive.open('rb') as stream:
@@ -30,6 +32,7 @@ with tarfile.open(a.archive) as tar:
             if m.name.endswith('/history.edn') and '/independent/' not in m.name
             and '/store/current/' not in m.name})
     assert prefixes, 'No full history in fresh archive'
+    assert a.case is None or 0 <= a.case < len(prefixes), 'Selected case outside archive'
     for case_id, prefix in enumerate(prefixes):
         parts = PurePosixPath(prefix).parts
         assert '..' not in parts and not PurePosixPath(prefix).is_absolute()
@@ -52,7 +55,15 @@ with tarfile.open(a.archive) as tar:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(tar.extractfile(member).read())
         assert (root / 'history.edn').exists()
-        projections = materialize(root / 'history.edn', root / 'independent')
+        # Avoid generating every key of every case in each matrix job.
+        # Every selected case still receives complete projection/pair checks.
+        events = read_events(root / 'history.edn')
+        keys = sorted({e['value'][0] for e in events if isint(e['process'])})
+        assert keys and all(isint(k) for k in keys)
+        projections = materialize(root / 'history.edn', root / 'independent') if (
+            a.case is None or case_id == a.case) else []
+        if projections:
+            assert [r['key'] for r in projections] == keys
         records = []
         for path in sorted(root.rglob('*.edn')):
             records.append({'path': str(path.relative_to(root)),
@@ -60,7 +71,7 @@ with tarfile.open(a.archive) as tar:
                             'retained_from_archive': str(path.relative_to(root)) in extracted})
         manifest.append({'run': 'fresh', 'case': case, 'directory': root.name,
                          'archive_path': str(a.archive), 'archive_sha256': digest,
-                         'keys': [r['key'] for r in projections], 'members': records,
+                         'keys': keys, 'members': records,
                          'projections': projections})
 (a.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 print(json.dumps([{'id': i, 'case': m['case'], 'key_count': len(m['keys'])}

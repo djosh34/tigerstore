@@ -7,7 +7,8 @@ from pathlib import Path
 import random
 import sys
 
-from history_io import prepare, write_edn
+from history_io import prepare, read_events, write_edn
+from projections import materialize
 from solve import allowed, search
 from verify import verify
 
@@ -142,6 +143,24 @@ def main(root):
             saved_text = nemesis + saved_text.replace('"SYMBOL_SENTINEL"', 'io.netty.channel.StacklessClosedChannelException')
         full.write_text(full_text)
         saved.write_text(saved_text)
+        if name == 'metadata-set-symbol':
+            generated_root = directory / 'generated-independent'
+            generated = materialize(full, generated_root)
+            assert [r['key'] for r in generated] == [0]
+            assert generated[0]['existing_saved_projection'] is False
+            generated_path = generated_root / '0/history.edn'
+            assert read_events(generated_path) == read_events(saved)
+            again = materialize(full, generated_root)
+            assert again[0]['existing_saved_projection'] is True
+            original_text = generated_path.read_text()
+            generated_path.write_text('')
+            rejected = False
+            try:
+                materialize(full, generated_root)
+            except AssertionError:
+                rejected = True
+            assert rejected, 'Missing/truncated projection was accepted'
+            generated_path.write_text(original_text)
         _, _, calls, _ = prepare(full, saved, 0)
         exact = brute(calls)
         if expected is not None:

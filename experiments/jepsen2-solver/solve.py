@@ -105,6 +105,7 @@ def search(full, saved, key, out, seconds=240, restricted_seconds=20):
         if phase == 'omit-no-leader' and not no_leader:
             continue
         if time.time() >= DEADLINE:
+            result = None
             attempts.append({'phase': phase, 'result': 'deadline-not-started'})
             break
         s.push()
@@ -112,6 +113,8 @@ def search(full, saved, key, out, seconds=240, restricted_seconds=20):
             s.add([z3.Not(chosen[oid]) for oid in no_leader])
         budget = min(limit, max(0, DEADLINE - time.time() - 5))
         if budget <= 0:
+            result = None
+            attempts.append({'phase': phase, 'result': 'deadline-not-started'})
             s.pop()
             break
         s.set(timeout=max(1, int(budget * 1000)))
@@ -129,7 +132,8 @@ def search(full, saved, key, out, seconds=240, restricted_seconds=20):
         if result == z3.sat:
             break
         s.pop()
-    summary = {'key': key, 'valid': 'unknown', 'solver_result': str(result),
+    (out / 'attempts.json').write_text(json.dumps(attempts, indent=2) + '\n')
+    summary = {'key': key, 'valid': 'unknown', 'solver_result': str(result) if result is not None else 'not-started',
                'phase': phase, 'attempts': attempts, 'seconds': time.time() - started,
                'z3_version': z3.get_version_string(), 'source_keys': keys,
                'full_sha256': sha256(full), 'independent_sha256': sha256(saved),

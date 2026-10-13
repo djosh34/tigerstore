@@ -96,7 +96,7 @@ jobs:
         run: |
           test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
           if [[ -n $FRESH_ARCHIVE ]]; then
-            python experiments/jepsen2-solver/prepare-fresh.py "$FRESH_ARCHIVE" "$FRESH_SHA256" saved
+            python experiments/jepsen2-solver/prepare-fresh.py "$FRESH_ARCHIVE" "$FRESH_SHA256" saved --case '${{ matrix.case }}'
           else
             python experiments/jepsen2-solver/prepare.py experiments/jepsen/evidence saved
           fi
