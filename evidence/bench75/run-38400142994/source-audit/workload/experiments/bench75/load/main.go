@@ -1,0 +1,411 @@
+// A closed-loop, direct etcd protobuf client using identical workloads for both servers.
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"log"
+	"math"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+)
+
+type cpu struct {
+	PID          int
+	Ticks, Start uint64
+	Syscr, Syscw uint64
+}
+
+func sample(pid int) (cpu, error) {
+	b, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if e != nil {
+		return cpu{}, e
+	}
+	pos := strings.LastIndex(string(b), ")")
+	if pos < 0 {
+		return cpu{}, errors.New("bad proc stat")
+	}
+	s := strings.Fields(string(b[pos+1:]))
+	u, e := strconv.ParseUint(s[11], 10, 64)
+	if e != nil {
+		return cpu{}, e
+	}
+	k, e := strconv.ParseUint(s[12], 10, 64)
+	if e != nil {
+		return cpu{}, e
+	}
+	st, e := strconv.ParseUint(s[19], 10, 64)
+	if e != nil {
+		return cpu{}, e
+	}
+	io, e := os.ReadFile(fmt.Sprintf("/proc/%d/io", pid))
+	if e != nil {
+		return cpu{}, e
+	}
+	r, w, e := parseIO(io)
+	return cpu{PID: pid, Ticks: u + k, Start: st, Syscr: r, Syscw: w}, e
+}
+
+func run() error {
+	endpoint := flag.String("endpoint", "127.0.0.1:2379", "leader endpoint")
+	certdir := flag.String("certdir", "", "cert directory")
+	op := flag.String("op", "put", "put, range or cas")
+	generator := flag.String("generator", "lean", "lean or grpc (Range always uses grpc)")
+	total := flag.Uint64("total", 60000, "operations, zero for duration")
+	duration := flag.Duration("duration", 0, "arrival duration, drain included in elapsed")
+	workers := flag.Int("workers", 256, "closed-loop concurrency")
+	conns := flag.Int("conns", 16, "connections")
+	pidstr := flag.String("pids", "", "leader,follower1,follower2")
+	hz := flag.Float64("hz", 100, "getconf CLK_TCK")
+	out := flag.String("out", "", "json output")
+	metricsURL := flag.String("metrics-url", "", "leader runtime metrics or Prometheus endpoint")
+	metricsKind := flag.String("metrics-kind", "runtime", "runtime or etcd")
+	readyFile := flag.String("ready-file", "", "optional profile-run arrival-start marker")
+	flag.Parse()
+	if (*generator != "lean" && *generator != "grpc") || (*op != "put" && *op != "range" && *op != "cas") || *workers < 1 || *conns < 1 || (*total == 0 && *duration <= 0) {
+		return errors.New("invalid flags")
+	}
+	ca, e := os.ReadFile(*certdir + "/ca.pem")
+	if e != nil {
+		return e
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(ca) {
+		return errors.New("bad CA")
+	}
+	cert, e := tls.LoadX509KeyPair(*certdir+"/client.pem", *certdir+"/client-key.pem")
+	if e != nil {
+		return e
+	}
+	cfg := &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13}
+	useLean := *generator == "lean" && *op != "range"
+	controlConns := *conns
+	if useLean {
+		controlConns = 1
+	}
+	clients := make([]pb.KVClient, controlConns)
+	for i := range clients {
+		c, e := grpc.NewClient(*endpoint, grpc.WithTransportCredentials(credentials.NewTLS(cfg.Clone())))
+		if e != nil {
+			return e
+		}
+		defer func() {
+			if err := c.Close(); err != nil {
+				log.Printf("close client: %v", err)
+			}
+		}()
+		clients[i] = pb.NewKVClient(c)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, e = clients[i].Range(ctx, &pb.RangeRequest{Key: []byte("/pre50-probe")})
+		cancel()
+		if e != nil {
+			return e
+		}
+	}
+	const keyspace = 4096
+	keys := make([][]byte, keyspace)
+	values := make([][]byte, keyspace)
+	for i := range keyspace {
+		keys[i] = []byte(fmt.Sprintf("/registry/pods/ns-%03d/pod-%08d", i%64, i))
+		values[i] = make([]byte, 1024)
+		for j := range 32 {
+			s := sha256.Sum256([]byte(fmt.Sprintf("pre50-independent-%d-%d", i, j)))
+			copy(values[i][j*32:], s[:])
+		}
+	}
+	probe := func() (*pb.RangeResponse, error) {
+		ctx, c := context.WithTimeout(context.Background(), 10*time.Second)
+		defer c()
+		return clients[0].Range(ctx, &pb.RangeRequest{Key: keys[0]})
+	}
+	var revisions []atomic.Int64
+	if *op == "cas" {
+		revisions, e = seedRevisions(clients[0], keys)
+		if e != nil {
+			return e
+		}
+	}
+	var lean *leanPool
+	if useLean {
+		lean, e = newLeanPool(*endpoint, cfg, *op, *workers, *conns, keys, values, revisions)
+		if e != nil {
+			return e
+		}
+		defer lean.close()
+	}
+	// Warm writes must be outside the revision fence as well as accounting.
+	before, e := probe()
+	if e != nil {
+		return e
+	}
+	pids := []int{}
+	if *pidstr != "" {
+		for p := range strings.SplitSeq(*pidstr, ",") {
+			id, e := strconv.Atoi(p)
+			if e != nil {
+				return e
+			}
+			pids = append(pids, id)
+		}
+	}
+	pids = append(pids, os.Getpid())
+	pre := make([]cpu, len(pids))
+	post := make([]cpu, len(pids))
+	var next atomic.Uint64
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	latencies := make([][]int64, *workers)
+	errs := make([]map[string]int, *workers)
+	terms := make([]map[uint64]int, *workers)
+	casPasses := make([]uint64, *workers)
+	casFailures := make([]uint64, *workers)
+	var deadline time.Time
+	var phase *leanPhase
+	if useLean {
+		phase = &leanPhase{start: start, total: *total}
+		lean.begin(phase)
+	} else {
+		for w := range *workers {
+			wg.Go(func() {
+				<-start
+				local := make([]int64, 0, 1024)
+				em := map[string]int{}
+				tm := map[uint64]int{}
+				var passes, failures uint64
+				for {
+					i := next.Add(1) - 1
+					if (*total > 0 && i >= *total) || (!deadline.IsZero() && !time.Now().Before(deadline)) {
+						break
+					}
+					k := int((i * 2654435761) % keyspace)
+					t := time.Now()
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					var err error
+					var h *pb.ResponseHeader
+					if *op == "put" {
+						var r *pb.PutResponse
+						r, err = clients[w%*conns].Put(ctx, &pb.PutRequest{Key: keys[k], Value: values[k]})
+						if r != nil {
+							h = r.Header
+						}
+					} else if *op == "cas" {
+						var r *pb.TxnResponse
+						r, err = clients[w%*conns].Txn(ctx, casRequest(keys[k], values[k], revisions[k].Load()))
+						if r != nil {
+							h = r.Header
+							if err == nil {
+								var revision int64
+								revision, err = checkCAS(r, keys[k], values[k])
+								if err == nil {
+									storeRevision(&revisions[k], revision)
+									if r.Succeeded {
+										passes++
+									} else {
+										failures++
+									}
+								}
+							}
+						}
+					} else {
+						var r *pb.RangeResponse
+						r, err = clients[w%*conns].Range(ctx, &pb.RangeRequest{Key: keys[k]})
+						if r != nil {
+							h = r.Header
+							if err == nil && (r.Count != 1 || len(r.Kvs) != 1 || !bytes.Equal(r.Kvs[0].Key, keys[k]) || !bytes.Equal(r.Kvs[0].Value, values[k])) {
+								err = errors.New("invalid range result")
+							}
+						}
+					}
+					cancel()
+					dt := time.Since(t).Nanoseconds()
+					if err == nil && (h == nil || h.Revision < 1 || h.RaftTerm == 0) {
+						err = errors.New("invalid header")
+					}
+					if err != nil {
+						em[err.Error()]++
+					} else {
+						local = append(local, dt)
+						tm[h.RaftTerm]++
+					}
+				}
+				latencies[w] = local
+				errs[w] = em
+				terms[w] = tm
+				casPasses[w], casFailures[w] = passes, failures
+			})
+		}
+	}
+	var heapBefore, heapAfter heapSnapshot
+	if *metricsURL != "" {
+		heapBefore, e = sampleHeap(*metricsURL, *metricsKind)
+		if e != nil {
+			return e
+		}
+	}
+	for i, p := range pids {
+		pre[i], e = sample(p)
+		if e != nil {
+			return e
+		}
+	}
+	t := time.Now()
+	if *duration > 0 {
+		deadline = t.Add(*duration)
+	}
+	if phase != nil {
+		phase.deadline = deadline
+	}
+	if *readyFile != "" {
+		if err := os.WriteFile(*readyFile, []byte(t.UTC().Format(time.RFC3339Nano)), 0o644); err != nil {
+			return err
+		}
+	}
+	close(start)
+	var leanResults []leanResult
+	if useLean {
+		leanResults = lean.collect()
+	} else {
+		wg.Wait()
+	}
+	elapsed := time.Since(t).Seconds()
+	for i, p := range pids {
+		post[i], e = sample(p)
+		if e != nil {
+			return e
+		}
+		if pre[i].Start != post[i].Start {
+			return errors.New("process restarted")
+		}
+		if post[i].Ticks < pre[i].Ticks || post[i].Syscr < pre[i].Syscr || post[i].Syscw < pre[i].Syscw {
+			return errors.New("process counter decreased")
+		}
+	}
+	if *metricsURL != "" {
+		heapAfter, e = sampleHeap(*metricsURL, *metricsKind)
+		if e != nil {
+			return e
+		}
+	}
+	after, e := probe()
+	if e != nil {
+		return e
+	}
+	all := []int64{}
+	em := map[string]int{}
+	tm := map[uint64]int{}
+	var casPassed, casFailed uint64
+	if useLean {
+		for _, r := range leanResults {
+			all = append(all, r.latencies...)
+			casPassed += r.passes
+			casFailed += r.failures
+			for k, n := range r.errs {
+				em[k] += n
+			}
+			for k, n := range r.terms {
+				tm[k] += n
+			}
+		}
+	}
+	for i := range *workers {
+		casPassed += casPasses[i]
+		casFailed += casFailures[i]
+		all = append(all, latencies[i]...)
+		for k, n := range errs[i] {
+			em[k] += n
+		}
+		for k, n := range terms[i] {
+			tm[k] += n
+		}
+	}
+	if len(all) == 0 {
+		return errors.New("no successes")
+	}
+	slices.Sort(all)
+	pct := func(p float64) float64 { return float64(all[int(math.Ceil(p*float64(len(all))))-1]) / 1e6 }
+	sum := float64(0)
+	for _, v := range all {
+		sum += float64(v)
+	}
+	cpus := make([]float64, len(pids))
+	occup := make([]float64, len(pids))
+	for i := range pids {
+		secs := float64(post[i].Ticks-pre[i].Ticks) / *hz
+		cpus[i] = secs * 1e6 / float64(len(all))
+		occup[i] = secs / elapsed
+	}
+	delta := after.Header.Revision - before.Header.Revision
+	valid := len(em) == 0 && len(tm) == 1 && (*total == 0 || uint64(len(all)) == *total) && ((*op == "put" && delta == int64(len(all))) || (*op == "range" && delta == 0) || (*op == "cas" && delta == int64(casPassed) && casPassed+casFailed == uint64(len(all))))
+	result := map[string]any{"valid": valid, "op": *op, "successes": len(all), "errors": em, "terms": tm, "elapsed_s": elapsed, "ops_s": float64(len(all)) / elapsed, "mean_ms": sum / float64(len(all)) / 1e6, "p50_ms": pct(.5), "p90_ms": pct(.9), "p99_ms": pct(.99), "p999_ms": pct(.999), "max_ms": float64(all[len(all)-1]) / 1e6, "cpu_us_op": cpus, "occupied_cores": occup, "cpu_before": pre, "cpu_after": post, "revision_before": before.Header.Revision, "revision_after": after.Header.Revision, "workers": *workers, "conns": *conns, "keyspace": keyspace, "value_bytes": 1024, "clock_hz": *hz, "start_utc": t.UTC().Format(time.RFC3339Nano)}
+	result["generator"] = *generator
+	result["effective_generator"] = "grpc"
+	result["active_connections"] = controlConns
+	result["control_connections"] = 0
+	if useLean {
+		result["effective_generator"] = "lean"
+		result["generator_source"] = leanSource
+		result["generator_base_commit"] = "d2408301966b99471bfed06d4c2dc1cd1e5af462"
+		result["active_connections"] = len(lean.clients)
+		result["control_connections"] = 1
+		result["total_connections"] = len(lean.clients) + 1
+		result["untimed_warm_rpcs"] = len(lean.clients)
+		result["untimed_warm_writes"] = lean.warmWrites
+		limits := make([]int, len(lean.clients))
+		for i, c := range lean.clients {
+			limits[i] = c.slots
+		}
+		result["connection_outstanding_limits"] = limits
+	} else {
+		result["generator_source"] = "grpc-go"
+		result["total_connections"] = controlConns
+		result["untimed_warm_rpcs"] = controlConns
+	}
+	if *op == "cas" {
+		result["cas_compare_passed"], result["cas_compare_failed"] = casPassed, casFailed
+	}
+	if len(pids) > 1 {
+		result["leader_syscr_per_op"] = float64(post[0].Syscr-pre[0].Syscr) / float64(len(all))
+		result["leader_syscw_per_op"] = float64(post[0].Syscw-pre[0].Syscw) / float64(len(all))
+	}
+	if *metricsURL != "" {
+		delta, err := heapDelta(heapBefore, heapAfter, len(all))
+		if err != nil {
+			return err
+		}
+		result["leader_heap"] = delta
+	}
+	b, e := json.MarshalIndent(result, "", "  ")
+	if e != nil {
+		return e
+	}
+	if e = os.WriteFile(*out, append(b, '\n'), 0o644); e != nil {
+		return e
+	}
+	if !valid {
+		return errors.New("invalid measurement; see JSON")
+	}
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

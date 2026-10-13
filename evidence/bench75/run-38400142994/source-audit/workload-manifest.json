@@ -1,0 +1,51 @@
+{
+  "status": "FINAL",
+  "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+  "engine_byte_identical_to": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+  "engine_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2",
+  "pins": "same module versions and go.sum as Tiger main; x/net direct/indirect status only",
+  "files": [
+    {
+      "file": "experiments/bench75/load/main.go",
+      "path": "workload/experiments/bench75/load/main.go",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+    },
+    {
+      "file": "experiments/bench75/load/newlean.go",
+      "path": "workload/experiments/bench75/load/newlean.go",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+    },
+    {
+      "file": "experiments/bench75/load/io.go",
+      "path": "workload/experiments/bench75/load/io.go",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "4fab1f67d7f2ddb41f9d46d01db83bbe5cf0c8b326fd74b945dfc36aa4d13036"
+    },
+    {
+      "file": "experiments/bench75/run.py",
+      "path": "workload/experiments/bench75/run.py",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "a98ed8628cfb87c922dff025d66cb0a913fe6252ee4449a8545186a34bc3defc"
+    },
+    {
+      "file": ".github/workflows/bench75.yml",
+      "path": "workload/.github/workflows/bench75.yml",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e"
+    },
+    {
+      "file": "go.mod",
+      "path": "workload/go.mod",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "be477057cd223acd83ca0284395c321ffb634e557815c27a6fc92c912518c222"
+    },
+    {
+      "file": "go.sum",
+      "path": "workload/go.sum",
+      "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+      "sha256": "e46e53039cefc3989fec6156d03679b787723aa3cad4eea8e1a395a91e96935b"
+    }
+  ]
+}

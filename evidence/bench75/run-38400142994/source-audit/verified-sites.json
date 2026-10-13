@@ -1,0 +1,2472 @@
+[
+  {
+    "id": "lib-put-value-field",
+    "target": "main",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is nonempty proto3 bytes; frontend/apply Put path bypasses owning decoder",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "peer encoding implementing full Entry.Data append; caller and instruction ONE stage; ordinary Put metadata reply has no input value",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted one receiver owning Entry.Data decode per transmitted occurrence",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted proto2 Entry.Data leader deep clone, not proto3 owning decoder",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "5406a959d280825d0156c8e2e2857bd4e943a1aa0476a44717339ecb8d580628"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "main",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "58316f5ae5a7e02067f83b9715af04ad375e1ba3e96f89ccd166e5cf947544d2"
+  },
+  {
+    "id": "unstable-append",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9cdbd352eefb755342819adb7503f99f41a82259181e0ab929c801947179f3d0"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted one leader Entry.Data deep clone per proposed entry containing full value",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d94c220250d54147f849f7c416787be4971903b4c95d93570e7906041513ff99"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "bd0fcbc7b76b85843c038af64bc6ea6ef0863d06335ecab79cb66144ad1aebd1"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "main",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "entry capacity fully reserved in BOTH; no fixed extra growth relocation assigned",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted one full new Put value append to entry BOTH targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "main",
+    "file": "internal/core/codec.go",
+    "line": 103,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "capped entry subslice passed to apply, zero owning bytes copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "target": "main",
+    "file": "internal/core/node.go",
+    "id": "pending-owner",
+    "line": 145,
+    "expected": "req      Request",
+    "classification": "request descriptor retention, not copied value bytes or channel",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "main",
+    "file": "internal/core/node.go",
+    "id": "batch-pending-allocation",
+    "line": 373,
+    "expected": "ps := make([]pending, len(rs))",
+    "classification": "one pending-record backing array per SubmitAll BOTH, not startup arena or channel",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "main",
+    "file": "internal/core/node.go",
+    "id": "submitall-loop",
+    "line": 375,
+    "expected": "n.submit(rs[i], &ps[i])",
+    "classification": "direct per-record method call into batch-owned pending array; zero sends/receives/closes",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-check",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 386,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-size",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 515,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "full Put wire length plus batch framing; metadata sizing, no value copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 580,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "raft-propose",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 585,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 853,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "ordinary Put walks encoded entry and takes in-place ParsePut branch BOTH targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 858,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 894,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 898,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "main",
+    "file": "internal/core/node.go",
+    "line": 919,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "main",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero copy: direct wire Put fields path into MVCC",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "431043c46fd189fc0bf2953b25e5c2a6444ebafa6898d2deeefcdf887873dd58"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "main",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "6f9e3ac3c5390040ec44e07a9bacc6e3a01561b2b654f5432b6481c54f3027d6"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "main",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "0195b0f1807a0f018f7825907316a0b540415e99b674e9415040ce248038f23e"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "main",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "id": "putop-alias",
+    "line": 191,
+    "expected": "return PutOp{Key: p.Key, Value: p.Value, Lease: p.Lease, PrevKv: p.PrevKv, IgnoreValue: p.IgnoreValue, IgnoreLease: p.IgnoreLease}",
+    "classification": "PutRequest-to-PutOp copies slice headers, not bytes",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-version-append",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-value",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "Put retains Raft entry value slice header in MVCC; zero full-value copy BOTH targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-key",
+    "target": "main",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "key metadata excluded from full-value stage census",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "admission-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted: one send per actual admission batch, all targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "file": "internal/node/node.go",
+    "id": "driver-batch-owner",
+    "line": 169,
+    "expected": "reqs  []core.Request",
+    "classification": "driver batch owns/shared request descriptors; header-only, not channel",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "batch-api",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 190,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "SubmitBatch admission route for Put BOTH, not retained Node.Do",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "file": "internal/node/node.go",
+    "id": "batch-wrapper",
+    "line": 199,
+    "expected": "b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}",
+    "classification": "batch wrapper retains descriptor/tag backing stores; no payload copy or channel exchange",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "file": "internal/node/node.go",
+    "id": "batch-inbox-call",
+    "line": 200,
+    "expected": "return n.put(ctx, input{batch: b})",
+    "classification": "one inbox admission handoff per batch via actual send site; this call is not an extra exchange",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 266,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 274,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "conditional U: successful nonblocking inbox report; saturation/drop/fault, not fixed per request",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 281,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "excluded retained Node.Do; zero fresh private reply channels for ordinary Put BOTH",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 286,
+    "expected": "case rep := <-r.reply:",
+    "classification": "excluded retained Node.Do; not ordinary Put route",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 308,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 335,
+    "expected": "case in := <-inbox:",
+    "classification": "counted selected receive: outer alternative for admission, inbound peer or successful Unreachable report",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 340,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted selected receive: drain alternative for another input; not extra receipt of outer input",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 346,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "disk-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 353,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "tick-receive",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "watch-close",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 394,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 420,
+    "expected": "w.reply <- r",
+    "classification": "excluded retained Node.Do; not ordinary Put route",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "completion-direct",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 432,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "file": "internal/node/node.go",
+    "id": "batch-waiter",
+    "line": 446,
+    "expected": "waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}",
+    "classification": "per-request completer/tag metadata, no private reply channel",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "file": "internal/node/node.go",
+    "id": "batch-core-submit",
+    "line": 448,
+    "expected": "n.core.SubmitAll(b.reqs)",
+    "classification": "SubmitAll direct method, zero channel operations BOTH targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 486,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 493,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 500,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 503,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "main",
+    "file": "internal/node/node.go",
+    "line": 507,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 248,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 304,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 315,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 321,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 324,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "main",
+    "file": "internal/peer/peer.go",
+    "line": 426,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "id": "opbatch-owner",
+    "line": 39,
+    "expected": "reqs  []core.Request",
+    "classification": "connection batch owns descriptors; slice headers, not payload bytes or channels",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file": "internal/server/batch.go",
+    "id": "peek-header",
+    "line": 93,
+    "expected": "h, _ := c.br.Peek(frameHeaderLen)",
+    "classification": "buffered header peek, not full input-value materialization",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "charge-request",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 116,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 126,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "completion-cas",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 212,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: atomic compare-and-swap, no Go channel and no completion mutex",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 216,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "completion-swap",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 225,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "id": "wire-reply-encode",
+    "line": 265,
+    "expected": "msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)",
+    "classification": "one small buffer per ordinary Put metadata reply; no input value when PrevKv disabled",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "id": "release-request",
+    "line": 277,
+    "expected": "c.releaseReqLocked(f.st)",
+    "classification": "release accounting, zero channel exchange / payload copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "charge-reply",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 283,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "id": "manual-response-prefix",
+    "line": 318,
+    "expected": "b = append(b, 0, 0, 0, 0, 0)",
+    "classification": "gRPC small reply prefix, zero input-value copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "main",
+    "file": "internal/server/batch.go",
+    "line": 319,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file": "internal/server/h2.go",
+    "id": "io-buffer-size",
+    "line": 43,
+    "expected": "ioBuffer     = 64 << 10",
+    "classification": "existing transport buffer size, no per-request copy count implied",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file": "internal/server/h2.go",
+    "id": "existing-read-buffer",
+    "line": 121,
+    "expected": "br:       bufio.NewReaderSize(nc, ioBuffer),",
+    "classification": "existing 64KiB bufio reader BOTH; not a new PR84 owning-request stage",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 201,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 214,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file": "internal/server/h2.go",
+    "id": "frame-header-read",
+    "line": 263,
+    "expected": "fh, err := c.fr.ReadFrameHeader()",
+    "classification": "existing frame-header read call; not a runtime syscall count",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file": "internal/server/h2.go",
+    "id": "frame-read",
+    "line": 267,
+    "expected": "f, err := c.fr.ReadFrameForHeader(fh)",
+    "classification": "existing Framer payload read; transport work excluded, no new clock copy destination",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 339,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 354,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 392,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "id": "hpack-decode",
+    "line": 422,
+    "expected": "if _, err := c.hdec.Write(b); err != nil {",
+    "classification": "per-connection HPACK decoder, header bytes are not Put payload",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "id": "hpack-field",
+    "line": 473,
+    "expected": "bit, h.path = 2, f.Value",
+    "classification": "indexed header fields retained without fresh MetaHeaders field list; literal decoding may allocate",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 574,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary admitted unary Put does not create private per-stream context",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "id": "stream-channel-guard",
+    "line": 578,
+    "expected": "st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)",
+    "classification": "streaming-only conditional allocation; unary Put leave inSignal and space nil",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "id": "timeout-guard",
+    "line": 590,
+    "expected": "if grpc && h.hasTimeout {",
+    "classification": "no timed lean grpc-timeout: per-stream deadline timer not armed",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "id": "stream-deadline",
+    "line": 593,
+    "expected": "st.deadline = time.AfterFunc(h.timeout, st.expire)",
+    "classification": "optional grpc-timeout AfterFunc absent for timed lean Put; control Range deadlines outside cohort",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 631,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 650,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "stream-admit",
+    "target": "main",
+    "file": "internal/server/h2.go",
+    "line": 658,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "main",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "9b9ec045329db37f6b42e0b51717834b721168b9c42f75fa4dd22b1308fbb81d"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted one owned full Put value accumulation from reusable Framer DATA payload BOTH",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "id": "unary-delivery",
+    "line": 139,
+    "expected": "st.body = m",
+    "classification": "retains owned body header and returns before streaming-signal select",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "id": "unary-nil-body-signal",
+    "line": 148,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "streaming-only select NOT executed by unary delivery: zero sends",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "main",
+    "file": "internal/server/stream.go",
+    "id": "out-capacity",
+    "line": 280,
+    "expected": "st.out = make([]outItem, 0, 3)",
+    "classification": "per-stream output array still allocated, room for ordinary unary reply",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "main",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-write",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-sync",
+    "target": "main",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here",
+    "sha": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "lib-put-value-field",
+    "target": "pr84",
+    "file": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "line": 760,
+    "expected": "Value []byte `protobuf:\"bytes,2,opt,name=value,proto3\" json:\"value,omitempty\"`",
+    "classification": "Put.Value is nonempty proto3 bytes; frontend/apply Put path bypasses owning decoder",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401"
+  },
+  {
+    "id": "lib-bytes-encode-copy",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 455,
+    "expected": "return append(AppendVarint(b, uint64(len(v))), v...)",
+    "classification": "peer encoding implementing full Entry.Data append; caller and instruction ONE stage; ordinary Put metadata reply has no input value",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40"
+  },
+  {
+    "id": "lib-bytes-consume-alias",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "line": 468,
+    "expected": "return b[n:][:m], n + int(m)",
+    "classification": "wire ParsePut gets subslice, not copied bytes",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40"
+  },
+  {
+    "id": "lib-proto2-decode-copy",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "line": 5418,
+    "expected": "*p.Bytes() = append(emptyBuf[:], v...)",
+    "classification": "counted one receiver owning Entry.Data decode per transmitted occurrence",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25"
+  },
+  {
+    "id": "lib-proto2-codec-selection",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "line": 428,
+    "expected": "return nil, coderBytes",
+    "classification": "presence bytes coder selection for Entry.Data",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b"
+  },
+  {
+    "id": "lib-proto2-clone-copy",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "line": 188,
+    "expected": "*dst.Bytes() = append(emptyBuf[:], *src.Bytes()...)",
+    "classification": "counted proto2 Entry.Data leader deep clone, not proto3 owning decoder",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "5406a959d280825d0156c8e2e2857bd4e943a1aa0476a44717339ecb8d580628"
+  },
+  {
+    "id": "lib-proto-clone-merge",
+    "target": "pr84",
+    "file": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "line": 58,
+    "expected": "mergeOptions{}.mergeMessage(dst, src)",
+    "classification": "Clone creates destination then merges fields",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7"
+  },
+  {
+    "id": "follower-logappend",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/log.go",
+    "line": 127,
+    "expected": "l.append(a.entries[ci-offset:]...)",
+    "classification": "follower retains entry pointers",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "58316f5ae5a7e02067f83b9715af04ad375e1ba3e96f89ccd166e5cf947544d2"
+  },
+  {
+    "id": "unstable-append",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "line": 205,
+    "expected": "u.entries = append(u.entries, ents...)",
+    "classification": "append []*Entry pointers, not Data bytes",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "9cdbd352eefb755342819adb7503f99f41a82259181e0ab929c801947179f3d0"
+  },
+  {
+    "id": "lib-peer-construction-alias",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 656,
+    "expected": "Entries: ents,",
+    "classification": "zero payload copies when constructing append Message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-raft-clone",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 817,
+    "expected": "cloned[i] = proto.Clone(es[i]).(*pb.Entry)",
+    "classification": "counted one leader Entry.Data deep clone per proposed entry containing full value",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-raft-propose-clone-call",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1349,
+    "expected": "if !r.appendEntry(m.GetEntries()...) {",
+    "classification": "leader successful proposal invokes appendEntry clone",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "follower-maybeappend",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raft.go",
+    "line": 1800,
+    "expected": "if mlastIndex, ok := r.raftLog.maybeAppend(a, m.GetCommit()); ok {",
+    "classification": "follower uses maybeAppend, not leader appendEntry deep clone",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "id": "lib-entry-data-field",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "line": 348,
+    "expected": "Data          []byte                 `protobuf:\"bytes,4,opt,name=Data\" json:\"Data,omitempty\"`",
+    "classification": "Entry.Data bytes descriptor",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d94c220250d54147f849f7c416787be4971903b4c95d93570e7906041513ff99"
+  },
+  {
+    "id": "lib-entry-proto2",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "line": 1,
+    "expected": "syntax = \"proto2\";",
+    "classification": "Entry.Data uses proto2 bytes, not proto3 Put decoder",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "bd0fcbc7b76b85843c038af64bc6ea6ef0863d06335ecab79cb66144ad1aebd1"
+  },
+  {
+    "id": "lib-raft-propose-alias",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 94,
+    "expected": "Entries: []*pb.Entry{{Data: data}},",
+    "classification": "RawNode boundary aliases data; later appendEntry clones it",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "async-append-alias",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 228,
+    "expected": "Entries: rd.Entries,",
+    "classification": "local Raft async append message retains entry pointers",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "async-apply-alias",
+    "target": "pr84",
+    "file": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "line": 393,
+    "expected": "Entries: ents,",
+    "classification": "local Raft async apply message retains entry pointers",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "id": "entry-buffer-init",
+    "target": "pr84",
+    "file": "internal/core/codec.go",
+    "line": 37,
+    "expected": "buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))",
+    "classification": "entry capacity fully reserved in BOTH; no fixed extra growth relocation assigned",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "id": "entry-value-encode",
+    "target": "pr84",
+    "file": "internal/core/codec.go",
+    "line": 68,
+    "expected": "buf = append(buf, p.req.Put.Wire...)",
+    "classification": "counted one full new Put value append to entry BOTH targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "id": "wire-batch-slice",
+    "target": "pr84",
+    "file": "internal/core/codec.go",
+    "line": 103,
+    "expected": "if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {",
+    "classification": "capped entry subslice passed to apply, zero owning bytes copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "id": "pending-owner",
+    "line": 145,
+    "expected": "req      Request",
+    "classification": "request descriptor retention, not copied value bytes or channel",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "id": "batch-pending-allocation",
+    "line": 373,
+    "expected": "ps := make([]pending, len(rs))",
+    "classification": "one pending-record backing array per SubmitAll BOTH, not startup arena or channel",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "id": "submitall-loop",
+    "line": 375,
+    "expected": "n.submit(rs[i], &ps[i])",
+    "classification": "direct per-record method call into batch-owned pending array; zero sends/receives/closes",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-check",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 386,
+    "expected": "if err := checkPut(&r.Put); err != nil {",
+    "classification": "validate fields/size without generic protobuf copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-size",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 515,
+    "expected": "size := len(p.req.Put.Wire) + batchFraming",
+    "classification": "full Put wire length plus batch framing; metadata sizing, no value copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "core-encode-call",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 580,
+    "expected": "data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)",
+    "classification": "entry encode caller, not an additional copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "raft-propose",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 585,
+    "expected": "if err := n.rn.Propose(data); err != nil {",
+    "classification": "leader proposal -> dependency clone: counted separately below",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-dispatch",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 853,
+    "expected": "err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {",
+    "classification": "ordinary Put walks encoded entry and takes in-place ParsePut branch BOTH targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-kind",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 858,
+    "expected": "if kind == kindPut {",
+    "classification": "Put bypasses generic apply protobuf decode on every replica",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-parse",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 894,
+    "expected": "put, err := ParsePut(b)",
+    "classification": "parse entry in place: zero value copies",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-state",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 898,
+    "expected": "prev, err := n.state.ApplyPut(&put.PutOp)",
+    "classification": "state fields forwarded: zero value copies",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "apply-wire-reply",
+    "target": "pr84",
+    "file": "internal/core/node.go",
+    "line": 919,
+    "expected": "n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})",
+    "classification": "header/metadata reply, not a value copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "id": "wire-state-index",
+    "target": "pr84",
+    "file": "internal/core/state.go",
+    "line": 110,
+    "expected": "prev, err := st.kv.PutKV(op)",
+    "classification": "zero copy: direct wire Put fields path into MVCC",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "431043c46fd189fc0bf2953b25e5c2a6444ebafa6898d2deeefcdf887873dd58"
+  },
+  {
+    "id": "storage-pointer-append",
+    "target": "pr84",
+    "file": "internal/core/storage.go",
+    "line": 39,
+    "expected": "if err := s.Append(job.Entries); err != nil {",
+    "classification": "MemoryStorage appends entry pointers, not Entry.Data bytes",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "6f9e3ac3c5390040ec44e07a9bacc6e3a01561b2b654f5432b6481c54f3027d6"
+  },
+  {
+    "id": "no-watch-fastpath",
+    "target": "pr84",
+    "file": "internal/core/watch.go",
+    "line": 272,
+    "expected": "if len(changes) == 0 || len(n.watchers) == 0 {",
+    "classification": "no-watch match returns without value encoding",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0195b0f1807a0f018f7825907316a0b540415e99b674e9415040ce248038f23e"
+  },
+  {
+    "id": "wire-parse-consume",
+    "target": "pr84",
+    "file": "internal/core/wire.go",
+    "line": 61,
+    "expected": "v, n := protowire.ConsumeBytes(b)",
+    "classification": "dependency returns subslice: zero copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "id": "wire-parse-clip",
+    "target": "pr84",
+    "file": "internal/core/wire.go",
+    "line": 67,
+    "expected": "v = slices.Clip(v)",
+    "classification": "slice capacity clip, no byte copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "id": "wire-value-alias",
+    "target": "pr84",
+    "file": "internal/core/wire.go",
+    "line": 71,
+    "expected": "p.Value = v",
+    "classification": "value slice aliases Wire/Entry.Data",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/mvcc/ops.go",
+    "id": "putop-alias",
+    "line": 191,
+    "expected": "return PutOp{Key: p.Key, Value: p.Value, Lease: p.Lease, PrevKv: p.PrevKv, IgnoreValue: p.IgnoreValue, IgnoreLease: p.IgnoreLease}",
+    "classification": "PutRequest-to-PutOp copies slice headers, not bytes",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-version-append",
+    "target": "pr84",
+    "file": "internal/mvcc/ops.go",
+    "line": 250,
+    "expected": "k.vers = append(k.vers, v)",
+    "classification": "metadata/slice headers only: zero payload copies",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-value",
+    "target": "pr84",
+    "file": "internal/mvcc/ops.go",
+    "line": 259,
+    "expected": "v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}",
+    "classification": "Put retains Raft entry value slice header in MVCC; zero full-value copy BOTH targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "index-key",
+    "target": "pr84",
+    "file": "internal/mvcc/ops.go",
+    "line": 277,
+    "expected": "k = &keyIndex{key: p.Key}",
+    "classification": "key metadata excluded from full-value stage census",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "id": "admission-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 136,
+    "expected": "case n.inbox <- in:",
+    "classification": "counted: one send per actual admission batch, all targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "id": "driver-batch-owner",
+    "line": 173,
+    "expected": "reqs  []core.Request",
+    "classification": "driver batch owns/shared request descriptors; header-only, not channel",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "batch-api",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 194,
+    "expected": "func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any, to Completer) error {",
+    "classification": "SubmitBatch admission route for Put BOTH, not retained Node.Do",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "id": "batch-wrapper",
+    "line": 203,
+    "expected": "b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}",
+    "classification": "batch wrapper retains descriptor/tag backing stores; no payload copy or channel exchange",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "id": "batch-inbox-call",
+    "line": 204,
+    "expected": "return n.put(ctx, input{batch: b})",
+    "classification": "one inbox admission handoff per batch via actual send site; this call is not an extra exchange",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "peer-inbox-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 270,
+    "expected": "case n.inbox <- input{msg: m}:",
+    "classification": "counted send: 1/delivered inbound peer message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "unreachable-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 278,
+    "expected": "case n.inbox <- input{unreachable: id}:",
+    "classification": "conditional U: successful nonblocking inbox report; saturation/drop/fault, not fixed per request",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "do-reply-create",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 285,
+    "expected": "r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}",
+    "classification": "excluded retained Node.Do; zero fresh private reply channels for ordinary Put BOTH",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "do-reply-receive",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 290,
+    "expected": "case rep := <-r.reply:",
+    "classification": "excluded retained Node.Do; not ordinary Put route",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "shutdown-close",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 312,
+    "expected": "close(n.done)",
+    "classification": "close: shutdown-only, zero per normal Put",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "inbox-receive-outer",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 339,
+    "expected": "case in := <-inbox:",
+    "classification": "counted selected receive: outer alternative for admission, inbound peer or successful Unreachable report",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "inbox-receive-drain",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 344,
+    "expected": "case in := <-n.inbox:",
+    "classification": "counted selected receive: drain alternative for another input; not extra receipt of outer input",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "disk-complete-receive",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 350,
+    "expected": "case done := <-n.persisted:",
+    "classification": "counted receive: 1/sync completion group",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "disk-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 357,
+    "expected": "case toDisk <- next:",
+    "classification": "counted send: 1/persist queue array",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "tick-receive",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 361,
+    "expected": "case <-ticker.C:",
+    "classification": "counted selected background receive, not fixed per Put",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "watch-close",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 398,
+    "expected": "close(ws.done)",
+    "classification": "close: watch overflow, outside no-watch scope",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "do-reply-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 424,
+    "expected": "w.reply <- r",
+    "classification": "excluded retained Node.Do; not ordinary Put route",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "completion-direct",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 436,
+    "expected": "g.to.Complete(g.cs)",
+    "classification": "direct grouped call: zero channel ops",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "id": "batch-waiter",
+    "line": 450,
+    "expected": "waiters[r.ID] = waiter{to: b.to, tag: b.tags[i]}",
+    "classification": "per-request completer/tag metadata, no private reply channel",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "id": "batch-core-submit",
+    "line": 452,
+    "expected": "n.core.SubmitAll(b.reqs)",
+    "classification": "SubmitAll direct method, zero channel operations BOTH targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/node/node.go",
+    "id": "taken-direct",
+    "line": 453,
+    "expected": "b.to.Taken()",
+    "classification": "direct call once after handling an admission batch, not itself a channel operation",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "disk-receive-outer",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 491,
+    "expected": "case jobs = <-n.persistQ:",
+    "classification": "counted receive: initial array; alternative to drain",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "disk-receive-drain",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 498,
+    "expected": "case js := <-n.persistQ:",
+    "classification": "counted receive: drained array; NOT an extra receive for initial array",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "wal-append-call",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 505,
+    "expected": "n.wal.Append(j.HardState, j.Entries)",
+    "classification": "driver disk trace; no extra payload copy beyond WAL record",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "wal-sync-call",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 508,
+    "expected": "if err := n.wal.Sync(); err != nil {",
+    "classification": "driver disk trace; I/O, not counted as extra userspace payload materialization",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "disk-complete-send",
+    "target": "pr84",
+    "file": "internal/node/node.go",
+    "line": 512,
+    "expected": "case n.persisted <- done:",
+    "classification": "counted send: 1/sync completion group",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "id": "peer-value-decode",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 248,
+    "expected": "if err := proto.Unmarshal(buf, m); err != nil {",
+    "classification": "counted copy: 1/received occurrence of Entry.Data, on receiver; dependency decoder below",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-send",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 304,
+    "expected": "case q <- m:",
+    "classification": "counted send: 1/queued outbound peer message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-fast",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 315,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 1: one receipt per message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-control",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 321,
+    "expected": "case m := <-s.ctrl:",
+    "classification": "counted receive alternative 2: one receipt per message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-queue-receive-data",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 324,
+    "expected": "case m := <-s.data:",
+    "classification": "counted receive alternative 3: one receipt per message",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "id": "peer-value-encode",
+    "target": "pr84",
+    "file": "internal/peer/peer.go",
+    "line": 426,
+    "expected": "buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)",
+    "classification": "counted copy: 1/serialized occurrence of Entry.Data containing this Put, on sender",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "id": "opbatch-owner",
+    "line": 39,
+    "expected": "reqs  []core.Request",
+    "classification": "connection batch owns descriptors; slice headers, not payload bytes or channels",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "wire-frontend-parse",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 59,
+    "expected": "put, err := core.ParsePut(st.body)",
+    "classification": "wire frontend parse: zero value copies",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "peek-header",
+    "line": 103,
+    "expected": "h, _ := c.br.Peek(frameHeaderLen)",
+    "classification": "buffered header peek, not full input-value materialization",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "next-buffered",
+    "line": 108,
+    "expected": "return c.br.Buffered() >= frameHeaderLen+n",
+    "classification": "whole-frame availability predicate, no owned value-buffer allocation",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "charge-request",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 126,
+    "expected": "c.chargeLocked(&st.reqHeld, st.reqSize+callCost)",
+    "classification": "accounting metadata only; no payload copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "batch-submit-call",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 136,
+    "expected": "err := c.s.n.SubmitBatch(c.ctx, b.reqs, b.tags, c)",
+    "classification": "one admission API call per actual batch",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "clock-set",
+    "line": 138,
+    "expected": "c.untaken = true",
+    "classification": "reader flag after successful SubmitBatch; metadata only",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "clock-send",
+    "line": 215,
+    "expected": "case c.taken <- struct{}{}:",
+    "classification": "K_s: successful conditional/coalesced Taken send; full-buffer default contributes zero",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "clock-gate",
+    "line": 227,
+    "expected": "if !c.untaken || c.nextFrameBuffered() {",
+    "classification": "skip receive when no untaken flag or next full frame buffered",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "clock-receive",
+    "line": 231,
+    "expected": "case <-c.taken:",
+    "classification": "K_r: selected reader clock receipt, not fixed one/request or one/batch",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/batch.go",
+    "id": "clock-node-stop",
+    "line": 234,
+    "expected": "case <-c.s.n.Done():",
+    "classification": "conditional node lifecycle receive, excluded stable normal Put scope",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "completion-cas",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 255,
+    "expected": "if c.completions.CompareAndSwap(n.next, n) {",
+    "classification": "completion publish: atomic compare-and-swap, no Go channel and no completion mutex",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "completion-wake-attempt",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 259,
+    "expected": "c.signal()",
+    "classification": "wake attempt per completion group, not guaranteed successful send",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "completion-swap",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 268,
+    "expected": "for n := c.completions.Swap(nil); n != nil; n = n.next {",
+    "classification": "writer collects completion list atomically; zero channel ops",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "id": "wire-reply-encode",
+    "line": 308,
+    "expected": "msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)",
+    "classification": "one small buffer per ordinary Put metadata reply; no input value when PrevKv disabled",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "id": "release-request",
+    "line": 320,
+    "expected": "c.releaseReqLocked(f.st)",
+    "classification": "release accounting, zero channel exchange / payload copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "charge-reply",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 326,
+    "expected": "c.chargeLocked(&f.st.replyHeld, len(f.msg))",
+    "classification": "accounts encoded reply until sent; no payload copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "id": "manual-response-prefix",
+    "line": 361,
+    "expected": "b = append(b, 0, 0, 0, 0, 0)",
+    "classification": "gRPC small reply prefix, zero input-value copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "id": "manual-response-append",
+    "target": "pr84",
+    "file": "internal/server/batch.go",
+    "line": 362,
+    "expected": "b, err := appendPutResponse(b, c.s.n.ClusterID(), c.s.n.ID(), r.Rev, r.Term, r.PrevKv)",
+    "classification": "wire small response, no value bytes when PrevKv nil",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "io-buffer-size",
+    "line": 43,
+    "expected": "ioBuffer     = 64 << 10",
+    "classification": "existing transport buffer size, no per-request copy count implied",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "taken-channel-create",
+    "line": 125,
+    "expected": "taken:    make(chan struct{}, 1),",
+    "classification": "one capacity-one Taken channel per connection, NOT fresh per-request reply channel",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "existing-read-buffer",
+    "line": 126,
+    "expected": "br:       bufio.NewReaderSize(nc, ioBuffer),",
+    "classification": "existing 64KiB bufio reader BOTH; not a new PR84 owning-request stage",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "writer-wake-send",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 206,
+    "expected": "case c.wake <- struct{}{}:",
+    "classification": "counted successful conditional/coalesced wake send; default is not operation",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "control-wake-attempt",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 219,
+    "expected": "c.signal()",
+    "classification": "control wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "await-before-read",
+    "line": 268,
+    "expected": "if err := c.awaitTaken(); err != nil {",
+    "classification": "clock gate before existing frame reads, method call not another handoff",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "frame-header-read",
+    "line": 271,
+    "expected": "fh, err := c.fr.ReadFrameHeader()",
+    "classification": "existing frame-header read call; not a runtime syscall count",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file": "internal/server/h2.go",
+    "id": "frame-read",
+    "line": 275,
+    "expected": "f, err := c.fr.ReadFrameForHeader(fh)",
+    "classification": "existing Framer payload read; transport work excluded, no new clock copy destination",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "settings-wake-attempt",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 347,
+    "expected": "c.signal()",
+    "classification": "settings wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "window-wake-attempt",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 362,
+    "expected": "c.signal()",
+    "classification": "send-window wake attempt; shares writer-wake channel, not separate counted site",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "credit-wake-attempt",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 400,
+    "expected": "c.signal()",
+    "classification": "wake attempt per DATA frame, not a guaranteed successful send",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "id": "hpack-decode",
+    "line": 430,
+    "expected": "if _, err := c.hdec.Write(b); err != nil {",
+    "classification": "per-connection HPACK decoder, header bytes are not Put payload",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "id": "hpack-field",
+    "line": 481,
+    "expected": "bit, h.path = 2, f.Value",
+    "classification": "indexed header fields retained without fresh MetaHeaders field list; literal decoding may allocate",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "stream-context-gate",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 582,
+    "expected": "if !grpc || (st.rpc != nil && st.rpc.op == nil) {",
+    "classification": "ordinary admitted unary Put does not create private per-stream context",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "id": "stream-channel-guard",
+    "line": 586,
+    "expected": "st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)",
+    "classification": "streaming-only conditional allocation; unary Put leave inSignal and space nil",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "id": "timeout-guard",
+    "line": 598,
+    "expected": "if grpc && h.hasTimeout {",
+    "classification": "no timed lean grpc-timeout: per-stream deadline timer not armed",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "id": "stream-deadline",
+    "line": 601,
+    "expected": "st.deadline = time.AfterFunc(h.timeout, st.expire)",
+    "classification": "optional grpc-timeout AfterFunc absent for timed lean Put; control Range deadlines outside cohort",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "receive-data-caller",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 639,
+    "expected": "if err := st.receive(f.Data()); err != nil {",
+    "classification": "Framer DATA dispatched to owned message accumulation",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "unary-nil-signal",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 658,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "stream-admit",
+    "target": "pr84",
+    "file": "internal/server/h2.go",
+    "line": 666,
+    "expected": "c.admit(st)",
+    "classification": "ordinary Put is synchronous reader admission, no per-Put handler goroutine",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "id": "server-stop-close",
+    "target": "pr84",
+    "file": "internal/server/server.go",
+    "line": 189,
+    "expected": "close(done)",
+    "classification": "close: server Stop wait channel, not per Put",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "9b9ec045329db37f6b42e0b51717834b721168b9c42f75fa4dd22b1308fbb81d"
+  },
+  {
+    "id": "frontend-prealloc",
+    "target": "pr84",
+    "file": "internal/server/stream.go",
+    "line": 124,
+    "expected": "st.msg = make([]byte, 0, size)",
+    "classification": "full request-sized capacity prevents accumulation growth; not a separate copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "id": "frontend-accumulation",
+    "target": "pr84",
+    "file": "internal/server/stream.go",
+    "line": 127,
+    "expected": "st.msg = append(st.msg, d[:n]...)",
+    "classification": "counted one owned full Put value accumulation from reusable Framer DATA payload BOTH",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/stream.go",
+    "id": "unary-delivery",
+    "line": 139,
+    "expected": "st.body = m",
+    "classification": "retains owned body header and returns before streaming-signal select",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/stream.go",
+    "id": "unary-nil-body-signal",
+    "line": 148,
+    "expected": "case st.inSignal <- struct{}{}:",
+    "classification": "streaming-only select NOT executed by unary delivery: zero sends",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "pr84",
+    "file": "internal/server/stream.go",
+    "id": "out-capacity",
+    "line": 280,
+    "expected": "st.out = make([]outItem, 0, 3)",
+    "classification": "per-stream output array still allocated, room for ordinary unary reply",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "id": "writer-wake-receive",
+    "target": "pr84",
+    "file": "internal/server/write.go",
+    "line": 52,
+    "expected": "case <-c.wake:",
+    "classification": "counted selected wake receive only while idle",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "node-done-receive",
+    "target": "pr84",
+    "file": "internal/server/write.go",
+    "line": 54,
+    "expected": "case <-nodeDone:",
+    "classification": "shutdown-only receive; obtaining Done() itself is not operation",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "unary-nil-space",
+    "target": "pr84",
+    "file": "internal/server/write.go",
+    "line": 130,
+    "expected": "case st.space <- struct{}{}:",
+    "classification": "nil unary channel: zero successful sends; default wins",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "stream-end-release",
+    "target": "pr84",
+    "file": "internal/server/write.go",
+    "line": 191,
+    "expected": "c.releaseLocked(&st.replyHeld)",
+    "classification": "release accounting/flow control; no room channel exists at these targets",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "id": "wal-value-copy",
+    "target": "pr84",
+    "file": "internal/wal/wal.go",
+    "line": 351,
+    "expected": "w.buf = append(w.buf, p...)",
+    "classification": "counted copy: 1 direct Entry.Data append per persisted entry containing Put",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-value-caller",
+    "target": "pr84",
+    "file": "internal/wal/wal.go",
+    "line": 368,
+    "expected": "w.record(recEntry, h[:], e.GetData())",
+    "classification": "WAL Entry.Data caller, not a second copy",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-write",
+    "target": "pr84",
+    "file": "internal/wal/wal.go",
+    "line": 386,
+    "expected": "n, err := w.seg.Write(w.buf)",
+    "classification": "file I/O/physical copies not enumerated in payload subtotal",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "id": "wal-sync",
+    "target": "pr84",
+    "file": "internal/wal/wal.go",
+    "line": 416,
+    "expected": "if err := w.seg.Sync(); err != nil {",
+    "classification": "durability I/O, not byte materialization counted here",
+    "sha": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "file_sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  }
+]

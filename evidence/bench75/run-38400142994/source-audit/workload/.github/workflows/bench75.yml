@@ -1,0 +1,112 @@
+name: Paired Put and CAS benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: First candidate branch, tag or commit
+        default: work/50-txn
+        type: string
+        required: true
+      second_candidate_ref:
+        description: Optional second candidate branch, tag or commit
+        default: ''
+        type: string
+      third_candidate_ref:
+        description: Optional third candidate, also the CAS candidate
+        default: ''
+        type: string
+      suite:
+        description: Workloads and client counts
+        default: put-cas-256
+        type: choice
+        options: [put-cas-256, put-64-256, all]
+      baseline_ref:
+        description: Baseline branch, tag or commit
+        default: main
+        type: string
+        required: true
+      capture_profiles:
+        description: Separate 256-client CPU and allocation profiles of the last candidate
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  resolve:
+    if: github.ref == 'refs/heads/exp/bench-75'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    outputs:
+      baseline: ${{ steps.refs.outputs.baseline }}
+      candidate: ${{ steps.refs.outputs.candidate }}
+      second: ${{ steps.refs.outputs.second }}
+      third: ${{ steps.refs.outputs.third }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: refs
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref || 'main' }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-txn' }}
+          SECOND_REF: ${{ inputs.second_candidate_ref }}
+          THIRD_REF: ${{ inputs.third_candidate_ref }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          resolve() {
+            if git show-ref --verify --quiet "refs/remotes/origin/$1"; then
+              git rev-parse "refs/remotes/origin/$1^{commit}"
+            elif git rev-parse --verify "$1^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify "$1^{commit}"
+            else
+              git fetch --no-tags origin "$1" >/dev/null || return
+              git rev-parse --verify 'FETCH_HEAD^{commit}'
+            fi
+          }
+          baseline=$(resolve "$BASELINE_REF")
+          candidate=$(resolve "$CANDIDATE_REF")
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
+          if [ -n "$SECOND_REF" ]; then
+            second=$(resolve "$SECOND_REF")
+            echo "second=$second" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$THIRD_REF" ]; then
+            third=$(resolve "$THIRD_REF")
+            echo "third=$third" >> "$GITHUB_OUTPUT"
+          fi
+          date -u +%FT%TZ
+          grep -E '^(baseline|candidate|second|third)=' "$GITHUB_OUTPUT"
+  paired:
+    needs: resolve
+    if: github.ref == 'refs/heads/exp/bench-75'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.suite == 'put-cas-256' && '[{"workload":"put","clients":256},{"workload":"cas","clients":256}]' || inputs.suite == 'put-64-256' && '[{"workload":"put","clients":64},{"workload":"put","clients":256}]' || '[{"workload":"put","clients":64},{"workload":"put","clients":256},{"workload":"cas","clients":256}]') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Main, candidate refs and etcd back to back
+        env:
+          GENERATOR: lean
+          CLIENTS: ${{ matrix.clients }}
+          BASELINE_REF: ${{ needs.resolve.outputs.baseline }}
+          WORKLOAD: ${{ matrix.workload }}
+          CANDIDATE_REF: ${{ matrix.workload == 'cas' && (needs.resolve.outputs.third || needs.resolve.outputs.candidate) || needs.resolve.outputs.candidate }}
+          SECOND_CANDIDATE_REF: ${{ matrix.workload == 'put' && needs.resolve.outputs.second || '' }}
+          THIRD_CANDIDATE_REF: ${{ matrix.workload == 'put' && needs.resolve.outputs.third || '' }}
+          CAPTURE_PROFILES: ${{ inputs.capture_profiles && matrix.workload == 'put' && matrix.clients == 256 && '1' || '0' }}
+        run: timeout --kill-after=5s 820s bash experiments/bench75/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench75-${{ github.run_id }}-${{ matrix.workload }}-${{ matrix.clients }}
+          path: evidence/bench75/run-${{ github.run_id }}
+          retention-days: 14

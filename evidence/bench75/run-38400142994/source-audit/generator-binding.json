@@ -1,0 +1,9 @@
+{
+  "status": "FINAL",
+  "parent_confirmed": true,
+  "actions_run": "38400142994",
+  "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+  "engine_path": "experiments/bench75/load/newlean.go",
+  "previous_engine_commit": "e3bc29f5de3b9184b8aae5f64ed290681d6e1d6f",
+  "scope": "unchanged lean engine; final harness/report commit; no source-derived CPU/syscall result"
+}

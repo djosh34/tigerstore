@@ -1,0 +1,11 @@
+{
+  "status": "FINAL",
+  "targets": {
+    "main": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "pr84": "d5681651cd554b8804ed3a77b9ff019ade6815bf"
+  },
+  "verified_sites": 247,
+  "source_only": true,
+  "method": "Selected Git show byte equality, exact relocated reviewed-site assertions, unchanged dependency hashes and pins",
+  "verified_utc": "2026-10-13T13:01:22.709282+00:00"
+}

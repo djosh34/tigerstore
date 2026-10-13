@@ -1,0 +1,314 @@
+[
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/docs/design.md",
+    "repo_path": "docs/design.md",
+    "sha256": "bfa804e7ccdb3a5c1ddd4dc1ee1c46f7002f3a4aea43a4cdf99cd9052b803750"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/go.mod",
+    "repo_path": "go.mod",
+    "sha256": "eacc1ac6c743187bcaf4328b97d12a297060aa2107c9c74ba6ab8da3579176df"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/go.sum",
+    "repo_path": "go.sum",
+    "sha256": "e46e53039cefc3989fec6156d03679b787723aa3cad4eea8e1a395a91e96935b"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/codec.go",
+    "repo_path": "internal/core/codec.go",
+    "sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/node.go",
+    "repo_path": "internal/core/node.go",
+    "sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/state.go",
+    "repo_path": "internal/core/state.go",
+    "sha256": "431043c46fd189fc0bf2953b25e5c2a6444ebafa6898d2deeefcdf887873dd58"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/storage.go",
+    "repo_path": "internal/core/storage.go",
+    "sha256": "6f9e3ac3c5390040ec44e07a9bacc6e3a01561b2b654f5432b6481c54f3027d6"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/watch.go",
+    "repo_path": "internal/core/watch.go",
+    "sha256": "0195b0f1807a0f018f7825907316a0b540415e99b674e9415040ce248038f23e"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/core/wire.go",
+    "repo_path": "internal/core/wire.go",
+    "sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/mvcc/ops.go",
+    "repo_path": "internal/mvcc/ops.go",
+    "sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/node/node.go",
+    "repo_path": "internal/node/node.go",
+    "sha256": "9c1b8b8a4bf29433f000be7f9926ac9b4ff6012042a155d82f9e8d3ea85f6ce0"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/peer/peer.go",
+    "repo_path": "internal/peer/peer.go",
+    "sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/server/batch.go",
+    "repo_path": "internal/server/batch.go",
+    "sha256": "34e9a136312443c5f5b5100fd0521a83811703e643e3d621097e572384af182a"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/server/h2.go",
+    "repo_path": "internal/server/h2.go",
+    "sha256": "7e87599b9a5ad70c20e7ba98c83df63811be209e37a10165431db3d106dd65f7"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/server/server.go",
+    "repo_path": "internal/server/server.go",
+    "sha256": "9b9ec045329db37f6b42e0b51717834b721168b9c42f75fa4dd22b1308fbb81d"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/server/stream.go",
+    "repo_path": "internal/server/stream.go",
+    "sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/server/write.go",
+    "repo_path": "internal/server/write.go",
+    "sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "target": "main",
+    "commit": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "path": "sources/main/internal/wal/wal.go",
+    "repo_path": "internal/wal/wal.go",
+    "sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/docs/design.md",
+    "repo_path": "docs/design.md",
+    "sha256": "2628e4300e7633dd6126a80d434ae88f0d538a6429edee9533db7a658a7d2623"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/go.mod",
+    "repo_path": "go.mod",
+    "sha256": "eacc1ac6c743187bcaf4328b97d12a297060aa2107c9c74ba6ab8da3579176df"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/go.sum",
+    "repo_path": "go.sum",
+    "sha256": "e46e53039cefc3989fec6156d03679b787723aa3cad4eea8e1a395a91e96935b"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/codec.go",
+    "repo_path": "internal/core/codec.go",
+    "sha256": "e9f8adfba0c5f2eeb0757427a47de143bf8550bf5351e7c2facb6d8aa1bb83fa"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/node.go",
+    "repo_path": "internal/core/node.go",
+    "sha256": "c96a449ebabb1b310bda8a344ff220345865fc5080e708210711e4823be2bb4a"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/state.go",
+    "repo_path": "internal/core/state.go",
+    "sha256": "431043c46fd189fc0bf2953b25e5c2a6444ebafa6898d2deeefcdf887873dd58"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/storage.go",
+    "repo_path": "internal/core/storage.go",
+    "sha256": "6f9e3ac3c5390040ec44e07a9bacc6e3a01561b2b654f5432b6481c54f3027d6"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/watch.go",
+    "repo_path": "internal/core/watch.go",
+    "sha256": "0195b0f1807a0f018f7825907316a0b540415e99b674e9415040ce248038f23e"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/core/wire.go",
+    "repo_path": "internal/core/wire.go",
+    "sha256": "8184f83113beb0c90c639036b52a2c9c1e5338991bfe5eb0dbf40bdd70d96460"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/mvcc/ops.go",
+    "repo_path": "internal/mvcc/ops.go",
+    "sha256": "8a582448ee63b5e00816725c280508cceefe1cb64584532932e473d801b5f51a"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/node/node.go",
+    "repo_path": "internal/node/node.go",
+    "sha256": "fb45f9e809daf54e67465f496045fbb4aa77f534ed99f08966efcbbb68323324"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/peer/peer.go",
+    "repo_path": "internal/peer/peer.go",
+    "sha256": "1419e3aaab92b71f0f108809c2b20eb06ebeb99b19d38e8ff42c777cda893c2a"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/server/batch.go",
+    "repo_path": "internal/server/batch.go",
+    "sha256": "2d55016b1872e605b429ec1a27f812ed25f30ec58ad0fec584749c7987a2d251"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/server/h2.go",
+    "repo_path": "internal/server/h2.go",
+    "sha256": "0b4d335b78ec44fb7d4d0987edac20dbf7a9b4b2d33a13d7981e127b78f9e9de"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/server/server.go",
+    "repo_path": "internal/server/server.go",
+    "sha256": "9b9ec045329db37f6b42e0b51717834b721168b9c42f75fa4dd22b1308fbb81d"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/server/stream.go",
+    "repo_path": "internal/server/stream.go",
+    "sha256": "f78d686b93fc74ba6de50115fc0793e430e658a73bd2606608f2177ce7498866"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/server/write.go",
+    "repo_path": "internal/server/write.go",
+    "sha256": "2d1c28a7d5a4d81da24b52f91814b83f61eed2058e2d02df807bc68971f83271"
+  },
+  {
+    "target": "pr84",
+    "commit": "d5681651cd554b8804ed3a77b9ff019ade6815bf",
+    "path": "sources/pr84/internal/wal/wal.go",
+    "repo_path": "internal/wal/wal.go",
+    "sha256": "d0a1b3d460f99e91a94d1497b985ee73249a4494f37ec032d17effdc29ab3957"
+  },
+  {
+    "path": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go"
+  },
+  {
+    "path": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go"
+  },
+  {
+    "path": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go"
+  },
+  {
+    "path": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go"
+  },
+  {
+    "path": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "sha256": "5406a959d280825d0156c8e2e2857bd4e943a1aa0476a44717339ecb8d580628",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/protobuf-v1.36.11/internal/impl/merge.go"
+  },
+  {
+    "path": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/protobuf-v1.36.11/proto/merge.go"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/log.go",
+    "sha256": "58316f5ae5a7e02067f83b9715af04ad375e1ba3e96f89ccd166e5cf947544d2",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/log.go"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "sha256": "9cdbd352eefb755342819adb7503f99f41a82259181e0ab929c801947179f3d0",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/log_unstable.go"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/raft.go",
+    "sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/raft.go"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "sha256": "d94c220250d54147f849f7c416787be4971903b4c95d93570e7906041513ff99",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/raftpb/raft.pb.go"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "sha256": "bd0fcbc7b76b85843c038af64bc6ea6ef0863d06335ecab79cb66144ad1aebd1",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/raftpb/raft.proto"
+  },
+  {
+    "path": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05",
+    "reference": "/home/joshazimullah.linux/work_mounts/scratch/bench80-lean-source-audit/dependency-sources/raft-v3.7.0/rawnode.go"
+  }
+]

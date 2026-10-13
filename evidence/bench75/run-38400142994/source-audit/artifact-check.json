@@ -1,0 +1,16 @@
+{
+  "status": "FINAL",
+  "actions_run": "38400142994",
+  "targets": {
+    "main": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+    "pr84": "d5681651cd554b8804ed3a77b9ff019ade6815bf"
+  },
+  "generator_commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+  "verified_server_sites": 247,
+  "verified_workload_sites": 32,
+  "payload_path_byte_identity": true,
+  "sealed80_reference_hashes_unchanged": true,
+  "source_only": true,
+  "final_ready": true,
+  "checked_utc": "2026-10-13T13:01:23.316979+00:00"
+}

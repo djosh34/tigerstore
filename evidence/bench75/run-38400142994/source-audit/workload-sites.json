@@ -1,0 +1,290 @@
+[
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "tls",
+    "line": 96,
+    "expected": "cfg := &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13}",
+    "classification": "TLS1.3 mTLS certificate/roots",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "control",
+    "line": 100,
+    "expected": "controlConns = 1",
+    "classification": "one untimed grpc control connection",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "keyspace",
+    "line": 121,
+    "expected": "const keyspace = 4096",
+    "classification": "4096 existing keyspace",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "keys",
+    "line": 125,
+    "expected": "keys[i] = []byte(fmt.Sprintf(\"/registry/pods/ns-%03d/pod-%08d\", i%64, i))",
+    "classification": "original Kube-shaped keys",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "values",
+    "line": 128,
+    "expected": "s := sha256.Sum256([]byte(fmt.Sprintf(\"pre50-independent-%d-%d\", i, j)))",
+    "classification": "independent SHA256-derived constant 1KiB value per key",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "pool",
+    "line": 146,
+    "expected": "lean, e = newLeanPool(*endpoint, cfg, *op, *workers, *conns, keys, values, revisions)",
+    "classification": "untimed raw warm RPCs before accounting",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "before",
+    "line": 153,
+    "expected": "before, e := probe()",
+    "classification": "revision probe after warm writes",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "pre-cpu",
+    "line": 262,
+    "expected": "pre[i], e = sample(p)",
+    "classification": "CPU/IO sampling before phase start",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "start",
+    "line": 279,
+    "expected": "close(start)",
+    "classification": "release measured phase",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "post-cpu",
+    "line": 288,
+    "expected": "post[i], e = sample(p)",
+    "classification": "CPU/IO sampling after measured phase",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "proc-stat",
+    "line": 36,
+    "expected": "b, e := os.ReadFile(fmt.Sprintf(\"/proc/%d/stat\", pid))",
+    "classification": "read cumulative process CPU counters; not inferred server syscalls",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "proc-io",
+    "line": 57,
+    "expected": "io, e := os.ReadFile(fmt.Sprintf(\"/proc/%d/io\", pid))",
+    "classification": "read cumulative syscr/syscw counters",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "cpu-per-op",
+    "line": 350,
+    "expected": "cpus[i] = secs * 1e6 / float64(len(all))",
+    "classification": "CPU microseconds per completed op arithmetic",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "syscr-per-op",
+    "line": 383,
+    "expected": "result[\"leader_syscr_per_op\"] = float64(post[0].Syscr-pre[0].Syscr) / float64(len(all))",
+    "classification": "actual leader syscr delta/completed calls",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/main.go",
+    "id": "syscw-per-op",
+    "line": 384,
+    "expected": "result[\"leader_syscw_per_op\"] = float64(post[0].Syscw-pre[0].Syscw) / float64(len(all))",
+    "classification": "actual leader syscw delta/completed calls",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "16edd7b77f5e73af1f370b3b3b7d7069fc20d465e117555d974838857e89fc4c"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "slot-count",
+    "line": 182,
+    "expected": "counts[i] = workers / len(counts)",
+    "classification": "64/256 total slots split across 16 active raw connections",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "active",
+    "line": 198,
+    "expected": "for _, slots := range leanSlotCounts(workers, conns) {",
+    "classification": "one raw connection per slot-count entry",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "warm",
+    "line": 224,
+    "expected": "l.commands <- leanCommand{phase: &leanPhase{start: start, total: 1, warm: true}, warmKey: i}",
+    "classification": "one untimed warm RPC per raw connection, outside N",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "global-claim",
+    "line": 128,
+    "expected": "if p.next.CompareAndSwap(i, i+1) {",
+    "classification": "global bounded operation claim, no retries",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "permutation",
+    "line": 551,
+    "expected": "k := int((i * 2654435761) % uint64(len(l.keys)))",
+    "classification": "original global permutation",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "put-template",
+    "line": 50,
+    "expected": "r[k].put = grpcWire(p)",
+    "classification": "prebuilt ordinary Put message",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "fields",
+    "line": 253,
+    "expected": "l.fields = []hpack.HeaderField{{Name: \":method\", Value: \"POST\"}, {Name: \":scheme\", Value: \"https\"}, {Name: \":path\", Value: path}, {Name: \":authority\", Value: authority}, {Name: \"content-type\", Value: \"application/grpc\"}, {Name: \"te\", Value: \"trailers\"}, {Name: \"user-agent\", Value: \"bench75-lean/1\"}}",
+    "classification": "full timed metadata list omits grpc-timeout",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "hpack-first",
+    "line": 296,
+    "expected": "l.firstHeaders = bytes.Clone(l.headerBuf.Bytes())",
+    "classification": "first HPACK template",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "hpack-warm",
+    "line": 303,
+    "expected": "l.headers = bytes.Clone(l.headerBuf.Bytes())",
+    "classification": "warm HPACK template",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "data",
+    "line": 589,
+    "expected": "if err := l.f.WriteData(id, end == len(p.request), p.request[p.sent:end]); err != nil {",
+    "classification": "DATA may fragment for actual flow credit/maxFrame",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "credit-size",
+    "line": 30,
+    "expected": "const leanReceiveCredit = 64 << 10",
+    "classification": "64KiB coalesced receive credit",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "conn-credit",
+    "line": 709,
+    "expected": "if l.received >= leanReceiveCredit {",
+    "classification": "coalesced connection WINDOW_UPDATE",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "stream-credit",
+    "line": 717,
+    "expected": "if p.received >= leanReceiveCredit && !ev.end {",
+    "classification": "coalesced open-stream receive credit",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/load/newlean.go",
+    "id": "write-deadline",
+    "line": 278,
+    "expected": "if l.writeDeadline.Sub(now) > leanTimeout/2 {",
+    "classification": "cached 10s deadline renew only <=5s remaining, no grpc-timeout header",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "884b3013673a9c2987d519cdf6e953bcaac3130a96fedd6d1292d830c595c1c2"
+  },
+  {
+    "file": "experiments/bench75/run.py",
+    "id": "five-reps",
+    "line": 277,
+    "expected": "for rep in range(1,6):",
+    "classification": "five reps per selected workload and store",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "a98ed8628cfb87c922dff025d66cb0a913fe6252ee4449a8545186a34bc3defc"
+  },
+  {
+    "file": ".github/workflows/bench75.yml",
+    "id": "matrix",
+    "line": 88,
+    "expected": "include: ${{ fromJSON(inputs.suite == 'put-cas-256' && '[{\"workload\":\"put\",\"clients\":256},{\"workload\":\"cas\",\"clients\":256}]' || inputs.suite == 'put-64-256' && '[{\"workload\":\"put\",\"clients\":64},{\"workload\":\"put\",\"clients\":256}]' || '[{\"workload\":\"put\",\"clients\":64},{\"workload\":\"put\",\"clients\":256},{\"workload\":\"cas\",\"clients\":256}]') }}",
+    "classification": "put-64-256 suite selects two Put jobs",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e"
+  },
+  {
+    "file": ".github/workflows/bench75.yml",
+    "id": "lean-env",
+    "line": 98,
+    "expected": "GENERATOR: lean",
+    "classification": "raw lean generator selected",
+    "commit": "6148beab08e91a02c243ccd2d2b788ecdacd45fd",
+    "file_sha256": "15cb5ffc9f691ce712c630715b844afd378bc816642ca0a3ecd07173023aa73e"
+  }
+]
