@@ -103,6 +103,9 @@ type Request struct {
 	ID  uint64
 	Op  proto.Message
 	Put Put
+	// Compact asks for a range's answer as Reply.Range, which the driver
+	// encodes itself, instead of a RangeResponse message.
+	Compact bool
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -115,6 +118,8 @@ type Reply struct {
 	Rev    int64
 	Term   uint64
 	PrevKv *mvccpb.KeyValue
+	// Range is the answer to a Compact range.
+	Range mvcc.RangeResult
 }
 
 // PersistJob is one disk write: entries and a hard state to append and
@@ -811,6 +816,17 @@ func (n *Node) serveRead(p *pending) {
 	var err error
 	switch op := p.req.Op.(type) {
 	case *pb.RangeRequest:
+		if p.req.Compact {
+			res, err := n.kv.RangeKVs(op)
+			if err != nil {
+				n.finish(p, nil, err)
+				return
+			}
+			if n.settle(p) {
+				n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Term: n.term, Range: res})
+			}
+			return
+		}
 		var r *pb.RangeResponse
 		r, err = n.kv.Range(op)
 		if err == nil {

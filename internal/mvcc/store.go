@@ -63,6 +63,10 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 	return &k.vers[i], true
 }
 
+func (k *keyIndex) kvValue(v *version) KV {
+	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, Value: v.value}
+}
+
 func (k *keyIndex) kv(v *version) *mvccpb.KeyValue {
 	return &mvccpb.KeyValue{
 		Key:            k.key,

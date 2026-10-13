@@ -2,7 +2,11 @@ package server
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math/rand/v2"
 	"testing"
+
+	"github.com/djosh34/tigerstore/internal/mvcc"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -160,5 +164,35 @@ func TestHeaderBlockRules(t *testing.T) {
 	c.hdr = reqHeaders{id: 9}
 	if err := c.headerFragment(make([]byte, 2*maxHeaderList+1), false); err == nil {
 		t.Fatal("an oversized fragment was decoded")
+	}
+}
+
+// TestRangeReplyEncoding compares the hand-written RangeResponse with
+// protobuf's encoding of the same answer on random results.
+func TestRangeReplyEncoding(t *testing.T) {
+	r := rand.New(rand.NewPCG(1, 2))
+	for i := range 2000 {
+		res := mvcc.RangeResult{Rev: r.Int64N(1 << 40), Count: r.Int64N(5000) - 1, More: r.IntN(2) == 0}
+		for range r.IntN(20) {
+			kv := mvcc.KV{
+				Key: bytes.Repeat([]byte{'k'}, r.IntN(3)), Value: bytes.Repeat([]byte{'v'}, r.IntN(300)),
+				CreateRevision: r.Int64N(1 << 33), ModRevision: r.Int64N(1 << 33), Version: r.Int64N(4),
+				Lease: r.Int64N(5) - 2,
+			}
+			res.KVs = append(res.KVs, kv)
+		}
+		cluster, member, term := uint64(i), r.Uint64(), r.Uint64N(3)
+		got := appendRangeReply(nil, cluster, member, term, &res)
+		resp := res.Response()
+		resp.Header.ClusterId, resp.Header.MemberId, resp.Header.RaftTerm = cluster, member, term
+		body, err := proto.MarshalOptions{Deterministic: true}.Marshal(resp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := binary.BigEndian.AppendUint32([]byte{0}, uint32(len(body)))
+		want = append(want, body...)
+		if !bytes.Equal(got, want) {
+			t.Fatalf("case %d:\n got %x\nwant %x", i, got, want)
+		}
 	}
 }
