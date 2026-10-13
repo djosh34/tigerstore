@@ -28,6 +28,8 @@ linters:
     - usestdlibvars
     - wastedassign
   settings:
+    exhaustive:
+      default-signifies-exhaustive: true
     forbidigo:
       forbid:
         - pattern: ^panic$
