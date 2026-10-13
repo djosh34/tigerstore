@@ -227,7 +227,7 @@ func listWatchProbe(c config) (err error) {
 }
 
 func (r *recorder) concurrentLists(ctx context.Context, cl *clientv3.Client, client int, timeout time.Duration) {
-	tick := time.NewTicker(100 * time.Millisecond)
+	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	for ctx.Err() == nil {
 		callCtx, cancel := context.WithTimeout(clientv3.WithRequireLeader(ctx), timeout)
@@ -272,7 +272,7 @@ func (r *recorder) seedLists(cs []*clientv3.Client, c config) error {
 }
 
 func (r *recorder) mutateLists(ctx context.Context, cs []*clientv3.Client, c config) {
-	tick := time.NewTicker(200 * time.Millisecond)
+	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for seq := 0; ; seq++ {
 		select {

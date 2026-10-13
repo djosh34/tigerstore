@@ -2,9 +2,13 @@ package main
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
+	"github.com/djosh34/tigerstore/check"
+	"github.com/djosh34/tigerstore/history"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
-	"testing"
 )
 
 func validChunks() []*pb.RangeResponse {
@@ -20,6 +24,25 @@ func validChunks() []*pb.RangeResponse {
 		chunks[n].Kvs = append(chunks[n].Kvs, &mvccpb.KeyValue{Key: []byte(fmt.Sprintf("%sk%02d", listPrefix, i)), Value: []byte("value"), Version: 1, CreateRevision: int64(i + 2), ModRevision: int64(i + 2)})
 	}
 	return chunks
+}
+
+// A self-consistent historical snapshot is still illegal when it precedes an
+// acknowledged delete that completed before the stream invocation.
+func TestRecordedListRejectsStaleLatestSnapshot(t *testing.T) {
+	h := offlineFixture()
+	q := history.Request{Range: &history.RangeRequest{Key: "a", End: "c"}}
+	h.Ops = append(h.Ops, history.Op{Client: 60000, Call: 100, Return: 110, Req: q,
+		Resp: &history.Response{Revision: 5, Range: &history.RangeResponse{}}})
+	if err := check.Linearizable(h, time.Second); err != nil {
+		t.Fatalf("current snapshot rejected: %v", err)
+	}
+	h.Ops[len(h.Ops)-1].Resp = &history.Response{Revision: 3, Range: &history.RangeResponse{Count: 2, KVs: []history.KeyValue{
+		{Key: "a", Value: "first", CreateRevision: 2, ModRevision: 2, Version: 1},
+		{Key: "b", Value: "second", CreateRevision: 3, ModRevision: 3, Version: 1},
+	}}}
+	if err := check.Linearizable(h, time.Second); err == nil {
+		t.Fatal("accepted stale latest LIST after acknowledged delete")
+	}
 }
 
 func TestMergeListRequiresRealMultichunkSnapshot(t *testing.T) {
