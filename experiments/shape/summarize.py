@@ -59,6 +59,7 @@ def disk_node(before, after, kind, nops):
         counts = [y-x for x,y in zip(a['wall_ns_buckets'], b['wall_ns_buckets'])]
         other = {'write_calls':after['files']['write']['calls']-before['files']['write']['calls'],
                  'write_bytes':after['files']['write']['bytes']-before['files']['write']['bytes'],
+                 'write_wall_s':(after['files']['write']['wall_ns_sum']-before['files']['write']['wall_ns_sum'])/1e9,
                  'fsync_errors':b['errors']-a['errors']}
     return {'fsyncs':count, 'ops_per_fsync':nops/count if count else None,
             'fsync_mean_us':wall/count if count else None,
@@ -192,6 +193,7 @@ def main():
         try:
             row=one(p)
             row['planned']=name in expected
+            row['window_valid']=row['valid']
             row['job_failed']=any(p.is_relative_to(root) for root in failed_roots)
             if row['job_failed']:
                 row['valid']=False
@@ -215,6 +217,7 @@ def main():
         expected_count=sum(1 for x in expected.values() if (x['case'],x['kind'],x['rate'])==(case,kind,rate))
         s={'case':case,'kind':kind,'rate':rate,'repetitions':len(values),'expected_repetitions':expected_count,
            'complete':expected_count>0 and len(values)==expected_count,
+           'valid_windows':sum(1 for x in values if x.get('window_valid',x['valid'])),
            'all_valid':all(x['valid'] for x in values) and expected_count>0 and len(values)==expected_count}
         for k in fields:
             v=[x[k] for x in values if k in x and isinstance(x[k],(float,int)) and not isinstance(x[k],bool)]

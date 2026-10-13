@@ -165,6 +165,7 @@ def once(kind, rep, rate=None):
     profile_pool = None
     profile_futures = []
     try:
+        (dst/'ports-before.txt').write_text(subprocess.run(['ss','-tanp'],text=True,capture_output=True,check=True).stdout)
         command(['bash', 'bench/cluster.sh', 'start', 'etcd' if kind == 'etcd' else 'tigerstore',
                  ROOT/'bin'/kind, data, '0', '1', '2'], timeout=45)
         placement = json.loads((data/'placement.json').read_text())
@@ -173,19 +174,22 @@ def once(kind, rep, rate=None):
         leader = (data/'leader').read_text().strip()
         all_ep = (data/'endpoints').read_text().strip().split(',')
         ep_order = [leader] + [x for x in all_ep if x != leader]
-        ports = [42000 + (int(x.rsplit(':', 1)[1])-40000)//10 for x in ep_order]
+        ports = [int(os.environ.get('SHAPE_METRICS_PORT','24000')) +
+                 (int(x.rsplit(':', 1)[1])-int(os.environ.get('BENCH_PORT','20000')))//10 for x in ep_order]
         endpoints = ','.join(ep_order) if ingress == 'balanced' else leader
         cert = Path(os.environ['CERTS'])
         barrier = dst/'phase'
         argv = [ROOT/'bin/loadgen', '-endpoints', endpoints, '-cacert', cert/'ca.pem',
                 '-cert', cert/'client.pem', '-key', cert/'client-key.pem', '-pids', ','.join(map(str,pids)),
                 '-label', kind, '-workload', workload, '-value-size', str(size),
-                '-keys', '1000' if workload == 'list' else '4096', '-conns', '18',
+                '-keys', '1000' if workload == 'list' else '4096', '-conns', os.environ.get('CONNS','18'),
                 '-concurrency', str(concurrency), '-warmup', WARMUP, '-duration', DURATION,
                 '-seed', str(rep), '-barrier-prefix', barrier, '-out', dst/'load.json', '-drain', '30s',
                 '-max-response-bytes', '2097152']
         if ingress == 'balanced':
             argv += ['-balance', 'round-robin']
+        if kind.endswith('-static'):
+            argv += ['-dispatch','connections']
         if rate is not None:
             argv += ['-arrival', 'fixed', '-rate', str(rate)]
         env = dict(os.environ, GOMAXPROCS='1')

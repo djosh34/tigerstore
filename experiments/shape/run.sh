@@ -5,6 +5,10 @@ export GOFLAGS=-p=2 GOMEMLIMIT=2GiB
 [ "${GITHUB_ACTIONS:-}" = true ] || { echo 'measurements require Actions' >&2; exit 2; }
 [ "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)" ] || exit 2
 mkdir -p results
+read -r ephemeral_low ephemeral_high < /proc/sys/net/ipv4/ip_local_port_range
+echo "$ephemeral_low $ephemeral_high" > results/ephemeral-ports.txt
+# Keep listeners outside the automatic source-port range used by early peers.
+[ "$ephemeral_low" -gt 24003 ] || { echo 'listener ports overlap ephemeral range' >&2; exit 2; }
 sudo mount -o remount,barrier=1 /
 test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
 ! findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'

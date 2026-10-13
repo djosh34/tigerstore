@@ -18,10 +18,11 @@
 #
 # CERTS is a directory made by scripts/dev-certs.sh (required). ETCDCTL
 # names the etcdctl (default: etcdctl next to the server binary, then on
-# PATH). BENCH_PORT is the first port (default 40000).
+# PATH). BENCH_PORT is the first port (default 20000, outside runner ephemeral range).
 set -euo pipefail
 
-port=${BENCH_PORT:-40000}
+port=${BENCH_PORT:-20000}
+metrics_port=${SHAPE_METRICS_PORT:-24000}
 etcdctl=${ETCDCTL:-etcdctl}
 certs=${CERTS:-}
 
@@ -114,9 +115,9 @@ start() {
 		if [ "$kind" = etcd ]; then
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
 				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth
-				--listen-metrics-urls "http://127.0.0.1:$((42000 + i))" --enable-pprof)
+				--listen-metrics-urls "http://127.0.0.1:$((metrics_port + i))" --enable-pprof)
 		fi
-		GOMAXPROCS=2 SHAPE_DEBUG="127.0.0.1:$((42000 + i))" taskset -c "${cpus[i - 1]}" "$bin" \
+		GOMAXPROCS=2 SHAPE_DEBUG="127.0.0.1:$((metrics_port + i))" taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
 			--data-dir "$dir/n$i" \
 			--listen-client-urls "$client" \

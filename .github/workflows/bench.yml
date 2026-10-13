@@ -17,6 +17,9 @@ on:
         default: 'tigerstore etcd'
       warmup:
         default: '1s'
+      conns:
+        description: Connections. Keep18 for balanced primary runs.
+        default: '18'
       profile:
         description: none, cpu or trace. Diagnostic runs, not headline measurements.
         default: 'none'
@@ -52,6 +55,7 @@ jobs:
         run: |
           go build -o bin/loadgen ./cmd/loadgen
           go build -o bin/tigerstore ./cmd/tigerstore
+          ln -s tigerstore bin/tigerstore-static
           go test -short -parallel 2 ./cmd/loadgen ./internal/osfs
       - name: Measure
         env:
@@ -62,6 +66,7 @@ jobs:
           RATES: ${{ inputs.rates }}
           TARGETS: ${{ inputs.targets }}
           PROFILE: ${{ inputs.profile }}
+          CONNS: ${{ inputs.conns }}
         run: bash experiments/shape/run.sh
       - name: Profile analysis
         if: always() && inputs.profile != 'none'
