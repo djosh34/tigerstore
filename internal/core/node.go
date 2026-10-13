@@ -114,6 +114,46 @@ type Request struct {
 	// Compact asks for a range's answer as Reply.Range, which the driver
 	// encodes itself, instead of a RangeResponse message.
 	Compact bool
+	// Caller is the client as etcd's size limit for writes sees it.
+	Caller Caller
+}
+
+// Caller is the request header etcd v3.7.2 would put around a client's
+// writes, for their size limit. With client certificate authentication
+// (--client-cert-auth), etcd takes the client's identity from its
+// certificate even with auth disabled (EtcdServer.AuthInfoFromCtx), and the
+// header then holds the certificate's common name and the auth revision,
+// which is 1 on a store that never changed auth. The zero Caller has no
+// identity.
+type Caller struct {
+	header *pb.RequestHeader
+	// size is the size of an InternalRaftRequest with only header and the
+	// tag of a put.
+	size int
+}
+
+// authRevision is etcd's auth revision on a store whose auth never changed;
+// tigerstore has no auth requests that would change it.
+const authRevision = 1
+
+// NewCaller returns the caller with this certificate identity: the common
+// name of a verified client certificate, when the server requires one.
+func NewCaller(commonName string) Caller {
+	return newCaller(&pb.RequestHeader{ID: sizeRequestID, Username: commonName, AuthRevision: authRevision})
+}
+
+func newCaller(h *pb.RequestHeader) Caller {
+	return Caller{header: h, size: proto.Size(&pb.InternalRaftRequest{Header: h}) + protowire.SizeTag(4)}
+}
+
+// anonymous is the caller of a client without a certificate identity.
+var anonymous = newCaller(&pb.RequestHeader{ID: sizeRequestID})
+
+func (c Caller) or() Caller {
+	if c.header == nil {
+		return anonymous
+	}
+	return c
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -396,7 +436,7 @@ func (n *Node) submit(r Request, p *pending) {
 		return
 	}
 	if r.Op == nil {
-		if err := checkPut(&r.Put); err != nil {
+		if err := checkPut(&r.Put, r.Caller); err != nil {
 			n.reply(r.ID, nil, err)
 			return
 		}
@@ -405,7 +445,7 @@ func (n *Node) submit(r Request, p *pending) {
 		n.timeouts = append(n.timeouts, p)
 		return
 	}
-	if err := check(r.Op); err != nil {
+	if err := check(r.Op, r.Caller); err != nil {
 		n.reply(r.ID, nil, err)
 		return
 	}
@@ -455,9 +495,9 @@ const sizeRequestID = 1 << 63
 // check validates a request like etcd's gRPC layer, then limits the size of
 // a write like etcd's server does. Reads do not go through Raft and have
 // only gRPC's limit.
-func check(op proto.Message) error {
+func check(op proto.Message, c Caller) error {
 	var err error
-	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
+	r := &pb.InternalRaftRequest{Header: c.or().header}
 	switch op := op.(type) {
 	case *pb.RangeRequest:
 		return mvcc.CheckRange(op)
@@ -490,18 +530,14 @@ func check(op proto.Message) error {
 	return nil
 }
 
-// putRequestBytes is the size of etcd's InternalRaftRequest around a put
-// without the put itself: the header with sizeRequestID, and the put's tag.
-var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
-
 // checkPut checks a put in wire form as check does a decoded one. Like
 // etcd, it limits the size of the request as protobuf marshals it again,
 // not of the client's encoding.
-func checkPut(p *Put) error {
+func checkPut(p *Put, c Caller) error {
 	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
 		return err
 	}
-	if putRequestBytes+protowire.SizeBytes(p.size()) > MaxRequestBytes {
+	if c.or().size+protowire.SizeBytes(p.size()) > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil

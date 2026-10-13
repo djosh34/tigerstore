@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -56,6 +57,8 @@ type conn struct {
 	fr  *http2.Framer
 	br  *bufio.Reader
 	bw  *bufio.Writer
+	// caller sizes this client's writes as etcd would.
+	caller core.Caller
 	// cluster and member go in every response header.
 	cluster, member uint64
 
@@ -114,6 +117,22 @@ type ctrlFrame struct {
 	ping [8]byte
 }
 
+// caller is the client of a connection as etcd's size limit for writes
+// sees it: with client certificates required, as --client-cert-auth does,
+// the common name of the verified certificate, from the last verified
+// chain as etcd's AuthInfoFromTLS takes it.
+func caller(cfg *tls.Config, nc net.Conn) core.Caller {
+	tc, ok := nc.(*tls.Conn)
+	if !ok || cfg == nil || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		return core.Caller{}
+	}
+	chains := tc.ConnectionState().VerifiedChains
+	if len(chains) == 0 || len(chains[len(chains)-1]) == 0 {
+		return core.Caller{}
+	}
+	return core.NewCaller(chains[len(chains)-1][0].Subject.CommonName)
+}
+
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
@@ -128,6 +147,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
