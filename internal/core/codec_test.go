@@ -64,7 +64,9 @@ func TestReadCtxNeedsSameBoot(t *testing.T) {
 }
 
 // TestRequestSizeLimitMatchesEtcd checks the largest values etcd v3.7.2
-// accepts for a 39-byte key, measured in issue #62.
+// accepts for a 39-byte key, measured in issue #62, and with a client
+// certificate whose common name is "client" (#99): etcd then puts the name
+// and the auth revision into the request's header, 10 bytes more.
 func TestRequestSizeLimitMatchesEtcd(t *testing.T) {
 	key := make([]byte, 39)
 	put := func(n int) proto.Message { return &pb.PutRequest{Key: key, Value: make([]byte, n)} }
@@ -73,18 +75,41 @@ func TestRequestSizeLimitMatchesEtcd(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name    string
+		caller  Caller
 		mk      func(int) proto.Message
 		largest int
-	}{{"put", put, 1572801}, {"txn", txn, 1572793}} {
-		if err := check(c.mk(c.largest)); err != nil {
+	}{
+		{"put", Caller{}, put, 1572801},
+		{"txn", Caller{}, txn, 1572793},
+		{"put with a certificate identity", NewCaller("client"), put, 1572791},
+		{"txn with a certificate identity", NewCaller("client"), txn, 1572783},
+	} {
+		if err := check(c.mk(c.largest), c.caller); err != nil {
 			t.Errorf("%s of %d bytes: %v", c.name, c.largest, err)
 		}
-		if err := check(c.mk(c.largest + 1)); err == nil {
+		if err := check(c.mk(c.largest+1), c.caller); err == nil {
 			t.Errorf("%s of %d bytes was accepted", c.name, c.largest+1)
 		}
+		if _, ok := c.mk(0).(*pb.PutRequest); !ok {
+			continue
+		}
+		// A put in wire form has the same limit.
+		for _, n := range []int{c.largest, c.largest + 1} {
+			b, err := proto.Marshal(c.mk(n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := ParsePut(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := checkPut(&p, c.caller); (err == nil) != (n == c.largest) {
+				t.Errorf("wire %s of %d bytes: %v", c.name, n, err)
+			}
+		}
 	}
-	// A put in wire form has the same limit, on its size after a decode:
-	// a value field that a later one replaces does not count.
+	// A put in wire form is limited on its size after a decode: a value
+	// field that a later one replaces does not count.
 	big := bytes.Repeat([]byte("x"), 1572864)
 	noncanonical := protowire.AppendTag(nil, 1, protowire.BytesType)
 	noncanonical = protowire.AppendBytes(noncanonical, key)
@@ -96,21 +121,8 @@ func TestRequestSizeLimitMatchesEtcd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := checkPut(&p); err != nil {
+	if err := checkPut(&p, Caller{}); err != nil {
 		t.Errorf("a put that decodes to 4 value bytes: %v", err)
-	}
-	for _, n := range []int{1572801, 1572802} {
-		b, err := proto.Marshal(put(n))
-		if err != nil {
-			t.Fatal(err)
-		}
-		p, err := ParsePut(b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := checkPut(&p); (err == nil) != (n == 1572801) {
-			t.Errorf("wire put of %d bytes: %v", n, err)
-		}
 	}
 }
 

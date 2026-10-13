@@ -26,6 +26,7 @@ type stream struct {
 	cancel     context.CancelFunc
 	rpc        *method // nil for HTTP requests
 	needLeader bool    // etcd's "hasleader" metadata
+	gateway    bool    // grpcgateway-accept metadata: no certificate identity
 	httpMethod string
 	httpPath   string
 
