@@ -40,10 +40,17 @@ func (r *Result) Checkable() (*history.History, error) {
 	for i, w := range r.Watches {
 		hw := history.Watch{
 			Client: r.Clients + i,
-			Req:    history.WatchRequest{Key: string(w.Key), End: string(w.End), StartRevision: w.Start, PrevKV: w.PrevKV},
+			Req: history.WatchRequest{
+				Key: string(w.Key), End: string(w.End), StartRevision: w.Start,
+				PrevKV: w.PrevKV, ProgressNotify: w.ProgressNotify,
+			},
 		}
 		for _, wr := range w.Responses {
-			hw.Responses = append(hw.Responses, watchResponse(wr))
+			hr, err := watchResponse(wr)
+			if err != nil {
+				return nil, err
+			}
+			hw.Responses = append(hw.Responses, hr)
 		}
 		h.Watches = append(h.Watches, hw)
 	}
@@ -61,15 +68,25 @@ func historyError(err error, ambiguous bool) *history.Error {
 	return &history.Error{Code: code.String(), Message: err.Error(), Ambiguous: ambiguous}
 }
 
-func rangeRequest(r *pb.RangeRequest) *history.RangeRequest {
+// The converters refuse request fields that the format cannot hold, so a
+// checker never sees a different request than the cluster did.
+
+func rangeRequest(r *pb.RangeRequest) (*history.RangeRequest, error) {
+	if r.SortOrder != pb.RangeRequest_NONE || r.SortTarget != pb.RangeRequest_KEY ||
+		r.MinModRevision != 0 || r.MaxModRevision != 0 || r.MinCreateRevision != 0 || r.MaxCreateRevision != 0 {
+		return nil, fmt.Errorf("the history format has no sort options or revision filters: %v", r)
+	}
 	return &history.RangeRequest{
 		Key: string(r.Key), End: string(r.RangeEnd), Revision: r.Revision, Limit: r.Limit,
 		CountOnly: r.CountOnly, KeysOnly: r.KeysOnly, Serializable: r.Serializable,
-	}
+	}, nil
 }
 
-func putRequest(r *pb.PutRequest) *history.PutRequest {
-	return &history.PutRequest{Key: string(r.Key), Value: string(r.Value), Lease: r.Lease, PrevKV: r.PrevKv}
+func putRequest(r *pb.PutRequest) (*history.PutRequest, error) {
+	if r.IgnoreValue || r.IgnoreLease {
+		return nil, fmt.Errorf("the history format has no ignore_value or ignore_lease: %v", r)
+	}
+	return &history.PutRequest{Key: string(r.Key), Value: string(r.Value), Lease: r.Lease, PrevKV: r.PrevKv}, nil
 }
 
 func deleteRequest(r *pb.DeleteRangeRequest) *history.DeleteRequest {
@@ -101,16 +118,22 @@ func compare(c *pb.Compare) (history.Compare, error) {
 func txnOps(ops []*pb.RequestOp) ([]history.TxnOp, error) {
 	var out []history.TxnOp
 	for _, op := range ops {
+		var hop history.TxnOp
+		var err error
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
-			out = append(out, history.TxnOp{Range: rangeRequest(t.RequestRange)})
+			hop.Range, err = rangeRequest(t.RequestRange)
 		case *pb.RequestOp_RequestPut:
-			out = append(out, history.TxnOp{Put: putRequest(t.RequestPut)})
+			hop.Put, err = putRequest(t.RequestPut)
 		case *pb.RequestOp_RequestDeleteRange:
-			out = append(out, history.TxnOp{Delete: deleteRequest(t.RequestDeleteRange)})
+			hop.Delete = deleteRequest(t.RequestDeleteRange)
 		default:
 			return nil, fmt.Errorf("the history format has no %T in a transaction", t)
 		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, hop)
 	}
 	return out, nil
 }
@@ -118,9 +141,11 @@ func txnOps(ops []*pb.RequestOp) ([]history.TxnOp, error) {
 func request(m proto.Message) (history.Request, error) {
 	switch r := m.(type) {
 	case *pb.RangeRequest:
-		return history.Request{Range: rangeRequest(r)}, nil
+		hr, err := rangeRequest(r)
+		return history.Request{Range: hr}, err
 	case *pb.PutRequest:
-		return history.Request{Put: putRequest(r)}, nil
+		hp, err := putRequest(r)
+		return history.Request{Put: hp}, err
 	case *pb.DeleteRangeRequest:
 		return history.Request{Delete: deleteRequest(r)}, nil
 	case *pb.TxnRequest:
@@ -199,7 +224,7 @@ func response(m proto.Message) (*history.Response, error) {
 	return nil, fmt.Errorf("the history format has no %T", m)
 }
 
-func watchResponse(wr WatchRecord) history.WatchResponse {
+func watchResponse(wr WatchRecord) (history.WatchResponse, error) {
 	r := wr.Resp
 	out := history.WatchResponse{
 		Time: wr.Time, Revision: r.Header.Revision, Created: r.Created, Canceled: r.Canceled,
@@ -207,11 +232,16 @@ func watchResponse(wr WatchRecord) history.WatchResponse {
 		Progress: !r.Created && !r.Canceled && len(r.Events) == 0,
 	}
 	for _, ev := range r.Events {
-		he := history.Event{Type: history.EventPut, KV: keyValue(ev.Kv), PrevKV: prevKV(ev.PrevKv)}
-		if ev.Type == mvccpb.Event_DELETE {
+		he := history.Event{KV: keyValue(ev.Kv), PrevKV: prevKV(ev.PrevKv)}
+		switch ev.Type {
+		case mvccpb.Event_PUT:
+			he.Type = history.EventPut
+		case mvccpb.Event_DELETE:
 			he.Type = history.EventDelete
+		default:
+			return out, fmt.Errorf("watch event of unknown type %d", ev.Type)
 		}
 		out.Events = append(out.Events, he)
 	}
-	return out
+	return out, nil
 }

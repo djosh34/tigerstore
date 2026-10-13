@@ -94,10 +94,10 @@ func checkers(t *testing.T, res *Result) {
 	}
 }
 
-// LinearizableConfig is a short run whose history Porcupine can check:
+// linearizableConfig is a short run whose history Porcupine can check:
 // 5 virtual seconds with the same faults and 4 clients, then 5 s of
 // healing.
-func LinearizableConfig(seed uint64) Config {
+func linearizableConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Duration = 5 * Second
 	cfg.Heal = 5 * Second
@@ -117,7 +117,7 @@ func TestLinearizable(t *testing.T) {
 	}
 	for seed := *firstSeed; seed < *firstSeed+uint64(n); seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			res := run(t, LinearizableConfig(seed))
+			res := run(t, linearizableConfig(seed))
 			h, err := res.Checkable()
 			if err != nil {
 				t.Fatal(err)

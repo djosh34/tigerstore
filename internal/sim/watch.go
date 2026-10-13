@@ -44,10 +44,11 @@ type WatchRecord struct {
 
 // WatchResult is one logical watch at the end of a run.
 type WatchResult struct {
-	Key, End  []byte
-	PrevKV    bool
-	Start     int64
-	Responses []WatchRecord
+	Key, End       []byte
+	PrevKV         bool
+	ProgressNotify bool
+	Start          int64
+	Responses      []WatchRecord
 }
 
 func (s *Sim) startWatchers() {
@@ -205,7 +206,7 @@ func (w *watchClient) broken() {
 // order, without duplicates, with previous values where asked.
 func (s *Sim) checkWatches(final *mvcc.Store, res *Result) error {
 	for _, w := range s.watchers {
-		res.Watches = append(res.Watches, WatchResult{Key: w.key, End: w.end, PrevKV: w.prevKV, Start: w.start, Responses: w.responses})
+		res.Watches = append(res.Watches, WatchResult{Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: w.start, Responses: w.responses})
 		if w.start == 0 {
 			return fmt.Errorf("watch %d was never created", w.id)
 		}

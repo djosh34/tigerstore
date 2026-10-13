@@ -59,11 +59,14 @@ jobs:
           go-version-file: go.mod
       - run: go test -count=1 ./internal/lint/
 
-  # Each shard runs its seeds twice in one process, then again in a second
-  # process with GOMAXPROCS=1, and compares the trace hashes. Shards 0 and 1
-  # run fixed seeds; shards 2 and 3 run fresh seeds from the run ID. A
-  # failing seed reproduces with
+  # Each shard runs its seeds twice in one process with the checkers of
+  # package check (TestSeeds), checks short runs of the same seeds with
+  # Porcupine (TestLinearizable), then replays TestSeeds in a second process
+  # with GOMAXPROCS=1 and compares the trace hashes. Shards 0 and 1 run fixed
+  # seeds; shards 2 and 3 run fresh seeds from the run ID. A failing seed
+  # reproduces with
   # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
+  # go test ./internal/sim/ -run 'TestLinearizable/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
   sim:
     strategy:
       fail-fast: false

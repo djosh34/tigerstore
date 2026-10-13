@@ -82,7 +82,8 @@ func (c *client) done(op *clientOp, resp proto.Message, err error) {
 		s.stats.Failed++
 	}
 	s.mix(0xc1, uint64(c.id), uint64(r.Call), uint64(r.Return))
-	think := s.rng.Int64N(20 * Millisecond)
+	// At least 1 ns, so the next call starts after this one returned.
+	think := 1 + s.rng.Int64N(20*Millisecond)
 	s.push(&event{at: s.now + think, kind: evClientStart, op: &clientOp{client: c}})
 }
 
