@@ -45,6 +45,7 @@ func (s *Server) watch(st *stream) error {
 	for {
 		select {
 		case r := <-ws.C:
+			ws.Taken(r)
 			if err := st.Send(r); err != nil {
 				if errors.Is(err, errAborted) {
 					return ws.Err()
