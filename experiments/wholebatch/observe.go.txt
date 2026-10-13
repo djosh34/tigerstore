@@ -9,10 +9,41 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
+	"runtime/metrics"
+	"sync"
 
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/osfs"
 )
+
+var pre50BatchMu sync.RWMutex
+var pre50BatchStats func() any
+
+func pre50SetBatchStats(f func() any) {
+	pre50BatchMu.Lock()
+	pre50BatchStats = f
+	pre50BatchMu.Unlock()
+}
+
+func pre50Snapshot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("gc") == "1" { runtime.GC() }
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	samples := []metrics.Sample{{Name: "/cpu/classes/gc/total:cpu-seconds"}}
+	metrics.Read(samples)
+	pre50BatchMu.RLock()
+	f := pre50BatchStats
+	pre50BatchMu.RUnlock()
+	var batch any
+	if f != nil { batch = f() }
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"mallocs": m.Mallocs, "bytes": m.TotalAlloc,
+		"gc_cpu_seconds": samples[0].Value.Float64(),
+		"heap_alloc": m.HeapAlloc, "heap_inuse": m.HeapInuse,
+		"heap_objects": m.HeapObjects, "sys": m.Sys, "num_gc": m.NumGC,
+		"batch": batch,
+	}); err != nil { log.Printf("debug alloc: %v", err) }
+}
 
 func pre50Observe(n *node.Node) error {
 	addr := os.Getenv("PRE50_DEBUG")
@@ -29,13 +60,7 @@ func pre50Observe(n *node.Node) error {
 			log.Printf("debug disk: %v", err)
 		}
 	})
-	http.HandleFunc("/debug/alloc", func(w http.ResponseWriter, r *http.Request) {
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		if err := json.NewEncoder(w).Encode(map[string]uint64{"mallocs": m.Mallocs, "bytes": m.TotalAlloc}); err != nil {
-			log.Printf("debug alloc: %v", err)
-		}
-	})
+	http.HandleFunc("/debug/alloc", pre50Snapshot)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err

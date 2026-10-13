@@ -21,7 +21,7 @@ func TestSampleAllocations(t *testing.T) {
 			}))
 			defer s.Close()
 			got, err := sampleAllocations(s.URL + "," + s.URL)
-			want := []allocations{{123, 456}, {123, 456}}
+			want := []allocations{{Mallocs: 123, Bytes: 456}, {Mallocs: 123, Bytes: 456}}
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("got %v, %v; want %v", got, err, want)
 			}

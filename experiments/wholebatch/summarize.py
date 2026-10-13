@@ -11,7 +11,7 @@ ROLES = ('leader', 'follower1', 'follower2')
 
 def read_row(file):
     j = json.loads(file.read_text())
-    assert j['valid'] and not j['errors'] and j['successes'] == 60000, file
+    assert j['valid'] and not j['errors'] and j['successes'] in (30000, 60000), file
     assert j['workers'] in (16, 64, 256) and j['conns'] == 16, file
     assert j['keyspace'] == 4096 and j['value_bytes'] == 1024, file
     assert len(j['cpu_us_op']) == 4, file
@@ -25,8 +25,10 @@ def read_row(file):
     d = json.loads((file.parent/'disk.json').read_text())
     assert len(d['before']) == len(d['after']) == 3, file
     assert len(j['alloc_before']) == len(j['alloc_after']) == 3, file
+    retained_file = file.parent/'retained.json'
+    retained = json.loads(retained_file.read_text())['nodes'] if retained_file.exists() else None
     row = dict(clients=j['workers'], conns=j['conns'], store=store,
-               source_ref=layout['variant']['ref'], rep=int(rep))
+               source_ref=layout['variant']['ref'], rep=int(rep), successes=j['successes'])
     for k in ('ops_s', 'mean_ms', 'p50_ms', 'p90_ms', 'p95_ms', 'p99_ms', 'p999_ms', 'elapsed_s'):
         row[k] = j[k]
     for i, role in enumerate((*ROLES, 'generator')):
@@ -50,6 +52,18 @@ def read_row(file):
         assert mallocs > 0 and size > 0, file
         row[f'{role}_allocs_op'] = mallocs/j['successes']
         row[f'{role}_bytes_op'] = size/j['successes']
+        row[f'{role}_gc_accounted_us_op'] = ((alloc_a['gc_cpu_seconds']-alloc_b['gc_cpu_seconds'])*1e6/j['successes']
+                                               if store != 'etcd' and 'gc_cpu_seconds' in alloc_a else float('nan'))
+        row[f'{role}_retained_heap_bytes'] = retained[i]['heap_alloc'] if retained else float('nan')
+        row[f'{role}_retained_sys_bytes'] = retained[i]['sys'] if retained else float('nan')
+        bb, ba = alloc_b.get('batch'), alloc_a.get('batch')
+        for counter, metric in (('AdmissionSends','admission_sends_op'), ('ResponseSends','response_sends_op'), ('ControlSends','control_sends_op')):
+            row[f'{role}_{metric}'] = ((ba[counter]-bb[counter])/j['successes']
+                                       if bb and ba and counter in ba else float('nan'))
+        if i == 0 and bb and ba:
+            assert ba['Commands']-bb['Commands'] == j['successes'], (file, bb, ba)
+        row[f'{role}_core_handoff_sends_op'] = (row[f'{role}_admission_sends_op']+row[f'{role}_response_sends_op']
+                                                if store in ('admit','full','ring','pool') else (2.0 if i == 0 and store != 'etcd' else float('nan')))
     for metric in ('cpu_us_op', 'allocs_op', 'bytes_op'):
         row[f'server_{metric}'] = sum(row[f'{role}_{metric}'] for role in ROLES)
     return row
@@ -67,7 +81,7 @@ def summarize(root):
     assert rows, f'no measurements in {root}'
     groups = sorted({(r['clients'], r['store']) for r in rows})
     medians = []
-    fixed = ('clients', 'conns', 'store', 'source_ref')
+    fixed = ('clients', 'conns', 'store', 'source_ref', 'successes')
     for clients, store in groups:
         selected = [r for r in rows if (r['clients'], r['store']) == (clients, store)]
         assert len(selected) == 5 and {r['rep'] for r in selected} == set(range(1, 6)), (clients, store)
@@ -89,10 +103,10 @@ def summarize(root):
     csv_write(root/'summary.csv', medians)
     pairs = []
     for r in rows:
-        if r['store'] not in ('rpc', 'admit', 'full'):
+        if r['store'] not in ('rpc', 'admit', 'full', 'ring', 'pool'):
             continue
         baselines = ['main', 'etcd', 'native', 'native-tuned', 'extra']
-        previous_stage = {'admit': 'rpc', 'full': 'admit'}.get(r['store'])
+        previous_stage = {'admit': 'rpc', 'full': 'admit', 'ring': 'full', 'pool': 'ring'}.get(r['store'])
         if previous_stage:
             baselines.append(previous_stage)
         for baseline in baselines:
@@ -127,7 +141,14 @@ def summarize(root):
             assert len(selected) == 5, (clients, candidate, baseline)
             values = [median(p[k+'_ratio'] for p in selected) for k in ('ops_s', 'server_cpu_us_op', 'server_allocs_op', 'server_bytes_op', 'p95_ms', 'p99_ms')]
             report.append(f'| {clients} | {candidate}/{baseline} | ' + ' | '.join(f'{v:.3f}' for v in values) + ' |')
-    report += ['', 'CPU is process user+system time from /proc, not owner-goroutine CPU.',
+    report += ['', '| Clients | Variant | Leader GC accounting us/Put | Leader retained heap MiB | Core handoff sends/Put | Frontend controls/Put |',
+               '| ---: | --- | ---: | ---: | ---: | ---: |']
+    for r in medians:
+        report.append(f"| {r['clients']} | {r['store']} | {r['leader_gc_accounted_us_op']:.3f} | {r['leader_retained_heap_bytes']/2**20:.2f} | {r['leader_core_handoff_sends_op']:.3f} | {r['leader_control_sends_op']:.3f} |")
+    report += ['', 'GC CPU is runtime /cpu/classes/gc/total accounting, not sampled process CPU. Stock etcd does not expose this counter here.',
+               'Retained heap is after eight quiet seconds and forced GC, outside headline windows. It includes the retained log and history, plus reserved ring bytes.',
+               'Channel figures count specified successful sends, not runtime-wide channel operations. Core handoffs are admission plus reply delivery; frontend control sends are separate. grpc-go internals are not counted.',
+               'CPU is process user+system time from /proc, not owner-goroutine CPU.',
                'CPU and allocation windows do not wait for follower catch-up. Follower cost can fall outside those windows.',
                'Allocation counters bracket the CPU window and include small debug scrape overhead. They count all process allocations, not retained bytes.',
                'Fsync deltas enclose the fully applied cohort on all nodes. etcd also fences on its post-WAL.Save committed gauge.',

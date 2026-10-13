@@ -81,6 +81,8 @@ def cluster(variant, label):
             if variant['batch_mode']:
                 env['TIGERSTORE_BATCH_MODE'] = variant['batch_mode']
                 env['TIGERSTORE_BATCH_STATS'] = '1'
+            if variant.get('batch_memory'):
+                env['TIGERSTORE_BATCH_MEMORY'] = variant['batch_memory']
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
             check_time()
@@ -183,13 +185,27 @@ def cluster(variant, label):
                     raise RuntimeError(f'catch-up failed: {revision}, {observed}')
                 time.sleep(.02)
 
+        # Check the actual command listener, not a separate debug HTTP port.
+        health_results = []
+        for protocol in ('1.1', '2'):
+            for path in ('version', 'health'):
+                response = run(['curl', '--silent', '--show-error', '--fail', '--max-time', '10',
+                                '--http'+protocol, '--cacert', str(CERT/'ca.pem'),
+                                '--cert', str(CERT/'client.pem'), '--key', str(CERT/'client-key.pem'),
+                                '--write-out', '\\n%{http_version}', f'https://{endpoint}/{path}'], capture_output=True)
+                body, version = response.stdout.rsplit('\n', 1)
+                assert version == protocol, (protocol, version)
+                payload = json.loads(body)
+                assert payload.get('health') == 'true' if path == 'health' else payload.get('etcdserver') == '3.7.2', payload
+                health_results.append(dict(protocol=version, path=path, body=payload))
+        (dest/'http-smoke.json').write_text(json.dumps(health_results, indent=2))
         load('seed',4096,workers=64)
-        load('warmup',20000)
+        load('warmup',8000)
         time.sleep(1)
         warmup = json.loads((dest/'warmup.json').read_text())
         terms_before = applied_fence(warmup['revision_after'], 'before')
         before = disk('before')
-        load('put',60000,allocations=True)
+        load('put',30000,allocations=True)
         result = json.loads((dest/'put.json').read_text())
         terms_after = applied_fence(result['revision_after'], 'after')
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
@@ -207,6 +223,15 @@ def cluster(variant, label):
             affinities[str(i)] = {p.name:os.sched_getaffinity(int(p.name)) for p in Path(f'/proc/{procs[i].pid}/task').iterdir()}
             assert all(a=={core} for a in affinities[str(i)].values()),affinities
         (dest/'affinities.json').write_text(json.dumps(affinities,default=list,indent=2))
+        # Outside CPU/latency/GC accounting windows. Let the seven-second
+        # request metadata timeout expire before measuring retained heap.
+        time.sleep(8)
+        if store != 'etcd':
+            retained = [json.loads(http(6060+i, '/debug/alloc?gc=1')) for i in order]
+            (dest/'retained.json').write_text(json.dumps({'forced_gc': True, 'quiet_seconds': 8, 'nodes': retained}, indent=2))
+        else:
+            for i in order:
+                (dest/f'n{i}-retained.prom').write_bytes(http(6060+i, '/metrics'))
     finally:
         for p in procs:
             if p.poll() is None:

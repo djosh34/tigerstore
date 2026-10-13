@@ -49,7 +49,7 @@ jobs:
           if [[ -n ${CANDIDATE_REF:-} ]]; then git checkout --detach "$CANDIDATE_REF"; fi
           mkdir -p evidence/wholebatch-correctness
           git rev-parse HEAD > evidence/wholebatch-correctness/source.txt
-          go test -race -count=1 -parallel 2 -timeout 5m ./internal/batchcmd ./internal/batchfront ./internal/core ./internal/node ./internal/lint 2>&1 | tee evidence/wholebatch-correctness/test.log
+          go test -race -count=1 -parallel 2 -timeout 5m ./internal/batchcmd ./internal/batchfront ./internal/batchmem ./internal/core ./internal/node ./internal/lint 2>&1 | tee evidence/wholebatch-correctness/test.log
       - uses: actions/upload-artifact@v6
         if: always() && steps.deadline.outputs.open == 'true'
         with:

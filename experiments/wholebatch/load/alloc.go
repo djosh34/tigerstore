@@ -11,8 +11,15 @@ import (
 )
 
 type allocations struct {
-	Mallocs uint64 `json:"mallocs"`
-	Bytes   uint64 `json:"bytes"`
+	Mallocs      uint64          `json:"mallocs"`
+	Bytes        uint64          `json:"bytes"`
+	GCCPUSeconds float64         `json:"gc_cpu_seconds"`
+	HeapAlloc    uint64          `json:"heap_alloc"`
+	HeapInuse    uint64          `json:"heap_inuse"`
+	HeapObjects  uint64          `json:"heap_objects"`
+	Sys          uint64          `json:"sys"`
+	NumGC        uint64          `json:"num_gc"`
+	Batch        json.RawMessage `json:"batch"`
 }
 
 // Scrapes happen before and after the CPU window, after gRPC connection setup.

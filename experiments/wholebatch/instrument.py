@@ -16,7 +16,10 @@ def instrument(source):
     for _, target in files:
         if (source / target).exists():
             raise RuntimeError(f'pre-existing instrumentation: {target}')
-    main.write_text(text.replace(anchor, '\tif err := pre50Observe(n); err != nil {\n\t\treturn err\n\t}\n' + anchor))
+    text = text.replace(anchor, '\tif err := pre50Observe(n); err != nil {\n\t\treturn err\n\t}\n' + anchor)
+    if '\t\tg = batchServer\n' in text:
+        text = text.replace('\t\tg = batchServer\n', '\t\tg = batchServer\n\t\tpre50SetBatchStats(func() any { return batchServer.Stats() })\n')
+    main.write_text(text)
     for template, target in files:
         (source / target).write_text((templates / template).read_text())
 

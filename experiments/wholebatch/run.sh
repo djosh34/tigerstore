@@ -5,10 +5,6 @@ check_time
 # Never remount or run a measurement on the agent host.
 [[ ${GITHUB_ACTIONS:-false} == true && $(uname -m) == aarch64 ]]
 BASELINE=eb8a20eda7b1436e3319b924753469f2d8c0ee99
-NATIVE=2d4052e96939b12fd68f0252dfd1154127cdf7c6
-TUNED=78db0c56fe2b051b651bbfa3f1aed03ca3724b9c
-check_time
-git fetch --no-tags origin "$NATIVE" "$TUNED"
 CANDIDATE=$(git rev-parse "${CANDIDATE_REF:-HEAD}^{commit}")
 EXTRA=${EXTRA_BASELINE_REF:-}
 if [[ -n $EXTRA ]]; then EXTRA=$(git rev-parse "$EXTRA^{commit}"); fi
@@ -17,16 +13,16 @@ PRIVATE=$RUNNER_TEMP/wholebatch
 mkdir -p "$OUT" "$PRIVATE/bin" "$PRIVATE/baseline" "$PRIVATE/candidate"
 trap 'rm -rf "$PRIVATE"' EXIT
 export GOFLAGS=-p=2 GOMEMLIMIT=2GiB
-export CANDIDATE EXTRA BASELINE NATIVE TUNED OUT
+export CANDIDATE EXTRA BASELINE OUT
 python3 - <<'PY'
 import json, os
 from pathlib import Path
 variants = [dict(name='main', binary='baseline', ref=os.environ['BASELINE'], frontend='', batch_mode=''),
-            dict(name='etcd', binary='etcd', ref='v3.7.2', frontend='', batch_mode=''),
-            dict(name='native', binary='native', ref=os.environ['NATIVE'], frontend='', batch_mode=''),
-            dict(name='native-tuned', binary='native-tuned', ref=os.environ['TUNED'], frontend='', batch_mode='')]
+            dict(name='etcd', binary='etcd', ref='v3.7.2', frontend='', batch_mode='')]
 for mode in ('rpc', 'admit', 'full'):
     variants.append(dict(name=mode, binary='candidate', ref=os.environ['CANDIDATE'], frontend='wholebatch', batch_mode=mode))
+for memory in ('ring', 'pool'):
+    variants.append(dict(name=memory, binary='candidate', ref=os.environ['CANDIDATE'], frontend='wholebatch', batch_mode='full', batch_memory=memory))
 if os.environ['EXTRA']:
     variants.insert(1, dict(name='extra', binary='extra', ref=os.environ['EXTRA'],
                            frontend=os.environ.get('EXTRA_BASELINE_FRONTEND', 'native'), batch_mode=''))
@@ -35,7 +31,7 @@ PY
 {
  date -u +%FT%TZ
  git rev-parse HEAD
- printf 'main %s\ncandidate %s\nnative %s\nnative-tuned %s\nextra %s\n' "$BASELINE" "$CANDIDATE" "$NATIVE" "$TUNED" "$EXTRA"
+ printf 'main %s\ncandidate %s\nextra %s\n' "$BASELINE" "$CANDIDATE" "$EXTRA"
  sha256sum experiments/wholebatch/{instrument.py,observe.go.txt,osfs.go.txt,load/*.go}
  uname -a
  lscpu
@@ -61,12 +57,8 @@ git status --short > "$OUT/build-status.txt"
 check_time
 git archive "$BASELINE" | tar -x -C "$PRIVATE/baseline"
 git archive "$CANDIDATE" | tar -x -C "$PRIVATE/candidate"
-declare -A refs=([baseline]="$BASELINE" [candidate]="$CANDIDATE" [native]="$NATIVE" [native-tuned]="$TUNED" [extra]="$EXTRA")
-sources=(baseline candidate native native-tuned)
-for source in native native-tuned; do
- mkdir -p "$PRIVATE/$source"
- git archive "${refs[$source]}" | tar -x -C "$PRIVATE/$source"
-done
+declare -A refs=([baseline]="$BASELINE" [candidate]="$CANDIDATE" [extra]="$EXTRA")
+sources=(baseline candidate)
 mkdir -p "$OUT/instrumentation"
 cp experiments/wholebatch/{instrument.py,observe.go.txt,osfs.go.txt} "$OUT/instrumentation/"
 if [[ -n $EXTRA ]]; then
@@ -97,6 +89,6 @@ go build -o "$PRIVATE/bin/load" ./experiments/wholebatch/load
 check_time
 bash scripts/dev-certs.sh "$PRIVATE/certs"
 check_time
-timeout --kill-after=5s 700s taskset -c 3 python3 experiments/wholebatch/run.py
+timeout --kill-after=5s 740s taskset -c 3 python3 experiments/wholebatch/run.py
 check_time
 python3 experiments/wholebatch/summarize.py "$OUT"
