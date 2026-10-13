@@ -30,7 +30,7 @@ All 288 in-fault LIST/watch probes passed. The 32-key LISTs exercised multiple c
 
 The 96 cases contain 117,536 recorded operations and 384 original/cold-recovery history variants. All four repository checkers ran on every variant: 1,472 verdicts passed and 64 linearizability checks timed out. All 16 failed cases remain unverified; reduced-load passes do not validate them. Watch, durability and revision checks passed throughout.
 
-[Combined-fault report, scripts and permanent evidence](https://github.com/djosh34/tigerstore/blob/93c4b85b2bd14e495aebf154356641093f76c45a/experiments/correct-round3/REPORT.md). [Parent report and independent archive audits](https://github.com/djosh34/tigerstore/tree/exp/correct-round3/experiments/correct-round3).
+[Combined-fault report, scripts and permanent evidence](https://github.com/djosh34/tigerstore/blob/93c4b85b2bd14e495aebf154356641093f76c45a/experiments/correct-round3/REPORT.md). [Parent report and independent archive audits](https://github.com/djosh34/tigerstore/tree/8be60142/experiments/correct-round3).
 
 No product failure was confirmed. Bugs filed: zero. This is not a clean pass and does not close #49. This round did not repeat ENOSPC, clock, lease or compaction tests. SIGKILL is not power loss.
 
