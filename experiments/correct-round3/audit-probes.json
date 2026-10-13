@@ -1,0 +1,2220 @@
+{
+  "scope": "Snapshot payload, metadata and fault-overlap audit. Watch model checks remain the runner checks.",
+  "cases": [
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 64,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 64,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 70,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 81,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 93,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 104,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 72,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 72,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 72,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 77,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 89,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 65,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 72,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 76,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 82,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 98,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 107,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 70,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 78,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 85,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 85,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 85,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-election-pause-250-1/correct-round2-faults-ubuntu-24.04-etcd-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-election-pause-251-2/correct-round2-faults-ubuntu-24.04-etcd-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-flapping-250-1/correct-round2-faults-ubuntu-24.04-etcd-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 68,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 76,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 86,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 96,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-flapping-251-2/correct-round2-faults-ubuntu-24.04-etcd-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-one-way-250-1/correct-round2-faults-ubuntu-24.04-etcd-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-one-way-251-2/correct-round2-faults-ubuntu-24.04-etcd-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 74,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 85,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 95,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 66,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 75,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 91,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 103,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 65,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468658463/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 64,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 64,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 64,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 70,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 81,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 89,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 101,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 113,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 69,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 69,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 80,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 93,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 104,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 65,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 73,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 79,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 83,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 83,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 88,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 63,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 65,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-election-pause-250-1/correct-round2-faults-ubuntu-24.04-etcd-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 62,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-election-pause-251-2/correct-round2-faults-ubuntu-24.04-etcd-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-flapping-250-1/correct-round2-faults-ubuntu-24.04-etcd-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 75,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 84,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-flapping-251-2/correct-round2-faults-ubuntu-24.04-etcd-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 67,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 67,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 73,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 85,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 94,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-one-way-250-1/correct-round2-faults-ubuntu-24.04-etcd-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 60,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-one-way-251-2/correct-round2-faults-ubuntu-24.04-etcd-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-250-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-251-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-250-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 59,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 69,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 69,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 78,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 91,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 102,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-251-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 67,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 67,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 76,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 94,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 105,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-250-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 61,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-251-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 56,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-250-1/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-250-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 58,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38468977502/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-251-2/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-251-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 57,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-350-1/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-350-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-election-pause-351-2/correct-round2-faults-ubuntu-24.04-arm-etcd-election-pause-351-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-350-1/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-350-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 44,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 47,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 50,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-flapping-351-2/correct-round2-faults-ubuntu-24.04-arm-etcd-flapping-351-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 43,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 49,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 52,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-350-1/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-350-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-one-way-351-2/correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-351-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-350-1/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-350-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-etcd-partition-kill-351-2/correct-round2-faults-ubuntu-24.04-arm-etcd-partition-kill-351-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-350-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-350-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-election-pause-351-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-election-pause-351-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-350-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-350-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-flapping-351-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-flapping-351-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 44,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 51,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 54,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-350-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-350-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-one-way-351-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-one-way-351-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-350-1/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-350-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-arm-tigerstore-partition-kill-351-2/correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-351-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-election-pause-350-1/correct-round2-faults-ubuntu-24.04-etcd-election-pause-350-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-election-pause-351-2/correct-round2-faults-ubuntu-24.04-etcd-election-pause-351-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-flapping-350-1/correct-round2-faults-ubuntu-24.04-etcd-flapping-350-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 44,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 47,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 50,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-flapping-351-2/correct-round2-faults-ubuntu-24.04-etcd-flapping-351-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 43,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 48,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 49,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-one-way-350-1/correct-round2-faults-ubuntu-24.04-etcd-one-way-350-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-one-way-351-2/correct-round2-faults-ubuntu-24.04-etcd-one-way-351-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-350-1/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-350-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-etcd-partition-kill-351-2/correct-round2-faults-ubuntu-24.04-etcd-partition-kill-351-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-350-1/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-350-1",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 40,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-election-pause-351-2/correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-351-2",
+      "probes": [
+        {
+          "fault": "election-peer-cut",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "kill-old-leader",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        },
+        {
+          "fault": "pause-election",
+          "chunks": 3,
+          "target": 42,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-350-1/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-350-1",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 44,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 50,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 52,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-flapping-351-2/correct-round2-faults-ubuntu-24.04-tigerstore-flapping-351-2",
+      "probes": [
+        {
+          "fault": "flap-0",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "flap-1",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-2",
+          "chunks": 3,
+          "target": 41,
+          "passed": true
+        },
+        {
+          "fault": "flap-3",
+          "chunks": 3,
+          "target": 43,
+          "passed": true
+        },
+        {
+          "fault": "flap-4",
+          "chunks": 3,
+          "target": 50,
+          "passed": true
+        },
+        {
+          "fault": "flap-5",
+          "chunks": 3,
+          "target": 53,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-350-1/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-350-1",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-one-way-351-2/correct-round2-faults-ubuntu-24.04-tigerstore-one-way-351-2",
+      "probes": [
+        {
+          "fault": "one-way-partition",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-350-1/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-350-1",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 38,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "case": "38469549517/compact-round3-combined-ubuntu-24.04-tigerstore-partition-kill-351-2/correct-round2-faults-ubuntu-24.04-tigerstore-partition-kill-351-2",
+      "probes": [
+        {
+          "fault": "partition-old-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        },
+        {
+          "fault": "kill-new-leader",
+          "chunks": 3,
+          "target": 39,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "case_counts_by_run": {
+    "38468658463": 32,
+    "38468977502": 32,
+    "38469549517": 32
+  },
+  "probes": 288,
+  "passed": true
+}
