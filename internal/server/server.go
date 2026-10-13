@@ -54,6 +54,7 @@ func New(n *node.Node, cfg Config) *grpc.Server {
 	if cfg.TLS != nil {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(cfg.TLS)))
 	}
+	opts = append(opts, pre47Options()...)
 	g := grpc.NewServer(opts...)
 	kv := &kvServer{n: n}
 	pb.RegisterKVServer(g, kv)
