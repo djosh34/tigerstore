@@ -8,6 +8,8 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -111,5 +113,24 @@ func TestRejectedTxnKeepsNodeRunning(t *testing.T) {
 	got, _ := r.Resp.(*pb.RangeResponse)
 	if got == nil || len(got.Kvs) != 1 || string(got.Kvs[0].Key) != "c" {
 		t.Fatalf("after restart = %v", r.Resp)
+	}
+}
+
+// TestStatusOneTerm checks that Status reports the same term in its header
+// and body even before Process ran after a term change.
+func TestStatusOneTerm(t *testing.T) {
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := n.Step(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(10))}); err != nil {
+		t.Fatal(err)
+	}
+	st := n.Status()
+	if st.RaftTerm != 10 || st.Header.RaftTerm != st.RaftTerm {
+		t.Fatalf("status term %d, header term %d", st.RaftTerm, st.Header.RaftTerm)
+	}
+	if st.DowngradeInfo == nil {
+		t.Fatal("status has no downgrade info")
 	}
 }

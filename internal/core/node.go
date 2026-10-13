@@ -181,7 +181,7 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	}
 	var logBytes int64
 	for _, e := range rec.Entries {
-		logBytes += recordBytes(e)
+		logBytes += wal.EntryRecordBytes(e)
 	}
 	return &Node{
 		logBytes: logBytes,
@@ -309,8 +309,9 @@ func (n *Node) Submit(r Request) {
 
 // sizeRequestID stands in for etcd's request ID when sizing a write. etcd
 // v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
-// made from the member ID; with the top bit set it is a 10-byte varint, the
-// longest, which makes the limit the same as etcd's to the byte.
+// made from the low 16 bits of the member ID. When bit 15 of the member ID
+// is set, the ID is a 10-byte varint, etcd's strictest case, which this
+// matches to the byte; for other members etcd accepts one byte more.
 const sizeRequestID = 1 << 63
 
 // check validates a request like etcd's gRPC layer, then limits the size of
@@ -429,7 +430,7 @@ func (n *Node) Persisted(job PersistJob) {
 		return
 	}
 	for _, e := range job.Entries {
-		n.logBytes += recordBytes(e)
+		n.logBytes += wal.EntryRecordBytes(e)
 	}
 	n.deliver(job.msg.GetResponses())
 }

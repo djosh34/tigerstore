@@ -334,6 +334,9 @@ func (w *WAL) record(typ byte, payload ...[]byte) {
 	binary.LittleEndian.PutUint32(w.buf[start+4:], w.crc)
 }
 
+// EntryRecordBytes is the size of the record that stores e.
+func EntryRecordBytes(e *raftpb.Entry) int64 { return recHdrSize + 17 + int64(len(e.GetData())) }
+
 // Append buffers entries and a hard state. Nothing is durable before Sync.
 // A nil hard state leaves the stored one unchanged.
 func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
