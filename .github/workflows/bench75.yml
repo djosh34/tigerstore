@@ -4,17 +4,22 @@ on:
     inputs:
       candidate_ref:
         description: First candidate branch, tag or commit
-        default: refs/pull/77/head
+        default: work/50-txn
         type: string
         required: true
       second_candidate_ref:
         description: Optional second candidate branch, tag or commit
-        default: work/50-hpack
+        default: ''
         type: string
       third_candidate_ref:
         description: Optional third candidate, also the CAS candidate
-        default: work/50-txn
+        default: ''
         type: string
+      suite:
+        description: Workloads and client counts
+        default: put-cas-256
+        type: choice
+        options: [put-cas-256, put-64-256, all]
       baseline_ref:
         description: Baseline branch, tag or commit
         default: main
@@ -43,7 +48,7 @@ jobs:
       - id: refs
         env:
           BASELINE_REF: ${{ inputs.baseline_ref || 'main' }}
-          CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/pull/77/head' }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-txn' }}
           SECOND_REF: ${{ inputs.second_candidate_ref }}
           THIRD_REF: ${{ inputs.third_candidate_ref }}
         run: |
@@ -80,10 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {workload: put, clients: 64}
-          - {workload: put, clients: 256}
-          - {workload: cas, clients: 256}
+        include: ${{ fromJSON(inputs.suite == 'put-cas-256' && '[{"workload":"put","clients":256},{"workload":"cas","clients":256}]' || inputs.suite == 'put-64-256' && '[{"workload":"put","clients":64},{"workload":"put","clients":256}]' || '[{"workload":"put","clients":64},{"workload":"put","clients":256},{"workload":"cas","clients":256}]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -93,6 +95,7 @@ jobs:
           go-version: '1.27.2'
       - name: Main, candidate refs and etcd back to back
         env:
+          GENERATOR: lean
           CLIENTS: ${{ matrix.clients }}
           BASELINE_REF: ${{ needs.resolve.outputs.baseline }}
           WORKLOAD: ${{ matrix.workload }}

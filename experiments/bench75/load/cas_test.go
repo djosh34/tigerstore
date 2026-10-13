@@ -25,6 +25,15 @@ func TestCASResponse(t *testing.T) {
 	if rev, err := checkCAS(failed, []byte("k"), []byte("v")); err != nil || rev != 42 {
 		t.Fatalf("fallback: %d %v", rev, err)
 	}
+	// Real etcd-compatible nested headers can omit term/member/cluster IDs.
+	passed.Responses[0].GetResponsePut().Header = &pb.ResponseHeader{Revision: 43}
+	failed.Responses[0].GetResponseRange().Header = &pb.ResponseHeader{Revision: 43}
+	if _, err := checkCAS(passed, []byte("k"), []byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkCAS(failed, []byte("k"), []byte("v")); err != nil {
+		t.Fatal(err)
+	}
 	failed.Responses[0].GetResponseRange().Kvs[0].Value = []byte("bad")
 	if _, err := checkCAS(failed, []byte("k"), []byte("v")); err == nil {
 		t.Fatal("accepted bad fallback value")

@@ -13,7 +13,9 @@ import urllib.request
 ROOT = Path.cwd()
 WORKERS = int(os.environ['CLIENTS'])
 WORKLOAD = os.environ.get('WORKLOAD', 'put')
+GENERATOR = os.environ.get('GENERATOR', 'lean')
 assert WORKLOAD in ('put', 'cas'), WORKLOAD
+assert GENERATOR in ('lean', 'grpc'), GENERATOR
 OUT = Path(os.environ['BENCH_OUT']) / f'{WORKLOAD}-c{WORKERS}'
 TMP = Path(os.environ['RUNNER_TEMP']) / 'bench75'
 CERT = TMP / 'certs'
@@ -116,6 +118,7 @@ def cluster(store, label, profile=False):
             'server_cpus_in_role_order': [0, 1, 2],
             'generator_cpu': 3,
             'generator_gomaxprocs': 1,
+            'generator_kind': GENERATOR,
         }, indent=2))
         (dest/'placement.json').write_text(json.dumps({'leader_index':leader,'node_order':order,'pids':pids,'status_before':status},indent=2))
         endpoint = f'127.0.0.1:{2379+leader*100}'
@@ -123,12 +126,15 @@ def cluster(store, label, profile=False):
         def load_args(name, total, workers=WORKERS, op=WORKLOAD):
             return ['taskset', '-c', '3', str(BIN/'load'), '-endpoint', endpoint,
                     '-certdir', str(CERT), '-pids', pids, '-hz', sp.check_output(['getconf','CLK_TCK'],text=True).strip(),
-                    '-op',op,'-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
+                    '-op',op,'-generator',GENERATOR,'-total',str(total),'-workers',str(workers),'-out',str(dest/f'{name}.json'),
                     '-metrics-url',f'http://127.0.0.1:{6060+leader}/' + ('metrics' if store == 'etcd' else 'debug/runtime'),
                     '-metrics-kind', 'etcd' if store == 'etcd' else 'runtime']
 
         def load(name, total, workers=WORKERS, op=WORKLOAD):
             run(load_args(name, total, workers, op), env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)
+            observed = json.loads((dest/f'{name}.json').read_text())
+            assert observed['valid'] and not observed['errors'] and observed['successes'] == total, observed
+            assert observed['generator'] == GENERATOR, observed
 
         def capture_profiles():
             ready = dest/'arrivals-start.txt'
@@ -232,6 +238,7 @@ def cluster(store, label, profile=False):
         else:
             load(WORKLOAD,60000)
             result = json.loads((dest/f'{WORKLOAD}.json').read_text())
+        assert result['generator'] == GENERATOR and result['valid'] and not result['errors'], result
         terms_after = applied_fence(result['revision_after'], 'after')
         assert set(terms_before+terms_after) == {int(t) for t in result['terms']}, (terms_before,terms_after,result['terms'])
         after_disk = disk('after')

@@ -26,13 +26,16 @@ func seedRevisions(client pb.KVClient, keys [][]byte) ([]atomic.Int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r == nil || r.Header == nil || r.More || len(r.Kvs) != len(keys) || r.Count != int64(len(keys)) {
+	if r == nil || r.Header == nil || r.Header.Revision <= 0 || r.Header.RaftTerm == 0 || r.More || len(r.Kvs) != len(keys) || r.Count != int64(len(keys)) {
 		return nil, errors.New("CAS requires every seeded key to exist")
 	}
 	byKey := make(map[string]int64, len(keys))
 	for _, kv := range r.Kvs {
-		if kv.ModRevision <= 0 {
+		if kv == nil || kv.ModRevision <= 0 || kv.ModRevision > r.Header.Revision {
 			return nil, errors.New("invalid seeded mod revision")
+		}
+		if _, duplicate := byKey[string(kv.Key)]; duplicate {
+			return nil, errors.New("duplicate CAS seed key")
 		}
 		byKey[string(kv.Key)] = kv.ModRevision
 	}
@@ -48,18 +51,20 @@ func seedRevisions(client pb.KVClient, keys [][]byte) ([]atomic.Int64, error) {
 }
 
 func checkCAS(r *pb.TxnResponse, key, value []byte) (int64, error) {
-	if r.Header == nil || r.Header.Revision <= 0 || len(r.Responses) != 1 {
+	if r == nil || r.Header == nil || r.Header.Revision <= 0 || r.Header.RaftTerm == 0 || len(r.Responses) != 1 || r.Responses[0] == nil {
 		return 0, errors.New("invalid CAS response shape")
 	}
+	// etcd-compatible nested operation headers carry the revision but may
+	// leave RaftTerm zero; the outer Txn header must always have a real term.
 	if r.Succeeded {
 		p := r.Responses[0].GetResponsePut()
-		if p == nil || p.Header == nil || p.Header.Revision != r.Header.Revision {
+		if p == nil || p.Header == nil || p.Header.Revision != r.Header.Revision || (p.Header.RaftTerm != 0 && p.Header.RaftTerm != r.Header.RaftTerm) || p.PrevKv != nil {
 			return 0, errors.New("invalid CAS Put response")
 		}
 		return r.Header.Revision, nil
 	}
 	q := r.Responses[0].GetResponseRange()
-	if q == nil || q.Count != 1 || len(q.Kvs) != 1 || !bytes.Equal(q.Kvs[0].Key, key) || !bytes.Equal(q.Kvs[0].Value, value) || q.Kvs[0].ModRevision <= 0 || q.Kvs[0].ModRevision > r.Header.Revision {
+	if q == nil || q.Header == nil || q.Header.Revision != r.Header.Revision || (q.Header.RaftTerm != 0 && q.Header.RaftTerm != r.Header.RaftTerm) || q.More || q.Count != 1 || len(q.Kvs) != 1 || q.Kvs[0] == nil || !bytes.Equal(q.Kvs[0].Key, key) || !bytes.Equal(q.Kvs[0].Value, value) || q.Kvs[0].ModRevision <= 0 || q.Kvs[0].ModRevision > r.Header.Revision {
 		return 0, errors.New("invalid CAS fallback Range response")
 	}
 	return q.Kvs[0].ModRevision, nil
