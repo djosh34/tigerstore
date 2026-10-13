@@ -132,6 +132,7 @@ type pending struct {
 	req      Request
 	deadline int64
 	done     bool
+	compact  bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -414,7 +415,7 @@ func (n *Node) SubmitBatch(baseID uint64, commands []batchcmd.Command) {
 		}
 		ps[i].command = c
 		p := &ps[i].pending
-		*p = pending{command: &ps[i].command, req: Request{ID: id}, deadline: n.now + int64(n.cfg.RequestTicks)}
+		*p = pending{command: &ps[i].command, req: Request{ID: id}, deadline: n.now + int64(n.cfg.RequestTicks), compact: true}
 		if c.ReadOnly() {
 			// Reads retain typed requests until ReadIndex finishes. They do not
 			// enter the value log and cannot retain a receive buffer afterward.
@@ -532,7 +533,7 @@ func (n *Node) finish(p *pending, resp proto.Message, err error) {
 		return
 	}
 	p.done = true
-	// Completed metadata may stay in the timeout queue. It must not pin
+	// Compact metadata may stay in the timeout queue. It must not pin
 	// descriptor bodies or typed read requests until the deadline passes.
 	p.releaseRequest()
 	if p.req.ID == 0 {
@@ -544,6 +545,11 @@ func (n *Node) finish(p *pending, resp proto.Message, err error) {
 }
 
 func (p *pending) releaseRequest() {
+	// Preserve main's legacy request retention for the submission ablation.
+	// The flag also covers compact read-only Txns with no command pointer.
+	if !p.compact {
+		return
+	}
 	if p.command != nil {
 		*p.command = batchcmd.Command{}
 		p.command = nil
@@ -565,8 +571,8 @@ func (n *Node) propose() {
 		return
 	}
 	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props)
-	// The immutable entry now owns the wire bytes. No request receive body
-	// may be pinned by pending bookkeeping, even when Raft drops the entry.
+	// The immutable entry now owns compact wire bytes. Compact receive bodies
+	// cannot be pinned by pending bookkeeping, even if Raft drops the entry.
 	for _, p := range props {
 		p.releaseRequest()
 	}
