@@ -1,0 +1,15 @@
+# Value size histogram evidence
+
+Successful [Actions run 38452568825](https://github.com/djosh34/tigerstore/actions/runs/38452568825), source `6990c27256d47dc5bfa36c7c37919d02967c77ac`, free `ubuntu-24.04-arm`, 2026-10-13 19:09:23 to 19:12:50 UTC. Job duration was 3m27s. Nothing merged.
+
+[`run-38452568825/histogram.csv`](run-38452568825/histogram.csv) is 25,003 bytes. It has 27 resource summary rows and 416 exact integer-size buckets covering 6,345 live objects and 9,253,583 value bytes. Each summary includes count, min, p10, p50, p90, p99, max, total value bytes, object share and value-byte share. Bucket counts support exact empirical length sampling. Shares are fractions, not percentages. The method and sampling rule are in [`experiments/size-histogram/README.md`](../../experiments/size-histogram/README.md).
+
+The kind version, Kubernetes node image digest, stock etcd and unchanged compression workload match the [compression pre-work comment on #50](https://github.com/djosh34/tigerstore/issues/50#issuecomment-6134373626). The runner had four Neoverse-N2 cores and 16,722,006,016 bytes RAM. Environment and Kubernetes version files retain actual versions. The dump uses one unlimited current-range etcdctl request. Raw values stay in a pipe and exporter memory inside the kind node. Only allowlisted key-prefix resource names and byte lengths leave it. No raw dump file, keys, values, value hashes, credentials or dictionaries are in this evidence.
+
+The pre-dump API listing reported 3,841 Events and 434 ReplicaSets. The atomic snapshot later contained 3,895 Events and 422 ReplicaSets. Controllers continued reconciling between these observations. Use the CSV counts, not the earlier API counters, for sampling. This is one synthetic application fleet's live snapshot, not production resource proportions or a write-frequency trace. `other` is the unchanged compression classifier's fallback for unrecognized prefixes. It contains 127 objects and is retained, not discarded.
+
+Local and runner exporter tests and Python histogram tests passed. Local Go vet, shellcheck and actionlint passed. After download, every summary count, byte sum, quantile and share was recomputed from its exact buckets and matched the CSV. All bucket counts sum to 6,345, and all size-times-count products sum to 9,253,583. No local Kubernetes cluster or benchmark ran.
+
+Earlier [attempt 38451888639](https://github.com/djosh34/tigerstore/actions/runs/38451888639), source `64cd255d8897af99c4bb3e4e70940ce327ba8119`, failed with exit 127 because `/tmp/size-export` was unavailable inside the running node after `docker cp`. It produced no artifact and contributes no histogram data. The successful revision installs the executable through `docker exec` into `/usr/local/bin` and tests a fixed synthetic input before starting the workload. Both attempts ran before the deadline.
+
+For PR #95's follow-up, select a resource by its object count, then an exact size bucket by its conditional object count. Keep synthetic value generation separate. This branch changes no product code and does not change or merge PR #95.
