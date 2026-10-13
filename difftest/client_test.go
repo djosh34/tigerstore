@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -352,9 +351,21 @@ func (r *run) revoke(do string, id int64) {
 // other response must keep the created watch ID and have a header revision
 // that does not go back and covers its events; breaks are recorded as
 // problems.
+// watch creates one watch and records what it delivers until the server
+// confirms it has sent everything: after each response, the client asks
+// for progress, and a progress notification marks the end, since the
+// server sends one only for a watch that is caught up. A watch that ends
+// another way, such as a compaction cancel, ends there. Not reaching the
+// end within 10 s fails the step.
+//
+// Neither etcd nor tigerstore answers a progress request while a watch
+// starts above the current revision. Such a watch can deliver nothing
+// until a write, so the client ends it after 500 ms without a response.
+// Responses come through a channel, so the stream ending after the client
+// stopped cannot change the result.
 func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 	r.t.Helper()
-	ctx, cancel := context.WithTimeout(r.ctx, time.Second)
+	ctx, cancel := context.WithTimeout(r.ctx, 10*time.Second)
 	defer cancel()
 	stream, err := r.c.watch.Watch(ctx)
 	if err != nil {
@@ -378,18 +389,51 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 		Events          []event  `json:"events,omitempty"`
 		Problems        []string `json:"problems,omitempty"`
 	}
+	type recv struct {
+		resp *pb.WatchResponse
+		err  error
+	}
+	recvs := make(chan recv, 64)
+	go func() {
+		for {
+			resp, err := stream.Recv()
+			recvs <- recv{resp, err}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	var id, header int64
+	ahead := false
 	for !res.Canceled {
-		resp, err := stream.Recv()
-		if status.Code(err) == codes.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
+		var quiet <-chan time.Time
+		if ahead {
+			quiet = time.After(500 * time.Millisecond)
+		}
+		var resp *pb.WatchResponse
+		select {
+		case got := <-recvs:
+			if got.err != nil {
+				r.t.Fatalf("%s: no progress notification to end the watch: %v", do, got.err)
+			}
+			resp = got.resp
+		case <-quiet:
+		}
+		if resp == nil {
 			break
 		}
-		if err != nil && ctx.Err() != nil {
-			// The deadline passed, and the server ended the stream first.
+		if res.Created && !resp.Created && !resp.Canceled && len(resp.Events) == 0 {
+			// The progress notification: everything up to its header
+			// revision was delivered. etcd gives it watch ID -1.
 			break
 		}
-		if err != nil {
-			r.t.Fatalf("%s: %v", do, err)
+		if resp.Created {
+			ahead = req.StartRevision > resp.Header.GetRevision()
+		}
+		if !resp.Canceled && !ahead {
+			if err := stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}); err != nil {
+				r.t.Fatalf("%s: %v", do, err)
+			}
 		}
 		problem := func(format string, args ...any) {
 			res.Problems = append(res.Problems, fmt.Sprintf(format, args...))

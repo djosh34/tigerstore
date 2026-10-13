@@ -64,13 +64,12 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || (st.DiskFaults == 0 && st.DiskFaultIdle == 0) || st.OK < 200 || len(a.Log) < 50 {
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
 			ran++
 			total.Fenced += st.Fenced
 			total.StalledStops += st.StalledStops
-			total.DiskFaultIdle += st.DiskFaultIdle
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -82,9 +81,6 @@ func TestSeeds(t *testing.T) {
 	}
 	// Corruption and a leader stalled long enough to stop are rare in one
 	// run, but a set of seeds must see both.
-	if ran >= 64 && !t.Failed() && total.DiskFaultIdle*16 > ran {
-		t.Fatalf("in %d of %d seeds the guaranteed disk fault found no append to fail", total.DiskFaultIdle, ran)
-	}
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0) {
 		t.Fatalf("%d seeds fenced %d damaged nodes and stopped %d stalled leaders; both must happen", ran, total.Fenced, total.StalledStops)
 	}

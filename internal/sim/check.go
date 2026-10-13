@@ -90,6 +90,11 @@ func (s *Sim) check(res *Result) error {
 	}
 	live := 0
 	liveFrom := s.healAt + s.cfg.LiveAfter
+	if s.lateFaultAt > 0 {
+		// The guaranteed disk fault fired after healing: the node restarts
+		// within MaxDown and then has the same time to serve.
+		liveFrom = max(liveFrom, s.lateFaultAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
+	}
 	if s.cfg.LiveFrom > 0 {
 		liveFrom = s.cfg.LiveFrom
 	}

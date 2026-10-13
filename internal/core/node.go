@@ -106,6 +106,8 @@ type PersistJob struct {
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
 	msg       *raftpb.Message
+	// newVote is set when the job changes the term or the vote.
+	newVote bool
 }
 
 // Effects is what the core asks its driver to do.
@@ -154,6 +156,15 @@ type Node struct {
 	leader   uint64
 	isLeader bool
 	leaseSeq uint64
+	// voteTerm and vote are the newest term and vote sent to disk.
+	// unsyncedVotes counts appends that change them and are not yet
+	// durable; while any is, messages to peers wait in held. Raft with
+	// async storage writes sends a candidate's vote requests before its
+	// own term and vote are durable, so it can win, lose its term in a
+	// failed write, and win the same term again with another log.
+	voteTerm, vote uint64
+	unsyncedVotes  int
+	held           []*raftpb.Message
 	// appending holds the tick at which each local append with entries
 	// went to disk, oldest first; appends finish in order. If the oldest
 	// gets too old on the leader, its disk is stalled and it fences itself.
@@ -221,6 +232,8 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 		state:    state,
 		kv:       state.Store(),
 		term:     rec.HardState.Term,
+		voteTerm: rec.HardState.Term,
+		vote:     rec.HardState.Vote,
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
 	}, nil
@@ -527,6 +540,13 @@ func (n *Node) Persisted(job PersistJob) {
 		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
 		n.appending = n.appending[1:]
 	}
+	if job.newVote {
+		n.unsyncedVotes--
+		if n.unsyncedVotes == 0 {
+			n.out.Send = append(n.out.Send, n.held...)
+			n.held = nil
+		}
+	}
 	n.deliver(job.msg.GetResponses())
 }
 
@@ -534,7 +554,7 @@ func (n *Node) Persisted(job PersistJob) {
 func (n *Node) deliver(msgs []*raftpb.Message) {
 	for _, m := range msgs {
 		if m.GetTo() != n.cfg.ID {
-			n.out.Send = append(n.out.Send, m)
+			n.send(m)
 			continue
 		}
 		if err := n.rn.Step(m); err != nil {
@@ -601,6 +621,16 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, rs := range rd.ReadStates {
 		n.readIndexKnown(rs)
 	}
+	// Appends first, so that a term or vote change also holds back the
+	// messages of the same Ready.
+	var newVotes []*raftpb.Message
+	for _, m := range rd.Messages {
+		if m.GetTo() == raft.LocalAppendThread && m.Vote != nil && (m.GetTerm() != n.voteTerm || m.GetVote() != n.vote) {
+			n.voteTerm, n.vote = m.GetTerm(), m.GetVote()
+			n.unsyncedVotes++
+			newVotes = append(newVotes, m)
+		}
+	}
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
 		case raft.LocalAppendThread:
@@ -611,6 +641,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			job := PersistJob{Entries: m.Entries, msg: m}
 			if m.Vote != nil {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
+				job.newVote = slices.Contains(newVotes, m)
 			}
 			n.out.Persist = append(n.out.Persist, job)
 			if len(job.Entries) > 0 {
@@ -627,7 +658,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			}
 			n.deliver(m.GetResponses())
 		default:
-			n.out.Send = append(n.out.Send, m)
+			n.send(m)
 		}
 	}
 	n.serveReads()
@@ -782,4 +813,14 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 func isAnswer(err error) bool {
 	_, ok := status.FromError(err)
 	return ok
+}
+
+// send puts a message to a peer out, or holds it while a term or vote
+// change is not yet durable.
+func (n *Node) send(m *raftpb.Message) {
+	if n.unsyncedVotes > 0 {
+		n.held = append(n.held, m)
+		return
+	}
+	n.out.Send = append(n.out.Send, m)
 }
