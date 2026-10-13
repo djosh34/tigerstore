@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/djosh34/tigerstore/internal/expclock"
 	"io"
 	"net"
 	"sync"
@@ -395,9 +396,11 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 	var buf []byte
 	for {
 		if !s.pending() {
+			expclock.Event("peer_flush_begin", s.id, uint64(w.Buffered()), 0, 0)
 			if err := w.Flush(); err != nil {
 				return err
 			}
+			expclock.Event("peer_flush_end", s.id, 0, 0, 0)
 		}
 		m, ok := s.next(ctx)
 		if !ok {
@@ -415,6 +418,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		if err != nil {
 			return err
 		}
+		expclock.Event("peer_write", uint64(m.GetType()), s.id, m.GetIndex(), m.GetCommit())
 		binary.BigEndian.PutUint32(hdr[:4], uint32(len(buf)))
 		if err := c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 			return err

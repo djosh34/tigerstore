@@ -7,7 +7,9 @@ package node
 import (
 	"context"
 	"errors"
+	"github.com/djosh34/tigerstore/internal/expclock"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -138,6 +140,9 @@ func New(cfg Config) (*Node, error) {
 		return nil, err
 	}
 	cfg.Core.Boot = rand.Uint64()
+	if os.Getenv("PRE47_TRACE") == "1" {
+		cfg.Core.Trace = expclock.Event
+	}
 	c, err := core.New(cfg.Core, rec)
 	if err != nil {
 		return nil, errors.Join(err, w.Close())
@@ -171,6 +176,7 @@ func (n *Node) Done() <-chan struct{} { return n.done }
 // Deliver hands the node a message from a peer. It blocks while the
 // committer is behind, which slows down that peer's connection.
 func (n *Node) Deliver(m *raftpb.Message) {
+	expclock.Event("recv", uint64(m.GetType()), m.GetFrom(), m.GetIndex(), m.GetCommit())
 	select {
 	case n.inbox <- input{msg: m}:
 	case <-n.done:
@@ -188,11 +194,13 @@ func (n *Node) Unreachable(id uint64) {
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+	expclock.Event("arrival", r.id, uint64(len(n.inbox)), 0, 0)
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return nil, err
 	}
 	select {
 	case rep := <-r.reply:
+		expclock.Event("do_reply", r.id, uint64(len(n.inbox)), 0, 0)
 		return rep.Resp, rep.Err
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -230,6 +238,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var next []core.PersistJob
 	var deferred []*request
 	inflight := false
+	var group uint64
 	streams := map[uint64]*WatchStream{}
 	for {
 		inbox := n.inbox
@@ -242,12 +251,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		select {
 		case in := <-inbox:
+			expclock.Event("turn_input", group, uint64(len(n.inbox)), uint64(len(deferred)), 0)
 			if inflight && in.req != nil {
 				deferred = append(deferred, in.req)
 			} else {
 				n.handle(in, waiters, streams)
 			}
 		case done := <-n.persisted:
+			expclock.Event("completion", group, uint64(len(n.inbox)), uint64(len(deferred)), 0)
 			if done.err != nil {
 				return done.err
 			}
@@ -261,6 +272,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			clear(deferred)
 			deferred = deferred[:0]
 		case toDisk <- next:
+			expclock.Event("disk_enqueue", group, uint64(len(n.inbox)), uint64(len(deferred)), 0)
 			next = nil
 			continue
 		case <-ticker.C:
@@ -286,17 +298,31 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if inflight {
 			continue
 		}
+		expclock.Event("turn_process", group, uint64(len(n.inbox)), uint64(len(deferred)), uint64(len(waiters)))
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
+			group++
+			for i := range eff.Persist {
+				eff.Persist[i].TraceGroup = group
+				for _, e := range eff.Persist[i].Entries {
+					expclock.Event("group_entry", group, e.GetIndex(), uint64(len(e.GetData())), 0)
+				}
+				if h := eff.Persist[i].HardState; h != nil {
+					expclock.Event("group_hs", group, h.Term, h.Vote, h.Commit)
+				}
+			}
+			expclock.Event("group", group, uint64(len(eff.Persist)), uint64(len(n.inbox)), uint64(len(waiters)))
 			next = eff.Persist
 			inflight = true
 		}
 		for _, m := range eff.Send {
+			expclock.Event("send", uint64(m.GetType()), m.GetTo(), m.GetIndex(), m.GetCommit())
 			t.Send(m)
 		}
 		for _, r := range eff.Replies {
 			if ch, ok := waiters[r.ID]; ok {
 				delete(waiters, r.ID)
+				expclock.Event("reply", r.ID, group, uint64(len(n.inbox)), uint64(len(waiters)))
 				ch <- r
 			}
 		}
@@ -333,9 +359,11 @@ func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[
 		delete(streams, in.stream)
 		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:
+		expclock.Event("handle_req", in.req.id, uint64(len(n.inbox)), 0, 0)
 		waiters[in.req.id] = in.req.reply
 		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op})
 	case in.msg != nil:
+		expclock.Event("step", uint64(in.msg.GetType()), in.msg.GetFrom(), in.msg.GetIndex(), in.msg.GetCommit())
 		if err := n.core.Step(in.msg); err != nil {
 			n.logf("step message from %d: %v", in.msg.GetFrom(), err)
 		}
@@ -363,6 +391,8 @@ func (n *Node) persist(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
+		group := jobs[0].TraceGroup
+		expclock.Event("persist_start", group, uint64(len(jobs)), 0, 0)
 		var hs *wal.HardState
 		for _, j := range jobs {
 			n.wal.Append(nil, j.Entries)
@@ -372,9 +402,11 @@ func (n *Node) persist(ctx context.Context) {
 		}
 		n.wal.Append(hs, nil)
 		done := persistDone{jobs: jobs}
+		expclock.Event("sync_start", group, 0, 0, 0)
 		if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
 		}
+		expclock.Event("persist_end", group, 0, 0, 0)
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():

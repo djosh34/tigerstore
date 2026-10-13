@@ -47,6 +47,7 @@ func TestPre47ActiveCounts(t *testing.T) {
 }
 
 func TestPre47Options(t *testing.T) {
+	t.Setenv("PRE47_TRACE", "1")
 	for _, tc := range []struct {
 		window, streams string
 		want            int

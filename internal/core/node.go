@@ -32,6 +32,8 @@ const MaxRequestBytes = 1536 * 1024
 
 // Config sets up one node.
 type Config struct {
+	// Trace is an optional experiment callback. The adapter supplies the clock.
+	Trace func(string, uint64, uint64, uint64, uint64)
 	// ID is this node's Raft ID, not 0.
 	ID uint64
 	// Peers are the Raft IDs of all voters, this node included.
@@ -91,9 +93,10 @@ type Reply struct {
 // sync. The driver runs jobs in order and calls Persisted for each, in the
 // same order, once it is durable.
 type PersistJob struct {
-	HardState *wal.HardState
-	Entries   []*raftpb.Entry
-	msg       *raftpb.Message
+	TraceGroup uint64
+	HardState  *wal.HardState
+	Entries    []*raftpb.Entry
+	msg        *raftpb.Message
 }
 
 // Effects is what the core asks its driver to do.
@@ -267,6 +270,7 @@ func (n *Node) Unreachable(id uint64) {
 // Submit hands the node a client request. The reply comes in a later
 // Effects.
 func (n *Node) Submit(r Request) {
+	n.trace("submit", r.ID, uint64(len(n.proposals)), uint64(n.propBytes), n.applied)
 	if n.err != nil {
 		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
 		return
@@ -362,6 +366,7 @@ func (n *Node) propose() {
 	if len(n.proposals) == 0 {
 		return
 	}
+	n.trace("propose", uint64(len(n.proposals)), uint64(n.propBytes), n.applied, 0)
 	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, n.proposals)
 	if err != nil {
 		n.fail(err)
@@ -419,7 +424,14 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 // Process runs Raft until it has nothing more to do and returns the
 // effects gathered since the last call. A non-nil error means the node
 // stopped; the effects are still valid and carry its last replies.
+func (n *Node) trace(k string, a, b, c, d uint64) {
+	if n.cfg.Trace != nil {
+		n.cfg.Trace(k, a, b, c, d)
+	}
+}
+
 func (n *Node) Process() (Effects, error) {
+	n.trace("process_begin", uint64(len(n.proposals)), n.applied, 0, 0)
 	if n.err == nil {
 		n.propose()
 		n.requestReads()
@@ -433,6 +445,7 @@ func (n *Node) Process() (Effects, error) {
 	}
 	out := n.out
 	n.out = Effects{}
+	n.trace("process_end", uint64(len(out.Persist)), uint64(len(out.Send)), uint64(len(out.Replies)), n.applied)
 	return out, n.err
 }
 
@@ -445,6 +458,7 @@ func (n *Node) stop() {
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
+	n.trace("ready", rd.GetCommit(), uint64(len(rd.Messages)), uint64(len(rd.Entries)), n.applied)
 	if rd.SoftState != nil {
 		if rd.Lead != n.leader && rd.Lead != raft.None {
 			// A term change clears Raft's pending read requests, so ask the
@@ -560,6 +574,7 @@ func (n *Node) fillHeader(h *pb.ResponseHeader) {
 // apply runs committed entries against the index and answers the requests
 // that this run of the node is waiting for.
 func (n *Node) apply(ents []*raftpb.Entry) error {
+	n.trace("apply_begin", uint64(len(ents)), n.applied, 0, 0)
 	for _, e := range ents {
 		if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 			n.applied = e.GetIndex()
@@ -567,6 +582,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		}
 		err := DecodeBatch(e.GetData(), func(origin, boot, id uint64, op proto.Message) error {
 			resp, err := n.applyOp(op)
+			n.trace("apply_req", id, e.GetIndex(), origin, uint64(n.kv.Rev()))
 			if errors.Is(err, errInternal) {
 				return err
 			}
@@ -585,6 +601,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		}
 		n.applied = e.GetIndex()
 	}
+	n.trace("apply_end", uint64(len(ents)), n.applied, 0, 0)
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/djosh34/tigerstore/internal/expclock"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/osfs"
 )
@@ -19,6 +20,8 @@ func pre50Observe(n *node.Node) error {
 	if addr == "" {
 		return nil
 	}
+	http.HandleFunc("/debug/trace/start", expclock.Start)
+	http.HandleFunc("/debug/trace/stop", expclock.Stop)
 	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader()}); err != nil {
 			return

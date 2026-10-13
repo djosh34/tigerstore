@@ -2,6 +2,7 @@ package osfs
 
 // Throwaway follow-up instrumentation. The paired baseline predates this file.
 import (
+	"github.com/djosh34/tigerstore/internal/expclock"
 	"os"
 	"sync/atomic"
 	"time"
@@ -34,7 +35,9 @@ func (f file) Sync() error {
 		return f.File.Sync()
 	}
 	start := time.Now()
+	expclock.Event("fsync_begin", 0, 0, 0, 0)
 	err := f.File.Sync()
+	expclock.Event("fsync_end", 0, 0, 0, 0)
 	syncNanos.Add(uint64(time.Since(start)))
 	syncs.Add(1)
 	return err

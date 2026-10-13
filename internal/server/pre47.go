@@ -19,7 +19,10 @@ import (
 // a no-op outside capture. These hooks still have a cost outside capture;
 // compare an uninstrumented binary before attributing a performance change.
 func pre47Options() []grpc.ServerOption {
-	opts := []grpc.ServerOption{grpc.StatsHandler(&pre47Stats{})}
+	var opts []grpc.ServerOption
+	if os.Getenv("PRE47_TRACE") == "1" {
+		opts = append(opts, grpc.StatsHandler(&pre47Stats{}))
+	}
 	if text := os.Getenv("PRE47_GRPC_WINDOW"); text != "" {
 		n, err := strconv.ParseUint(text, 10, 31)
 		if err != nil || n < 65535 {
