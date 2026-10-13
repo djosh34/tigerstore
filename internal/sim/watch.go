@@ -87,6 +87,17 @@ func (s *Sim) startWatchers() {
 	}
 }
 
+// closeStream disconnects a watch client from its stream at once. The node
+// learns of it in an event of its own, so a paused node handles it when it
+// resumes.
+func (s *Sim) closeStream(w *watchClient) {
+	n := s.nodes[w.node]
+	if n.up && n.gen == w.gen {
+		delete(n.streams, w.stream)
+		s.push(&event{at: s.now, kind: evStreamClose, node: n.idx, gen: n.gen, stream: w.stream})
+	}
+}
+
 // drop closes the stream on purpose, as clients do on a timeout, and
 // resumes up to 2 s later, so the next stream catches up on history.
 func (w *watchClient) drop() {
@@ -96,12 +107,7 @@ func (w *watchClient) drop() {
 		return
 	}
 	if w.open {
-		n := s.nodes[w.node]
-		if n.up && n.gen == w.gen {
-			delete(n.streams, w.stream)
-			n.core.CloseWatchStream(w.stream)
-			s.process(n)
-		}
+		s.closeStream(w)
 		w.open = false
 		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
 	}
@@ -167,11 +173,7 @@ func (w *watchClient) receive(e *event) {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
-		if n := s.nodes[w.node]; n.up && n.gen == w.gen {
-			delete(n.streams, w.stream)
-			n.core.CloseWatchStream(w.stream)
-			s.process(n)
-		}
+		s.closeStream(w)
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
 		w.start, w.next, w.events, w.responses, w.open = 0, 0, nil, nil, false
 		s.push(&event{at: s.now + s.clientLatency(), kind: evWatchOpen, watch: w})

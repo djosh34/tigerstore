@@ -7,6 +7,7 @@
 package simfs
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"maps"
@@ -98,25 +99,37 @@ func (d *Disk) Durable() *Disk {
 	return c
 }
 
-// Corrupt overwrites a few synced bytes in a random file, like a write that
-// landed at the wrong place. It keeps away from the last tail bytes of each
-// file, where damage looks the same as a torn write. It reports whether it
-// found a place.
-func (d *Disk) Corrupt(rng *rand.Rand, tail int) bool {
-	var names []string
-	for _, name := range sortedNames(d.durable) {
-		if len(d.durable[name].durable) > tail+64 {
-			names = append(names, name)
-		}
-	}
-	if len(names) == 0 {
+// Corrupt copies 16 to 64 synced bytes from a random file and offset over
+// synced bytes of another place, like a write that landed at the wrong
+// offset. It leaves the last file by name alone: the WAL names segments in
+// order, and damage in the newest one can look the same as a torn write,
+// which recovery cuts off. It reports whether it changed anything.
+func (d *Disk) Corrupt(rng *rand.Rand) bool {
+	names := sortedNames(d.durable)
+	if len(names) < 2 {
 		return false
 	}
-	f := d.durable[names[rng.IntN(len(names))]]
-	at := 32 + rng.IntN(len(f.durable)-tail-32)
-	for i := at; i < at+8 && i < len(f.durable); i++ {
-		f.durable[i] ^= byte(1 + rng.IntN(255))
+	var targets []string
+	for _, name := range names[:len(names)-1] {
+		if len(d.durable[name].durable) >= 64 {
+			targets = append(targets, name)
+		}
 	}
+	if len(targets) == 0 {
+		return false
+	}
+	f := d.durable[targets[rng.IntN(len(targets))]]
+	n := 16 + rng.IntN(49)
+	src := d.durable[names[rng.IntN(len(names))]].durable
+	if len(src) < n || len(f.durable) < n {
+		return false
+	}
+	from := rng.IntN(len(src) - n + 1)
+	at := rng.IntN(len(f.durable) - n + 1)
+	if bytes.Equal(f.durable[at:at+n], src[from:from+n]) {
+		return false
+	}
+	copy(f.durable[at:at+n], slices.Clone(src[from:from+n]))
 	f.data = slices.Clone(f.durable)
 	f.cut = false
 	return true

@@ -52,6 +52,9 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
+	// HalfOpenAt, if set, makes the link from whichever node leads then
+	// to a follower half-open for the peer write timeout.
+	HalfOpenAt int64
 	// StallLeaderAt, if set, stalls the disk of whichever node leads at
 	// that time until healing.
 	StallLeaderAt int64
@@ -102,11 +105,17 @@ type Faults struct {
 	// envelope, which the lease lower bound allows for.
 	DriftPerMille  int64
 	ClockJumpEvery int64
-	// SwitchEvery, if set, switches between random link masks that often
-	// during the faults, instead of LinkEvery's slower changes.
+	// HalfOpenEvery is the mean time between half-open links: one
+	// directed link swallows everything for 0.5 to 5 s, the peer write
+	// timeout, and then the sender's connection fails and Raft hears the
+	// peer is unreachable.
+	HalfOpenEvery int64
+	// SwitchEvery is the mean time between switches to a random link
+	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
-	// HoldMask, if HoldMaskAt is set, sets the link mask at that time and
-	// keeps it until healing.
+	// HoldMask, if HoldMaskAt is set, sets the link mask at that time.
+	// Other link faults can change it later; with none, it holds until
+	// healing.
 	HoldMask   uint64
 	HoldMaskAt int64
 }
@@ -137,6 +146,7 @@ func DefaultConfig(seed uint64) Config {
 			PauseEvery:     6 * Second,
 			DriftPerMille:  50,
 			ClockJumpEvery: 6 * Second,
+			HalfOpenEvery:  8 * Second,
 		},
 	}
 }
@@ -151,12 +161,24 @@ const (
 	evCrashOnce
 	evLinksOnce
 	evDiskFault
+	evDiskFaultOnce
 	evStall
+	evStallLeader
 	evCheckpoint
 	evLinkStall
+	evLinkStallOnce
 	evPause
+	evPauseOnce
+	evResume
 	evClockJump
+	evClockJumpOnce
+	evHalfOpen
+	evHalfOpenOnce
+	evHalfOpenAt
+	evHalfOpenEnd
 	evSwitch
+	evHoldMask
+	evStreamClose
 	evRestart
 	evLinks
 	evHeal
@@ -172,18 +194,21 @@ const (
 )
 
 type event struct {
-	at    int64
-	seq   uint64
-	kind  kind
-	node  int
-	gen   uint64 // node generation or link epoch the event belongs to
-	from  int
-	data  []byte
-	jobs  []core.PersistJob
-	op    *clientOp
-	watch *watchClient
-	resp  proto.Message
-	err   error
+	at   int64
+	seq  uint64
+	kind kind
+	node int
+	gen  uint64 // node generation or link epoch the event belongs to
+	from int
+	// stream is the watch stream of an evStreamClose; number is the
+	// message's place on its link.
+	stream, number uint64
+	data           []byte
+	jobs           []core.PersistJob
+	op             *clientOp
+	watch          *watchClient
+	resp           proto.Message
+	err            error
 }
 
 // queue is a binary min-heap of events by time, then sequence number.
@@ -255,14 +280,17 @@ type node struct {
 	streams    map[uint64]*watchClient
 
 	// tickEvery is this node's tick interval, off by up to the clock drift;
-	// pausedUntil holds the whole process back.
+	// pausedUntil holds the whole process back, and held keeps its events
+	// in order until it resumes.
 	tickEvery, pausedUntil int64
-	pauses                 [][2]int64
+	held                   []*event
 	lastJump               int64
 	// stallUntil holds back disk writes until then; stalls keeps every
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// syncing is the event that ends the disk write in flight.
+	syncing *event
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
@@ -279,6 +307,12 @@ type link struct {
 	// everything on the link back, like a stalled TCP stream.
 	base, jitter int64
 	stallUntil   int64
+	// halfOpenUntil swallows what the link carries until the sender's
+	// connection fails.
+	halfOpenUntil int64
+	// sent numbers the messages put on the link; delivered is the number
+	// of the last one that arrived, which only grows.
+	sent, delivered uint64
 }
 
 // Sim is one run.
@@ -301,9 +335,13 @@ type Sim struct {
 	expiredAt    map[int64]int64
 	expiredOrder []int64
 	checkpoints  []*checkpoint
-	history      []*Record
-	stats        Stats
-	err          error
+	halfOpens    []halfOpenLink
+	// applied is the highest index any node has applied.
+	applied    uint64
+	stallStops []int64
+	history    []*Record
+	stats      Stats
+	err        error
 }
 
 // Stats counts what happened in a run.
@@ -321,8 +359,10 @@ type Stats struct {
 	// that found their disk damaged, and ColdRestarts the erase-one-disk
 	// restarts checked.
 	DiskFaults, StalledStops, Fenced, ColdRestarts int
-	// Pauses counts process pauses.
-	Pauses int
+	// Pauses counts process pauses, LinkStalls stalled links, ClockJumps
+	// clock jumps, HalfOpens half-open links, and Asymmetric the links
+	// that drew a delay at least 10 times that of the other direction.
+	Pauses, LinkStalls, ClockJumps, HalfOpens, Asymmetric int
 }
 
 // Result is the outcome of a run.
@@ -334,6 +374,9 @@ type Result struct {
 	Log     []proto.Message
 	Watches []WatchResult
 	Stats   Stats
+	// StallStops are the times leaders stopped on a stalled disk.
+	StallStops []int64
+	halfOpens  []halfOpenLink
 	// FinalRev is the revision of the converged cluster at the end.
 	FinalRev int64
 	// Clients is the number of request clients.
@@ -368,14 +411,17 @@ func Run(cfg Config) (*Result, error) {
 	}
 	s.scheduleDiskFaults()
 	s.scheduleNetFaults()
+	if cfg.HalfOpenAt > 0 {
+		s.push(&event{at: cfg.HalfOpenAt, kind: evHalfOpenAt})
+	}
 	if cfg.StallLeaderAt > 0 {
-		s.push(&event{at: cfg.StallLeaderAt, kind: evStall, gen: 1})
+		s.push(&event{at: cfg.StallLeaderAt, kind: evStallLeader})
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 	if err := s.loop(); err != nil {
 		return nil, err
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, Clients: cfg.Clients}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
@@ -457,11 +503,10 @@ func (s *Sim) fail(format string, args ...any) {
 }
 
 func (s *Sim) handle(e *event) {
-	if n := s.target(e); n != nil && n.pausedUntil > s.now {
+	if n := s.target(e); n != nil && (n.pausedUntil > s.now || len(n.held) > 0) {
 		// A paused process sees nothing until it resumes; then it gets
 		// everything at once, in order.
-		e.at = n.pausedUntil
-		s.push(e)
+		n.held = append(n.held, e)
 		return
 	}
 	switch e.kind {
@@ -485,19 +530,58 @@ func (s *Sim) handle(e *event) {
 	case evCrashOnce:
 		s.crashRandom()
 	case evDiskFault:
-		s.injectDiskFault(e.gen == 1)
+		s.injectDiskFault()
+		if !s.healed {
+			s.push(&event{at: s.exp(s.cfg.Faults.DiskErrorEvery), kind: evDiskFault})
+		}
+	case evDiskFaultOnce:
+		if !s.injectDiskFault() && !s.healed {
+			s.push(&event{at: s.now + 100*Millisecond, kind: evDiskFaultOnce})
+		}
 	case evStall:
-		s.injectStall(e.gen == 1)
+		s.injectStall()
+	case evStallLeader:
+		s.stallLeader()
 	case evCheckpoint:
 		s.takeCheckpoint()
 	case evLinkStall:
 		s.stallLink()
+		s.again(e, s.cfg.Faults.LinkStallEvery)
+	case evLinkStallOnce:
+		s.retry(e, s.stallLink())
 	case evPause:
 		s.pause()
+		s.again(e, s.cfg.Faults.PauseEvery)
+	case evPauseOnce:
+		s.retry(e, s.pause())
+	case evResume:
+		s.resume(s.nodes[e.node])
 	case evClockJump:
 		s.jumpClock()
+		s.again(e, s.cfg.Faults.ClockJumpEvery)
+	case evClockJumpOnce:
+		s.retry(e, s.jumpClock())
+	case evHalfOpen:
+		s.halfOpen(-1, 0)
+		s.again(e, s.cfg.Faults.HalfOpenEvery)
+	case evHalfOpenOnce:
+		s.retry(e, s.halfOpen(-1, 0))
+	case evHalfOpenAt:
+		s.halfOpen(s.leaderIdx(), halfOpenTimeout)
+	case evHalfOpenEnd:
+		s.halfOpenEnd(e)
 	case evSwitch:
-		s.switchLinks(e.gen)
+		s.switchLinks()
+	case evHoldMask:
+		if !s.healed {
+			s.stats.LinkChanges++
+			s.setLinks(s.cfg.Faults.HoldMask)
+		}
+	case evStreamClose:
+		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
+			n.core.CloseWatchStream(e.stream)
+			s.process(n)
+		}
 	case evRestart:
 		n := s.nodes[e.node]
 		if !n.up && n.gen == e.gen {
@@ -542,9 +626,22 @@ func (s *Sim) start(n *node) error {
 		return nil
 	}
 	w, rec, err := wal.Open(n.disk)
+	if errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace) {
+		// An injected fault hit recovery, which can write: a failed boot.
+		// The node tries again later from what its disk holds.
+		s.stats.DiskFaults++
+		n.disk.ClearFaults()
+		n.disk.Crash(s.rng)
+		s.mix(0xfb, uint64(n.idx))
+		s.push(&event{at: s.now + 1 + s.rng.Int64N(Second), kind: evRestart, node: n.idx, gen: n.gen})
+		return nil
+	}
 	if n.corrupted {
 		// The disk was damaged on purpose; the node must notice and stay
 		// down, as an operator would replace the disk.
+		if err == nil {
+			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
+		}
 		if !errors.Is(err, wal.ErrCorrupt) {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
@@ -556,7 +653,9 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	w.SetSegmentBytes(256 << 10)
+	// Small segments, so that most of the log is in sealed ones, where
+	// any damage is detectable.
+	w.SetSegmentBytes(32 << 10)
 	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
 	cfg.Boot = s.rng.Uint64()
 	// Progress notifications every 2 s instead of 10 minutes, so runs see
@@ -572,7 +671,7 @@ func (s *Sim) start(n *node) error {
 	if d := s.cfg.Faults.DriftPerMille; d > 0 && !s.healed {
 		n.tickEvery += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
 	}
-	n.diskQ, n.diskBusy = nil, false
+	n.diskQ, n.diskBusy, n.syncing = nil, false, nil
 	s.mix(0xb007, uint64(n.idx), uint64(len(rec.Entries)), rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
 	s.process(n)
@@ -581,6 +680,9 @@ func (s *Sim) start(n *node) error {
 
 // process runs the node's core and carries out its effects.
 func (s *Sim) process(n *node) {
+	if n.pausedUntil > s.now {
+		s.fail("node %d works while paused, at %d ms", n.id, s.now/Millisecond)
+	}
 	eff, err := n.core.Process()
 	n.diskQ = append(n.diskQ, eff.Persist...)
 	for _, m := range eff.Send {
@@ -598,8 +700,10 @@ func (s *Sim) process(n *node) {
 			s.expiredOrder = append(s.expiredOrder, id)
 		}
 	}
+	s.applied = max(s.applied, n.core.Applied())
 	if errors.Is(err, core.ErrDiskStalled) {
 		s.stats.StalledStops++
+		s.stallStops = append(s.stallStops, s.now)
 		s.stopNode(n)
 		return
 	}
@@ -617,6 +721,7 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	n.inflight = jobs
 	for _, j := range jobs {
 		n.log.Append(j.HardState, j.Entries)
 	}
@@ -625,7 +730,6 @@ func (s *Sim) startDisk(n *node) {
 		return
 	}
 	n.diskBusy = true
-	n.inflight = jobs
 	s.stats.DiskWrites++
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
@@ -635,21 +739,24 @@ func (s *Sim) startDisk(n *node) {
 	leader := n.core.Leader() == n.id
 	if (planted.On("B02") && leader) || (planted.On("B03") && !leader) {
 		// Planted: report the jobs durable before the fsync.
-		s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen})
+		n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen}
+		s.push(n.syncing)
 		for _, j := range jobs {
 			n.core.Persisted(j)
 		}
 		s.process(n)
 		return
 	}
-	s.push(&event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs})
+	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs}
+	s.push(n.syncing)
 }
 
 func (s *Sim) diskDone(e *event) {
 	n := s.nodes[e.node]
-	if !n.up || n.gen != e.gen {
+	if !n.up || n.gen != e.gen || n.syncing != e {
 		return
 	}
+	n.syncing = nil
 	if err := n.log.Sync(); err != nil {
 		s.diskFailed(n, err)
 		return
@@ -682,16 +789,28 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 		s.fail("marshal message: %w", err)
 		return
 	}
-	delay := 20*Microsecond + s.rng.Int64N(200*Microsecond)
-	if !s.healed {
+	if l.halfOpenUntil > s.now {
+		// The sender still sees its connection, but nothing arrives.
+		s.stats.Dropped++
+		return
+	}
+	var delay int64
+	if s.healed {
+		delay = 20*Microsecond + s.rng.Int64N(200*Microsecond)
+	} else {
 		delay = l.base + s.rng.Int64N(l.jitter+1)
 		if s.cfg.Faults.MaxDelay > 0 && s.rng.IntN(10) == 0 {
 			delay = s.rng.Int64N(s.cfg.Faults.MaxDelay) + 1
 		}
 	}
-	at := max(s.now+delay, l.last, l.stallUntil)
+	l.sent++
+	at := max(s.now+delay, l.last)
+	if l.stallUntil > s.now {
+		// After what the stall holds back, which arrives at stallUntil.
+		at = max(at, l.stallUntil+1)
+	}
 	l.last = at
-	s.push(&event{at: at, kind: evDeliver, node: to, from: from.idx, gen: l.epoch, data: b})
+	s.push(&event{at: at, kind: evDeliver, node: to, from: from.idx, gen: l.epoch, data: b, number: l.sent})
 }
 
 func (s *Sim) deliver(e *event) {
@@ -701,6 +820,17 @@ func (s *Sim) deliver(e *event) {
 		s.stats.Dropped++
 		return
 	}
+	if l.stallUntil > s.now {
+		// The link stalled while this was on it; it waits too, in order.
+		e.at = l.stallUntil
+		s.push(e)
+		return
+	}
+	if e.number <= l.delivered {
+		s.fail("message %d from node %d to node %d arrived after message %d", e.number, e.from+1, e.node+1, l.delivered)
+		return
+	}
+	l.delivered = e.number
 	s.mixBytes(e.data)
 	m := &raftpb.Message{}
 	if err := proto.Unmarshal(e.data, m); err != nil {
@@ -747,6 +877,12 @@ func (s *Sim) crashRandom() {
 func (s *Sim) crash(n *node) {
 	s.stats.Crashes++
 	n.up = false
+	if n.pausedUntil > s.now {
+		// A crash ends a pause; the node handles what it held, as a node
+		// that is down.
+		n.pausedUntil = 0
+		s.push(&event{at: s.now, kind: evResume, node: n.idx})
+	}
 	n.core, n.log = nil, nil
 	n.disk.Crash(s.rng)
 	s.cut(n.idx)
@@ -804,20 +940,37 @@ func (s *Sim) setLinks(mask uint64) {
 			k++
 		}
 	}
+	for i := range s.links {
+		for j := range i {
+			a, b := s.links[i][j].base, s.links[j][i].base
+			if !s.healed && (a >= 10*b || b >= 10*a) {
+				s.stats.Asymmetric++
+			}
+		}
+	}
 }
 
 func (s *Sim) heal() {
 	s.healed = true
 	s.setLinks(1<<6 - 1)
+	// Link stalls and pauses end on their own, within 2 s, before the
+	// liveness rule starts; ending them early would let new messages
+	// overtake held ones. Half-open links end now.
 	for i := range s.links {
 		for j := range s.links[i] {
-			s.links[i][j].stallUntil = 0
+			s.links[i][j].halfOpenUntil = 0
 		}
 	}
 	for _, n := range s.nodes {
-		n.pausedUntil = 0
 		if n.stallUntil > s.now && len(n.stalls) > 0 {
 			n.stalls[len(n.stalls)-1][1] = s.now
+			if n.syncing != nil {
+				// The stalled write finishes now instead.
+				e := *n.syncing
+				e.at = s.now + 50*Microsecond + s.rng.Int64N(950*Microsecond)
+				n.syncing = &e
+				s.push(n.syncing)
+			}
 		}
 		n.stallUntil = 0
 		n.disk.ClearFaults()

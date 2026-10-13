@@ -31,11 +31,11 @@ import (
 )
 
 // ErrDiskStalled stops a leader whose local append took longer than
-// stallTicks election timeouts.
+// StallTicks election timeouts.
 var ErrDiskStalled = errors.New("core: the leader's disk stalled; stopping so that another node can lead")
 
-// stallTicks is how many election timeouts a leader's append may take.
-const stallTicks = 2
+// StallTicks is how many election timeouts a leader's append may take.
+const StallTicks = 2
 
 // MaxRequestBytes is etcd's default --max-request-bytes.
 const MaxRequestBytes = 1536 * 1024
@@ -279,7 +279,7 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
-	if !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= stallTicks*int64(n.cfg.ElectionTicks) {
+	if !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
 		// never elect a replacement. It stops instead; the healthy pair
 		// elects, and a restart brings it back from its log.
@@ -525,9 +525,7 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	if len(job.Entries) > 0 {
 		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
-		if len(n.appending) > 0 {
-			n.appending = n.appending[1:]
-		}
+		n.appending = n.appending[1:]
 	}
 	n.deliver(job.msg.GetResponses())
 }

@@ -5,6 +5,7 @@ package sim
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"testing"
 	"testing/cryptotest"
 
@@ -98,7 +99,7 @@ func TestPlanted(t *testing.T) {
 	t.Cleanup(func() { planted.Active = "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
 		cryptotest.SetGlobalRandom(t, seed)
-		res, err := Run(c.cfg(seed))
+		res, err := runCatching(c.cfg(seed))
 		if err == nil {
 			err = independent(res)
 		}
@@ -111,4 +112,15 @@ func TestPlanted(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
+}
+
+// runCatching runs a seed and turns a panic into an error: Raft panics on
+// broken invariants, which stops a real node too.
+func runCatching(cfg Config) (res *Result, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("seed %d panicked: %v", cfg.Seed, p)
+		}
+	}()
+	return Run(cfg)
 }
