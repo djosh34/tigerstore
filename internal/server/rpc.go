@@ -27,10 +27,10 @@ type method struct {
 
 // methods are the etcd methods that are served. Every other method of
 // etcd's services answers Unimplemented, as grpc-go's generated
-// Unimplemented servers do; Kubernetes 1.37 falls back from RangeStream on
-// exactly that code.
+// Unimplemented servers do.
 var methods = map[string]*method{
 	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
+	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream},
 	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
 	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
 	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},

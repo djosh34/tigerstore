@@ -45,7 +45,7 @@ B05 and B16 target code this design lacks (snapshots, segment cleaning), so, as 
 
 # Kubernetes storage tests
 
-`apiservertest/run.sh <version>` runs the etcd3 storage tests of `k8s.io/apiserver` (`pkg/storage/etcd3/...` and `pkg/storage/testing`) against tigerstore, unchanged. The `apiserver` job in ci runs it for v0.35.0 and v0.36.0 (Kubernetes 1.35 and 1.36). v0.37.0 joins once tigerstore serves RangeStream, which its tests use: `TestGetListStreamMultiChunk`, `TestWatchChanSync/RangeStream` and the `TestWatchChanSyncStream*` tests fail until then.
+`apiservertest/run.sh <version>` runs the etcd3 storage tests of `k8s.io/apiserver` (`pkg/storage/etcd3/...` and `pkg/storage/testing`) against tigerstore, unchanged. The `apiserver` job in ci runs it for v0.35.0, v0.36.0 and v0.37.0 (Kubernetes 1.35 to 1.37). The 1.37 tests use RangeStream (`TestGetListStreamMultiChunk`, `TestWatchChanSync/RangeStream`, `TestWatchChanSyncStream*`).
 
 `apiservertest/prepare` replaces the module's `testserver/test_server.go`, which embeds etcd, with an adapter that keeps the version's own client recorders. It also changes the one `*embed.Config` in `store_test.go` to the adapter's `Config`. Every `RunEtcd` call starts a fresh 3-node tigerstore over TLS with client certificates through `apiservertest/factory`, because deleting keys would not reset revisions, history, compaction or leases. The factory passes the progress interval the watch tests ask for as `--watch-progress-notify-interval`. `run.sh` fails if the tests still import `go.etcd.io/etcd/server/v3`.
 

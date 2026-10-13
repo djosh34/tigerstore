@@ -3,6 +3,8 @@ package mvcc
 import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // These checks run before a request enters the Raft log, like etcd's
@@ -21,6 +23,21 @@ func CheckRange(r *pb.RangeRequest) error {
 	}
 	if _, ok := pb.RangeRequest_SortTarget_name[int32(r.SortTarget)]; !ok {
 		return rpctypes.ErrGRPCInvalidSortOption
+	}
+	return nil
+}
+
+// CheckRangeStream validates a RangeStream request: a range request in
+// key order without revision filters, as etcd v3.7.2 serves it.
+func CheckRangeStream(r *pb.RangeRequest) error {
+	if err := CheckRange(r); err != nil {
+		return err
+	}
+	if !IsDefaultOrdering(r.SortTarget, r.SortOrder) {
+		return status.Error(codes.Unimplemented, "RangeStream does not support custom sort orders")
+	}
+	if hasRevisionFilters(r) {
+		return status.Error(codes.Unimplemented, "RangeStream does not support revision filters")
 	}
 	return nil
 }

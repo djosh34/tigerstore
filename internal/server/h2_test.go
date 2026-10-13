@@ -311,7 +311,7 @@ func TestRawFrames(t *testing.T) {
 	call(1, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("1")})
 	must(fr.WriteRSTStream(1, http2.ErrCodeCancel))
 	call(3, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("2")})
-	call(5, "/etcdserverpb.KV/RangeStream", &pb.RangeRequest{Key: []byte("raw")})
+	call(5, "/etcdserverpb.Maintenance/Defragment", &pb.DefragmentRequest{})
 	// A second end of the same stream is a stream error, not a second put.
 	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
 	must(fr.WriteData(7, true, nil))
