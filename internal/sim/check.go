@@ -89,15 +89,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	live := 0
-	liveFrom := s.healAt + s.cfg.LiveAfter
-	if s.lateFaultAt > 0 {
-		// The guaranteed disk fault fired after healing: the node restarts
-		// within MaxDown and then has the same time to serve.
-		liveFrom = max(liveFrom, s.lateFaultAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
-	}
-	if s.cfg.LiveFrom > 0 {
-		liveFrom = s.cfg.LiveFrom
-	}
+	liveFrom := s.liveFrom()
 	for _, r := range res.History {
 		if r.Call < liveFrom {
 			continue
@@ -593,4 +585,18 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 		}
 	}
 	return nil
+}
+
+// liveFrom is when the liveness rule starts: LiveAfter after healing, or
+// Config.LiveFrom. If the guaranteed disk fault fired after healing, the
+// node restarts within MaxDown and then gets the same time.
+func (s *Sim) liveFrom() int64 {
+	if s.cfg.LiveFrom > 0 {
+		return s.cfg.LiveFrom
+	}
+	t := s.healAt + s.cfg.LiveAfter
+	if s.lateFaultAt > 0 {
+		t = max(t, s.lateFaultAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
+	}
+	return t
 }
