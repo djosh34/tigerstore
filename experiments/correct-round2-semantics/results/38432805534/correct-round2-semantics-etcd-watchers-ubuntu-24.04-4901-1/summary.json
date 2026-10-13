@@ -1,0 +1,44 @@
+{
+  "artifact": "correct-round2-semantics-etcd-watchers-ubuntu-24.04-4901-1",
+  "attempt": {
+    "target": "etcd",
+    "scenario": "watchers",
+    "runner": "ubuntu-24.04",
+    "seed": 4901,
+    "rep": 1,
+    "watchers": 192
+  },
+  "reached_controller": true,
+  "recorded_history": true,
+  "controller_pass": true,
+  "passed": true,
+  "offline_pass": true,
+  "oracle_sets": 4,
+  "checker_verdicts": 16,
+  "checker_passes": 16,
+  "operations": 106,
+  "target": 63,
+  "watches": 192,
+  "faults": {
+    "peer-blackhole": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "stop-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "kill-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ]
+  },
+  "failures": [],
+  "checker_failures": []
+}
