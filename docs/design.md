@@ -6,7 +6,7 @@ This file is the current design. It starts from the merged starting design ([#32
 
 ## Status
 
-Built so far: the Go module, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`), the determinism lint (`internal/lint`), and the real node: its driver (`internal/node`), the peer transport (`internal/peer`), the etcd gRPC server on its own HTTP/2 code (`internal/server`) and the `tigerstore` command. The section "What is built" describes them. Everything else is the design that the next pull requests build.
+Built so far: the Go module, CI with lint, build and test, and the storage pieces of one node: the MVCC index (`internal/mvcc`), the Raft log on disk (`internal/wal`), the real disk adapter (`internal/osfs`), the simulated disk (`internal/simfs`), the committer (`internal/core`), the deterministic simulator (`internal/sim`), the determinism lint (`internal/lint`), and the real node: its driver (`internal/node`), the peer transport (`internal/peer`), the etcd gRPC server on its own HTTP/2 code (`internal/server`) and the `tigerstore` command. The real-process chaos job (`chaos/proxy`, `cmd/chaos`) runs the cluster under a fault proxy and signals. The section "What is built" describes them. Everything else is the design that the next pull requests build.
 
 ## Fixed by the owner
 
@@ -250,6 +250,8 @@ The same port answers `GET /version` and `GET /health`, over HTTP/2 and, for a T
 ### Real processes
 
 The fault proxy on every link, tc netem, SIGKILL, SIGSTOP, CPU throttling and a fault-injecting file layer. Each job checks that every requested fault was actually installed. Bugs in TLS, HTTP/2 or the Go scheduler get their regression test at the layer that reproduces them.
+
+Built so far: the seeded fault proxy (`chaos/proxy`) on every client and peer link, SIGKILL and SIGSTOP of the leader and of a follower, and the `chaos` CI job (`cmd/chaos`), which runs the four checkers on every history and fails when a requested fault was not installed or had no effect. [docs/testing.md](testing.md#real-process-chaos) describes the job and its faults. Later pieces of #49: tc netem packet faults and 1 to 10 ms between nodes, CPU throttling, the fault-injecting file layer and real ENOSPC, crashes timed inside WAL recovery, gray nodes and barely alive clients, several faults at once, and nightly campaigns.
 
 ### Budgets and regressions
 
