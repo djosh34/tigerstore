@@ -190,13 +190,28 @@ func (c *conn) signal() {
 	}
 }
 
+// maxCtrl bounds the control frames waiting for the writer, as x/net's
+// server does; a client that floods pings and does not read is dropped.
+const maxCtrl = 10000
+
 func (c *conn) queueCtrl(f ctrlFrame) {
 	c.mu.Lock()
-	if !c.closed {
-		c.ctrl = append(c.ctrl, f)
-	}
+	c.addCtrl(f)
 	c.mu.Unlock()
 	c.signal()
+}
+
+// addCtrl queues a control frame. c.mu is held.
+func (c *conn) addCtrl(f ctrlFrame) {
+	if c.closed {
+		return
+	}
+	if len(c.ctrl) >= maxCtrl {
+		// close takes c.mu, so it runs once the caller lets go.
+		go c.close()
+		return
+	}
+	c.ctrl = append(c.ctrl, f)
 }
 
 func (c *conn) readLoop() error {
@@ -290,8 +305,8 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 		}
 		return nil
 	})
-	if err == nil && !c.closed {
-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlSettingsAck})
+	if err == nil {
+		c.addCtrl(ctrlFrame{kind: ctrlSettingsAck})
 	}
 	c.mu.Unlock()
 	c.signal()
@@ -321,11 +336,14 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	if st != nil {
 		delete(c.streams, id)
 		st.reset = true
+		if st.deadline != nil {
+			st.deadline.Stop()
+		}
 		st.out = nil
 		st.queued = 0
 	}
-	if code != 0 && !c.closed {
-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
+	if code != 0 {
+		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
 	}
 	c.mu.Unlock()
 	if st != nil && st.cancel != nil {
@@ -350,9 +368,13 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 		c.mu.Lock()
 		st := c.streams[id]
 		c.mu.Unlock()
-		if st != nil && f.StreamEnded() {
+		if st != nil && f.StreamEnded() && !st.inEOF {
 			// Trailers from the client end its side of the stream.
 			return c.onEnd(st)
+		}
+		if st != nil {
+			c.resetStream(id, http2.ErrCodeStreamClosed)
+			return nil
 		}
 		return http2.ConnectionError(http2.ErrCodeProtocol)
 	}
@@ -383,6 +405,7 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 
 func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 	var timeout time.Duration
+	hasTimeout := false
 	var contentType, method, path string
 	needLeader := false
 	for _, h := range f.Fields {
@@ -394,9 +417,7 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 		case "content-type":
 			contentType = h.Value
 		case "grpc-timeout":
-			if d, ok := parseTimeout(h.Value); ok {
-				timeout = d
-			}
+			timeout, hasTimeout = parseTimeout(h.Value)
 		case "hasleader":
 			needLeader = needLeader || h.Value == "true"
 		}
@@ -412,25 +433,25 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 		}
 	}
 	// A call that the node runs needs no context of its own: the node
-	// answers it within its request timeout, a client enforces its own
-	// deadline, and a reset drops the reply.
+	// answers it within its request timeout, the deadline timer below ends
+	// it early, and a reset drops the reply.
 	if !grpc || (st.rpc != nil && st.rpc.op == nil) {
-		if timeout > 0 {
-			st.ctx, st.cancel = context.WithTimeout(c.ctx, timeout)
-		} else {
-			st.ctx, st.cancel = context.WithCancel(c.ctx)
-		}
+		st.ctx, st.cancel = context.WithCancel(c.ctx)
+	}
+	if st.rpc != nil && st.rpc.stream != nil {
+		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	c.mu.Lock()
 	st.sendWin = c.initWin
 	c.streams[id] = st
+	if grpc && hasTimeout {
+		// The deadline ends the call whether or not its request is
+		// complete or its handler started.
+		st.deadline = time.AfterFunc(timeout, st.expire)
+	}
 	c.mu.Unlock()
-	switch {
-	case !grpc:
-	case st.rpc == nil:
+	if grpc && st.rpc == nil {
 		st.finish(unknownMethod(path))
-	case st.rpc.stream != nil:
-		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	return st
 }
@@ -439,9 +460,28 @@ func (c *conn) onData(f *http2.DataFrame) error {
 	c.credit(int(f.Length))
 	c.mu.Lock()
 	st := c.streams[f.StreamID]
+	var halfClosed, overflow bool
+	if st != nil {
+		halfClosed = st.inEOF
+		// The stream's window is credited back only as Recv takes
+		// messages; a client that sends past it breaks flow control.
+		// Padding is never stored, so it is credited back at once.
+		st.recvUsed += len(f.Data())
+		overflow = st.recvUsed > streamWindow
+		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
+			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
+		}
+	}
 	c.mu.Unlock()
-	if st == nil {
+	switch {
+	case st == nil:
 		// A stream that is gone or reset; the data is dropped.
+		return nil
+	case halfClosed:
+		c.resetStream(f.StreamID, http2.ErrCodeStreamClosed)
+		return nil
+	case overflow:
+		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
 		return nil
 	}
 	if st.rpc != nil && !st.done.Load() {
@@ -523,9 +563,13 @@ var (
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 
-// headerBlock encodes fields as literals that are never indexed.
+// headerBlock encodes fields as literals that are never indexed. It
+// starts with a dynamic table size update to 0, so it is valid whatever
+// table size the client set: a decoder whose limit was lowered expects an
+// update in the next block.
 func headerBlock(fields ...hpack.HeaderField) []byte {
 	var b strings.Builder
+	b.WriteByte(0x20)
 	e := hpack.NewEncoder(&b)
 	for _, f := range fields {
 		f.Sensitive = true

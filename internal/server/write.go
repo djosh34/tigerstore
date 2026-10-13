@@ -95,22 +95,34 @@ func (c *conn) writeLoop() error {
 	}
 }
 
-// take moves the output that the windows allow into frames. c.mu is held.
+// take moves the output that the windows allow into frames. Each pass
+// gives every ready stream at most one frame of data, so one large reply
+// does not hold up the others. c.mu is held.
 func (c *conn) take(frames []wframe) []wframe {
 	budget := maxTake
-	kept := c.ready[:0]
-	for _, st := range c.ready {
-		if !st.reset {
-			frames = c.takeStream(st, frames, &budget)
+	for budget > 0 && len(c.ready) > 0 {
+		before := len(frames)
+		kept := c.ready[:0]
+		for _, st := range c.ready {
+			if !st.reset {
+				quantum := min(budget, c.maxFrame)
+				left := quantum
+				frames = c.takeStream(st, frames, &left)
+				budget -= quantum - left
+			}
+			if !st.reset && len(st.out) > 0 {
+				kept = append(kept, st)
+			} else {
+				st.listed = false
+			}
 		}
-		if !st.reset && len(st.out) > 0 {
-			kept = append(kept, st)
-		} else {
-			st.listed = false
+		clear(c.ready[len(kept):])
+		c.ready = kept
+		if len(frames) == before {
+			// Every stream left waits for a window.
+			break
 		}
 	}
-	clear(c.ready[len(kept):])
-	c.ready = kept
 	return frames
 }
 
@@ -174,6 +186,14 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	st.ended = true
 	delete(c.streams, st.id)
+	if st.cancel != nil {
+		// Calls that ended without a handler, such as unknown methods,
+		// release their context here.
+		st.cancel()
+	}
+	if st.deadline != nil {
+		st.deadline.Stop()
+	}
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}
