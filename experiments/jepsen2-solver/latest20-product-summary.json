@@ -1,0 +1,9 @@
+{
+  "tigerstore": {
+    "cases": 20,
+    "keys": 432,
+    "calls": 34436,
+    "infos": 66,
+    "generated": 0
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "source_parent_commit": "06e0f1c5ed072488cfd61eeecf840cbc455eb828",
+  "solver_commit": "12c8945aa3eb922f2017e74832b9d058b516b303",
+  "archive": "experiments/jepsen2/evidence/38448413416.tar.gz",
+  "archive_sha256": "37118bff52903f9899bcf0ee3ccc760cb08b3f1f0159ca5d35e6750f33e40b78",
+  "cases": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "tested_product_commit": "2b072ac7e7acb4aeef1a6e794145914201607b8c",
+  "parent_expected_outcomes": {
+    "operations": 34436,
+    "ok": 23626,
+    "fail": 5489,
+    "info": 5321,
+    "unfinished": 0
+  }
+}

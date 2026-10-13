@@ -44,6 +44,15 @@
       "members_manifest": "model-source-provenance.members.json",
       "members_manifest_sha256": "866fee097a527c6a05e0b95c63a9cd1e93bc9700e6d0f48074c73a6446586e17",
       "executed_commit": "a0d1b2c19aed096560050a2930b09cc8de149914"
+    },
+    {
+      "path": "latest20-success-38454147853.tar.gz",
+      "sha256": "dc704e67753be290e5727d6d205cefb9ab4dd56edbb6e39aea722c0d7542bcc3",
+      "bytes": 15006510,
+      "member_count": 15830,
+      "members_manifest": "latest20-success-38454147853.members.json",
+      "members_manifest_sha256": "0067f839c2e54c46076a85dae31187af2f769318c0baf7503f0b9c6ad062dbc0",
+      "executed_commit": "12c8945aa3eb922f2017e74832b9d058b516b303"
     }
   ]
 }

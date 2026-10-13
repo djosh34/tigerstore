@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Audit retained runner outputs and build an integration-ready summary."""
 import argparse
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +21,14 @@ def aggregate(root, run_id, artifacts):
         manifest = json.loads((directory / 'manifest.json').read_text())[case_id]
         model = json.loads((directory / 'model-source.json').read_text())
         assert model['record_identical'] is True
+        assert model['upstream_commit'] == 'b47cc401f27bfb7c28afd9ac088b5f0dca4501b8'
+        if 'model_record_sha256' in model:
+            assert model['model_record_sha256'] == '9d4bbb5a3652132be1553cc3f7acb66b5c845b9a82c0922b6d77c9bfe6dd2919'
+            assert model['upstream_source_sha256'] == '02d9feff2d36ab137887d760184db6375cf83d5520158b0a322418af3aa58c92'
+            assert model['copied_checker_source_sha256'] == '72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668'
+        else:
+            # Preserve the documented legacy label, without accepting a different source.
+            assert model['upstream_source_sha256'] == '72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668'
         source = directory / 'case/input/history.edn'
         members = {m['path']: m['sha256'] for m in manifest['members']}
         retained = {m['path']: m.get('retained_from_archive', True) for m in manifest['members']}
@@ -46,10 +55,15 @@ def aggregate(root, run_id, artifacts):
             assert r['independent_sha256'] == members[f'independent/{key}/history.edn']
             witness = json.loads((p / 'witness.json').read_text())
             assert len(witness['operations']) == r['solve']['operation_count'] == py['operations']
+            outcomes = Counter(o['status'] for o in witness['operations'])
+            assert set(outcomes) <= {'ok', 'fail', 'info', 'unfinished'}
+            assert outcomes['fail'] == py['upstream_failures']
+            assert outcomes['ok'] + py['included_infos'] == py['included']
             assert witness['full_sha256'] == r['full_sha256']
             assert witness['independent_sha256'] == r['independent_sha256']
             key_results.append({'key': key, 'valid': True, 'operations': py['operations'],
                 'included': py['included'], 'included_infos': py['included_infos'],
+                'original_outcomes': {s: outcomes[s] for s in ('ok', 'fail', 'info', 'unfinished')},
                 'omitted_optional': py['omitted'], 'upstream_failures': py['upstream_failures'],
                 'real_time_edges_checked': py['real_time_edges_checked'],
                 'final_version': py['final_version'], 'phase': r['solve']['phase'],
@@ -73,7 +87,9 @@ def aggregate(root, run_id, artifacts):
         'operation_count': sum(k['operations'] for c in cases for k in c['keys']),
         'included_info_count': sum(k['included_infos'] for c in cases for k in c['keys']),
         'generated_projection_count': sum(not k['saved_projection_retained_from_archive']
-                                          for c in cases for k in c['keys'])}
+                                          for c in cases for k in c['keys']),
+        'original_outcomes': {s: sum(k['original_outcomes'][s] for c in cases for k in c['keys'])
+                              for s in ('ok', 'fail', 'info', 'unfinished')}}
 
 
 if __name__ == '__main__':

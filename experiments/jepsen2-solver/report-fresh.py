@@ -14,6 +14,10 @@ dispatch = json.loads((p / (stem + '-dispatch-input.json')).read_text())
 assert r['conclusion'] == 'success' and r['headSha'] == dispatch['solver_commit']
 assert x['case_count'] == len(dispatch['cases']) == len(x['cases'])
 assert sorted(c['id'] for c in x['cases']) == dispatch['cases']
+if 'parent_expected_outcomes' in dispatch:
+    expected = dispatch['parent_expected_outcomes']
+    assert x['operation_count'] == expected['operations']
+    assert x['original_outcomes'] == {s: expected[s] for s in ('ok', 'fail', 'info', 'unfinished')}
 groups = defaultdict(lambda: {'cases': 0, 'keys': 0, 'calls': 0, 'infos': 0, 'generated': 0})
 for c in x['cases']:
     assert c['valid'] is True and c['archive_sha256'] == dispatch['archive_sha256']
@@ -40,6 +44,11 @@ lines = [f'# {stem} register certificate report', '',
     f'Its enforced SHA-256 is `{dispatch["archive_sha256"]}`.', '',
     '| Product | Histories | Keys | Client calls | Included infos | Generated projections |',
     '| --- | --- | --- | --- | --- | --- |']
+if 'tested_product_commit' in dispatch:
+    lines[6:6] = [f'The parent identified tested product commit `{dispatch["tested_product_commit"]}` for this input archive.', '']
+if 'original_outcomes' in x:
+    o = x['original_outcomes']
+    lines[6:6] = [f'Original client outcomes are {o["ok"]:,} ok, {o["fail"]:,} fail, {o["info"]:,} info, and {o["unfinished"]:,} unfinished. These counts were independently reconstructed from the complete retained operations and matched against the parent input totals.', '']
 for product, g in sorted(groups.items()):
     lines.append(f'| {product} | {g["cases"]} | {g["keys"]} | {g["calls"]:,} | {g["infos"]} | {g["generated"]} |')
 lines += ['', 'This is a register-model verdict only. Original checker results, crashes, missing online results, and fault-coverage failures remain separate evidence. A SAT certificate does not turn a failed fault-coverage check into a pass. No info was relabelled as fail, and no client history was truncated.', '',

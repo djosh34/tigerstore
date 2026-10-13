@@ -64,3 +64,13 @@ Run https://github.com/djosh34/tigerstore/actions/runs/38448351446 completed suc
 `MODEL_PROVENANCE.md` and `upstream-source-verification.json` retain the independent comparison with original GitHub blobs. The supplied register source differs from the whole original upstream file only in the existing WGL/concurrency checker wrapper. Its exact `VersionedRegister` record is byte-identical to both original upstream and the Clojure replay. The parent independently confirmed the same record hash.
 
 Legacy `model-source.json` outputs called the supplied checker-configured file hash `upstream_source_sha256`. These original outputs remain unchanged. Later runs record original source, copied checker-source, and model-record hashes separately. This is a provenance-label correction, not a model or certificate change. The original pinned source is retained as `sources/pinned_register.clj`.
+
+## Final latest-main candidate batch
+
+Run https://github.com/djosh34/tigerstore/actions/runs/38454147853 completed successfully at exact solver source/workflow commit `12c8945aa3eb922f2017e74832b9d058b516b303`. Input parent commit is `06e0f1c5ed072488cfd61eeecf840cbc455eb828`. The enforced archive SHA-256 is `37118bff52903f9899bcf0ee3ccc760cb08b3f1f0159ca5d35e6750f33e40b78`. The parent identified tested product commit `2b072ac7e7acb4aeef1a6e794145914201607b8c`.
+
+`latest20-verdicts.json` is the audited machine result. `latest20-report.md` and `latest20-product-summary.json` derive their counts only from that JSON. Original ok/fail/info/unfinished outcome counts were reconstructed from retained operations and matched against the parent's expected totals. All expected input case IDs and key sets have validated SAT certificates.
+
+`evidence/latest20-success-38454147853.tar.gz` permanently retains complete source histories, certificates, both verifier outputs, exact executed source snapshots, selftests, and logs. Archive/member hashes are in `evidence/manifest.json` and its matching sidecar. The original/source-copy/model-record hashes are separate in this run's native model-source metadata. All older archives remain unchanged.
+
+This completes the requested certificate checks. No more tests or workloads are needed. Register-model passes remain separate from the parent's fault and other checker results.
