@@ -44,7 +44,7 @@ for workload in $workloads; do
           -cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
           -pids "$(< "$data/cluster/pids")" -label "$target" -workload "$workload" \
           -value-size 1024 -keys 10000 -conns 8 -streams "$((n/8))" \
-          -rate 0 -warmup 3s -duration 10s -seed "$rep" -out "$out/$name.json"
+          -rate 0 -warmup "${WARMUP:-3s}" -duration "${DURATION:-10s}" -seed "$rep" -out "$out/$name.json"
         bench/cluster.sh check "$data/cluster"
         cleanup
       done
