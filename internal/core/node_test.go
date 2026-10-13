@@ -134,3 +134,60 @@ func TestStatusOneTerm(t *testing.T) {
 		t.Fatal("status has no downgrade info")
 	}
 }
+
+// TestWriteWaitsForLeader submits a write before the node has a leader.
+// Like etcd, whose raft.Node takes no proposal without a leader, the write
+// waits instead of failing with "no leader", and commits once the node is
+// elected (#105). A write that finds no leader before its deadline gets
+// etcd's timeout.
+func TestWriteWaitsForLeader(t *testing.T) {
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(DefaultConfig(1, []uint64{1}), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &single{t: t, disk: disk, log: w, n: n}
+	if n.Leader() != 0 {
+		t.Fatal("the node has a leader before any tick")
+	}
+	n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	if r := s.run(); len(r) != 0 {
+		t.Fatalf("a write without a leader was answered at once: %+v", r)
+	}
+	var got []Reply
+	for range 50 {
+		n.Tick()
+		got = append(got, s.run()...)
+		if len(got) > 0 {
+			break
+		}
+	}
+	if len(got) != 1 || got[0].ID != 1 || got[0].Err != nil {
+		t.Fatalf("the write after the election: %+v", got)
+	}
+
+	// A three-node member alone never gets a leader: its write times out.
+	disk = simfs.New()
+	w, rec, err = wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err = New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = &single{t: t, disk: disk, log: w, n: n}
+	n.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	got = s.run()
+	for i := 0; len(got) == 0 && i < 2*n.cfg.RequestTicks; i++ {
+		n.Tick()
+		got = append(got, s.run()...)
+	}
+	if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCTimeout) {
+		t.Fatalf("a write that never finds a leader: %+v", got)
+	}
+}

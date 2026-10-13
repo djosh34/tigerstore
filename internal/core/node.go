@@ -554,13 +554,7 @@ const batchFraming = 4*binary.MaxVarintLen64 + 1
 // queueWrite adds a write to the next entry. A write that would take the
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	size := len(p.req.Put.Wire) + batchFraming
-	switch {
-	case p.req.Wire != nil:
-		size = len(p.req.Wire) + batchFraming
-	case p.req.Op != nil:
-		size = proto.Size(p.req.Op) + batchFraming
-	}
+	size := writeSize(p)
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
@@ -612,16 +606,47 @@ func (n *Node) reply(id uint64, resp proto.Message, err error) {
 	n.out.Replies = append(n.out.Replies, Reply{ID: id, Resp: resp, Err: err})
 }
 
-// propose packs the queued writes into one Raft entry.
+// writeSize is the bytes a queued write adds to a Raft entry.
+func writeSize(p *pending) int {
+	switch {
+	case p.req.Wire != nil:
+		return len(p.req.Wire) + batchFraming
+	case p.req.Op != nil:
+		return proto.Size(p.req.Op) + batchFraming
+	}
+	return len(p.req.Put.Wire) + batchFraming
+}
+
+// propose packs the queued writes into Raft entries of at most
+// MaxBatchBytes each. Without a leader it proposes nothing: like etcd,
+// whose raft.Node takes no proposal while there is no leader, the writes
+// wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
 	// A write that timed out while it waited never goes out; its client
 	// got an answer that allows both outcomes.
 	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
-	size := n.propBytes
-	n.proposals, n.propBytes = nil, 0
-	if len(props) == 0 {
+	if n.leader == raft.None {
+		n.proposals = props
+		n.propBytes = 0
+		for _, p := range props {
+			n.propBytes += writeSize(p)
+		}
 		return
 	}
+	n.proposals, n.propBytes = nil, 0
+	for len(props) > 0 {
+		end, size := 0, 0
+		for end < len(props) && (end == 0 || size+writeSize(props[end]) <= n.cfg.MaxBatchBytes) {
+			size += writeSize(props[end])
+			end++
+		}
+		n.proposeEntry(props[:end], size)
+		props = props[end:]
+	}
+}
+
+// proposeEntry proposes one Raft entry with props.
+func (n *Node) proposeEntry(props []*pending, size int) {
 	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)
 	if err != nil {
 		n.fail(err)
