@@ -1,0 +1,42 @@
+{
+  "before": [
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.10578939499999998,
+      "etcd_disk_backend_commit_duration_seconds_count": 86.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 2.1735973859999875,
+      "etcd_disk_wal_fsync_duration_seconds_count": 11927.0
+    },
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.10165847700000004,
+      "etcd_disk_backend_commit_duration_seconds_count": 86.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 1.4200927069999945,
+      "etcd_disk_wal_fsync_duration_seconds_count": 6177.0
+    },
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.10425411399999995,
+      "etcd_disk_backend_commit_duration_seconds_count": 85.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 1.6631963630000026,
+      "etcd_disk_wal_fsync_duration_seconds_count": 6169.0
+    }
+  ],
+  "after": [
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.3652728090000001,
+      "etcd_disk_backend_commit_duration_seconds_count": 305.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 8.693225446999987,
+      "etcd_disk_wal_fsync_duration_seconds_count": 44657.0
+    },
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.35726416200000016,
+      "etcd_disk_backend_commit_duration_seconds_count": 304.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 5.544434768000006,
+      "etcd_disk_wal_fsync_duration_seconds_count": 23652.0
+    },
+    {
+      "etcd_disk_backend_commit_duration_seconds_sum": 0.38306165600000003,
+      "etcd_disk_backend_commit_duration_seconds_count": 301.0,
+      "etcd_disk_wal_fsync_duration_seconds_sum": 6.161915139999996,
+      "etcd_disk_wal_fsync_duration_seconds_count": 23761.0
+    }
+  ]
+}

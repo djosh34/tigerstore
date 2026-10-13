@@ -1,0 +1,63 @@
+2026-10-13T02:44:55Z
+03ce0cd2a0a4a3ed79e33ec4bbe01255827b8fe5
+72bd5d7680dbf456e7811b02f300c26e2b3b805a
+acfe8fa43993c447b1a322e6dfd59a0492222297
+main merge base: 72bd5d7680dbf456e7811b02f300c26e2b3b805a
+PR base work/47-lease: 4f65ce5c14f72277b42bf0030de994656c03eefa
+ffa755b822cdd6e21f823be484cefe42f0bc59707d5d7332d216257eb2e0f9e7  experiments/pre47groupcommit/observability.patch
+Linux runnervmy3dvn 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          32-bit, 64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  4
+On-line CPU(s) list:                     0-3
+Vendor ID:                               ARM
+Model name:                              Neoverse-N2
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Stepping:                                r0p0
+BogoMIPS:                                2000.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16
+L1d cache:                               256 KiB (4 instances)
+L1i cache:                               256 KiB (4 instances)
+L2 cache:                                4 MiB (4 instances)
+L3 cache:                                128 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-3
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     16722010112  1429491712 12813893632    48340992  2800762880 15292518400
+Swap:     3221221376           0  3221221376
+NAME            SIZE TYPE ROTA MODEL        MOUNTPOINTS
+sda     161061273600 disk    1 Virtual Disk 
+├─sda1  159986466304 part    1              /
+├─sda15    103809536 part    1              /boot/efi
+└─sda16    967836160 part    1              /boot
+Filesystem        1B-blocks        Used    Available Use% Mounted on
+/dev/root      154894188544 40381612032 114495799296  27% /
+/dev/root      154894188544 40381612032 114495799296  27% /
+TARGET SOURCE    FSTYPE OPTIONS
+/      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,nobarrier,errors=remount-ro,commit=30,data=writeback
+ImageVersion=20261004.142.1
+ImageOS=ubuntu24-arm64
+go version go1.27.2 linux/arm64

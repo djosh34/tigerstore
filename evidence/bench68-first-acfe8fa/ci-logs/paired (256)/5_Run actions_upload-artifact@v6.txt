@@ -1,0 +1,23 @@
+﻿2026-10-13T02:53:56.6188203Z ##[group]Run actions/upload-artifact@v6
+2026-10-13T02:53:56.6188674Z with:
+2026-10-13T02:53:56.6188929Z   name: bench68-256
+2026-10-13T02:53:56.6189269Z   path: evidence/bench68
+2026-10-13T02:53:56.6189594Z   retention-days: 14
+2026-10-13T02:53:56.6189883Z   if-no-files-found: warn
+2026-10-13T02:53:56.6190157Z   compression-level: 6
+2026-10-13T02:53:56.6190413Z   overwrite: false
+2026-10-13T02:53:56.6190705Z   include-hidden-files: false
+2026-10-13T02:53:56.6191245Z env:
+2026-10-13T02:53:56.6191495Z   GOTOOLCHAIN: local
+2026-10-13T02:53:56.6191743Z ##[endgroup]
+2026-10-13T02:53:56.7917776Z With the provided path, there will be 248 files uploaded
+2026-10-13T02:53:56.7943702Z Artifact name is valid!
+2026-10-13T02:53:56.7944144Z Root directory input is valid!
+2026-10-13T02:53:57.1409523Z Beginning upload of artifact content to blob storage
+2026-10-13T02:53:57.8133395Z Uploaded bytes 497560
+2026-10-13T02:53:57.8680224Z Finished uploading artifact content to blob storage!
+2026-10-13T02:53:57.8681023Z SHA256 digest of uploaded artifact zip is f60630d9292e96709e344d0d1d6e81be2e7cdbce347965c80ab0931acd468913
+2026-10-13T02:53:57.8682205Z Finalizing artifact upload
+2026-10-13T02:53:58.2285554Z Artifact bench68-256.zip successfully finalized. Artifact ID 11786001284
+2026-10-13T02:53:58.2286381Z Artifact bench68-256 has been successfully uploaded! Final size is 497560 bytes. Artifact ID is 11786001284
+2026-10-13T02:53:58.2289910Z Artifact download URL: https://github.com/djosh34/tigerstore/actions/runs/38338340948/artifacts/11786001284

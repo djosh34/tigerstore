@@ -1,0 +1,61 @@
+﻿2026-10-13T02:44:55.5351214Z ##[group]Run timeout --kill-after=5s 820s bash experiments/pre47groupcommit/run.sh
+2026-10-13T02:44:55.5352053Z [36;1mtimeout --kill-after=5s 820s bash experiments/pre47groupcommit/run.sh[0m
+2026-10-13T02:44:55.5467808Z shell: /usr/bin/bash -e {0}
+2026-10-13T02:44:55.5468353Z env:
+2026-10-13T02:44:55.5468578Z   GOTOOLCHAIN: local
+2026-10-13T02:44:55.5468860Z   CLIENTS: 64
+2026-10-13T02:44:55.5469073Z ##[endgroup]
+2026-10-13T02:44:55.6227752Z TARGET SOURCE    FSTYPE OPTIONS
+2026-10-13T02:44:55.6228386Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+2026-10-13T02:44:55.6295214Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-10-13T02:44:55.6296470Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-10-13T02:44:55.6296749Z 
+2026-10-13T02:44:55.8056067Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-10-13T02:44:55.8056629Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-10-13T02:44:56.1597322Z 
+2026-10-13T02:44:56.1597859Z 100 20.9M  100 20.9M    0     0  39.4M      0 --:--:-- --:--:-- --:--:-- 39.4M
+2026-10-13T02:44:56.4940484Z /home/runner/work/_temp/bench68/bin/etcd: OK
+2026-10-13T02:44:56.5322951Z patching file cmd/tigerstore/main.go
+2026-10-13T02:44:56.5323496Z patching file cmd/tigerstore/pre50.go
+2026-10-13T02:44:56.5323820Z patching file internal/osfs/pre50.go
+2026-10-13T02:44:56.5353518Z patching file cmd/tigerstore/main.go
+2026-10-13T02:44:56.5354095Z patching file cmd/tigerstore/pre50.go
+2026-10-13T02:44:56.5354420Z patching file internal/osfs/pre50.go
+2026-10-13T02:44:56.5812766Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+2026-10-13T02:44:56.5815236Z go: downloading go.etcd.io/raft/v3 v3.7.0
+2026-10-13T02:44:56.5821499Z go: downloading google.golang.org/grpc v1.84.0
+2026-10-13T02:44:56.8836518Z go: downloading google.golang.org/protobuf v1.36.11
+2026-10-13T02:44:57.1134814Z go: downloading github.com/golang/protobuf v1.5.4
+2026-10-13T02:44:57.1136170Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+2026-10-13T02:44:57.1136822Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+2026-10-13T02:44:57.1137468Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+2026-10-13T02:44:57.1651798Z go: downloading golang.org/x/net v0.58.0
+2026-10-13T02:44:57.1774033Z go: downloading github.com/google/btree v1.1.3
+2026-10-13T02:44:57.1832961Z go: downloading golang.org/x/sys v0.47.0
+2026-10-13T02:44:57.3330354Z go: downloading golang.org/x/text v0.41.0
+2026-10-13T02:45:09.3499814Z ?   	github.com/djosh34/tigerstore/internal/node	[no test files]
+2026-10-13T02:45:09.4570277Z ok  	github.com/djosh34/tigerstore/internal/core	0.022s
+2026-10-13T02:45:09.5984272Z ok  	github.com/djosh34/tigerstore/internal/wal	0.168s
+2026-10-13T02:45:09.8001373Z ?   	github.com/djosh34/tigerstore/internal/node	[no test files]
+2026-10-13T02:45:10.2753427Z ok  	github.com/djosh34/tigerstore/internal/core	0.026s
+2026-10-13T02:45:10.4167189Z ok  	github.com/djosh34/tigerstore/internal/wal	0.170s
+2026-10-13T02:45:10.6093620Z ?   	github.com/djosh34/tigerstore/experiments/pre50profile/load	[no test files]
+2026-10-13T02:45:10.8806585Z certificates in /home/runner/work/_temp/bench68/certs
+2026-10-13T02:45:10.9291318Z 64 clients, repetition 1, baseline
+2026-10-13T02:45:51.3486841Z 64 clients, repetition 1, tigerstore
+2026-10-13T02:46:25.5253612Z 64 clients, repetition 1, etcd
+2026-10-13T02:46:58.2012173Z 64 clients, repetition 2, etcd
+2026-10-13T02:47:30.6524861Z 64 clients, repetition 2, tigerstore
+2026-10-13T02:48:13.8662363Z 64 clients, repetition 2, baseline
+2026-10-13T02:48:57.0091371Z 64 clients, repetition 3, baseline
+2026-10-13T02:49:37.4616279Z 64 clients, repetition 3, tigerstore
+2026-10-13T02:50:12.9612067Z 64 clients, repetition 3, etcd
+2026-10-13T02:50:44.9813879Z 64 clients, repetition 4, etcd
+2026-10-13T02:51:17.5896286Z 64 clients, repetition 4, tigerstore
+2026-10-13T02:51:57.4337779Z 64 clients, repetition 4, baseline
+2026-10-13T02:52:43.5512022Z 64 clients, repetition 5, baseline
+2026-10-13T02:53:26.5454360Z 64 clients, repetition 5, tigerstore
+2026-10-13T02:54:07.6337609Z 64 clients, repetition 5, etcd
+2026-10-13T02:54:39.2426290Z  64 baseline      2046.9 Put/s, p50/p99 31.159/52.899 ms, server CPU 283.667 us/op, leader Puts/sync 0.998
+2026-10-13T02:54:39.2427786Z  64 tigerstore    2123.9 Put/s, p50/p99 30.791/51.964 ms, server CPU 279.333 us/op, leader Puts/sync 0.981
+2026-10-13T02:54:39.2428659Z  64 etcd          3901.0 Put/s, p50/p99 15.885/25.933 ms, server CPU 275.833 us/op, leader Puts/sync 3.367

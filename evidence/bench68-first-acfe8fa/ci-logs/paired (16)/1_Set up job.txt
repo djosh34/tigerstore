@@ -1,0 +1,34 @@
+﻿2026-10-13T02:44:43.3166285Z Current runner version: '2.337.0'
+2026-10-13T02:44:43.3200390Z ##[group]Runner Image Provisioner
+2026-10-13T02:44:43.3201439Z Hosted Compute Agent
+2026-10-13T02:44:43.3202055Z Version: 20261002.596
+2026-10-13T02:44:43.3202771Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-13T02:44:43.3203592Z Build Date: 2026-10-02T22:28:27Z
+2026-10-13T02:44:43.3204303Z Worker ID: {d14ffd60-a165-404d-8697-590c267b6a1b}
+2026-10-13T02:44:43.3205036Z Region: eastus
+2026-10-13T02:44:43.3205649Z Cloud: Azure
+2026-10-13T02:44:43.3206312Z ##[endgroup]
+2026-10-13T02:44:43.3208418Z ##[group]Operating System
+2026-10-13T02:44:43.3209423Z Ubuntu
+2026-10-13T02:44:43.3210048Z 24.04.5
+2026-10-13T02:44:43.3210561Z LTS
+2026-10-13T02:44:43.3211102Z ##[endgroup]
+2026-10-13T02:44:43.3211810Z ##[group]Runner Image
+2026-10-13T02:44:43.3212459Z Image: ubuntu-24.04-arm
+2026-10-13T02:44:43.3213128Z Version: 20261004.142.1
+2026-10-13T02:44:43.3214302Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261004.142/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+2026-10-13T02:44:43.3216637Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261004.142
+2026-10-13T02:44:43.3217626Z ##[endgroup]
+2026-10-13T02:44:43.3219162Z ##[group]GITHUB_TOKEN Permissions
+2026-10-13T02:44:43.3222278Z Contents: read
+2026-10-13T02:44:43.3223167Z Metadata: read
+2026-10-13T02:44:43.3223733Z ##[endgroup]
+2026-10-13T02:44:43.3226746Z Secret source: Actions
+2026-10-13T02:44:43.3227784Z Cache mode: write
+2026-10-13T02:44:43.3229096Z Prepare workflow directory
+2026-10-13T02:44:43.3627978Z Prepare all required actions
+2026-10-13T02:44:43.3680913Z Getting action download info
+2026-10-13T02:44:43.5643920Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-13T02:44:43.6514394Z Download action repository 'actions/setup-go@v7' (SHA:b7ad1dad31e06c5925ef5d2fc7ad053ef454303e)
+2026-10-13T02:44:43.8344632Z Download action repository 'actions/upload-artifact@v6' (SHA:b7c566a772e6b6bfb58ed0dc250532a479d7789f)
+2026-10-13T02:44:44.0623816Z Complete job name: paired (16)

@@ -1,0 +1,32 @@
+﻿2026-10-13T02:53:03.1208423Z Post job cleanup.
+2026-10-13T02:53:03.1905759Z [command]/usr/bin/git version
+2026-10-13T02:53:03.1943431Z git version 2.55.0
+2026-10-13T02:53:03.1985384Z Temporarily overriding HOME='/home/runner/work/_temp/845612a0-d971-4feb-8b67-3b5914c725bf' before making global git config changes
+2026-10-13T02:53:03.1986709Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T02:53:03.1990947Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T02:53:03.2032197Z Removing SSH command configuration
+2026-10-13T02:53:03.2037936Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T02:53:03.2071715Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T02:53:03.2330831Z Removing HTTP extra header
+2026-10-13T02:53:03.2331656Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T02:53:03.2361531Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T02:53:03.2561117Z Removing includeIf entries pointing to credentials config files
+2026-10-13T02:53:03.2569300Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T02:53:03.2592352Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T02:53:03.2593556Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T02:53:03.2594316Z includeif.gitdir:/github/workspace/.git.path
+2026-10-13T02:53:03.2594953Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T02:53:03.2602222Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T02:53:03.2624273Z /home/runner/work/_temp/git-credentials-9d776055-c9e7-4318-9952-a3c3c575fb68.config
+2026-10-13T02:53:03.2636452Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-9d776055\-c9e7\-4318\-9952\-a3c3c575fb68\.config
+2026-10-13T02:53:03.2670505Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T02:53:03.2696322Z /home/runner/work/_temp/git-credentials-9d776055-c9e7-4318-9952-a3c3c575fb68.config
+2026-10-13T02:53:03.2703599Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-9d776055\-c9e7\-4318\-9952\-a3c3c575fb68\.config
+2026-10-13T02:53:03.2737399Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-13T02:53:03.2769001Z /github/runner_temp/git-credentials-9d776055-c9e7-4318-9952-a3c3c575fb68.config
+2026-10-13T02:53:03.2774936Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-9d776055\-c9e7\-4318\-9952\-a3c3c575fb68\.config
+2026-10-13T02:53:03.2808121Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T02:53:03.2832460Z /github/runner_temp/git-credentials-9d776055-c9e7-4318-9952-a3c3c575fb68.config
+2026-10-13T02:53:03.2839300Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-9d776055\-c9e7\-4318\-9952\-a3c3c575fb68\.config
+2026-10-13T02:53:03.2874906Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T02:53:03.3067173Z Removing credentials config '/home/runner/work/_temp/git-credentials-9d776055-c9e7-4318-9952-a3c3c575fb68.config'
