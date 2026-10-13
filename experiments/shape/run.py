@@ -246,6 +246,13 @@ def once(kind, rep, rate=None):
                                 invariant_errors.append(f'file {operation} error or inconsistent fenced histogram')
             if load['latency_us']['count'] != load['cohort'] or load['cohort_failed'] or load['unsent']:
                 invariant_errors.append('arrival cohort incomplete')
+            shape = load['shape']
+            if shape['expected'] != load['cohort'] or shape['peak_inflight'] > concurrency:
+                invariant_errors.append('cohort or concurrency differs from request')
+            if ingress == 'balanced':
+                counts = [e['sent'] for e in shape['endpoint_counts']]
+                if len(counts) != 3 or max(counts)-min(counts) > 1 or sum(counts) != load['cohort']:
+                    invariant_errors.append('requests not equally balanced across all three endpoints')
             audit = {'revision_delta': revision_delta, 'expected': expected,
                      'sampling_errors': errors, 'invariant_errors': invariant_errors, 'returncode': process.returncode,
                      'valid': bool(load['valid']) and not errors and not invariant_errors and process.returncode == 0 and revision_delta == expected}
@@ -259,8 +266,15 @@ def once(kind, rep, rate=None):
         if sample_thread is not None:
             sample_thread.join(timeout=5)
         if process is not None and process.poll() is None:
-            process.kill()
-            process.wait()
+            if (dst/'phase.done').exists():
+                (dst/'phase.finish').touch()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass
+            if process.poll() is None:
+                process.kill()
+                process.wait()
         for p in data.glob('*.log'):
             (dst/p.name).write_bytes(p.read_bytes())
         if data.exists():

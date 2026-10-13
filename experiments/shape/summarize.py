@@ -134,6 +134,15 @@ def one(path):
         row[k] = load.get(k)
     flatten('latency_',load['latency_us'],row)
     flatten('service_',load['service_latency_us'],row)
+    shape=load.get('shape',{})
+    for k in ['concurrency','peak_inflight','expected','success','queue_max_observed','queue_mean_sampled',
+              'queue_at_arrival_stop','inflight_at_arrival_stop','through_drain_s','drain_s','cohort_throughput']:
+        row[k]=shape.get(k)
+    flatten('response_',shape.get('response_buffers',{}),row)
+    cpu=shape.get('cpu_through_drain') or {}
+    for i,v in enumerate(cpu.get('server_us_per_op_by_node',[])):
+        row[f'n{i}_cohort_cpu_us_op']=v
+    row['client_cohort_cpu_us_op']=cpu.get('client_us_per_op')
     for i,v in enumerate(load.get('server_cpu_us_per_op_by_node',[])):
         row[f'n{i}_window_cpu_us_op'] = v
     for i,v in enumerate(load.get('server_cores_by_node',[])):
