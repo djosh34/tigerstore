@@ -237,6 +237,28 @@ func TestMixedPreloadBoundsAndFrames(t *testing.T) {
 	}
 }
 
+func TestMixedWatchErrorsAreImmediate(t *testing.T) {
+	ledger := &mixedLedger{expected: make(map[int64]mixedEvent), observed: make(map[int64]mixedEvent)}
+	w := &mixedWatch{ledger: ledger, prefix: []byte("/registry/pods/"), created: true, last: 3}
+	k := &mixedKey{key: []byte("/registry/pods/ns/name"), value: []byte("value"), create: 3, mod: 3, version: 1}
+	header := newMsg()
+	header.varint(headerRevision, 3)
+	event := newMsg()
+	event.sub(eventKV, mixedKV(k))
+	m := newMsg()
+	m.sub(respHeader, header)
+	m.sub(watchEvents, event)
+	if err := w.message(nil, m.b); err != nil {
+		t.Fatal("watch error left for a stream that never ends")
+	}
+	if !w.failed || len(ledger.errs) != 1 {
+		t.Fatal("out-of-order watch event did not invalidate the result immediately")
+	}
+	if err := w.message(nil, m.b); err != nil || len(ledger.errs) != 1 {
+		t.Fatal("failed watch was counted twice")
+	}
+}
+
 func TestMixedRejectsStaleAndFailedTxn(t *testing.T) {
 	w, _ := testMixed(t, 1)
 	k := w.live[0]

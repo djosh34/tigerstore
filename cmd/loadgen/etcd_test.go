@@ -109,6 +109,9 @@ func TestEtcdWorkloads(t *testing.T) {
 			pids:      []int{serverPID},
 			seed:      1,
 		}
+		if tc.workload == "mixed" {
+			cfg.preloadRate = 300
+		}
 		res, err := run(cfg)
 		if err != nil {
 			t.Fatalf("%+v: %v", tc, err)

@@ -94,7 +94,7 @@ jobs:
             echo "generator, scripts and report: $GITHUB_SHA"
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
-            echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn, dump-derived sizes, all endpoints, default mix 25/10/40/15/10 plus resource watches; 3 GiB Go memory target per server"
+            echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, dump-derived sizes, all endpoints, default mix 25/10/40/15/10 plus resource watches; 3 GiB Go memory target per server"
             echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'

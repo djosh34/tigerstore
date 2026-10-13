@@ -16,6 +16,7 @@
 # repetitions and reversed on even ones, so drift on the runner does not
 # favour one target. Mixed drives all three endpoints; others use the leader.
 # mixed-k8s uses the Kubernetes 1.37 dump sizes, not a fixed byte size.
+# Preload has a separate 300 Txns/s arrival rate to limit setup bursts.
 # Its mix is get/list/update/create/delete = 25/10/40/15/10, plus watches
 # on each resource. MIX overrides it. With rate only, MIXED_RATE defaults
 # to 500 arrivals/s, fixed for every target. With max, rate is half etcd's

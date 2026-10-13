@@ -624,10 +624,26 @@ type mixedWatch struct {
 	ledger  *mixedLedger
 	prefix  []byte
 	created bool
+	failed  bool
 	last    int64
 }
 
 func (w *mixedWatch) message(_ *stream, m []byte) error {
+	if w.failed {
+		return nil
+	}
+	if err := w.response(m); err != nil {
+		w.failed = true
+		w.ledger.mu.Lock()
+		w.ledger.errs = append(w.ledger.errs, fmt.Errorf("watch %s: %w", w.prefix, err))
+		w.ledger.mu.Unlock()
+	}
+	// A watch never ends, so validation errors must be counted now,
+	// rather than left in stream.err for unary completion.
+	return nil
+}
+
+func (w *mixedWatch) response(m []byte) error {
 	header, err := responseRevision(m)
 	if err != nil {
 		return err
@@ -748,7 +764,7 @@ func runMixed(cfg config) (*result, error) {
 		preloads = append(preloads, &mixedPreload{w: w})
 	}
 	start := now()
-	if err := runPhase(workers, preloads, phase{start: start, stop: start + int64(preloadTimeout), drain: drainTimeout}); err != nil {
+	if err := runPhase(workers, preloads, phase{rate: cfg.preloadRate / float64(cfg.conns), start: start, stop: start + int64(preloadTimeout), drain: drainTimeout}); err != nil {
 		return nil, fmt.Errorf("mixed preload: %w", err)
 	}
 	for _, p := range preloads {
@@ -831,7 +847,9 @@ func runMixed(cfg config) (*result, error) {
 	t0 := now() + int64(50*time.Millisecond)
 	t1 := t0 + int64(cfg.warmup)
 	t2 := t1 + int64(cfg.duration)
+	ledger.mu.Lock()
 	ledger.start, ledger.stop = t1, t2
+	ledger.mu.Unlock()
 	for _, wk := range workers {
 		wk.stats = stats{winStart: t1, winStop: t2, errs: make(map[string]int64)}
 	}
@@ -865,6 +883,18 @@ func runMixed(cfg config) (*result, error) {
 	}
 	// Closing first lets us inspect watch errors without racing the readers.
 	for _, c := range watchConns {
+		c.mu.Lock()
+		ledger.mu.Lock()
+		if c.err != nil {
+			ledger.errs = append(ledger.errs, c.err)
+		}
+		for _, st := range c.streams {
+			if st.err != nil {
+				ledger.errs = append(ledger.errs, st.err)
+			}
+		}
+		ledger.mu.Unlock()
+		c.mu.Unlock()
 		c.close()
 	}
 	watchConns = nil

@@ -169,6 +169,23 @@ func TestMixedMix(t *testing.T) {
 	}
 }
 
+func TestMixedRateFlags(t *testing.T) {
+	for _, flag := range []string{"-rate", "-preload-rate"} {
+		for _, v := range []string{"NaN", "Inf", "-1"} {
+			if _, err := parseFlags([]string{"-workload", "mixed", flag, v}); err == nil {
+				t.Fatalf("accepted %s %s", flag, v)
+			}
+		}
+	}
+	cfg, err := parseFlags([]string{"-workload", "mixed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.mix != defaultMix || cfg.preloadRate != 300 {
+		t.Fatal("wrong defaults")
+	}
+}
+
 func TestVariableValuePoolWrap(t *testing.T) {
 	v := values{pool: make([]byte, 100), size: 8, off: 90}
 	if len(v.next()) != 8 {
