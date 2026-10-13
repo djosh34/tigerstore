@@ -41,7 +41,7 @@ type Config struct {
 	TLS *tls.Config
 }
 
-// maxStreams is the limit of concurrent streams per client connection.
+// maxStreams is the HTTP endpoint stream limit. Native gRPC has its own limit.
 const maxStreams = 1 << 20
 
 // grpcOverhead is the room etcd leaves above --max-request-bytes for gRPC
@@ -65,7 +65,14 @@ func New(n *node.Node, cfg Config) *Server {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(core.MaxRequestBytes + grpcOverhead),
 		grpc.MaxSendMsgSize(1<<31 - 1),
-		grpc.MaxConcurrentStreams(maxStreams),
+		// Variant c: the #47 pre-work transport options, on native gRPC.
+		grpc.SharedWriteBuffer(true),
+		grpc.NumStreamWorkers(64),
+		grpc.MaxConcurrentStreams(1024),
+		grpc.InitialWindowSize(1 << 20),
+		grpc.InitialConnWindowSize(16 << 20),
+		grpc.ReadBufferSize(64 << 10),
+		grpc.WriteBufferSize(64 << 10),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
 	}

@@ -33,8 +33,22 @@ Stop closes the listener and tracks all accepted sockets, including unfinished T
 - The Go 1.27 wrapped-connection TLS behavior is a dependency. This HTTP wrapper is not portable to older net/http implementations without changes.
 - There is no graceful shutdown, REST gateway, fallback ServeHTTP path, or runtime variant switch. HTTP endpoint bodies and health semantics are unchanged.
 
+## Variant c options
+
+The second commit keeps b's routing and applies only these native gRPC options from #47 pre-work:
+
+- `SharedWriteBuffer(true)`.
+- `NumStreamWorkers(64)`.
+- `MaxConcurrentStreams(1024)`.
+- `InitialWindowSize(1 << 20)` and `InitialConnWindowSize(16 << 20)`.
+- `ReadBufferSize(64 << 10)` and `WriteBufferSize(64 << 10)`.
+
+In grpc-go v1.84.0, shared write buffers are already enabled by default, so that explicit setting is not a new optimization against b. The initial-window setters also select static windows and disable adaptive flow control. Larger windows and buffers can increase per-connection memory under load. The 1024-stream limit is lower than b's 1,048,576 limit and may make clients queue streams. `NumStreamWorkers` is experimental; its worker pool does not cap active streams at 64. No throughput or latency improvement is claimed here. HTTP endpoint settings are unchanged.
+
 ## Targeted tests
 
 `TestNativeTLSRoutingAuthAndShutdown` checks HTTP/1 and HTTP/2 `/version`, repeated requests on the same connection, HTTP Request.TLS, rejection without a client certificate, native unary and streaming RPCs, gRPC TLS peer information, and shutdown with idle TLS and raw TCP clients. `TestNativeSettingsAckReader` checks exact ACK consumption and preservation of other frames. `TestNativeStopBeforeServe` checks the early-stop case.
 
 Existing server tests cover health with and without a quorum, status, RangeStream fallback, TLS Put/Range/Txn, watch ordering, rejection of a certificate from another CA, node restart, and more than 250 streams on one connection. These are small correctness runs, not measurements.
+
+Both b and c passed the eight targeted server tests: `TestNative.*`, `TestThreeNodesOverTLS`, `TestStatusHealthVersionRangeStream`, `TestClientCertificateRequired`, `TestWatchOverTLS`, and `TestManyStreamsOnOneConnection`. Both also passed a race-enabled run of the three `TestNative.*` tests. Every Go invocation used `GOFLAGS=-p=2` and `GOMEMLIMIT=2GiB`; tests used `-parallel 2 -count=1`, with build and module caches inside this worktree. No local benchmarks, measurements or etcdctl smoke were run.
