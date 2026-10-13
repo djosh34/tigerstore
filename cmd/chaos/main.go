@@ -206,6 +206,7 @@ func run(c config, dir string) (err error) {
 	fail("committed log", logErr)
 	logf("history: %d ops, %d log requests, target %d", len(h.Ops), len(h.Log), h.Target)
 	fail("checks", runChecks(h, c.CheckerTimeout, dir, logf))
+	fail("fault overlap", faultsOverlapWrites(records, h))
 	return
 }
 

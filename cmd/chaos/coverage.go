@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 	"unicode/utf8"
 
 	"github.com/djosh34/tigerstore/history"
@@ -116,4 +117,39 @@ func coverage(h *history.History) (coverageReport, error) {
 		errs = append(errs, errors.New("coverage floor: require three member-pinned logical watches"))
 	}
 	return c, errors.Join(errs...)
+}
+
+// faultsOverlapWrites fails unless every installed fault overlaps a write:
+// a Put, Delete or Txn whose call ran at some point between the fault's
+// install and its heal. Heartbeats on a peer link or a signal to an idle
+// node would otherwise count as a fault that took effect while the
+// workload saw nothing. A fault not healed by the end runs to the last
+// call.
+func faultsOverlapWrites(records []record, h *history.History) error {
+	var end int64
+	for _, op := range h.Ops {
+		end = max(end, op.Return)
+	}
+	var errs []error
+	for _, r := range records {
+		if !r.Installed {
+			continue
+		}
+		from, to := r.Requested.Nanoseconds(), end
+		if r.HealedAt > 0 {
+			to = r.HealedAt.Nanoseconds()
+		}
+		overlaps := false
+		for _, op := range h.Ops {
+			write := op.Req.Put != nil || op.Req.Delete != nil || op.Req.Txn != nil
+			if write && op.Call <= to && op.Return >= from {
+				overlaps = true
+				break
+			}
+		}
+		if !overlaps {
+			errs = append(errs, fmt.Errorf("fault step %d (%s to %s) overlaps no write", r.Step, r.Requested, time.Duration(to)))
+		}
+	}
+	return errors.Join(errs...)
 }
