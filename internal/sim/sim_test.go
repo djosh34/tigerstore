@@ -64,12 +64,14 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 || st.OK < 200 || len(a.Log) < 50 {
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 ||
+				st.Pauses == 0 || st.LinkStalls == 0 || st.ClockJumps == 0 || st.HalfOpens == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
 			ran++
 			total.Fenced += st.Fenced
 			total.StalledStops += st.StalledStops
+			total.Asymmetric += st.Asymmetric
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -79,10 +81,12 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption and a leader stalled long enough to stop are rare in one
-	// run, but a set of seeds must see both.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0) {
-		t.Fatalf("%d seeds fenced %d damaged nodes and stopped %d stalled leaders; both must happen", ran, total.Fenced, total.StalledStops)
+	// Corruption, a leader stalled long enough to stop and a link 10 times
+	// slower than its other direction are rare in one run, but a set of
+	// seeds must see each.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links; each must happen",
+			ran, total.Fenced, total.StalledStops, total.Asymmetric)
 	}
 }
 
@@ -183,6 +187,11 @@ func TestAllLinkMasks(t *testing.T) {
 		cfg.Clients = 4
 		cfg.NoLeases = true
 		res := run(t, cfg)
+		// The mask went in at 2 s and, with no other link fault, held
+		// until healing at 5 s.
+		if res.Stats.LinkChanges != 1 {
+			t.Fatalf("mask %06b: %d link changes, want the one", mask, res.Stats.LinkChanges)
+		}
 		checkers(t, res)
 		h, err := res.Checkable()
 		if err != nil {
@@ -205,6 +214,73 @@ func TestSwitchingLinks(t *testing.T) {
 		checkers(t, res)
 		if res.Stats.LinkChanges < 10 {
 			t.Fatalf("seed %d switched only %d times", seed, res.Stats.LinkChanges)
+		}
+	}
+}
+
+// TestEachNetFaultTakesEffect runs each network and process fault alone
+// for 5 virtual seconds and requires that it happened. The simulator
+// itself fails a run in which a message overtakes an earlier one on its
+// link or a paused node does any work.
+func TestEachNetFaultTakesEffect(t *testing.T) {
+	cases := []struct {
+		name   string
+		faults Faults
+		count  func(Stats) int
+	}{
+		{"link stall", Faults{LinkStallEvery: Second}, func(st Stats) int { return st.LinkStalls }},
+		{"pause", Faults{PauseEvery: Second}, func(st Stats) int { return st.Pauses }},
+		{"clock jump", Faults{ClockJumpEvery: Second}, func(st Stats) int { return st.ClockJumps }},
+		{"half-open link", Faults{HalfOpenEvery: Second}, func(st Stats) int { return st.HalfOpens }},
+		{"link delays", Faults{SwitchEvery: 200 * Millisecond, MaxDelay: 5 * Millisecond}, func(st Stats) int { return st.Asymmetric }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := DefaultConfig(3000)
+			cfg.Faults = c.faults
+			cfg.Duration = 5 * Second
+			cfg.Heal = 5 * Second
+			res := run(t, cfg)
+			checkers(t, res)
+			if c.count(res.Stats) == 0 {
+				t.Fatalf("the fault never took effect: %+v", res.Stats)
+			}
+		})
+	}
+}
+
+// TestHalfOpenLink makes the link from the leader to a follower half-open
+// at 5 s, with no other fault, until the peer write timeout fails it 5 s
+// later. The leader and the other follower are a quorum, so every call to
+// them must succeed and take under a second; the cut-off follower must
+// serve again 2 s after the connection fails.
+func TestHalfOpenLink(t *testing.T) {
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(4000 + seed)
+		cfg.Faults = Faults{}
+		cfg.HalfOpenAt = 5 * Second
+		cfg.LiveFrom = cfg.HalfOpenAt + halfOpenTimeout + 2*Second
+		cfg.Duration = 15 * Second
+		res := run(t, cfg)
+		if len(res.halfOpens) != 1 {
+			t.Fatalf("seed %d: %d half-open links, want 1", seed, len(res.halfOpens))
+		}
+		h := res.halfOpens[0]
+		healthy := 0
+		for _, r := range res.History {
+			if r.Call < h.start || r.Call >= h.end || r.Node == h.to {
+				continue
+			}
+			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
+				t.Fatalf("seed %d: call to node %d at %d ms failed during the half-open link: %v", seed, r.Node+1, r.Call/Millisecond, r.Err)
+			}
+			if r.Return-r.Call >= Second {
+				t.Fatalf("seed %d: call to node %d at %d ms took %d ms", seed, r.Node+1, r.Call/Millisecond, (r.Return-r.Call)/Millisecond)
+			}
+			healthy++
+		}
+		if healthy < 20 {
+			t.Fatalf("seed %d: only %d calls to the healthy pair during the half-open link", seed, healthy)
 		}
 	}
 }
