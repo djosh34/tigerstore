@@ -247,19 +247,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			} else {
 				n.handle(in, waiters, streams)
 			}
-		drain:
-			for i := 0; i < 4096 && len(deferred) < maxDeferred; i++ {
-				select {
-				case in := <-n.inbox:
-					if inflight && in.req != nil {
-						deferred = append(deferred, in.req)
-					} else {
-						n.handle(in, waiters, streams)
-					}
-				default:
-					break drain
-				}
-			}
 		case done := <-n.persisted:
 			if done.err != nil {
 				return done.err
@@ -280,6 +267,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.Tick()
 		case <-ctx.Done():
 			return nil
+		}
+		// Include inputs already queued when the append completes, not only
+		// requests the owner managed to dequeue while the disk was busy.
+		// Snapshot the count so continuous arrivals cannot delay disk work.
+		for queued := len(n.inbox); queued > 0 && len(deferred) < maxDeferred; queued-- {
+			in := <-n.inbox
+			if inflight && in.req != nil {
+				deferred = append(deferred, in.req)
+			} else {
+				n.handle(in, waiters, streams)
+			}
 		}
 		// Do not take a Ready until the previous append is durable. Requests
 		// stay outside the core too: Submit can propose at the byte cap.
