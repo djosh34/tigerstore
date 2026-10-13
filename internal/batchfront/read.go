@@ -3,6 +3,7 @@ package batchfront
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -42,7 +43,19 @@ type conn struct {
 	writeTimeout            time.Duration // zero uses the experiment's 5 s default
 }
 
-func (c *conn) close() { c.once.Do(func() { c.cancel(); _ = c.Close() }) }
+func (c *conn) close() {
+	c.once.Do(func() {
+		c.cancel()
+		// The owner can abort a slow client here. tls.Conn.Close may write a
+		// close_notify and wait five seconds for a peer that stopped reading.
+		// Abort the raw socket instead; no protocol write belongs on the owner.
+		raw := c.Conn
+		if tc, ok := raw.(*tls.Conn); ok {
+			raw = tc.NetConn()
+		}
+		_ = raw.Close()
+	})
+}
 func (c *conn) sendControl(o control) {
 	select {
 	case c.control <- o:
