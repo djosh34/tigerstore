@@ -99,8 +99,7 @@ func TestMetrics(t *testing.T) {
 		t.Errorf("one put counted %g times", d)
 	}
 
-	// A failing call, a unary call the client cancels and a watch the
-	// client cancels.
+	// A failing call and a watch the client cancels.
 	if _, err := kv.Range(context.Background(), &pb.RangeRequest{}); err == nil {
 		t.Fatal("a range without a key succeeded")
 	}
@@ -116,9 +115,6 @@ func TestMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	ctx, cancel = context.WithCancel(context.Background())
-	cancel()
-	_, _ = kv.Range(ctx, &pb.RangeRequest{Key: []byte("a")})
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {

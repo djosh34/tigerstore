@@ -258,6 +258,8 @@ func (s *Store) Put(p *pb.PutRequest) (*pb.PutResponse, error) {
 func (s *Store) PutKV(op *PutOp) (*mvccpb.KeyValue, error) {
 	w := s.start()
 	if err := w.checkPut(op); err != nil {
+		// etcd reads the previous version before this check fails.
+		w.countPrevRead(op)
 		return nil, err
 	}
 	prev := w.put(op)
