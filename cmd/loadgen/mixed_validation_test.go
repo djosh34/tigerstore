@@ -237,6 +237,68 @@ func TestMixedPreloadBoundsAndFrames(t *testing.T) {
 	}
 }
 
+func TestMixedReadsAbsentKeys(t *testing.T) {
+	w, _ := testMixed(t, 1)
+	k := w.live[0]
+	k.mod = 0
+	k.create = 0
+	k.version = 0
+	k.value = nil
+	w.live = nil
+	w.absent = []*mixedKey{k}
+	w.mix = [5]int{100, 0, 0, 0, 0}
+	call := w.choose()
+	if call.op != 0 || call.key != k {
+		t.Fatal("GET with no live keys did not read a known absent key")
+	}
+	st := &stream{id: 1}
+	call.floor = 9
+	w.calls[1] = *call
+	header := newMsg()
+	header.varint(headerRevision, 10)
+	m := newMsg()
+	m.sub(respHeader, header)
+	if err := w.message(st, m.b); err != nil {
+		t.Fatal(err)
+	}
+	m.sub(rangeKVs, mixedKV(k))
+	m.varint(rangeCount, 1)
+	if err := w.message(st, m.b); err == nil {
+		t.Fatal("GET accepted a deleted key still present in Range")
+	}
+}
+
+func TestMixedWatchFinalMatching(t *testing.T) {
+	l := &mixedLedger{expected: make(map[int64]mixedEvent), observed: make(map[int64]mixedEvent)}
+	if err := l.unmatchedError(); err != nil {
+		t.Fatal(err)
+	}
+	l.observed[5] = mixedEvent{}
+	if err := l.unmatchedError(); err == nil {
+		t.Fatal("late extra event was accepted after the catch-up loop ended")
+	}
+	delete(l.observed, 5)
+	l.expected[5] = mixedEvent{}
+	if err := l.unmatchedError(); err == nil {
+		t.Fatal("missing event accepted")
+	}
+}
+
+func TestMixedWatchRequest(t *testing.T) {
+	prefix := []byte("/registry/events/")
+	m := watchRequestFrom(prefix, 17)
+	create, err := bytesField(m.b, watchCreate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for field, want := range map[protowire.Number]uint64{3: 17, watchPrevKV: 1, watchProgress: 1} {
+		got, err := varintField(create, field)
+		if err != nil || got != want {
+			t.Fatalf("watch field %d = %d, want %d: %v", field, got, want, err)
+		}
+	}
+}
+
 func TestMixedWatchErrorsAreImmediate(t *testing.T) {
 	ledger := &mixedLedger{expected: make(map[int64]mixedEvent), observed: make(map[int64]mixedEvent)}
 	w := &mixedWatch{ledger: ledger, prefix: []byte("/registry/pods/"), created: true, last: 3}

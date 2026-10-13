@@ -286,10 +286,15 @@ func casRequest(keyLen, valueLen int) *msg {
 
 // watchRequest watches every key under prefix with previous values and
 // progress notifications, as kube-apiserver does.
-func watchRequest(prefix []byte) *msg {
+func watchRequest(prefix []byte) *msg { return watchRequestFrom(prefix, 0) }
+
+func watchRequestFrom(prefix []byte, revision int64) *msg {
 	c := newMsg()
 	c.bytes(watchKey, prefix)
 	c.bytes(watchRangeEnd, prefixEnd(prefix))
+	if revision != 0 {
+		c.varint(3, uint64(revision))
+	}
 	c.varint(watchProgress, 1)
 	c.varint(watchPrevKV, 1)
 	m := newMsg()

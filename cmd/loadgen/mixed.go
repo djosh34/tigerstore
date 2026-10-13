@@ -180,6 +180,11 @@ func (w *mixedLoad) choose() *mixedCall {
 		}
 		return &mixedCall{op: op, key: k, value: w.value(k)}
 	}
+	// Check absence too: a delete event alone does not prove the key
+	// disappeared from Range. Ten percent of GETs use known absent keys.
+	if op == 0 && len(w.absent) > 0 && (len(w.live) == 0 || w.wk.rng.IntN(10) == 0) {
+		return &mixedCall{op: op, key: w.absent[w.wk.rng.IntN(len(w.absent))]}
+	}
 	if len(w.live) == 0 {
 		k := w.newKey(w.owner(), max(1, 1024/w.cfg.conns))
 		return &mixedCall{op: 3, key: k, value: w.value(k)}
@@ -327,6 +332,9 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	}
 	if call.op == 0 {
 		w.ledger.revisionMax(rev)
+		if k.mod == 0 {
+			return checkMixedRange(m, nil, 1)
+		}
 		return checkMixedRange(m, []*mixedKey{k}, 1)
 	}
 	if call.op == 1 {
@@ -580,6 +588,15 @@ func eventDigest(k, prev *mixedKey, deleted bool) [32]byte {
 	return sha256.Sum256(m.b)
 }
 
+// unmatchedError needs l.mu held, or all readers joined. Check again
+// after closing watches: an extra event may follow the last matched one.
+func (l *mixedLedger) unmatchedError() error {
+	if n := len(l.expected) + len(l.observed); n != 0 {
+		return fmt.Errorf("mixed watch has %d unmatched events", n)
+	}
+	return nil
+}
+
 func (l *mixedLedger) revisionMax(rev int64) {
 	for old := l.revision.Load(); old < rev; old = l.revision.Load() {
 		if l.revision.CompareAndSwap(old, rev) {
@@ -802,14 +819,7 @@ func runMixed(cfg config) (*result, error) {
 		}
 		watchConns = append(watchConns, c)
 		prefix := []byte("/registry/" + r + "/")
-		m := watchRequest(prefix)
-		create := newMsg()
-		create.bytes(watchKey, prefix)
-		create.bytes(watchRangeEnd, prefixEnd(prefix))
-		create.varint(3, uint64(revision+1))
-		create.varint(watchPrevKV, 1)
-		m.b = nil
-		m.sub(watchCreate, create)
+		m := watchRequestFrom(prefix, revision+1)
 		tpl, err := newTemplate(c.addr, "/etcdserverpb.Watch/Watch", m, false)
 		if err != nil {
 			return nil, err
@@ -909,6 +919,9 @@ func runMixed(cfg config) (*result, error) {
 		res.LiveKeys += len(l.(*mixedLoad).live)
 	}
 	ledger.mu.Lock()
+	if err := ledger.unmatchedError(); err != nil {
+		res.Errors[err.Error()]++
+	}
 	for _, err := range ledger.errs {
 		res.Errors[err.Error()]++
 	}
