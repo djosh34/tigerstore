@@ -28,10 +28,12 @@ const maxErrors = 20
 //     before every event above R.
 //   - Nothing is delivered above the committed log.
 //   - A compaction cancel names a compacted revision above the next revision
-//     the watch needed.
+//     the watch needed, or equal to it if the watch asked for previous
+//     values: etcd v3.7.2 sends such an event without one.
 //
 // A watch with no start revision must record its created response, so the
-// checker knows where it starts.
+// checker knows where it starts. Every event must be at or below the header
+// revision of its response.
 func Watches(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
@@ -105,6 +107,9 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			if rev > r.rev {
 				fail("event at revision %d is above the last committed revision %d", rev, r.rev)
 			}
+			if rev > resp.Revision {
+				fail("event at revision %d is above its response's header revision %d", rev, resp.Revision)
+			}
 			lastEvent = max(lastEvent, rev)
 			got = append(got, e)
 		}
@@ -131,8 +136,11 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 			if !resp.Canceled {
 				fail("compaction response at %d does not cancel the watch", resp.CompactRevision)
 			}
+			// The watch may also be canceled at the revision it needs
+			// next when it asked for previous values, because the
+			// value before that revision is compacted.
 			next := max(first, delivered+1)
-			if next >= resp.CompactRevision {
+			if next > resp.CompactRevision || next == resp.CompactRevision && !w.Req.PrevKV {
 				fail("canceled as compacted at %d, but it only needed revision %d on", resp.CompactRevision, next)
 			}
 			if !slices.Contains(r.compactions, resp.CompactRevision) {
@@ -141,19 +149,12 @@ func checkWatch(r *replay, target int64, w *history.Watch) []error {
 		}
 	}
 	if first == 0 {
-		// Without a start revision or a created response, the start is
-		// only known from what arrived, as etcd's validator does.
-		switch {
-		case len(got) > 0:
-			first = got[0].Revision()
-		case lastProgress > 0:
-			first = lastProgress + 1
-		case target > 0:
-			fail("has no start revision and no created response, so its completeness up to %d cannot be checked", target)
-			return errs
-		default:
-			return errs
+		// Guessing the start from what arrived would let a watch that
+		// lost its first events pass.
+		if len(w.Responses) > 0 || target > 0 {
+			fail("has no start revision and no created response, so it cannot be checked")
 		}
+		return errs
 	}
 	last := delivered
 	if !canceled && target > 0 {

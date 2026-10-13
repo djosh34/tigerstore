@@ -18,8 +18,13 @@ import (
 //   - Every successful read, including the final scans after recovery,
 //     returns what the log holds at its revision. A read can not have seen
 //     a write the log lost, and the log can not hold a key no read returns.
+//   - An acked mutation that changed nothing agrees with the log at its
+//     header revision: its compares select the branch it reports, and its
+//     deletes find no key.
 //   - Every log entry that changed the store is a request some client sent,
-//     used at most once. A LeaseRevoke may also be a lease expiry.
+//     used at most once. An unclaimed LeaseRevoke counts as a lease expiry,
+//     even when a client got an error for that revoke, because an expiry
+//     and a rejected revoke look the same in the log.
 //
 // Serializable reads are checked like the others: they must match the log
 // at their own header revision.
@@ -132,25 +137,60 @@ func Durable(h *history.History) error {
 				branch = op.Req.Txn.Failure
 			}
 			for j, o := range branch {
-				reads = append(reads, o.Range)
-				got = append(got, op.Resp.Txn.Results[j].Range)
+				if o.Range != nil {
+					reads = append(reads, o.Range)
+					got = append(got, op.Resp.Txn.Results[j].Range)
+				}
 			}
+		}
+		if op.Resp.Revision > r.rev {
+			if len(reads) > 0 || op.Req.Mutates() {
+				fail("op %d (client %d) answered at revision %d, above the last revision %d of the log", i, op.Client, op.Resp.Revision, r.rev)
+			}
+			continue
 		}
 		for j, q := range reads {
 			rev := q.Revision
-			if rev == 0 {
+			if rev <= 0 {
 				rev = op.Resp.Revision
-			}
-			if op.Resp.Revision > r.rev {
-				fail("op %d (client %d) read at revision %d, above the last revision %d of the log", i, op.Client, op.Resp.Revision, r.rev)
-				break
 			}
 			if want := r.read(q, rev); !sameRange(want, got[j]) {
 				fail("op %d (client %d) read %+v at revision %d and got %+v, but the log holds %+v", i, op.Client, *q, rev, *got[j], *want)
 			}
 		}
+		if op.Req.Mutates() && !respChanges(op) {
+			for _, e := range checkNoOp(r, op) {
+				fail("op %d (client %d) changed nothing at revision %d, but %s", i, op.Client, op.Resp.Revision, e)
+			}
+		}
 	}
 	return errors.Join(errs...)
+}
+
+// checkNoOp checks an acked op that says it changed nothing against the log
+// at its header revision: a txn took the branch its compares select there,
+// and each delete it ran found no key.
+func checkNoOp(r *replay, op *history.Op) []string {
+	rev := op.Resp.Revision
+	var errs []string
+	if t := op.Req.Txn; t != nil {
+		ok := true
+		for _, c := range t.Compare {
+			kv, exists := r.at(c.Key, rev)
+			ok = ok && compareKV(kv, exists, c)
+		}
+		if ok != op.Resp.Txn.Succeeded {
+			errs = append(errs, fmt.Sprintf("its compares select succeeded=%v in the log and the client got %v", ok, op.Resp.Txn.Succeeded))
+		}
+	}
+	for _, o := range branch(op) {
+		if d := o.Delete; d != nil {
+			if n := r.read(&history.RangeRequest{Key: d.Key, End: d.End, CountOnly: true}, rev).Count; n > 0 {
+				errs = append(errs, fmt.Sprintf("its delete of %q to %q found no key while the log holds %d", d.Key, d.End, n))
+			}
+		}
+	}
+	return errs
 }
 
 // fingerprint identifies a request by its content.

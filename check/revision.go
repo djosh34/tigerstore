@@ -26,12 +26,12 @@ import (
 //     the current revision fails as future, and only then. Compact follows
 //     the same rules.
 //
-// Serializable reads are left out of the real-time rule.
+// Serializable reads are left out of the rules that need real-time order.
 func Revisions(h *history.History) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
-	c := revisionChecker{h: h, byRev: map[int64]int{}, seen: map[string][]history.KeyValue{}, deleted: map[string][]int64{}}
+	c := revisionChecker{h: h, byRev: map[int64]int{}, seen: map[string][]observation{}, deleted: map[string][]int64{}}
 	c.writes()
 	c.realTime()
 	c.observed()
@@ -46,7 +46,7 @@ type revisionChecker struct {
 	// byRev maps the revision of an acked write to its op.
 	byRev map[int64]int
 	// seen collects every observed key by name.
-	seen map[string][]history.KeyValue
+	seen map[string][]observation
 	// deleted collects, per key, the revisions at which clients saw it
 	// deleted.
 	deleted map[string][]int64
@@ -128,7 +128,9 @@ func (c *revisionChecker) realTime() {
 	// Errors that claim a revision is in the future.
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
-		if op.Err == nil || !sameError(op.Err, errFutureRev) {
+		if op.Err == nil || !sameError(op.Err, errFutureRev) || op.Req.Range != nil && op.Req.Range.Serializable {
+			// A lagging node may legally answer a serializable read
+			// with a future revision error.
 			continue
 		}
 		rev := requestedRevision(op.Req)
@@ -157,15 +159,15 @@ func (c *revisionChecker) observed() {
 			continue
 		}
 		at := op.Resp.Revision
-		if op.Req.Range != nil && op.Req.Range.Revision != 0 {
+		if op.Req.Range != nil && op.Req.Range.Revision > 0 {
 			at = op.Req.Range.Revision
 			if at > op.Resp.Revision {
 				c.fail("op %d (client %d) read at revision %d but its header revision is %d", i, op.Client, at, op.Resp.Revision)
 			}
 		}
 		where := fmt.Sprintf("op %d (client %d)", i, op.Client)
-		for _, kv := range keysIn(op) {
-			c.kv(where, kv, at)
+		for _, o := range keysIn(op) {
+			c.kv(where, o, at)
 		}
 		for _, key := range deletedBy(op) {
 			c.deleted[key] = append(c.deleted[key], op.Resp.Revision)
@@ -176,13 +178,16 @@ func (c *revisionChecker) observed() {
 			for _, e := range resp.Events {
 				where := fmt.Sprintf("watch %d (client %d)", i, w.Client)
 				if e.PrevKV != nil {
-					c.kv(where, *e.PrevKV, e.Revision()-1)
+					c.kv(where, observation{kv: *e.PrevKV}, e.Revision()-1)
 				}
 				if e.Type == history.EventPut {
-					c.kv(where, e.KV, resp.Revision)
+					c.kv(where, observation{kv: e.KV}, resp.Revision)
 					continue
 				}
 				kv := e.KV
+				if kv.ModRevision > resp.Revision {
+					c.fail("%s: delete event of key %q at revision %d is above its response's header revision %d", where, kv.Key, kv.ModRevision, resp.Revision)
+				}
 				c.deleted[kv.Key] = append(c.deleted[kv.Key], kv.ModRevision)
 				if kv.Version != 0 || kv.CreateRevision != 0 || kv.Value != "" || kv.ModRevision < 2 {
 					c.fail("%s: delete event %+v must have only a key and a mod revision", where, kv)
@@ -195,9 +200,18 @@ func (c *revisionChecker) observed() {
 	}
 }
 
+// observation is a key a client saw. A keys-only read has no value.
+type observation struct {
+	kv       history.KeyValue
+	keysOnly bool
+}
+
 // kv checks one observed key, read at revision at.
-func (c *revisionChecker) kv(where string, kv history.KeyValue, at int64) {
+func (c *revisionChecker) kv(where string, o observation, at int64) {
+	kv := o.kv
 	switch {
+	case o.keysOnly && kv.Value != "":
+		c.fail("%s: key %q has a value in a keys-only read", where, kv.Key)
 	case kv.Version < 1:
 		c.fail("%s: key %q has version %d", where, kv.Key, kv.Version)
 	case kv.CreateRevision < 2 || kv.CreateRevision > kv.ModRevision:
@@ -211,12 +225,11 @@ func (c *revisionChecker) kv(where string, kv history.KeyValue, at int64) {
 		p := puts(&c.h.Ops[j], kv.Key)
 		if p == nil {
 			c.fail("%s: key %q has mod revision %d, but op %d wrote that revision and did not put it", where, kv.Key, kv.ModRevision, j)
-		} else if p.Lease != kv.Lease || p.Value != kv.Value && kv.Value != "" {
-			// An empty value may be a keys-only read.
+		} else if p.Lease != kv.Lease || p.Value != kv.Value && !o.keysOnly {
 			c.fail("%s: key %q at revision %d is %+v, but op %d put %+v", where, kv.Key, kv.ModRevision, kv, j, *p)
 		}
 	}
-	c.seen[kv.Key] = append(c.seen[kv.Key], kv)
+	c.seen[kv.Key] = append(c.seen[kv.Key], o)
 }
 
 // versions checks that each key looks the same at the same mod revision and
@@ -228,8 +241,9 @@ func (c *revisionChecker) versions() {
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		kvs := c.seen[key]
-		for _, kv := range kvs {
+		obs := c.seen[key]
+		for _, o := range obs {
+			kv := o.kv
 			for _, d := range c.deleted[key] {
 				if kv.CreateRevision <= d && d <= kv.ModRevision {
 					c.fail("key %q was deleted at revision %d, but %+v was created before and modified after", key, d, kv)
@@ -237,18 +251,34 @@ func (c *revisionChecker) versions() {
 				}
 			}
 		}
-		slices.SortFunc(kvs, func(a, b history.KeyValue) int { return cmp.Compare(a.ModRevision, b.ModRevision) })
-		for i := 1; i < len(kvs); i++ {
-			a, b := kvs[i-1], kvs[i]
-			switch {
-			case a.ModRevision == b.ModRevision:
-				// A keys-only read has no value; compare the rest.
-				if a.Value == "" || b.Value == "" {
-					a.Value, b.Value = "", ""
+		slices.SortFunc(obs, func(a, b observation) int { return cmp.Compare(a.kv.ModRevision, b.kv.ModRevision) })
+		// Each mod revision must look the same in every observation. A
+		// keys-only observation skips only its own value.
+		var full *history.KeyValue
+		for i := range obs {
+			o := obs[i]
+			if i > 0 && o.kv.ModRevision != obs[i-1].kv.ModRevision {
+				full = nil
+			}
+			if !o.keysOnly {
+				if full == nil {
+					full = &obs[i].kv
+				} else if o.kv != *full {
+					c.fail("key %q at mod revision %d was seen as %+v and as %+v", key, o.kv.ModRevision, *full, o.kv)
 				}
+			}
+			if i > 0 && obs[i-1].kv.ModRevision == o.kv.ModRevision {
+				a, b := obs[i-1].kv, o.kv
+				a.Value, b.Value = "", ""
 				if a != b {
 					c.fail("key %q at mod revision %d was seen as %+v and as %+v", key, a.ModRevision, a, b)
 				}
+			}
+		}
+		for i := 1; i < len(obs); i++ {
+			a, b := obs[i-1].kv, obs[i].kv
+			switch {
+			case a.ModRevision == b.ModRevision:
 			case a.CreateRevision == b.CreateRevision:
 				if b.Version <= a.Version {
 					c.fail("key %q has version %d at revision %d and version %d at revision %d", key, a.Version, a.ModRevision, b.Version, b.ModRevision)
@@ -274,9 +304,13 @@ func (c *revisionChecker) compaction() {
 	for i := range c.h.Ops {
 		op := &c.h.Ops[i]
 		rev := requestedRevision(op.Req)
-		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev == 0 {
+		if op.Req.Range == nil && op.Req.Compact == nil || op.Req.Range != nil && rev <= 0 {
 			continue
 		}
+		// A lagging node may serve a serializable read below a
+		// compaction it has not applied yet, but no node can report a
+		// compaction nobody sent.
+		lagging := op.Req.Range != nil && op.Req.Range.Serializable
 		// covers reports whether a compaction at k makes rev compacted
 		// for this op: a range needs one above rev, a compact one at or
 		// above it.
@@ -290,7 +324,7 @@ func (c *revisionChecker) compaction() {
 			if !found {
 				c.fail("op %d (client %d) got a compacted error for revision %d, but no compaction that could cause it started before it returned", i, op.Client, rev)
 			}
-		case op.Resp != nil:
+		case op.Resp != nil && !lagging:
 			for _, j := range compacts {
 				k := &c.h.Ops[j]
 				if j != i && k.Resp != nil && k.Return < op.Call && covers(k.Req.Compact.Revision) {
@@ -329,27 +363,32 @@ func deletedBy(op *history.Op) []string {
 }
 
 // keysIn returns every key in the response of an acked op.
-func keysIn(op *history.Op) []history.KeyValue {
-	var kvs []history.KeyValue
-	addRange := func(r *history.RangeResponse) { kvs = append(kvs, r.KVs...) }
-	addPut := func(p *history.PutResponse) {
-		if p.PrevKV != nil {
-			kvs = append(kvs, *p.PrevKV)
+func keysIn(op *history.Op) []observation {
+	var obs []observation
+	add := func(kvs []history.KeyValue, keysOnly bool) {
+		for _, kv := range kvs {
+			obs = append(obs, observation{kv: kv, keysOnly: keysOnly})
 		}
 	}
-	addDelete := func(d *history.DeleteResponse) { kvs = append(kvs, d.PrevKVs...) }
+	addPut := func(p *history.PutResponse) {
+		if p.PrevKV != nil {
+			add([]history.KeyValue{*p.PrevKV}, false)
+		}
+	}
+	addDelete := func(d *history.DeleteResponse) { add(d.PrevKVs, false) }
 	switch r := op.Resp; {
 	case r.Range != nil:
-		addRange(r.Range)
+		add(r.Range.KVs, op.Req.Range.KeysOnly)
 	case r.Put != nil:
 		addPut(r.Put)
 	case r.Delete != nil:
 		addDelete(r.Delete)
 	case r.Txn != nil:
-		for _, res := range r.Txn.Results {
+		ops := branch(op)
+		for i, res := range r.Txn.Results {
 			switch {
 			case res.Range != nil:
-				addRange(res.Range)
+				add(res.Range.KVs, ops[i].Range.KeysOnly)
 			case res.Put != nil:
 				addPut(res.Put)
 			case res.Delete != nil:
@@ -357,7 +396,7 @@ func keysIn(op *history.Op) []history.KeyValue {
 			}
 		}
 	}
-	return kvs
+	return obs
 }
 
 // branch returns the txn operations an acked op ran.

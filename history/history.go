@@ -111,7 +111,8 @@ type KeyValue struct {
 type RangeRequest struct {
 	Key string `json:"key"`
 	End string `json:"end,omitempty"`
-	// Revision is the revision to read at. Zero means the current one.
+	// Revision is the revision to read at. Zero or less means the current
+	// one.
 	Revision  int64 `json:"revision,omitempty"`
 	Limit     int64 `json:"limit,omitempty"`
 	CountOnly bool  `json:"countOnly,omitempty"`
@@ -179,7 +180,8 @@ const (
 )
 
 // Compare is one txn condition on a single key. A missing key has version,
-// create revision, mod revision and lease 0 and the empty value.
+// create revision, mod revision and lease 0, and every value compare on it
+// fails, as in etcd.
 type Compare struct {
 	Key    string `json:"key"`
 	Target Target `json:"target"`

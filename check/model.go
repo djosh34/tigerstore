@@ -22,6 +22,10 @@ var (
 	errLeaseExists   = &history.Error{Code: "FailedPrecondition", Message: "etcdserver: lease already exists"}
 )
 
+// errUnsupported marks a request the model can not decide. Linearizable
+// reports it as a checker limit, not as a server bug.
+var errUnsupported = &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn is not modelled"}
+
 // modelErrors are the semantic errors the model can decide. A server that
 // returns one of them must agree with the model.
 var modelErrors = []*history.Error{errCompacted, errFutureRev, errLeaseNotFound, errLeaseExists}
@@ -152,15 +156,25 @@ func (s *state) step(req history.Request, withEvents bool) outcome {
 }
 
 func (s *state) stepRange(r *history.RangeRequest) outcome {
-	switch {
-	case r.Revision > s.rev:
-		return outcome{err: errFutureRev}
-	case r.Revision != 0 && r.Revision < s.compacted:
-		return outcome{err: errCompacted}
-	case r.Revision != 0 && r.Revision < s.rev:
+	if err := s.checkRevision(r.Revision); err != nil {
+		return outcome{err: err}
+	}
+	if r.Revision > 0 && r.Revision < s.rev {
 		return outcome{resp: &history.Response{Revision: s.rev, Range: &history.RangeResponse{}}, historical: true}
 	}
 	return outcome{resp: &history.Response{Revision: s.rev, Range: s.read(r)}}
+}
+
+// checkRevision returns the error of a read at rev. etcd reads at the current
+// revision when rev is zero or less.
+func (s *state) checkRevision(rev int64) *history.Error {
+	switch {
+	case rev > s.rev:
+		return errFutureRev
+	case rev > 0 && rev < s.compacted:
+		return errCompacted
+	}
+	return nil
 }
 
 // read answers a range at the current revision.
@@ -189,8 +203,18 @@ func (s *state) read(r *history.RangeRequest) *history.RangeResponse {
 }
 
 func (s *state) compare(c history.Compare) bool {
-	kv, _ := s.get(c.Key)
+	kv, ok := s.get(c.Key)
+	return compareKV(kv, ok, c)
+}
+
+// compareKV evaluates c on kv, which exists if ok.
+func compareKV(kv history.KeyValue, ok bool, c history.Compare) bool {
 	if c.Target == history.TargetValue {
+		// etcd fails every value compare on a missing key, since an
+		// empty value and no value look the same on the wire.
+		if !ok {
+			return false
+		}
 		return result(strings.Compare(kv.Value, c.Value), c.Result)
 	}
 	var n int64
@@ -247,10 +271,22 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		if op.Put != nil && op.Put.Lease != 0 && !s.hasLease(op.Put.Lease) {
 			return outcome{err: errLeaseNotFound}
 		}
-		if op.Range != nil && op.Range.Revision != 0 {
-			// Historical reads inside a txn are not modelled. Treat
-			// them as unknown, which never matches a response.
-			return outcome{err: &history.Error{Code: "Unimplemented", Message: "check: historical range inside a txn"}}
+		if op.Range == nil || op.Range.Revision <= 0 || op.Range.Revision == s.rev {
+			continue
+		}
+		if err := s.checkRevision(op.Range.Revision); err != nil {
+			return outcome{err: err}
+		}
+		// Other historical reads inside a txn are not modelled.
+		return outcome{err: errUnsupported}
+	}
+	// A read at the txn's own start revision sees the store before the
+	// txn, as etcd keeps a positive requested revision.
+	var before *state
+	for _, op := range ops {
+		if op.Range != nil && op.Range.Revision > 0 {
+			before = s.clone()
+			break
 		}
 	}
 	next := s.rev + 1
@@ -259,8 +295,11 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 	resp := &history.TxnResponse{Succeeded: ok, Results: make([]history.TxnOpResponse, len(ops))}
 	for i, op := range ops {
 		switch {
+		case op.Range != nil && op.Range.Revision > 0:
+			resp.Results[i].Range = before.read(op.Range)
 		case op.Range != nil:
-			// Reads inside a txn see the txn's earlier writes.
+			// Reads at the current revision see the txn's earlier
+			// writes.
 			resp.Results[i].Range = s.read(op.Range)
 		case op.Put != nil:
 			p := op.Put
