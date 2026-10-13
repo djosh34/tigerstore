@@ -1,0 +1,109 @@
+name: Exact saved register solver
+on:
+  push:
+    branches: [exp/jepsen2-solver]
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: 'JSON original case IDs, or fresh archive case IDs'
+        default: '[0,1,2,3,4,5,6,7]'
+        required: true
+      fresh_archive:
+        description: 'Optional repository tar.gz path containing full store/latest histories'
+        default: ''
+        required: false
+      fresh_sha256:
+        description: 'Required SHA-256 for a fresh archive'
+        default: ''
+        required: false
+permissions:
+  contents: read
+jobs:
+  solve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(inputs.cases || '[0,1,2,3,4,5,6,7]') }}
+    steps:
+      - name: Check deadline
+        run: test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            experiments/jepsen/evidence
+            experiments/jepsen2-solver
+            experiments/jepsen2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Install solver and small replay runtime
+        env:
+          LEIN_JVM_OPTS: '-Xmx512m'
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p solver-results "$HOME/bin"
+          { date -u; python --version; java -version; free -h; uname -a; git rev-parse HEAD; } > solver-results/runtime.txt 2>&1
+          python -m pip install z3-solver==4.15.3.0 edn-format==0.7.5
+          python -m pip freeze > solver-results/pip-freeze.txt
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/technomancy/leiningen/2.12.0/bin/lein -o "$HOME/bin/lein"
+          chmod +x "$HOME/bin/lein"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          cd experiments/jepsen2-solver/offline
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          timeout 240s "$HOME/bin/lein" classpath > ../../../solver-results/classpath.txt
+      - name: Compare exact upstream model source
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          p=Path('experiments/jepsen2-solver')
+          upstream=(p/'sources/register.clj').read_text()
+          exact=upstream[upstream.index('(defrecord VersionedRegister'):upstream.index('(defn r   ')]
+          replay=(p/'offline/src/offline/versioned_register.clj').read_text()
+          assert replay[replay.index('(defrecord VersionedRegister'):].strip()==exact.strip()
+          Path('solver-results/model-source.json').write_text(json.dumps({'upstream_commit':'b47cc401f27bfb7c28afd9ac088b5f0dca4501b8','upstream_source_sha256':hashlib.sha256(upstream.encode()).hexdigest(),'record_identical':True},indent=2)+'\n')
+          PY
+      - name: Regression, small-history differential tests, and exact-model replay
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          python experiments/jepsen2-solver/selftest.py solver-results/selftest > solver-results/selftest.log 2>&1
+          python - <<'PY'
+          import json,pathlib,subprocess,datetime
+          assert datetime.datetime.now(datetime.timezone.utc)<datetime.datetime.fromisoformat('2026-10-13T22:00:00+00:00')
+          p=pathlib.Path('solver-results')
+          args=json.loads((p/'selftest/clojure-args.json').read_text())
+          cp=(p/'classpath.txt').read_text().strip()
+          with (p/'selftest-clojure.log').open('w') as f:
+            subprocess.run(['java','-Xmx512m','-cp',cp,'clojure.main','-m','offline.verify',*args],stdout=f,stderr=subprocess.STDOUT,timeout=120,check=True)
+          assert all(pathlib.Path(args[i]).exists() for i in range(3,len(args),4))
+          PY
+      - name: Extract authenticated full evidence
+        env:
+          FRESH_ARCHIVE: ${{ inputs.fresh_archive }}
+          FRESH_SHA256: ${{ inputs.fresh_sha256 }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          if [[ -n $FRESH_ARCHIVE ]]; then
+            python experiments/jepsen2-solver/prepare-fresh.py "$FRESH_ARCHIVE" "$FRESH_SHA256" saved
+          else
+            python experiments/jepsen2-solver/prepare.py experiments/jepsen/evidence saved
+          fi
+          cp saved/manifest.json solver-results/manifest.json
+      - name: Solve all keys and validate every SAT witness
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          python experiments/jepsen2-solver/run-case.py --saved saved --case '${{ matrix.case }}' --classpath solver-results/classpath.txt --out solver-results/case
+      - name: Retain original inputs, witnesses, validations, and unknowns
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: register-solver-${{ matrix.case }}
+          path: solver-results
+          retention-days: 14
