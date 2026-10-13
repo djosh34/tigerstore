@@ -1,0 +1,122 @@
+# Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
+# to back on one runner, with disk write barriers on and pinned cores:
+# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. One job
+# per benchmark. Started by hand.
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: tigerstore ref to measure
+        default: main
+      baseline:
+        description: tigerstore ref to compare against
+        default: main
+      benchmarks:
+        description: space-separated <workload>-<size> (workload put, txn, delete, range or watch; size 1k or 10k)
+        default: put-1k txn-1k
+      modes:
+        description: max (every stream busy), rate (open loop at half of etcd's max), or both
+        default: max rate
+      reps:
+        description: repetitions
+        default: "5"
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      benchmarks: ${{ steps.plan.outputs.benchmarks }}
+    steps:
+      - id: plan
+        env:
+          BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k' }}
+        run: echo "benchmarks=$(jq -cn --arg b "$BENCHMARKS" '$b | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
+
+  bench:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcd v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          mkdir -p bin
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+      - name: Build the generator, the report and both tigerstore refs
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'main' }}
+          BASELINE: ${{ inputs.baseline || 'main' }}
+        run: |
+          go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/benchreport ./cmd/benchreport
+          for target in baseline candidate; do
+            ref=$BASELINE
+            if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
+            git worktree add --detach "$RUNNER_TEMP/$target" "origin/$ref" 2>/dev/null || git worktree add --detach "$RUNNER_TEMP/$target" "$ref"
+            (cd "$RUNNER_TEMP/$target" && go build -o "$GITHUB_WORKSPACE/bin/$target" ./cmd/tigerstore)
+            echo "$target $ref $(git -C "$RUNNER_TEMP/$target" rev-parse HEAD)" >> commits.txt
+          done
+          cat commits.txt
+      - run: scripts/dev-certs.sh certs
+      - name: Turn disk write barriers on and record the runner
+        env:
+          LAYOUT: 3 0 1 2
+        run: |
+          sudo mount -o remount,barrier=1 /
+          findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          mkdir -p results
+          {
+            echo "## Runner"
+            echo '```'
+            lscpu | grep -E 'Model name|^CPU\(s\)|Thread'
+            free -b | head -2
+            findmnt -T "$RUNNER_TEMP" -n -o SOURCE,FSTYPE,OPTIONS
+            uname -r
+            go version
+            bin/etcd --version | head -1
+            cat commits.txt
+            echo "generator, scripts and report: $GITHUB_SHA"
+            echo "layout (generator, leader, followers): $LAYOUT"
+            echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
+            echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
+            echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
+            echo '```'
+          } | tee results/runner.md
+      - name: Run ${{ matrix.bench }}
+        env:
+          TARGETS: etcd baseline candidate
+          BINS: bin
+          CERTS: certs
+          LAYOUT: 3 0 1 2
+          MODES: ${{ inputs.modes || 'max rate' }}
+          REPS: ${{ inputs.reps || '5' }}
+        run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+      # A failed run leaves no comparison: the report would be over the
+      # runs that survived. The raw results are uploaded either way.
+      - name: Report
+        run: |
+          {
+            cat results/runner.md
+            bin/benchreport results
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench-${{ matrix.bench }}
+          path: results
