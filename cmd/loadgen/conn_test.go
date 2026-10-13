@@ -24,6 +24,10 @@ type fakeServer struct {
 	inflight  atomic.Int64
 	maxSeen   atomic.Int64
 	slowReads time.Duration
+	// rev is the last revision answered; every write gets the next one.
+	rev atomic.Int64
+	// repeat answers every write with revision 42 instead.
+	repeat bool
 }
 
 const fakeMaxStreams = 8
@@ -72,10 +76,14 @@ func (fs *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Content-Type", "application/grpc")
 	switch r.URL.Path {
-	case "/ok":
+	case "/ok", "/etcdserverpb.KV/Put":
 		h.Set("Trailer", "Grpc-Status")
 		hdr := newMsg()
-		hdr.varint(headerRevision, 42)
+		rev := fs.rev.Add(1)
+		if fs.repeat {
+			rev = 42
+		}
+		hdr.varint(headerRevision, uint64(rev))
 		resp := newMsg()
 		resp.sub(respHeader, hdr)
 		b := binary.BigEndian.AppendUint32([]byte{0}, uint32(len(resp.b)))
@@ -112,7 +120,7 @@ func fakeRun(t *testing.T, fs *fakeServer, path string, valueSize int, rate floa
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := base{tpl: tpl, ks: ks, vals: *makeValues(valueSize, 1), rng: wk.rng, stats: &wk.stats, limit: 64}
+	b := base{tpl: tpl, ks: ks, vals: *makeValues(valueSize, 1), rng: wk.rng, stats: &wk.stats, limit: 64, writes: newRevisionSet()}
 	for k := range ks.n {
 		b.own = append(b.own, k)
 	}
@@ -181,5 +189,48 @@ func TestFakeServerPings(t *testing.T) {
 	s := fakeRun(t, fs, "/ok", 1024, 10, time.Second)
 	if len(s.errs) > 0 || s.ops < 3 {
 		t.Fatalf("ops %d, errors %v", s.ops, s.errs)
+	}
+}
+
+// TestRepeatedRevisionFails answers every write with the same revision:
+// the run must report it.
+func TestRepeatedRevisionFails(t *testing.T) {
+	fs := startFake(t, 0, time.Second)
+	fs.repeat = true
+	s := fakeRun(t, fs, "/ok", 64, 0, 100*time.Millisecond)
+	if s.errs["revision 42 returned for two writes"] == 0 {
+		t.Fatalf("repeated revisions were not caught: errors %v", s.errs)
+	}
+}
+
+// TestLateCompletionsInCohort answers slowly, so the requests of the end
+// of the window complete after it: their latency still counts, and so
+// does every request that arrived in the window.
+func TestLateCompletionsInCohort(t *testing.T) {
+	fs := startFake(t, 200*time.Millisecond, time.Second)
+	s := fakeRun(t, fs, "/ok", 64, 200, 300*time.Millisecond)
+	if len(s.errs) > 0 || s.cohort == 0 || s.cohortFailed != 0 {
+		t.Fatalf("cohort %d, failed %d, errors %v", s.cohort, s.cohortFailed, s.errs)
+	}
+	if s.resp.n != uint64(s.cohort) {
+		t.Fatalf("%d latencies for a cohort of %d", s.resp.n, s.cohort)
+	}
+	// With 200 ms answers, the last 200 ms of arrivals complete after the
+	// window, so the window counts fewer completions than its cohort.
+	if s.ops >= s.cohort {
+		t.Fatalf("%d completions in the window, cohort %d: late completions were not in the cohort", s.ops, s.cohort)
+	}
+}
+
+// TestFailedCPUSampleIsInvalid runs against a server whose pid does not
+// exist: the run must fail and its result be invalid, not report zeros.
+func TestFailedCPUSampleIsInvalid(t *testing.T) {
+	fs := startFake(t, 0, time.Second)
+	res, err := run(config{
+		endpoints: []string{fs.addr}, workload: "put", valueSize: 64, keys: 10, conns: 1, streams: 4,
+		warmup: 50 * time.Millisecond, duration: 100 * time.Millisecond, pids: []int{1 << 30}, seed: 1,
+	})
+	if err == nil || res == nil || res.Valid {
+		t.Fatalf("a run without server CPU: error %v, result %+v", err, res)
 	}
 }

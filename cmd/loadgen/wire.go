@@ -41,6 +41,8 @@ const (
 	watchPrevKV      = 6
 	respHeader       = 1 // field 1 of every response
 	txnSucceeded     = 2 // TxnResponse
+	txnResponses     = 3
+	opResponsePut    = 2 // ResponseOp
 	rangeKVs         = 2 // RangeResponse
 	rangeCount       = 4
 	delDeleted       = 2 // DeleteRangeResponse
@@ -51,7 +53,8 @@ const (
 	watchEvents      = 11
 	eventType        = 1 // mvccpb.Event
 	eventKV          = 2
-	kvModRevision    = 3 // mvccpb.KeyValue
+	kvKey            = 1 // mvccpb.KeyValue
+	kvModRevision    = 3
 	kvValue          = 5
 	eventTypeDelete  = 1
 	revisionVarintSz = 9 // a revision written as a padded varint, see putRevision
@@ -292,6 +295,7 @@ func fields(m []byte, f func(num protowire.Number, v uint64, b []byte) error) er
 		m = m[n:]
 		var v uint64
 		var b []byte
+		//exhaustive:ignore // the default case handles the rest
 		switch typ {
 		case protowire.VarintType:
 			v, n = protowire.ConsumeVarint(m)

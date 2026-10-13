@@ -22,18 +22,23 @@ type phase struct {
 
 // worker drives one connection: it owns the writer side.
 type worker struct {
-	c     *conn
-	rng   *rand.Rand
-	stats stats
-	// unsent counts arrivals still waiting to be sent when a phase stopped.
+	c *conn
+	// rng chooses keys; arrivals draws the open-loop arrival times. They
+	// are separate streams, so the same seed gives every store the same
+	// schedule and the same keys, however fast it answers.
+	rng      *rand.Rand
+	arrivals *rand.Rand
+	stats    stats
+	// unsent counts arrivals that were never sent by the end of the drain.
 	unsent int64
 }
 
 func newWorker(c *conn, seed uint64) *worker {
 	return &worker{
-		c:     c,
-		rng:   rand.New(rand.NewPCG(seed, 0x6c6f616467656e)),
-		stats: stats{errs: make(map[string]int64)},
+		c:        c,
+		rng:      rand.New(rand.NewPCG(seed, 0x6c6f616467656e)),
+		arrivals: rand.New(rand.NewPCG(seed, 0x6172726976616c)),
+		stats:    stats{errs: make(map[string]int64)},
 	}
 }
 
@@ -52,15 +57,13 @@ func (wk *worker) run(l load, p phase) error {
 	for {
 		t := now()
 		if p.rate > 0 {
+			// Arrivals stop at the end of the phase, but the backlog
+			// still goes out during the drain: those requests belong to
+			// the window, and leaving them out would hide how far
+			// behind the server fell.
 			for next < p.stop && next <= t {
 				backlog = append(backlog, next)
 				next += wk.gap(p.rate)
-			}
-			if t >= p.stop && len(backlog) > 0 {
-				// These would complete after the window. Count them, since
-				// a backlog at the end means the server fell behind.
-				wk.unsent += int64(len(backlog))
-				backlog = nil
 			}
 		}
 
@@ -99,12 +102,23 @@ func (wk *worker) run(l load, p phase) error {
 			return err
 		}
 
-		over := t >= p.stop || exhausted
+		over := (t >= p.stop && len(backlog) == 0) || exhausted
 		if over && inflight == 0 {
 			return nil
 		}
 		if t >= deadline {
-			return fmt.Errorf("%s: %d requests still in flight %v after the phase", c.addr, inflight, p.drain)
+			// Arrivals never sent fail, in the window's cohort if they
+			// belong to it, and make the result invalid.
+			c.mu.Lock()
+			wk.unsent += int64(len(backlog))
+			for _, at := range backlog {
+				if at >= wk.stats.winStart && at < wk.stats.winStop {
+					wk.stats.cohort++
+					wk.stats.cohortFailed++
+				}
+			}
+			c.mu.Unlock()
+			return fmt.Errorf("%s: %d requests in flight and %d never sent %v after the phase", c.addr, inflight, len(backlog), p.drain)
 		}
 		if full {
 			continue
@@ -112,7 +126,7 @@ func (wk *worker) run(l load, p phase) error {
 		// Sleep until the next arrival, or until a response or window
 		// update frees room.
 		wait := deadline
-		if !over {
+		if !over && t < p.stop {
 			wait = min(next, p.stop)
 		}
 		if wait <= t {
@@ -128,5 +142,5 @@ func (wk *worker) run(l load, p phase) error {
 
 // gap draws the time to the next arrival in ns.
 func (wk *worker) gap(rate float64) int64 {
-	return max(int64(wk.rng.ExpFloat64()/rate*1e9), 1)
+	return max(int64(wk.arrivals.ExpFloat64()/rate*1e9), 1)
 }

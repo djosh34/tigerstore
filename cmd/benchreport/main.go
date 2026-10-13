@@ -93,6 +93,14 @@ func report(w io.Writer, dir string) error {
 			targets = append(targets, k.target)
 		}
 	}
+	// Every target ran the same runs, or the comparison is unfair.
+	for k, rs := range all {
+		for _, t := range targets {
+			if n := len(all[key{k.bench, t, k.mode}]); n != len(rs) {
+				return fmt.Errorf("%s %s: %s has %d runs, %s has %d", k.bench, k.mode, k.target, len(rs), t, n)
+			}
+		}
+	}
 	slices.SortFunc(benches, benchOrder)
 	// etcd first, as the baseline.
 	slices.SortStableFunc(targets, func(a, b string) int {
@@ -101,7 +109,7 @@ func report(w io.Writer, dir string) error {
 
 	var watches []string
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("| Benchmark | Store | Max ops/s | p50 / p99 ms at max | Server CPU us/op at max | Open-loop ops/s | p50 / p99 / p99.9 ms open loop | Server CPU us/op open loop | Runs |\n")
+	p("| Benchmark | Store | Max ops/s | p50 / p99 ms closed loop at max | Server CPU us/op at max | Open-loop ops/s | p50 / p99 / p99.9 ms open loop | Server CPU us/op open loop | Runs |\n")
 	p("|---|---|---|---|---|---|---|---|---|\n")
 	for _, bench := range benches {
 		for _, target := range targets {
@@ -126,7 +134,7 @@ func report(w io.Writer, dir string) error {
 				len(mx), len(rt))
 		}
 	}
-	p("\nMedians of the runs; throughput shows the lowest and highest run in brackets. Open loop offers half of etcd's median max throughput, with latency counted from each request's scheduled send time.\n")
+	p("\nMedians of the runs; throughput shows the lowest and highest run in brackets. At max every stream is busy, so its latency is the number of streams divided by the throughput, not a latency at a given load. Open loop offers half of etcd's median max throughput, with latency counted from each request's scheduled send time.\n")
 
 	if len(watches) > 0 {
 		p("\n| Watch benchmark | Store | Events/s at max | Event p50 / p99 ms at max | Events/s open loop | Event p50 / p99 ms open loop |\n")

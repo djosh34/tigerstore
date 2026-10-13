@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"sync/atomic"
 
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -63,15 +65,41 @@ func (s *stats) complete(st *stream, at int64, err error) {
 	}
 }
 
+// revisionSet records the revision of every write, to catch a revision
+// that two writes got. Writes on different connections finish in any
+// order, so it only checks that each revision comes once.
+type revisionSet struct{ words []atomic.Uint64 }
+
+// maxCheckedRevision bounds the revisions the set holds: 64 Mi bits, more
+// than any run here writes.
+const maxCheckedRevision = 1 << 26
+
+func newRevisionSet() *revisionSet {
+	return &revisionSet{words: make([]atomic.Uint64, maxCheckedRevision/64)}
+}
+
+// add records the revision of a write and fails if it came before.
+func (r *revisionSet) add(rev int64) error {
+	if rev <= 0 || rev >= maxCheckedRevision {
+		return fmt.Errorf("write revision %d outside the checked range", rev)
+	}
+	bit := uint64(1) << (rev % 64)
+	if r.words[rev/64].Or(bit)&bit != 0 {
+		return fmt.Errorf("revision %d returned for two writes", rev)
+	}
+	return nil
+}
+
 // base is what every request load shares.
 type base struct {
-	tpl   *template
-	ks    keys
-	own   []int // the keys this connection uses
-	vals  values
-	rng   *rand.Rand
-	stats *stats
-	limit int // streams in flight on this connection
+	tpl    *template
+	ks     keys
+	own    []int // the keys this connection uses
+	vals   values
+	rng    *rand.Rand
+	stats  *stats
+	limit  int // streams in flight on this connection
+	writes *revisionSet
 }
 
 func (b *base) done(st *stream, at int64, err error) { b.stats.complete(st, at, err) }
@@ -122,6 +150,9 @@ func (w *putLoad) exhausted() bool { return w.once && w.next == len(w.own) }
 func (w *putLoad) message(st *stream, m []byte) error {
 	rev, err := responseRevision(m)
 	if err != nil {
+		return err
+	}
+	if err := w.writes.add(rev); err != nil {
 		return err
 	}
 	if w.revs != nil {
@@ -177,6 +208,17 @@ func (w *casLoad) message(st *stream, m []byte) error {
 	if ok != 1 {
 		return errCASFailed
 	}
+	// The success branch is one put, which answers with a response.
+	op, err := bytesField(m, txnResponses)
+	if err != nil {
+		return err
+	}
+	if _, err := bytesField(op, opResponsePut); err != nil {
+		return fmt.Errorf("CAS txn without a put response: %w", err)
+	}
+	if err := w.writes.add(rev); err != nil {
+		return err
+	}
 	w.revs[st.slot] = rev
 	return nil
 }
@@ -207,6 +249,13 @@ func (w *deleteLoad) start(c *conn, st *stream) bool {
 func (w *deleteLoad) exhausted() bool { return w.next == len(w.own) }
 
 func (w *deleteLoad) message(_ *stream, m []byte) error {
+	rev, err := responseRevision(m)
+	if err != nil {
+		return err
+	}
+	if err := w.writes.add(rev); err != nil {
+		return err
+	}
 	n, err := varintField(m, delDeleted)
 	if err != nil {
 		return err
@@ -235,15 +284,26 @@ func (w *rangeLoad) start(c *conn, st *stream) bool {
 
 func (w *rangeLoad) exhausted() bool { return false }
 
-func (w *rangeLoad) message(_ *stream, m []byte) error {
+func (w *rangeLoad) message(st *stream, m []byte) error {
+	if _, err := responseRevision(m); err != nil {
+		return err
+	}
 	var count uint64
 	kvs := 0
 	err := fields(m, func(num protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the default case handles the rest
 		switch num {
 		case rangeCount:
 			count = v
 		case rangeKVs:
 			kvs++
+			key, err := bytesField(b, kvKey)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(key, w.ks.key(st.slot)) {
+				return fmt.Errorf("range returned key %q, want %q", key, w.ks.key(st.slot))
+			}
 			val, err := bytesField(b, kvValue)
 			if err != nil {
 				return err
@@ -298,6 +358,7 @@ func (w *watchLoad) message(st *stream, m []byte) error {
 
 func (w *watchLoad) response(ws *watchStream, m []byte, at int64) error {
 	return fields(m, func(num protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the default case handles the rest
 		switch num {
 		case watchCreated:
 			ws.created = v == 1
@@ -321,6 +382,7 @@ func (w *watchLoad) response(ws *watchStream, m []byte, at int64) error {
 func (w *watchLoad) event(ws *watchStream, e []byte, at int64) error {
 	var kv []byte
 	err := fields(e, func(num protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the default case handles the rest
 		switch num {
 		case eventType:
 			if v == eventTypeDelete {
@@ -338,6 +400,7 @@ func (w *watchLoad) event(ws *watchStream, e []byte, at int64) error {
 	var rev int64
 	var val []byte
 	err = fields(kv, func(num protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // the default case handles the rest
 		switch num {
 		case kvModRevision:
 			rev = int64(v)
@@ -358,9 +421,13 @@ func (w *watchLoad) event(ws *watchStream, e []byte, at int64) error {
 	}
 	ws.lastRev = rev
 	ws.events++
+	// Event throughput counts deliveries in the window; latency counts
+	// every event of a put sent in the window, however late it arrives.
 	if at >= w.stats.winStart && at < w.stats.winStop {
 		w.events++
-		w.lat.record(at - int64(binary.LittleEndian.Uint64(val)))
+	}
+	if sent := int64(binary.LittleEndian.Uint64(val)); sent >= w.stats.winStart && sent < w.stats.winStop {
+		w.lat.record(at - sent)
 	}
 	return nil
 }

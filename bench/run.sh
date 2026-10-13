@@ -58,15 +58,16 @@ if [ "${#layout[@]}" -ne 4 ]; then
 	exit 2
 fi
 
-# Delete removes each key once, so it needs a key per request: sized for up
-# to about 45k deletes/s. The 10 KiB run is shorter to keep its preload, and
-# the disk it fills, small.
+# Delete removes each key once, so it needs a key per request, and a run
+# that runs out is invalid: 600,000 keys over 1 + 4 s last up to 120k
+# deletes/s. The 10 KiB run preloads fewer keys, to keep the disk it fills
+# small, so it is shorter still: 300,000 keys over 1 + 2 s.
 keys=10000 warmup=3s duration=10s
 if [ "$workload" = delete ]; then
 	if [ "$size" = 1024 ]; then
-		keys=600000
+		keys=600000 warmup=1s duration=4s
 	else
-		keys=250000 warmup=1s duration=4s
+		keys=300000 warmup=1s duration=2s
 	fi
 fi
 
@@ -105,10 +106,19 @@ once() {
 		-seed "$rep" \
 		-out "$out/$bench/$target-$mode-$rep.json" \
 		"$@" || status=$?
+	if [ "$status" -eq 0 ]; then
+		# The generator drove the leader on its CPUs only if the leader
+		# did not change during the run.
+		"$here/cluster.sh" check "$dir" || status=$?
+	fi
 	"$here/cluster.sh" stop "$dir"
 	return "$status"
 }
 
+if [ -e "$out/$bench" ]; then
+	echo "$out/$bench exists; results of different runs must not mix" >&2
+	exit 2
+fi
 mkdir -p "$out/$bench"
 # A run that fails stops the benchmark: its result is invalid, and a
 # comparison without it would be wrong.

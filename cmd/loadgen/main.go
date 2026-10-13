@@ -120,8 +120,8 @@ type result struct {
 	// latencies describe, and CohortFailed those of them that failed.
 	Cohort       int64 `json:"cohort"`
 	CohortFailed int64 `json:"cohort_failed"`
-	// Unsent counts open-loop arrivals still waiting when arrivals stopped.
-	// More than a handful means the store did not keep up with the rate.
+	// Unsent counts open-loop arrivals never sent by the end of the drain;
+	// any makes the result invalid.
 	Unsent int64        `json:"unsent"`
 	Watch  *watchResult `json:"watch,omitempty"`
 	// CPU over the measurement window.
@@ -204,6 +204,7 @@ func run(cfg config) (*result, error) {
 	}
 	ks := makeKeys(cfg.keys)
 	vals := makeValues(cfg.valueSize, cfg.seed)
+	writes := newRevisionSet()
 
 	var workers []*worker
 	defer func() {
@@ -227,7 +228,7 @@ func run(cfg config) (*result, error) {
 		}
 		v := *vals
 		v.off = i * (valuePoolSize / cfg.conns) / cfg.valueSize * cfg.valueSize
-		b := base{tpl: t, ks: ks, vals: v, rng: wk.rng, stats: &wk.stats, limit: cfg.streams}
+		b := base{tpl: t, ks: ks, vals: v, rng: wk.rng, stats: &wk.stats, limit: cfg.streams, writes: writes}
 		for k := i; k < cfg.keys; k += cfg.conns {
 			b.own = append(b.own, k)
 		}

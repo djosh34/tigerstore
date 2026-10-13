@@ -134,7 +134,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		b := base{tpl: tpl, ks: ks, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 4}
+		b := base{tpl: tpl, ks: ks, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 4, writes: newRevisionSet()}
 		for k := range ks.n {
 			b.own = append(b.own, k)
 		}
@@ -176,7 +176,7 @@ func TestEtcdServerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := base{tpl: tpl, ks: keys{n: 1}, own: []int{0}, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 1}
+	b := base{tpl: tpl, ks: keys{n: 1}, own: []int{0}, vals: *makeValues(64, 1), rng: wk.rng, stats: &wk.stats, limit: 1, writes: newRevisionSet()}
 	start := now()
 	if err := wk.run(&putLoad{base: b, once: true}, phase{start: start, stop: start + int64(time.Second), drain: time.Second}); err != nil {
 		t.Fatal(err)

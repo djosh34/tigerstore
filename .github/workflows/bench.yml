@@ -73,6 +73,8 @@ jobs:
           cat commits.txt
       - run: scripts/dev-certs.sh certs
       - name: Turn disk write barriers on and record the runner
+        env:
+          LAYOUT: 3 0 1 2
         run: |
           sudo mount -o remount,barrier=1 /
           findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
@@ -89,7 +91,11 @@ jobs:
             go version
             bin/etcd --version | head -1
             cat commits.txt
-            echo "layout: generator CPU 3, leader CPU 0, followers CPUs 1 and 2"
+            echo "generator, scripts and report: $GITHUB_SHA"
+            echo "layout (generator, leader, followers): $LAYOUT"
+            echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
+            echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
+            echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
           } | tee results/runner.md
       - name: Run ${{ matrix.bench }}
@@ -101,8 +107,9 @@ jobs:
           MODES: ${{ inputs.modes || 'max rate' }}
           REPS: ${{ inputs.reps || '5' }}
         run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+      # A failed run leaves no comparison: the report would be over the
+      # runs that survived. The raw results are uploaded either way.
       - name: Report
-        if: always()
         run: |
           {
             cat results/runner.md

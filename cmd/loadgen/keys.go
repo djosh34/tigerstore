@@ -62,9 +62,11 @@ func makeValues(size int, seed uint64) *values {
 	return &values{size: size, pool: pool}
 }
 
-// next returns the next value. Values are disjoint windows of random
-// bytes, so no two share data that a compressor could find. Each
-// connection has its own values, so next needs no lock.
+// next returns the next value: the next disjoint window of a 16 MiB pool
+// of random bytes. Adjacent values share no data, but a connection's
+// values repeat after 16 MiB and connections walk the same pool, so a
+// compression benchmark needs values drawn afresh. Each connection has
+// its own cursor, so next needs no lock.
 func (v *values) next() []byte {
 	b := v.pool[v.off : v.off+v.size]
 	v.off += v.size

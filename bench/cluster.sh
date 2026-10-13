@@ -3,6 +3,7 @@
 # the leader pinned to its own CPUs.
 #
 #   bench/cluster.sh start <kind> <server binary> <dir> <leader cpus> <cpus> <cpus>
+#   bench/cluster.sh check <dir>
 #   bench/cluster.sh stop <dir>
 #
 # <kind> is etcd or tigerstore. Both get the same flags, ports, certificates
@@ -12,7 +13,8 @@
 # first list and the followers to the others. It writes the leader's
 # client endpoint to <dir>/leader, all endpoints to <dir>/endpoints, the
 # node pids (leader first) to <dir>/pids, and the placement to
-# <dir>/placement.json. stop kills the nodes and deletes <dir>.
+# <dir>/placement.json. check fails if the leader or the term changed
+# since start. stop kills the nodes and deletes <dir>.
 #
 # CERTS is a directory made by scripts/dev-certs.sh (required). ETCDCTL
 # names the etcdctl (default: etcdctl next to the server binary, then on
@@ -20,23 +22,38 @@
 set -euo pipefail
 
 port=${BENCH_PORT:-40000}
+etcdctl=${ETCDCTL:-etcdctl}
+certs=${CERTS:-}
+
+# ctl runs etcdctl against $endpoints with the client certificate.
+ctl() {
+	"$etcdctl" --endpoints "$endpoints" --cacert "$certs/ca.pem" \
+		--cert "$certs/client.pem" --key "$certs/client-key.pem" --command-timeout 2s "$@"
+}
+
+# status prints the leader's endpoint and the term, and fails unless every
+# node names the same single leader.
+status() {
+	local st leader
+	st=$(ctl endpoint status -w json)
+	# etcdctl versions name fields in snake or camel case.
+	leader=$(jq -r 'map(select(.Status.leader == (.Status.header.member_id // .Status.header.memberId))) | if length == 1 then .[0].Endpoint else "" end' <<<"$st")
+	if [ -z "$leader" ] || [ "$(jq '[.[].Status.leader] | unique | length' <<<"$st")" -ne 1 ]; then
+		echo "no single leader: $st" >&2
+		return 1
+	fi
+	echo "${leader#https://} $(jq '[.[].Status | (.raft_term // .raftTerm)] | max' <<<"$st")"
+}
 
 # place finds the leader, pins every thread of each node to its CPUs, the
 # leader to the first list, and records where everything is.
 place() {
 	local kind=$1 dir=$2 endpoints=$3 pids=$4
 	shift 4
-	local cpus=("$@") status leader=""
+	local cpus=("$@") leader term
 	read -r -a pid <<<"${pids//,/ }"
 	read -r -a ep <<<"${endpoints//,/ }"
-	# Every node must name the same leader, and exactly one is it.
-	status=$(ctl endpoint status -w json)
-	leader=$(jq -r 'map(select(.Status.leader == .Status.header.member_id)) | if length == 1 then .[0].Endpoint else "" end' <<<"$status")
-	if [ -z "$leader" ] || [ "$(jq '[.[].Status.leader] | unique | length' <<<"$status")" -ne 1 ]; then
-		echo "$kind: no single leader: $status" >&2
-		exit 1
-	fi
-	leader=${leader#https://}
+	read -r leader term <<<"$(status)"
 	local order=() i
 	for i in 0 1 2; do
 		if [ "${ep[i]}" = "$leader" ]; then
@@ -51,9 +68,10 @@ place() {
 		placed+="${placed:+,}${pid[order[i]]}"
 	done
 	echo "$leader" >"$dir/leader"
+	echo "$term" >"$dir/term"
 	echo "$placed" >"$dir/pids"
-	jq -n --arg kind "$kind" --arg leader "$leader" --arg pids "$placed" --arg cpus "${cpus[*]}" \
-		'{kind: $kind, leader: $leader, pids_leader_first: $pids, cpus_leader_first: $cpus}' >"$dir/placement.json"
+	jq -n --arg kind "$kind" --arg leader "$leader" --arg term "$term" --arg pids "$placed" --arg cpus "${cpus[*]}" \
+		'{kind: $kind, leader: $leader, term: $term, pids_leader_first: $pids, cpus_leader_first: $cpus}' >"$dir/placement.json"
 }
 
 start() {
@@ -77,7 +95,7 @@ start() {
 	fi
 	mkdir -p "$dir"
 
-	local certs=${CERTS:?CERTS must name a dev-certs.sh directory}
+	certs=${CERTS:?CERTS must name a dev-certs.sh directory}
 	local initial="" endpoints=""
 	for i in 1 2 3; do
 		initial+="${initial:+,}n$i=https://127.0.0.1:$((port + 10 * i + 1))"
@@ -88,11 +106,9 @@ start() {
 	for i in 1 2 3; do
 		local client="https://127.0.0.1:$((port + 10 * i))"
 		local peer="https://127.0.0.1:$((port + 10 * i + 1))"
-		# The quota is etcd's suggested maximum, so long write runs do not
-		# hit the 2 GiB default.
 		# etcd-only flags: tigerstore always verifies peer certificates,
 		# has no quota and logs little. The quota is etcd's suggested
-		# maximum, so long write runs do not hit the 2 GiB default.
+		# maximum, so long write runs do not hit etcd's 2 GiB default.
 		local extra=()
 		if [ "$kind" = etcd ]; then
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
@@ -121,10 +137,6 @@ start() {
 	if [ ! -x "$etcdctl" ]; then
 		etcdctl=etcdctl
 	fi
-	ctl() {
-		"$etcdctl" --endpoints "$endpoints" --cacert "$certs/ca.pem" \
-			--cert "$certs/client.pem" --key "$certs/client-key.pem" --command-timeout 2s "$@"
-	}
 	for _ in $(seq 100); do
 		if ctl put /bench/ready 1 >/dev/null 2>&1; then
 			place "$kind" "$dir" "$endpoints" "$pids" "${cpus[@]}"
@@ -142,6 +154,16 @@ start() {
 	echo "$kind cluster did not accept a write within 30s; logs:" >&2
 	tail -n 20 "$dir"/n*.log >&2
 	exit 1
+}
+
+check() {
+	local dir=$1 leader term
+	endpoints=$(cat "$dir/endpoints")
+	read -r leader term <<<"$(status)"
+	if [ "$leader" != "$(cat "$dir/leader")" ] || [ "$term" != "$(cat "$dir/term")" ]; then
+		echo "the leader changed during the run: $(cat "$dir/leader") term $(cat "$dir/term"), now $leader term $term" >&2
+		return 1
+	fi
 }
 
 stop() {
@@ -168,11 +190,14 @@ start)
 	shift
 	start "$@"
 	;;
+check)
+	check "$2"
+	;;
 stop)
 	stop "$2"
 	;;
 *)
-	echo "usage: $0 start <kind> <bin> <dir> <leader cpus> <cpus> <cpus> | stop <dir>" >&2
+	echo "usage: $0 start <kind> <bin> <dir> <leader cpus> <cpus> <cpus> | check <dir> | stop <dir>" >&2
 	exit 2
 	;;
 esac

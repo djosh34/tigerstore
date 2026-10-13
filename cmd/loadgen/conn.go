@@ -343,6 +343,7 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 	}
 	c.mu.Lock()
 	err := f.ForeachSetting(func(s http2.Setting) error {
+		//exhaustive:ignore // the default case handles the rest
 		switch s.ID {
 		case http2.SettingMaxConcurrentStreams:
 			c.maxStreams = s.Val
