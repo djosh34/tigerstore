@@ -165,6 +165,14 @@ func (s *Sim) maybeCorrupt(n *node) {
 		}
 		return
 	}
+	if planted.On("B04c") && flipPayload != nil {
+		// Planted: flip one payload bit that still decodes, and do not
+		// expect the node to notice; the run must catch what it applies.
+		if flipPayload(s, n) {
+			s.mix(0xc4, uint64(n.idx))
+		}
+		return
+	}
 	for _, m := range s.nodes {
 		if m.corrupted {
 			return
