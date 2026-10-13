@@ -10,8 +10,9 @@ import (
 )
 
 // TestAlarm checks Maintenance.Alarm against what etcd v3.7.2 answers
-// with no alarm active: no alarms for a GET or a DEACTIVATE, with a
-// linearizable header, and Unimplemented for activating one by hand.
+// with no alarm active: no alarms for a GET, a DEACTIVATE or an ACTIVATE
+// of NONE, with a linearizable header. Activating NOSPACE by hand, which
+// etcd allows, is not supported here and answers Unimplemented.
 func TestAlarm(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 93)
