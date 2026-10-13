@@ -60,10 +60,6 @@ var stricter = map[string][]string{
 	},
 }
 
-const (
-	issueLeases = "leases are not built yet, https://github.com/djosh34/tigerstore/issues/47"
-)
-
 // expectedFail lists the steps where tigerstore differs from etcd v3.7.2
 // today, by case, with the reason. They still run, and each must give the
 // answer recorded for it in knownFile. A listed step that matches etcd fails
@@ -71,14 +67,7 @@ const (
 var expectedFail = map[string]struct {
 	reason string
 	steps  []string
-}{
-	"leases": {issueLeases, []string{
-		"grant with an explicit ID", "grant the same ID again", "grant with a TTL of 1 s", "grant with a TTL of 9000000001 s",
-		"grant with a TTL of 0", "grant with a negative ID", "put k with the lease", "put j with the lease", "put j without a lease",
-		"put ignore_lease on k", "range keys", "revoke the lease", "range keys after the revoke", "revoke the lease again",
-		"grant a lease for no keys", "revoke a lease without keys", "revoke lease 0",
-	}},
-}
+}{}
 
 // server returns TIGERSTORE_DIFF_SERVER, which says what the endpoint is.
 func server(t *testing.T) string {

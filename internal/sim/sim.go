@@ -51,7 +51,11 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
-	Faults        Faults
+	// NoLeases leaves leases out of the workload. Porcupine's runs need
+	// that: every lease adds an expiry that may apply at any time, and its
+	// search grows too fast with them.
+	NoLeases bool
+	Faults   Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -220,9 +224,12 @@ type Sim struct {
 
 	clients  []*client
 	watchers []*watchClient
-	history  []*Record
-	stats    Stats
-	err      error
+	// expiredAt is when a lease first expired on any node.
+	expiredAt    map[int64]int64
+	expiredOrder []int64
+	history      []*Record
+	stats        Stats
+	err          error
 }
 
 // Stats counts what happened in a run.
@@ -233,6 +240,8 @@ type Stats struct {
 	// Compactions counts successful compactions and WatchCompacted the
 	// watches that a compaction canceled.
 	Compactions, WatchCompacted int
+	// Revokes counts lease revokes in the log, expiries included.
+	Revokes int
 }
 
 // Result is the outcome of a run.
@@ -254,14 +263,17 @@ type Result struct {
 // rule.
 func Run(cfg Config) (*Result, error) {
 	s := &Sim{
-		cfg:    cfg,
-		rng:    rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
-		trace:  fnv.New64a(),
-		healAt: cfg.Duration,
-		stopAt: cfg.Duration + cfg.Heal,
+		cfg:       cfg,
+		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+		trace:     fnv.New64a(),
+		expiredAt: map[int64]int64{},
+		healAt:    cfg.Duration,
+		stopAt:    cfg.Duration + cfg.Heal,
 	}
-	// After the clients stop, give the cluster time to settle.
-	s.endAt = s.stopAt + 3*Second
+	// After the clients stop, give the cluster time to settle: leases
+	// still expire for up to leaseGrace, and the watch events of the last
+	// expiry need time to arrive.
+	s.endAt = s.stopAt + leaseGrace + 2*Second
 	ids := []uint64{1, 2, 3}
 	s.links = make([][]link, len(ids))
 	for i, id := range ids {
@@ -439,6 +451,12 @@ func (s *Sim) process(n *node) {
 	}
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
+	}
+	for _, id := range eff.Expired {
+		if _, seen := s.expiredAt[id]; !seen {
+			s.expiredAt[id] = s.now
+			s.expiredOrder = append(s.expiredOrder, id)
+		}
 	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)

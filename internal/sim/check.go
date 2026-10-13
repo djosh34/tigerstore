@@ -28,7 +28,8 @@ import (
 //   - revisions follow real time: a call never sees a revision older than
 //     one returned before it started, and a write gets a newer one;
 //   - every write is in the committed log at most once, an acknowledged
-//     write is in it, and a write that failed for certain is not;
+//     write is in it, and a write that failed for certain is not, unless
+//     the state machine rejected it when it applied;
 //   - every watch delivered exactly the final history of its range;
 //   - every call that starts after the cluster healed succeeds.
 func (s *Sim) check(res *Result) error {
@@ -55,10 +56,11 @@ func (s *Sim) check(res *Result) error {
 	// The cluster compacts, so the checks read history from a model: the
 	// committed log replayed without compactions. It must end in the
 	// cluster's state.
-	model, err := replay(res.Log)
+	model, log, err := replay(res.Log)
 	if err != nil {
 		return err
 	}
+	res.Log = log
 	if err := sameLatest(model, final); err != nil {
 		return err
 	}
@@ -78,6 +80,9 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	if err := s.checkWatches(model, res); err != nil {
+		return err
+	}
+	if err := s.checkLeasesExpire(res); err != nil {
 		return err
 	}
 	live := 0
@@ -242,12 +247,9 @@ func checkRecord(st *mvcc.Store, r *Record) error {
 			return errors.New("wrong response type")
 		}
 		return checkTxn(st, req, resp)
-	case *pb.CompactionRequest:
-		// A compaction changes no value; converged checks that every
-		// node compacted the same way.
-		if _, ok := r.Resp.(*pb.CompactionResponse); !ok {
-			return errors.New("wrong response type")
-		}
+	case *pb.CompactionRequest, *pb.LeaseGrantRequest, *pb.LeaseRevokeRequest, *pb.LeaseKeepAliveRequest:
+		// These change no value directly; the model replays their effect
+		// on keys from the log, and converged checks the replicas agree.
 		return nil
 	}
 	return fmt.Errorf("unknown request %T", r.req)
@@ -426,7 +428,10 @@ func checkLog(res *Result) error {
 			if !ok {
 				return fmt.Errorf("write %d of the log puts %q, which no call wrote", i, v)
 			}
-			if r.Err != nil && !r.Ambiguous {
+			// A write the state machine rejected when it applied, such as
+			// a put whose lease expired meanwhile, is in the log with its
+			// answer. Any other certain failure must not be.
+			if r.Err != nil && !r.Ambiguous && !isRejection(r.Err) {
 				return fmt.Errorf("client %d's call at %d ms failed for certain with %w, but it is in the log",
 					r.Client, r.Call/Millisecond, r.Err)
 			}
@@ -448,35 +453,39 @@ func checkLog(res *Result) error {
 
 // isRejection reports whether an error is one of the answers the
 // simulated clients can get for a request the cluster handled: a compacted
-// or future revision. Anything else, such as "not leader", is
-// unavailability.
+// or future revision, or a lease that is gone. Anything else, such as "not
+// leader", is unavailability.
 func isRejection(err error) bool {
-	return errors.Is(err, rpctypes.ErrGRPCCompacted) || errors.Is(err, rpctypes.ErrGRPCFutureRev)
+	return errors.Is(err, rpctypes.ErrGRPCCompacted) || errors.Is(err, rpctypes.ErrGRPCFutureRev) ||
+		errors.Is(err, rpctypes.ErrGRPCLeaseNotFound)
 }
 
-// replay applies the committed log to a fresh store, without compactions,
-// so every revision stays readable.
-func replay(log []proto.Message) (*mvcc.Store, error) {
-	st := mvcc.New()
+// replay applies the committed log to a fresh state, without compactions,
+// so every revision stays readable. It returns the log as the checkers
+// read it: an expiry that applied becomes the LeaseRevoke it amounts to,
+// and one that no longer applied, because a keepalive came first, is left
+// out.
+func replay(log []proto.Message) (*mvcc.Store, []proto.Message, error) {
+	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)))
+	var out []proto.Message
 	for i, op := range log {
-		var err error
-		switch op := op.(type) {
-		case *pb.PutRequest:
-			_, err = st.Put(op)
-		case *pb.DeleteRangeRequest:
-			_, err = st.DeleteRange(op)
-		case *pb.TxnRequest:
-			_, err = st.Txn(op)
-		case *pb.CompactionRequest:
+		e, expiry := op.(*pb.LeaseCheckpoint)
+		if _, ok := op.(*pb.CompactionRequest); ok {
+			out = append(out, op)
 			continue
-		default:
-			return nil, fmt.Errorf("log write %d has unknown type %T", i, op)
 		}
+		resp, err := st.Apply(op)
 		if err != nil && !isRejection(err) {
-			return nil, fmt.Errorf("replaying log write %d: %w", i, err)
+			return nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
+		}
+		switch {
+		case !expiry:
+			out = append(out, op)
+		case resp != nil:
+			out = append(out, &pb.LeaseRevokeRequest{ID: e.ID})
 		}
 	}
-	return st, nil
+	return st.Store(), out, nil
 }
 
 // sameLatest checks that two stores are at the same revision with the same
@@ -494,6 +503,62 @@ func sameLatest(a, b *mvcc.Store) error {
 	if a.Rev() != b.Rev() || !proto.Equal(ra, rb) {
 		return fmt.Errorf("replaying the committed log gives revision %d and %d keys, the cluster has revision %d and %d keys",
 			a.Rev(), len(ra.Kvs), b.Rev(), len(rb.Kvs))
+	}
+	return nil
+}
+
+// leaseGrace is how long after its last grant or keepalive a lease may
+// still live at the end: the largest TTL the clients ask for, 4 s, plus a
+// leader change, after which the new leader gives the full TTL again.
+const leaseGrace = 8 * Second
+
+// checkLeasesExpire requires every lease still granted at the end to have
+// been granted or kept alive within leaseGrace, so leases do expire, and
+// no lease to expire before its TTL ran out since its last successful
+// grant or renewal.
+func (s *Sim) checkLeasesExpire(res *Result) error {
+	renewed := map[int64]int64{}
+	ttl := map[int64]int64{}
+	for _, r := range res.History {
+		switch resp := r.Resp.(type) {
+		case *pb.LeaseGrantResponse:
+			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			ttl[resp.ID] = resp.TTL
+		case *pb.LeaseKeepAliveResponse:
+			if resp.TTL > 0 {
+				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
+			}
+		}
+	}
+	for _, id := range s.expiredOrder {
+		at := s.expiredAt[id]
+		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second {
+			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
+				id, ttl[id], at/Millisecond, t/Millisecond)
+		}
+	}
+	last := map[int64]int64{}
+	for _, r := range res.History {
+		switch req := r.req.(type) {
+		case *pb.LeaseGrantRequest:
+			if g, ok := r.Resp.(*pb.LeaseGrantResponse); ok {
+				last[g.ID] = max(last[g.ID], r.Call)
+			}
+		case *pb.LeaseKeepAliveRequest:
+			last[req.ID] = max(last[req.ID], r.Call)
+		}
+	}
+	for _, id := range s.nodes[0].core.Leases() {
+		t, known := last[id]
+		// A lease from an ambiguous grant has an ID no client learned.
+		if known && t < s.endAt-leaseGrace {
+			return fmt.Errorf("lease %d was last granted or kept alive at %d ms but still lives at %d ms", id, t/Millisecond, s.endAt/Millisecond)
+		}
+	}
+	for _, op := range res.Log {
+		if _, ok := op.(*pb.LeaseRevokeRequest); ok {
+			res.Stats.Revokes++
+		}
 	}
 	return nil
 }
