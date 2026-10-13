@@ -127,6 +127,11 @@ func (c *cluster) start(id uint64) {
 }
 
 func (c *cluster) client(id uint64, cert tls.Certificate) pb.KVClient {
+	return pb.NewKVClient(c.dial(id, cert))
+}
+
+// dial opens a gRPC client connection to node id, closed with the test.
+func (c *cluster) dial(id uint64, cert tls.Certificate) *grpc.ClientConn {
 	conn, err := grpc.NewClient(c.running[id].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
 	})))
@@ -134,7 +139,7 @@ func (c *cluster) client(id uint64, cert tls.Certificate) pb.KVClient {
 		c.t.Fatal(err)
 	}
 	c.t.Cleanup(func() { conn.Close() }) //nolint:errcheck // closing a test client
-	return pb.NewKVClient(conn)
+	return conn
 }
 
 // retry runs fn until it succeeds or 10 s pass; the cluster needs a moment
