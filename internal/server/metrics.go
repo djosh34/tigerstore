@@ -27,7 +27,9 @@ type callMetrics struct {
 	handled [codes.Unauthenticated + 1]atomic.Int64
 }
 
-// metrics are the server's gRPC counters.
+// metrics are the gRPC counters of one connection, so that connections
+// never write the same counter; a scrape adds them up. The server keeps
+// the sum of closed connections.
 type metrics struct {
 	calls map[*method]*callMetrics
 	// received and sent are protobuf bytes of client messages, without
@@ -44,6 +46,34 @@ func newMetrics() *metrics {
 		m.calls[rpc] = &callMetrics{}
 	}
 	return m
+}
+
+// add adds o's counts to m. Nothing counts on o any more, or the sum
+// may miss a call in flight, as any scrape may.
+func (m *metrics) add(o *metrics) {
+	m.received.Add(o.received.Load())
+	m.sent.Add(o.sent.Load())
+	for rpc, c := range o.calls {
+		mc := m.calls[rpc]
+		mc.started.Add(c.started.Load())
+		for code := range c.handled {
+			mc.handled[code].Add(c.handled[code].Load())
+		}
+	}
+}
+
+// total sums the counts of the closed connections and the open ones.
+func (s *Server) total() *metrics {
+	t := newMetrics()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t.add(s.gone)
+	for c := range s.conns {
+		if hc, ok := c.(*conn); ok {
+			t.add(hc.metrics)
+		}
+	}
+	return t
 }
 
 // countEnd counts the end of a gRPC call with its code, once: a call ends
@@ -68,6 +98,7 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 	if err != nil {
 		return http.StatusServiceUnavailable, textPlain, err.Error() + "\n"
 	}
+	sm := s.total()
 	var b strings.Builder
 	metric := func(name, typ, help string) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, typ)
@@ -86,12 +117,11 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 		{"etcd_server_leader_changes_seen_total", "counter", "The number of leader changes seen.", nm.LeaderChanges},
 		{"etcd_server_proposals_committed_total", "gauge", "The total number of consensus proposals committed.", int64(nm.Committed)},
 		{"etcd_server_proposals_applied_total", "gauge", "The total number of consensus proposals applied.", int64(nm.Applied)},
-		{"etcd_mvcc_db_total_size_in_bytes", "gauge", "Total size of the underlying database physically allocated in bytes.", nm.LogBytes},
 		{"etcd_mvcc_put_total", "counter", "Total number of puts seen by this member.", nm.Puts},
 		{"etcd_mvcc_delete_total", "counter", "Total number of deletes seen by this member.", nm.Deletes},
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
-		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", s.metrics.received.Load()},
-		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", s.metrics.sent.Load()},
+		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.Load()},
+		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.Load()},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)
@@ -103,14 +133,14 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 	slices.Sort(paths)
 	metric("grpc_server_started_total", "counter", "Total number of RPCs started on the server.")
 	for _, p := range paths {
-		fmt.Fprintf(&b, "grpc_server_started_total{%s} %d\n", callLabels(p), s.metrics.calls[methods[p]].started.Load())
+		fmt.Fprintf(&b, "grpc_server_started_total{%s} %d\n", callLabels(p), sm.calls[methods[p]].started.Load())
 	}
 	metric("grpc_server_handled_total", "counter", "Total number of RPCs completed on the server, regardless of success or failure.")
 	for _, p := range paths {
 		// Every code of every method, at 0 too, as etcd's
 		// InitializeMetrics does, so that rate() sees a series' first call.
-		for code := range s.metrics.calls[methods[p]].handled {
-			n := s.metrics.calls[methods[p]].handled[code].Load()
+		for code := range sm.calls[methods[p]].handled {
+			n := sm.calls[methods[p]].handled[code].Load()
 			fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
 		}
 	}

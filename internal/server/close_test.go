@@ -11,7 +11,7 @@ import (
 func TestStreamAfterClose(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close() //nolint:errcheck // closing a test pipe
-	c := newConn(&Server{metrics: newMetrics()}, a, a)
+	c := newConn(&Server{}, a, a)
 	c.close()
 	st := c.newStream(&reqHeaders{
 		id: 1, method: "POST", path: "/etcdserverpb.KV/Put", contentType: "application/grpc",

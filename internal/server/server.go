@@ -44,9 +44,10 @@ const stopGrace = time.Second
 
 // Server serves one node's client port.
 type Server struct {
-	n       *node.Node
-	cfg     Config
-	metrics *metrics
+	n   *node.Node
+	cfg Config
+	// gone sums the metrics of closed connections; guarded by mu.
+	gone *metrics
 	// cluster and member go in every response header.
 	cluster, member uint64
 
@@ -77,7 +78,7 @@ func New(n *node.Node, cfg Config) *Server {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{n: n, cfg: cfg, metrics: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
+	return &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
 }
 
 // Serve accepts clients on ln until Stop.
@@ -168,6 +169,9 @@ func (s *Server) track(c closer) bool {
 func (s *Server) untrack(c closer) {
 	c.close()
 	s.mu.Lock()
+	if hc, ok := c.(*conn); ok {
+		s.gone.add(hc.metrics)
+	}
 	delete(s.conns, c)
 	s.mu.Unlock()
 }

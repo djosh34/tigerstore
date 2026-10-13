@@ -53,8 +53,6 @@ type Metrics struct {
 	// Committed and Applied are the Raft log indexes, which etcd reports
 	// as etcd_server_proposals_committed_total and _applied_total.
 	Committed, Applied uint64
-	// LogBytes stands for the database size.
-	LogBytes int64
 	mvcc.Counts
 }
 
@@ -66,7 +64,6 @@ func (n *Node) Metrics() Metrics {
 		LeaderChanges: n.leaderChanges,
 		Committed:     st.GetCommit(),
 		Applied:       n.applied,
-		LogBytes:      max(n.logBytes, 1),
 		Counts:        n.kv.Counts(),
 	}
 }

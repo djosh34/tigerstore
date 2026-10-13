@@ -51,7 +51,7 @@ const (
 // other and with the handlers.
 type conn struct {
 	s *Server
-	// metrics are s.metrics.
+	// metrics count this connection's calls for /metrics.
 	metrics *metrics
 	nc      net.Conn
 	raw     net.Conn // nc without TLS, closed to abort a stuck write
@@ -119,7 +119,7 @@ type ctrlFrame struct {
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: s.metrics,
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),

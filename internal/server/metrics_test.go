@@ -11,6 +11,8 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -147,6 +149,27 @@ func TestMetrics(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("started and handled differ for %q, or the cancelled watch or failed range is missing:\n%v", bad, m)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// Counts are per connection; a closed connection's stay in the sum.
+	before = scrape()
+	other, err := grpc.NewClient(c.running[1].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pb.NewKVClient(other).Range(context.Background(), &pb.RangeRequest{Key: []byte("a")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for scrape()[rangeOK]-before[rangeOK] != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("a range on a closed connection is not counted")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
