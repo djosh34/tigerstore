@@ -1,0 +1,34 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30s, Total samples = 14.32us (4.8e-05%)
+Showing nodes accounting for 14.32us, 100% of 14.32us total
+      flat  flat%   sum%        cum   cum%
+   11.58us 80.84% 80.84%    11.58us 80.84%  runtime.entersyscallWakeSysmon
+    2.74us 19.16%   100%     2.74us 19.16%  runtime.exitsyscallTryGetP
+         0     0%   100%    11.58us 80.84%  bufio.(*Reader).Read
+         0     0%   100%    11.58us 80.84%  crypto/tls.(*Conn).Read
+         0     0%   100%    11.58us 80.84%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%    11.58us 80.84%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%     2.74us 19.16%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0%   100%     2.74us 19.16%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0%   100%     2.74us 19.16%  github.com/djosh34/tigerstore/internal/osfs.file.Sync
+         0     0%   100%    11.58us 80.84%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%    11.58us 80.84%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%     2.74us 19.16%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync
+         0     0%   100%     2.74us 19.16%  internal/poll.(*FD).Fsync
+         0     0%   100%    11.58us 80.84%  internal/poll.(*FD).Read
+         0     0%   100%    11.58us 80.84%  io.ReadAtLeast
+         0     0%   100%    11.58us 80.84%  net.(*conn).Read
+         0     0%   100%    11.58us 80.84%  net.(*netFD).Read
+         0     0%   100%     2.74us 19.16%  os.(*File).Sync
+         0     0%   100%    11.58us 80.84%  runtime.entersyscall
+         0     0%   100%     2.74us 19.16%  runtime.exitsyscall
+         0     0%   100%     2.74us 19.16%  runtime.exitsyscall.func3
+         0     0%   100%    11.58us 80.84%  runtime.reentersyscall
+         0     0%   100%    14.32us   100%  runtime.systemstack
+         0     0%   100%    14.32us   100%  sync.(*WaitGroup).Go.func1
+         0     0%   100%     2.74us 19.16%  syscall.Fsync
+         0     0%   100%    14.32us   100%  syscall.Syscall
+         0     0%   100%    11.58us 80.84%  syscall.read

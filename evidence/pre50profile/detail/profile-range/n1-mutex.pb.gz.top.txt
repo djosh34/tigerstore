@@ -1,0 +1,31 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:55:26 UTC
+Duration: 30s, Total samples = 122.13us (0.00041%)
+Showing nodes accounting for 122.13us, 100% of 122.13us total
+      flat  flat%   sum%        cum   cum%
+  117.20us 95.96% 95.96%   117.20us 95.96%  runtime.entersyscallWakeSysmon
+    3.19us  2.61% 98.58%     3.19us  2.61%  runtime.stopTheWorldWithSema
+    1.74us  1.42%   100%     1.74us  1.42%  runtime.startTheWorldWithSema
+         0     0%   100%   117.20us 95.96%  bufio.(*Reader).Read
+         0     0%   100%   117.20us 95.96%  crypto/tls.(*Conn).Read
+         0     0%   100%   117.20us 95.96%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%   117.20us 95.96%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%   117.20us 95.96%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%   117.20us 95.96%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%   117.20us 95.96%  internal/poll.(*FD).Read
+         0     0%   100%   117.20us 95.96%  io.ReadAtLeast
+         0     0%   100%   117.20us 95.96%  net.(*conn).Read
+         0     0%   100%   117.20us 95.96%  net.(*netFD).Read
+         0     0%   100%   117.20us 95.96%  runtime.entersyscall
+         0     0%   100%     4.93us  4.04%  runtime.gcBgMarkWorker
+         0     0%   100%     4.93us  4.04%  runtime.gcMarkDone
+         0     0%   100%     3.19us  2.61%  runtime.gcMarkDone.func2
+         0     0%   100%     1.74us  1.42%  runtime.gcMarkTermination
+         0     0%   100%     1.74us  1.42%  runtime.gcMarkTermination.func3
+         0     0%   100%   117.20us 95.96%  runtime.reentersyscall
+         0     0%   100%   122.13us   100%  runtime.systemstack
+         0     0%   100%   117.20us 95.96%  sync.(*WaitGroup).Go.func1
+         0     0%   100%   117.20us 95.96%  syscall.Syscall
+         0     0%   100%   117.20us 95.96%  syscall.read

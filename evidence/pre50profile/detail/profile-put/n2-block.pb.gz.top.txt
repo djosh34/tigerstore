@@ -1,0 +1,42 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30.02s, Total samples = 3280.03s (10926.90%)
+Showing nodes accounting for 3280.03s, 100% of 3280.03s total
+Dropped 12 nodes (cum <= 16.40s)
+      flat  flat%   sum%        cum   cum%
+  3280.03s   100%   100%   3280.03s   100%  runtime.selectgo
+         0     0%   100%   2526.55s 77.03%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+         0     0%   100%     27.36s  0.83%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%     27.36s  0.83%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%     18.35s  0.56%  github.com/djosh34/tigerstore/internal/peer.(*sender).next
+         0     0%   100%     18.35s  0.56%  github.com/djosh34/tigerstore/internal/peer.(*sender).run
+         0     0%   100%     18.35s  0.56%  github.com/djosh34/tigerstore/internal/peer.(*sender).run-fm
+         0     0%   100%     18.35s  0.56%  github.com/djosh34/tigerstore/internal/peer.(*sender).write
+         0     0%   100%   2526.55s 77.03%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Put
+         0     0%   100%   2526.55s 77.03%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0%   100%   2526.55s 77.03%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+         0     0%   100%   2526.55s 77.03%  google.golang.org/grpc.(*Server).handleStream
+         0     0%   100%   2526.55s 77.03%  google.golang.org/grpc.(*Server).processRPC
+         0     0%   100%   2526.55s 77.03%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0%   100%   2526.55s 77.03%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+         0     0%   100%    181.80s  5.54%  google.golang.org/grpc/internal/transport.(*controlBuffer).get
+         0     0%   100%    401.55s 12.24%  google.golang.org/grpc/internal/transport.(*http2Server).keepalive
+         0     0%   100%    181.80s  5.54%  google.golang.org/grpc/internal/transport.(*loopyWriter).run
+         0     0%   100%    181.80s  5.54%  google.golang.org/grpc/internal/transport.NewServerTransport.func3
+         0     0%   100%    401.55s 12.24%  google.golang.org/grpc/internal/transport.NewServerTransport.gowrap1
+         0     0%   100%     27.36s  0.83%  main.main
+         0     0%   100%     27.36s  0.83%  main.run
+         0     0%   100%    120.01s  3.66%  net/http.(*ServeMux).ServeHTTP
+         0     0%   100%    120.01s  3.66%  net/http.(*Server).Serve.gowrap3
+         0     0%   100%    120.01s  3.66%  net/http.(*conn).serve
+         0     0%   100%    120.01s  3.66%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%    120.01s  3.66%  net/http.serverHandler.ServeHTTP
+         0     0%   100%     90.01s  2.74%  net/http/pprof.Index
+         0     0%   100%        30s  0.91%  net/http/pprof.Profile
+         0     0%   100%     90.01s  2.74%  net/http/pprof.handler.ServeHTTP
+         0     0%   100%     90.01s  2.74%  net/http/pprof.handler.serveDeltaProfile
+         0     0%   100%        30s  0.91%  net/http/pprof.sleep
+         0     0%   100%     27.36s  0.83%  runtime.main
+         0     0%   100%     22.76s  0.69%  sync.(*WaitGroup).Go.func1

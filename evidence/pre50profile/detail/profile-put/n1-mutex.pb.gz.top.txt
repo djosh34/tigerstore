@@ -1,0 +1,43 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30s, Total samples = 49.83us (0.00017%)
+Showing nodes accounting for 49.83us, 100% of 49.83us total
+      flat  flat%   sum%        cum   cum%
+   30.46us 61.12% 61.12%    30.46us 61.12%  runtime.startTheWorldWithSema
+   13.20us 26.49% 87.61%    13.20us 26.49%  runtime.entersyscallWakeSysmon
+    4.12us  8.27% 95.87%     4.12us  8.27%  runtime.exitsyscallTryGetP
+    2.06us  4.13%   100%     2.06us  4.13%  runtime.sysmon
+         0     0%   100%    13.20us 26.49%  bufio.(*Reader).Read
+         0     0%   100%    13.20us 26.49%  crypto/tls.(*Conn).Read
+         0     0%   100%    13.20us 26.49%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%    13.20us 26.49%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%     4.12us  8.27%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0%   100%     4.12us  8.27%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0%   100%     4.12us  8.27%  github.com/djosh34/tigerstore/internal/osfs.file.Sync
+         0     0%   100%    13.20us 26.49%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%    13.20us 26.49%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%     4.12us  8.27%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync
+         0     0%   100%     4.12us  8.27%  internal/poll.(*FD).Fsync
+         0     0%   100%    13.20us 26.49%  internal/poll.(*FD).Read
+         0     0%   100%    13.20us 26.49%  io.ReadAtLeast
+         0     0%   100%    13.20us 26.49%  net.(*conn).Read
+         0     0%   100%    13.20us 26.49%  net.(*netFD).Read
+         0     0%   100%     4.12us  8.27%  os.(*File).Sync
+         0     0%   100%    13.20us 26.49%  runtime.entersyscall
+         0     0%   100%     4.12us  8.27%  runtime.exitsyscall
+         0     0%   100%     4.12us  8.27%  runtime.exitsyscall.func3
+         0     0%   100%    30.46us 61.12%  runtime.gcBgMarkWorker
+         0     0%   100%    30.46us 61.12%  runtime.gcMarkDone
+         0     0%   100%    30.46us 61.12%  runtime.gcMarkTermination
+         0     0%   100%    30.46us 61.12%  runtime.gcMarkTermination.func3
+         0     0%   100%     2.06us  4.13%  runtime.mstart
+         0     0%   100%     2.06us  4.13%  runtime.mstart0
+         0     0%   100%     2.06us  4.13%  runtime.mstart1
+         0     0%   100%    13.20us 26.49%  runtime.reentersyscall
+         0     0%   100%    47.78us 95.87%  runtime.systemstack
+         0     0%   100%    17.32us 34.76%  sync.(*WaitGroup).Go.func1
+         0     0%   100%     4.12us  8.27%  syscall.Fsync
+         0     0%   100%    17.32us 34.76%  syscall.Syscall
+         0     0%   100%    13.20us 26.49%  syscall.read

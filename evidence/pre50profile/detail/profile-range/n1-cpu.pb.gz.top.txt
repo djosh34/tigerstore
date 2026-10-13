@@ -1,0 +1,89 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: cpu
+Time: 2026-10-12 23:54:56 UTC
+Duration: 30s, Total samples = 8.45s (28.16%)
+Showing nodes accounting for 7.16s, 84.73% of 8.45s total
+Dropped 174 nodes (cum <= 0.04s)
+Showing top 80 nodes out of 138
+      flat  flat%   sum%        cum   cum%
+     5.03s 59.53% 59.53%      5.03s 59.53%  internal/runtime/syscall/linux.Syscall6
+     0.38s  4.50% 64.02%      0.38s  4.50%  runtime.nanotime (inline)
+     0.14s  1.66% 65.68%      0.14s  1.66%  runtime.lock2
+     0.13s  1.54% 67.22%      0.23s  2.72%  runtime.unlock2
+     0.11s  1.30% 68.52%      0.48s  5.68%  runtime.selectgo
+     0.10s  1.18% 69.70%      0.10s  1.18%  runtime.futex
+     0.08s  0.95% 70.65%      0.09s  1.07%  runtime.mutexSampleContention (inline)
+     0.07s  0.83% 71.48%      2.72s 32.19%  crypto/tls.(*Conn).readRecordOrCCS
+     0.07s  0.83% 72.31%      0.07s  0.83%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.07s  0.83% 73.14%      0.11s  1.30%  runtime.mallocgcTinySC2
+     0.06s  0.71% 73.85%      0.10s  1.18%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.05s  0.59% 74.44%      0.13s  1.54%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+     0.05s  0.59% 75.03%      0.05s  0.59%  google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer
+     0.05s  0.59% 75.62%      0.21s  2.49%  runtime.newobject
+     0.04s  0.47% 76.09%      0.85s 10.06%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+     0.04s  0.47% 76.57%      1.48s 17.51%  runtime.findRunnable
+     0.04s  0.47% 77.04%      0.06s  0.71%  time.now
+     0.03s  0.36% 77.40%      0.21s  2.49%  go.etcd.io/raft/v3.(*raft).Step
+     0.03s  0.36% 77.75%      0.12s  1.42%  google.golang.org/protobuf/proto.MarshalOptions.size
+     0.03s  0.36% 78.11%      1.13s 13.37%  runtime.netpoll
+     0.02s  0.24% 78.34%      2.81s 33.25%  bufio.(*Reader).Read
+     0.02s  0.24% 78.58%      0.08s  0.95%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Open
+     0.02s  0.24% 78.82%      0.09s  1.07%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal
+     0.02s  0.24% 79.05%      2.53s 29.94%  crypto/tls.(*Conn).readFromUntil
+     0.02s  0.24% 79.29%      1.75s 20.71%  crypto/tls.(*Conn).write
+     0.02s  0.24% 79.53%      0.11s  1.30%  crypto/tls.(*halfConn).decrypt
+     0.02s  0.24% 79.76%      0.24s  2.84%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+     0.02s  0.24% 80.00%      0.19s  2.25%  github.com/djosh34/tigerstore/internal/peer.(*TCP).Send
+     0.02s  0.24% 80.24%      2.59s 30.65%  github.com/djosh34/tigerstore/internal/peer.(*sender).write
+     0.02s  0.24% 80.47%      0.17s  2.01%  go.etcd.io/raft/v3.(*raft).handleHeartbeat
+     0.02s  0.24% 80.71%      0.10s  1.18%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.02s  0.24% 80.95%      0.19s  2.25%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+     0.02s  0.24% 81.18%      0.06s  0.71%  runtime.casgstatus
+     0.02s  0.24% 81.42%      0.05s  0.59%  runtime.mallocgcSmallScanNoHeaderSC6
+     0.01s  0.12% 81.54%      0.06s  0.71%  crypto/internal/fips140/aes/gcm.(*GCM).Open
+     0.01s  0.12% 81.66%      0.06s  0.71%  crypto/internal/fips140/aes/gcm.(*GCM).sealAfterIndicator
+     0.01s  0.12% 81.78%      0.05s  0.59%  crypto/internal/fips140/aes/gcm.open
+     0.01s  0.12% 81.89%      2.79s 33.02%  crypto/tls.(*Conn).Read
+     0.01s  0.12% 82.01%         2s 23.67%  crypto/tls.(*Conn).Write
+     0.01s  0.12% 82.13%      1.94s 22.96%  crypto/tls.(*Conn).writeRecordLocked
+     0.01s  0.12% 82.25%      0.19s  2.25%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+     0.01s  0.12% 82.37%      0.14s  1.66%  go.etcd.io/raft/v3.(*RawNode).Ready
+     0.01s  0.12% 82.49%      0.22s  2.60%  go.etcd.io/raft/v3.(*RawNode).Step
+     0.01s  0.12% 82.60%      0.08s  0.95%  go.etcd.io/raft/v3.(*raft).send
+     0.01s  0.12% 82.72%      0.18s  2.13%  go.etcd.io/raft/v3.stepFollower
+     0.01s  0.12% 82.84%      0.06s  0.71%  google.golang.org/protobuf/internal/impl.(*messageState).Interface
+     0.01s  0.12% 82.96%      0.05s  0.59%  google.golang.org/protobuf/internal/impl.(*messageState).protoUnwrap
+     0.01s  0.12% 83.08%      0.09s  1.07%  google.golang.org/protobuf/proto.MarshalOptions.marshal
+     0.01s  0.12% 83.20%      0.21s  2.49%  google.golang.org/protobuf/proto.Unmarshal
+     0.01s  0.12% 83.31%      0.06s  0.71%  internal/poll.runtime_pollSetDeadline
+     0.01s  0.12% 83.43%      1.73s 20.47%  net.(*netFD).Write
+     0.01s  0.12% 83.55%      0.10s  1.18%  runtime.(*mcache).nextFree
+     0.01s  0.12% 83.67%      0.05s  0.59%  runtime.(*mcentral).cacheSpan
+     0.01s  0.12% 83.79%      0.05s  0.59%  runtime.execute
+     0.01s  0.12% 83.91%      0.19s  2.25%  runtime.mallocgc
+     0.01s  0.12% 84.02%      0.12s  1.42%  runtime.mallocgcSmallScanNoHeader
+     0.01s  0.12% 84.14%      1.61s 19.05%  runtime.park_m
+     0.01s  0.12% 84.26%      0.08s  0.95%  runtime.sellock
+     0.01s  0.12% 84.38%      0.24s  2.84%  runtime.unlockWithRank (inline)
+     0.01s  0.12% 84.50%      0.08s  0.95%  runtime.wakep
+     0.01s  0.12% 84.62%      2.42s 28.64%  syscall.read
+     0.01s  0.12% 84.73%      0.07s  0.83%  time.Now
+         0     0% 84.73%      0.09s  1.07%  _.goready.func1
+         0     0% 84.73%         2s 23.67%  bufio.(*Writer).Flush
+         0     0% 84.73%      0.05s  0.59%  crypto/internal/fips140/aes/gcm.seal
+         0     0% 84.73%      0.05s  0.59%  crypto/tls.(*Conn).Handshake (inline)
+         0     0% 84.73%      0.05s  0.59%  crypto/tls.(*Conn).HandshakeContext (inline)
+         0     0% 84.73%      0.14s  1.66%  crypto/tls.(*Conn).SetWriteDeadline
+         0     0% 84.73%      0.05s  0.59%  crypto/tls.(*Conn).handshakeContext
+         0     0% 84.73%      2.72s 32.19%  crypto/tls.(*Conn).readRecord (inline)
+         0     0% 84.73%      0.11s  1.30%  crypto/tls.(*halfConn).encrypt
+         0     0% 84.73%      0.08s  0.95%  crypto/tls.(*xorNonceAEAD).Open
+         0     0% 84.73%      0.09s  1.07%  crypto/tls.(*xorNonceAEAD).Seal
+         0     0% 84.73%      0.18s  2.13%  github.com/djosh34/tigerstore/internal/node.(*Node).Deliver
+         0     0% 84.73%      0.85s 10.06%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 84.73%      0.24s  2.84%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 84.73%      3.33s 39.41%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 84.73%      3.33s 39.41%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0% 84.73%      0.13s  1.54%  github.com/djosh34/tigerstore/internal/peer.(*sender).next
+         0     0% 84.73%      2.59s 30.65%  github.com/djosh34/tigerstore/internal/peer.(*sender).run

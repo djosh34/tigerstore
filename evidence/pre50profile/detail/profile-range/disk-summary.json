@@ -1,0 +1,50 @@
+{
+  "ops": 664632,
+  "elapsed_s": 25.005113101,
+  "roles": [
+    "leader",
+    "follower1",
+    "follower2"
+  ],
+  "nodes": [
+    {
+      "sync_ns": 0,
+      "syncs": 0,
+      "write_bytes": 0,
+      "write_ns": 0,
+      "writes": 0,
+      "ops_per_file_sync": null,
+      "mean_file_sync_us": null,
+      "mean_file_write_bytes": null,
+      "mean_file_write_us": null,
+      "file_sync_wall_us_per_op": 0.0,
+      "file_write_wall_us_per_op": 0.0
+    },
+    {
+      "sync_ns": 0,
+      "syncs": 0,
+      "write_bytes": 0,
+      "write_ns": 0,
+      "writes": 0,
+      "ops_per_file_sync": null,
+      "mean_file_sync_us": null,
+      "mean_file_write_bytes": null,
+      "mean_file_write_us": null,
+      "file_sync_wall_us_per_op": 0.0,
+      "file_write_wall_us_per_op": 0.0
+    },
+    {
+      "sync_ns": 0,
+      "syncs": 0,
+      "write_bytes": 0,
+      "write_ns": 0,
+      "writes": 0,
+      "ops_per_file_sync": null,
+      "mean_file_sync_us": null,
+      "mean_file_write_bytes": null,
+      "mean_file_write_us": null,
+      "file_sync_wall_us_per_op": 0.0,
+      "file_write_wall_us_per_op": 0.0
+    }
+  ]
+}

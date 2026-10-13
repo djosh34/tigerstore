@@ -1,0 +1,24 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: delay
+Time: 2026-10-12 23:50:37 UTC
+Duration: 30s, Total samples = 2.81us (9.4e-06%)
+Showing nodes accounting for 2.81us, 100% of 2.81us total
+      flat  flat%   sum%        cum   cum%
+    2.81us   100%   100%     2.81us   100%  runtime.entersyscallWakeSysmon
+         0     0%   100%     2.81us   100%  bufio.(*Reader).Read
+         0     0%   100%     2.81us   100%  crypto/tls.(*Conn).Read
+         0     0%   100%     2.81us   100%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%     2.81us   100%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%     2.81us   100%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%     2.81us   100%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%     2.81us   100%  internal/poll.(*FD).Read
+         0     0%   100%     2.81us   100%  io.ReadAtLeast
+         0     0%   100%     2.81us   100%  net.(*conn).Read
+         0     0%   100%     2.81us   100%  net.(*netFD).Read
+         0     0%   100%     2.81us   100%  runtime.entersyscall
+         0     0%   100%     2.81us   100%  runtime.reentersyscall
+         0     0%   100%     2.81us   100%  runtime.systemstack
+         0     0%   100%     2.81us   100%  sync.(*WaitGroup).Go.func1
+         0     0%   100%     2.81us   100%  syscall.Syscall
+         0     0%   100%     2.81us   100%  syscall.read

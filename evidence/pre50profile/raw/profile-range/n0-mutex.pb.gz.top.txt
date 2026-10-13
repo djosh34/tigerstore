@@ -1,0 +1,31 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: delay
+Time: 2026-10-12 23:51:14 UTC
+Duration: 30s, Total samples = 20.46us (6.8e-05%)
+Showing nodes accounting for 20.46us, 100% of 20.46us total
+      flat  flat%   sum%        cum   cum%
+   12.45us 60.83% 60.83%    12.45us 60.83%  runtime.entersyscallWakeSysmon
+    2.84us 13.88% 74.71%     2.84us 13.88%  runtime.wakep
+    2.63us 12.86% 87.57%     5.47us 26.74%  runtime.goschedImpl
+    2.54us 12.43%   100%     2.54us 12.43%  runtime.schedEnableUser
+         0     0%   100%    12.45us 60.83%  bufio.(*Reader).Read
+         0     0%   100%    12.45us 60.83%  crypto/tls.(*Conn).Read
+         0     0%   100%    12.45us 60.83%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%    12.45us 60.83%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%    12.45us 60.83%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%    12.45us 60.83%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%    12.45us 60.83%  internal/poll.(*FD).Read
+         0     0%   100%    12.45us 60.83%  io.ReadAtLeast
+         0     0%   100%    12.45us 60.83%  net.(*conn).Read
+         0     0%   100%    12.45us 60.83%  net.(*netFD).Read
+         0     0%   100%    12.45us 60.83%  runtime.entersyscall
+         0     0%   100%     2.54us 12.43%  runtime.gcBgMarkWorker
+         0     0%   100%     2.54us 12.43%  runtime.gcMarkDone
+         0     0%   100%     5.47us 26.74%  runtime.gosched_m
+         0     0%   100%     5.47us 26.74%  runtime.mcall
+         0     0%   100%    12.45us 60.83%  runtime.reentersyscall
+         0     0%   100%    12.45us 60.83%  runtime.systemstack
+         0     0%   100%    12.45us 60.83%  sync.(*WaitGroup).Go.func1
+         0     0%   100%    12.45us 60.83%  syscall.Syscall
+         0     0%   100%    12.45us 60.83%  syscall.read

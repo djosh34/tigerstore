@@ -1,0 +1,69 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: alloc_space
+Time: 2026-10-12 23:51:14 UTC
+Duration: 30.01s, Total samples = 4028.98MB 
+Showing nodes accounting for 3879.82MB, 96.30% of 4028.98MB total
+Dropped 133 nodes (cum <= 20.14MB)
+Showing top 60 nodes out of 103
+      flat  flat%   sum%        cum   cum%
+  666.70MB 16.55% 16.55%  1186.75MB 29.46%  google.golang.org/grpc/internal/transport.(*http2Server).operateHeaders
+  366.58MB  9.10% 25.65%   366.58MB  9.10%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1
+  237.04MB  5.88% 31.53%   278.04MB  6.90%  go.etcd.io/raft/v3.(*raft).sendHeartbeat
+  221.54MB  5.50% 37.03%   270.04MB  6.70%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+  184.03MB  4.57% 41.60%   495.09MB 12.29%  go.etcd.io/raft/v3.(*RawNode).ReadIndex
+  153.19MB  3.80% 45.40%   153.19MB  3.80%  go.etcd.io/raft/v3.(*raft).responseToReadIndexReq
+  152.54MB  3.79% 49.18%   787.09MB 19.54%  google.golang.org/grpc.(*Server).processRPC
+  143.52MB  3.56% 52.75%   143.52MB  3.56%  time.newTimer
+  117.51MB  2.92% 55.66%   117.51MB  2.92%  context.WithValue
+  113.01MB  2.80% 58.47%   113.01MB  2.80%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+   94.01MB  2.33% 60.80%   252.52MB  6.27%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Range_Handler
+   93.51MB  2.32% 63.12%   166.52MB  4.13%  context.WithDeadlineCause
+   90.01MB  2.23% 65.36%    90.01MB  2.23%  google.golang.org/grpc/internal/transport.(*recvBuffer).init (inline)
+      90MB  2.23% 67.59%   457.58MB 11.36%  golang.org/x/net/http2.(*Framer).readMetaFrame
+   87.01MB  2.16% 69.75%    87.01MB  2.16%  google.golang.org/grpc/internal/transport.(*http2Server).writeHeaderLocked
+   82.51MB  2.05% 71.80%   113.01MB  2.80%  google.golang.org/grpc/internal/transport.(*http2Server).writeStatus
+   78.51MB  1.95% 73.75%    78.51MB  1.95%  google.golang.org/grpc/internal/transport.(*writeQuota).init (inline)
+   76.32MB  1.89% 75.64%    76.32MB  1.89%  github.com/djosh34/tigerstore/internal/core.(*Node).reply (inline)
+   76.01MB  1.89% 77.53%    76.01MB  1.89%  github.com/djosh34/tigerstore/internal/mvcc.(*keyIndex).kv (inline)
+   63.51MB  1.58% 79.10%   222.52MB  5.52%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).rangeKeys
+   62.51MB  1.55% 80.65%    62.51MB  1.55%  google.golang.org/grpc/internal/transport.(*loopyWriter).registerStreamHandler
+   56.01MB  1.39% 82.04%    56.01MB  1.39%  context.(*cancelCtx).Done
+      49MB  1.22% 83.26%       49MB  1.22%  github.com/djosh34/tigerstore/internal/mvcc.header (inline)
+   48.50MB  1.20% 84.46%    48.50MB  1.20%  go.etcd.io/raft/v3.(*raft).hardState (inline)
+   47.23MB  1.17% 85.64%    47.23MB  1.17%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+   46.50MB  1.15% 86.79%    76.50MB  1.90%  google.golang.org/grpc.newContextWithRPCInfo (inline)
+   46.50MB  1.15% 87.95%    46.50MB  1.15%  google.golang.org/grpc/internal/transport.(*framer).readDataFrame
+      40MB  0.99% 88.94%   127.01MB  3.15%  google.golang.org/grpc/internal/transport.(*http2Server).write
+   32.51MB  0.81% 89.74%    32.51MB  0.81%  google.golang.org/protobuf/internal/impl.consumeBytesNoZero
+      32MB  0.79% 90.54%       32MB  0.79%  go.etcd.io/raft/v3.(*raft).send
+      31MB  0.77% 91.31%       31MB  0.77%  golang.org/x/net/http2.parseHeadersFrame
+   30.50MB  0.76% 92.07%    30.50MB  0.76%  google.golang.org/grpc/internal/transport.(*http2Server).finishStream
+   29.50MB  0.73% 92.80%    29.50MB  0.73%  google.golang.org/grpc.(*Server).serveStreams.func2
+      28MB  0.69% 93.49%   110.01MB  2.73%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).ascend
+      27MB  0.67% 94.16%   534.59MB 13.27%  github.com/djosh34/tigerstore/internal/core.(*Node).requestReads
+      25MB  0.62% 94.78%       25MB  0.62%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+   23.01MB  0.57% 95.35%    23.01MB  0.57%  go.etcd.io/raft/v3.(*readOnly).addRequest (inline)
+   18.50MB  0.46% 95.81%   324.35MB  8.05%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+   13.50MB  0.34% 96.15%   416.04MB 10.33%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+       6MB  0.15% 96.30%    82.01MB  2.04%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).rangeKeys.func1
+         0     0% 96.30%   166.52MB  4.13%  context.WithDeadline (inline)
+         0     0% 96.30%   166.52MB  4.13%  context.WithTimeout
+         0     0% 96.30%   924.29MB 22.94%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 96.30%   154.19MB  3.83%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0% 96.30%    76.32MB  1.89%  github.com/djosh34/tigerstore/internal/core.(*Node).finish (inline)
+         0     0% 96.30%   297.83MB  7.39%  github.com/djosh34/tigerstore/internal/core.(*Node).serveRead
+         0     0% 96.30%   297.83MB  7.39%  github.com/djosh34/tigerstore/internal/core.(*Node).serveReads
+         0     0% 96.30%   222.52MB  5.52%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).Range
+         0     0% 96.30%  1126.21MB 27.95%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 96.30%  1126.21MB 27.95%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 96.30%   201.42MB  5.00%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 96.30%   270.04MB  6.70%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 96.30%   112.01MB  2.78%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Range
+         0     0% 96.30%   113.01MB  2.80%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0% 96.30%    51.50MB  1.28%  go.etcd.io/raft/v3.(*RawNode).Ready
+         0     0% 96.30%   154.19MB  3.83%  go.etcd.io/raft/v3.(*RawNode).Step
+         0     0% 96.30%    51.50MB  1.28%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+         0     0% 96.30%   465.30MB 11.55%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 96.30%   283.54MB  7.04%  go.etcd.io/raft/v3.(*raft).bcastHeartbeat
+         0     0% 96.30%   278.04MB  6.90%  go.etcd.io/raft/v3.(*raft).bcastHeartbeatWithCtx (inline)

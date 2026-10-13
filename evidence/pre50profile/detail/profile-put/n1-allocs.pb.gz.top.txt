@@ -1,0 +1,69 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: alloc_space
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30s, Total samples = 271.23MB 
+Showing nodes accounting for 264.48MB, 97.51% of 271.23MB total
+Dropped 33 nodes (cum <= 1.36MB)
+Showing top 60 nodes out of 63
+      flat  flat%   sum%        cum   cum%
+   75.07MB 27.68% 27.68%    75.07MB 27.68%  google.golang.org/protobuf/internal/impl.consumeBytesNoZero
+   72.59MB 26.76% 54.44%    72.59MB 26.76%  google.golang.org/protobuf/internal/impl.consumeBytes
+   27.13MB 10.00% 64.44%   114.72MB 42.30%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+   23.50MB  8.67% 73.11%    26.01MB  9.59%  go.etcd.io/raft/v3.(*raft).handleAppendEntries
+   22.54MB  8.31% 81.42%    22.54MB  8.31%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).add (inline)
+    8.50MB  3.13% 84.55%     8.50MB  3.13%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+    6.50MB  2.40% 86.95%   112.11MB 41.33%  github.com/djosh34/tigerstore/internal/core.DecodeBatch
+    4.50MB  1.66% 88.61%     4.50MB  1.66%  reflect.unsafe_New
+    3.50MB  1.29% 89.90%     3.50MB  1.29%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+    3.50MB  1.29% 91.19%     3.50MB  1.29%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+       3MB  1.11% 92.30%     3.50MB  1.29%  github.com/djosh34/tigerstore/internal/core.(*Node).deliver
+       3MB  1.11% 93.40%    30.54MB 11.26%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).put
+       2MB  0.74% 94.14%        2MB  0.74%  go.etcd.io/raft/v3.(*raft).send
+    1.92MB  0.71% 94.85%     2.49MB  0.92%  compress/flate.NewWriter (inline)
+    1.72MB  0.63% 95.48%     1.72MB  0.63%  runtime/pprof.StartCPUProfile
+    1.50MB  0.55% 96.04%        5MB  1.84%  go.etcd.io/raft/v3.newStorageAppendMsg
+    1.50MB  0.55% 96.59%     1.50MB  0.55%  github.com/djosh34/tigerstore/internal/mvcc.header (inline)
+    1.50MB  0.55% 97.14%     1.50MB  0.55%  google.golang.org/protobuf/internal/impl.consumeInt32Ptr
+       1MB  0.37% 97.51%   113.11MB 41.70%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+         0     0% 97.51%     2.49MB  0.92%  compress/gzip.(*Writer).Write
+         0     0% 97.51%     4.19MB  1.54%  github.com/djosh34/tigerstore/internal/core.(*Node).Persisted
+         0     0% 97.51%   119.11MB 43.92%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 97.51%    26.01MB  9.59%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0% 97.51%   112.11MB 41.33%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+         0     0% 97.51%    30.54MB 11.26%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+         0     0% 97.51%    30.54MB 11.26%  github.com/djosh34/tigerstore/internal/core.(*Node).applyOp
+         0     0% 97.51%    30.54MB 11.26%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).Put
+         0     0% 97.51%   149.31MB 55.05%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 97.51%   149.31MB 55.05%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 97.51%    26.01MB  9.59%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 97.51%   114.72MB 42.30%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 97.51%        6MB  2.21%  go.etcd.io/raft/v3.(*RawNode).Ready
+         0     0% 97.51%    26.51MB  9.77%  go.etcd.io/raft/v3.(*RawNode).Step
+         0     0% 97.51%        6MB  2.21%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+         0     0% 97.51%    26.51MB  9.77%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 97.51%    26.01MB  9.59%  go.etcd.io/raft/v3.stepFollower
+         0     0% 97.51%   162.65MB 59.97%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal
+         0     0% 97.51%   162.65MB 59.97%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointer
+         0     0% 97.51%   162.65MB 59.97%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+         0     0% 97.51%    80.09MB 29.53%  google.golang.org/protobuf/internal/impl.consumeMessageSliceInfo
+         0     0% 97.51%   162.65MB 59.97%  google.golang.org/protobuf/proto.Unmarshal
+         0     0% 97.51%   162.65MB 59.97%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+         0     0% 97.51%   149.31MB 55.05%  main.main
+         0     0% 97.51%   149.31MB 55.05%  main.run
+         0     0% 97.51%     6.56MB  2.42%  net/http.(*ServeMux).ServeHTTP
+         0     0% 97.51%     6.56MB  2.42%  net/http.(*conn).serve
+         0     0% 97.51%     6.56MB  2.42%  net/http.HandlerFunc.ServeHTTP
+         0     0% 97.51%     6.56MB  2.42%  net/http.serverHandler.ServeHTTP
+         0     0% 97.51%     4.84MB  1.78%  net/http/pprof.Index
+         0     0% 97.51%     1.72MB  0.63%  net/http/pprof.Profile
+         0     0% 97.51%     4.84MB  1.78%  net/http/pprof.collectProfile
+         0     0% 97.51%     4.84MB  1.78%  net/http/pprof.handler.ServeHTTP
+         0     0% 97.51%     4.84MB  1.78%  net/http/pprof.handler.serveDeltaProfile
+         0     0% 97.51%     4.50MB  1.66%  reflect.New
+         0     0% 97.51%   149.31MB 55.05%  runtime.main
+         0     0% 97.51%     4.33MB  1.60%  runtime/pprof.(*Profile).WriteTo
+         0     0% 97.51%     3.19MB  1.18%  runtime/pprof.(*profileBuilder).build
+         0     0% 97.51%     2.52MB  0.93%  runtime/pprof.printCountCycleProfile
+         0     0% 97.51%     1.81MB  0.67%  runtime/pprof.writeAlloc
+         0     0% 97.51%     1.81MB  0.67%  runtime/pprof.writeHeapInternal

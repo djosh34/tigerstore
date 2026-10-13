@@ -1,0 +1,34 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:55:26 UTC
+Duration: 30s, Total samples = 56.74us (0.00019%)
+Showing nodes accounting for 56.74us, 100% of 56.74us total
+      flat  flat%   sum%        cum   cum%
+   48.58us 85.62% 85.62%    48.58us 85.62%  runtime.startTheWorldWithSema
+    3.01us  5.30% 90.92%     3.01us  5.30%  runtime.findRunnable
+    2.76us  4.87% 95.78%     5.77us 10.17%  runtime.goschedImpl
+    2.39us  4.22%   100%     2.39us  4.22%  runtime.entersyscallWakeSysmon
+         0     0%   100%     2.39us  4.22%  bufio.(*Reader).Read
+         0     0%   100%     2.39us  4.22%  crypto/tls.(*Conn).Read
+         0     0%   100%     2.39us  4.22%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%     2.39us  4.22%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%     2.39us  4.22%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%     2.39us  4.22%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+         0     0%   100%     2.39us  4.22%  internal/poll.(*FD).Read
+         0     0%   100%     2.39us  4.22%  io.ReadAtLeast
+         0     0%   100%     2.39us  4.22%  net.(*conn).Read
+         0     0%   100%     2.39us  4.22%  net.(*netFD).Read
+         0     0%   100%     2.39us  4.22%  runtime.entersyscall
+         0     0%   100%    48.58us 85.62%  runtime.gcBgMarkWorker
+         0     0%   100%    48.58us 85.62%  runtime.gcMarkDone
+         0     0%   100%    48.58us 85.62%  runtime.gcMarkTermination
+         0     0%   100%    48.58us 85.62%  runtime.gcMarkTermination.func3
+         0     0%   100%     5.77us 10.17%  runtime.gosched_m
+         0     0%   100%     5.77us 10.17%  runtime.mcall
+         0     0%   100%     2.39us  4.22%  runtime.reentersyscall
+         0     0%   100%     3.01us  5.30%  runtime.schedule
+         0     0%   100%    50.97us 89.83%  runtime.systemstack
+         0     0%   100%     2.39us  4.22%  sync.(*WaitGroup).Go.func1
+         0     0%   100%     2.39us  4.22%  syscall.Syscall
+         0     0%   100%     2.39us  4.22%  syscall.read

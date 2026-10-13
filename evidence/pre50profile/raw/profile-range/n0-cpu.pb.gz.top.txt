@@ -1,0 +1,88 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: cpu
+Time: 2026-10-12 23:50:44 UTC
+Duration: 30s, Total samples = 1.24s ( 4.13%)
+Showing nodes accounting for 1.24s, 100% of 1.24s total
+Showing top 80 nodes out of 181
+      flat  flat%   sum%        cum   cum%
+     0.30s 24.19% 24.19%      0.30s 24.19%  internal/runtime/syscall/linux.Syscall6
+     0.19s 15.32% 39.52%      0.19s 15.32%  runtime.nanotime (inline)
+     0.06s  4.84% 44.35%      0.07s  5.65%  runtime.unlock2
+     0.04s  3.23% 47.58%      0.04s  3.23%  runtime.mallocgcTinySC2
+     0.03s  2.42% 50.00%      0.06s  4.84%  google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer
+     0.03s  2.42% 52.42%      0.03s  2.42%  runtime.memclrNoHeapPointers
+     0.02s  1.61% 54.03%      0.02s  1.61%  google.golang.org/protobuf/encoding/protowire.AppendVarint
+     0.02s  1.61% 55.65%      0.02s  1.61%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.02s  1.61% 57.26%      0.10s  8.06%  google.golang.org/protobuf/proto.MarshalOptions.marshal
+     0.02s  1.61% 58.87%      0.12s  9.68%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+     0.02s  1.61% 60.48%      0.11s  8.87%  runtime.chanrecv
+     0.02s  1.61% 62.10%      0.02s  1.61%  runtime.empty
+     0.02s  1.61% 63.71%      0.11s  8.87%  runtime.mallocgcSmallScanNoHeader
+     0.02s  1.61% 65.32%      0.12s  9.68%  runtime.selectgo
+     0.01s  0.81% 66.13%      0.01s  0.81%  crypto/tls.(*halfConn).incSeq (inline)
+     0.01s  0.81% 66.94%      0.01s  0.81%  crypto/tls.(*xorNonceAEAD).Seal
+     0.01s  0.81% 67.74%      0.01s  0.81%  encoding/binary.bigEndian.Uint32 (inline)
+     0.01s  0.81% 68.55%      0.11s  8.87%  github.com/djosh34/tigerstore/internal/node.(*Node).Deliver
+     0.01s  0.81% 69.35%      0.49s 39.52%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+     0.01s  0.81% 70.16%      0.03s  2.42%  go.etcd.io/raft/v3.(*raft).send
+     0.01s  0.81% 70.97%      0.01s  0.81%  go.etcd.io/raft/v3.(*raft).tickElection
+     0.01s  0.81% 71.77%      0.01s  0.81%  go.etcd.io/raft/v3/raftpb.(*Message).ProtoReflect
+     0.01s  0.81% 72.58%      0.01s  0.81%  go.etcd.io/raft/v3/raftpb.(*Message).Reset
+     0.01s  0.81% 73.39%      0.03s  2.42%  google.golang.org/protobuf/internal/impl.(*MessageInfo).size
+     0.01s  0.81% 74.19%      0.01s  0.81%  google.golang.org/protobuf/internal/impl.(*messageState).ProtoMethods
+     0.01s  0.81% 75.00%      0.01s  0.81%  google.golang.org/protobuf/internal/impl.appendInt32Ptr
+     0.01s  0.81% 75.81%      0.02s  1.61%  google.golang.org/protobuf/internal/impl.consumeInt32Ptr
+     0.01s  0.81% 76.61%      0.01s  0.81%  google.golang.org/protobuf/internal/impl.pointer.Apply (inline)
+     0.01s  0.81% 77.42%      0.02s  1.61%  google.golang.org/protobuf/internal/impl.pointer.AsIfaceOf
+     0.01s  0.81% 78.23%      0.03s  2.42%  google.golang.org/protobuf/proto.MarshalOptions.size
+     0.01s  0.81% 79.03%      0.02s  1.61%  google.golang.org/protobuf/proto.Reset
+     0.01s  0.81% 79.84%      0.01s  0.81%  internal/poll.(*fdMutex).incref (inline)
+     0.01s  0.81% 80.65%      0.01s  0.81%  internal/runtime/atomic.(*Uint32).Load (inline)
+     0.01s  0.81% 81.45%      0.01s  0.81%  reflect.(*rtype).ptrTo
+     0.01s  0.81% 82.26%      0.01s  0.81%  runtime.(*gcControllerState).trigger
+     0.01s  0.81% 83.06%      0.01s  0.81%  runtime.(*mcentral).fullSwept (inline)
+     0.01s  0.81% 83.87%      0.01s  0.81%  runtime.(*mheap).freeSpanLocked
+     0.01s  0.81% 84.68%      0.01s  0.81%  runtime.(*mspan).writeHeapBitsSmall
+     0.01s  0.81% 85.48%      0.01s  0.81%  runtime.(*spanSet).push
+     0.01s  0.81% 86.29%      0.01s  0.81%  runtime._ExternalCode
+     0.01s  0.81% 87.10%      0.01s  0.81%  runtime.findObject
+     0.01s  0.81% 87.90%      0.01s  0.81%  runtime.findfunc
+     0.01s  0.81% 88.71%      0.01s  0.81%  runtime.getGCMask
+     0.01s  0.81% 89.52%      0.01s  0.81%  runtime.ifaceeq
+     0.01s  0.81% 90.32%      0.01s  0.81%  runtime.mallocgcSmallScanNoHeaderSC1
+     0.01s  0.81% 91.13%      0.01s  0.81%  runtime.mallocgcSmallScanNoHeaderSC4
+     0.01s  0.81% 91.94%      0.01s  0.81%  runtime.memmove
+     0.01s  0.81% 92.74%      0.01s  0.81%  runtime.mutexSampleContention (inline)
+     0.01s  0.81% 93.55%      0.01s  0.81%  runtime.nextFreeFast (inline)
+     0.01s  0.81% 94.35%      0.01s  0.81%  runtime.scanblock
+     0.01s  0.81% 95.16%      0.12s  9.68%  runtime.selectnbrecv
+     0.01s  0.81% 95.97%      0.01s  0.81%  runtime.sellock
+     0.01s  0.81% 96.77%      0.01s  0.81%  runtime.send
+     0.01s  0.81% 97.58%      0.01s  0.81%  runtime.tryDeferToSpanScan
+     0.01s  0.81% 98.39%      0.15s 12.10%  syscall.read
+     0.01s  0.81% 99.19%      0.05s  4.03%  time.now
+     0.01s  0.81%   100%      0.06s  4.84%  time.runtimeNow
+         0     0%   100%      0.18s 14.52%  bufio.(*Reader).Read
+         0     0%   100%      0.10s  8.06%  bufio.(*Writer).Flush
+         0     0%   100%      0.17s 13.71%  crypto/tls.(*Conn).Read
+         0     0%   100%      0.07s  5.65%  crypto/tls.(*Conn).SetWriteDeadline
+         0     0%   100%      0.10s  8.06%  crypto/tls.(*Conn).Write
+         0     0%   100%      0.16s 12.90%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%      0.17s 13.71%  crypto/tls.(*Conn).readRecord (inline)
+         0     0%   100%      0.17s 13.71%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%      0.09s  7.26%  crypto/tls.(*Conn).write
+         0     0%   100%      0.10s  8.06%  crypto/tls.(*Conn).writeRecordLocked
+         0     0%   100%      0.01s  0.81%  crypto/tls.(*halfConn).decrypt
+         0     0%   100%      0.01s  0.81%  crypto/tls.(*halfConn).encrypt
+         0     0%   100%      0.01s  0.81%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0%   100%      0.08s  6.45%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0%   100%      0.01s  0.81%  github.com/djosh34/tigerstore/internal/core.(*Node).Tick
+         0     0%   100%      0.01s  0.81%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+         0     0%   100%      0.19s 15.32%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%      0.19s 15.32%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%      0.08s  6.45%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0%   100%      0.02s  1.61%  github.com/djosh34/tigerstore/internal/peer.(*TCP).Send
+         0     0%   100%      0.49s 39.52%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0%   100%      0.07s  5.65%  github.com/djosh34/tigerstore/internal/peer.(*sender).next
+         0     0%   100%      0.43s 34.68%  github.com/djosh34/tigerstore/internal/peer.(*sender).run

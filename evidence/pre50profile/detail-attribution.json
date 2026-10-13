@@ -1,0 +1,446 @@
+{
+  "put-leader": {
+    "operations": 128005,
+    "sampled_cpu_us_op": 73.59087535643138,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 13.358853169798055,
+        "sample_pct": 18.152866242038215
+      },
+      "crypto implementation": {
+        "cpu_us_op": 1.796804812312019,
+        "sample_pct": 2.4416135881104037
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 24.53029178547713,
+        "sample_pct": 33.33333333333333
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 3.906097418069607,
+        "sample_pct": 5.3078556263269645
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 7.030975352525292,
+        "sample_pct": 9.554140127388536
+      },
+      "committer including descendants": {
+        "cpu_us_op": 13.046365376352487,
+        "sample_pct": 17.72823779193206
+      },
+      "core including descendants": {
+        "cpu_us_op": 9.9214874418968,
+        "sample_pct": 13.481953290870488
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 3.67173157298543,
+        "sample_pct": 4.989384288747346
+      },
+      "raft including descendants": {
+        "cpu_us_op": 5.234170540213273,
+        "sample_pct": 7.112526539278131
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 18.593023710011327,
+        "sample_pct": 25.265392781316347
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 4.374829108237959,
+        "sample_pct": 5.9447983014862
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 14.061950705050585,
+        "sample_pct": 19.10828025477707
+      },
+      "index including descendants": {
+        "cpu_us_op": 1.4061950705050583,
+        "sample_pct": 1.910828025477707
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 8.04656068122339,
+        "sample_pct": 10.934182590233545
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 13.51509706652084,
+        "sample_pct": 18.365180467091292
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 1.796804812312019,
+        "sample_pct": 2.4416135881104037
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 27.49892582321003,
+        "sample_pct": 37.367303609341825
+      }
+    }
+  },
+  "put-follower": {
+    "operations": 128005,
+    "sampled_cpu_us_op": 13.51509706652084,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 3.3592437795398618,
+        "sample_pct": 24.85549132947977
+      },
+      "crypto implementation": {
+        "cpu_us_op": 0.31248779344556854,
+        "sample_pct": 2.312138728323699
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 1.4843170188664505,
+        "sample_pct": 10.982658959537572
+      },
+      "committer including descendants": {
+        "cpu_us_op": 3.7498535213468225,
+        "sample_pct": 27.74566473988439
+      },
+      "core including descendants": {
+        "cpu_us_op": 3.3592437795398618,
+        "sample_pct": 24.85549132947977
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 2.6561462442873327,
+        "sample_pct": 19.653179190751445
+      },
+      "raft including descendants": {
+        "cpu_us_op": 0.6249755868911371,
+        "sample_pct": 4.624277456647398
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 3.28112183117847,
+        "sample_pct": 24.277456647398843
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 0.8593414319753134,
+        "sample_pct": 6.358381502890173
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 2.1092926057575876,
+        "sample_pct": 15.606936416184972
+      },
+      "index including descendants": {
+        "cpu_us_op": 1.8749267606734112,
+        "sample_pct": 13.872832369942195
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 1.7186828639506269,
+        "sample_pct": 12.716763005780345
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 4.999804695129097,
+        "sample_pct": 36.99421965317919
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 0.5468536385297449,
+        "sample_pct": 4.046242774566474
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 5.624780282020233,
+        "sample_pct": 41.61849710982659
+      }
+    }
+  },
+  "put-follower2": {
+    "operations": 128005,
+    "sampled_cpu_us_op": 15.155657982110073,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 3.593609624624038,
+        "sample_pct": 23.711340206185564
+      },
+      "crypto implementation": {
+        "cpu_us_op": 0.7030975352525292,
+        "sample_pct": 4.639175257731959
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 2.1874145541189796,
+        "sample_pct": 14.432989690721648
+      },
+      "committer including descendants": {
+        "cpu_us_op": 3.593609624624038,
+        "sample_pct": 23.711340206185564
+      },
+      "core including descendants": {
+        "cpu_us_op": 2.890512089371509,
+        "sample_pct": 19.072164948453608
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 1.796804812312019,
+        "sample_pct": 11.855670103092782
+      },
+      "raft including descendants": {
+        "cpu_us_op": 0.9374633803367056,
+        "sample_pct": 6.185567010309279
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 3.593609624624038,
+        "sample_pct": 23.711340206185564
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 1.3280731221436664,
+        "sample_pct": 8.762886597938143
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 2.0311706573961956,
+        "sample_pct": 13.402061855670103
+      },
+      "index including descendants": {
+        "cpu_us_op": 0.8593414319753134,
+        "sample_pct": 5.670103092783505
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 2.1092926057575876,
+        "sample_pct": 13.917525773195877
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 6.327877817272763,
+        "sample_pct": 41.75257731958763
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 1.2499511737822742,
+        "sample_pct": 8.24742268041237
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 6.171633920549978,
+        "sample_pct": 40.72164948453608
+      }
+    }
+  },
+  "range-leader": {
+    "operations": 664632,
+    "sampled_cpu_us_op": 37.01296356479977,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 12.653618844714067,
+        "sample_pct": 34.1869918699187
+      },
+      "crypto implementation": {
+        "cpu_us_op": 0.7823878477112146,
+        "sample_pct": 2.113821138211382
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 19.98098195693256,
+        "sample_pct": 53.98373983739837
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 2.1816584215024255,
+        "sample_pct": 5.894308943089431
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 2.001107379722914,
+        "sample_pct": 5.40650406504065
+      },
+      "committer including descendants": {
+        "cpu_us_op": 4.8297403676019215,
+        "sample_pct": 13.048780487804878
+      },
+      "core including descendants": {
+        "cpu_us_op": 3.475607554255588,
+        "sample_pct": 9.390243902439025
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "raft including descendants": {
+        "cpu_us_op": 1.5647756954224292,
+        "sample_pct": 4.227642276422764
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "index including descendants": {
+        "cpu_us_op": 0.9629388894907257,
+        "sample_pct": 2.6016260162601625
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 4.363316843004851,
+        "sample_pct": 11.788617886178862
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 10.29140938143213,
+        "sample_pct": 27.80487804878049
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 1.3842246536429181,
+        "sample_pct": 3.7398373983739837
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 10.652511464991154,
+        "sample_pct": 28.780487804878046
+      }
+    }
+  },
+  "range-follower": {
+    "operations": 664632,
+    "sampled_cpu_us_op": 2.001107379722914,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 0.4062398440038999,
+        "sample_pct": 20.30075187969925
+      },
+      "crypto implementation": {
+        "cpu_us_op": 0.015045920148292589,
+        "sample_pct": 0.7518796992481203
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 0.586790885783411,
+        "sample_pct": 29.32330827067669
+      },
+      "committer including descendants": {
+        "cpu_us_op": 0.33101024326243694,
+        "sample_pct": 16.541353383458645
+      },
+      "core including descendants": {
+        "cpu_us_op": 0.12036736118634071,
+        "sample_pct": 6.015037593984962
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "raft including descendants": {
+        "cpu_us_op": 0.12036736118634071,
+        "sample_pct": 6.015037593984962
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "index including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 0.22568880222438883,
+        "sample_pct": 11.278195488721805
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 1.4745001745326738,
+        "sample_pct": 73.68421052631578
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 0.19559696192780365,
+        "sample_pct": 9.774436090225564
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 0.3911939238556073,
+        "sample_pct": 19.548872180451127
+      }
+    }
+  },
+  "range-follower2": {
+    "operations": 664632,
+    "sampled_cpu_us_op": 12.713802525307237,
+    "categories": {
+      "TLS including socket descendants": {
+        "cpu_us_op": 7.417638633108246,
+        "sample_pct": 58.34319526627218
+      },
+      "crypto implementation": {
+        "cpu_us_op": 0.255780642520974,
+        "sample_pct": 2.0118343195266273
+      },
+      "gRPC including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "HTTP2 including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "protobuf including descendants": {
+        "cpu_us_op": 0.6319286462282887,
+        "sample_pct": 4.970414201183432
+      },
+      "committer including descendants": {
+        "cpu_us_op": 1.27890321260487,
+        "sample_pct": 10.059171597633137
+      },
+      "core including descendants": {
+        "cpu_us_op": 0.6469745663765814,
+        "sample_pct": 5.088757396449704
+      },
+      "entry encode/decode including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "raft including descendants": {
+        "cpu_us_op": 0.586790885783411,
+        "sample_pct": 4.615384615384616
+      },
+      "WAL including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "WAL write syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "fsync syscall path": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "index including descendants": {
+        "cpu_us_op": 0.0,
+        "sample_pct": 0.0
+      },
+      "allocation and GC including descendants": {
+        "cpu_us_op": 0.6168827260799962,
+        "sample_pct": 4.85207100591716
+      },
+      "peer transport including descendants": {
+        "cpu_us_op": 9.193057210606773,
+        "sample_pct": 72.3076923076923
+      },
+      "scheduler including descendants": {
+        "cpu_us_op": 2.452484984171692,
+        "sample_pct": 19.289940828402365
+      },
+      "syscalls including descendants": {
+        "cpu_us_op": 7.838924397260439,
+        "sample_pct": 61.65680473372781
+      }
+    }
+  }
+}

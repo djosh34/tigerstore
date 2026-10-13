@@ -1,0 +1,88 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: cpu
+Time: 2026-10-12 23:54:19 UTC
+Duration: 30.01s, Total samples = 1.73s ( 5.77%)
+Showing nodes accounting for 1.73s, 100% of 1.73s total
+Showing top 80 nodes out of 252
+      flat  flat%   sum%        cum   cum%
+     0.67s 38.73% 38.73%      0.67s 38.73%  internal/runtime/syscall/linux.Syscall6
+     0.08s  4.62% 43.35%      0.15s  8.67%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.07s  4.05% 47.40%      0.07s  4.05%  runtime.nanotime (inline)
+     0.06s  3.47% 50.87%      0.06s  3.47%  cmpbody
+     0.05s  2.89% 53.76%      0.05s  2.89%  runtime.memmove
+     0.04s  2.31% 56.07%      0.04s  2.31%  runtime.futex
+     0.04s  2.31% 58.38%      0.04s  2.31%  runtime.memclrNoHeapPointers
+     0.03s  1.73% 60.12%      0.03s  1.73%  crypto/internal/fips140/aes/gcm.gcmAesDec
+     0.03s  1.73% 61.85%      0.04s  2.31%  runtime.mallocgcTinySC2
+     0.02s  1.16% 63.01%      0.23s 13.29%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+     0.02s  1.16% 64.16%      0.04s  2.31%  github.com/djosh34/tigerstore/internal/wal.(*WAL).Append
+     0.02s  1.16% 65.32%      0.21s 12.14%  github.com/google/btree.(*node[go.shape.*uint8]).get
+     0.02s  1.16% 66.47%      0.16s  9.25%  github.com/google/btree.items[go.shape.*uint8].find.func1 (inline)
+     0.02s  1.16% 67.63%      0.04s  2.31%  go.etcd.io/raft/v3.(*raft).handleAppendEntries
+     0.02s  1.16% 68.79%      0.02s  1.16%  internal/runtime/atomic.(*Uint32).Add (inline)
+     0.02s  1.16% 69.94%      0.02s  1.16%  runtime.scanObject
+     0.02s  1.16% 71.10%      0.02s  1.16%  runtime.scanObjectsSmall
+     0.02s  1.16% 72.25%      0.03s  1.73%  runtime.unlock2
+     0.02s  1.16% 73.41%      0.02s  1.16%  runtime.walltime
+     0.02s  1.16% 74.57%      0.03s  1.73%  time.now
+     0.01s  0.58% 75.14%      0.07s  4.05%  bytes.Compare
+     0.01s  0.58% 75.72%      0.01s  0.58%  context.(*cancelCtx).Done
+     0.01s  0.58% 76.30%      0.01s  0.58%  crypto/internal/fips140/aes/gcm.gcmAesFinish
+     0.01s  0.58% 76.88%      0.21s 12.14%  crypto/tls.(*Conn).readFromUntil
+     0.01s  0.58% 77.46%      0.02s  1.16%  crypto/tls.(*halfConn).encrypt
+     0.01s  0.58% 78.03%      0.01s  0.58%  crypto/tls.(*halfConn).explicitNonceLen
+     0.01s  0.58% 78.61%      0.01s  0.58%  encoding/binary.Uvarint (inline)
+     0.01s  0.58% 79.19%      0.26s 15.03%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+     0.01s  0.58% 79.77%      0.01s  0.58%  github.com/djosh34/tigerstore/internal/core.(*Node).matchWatches
+     0.01s  0.58% 80.35%      0.02s  1.16%  github.com/djosh34/tigerstore/internal/core.uvarint
+     0.01s  0.58% 80.92%      0.19s 10.98%  github.com/google/btree.items[go.shape.*uint8].find
+     0.01s  0.58% 81.50%      0.06s  3.47%  go.etcd.io/raft/v3.(*RawNode).Step
+     0.01s  0.58% 82.08%      0.05s  2.89%  go.etcd.io/raft/v3.(*raft).Step
+     0.01s  0.58% 82.66%      0.01s  0.58%  go.etcd.io/raft/v3.needStorageAppendMsg
+     0.01s  0.58% 83.24%      0.01s  0.58%  go.etcd.io/raft/v3/raftpb.(*Entry).GetIndex (inline)
+     0.01s  0.58% 83.82%      0.01s  0.58%  google.golang.org/protobuf/encoding/protowire.ConsumeVarint
+     0.01s  0.58% 84.39%      0.01s  0.58%  google.golang.org/protobuf/internal/impl.(*MessageInfo).init
+     0.01s  0.58% 84.97%      0.01s  0.58%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.01s  0.58% 85.55%      0.15s  8.67%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.01s  0.58% 86.13%      0.01s  0.58%  google.golang.org/protobuf/internal/impl.(*messageState).LoadMessageInfo
+     0.01s  0.58% 86.71%      0.16s  9.25%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+     0.01s  0.58% 87.28%      0.01s  0.58%  internal/runtime/atomic.(*Uint64).Add (inline)
+     0.01s  0.58% 87.86%      0.01s  0.58%  reflect.(*rtype).Elem
+     0.01s  0.58% 88.44%      0.01s  0.58%  runtime.(*pallocBits).summarize
+     0.01s  0.58% 89.02%      0.02s  1.16%  runtime.(*timer).modify
+     0.01s  0.58% 89.60%      0.02s  1.16%  runtime.(*unwinder).resolveInternal
+     0.01s  0.58% 90.17%      0.01s  0.58%  runtime.acquirep
+     0.01s  0.58% 90.75%      0.01s  0.58%  runtime.cheaprandu64 (inline)
+     0.01s  0.58% 91.33%      0.02s  1.16%  runtime.exitsyscall
+     0.01s  0.58% 91.91%      0.01s  0.58%  runtime.findfunc
+     0.01s  0.58% 92.49%      0.01s  0.58%  runtime.fpTracebackPartialExpand
+     0.01s  0.58% 93.06%      0.01s  0.58%  runtime.getGCMask (inline)
+     0.01s  0.58% 93.64%      0.01s  0.58%  runtime.getcallerfp
+     0.01s  0.58% 94.22%      0.01s  0.58%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.01s  0.58% 94.80%      0.04s  2.31%  runtime.netpoll
+     0.01s  0.58% 95.38%      0.01s  0.58%  runtime.nextFreeFast
+     0.01s  0.58% 95.95%      0.01s  0.58%  runtime.releasepNoTrace
+     0.01s  0.58% 96.53%      0.01s  0.58%  runtime.sellock
+     0.01s  0.58% 97.11%      0.01s  0.58%  runtime.step
+     0.01s  0.58% 97.69%      0.01s  0.58%  runtime.stkbucket
+     0.01s  0.58% 98.27%      0.03s  1.73%  runtime.sweepone
+     0.01s  0.58% 98.84%      0.01s  0.58%  runtime.typedmemclr
+     0.01s  0.58% 99.42%      0.17s  9.83%  sort.Search (inline)
+     0.01s  0.58%   100%      0.01s  0.58%  sync.(*Pool).Put
+         0     0%   100%      0.26s 15.03%  bufio.(*Reader).Read
+         0     0%   100%      0.14s  8.09%  bufio.(*Writer).Flush
+         0     0%   100%      0.01s  0.58%  compress/flate.NewWriter (inline)
+         0     0%   100%      0.01s  0.58%  compress/gzip.(*Writer).Write
+         0     0%   100%      0.03s  1.73%  crypto/internal/fips140/aes/gcm.(*GCM).Open
+         0     0%   100%      0.01s  0.58%  crypto/internal/fips140/aes/gcm.(*GCM).sealAfterIndicator
+         0     0%   100%      0.03s  1.73%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Open
+         0     0%   100%      0.01s  0.58%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal
+         0     0%   100%      0.03s  1.73%  crypto/internal/fips140/aes/gcm.open
+         0     0%   100%      0.01s  0.58%  crypto/internal/fips140/aes/gcm.seal
+         0     0%   100%      0.25s 14.45%  crypto/tls.(*Conn).Read
+         0     0%   100%      0.04s  2.31%  crypto/tls.(*Conn).SetWriteDeadline
+         0     0%   100%      0.14s  8.09%  crypto/tls.(*Conn).Write
+         0     0%   100%      0.25s 14.45%  crypto/tls.(*Conn).readRecord (inline)
+         0     0%   100%      0.25s 14.45%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%      0.11s  6.36%  crypto/tls.(*Conn).write

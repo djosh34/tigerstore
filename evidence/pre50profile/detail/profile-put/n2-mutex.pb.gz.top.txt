@@ -1,0 +1,41 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30.01s, Total samples = 10.85us (3.6e-05%)
+Showing nodes accounting for 10.85us, 100% of 10.85us total
+      flat  flat%   sum%        cum   cum%
+    8.11us 74.71% 74.71%     8.11us 74.71%  runtime.entersyscallWakeSysmon
+    2.74us 25.29%   100%     2.74us 25.29%  runtime.wakep
+         0     0%   100%     2.74us 25.29%  _.goready.func1
+         0     0%   100%     8.11us 74.71%  bufio.(*Reader).Read
+         0     0%   100%     8.11us 74.71%  crypto/tls.(*Conn).Read
+         0     0%   100%     8.11us 74.71%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%     8.11us 74.71%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%     2.74us 25.29%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+         0     0%   100%     2.74us 25.29%  github.com/djosh34/tigerstore/internal/node.(*Node).put
+         0     0%   100%     2.74us 25.29%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Put
+         0     0%   100%     2.74us 25.29%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0%   100%     2.74us 25.29%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+         0     0%   100%     8.11us 74.71%  golang.org/x/net/http2.(*Framer).ReadFrameHeader
+         0     0%   100%     8.11us 74.71%  golang.org/x/net/http2.readFrameHeader
+         0     0%   100%     8.11us 74.71%  google.golang.org/grpc.(*Server).handleRawConn.func1
+         0     0%   100%     2.74us 25.29%  google.golang.org/grpc.(*Server).handleStream
+         0     0%   100%     2.74us 25.29%  google.golang.org/grpc.(*Server).processRPC
+         0     0%   100%     8.11us 74.71%  google.golang.org/grpc.(*Server).serveStreams
+         0     0%   100%     2.74us 25.29%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0%   100%     2.74us 25.29%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+         0     0%   100%     8.11us 74.71%  google.golang.org/grpc/internal/transport.(*framer).readFrame
+         0     0%   100%     8.11us 74.71%  google.golang.org/grpc/internal/transport.(*http2Server).HandleStreams
+         0     0%   100%     8.11us 74.71%  internal/poll.(*FD).Read
+         0     0%   100%     8.11us 74.71%  io.ReadAtLeast
+         0     0%   100%     8.11us 74.71%  net.(*conn).Read
+         0     0%   100%     8.11us 74.71%  net.(*netFD).Read
+         0     0%   100%     8.11us 74.71%  runtime.entersyscall
+         0     0%   100%     2.74us 25.29%  runtime.ready
+         0     0%   100%     8.11us 74.71%  runtime.reentersyscall
+         0     0%   100%     2.74us 25.29%  runtime.selectgo
+         0     0%   100%     2.74us 25.29%  runtime.send
+         0     0%   100%    10.85us   100%  runtime.systemstack
+         0     0%   100%     8.11us 74.71%  syscall.Syscall
+         0     0%   100%     8.11us 74.71%  syscall.read

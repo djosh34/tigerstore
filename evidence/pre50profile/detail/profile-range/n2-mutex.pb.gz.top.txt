@@ -1,0 +1,65 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:55:26 UTC
+Duration: 30s, Total samples = 39.19us (0.00013%)
+Showing nodes accounting for 39.19us, 100% of 39.19us total
+      flat  flat%   sum%        cum   cum%
+   27.04us 69.00% 69.00%    27.04us 69.00%  runtime.wakep
+    5.58us 14.25% 83.24%     5.58us 14.25%  runtime.injectglist.func1
+    5.02us 12.82% 96.06%     5.02us 12.82%  runtime.findRunnable
+    1.54us  3.94%   100%     1.54us  3.94%  runtime.entersyscallWakeSysmon
+         0     0%   100%    22.59us 57.64%  _.goready.func1
+         0     0%   100%     1.54us  3.94%  bufio.(*Reader).Read
+         0     0%   100%     1.54us  3.94%  crypto/tls.(*Conn).Read
+         0     0%   100%     1.54us  3.94%  crypto/tls.(*Conn).readFromUntil
+         0     0%   100%     1.54us  3.94%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0%   100%    10.70us 27.31%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+         0     0%   100%    11.89us 30.33%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%    11.89us 30.33%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%    10.70us 27.31%  github.com/djosh34/tigerstore/internal/node.(*Node).put
+         0     0%   100%    11.89us 30.33%  github.com/djosh34/tigerstore/internal/peer.(*TCP).Send
+         0     0%   100%    11.89us 30.33%  github.com/djosh34/tigerstore/internal/peer.(*sender).send
+         0     0%   100%    10.70us 27.31%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Range
+         0     0%   100%    10.70us 27.31%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0%   100%    10.70us 27.31%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Range_Handler
+         0     0%   100%     1.54us  3.94%  golang.org/x/net/http2.(*Framer).ReadFrameHeader
+         0     0%   100%     1.54us  3.94%  golang.org/x/net/http2.readFrameHeader
+         0     0%   100%     5.99us 15.29%  google.golang.org/grpc.(*Server).handleRawConn.func1
+         0     0%   100%    10.70us 27.31%  google.golang.org/grpc.(*Server).handleStream
+         0     0%   100%    10.70us 27.31%  google.golang.org/grpc.(*Server).processRPC
+         0     0%   100%     5.99us 15.29%  google.golang.org/grpc.(*Server).serveStreams
+         0     0%   100%     4.45us 11.35%  google.golang.org/grpc.(*Server).serveStreams.func2
+         0     0%   100%    10.70us 27.31%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0%   100%    10.70us 27.31%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+         0     0%   100%     1.54us  3.94%  google.golang.org/grpc/internal/transport.(*framer).readFrame
+         0     0%   100%     5.99us 15.29%  google.golang.org/grpc/internal/transport.(*http2Server).HandleStreams
+         0     0%   100%     4.45us 11.35%  google.golang.org/grpc/internal/transport.(*http2Server).operateHeaders
+         0     0%   100%     1.54us  3.94%  internal/poll.(*FD).Read
+         0     0%   100%     1.54us  3.94%  io.ReadAtLeast
+         0     0%   100%    11.89us 30.33%  main.main
+         0     0%   100%    11.89us 30.33%  main.run
+         0     0%   100%     1.54us  3.94%  net.(*conn).Read
+         0     0%   100%     1.54us  3.94%  net.(*netFD).Read
+         0     0%   100%     3.11us  7.94%  runtime.(*scavengerState).wake
+         0     0%   100%    11.89us 30.33%  runtime.chansend
+         0     0%   100%     1.54us  3.94%  runtime.entersyscall
+         0     0%   100%     5.02us 12.82%  runtime.goexit0
+         0     0%   100%     5.58us 14.25%  runtime.injectglist
+         0     0%   100%    11.89us 30.33%  runtime.main
+         0     0%   100%     5.02us 12.82%  runtime.mcall
+         0     0%   100%     5.58us 14.25%  runtime.mstart
+         0     0%   100%     5.58us 14.25%  runtime.mstart0
+         0     0%   100%     5.58us 14.25%  runtime.mstart1
+         0     0%   100%     4.45us 11.35%  runtime.newproc
+         0     0%   100%     4.45us 11.35%  runtime.newproc.func1
+         0     0%   100%    22.59us 57.64%  runtime.ready
+         0     0%   100%     1.54us  3.94%  runtime.reentersyscall
+         0     0%   100%     5.02us 12.82%  runtime.schedule
+         0     0%   100%    10.70us 27.31%  runtime.selectgo
+         0     0%   100%    11.89us 30.33%  runtime.selectnbsend
+         0     0%   100%    22.59us 57.64%  runtime.send
+         0     0%   100%     5.58us 14.25%  runtime.sysmon
+         0     0%   100%    28.59us 72.93%  runtime.systemstack
+         0     0%   100%     1.54us  3.94%  syscall.Syscall
+         0     0%   100%     1.54us  3.94%  syscall.read

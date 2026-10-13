@@ -1,0 +1,30 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: delay
+Time: 2026-10-12 23:51:14 UTC
+Duration: 30.02s, Total samples = 24.43us (8.1e-05%)
+Showing nodes accounting for 24.43us, 100% of 24.43us total
+      flat  flat%   sum%        cum   cum%
+   24.43us   100%   100%    24.43us   100%  runtime.wakep
+         0     0%   100%    24.43us   100%  _.goready.func1
+         0     0%   100%    17.20us 70.40%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%    17.20us 70.40%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%    17.20us 70.40%  github.com/djosh34/tigerstore/internal/peer.(*TCP).Send
+         0     0%   100%    17.20us 70.40%  github.com/djosh34/tigerstore/internal/peer.(*sender).send
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc.(*Server).handleStream
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc.(*Server).processRPC
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc.(*serverStream).SendMsg
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc/internal/transport.(*controlBuffer).executeAndPut
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc/internal/transport.(*http2Server).write
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc/internal/transport.(*http2Server).writeHeader
+         0     0%   100%     7.23us 29.60%  google.golang.org/grpc/internal/transport.(*http2Server).writeHeaderLocked
+         0     0%   100%    17.20us 70.40%  main.main
+         0     0%   100%    17.20us 70.40%  main.run
+         0     0%   100%    24.43us   100%  runtime.chansend
+         0     0%   100%    17.20us 70.40%  runtime.main
+         0     0%   100%    24.43us   100%  runtime.ready
+         0     0%   100%    24.43us   100%  runtime.selectnbsend
+         0     0%   100%    24.43us   100%  runtime.send
+         0     0%   100%    24.43us   100%  runtime.systemstack

@@ -1,0 +1,26 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: delay
+Time: 2026-10-12 23:50:37 UTC
+Duration: 30s, Total samples = 6.70us (2.2e-05%)
+Showing nodes accounting for 6.70us, 100% of 6.70us total
+      flat  flat%   sum%        cum   cum%
+    3.96us 59.07% 59.07%     3.96us 59.07%  runtime.findRunnable
+    2.74us 40.93%   100%     2.74us 40.93%  runtime.wakep
+         0     0%   100%     2.74us 40.93%  _.goready.func1
+         0     0%   100%     2.74us 40.93%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+         0     0%   100%     2.74us 40.93%  github.com/djosh34/tigerstore/internal/node.(*Node).put
+         0     0%   100%     2.74us 40.93%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Put
+         0     0%   100%     2.74us 40.93%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0%   100%     2.74us 40.93%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+         0     0%   100%     2.74us 40.93%  google.golang.org/grpc.(*Server).handleStream
+         0     0%   100%     2.74us 40.93%  google.golang.org/grpc.(*Server).processRPC
+         0     0%   100%     2.74us 40.93%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0%   100%     2.74us 40.93%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+         0     0%   100%     3.96us 59.07%  runtime.mcall
+         0     0%   100%     3.96us 59.07%  runtime.park_m
+         0     0%   100%     2.74us 40.93%  runtime.ready
+         0     0%   100%     3.96us 59.07%  runtime.schedule
+         0     0%   100%     2.74us 40.93%  runtime.selectgo
+         0     0%   100%     2.74us 40.93%  runtime.send
+         0     0%   100%     2.74us 40.93%  runtime.systemstack

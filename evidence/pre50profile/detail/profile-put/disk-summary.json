@@ -1,0 +1,50 @@
+{
+  "ops": 128005,
+  "elapsed_s": 25.035253327,
+  "roles": [
+    "leader",
+    "follower1",
+    "follower2"
+  ],
+  "nodes": [
+    {
+      "sync_ns": 19284766746,
+      "syncs": 70610,
+      "write_bytes": 141210732,
+      "write_ns": 1095493740,
+      "writes": 70610,
+      "ops_per_file_sync": 1.8128452060614644,
+      "mean_file_sync_us": 273.11665126752587,
+      "mean_file_write_bytes": 1999.8687438039938,
+      "mean_file_write_us": 15.514710947457866,
+      "file_sync_wall_us_per_op": 150.65635518925043,
+      "file_write_wall_us_per_op": 8.558210538650833
+    },
+    {
+      "sync_ns": 4330108804,
+      "syncs": 3570,
+      "write_bytes": 141195222,
+      "write_ns": 451707258,
+      "writes": 3570,
+      "ops_per_file_sync": 35.85574229691877,
+      "mean_file_sync_us": 1212.9156313725491,
+      "mean_file_write_bytes": 39550.48235294117,
+      "mean_file_write_us": 126.528643697479,
+      "file_sync_wall_us_per_op": 33.827653638529746,
+      "file_write_wall_us_per_op": 3.5288251083942033
+    },
+    {
+      "sync_ns": 5009190806,
+      "syncs": 5046,
+      "write_bytes": 141200106,
+      "write_ns": 388926637,
+      "writes": 5046,
+      "ops_per_file_sync": 25.36761791518034,
+      "mean_file_sync_us": 992.7052726912406,
+      "mean_file_write_bytes": 27982.581450653983,
+      "mean_file_write_us": 77.07622611969877,
+      "file_sync_wall_us_per_op": 39.132774547869225,
+      "file_write_wall_us_per_op": 3.03837066520839
+    }
+  ]
+}

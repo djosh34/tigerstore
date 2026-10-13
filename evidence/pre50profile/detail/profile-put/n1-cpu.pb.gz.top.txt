@@ -1,0 +1,88 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: cpu
+Time: 2026-10-12 23:54:19 UTC
+Duration: 30s, Total samples = 1.94s ( 6.47%)
+Showing nodes accounting for 1.94s, 100% of 1.94s total
+Showing top 80 nodes out of 279
+      flat  flat%   sum%        cum   cum%
+     0.78s 40.21% 40.21%      0.78s 40.21%  internal/runtime/syscall/linux.Syscall6
+     0.09s  4.64% 44.85%      0.09s  4.64%  runtime.memclrNoHeapPointers
+     0.08s  4.12% 48.97%      0.08s  4.12%  runtime.memmove
+     0.07s  3.61% 52.58%      0.07s  3.61%  runtime.nanotime (inline)
+     0.07s  3.61% 56.19%      0.07s  3.61%  runtime.unlock2
+     0.06s  3.09% 59.28%      0.06s  3.09%  crypto/internal/fips140/aes/gcm.gcmAesDec
+     0.05s  2.58% 61.86%      0.05s  2.58%  cmpbody
+     0.03s  1.55% 63.40%      0.22s 11.34%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.02s  1.03% 64.43%      0.07s  3.61%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.02s  1.03% 65.46%      0.46s 23.71%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+     0.02s  1.03% 66.49%      0.02s  1.03%  hash/crc32.castagnoliUpdate
+     0.02s  1.03% 67.53%      0.02s  1.03%  runtime.empty
+     0.02s  1.03% 68.56%      0.02s  1.03%  runtime.nextFreeFast (inline)
+     0.02s  1.03% 69.59%      0.02s  1.03%  runtime.scanObject
+     0.02s  1.03% 70.62%      0.04s  2.06%  runtime.selectgo.func3
+     0.02s  1.03% 71.65%      0.02s  1.03%  runtime.step
+     0.02s  1.03% 72.68%      0.03s  1.55%  time.now
+     0.01s  0.52% 73.20%      0.02s  1.03%  crypto/internal/fips140/aes.encryptBlock
+     0.01s  0.52% 73.71%      0.01s  0.52%  crypto/internal/fips140/aes.encryptBlockAsm
+     0.01s  0.52% 74.23%      0.09s  4.64%  crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Open
+     0.01s  0.52% 74.74%      0.27s 13.92%  crypto/tls.(*Conn).Read
+     0.01s  0.52% 75.26%      0.02s  1.03%  crypto/tls.(*halfConn).encrypt
+     0.01s  0.52% 75.77%      0.01s  0.52%  crypto/tls.(*xorNonceAEAD).explicitNonceLen
+     0.01s  0.52% 76.29%      0.01s  0.52%  encoding/binary.Uvarint (inline)
+     0.01s  0.52% 76.80%      0.29s 14.95%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+     0.01s  0.52% 77.32%      0.01s  0.52%  github.com/djosh34/tigerstore/internal/core.(*Node).flushWatches
+     0.01s  0.52% 77.84%      0.11s  5.67%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).Put
+     0.01s  0.52% 78.35%      0.09s  4.64%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+     0.01s  0.52% 78.87%      0.03s  1.55%  github.com/djosh34/tigerstore/internal/wal.(*WAL).record
+     0.01s  0.52% 79.38%      0.08s  4.12%  github.com/google/btree.items[go.shape.*uint8].find.func1 (inline)
+     0.01s  0.52% 79.90%      0.01s  0.52%  go.etcd.io/raft/v3.(*MemoryStorage).FirstIndex
+     0.01s  0.52% 80.41%      0.09s  4.64%  go.etcd.io/raft/v3.(*RawNode).Step
+     0.01s  0.52% 80.93%      0.01s  0.52%  go.etcd.io/raft/v3.(*raft).appliedTo
+     0.01s  0.52% 81.44%      0.07s  3.61%  go.etcd.io/raft/v3.(*raft).handleAppendEntries
+     0.01s  0.52% 81.96%      0.01s  0.52%  go.etcd.io/raft/v3.(*raftLog).hasNextUnstableSnapshot
+     0.01s  0.52% 82.47%      0.02s  1.03%  go.etcd.io/raft/v3.(*raftLog).maybeAppend
+     0.01s  0.52% 82.99%      0.01s  0.52%  google.golang.org/protobuf/encoding/protowire.AppendVarint
+     0.01s  0.52% 83.51%      0.01s  0.52%  google.golang.org/protobuf/internal/impl.(*MessageInfo).init
+     0.01s  0.52% 84.02%      0.02s  1.03%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+     0.01s  0.52% 84.54%      0.25s 12.89%  google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal
+     0.01s  0.52% 85.05%      0.04s  2.06%  internal/poll.runtime_pollSetDeadline
+     0.01s  0.52% 85.57%      0.01s  0.52%  reflect.(*rtype).Elem
+     0.01s  0.52% 86.08%      0.01s  0.52%  reflect.(*rtype).ptrTo
+     0.01s  0.52% 86.60%      0.01s  0.52%  runtime.(*gcWork).putObjFast (inline)
+     0.01s  0.52% 87.11%      0.01s  0.52%  runtime.(*mheap).tryAllocMSpan (inline)
+     0.01s  0.52% 87.63%      0.01s  0.52%  runtime.(*mspan).base (inline)
+     0.01s  0.52% 88.14%      0.01s  0.52%  runtime.(*mspan).moveInlineMarks
+     0.01s  0.52% 88.66%      0.01s  0.52%  runtime.(*pageAlloc).find
+     0.01s  0.52% 89.18%      0.01s  0.52%  runtime.(*spanInlineMarkBits).init
+     0.01s  0.52% 89.69%      0.01s  0.52%  runtime.(*spanSet).push
+     0.01s  0.52% 90.21%      0.01s  0.52%  runtime.casgstatus
+     0.01s  0.52% 90.72%      0.01s  0.52%  runtime.futex
+     0.01s  0.52% 91.24%      0.01s  0.52%  runtime.lock2
+     0.01s  0.52% 91.75%      0.01s  0.52%  runtime.makeSpanClass (inline)
+     0.01s  0.52% 92.27%      0.01s  0.52%  runtime.mallocgcSmallScanNoHeaderSC2
+     0.01s  0.52% 92.78%      0.16s  8.25%  runtime.mcall
+     0.01s  0.52% 93.30%      0.11s  5.67%  runtime.netpoll
+     0.01s  0.52% 93.81%      0.01s  0.52%  runtime.netpollblockcommit
+     0.01s  0.52% 94.33%      0.08s  4.12%  runtime.newobject
+     0.01s  0.52% 94.85%      0.01s  0.52%  runtime.pMask.set (inline)
+     0.01s  0.52% 95.36%      0.02s  1.03%  runtime.scanObjectsSmall
+     0.01s  0.52% 95.88%      0.14s  7.22%  runtime.schedule
+     0.01s  0.52% 96.39%      0.10s  5.15%  runtime.selectgo
+     0.01s  0.52% 96.91%      0.01s  0.52%  runtime.spanHasSpecials (inline)
+     0.01s  0.52% 97.42%      0.01s  0.52%  runtime.tryDeferToSpanScan
+     0.01s  0.52% 97.94%      0.01s  0.52%  runtime.typedmemmove
+     0.01s  0.52% 98.45%      0.01s  0.52%  sync/atomic.(*Int64).Add (inline)
+     0.01s  0.52% 98.97%      0.01s  0.52%  sync/atomic.StorePointer
+     0.01s  0.52% 99.48%      0.26s 13.40%  syscall.Fsync
+     0.01s  0.52%   100%      0.02s  1.03%  time.Until
+         0     0%   100%      0.27s 13.92%  bufio.(*Reader).Read
+         0     0%   100%      0.13s  6.70%  bufio.(*Writer).Flush
+         0     0%   100%      0.05s  2.58%  bytes.Compare
+         0     0%   100%      0.01s  0.52%  compress/flate.(*dictDecoder).init (inline)
+         0     0%   100%      0.01s  0.52%  compress/flate.NewReader
+         0     0%   100%      0.01s  0.52%  compress/gzip.(*Reader).Reset
+         0     0%   100%      0.01s  0.52%  compress/gzip.(*Reader).readHeader
+         0     0%   100%      0.01s  0.52%  compress/gzip.NewReader
+         0     0%   100%      0.02s  1.03%  crypto/internal/fips140/aes.EncryptBlockInternal (inline)
+         0     0%   100%      0.08s  4.12%  crypto/internal/fips140/aes/gcm.(*GCM).Open

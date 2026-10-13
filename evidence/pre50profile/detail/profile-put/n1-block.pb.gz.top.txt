@@ -1,0 +1,31 @@
+File: tigerstore
+Build ID: 7eba8c71d1fed61a940ab795c5e675ef455e5516
+Type: delay
+Time: 2026-10-12 23:54:49 UTC
+Duration: 30.01s, Total samples = 197.89s (659.51%)
+Showing nodes accounting for 197.89s, 100% of 197.89s total
+Dropped 2 nodes (cum <= 0.99s)
+      flat  flat%   sum%        cum   cum%
+   197.89s   100%   100%    197.89s   100%  runtime.selectgo
+         0     0%   100%     28.77s 14.54%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%     19.60s  9.91%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0%   100%     28.77s 14.54%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%     19.60s  9.91%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0%   100%     29.51s 14.91%  github.com/djosh34/tigerstore/internal/peer.(*sender).next
+         0     0%   100%     29.51s 14.91%  github.com/djosh34/tigerstore/internal/peer.(*sender).run
+         0     0%   100%     29.51s 14.91%  github.com/djosh34/tigerstore/internal/peer.(*sender).run-fm
+         0     0%   100%     29.51s 14.91%  github.com/djosh34/tigerstore/internal/peer.(*sender).write
+         0     0%   100%     28.77s 14.54%  main.main
+         0     0%   100%     28.77s 14.54%  main.run
+         0     0%   100%       120s 60.64%  net/http.(*ServeMux).ServeHTTP
+         0     0%   100%       120s 60.64%  net/http.(*Server).Serve.gowrap3
+         0     0%   100%       120s 60.64%  net/http.(*conn).serve
+         0     0%   100%       120s 60.64%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%       120s 60.64%  net/http.serverHandler.ServeHTTP
+         0     0%   100%        90s 45.48%  net/http/pprof.Index
+         0     0%   100%        30s 15.16%  net/http/pprof.Profile
+         0     0%   100%        90s 45.48%  net/http/pprof.handler.ServeHTTP
+         0     0%   100%        90s 45.48%  net/http/pprof.handler.serveDeltaProfile
+         0     0%   100%        30s 15.16%  net/http/pprof.sleep
+         0     0%   100%     28.77s 14.54%  runtime.main
+         0     0%   100%     49.11s 24.82%  sync.(*WaitGroup).Go.func1

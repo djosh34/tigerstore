@@ -1,0 +1,69 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: alloc_space
+Time: 2026-10-12 23:50:37 UTC
+Duration: 30s, Total samples = 1466.03MB 
+Showing nodes accounting for 1405.85MB, 95.89% of 1466.03MB total
+Dropped 98 nodes (cum <= 7.33MB)
+Showing top 60 nodes out of 106
+      flat  flat%   sum%        cum   cum%
+  221.71MB 15.12% 15.12%   221.71MB 15.12%  google.golang.org/protobuf/internal/impl.consumeBytesNoZero
+  209.47MB 14.29% 29.41%   209.47MB 14.29%  google.golang.org/protobuf/proto.MarshalOptions.marshal
+  122.04MB  8.32% 37.74%   223.55MB 15.25%  google.golang.org/grpc/internal/transport.(*http2Server).operateHeaders
+  119.44MB  8.15% 45.88%   119.44MB  8.15%  google.golang.org/protobuf/internal/impl.mergeBytes
+   93.52MB  6.38% 52.26%   110.52MB  7.54%  go.etcd.io/raft/v3.(*raft).maybeSendAppend
+   88.52MB  6.04% 58.30%   100.02MB  6.82%  github.com/djosh34/tigerstore/internal/peer.(*TCP).receive
+   70.52MB  4.81% 63.11%    70.52MB  4.81%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1
+   34.01MB  2.32% 65.43%   242.46MB 16.54%  go.etcd.io/raft/v3.(*RawNode).Propose
+   32.51MB  2.22% 67.65%   240.11MB 16.38%  google.golang.org/grpc.(*Server).processRPC
+   30.51MB  2.08% 69.73%    30.51MB  2.08%  go.etcd.io/raft/v3.newStorageAppendRespMsg
+      23MB  1.57% 71.30%       23MB  1.57%  time.newTimer
+   22.50MB  1.54% 72.83%    55.01MB  3.75%  go.etcd.io/raft/v3.newStorageAppendMsg
+   22.50MB  1.53% 74.37%    22.50MB  1.53%  context.WithValue
+      20MB  1.36% 75.73%   151.95MB 10.36%  go.etcd.io/raft/v3.(*raft).appendEntry
+   18.50MB  1.26% 76.99%    18.50MB  1.26%  context.(*cancelCtx).Done
+   18.50MB  1.26% 78.25%       28MB  1.91%  context.WithDeadlineCause
+   18.50MB  1.26% 79.52%    18.50MB  1.26%  google.golang.org/grpc/internal/transport.(*http2Server).writeHeaderLocked
+      17MB  1.16% 80.68%       17MB  1.16%  github.com/djosh34/tigerstore/internal/node.(*Node).Do
+      17MB  1.16% 81.84%    20.50MB  1.40%  google.golang.org/grpc/internal/transport.(*http2Server).writeStatus
+   16.50MB  1.13% 82.96%    87.02MB  5.94%  golang.org/x/net/http2.(*Framer).readMetaFrame
+   16.01MB  1.09% 84.05%    16.01MB  1.09%  go.etcd.io/raft/v3.(*raft).send
+   15.50MB  1.06% 85.11%    15.50MB  1.06%  google.golang.org/grpc/internal/transport.(*recvBuffer).init (inline)
+   14.50MB  0.99% 86.10%    14.50MB  0.99%  google.golang.org/grpc/internal/transport.(*writeQuota).init (inline)
+   13.05MB  0.89% 86.99%    13.05MB  0.89%  github.com/djosh34/tigerstore/internal/core.(*Node).reply (inline)
+   12.52MB  0.85% 87.84%    12.52MB  0.85%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).add (inline)
+   12.50MB  0.85% 88.70%    12.50MB  0.85%  google.golang.org/grpc/internal/transport.(*loopyWriter).registerStreamHandler
+   12.01MB  0.82% 89.52%   184.69MB 12.60%  github.com/djosh34/tigerstore/internal/core.(*Node).handleReady
+      11MB  0.75% 90.27%    29.50MB  2.01%  google.golang.org/grpc/internal/transport.(*http2Server).write
+      10MB  0.68% 90.95%   172.68MB 11.78%  github.com/djosh34/tigerstore/internal/core.DecodeBatch
+      10MB  0.68% 91.63%       10MB  0.68%  github.com/djosh34/tigerstore/internal/mvcc.header (inline)
+    9.50MB  0.65% 92.28%   130.60MB  8.91%  go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler
+    9.50MB  0.65% 92.93%     9.50MB  0.65%  google.golang.org/protobuf/internal/impl.consumeUint64Ptr
+    8.50MB  0.58% 93.51%    11.50MB  0.78%  google.golang.org/grpc.newContextWithRPCInfo (inline)
+       8MB  0.55% 94.05%        8MB  0.55%  golang.org/x/net/http2.parseHeadersFrame
+    7.50MB  0.51% 94.56%     7.50MB  0.51%  reflect.unsafe_New
+    7.01MB  0.48% 95.04%     9.01MB  0.61%  github.com/djosh34/tigerstore/internal/core.(*Node).Submit
+       6MB  0.41% 95.45%    31.52MB  2.15%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).put
+    3.50MB  0.24% 95.69%    64.01MB  4.37%  go.etcd.io/raft/v3.(*RawNode).readyWithoutAccept
+       2MB  0.14% 95.83%   168.60MB 11.50%  google.golang.org/grpc.(*Server).wrapUnaryHandler.func1
+       1MB 0.068% 95.89%   774.80MB 52.85%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 95.89%       28MB  1.91%  context.WithDeadline (inline)
+         0     0% 95.89%       28MB  1.91%  context.WithTimeout
+         0     0% 95.89%   705.63MB 48.13%  github.com/djosh34/tigerstore/internal/core.(*Node).Process
+         0     0% 95.89%    55.52MB  3.79%  github.com/djosh34/tigerstore/internal/core.(*Node).Step (inline)
+         0     0% 95.89%   172.68MB 11.78%  github.com/djosh34/tigerstore/internal/core.(*Node).apply
+         0     0% 95.89%    44.57MB  3.04%  github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1
+         0     0% 95.89%    31.52MB  2.15%  github.com/djosh34/tigerstore/internal/core.(*Node).applyOp
+         0     0% 95.89%    13.05MB  0.89%  github.com/djosh34/tigerstore/internal/core.(*Node).finish (inline)
+         0     0% 95.89%   456.93MB 31.17%  github.com/djosh34/tigerstore/internal/core.(*Node).propose
+         0     0% 95.89%   214.47MB 14.63%  github.com/djosh34/tigerstore/internal/core.encodeBatch
+         0     0% 95.89%    31.52MB  2.15%  github.com/djosh34/tigerstore/internal/mvcc.(*Store).Put
+         0     0% 95.89%   774.80MB 52.85%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 95.89%    64.52MB  4.40%  github.com/djosh34/tigerstore/internal/node.(*Node).handle
+         0     0% 95.89%   100.02MB  6.82%  github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1
+         0     0% 95.89%       17MB  1.16%  github.com/djosh34/tigerstore/internal/server.(*kvServer).Put
+         0     0% 95.89%       17MB  1.16%  github.com/djosh34/tigerstore/internal/server.do[go.shape.*uint8]
+         0     0% 95.89%    64.01MB  4.37%  go.etcd.io/raft/v3.(*RawNode).Ready
+         0     0% 95.89%    55.52MB  3.79%  go.etcd.io/raft/v3.(*RawNode).Step
+         0     0% 95.89%   262.47MB 17.90%  go.etcd.io/raft/v3.(*raft).Step
+         0     0% 95.89%   110.52MB  7.54%  go.etcd.io/raft/v3.(*raft).bcastAppend (inline)

@@ -1,0 +1,28 @@
+File: tigerstore
+Build ID: 81103fc851028a501dac54dfc8035100375398f0
+Type: delay
+Time: 2026-10-12 23:50:37 UTC
+Duration: 30s, Total samples = 141.74s (472.45%)
+Showing nodes accounting for 141.74s, 100% of 141.74s total
+      flat  flat%   sum%        cum   cum%
+   141.74s   100%   100%    141.74s   100%  runtime.selectgo
+         0     0%   100%     29.07s 20.51%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0%   100%     23.17s 16.35%  github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1
+         0     0%   100%     29.07s 20.51%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0%   100%     23.17s 16.35%  github.com/djosh34/tigerstore/internal/node.(*Node).persist
+         0     0%   100%     29.50s 20.82%  github.com/djosh34/tigerstore/internal/peer.(*sender).next
+         0     0%   100%     29.50s 20.82%  github.com/djosh34/tigerstore/internal/peer.(*sender).run
+         0     0%   100%     29.50s 20.82%  github.com/djosh34/tigerstore/internal/peer.(*sender).run-fm
+         0     0%   100%     29.50s 20.82%  github.com/djosh34/tigerstore/internal/peer.(*sender).write
+         0     0%   100%     29.07s 20.51%  main.main
+         0     0%   100%     29.07s 20.51%  main.run
+         0     0%   100%        60s 42.33%  net/http.(*ServeMux).ServeHTTP
+         0     0%   100%        60s 42.33%  net/http.(*Server).Serve.gowrap3
+         0     0%   100%        60s 42.33%  net/http.(*conn).serve
+         0     0%   100%        60s 42.33%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%        60s 42.33%  net/http.serverHandler.ServeHTTP
+         0     0%   100%        60s 42.33%  net/http/pprof.Index
+         0     0%   100%        60s 42.33%  net/http/pprof.handler.ServeHTTP
+         0     0%   100%        60s 42.33%  net/http/pprof.handler.serveDeltaProfile
+         0     0%   100%     29.07s 20.51%  runtime.main
+         0     0%   100%     52.67s 37.16%  sync.(*WaitGroup).Go.func1

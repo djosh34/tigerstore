@@ -1,0 +1,81 @@
+{
+  "clock_hz": 100,
+  "conns": 16,
+  "cpu_after": [
+    {
+      "PID": 4685,
+      "Ticks": 1504,
+      "Start": 25679
+    },
+    {
+      "PID": 4686,
+      "Ticks": 250,
+      "Start": 25679
+    },
+    {
+      "PID": 4687,
+      "Ticks": 245,
+      "Start": 25679
+    },
+    {
+      "PID": 4740,
+      "Ticks": 48,
+      "Start": 27687
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 4685,
+      "Ticks": 1385,
+      "Start": 25679
+    },
+    {
+      "PID": 4686,
+      "Ticks": 250,
+      "Start": 25679
+    },
+    {
+      "PID": 4687,
+      "Ticks": 244,
+      "Start": 25679
+    },
+    {
+      "PID": 4740,
+      "Ticks": 5,
+      "Start": 27687
+    }
+  ],
+  "cpu_us_op": [
+    119,
+    0,
+    1,
+    43
+  ],
+  "elapsed_s": 1.186621727,
+  "errors": {},
+  "keyspace": 4096,
+  "max_ms": 55.939942,
+  "mean_ms": 30.1382401674,
+  "occupied_cores": [
+    1.002846967085746,
+    0,
+    0.008427285437695345,
+    0.3623732738208998
+  ],
+  "op": "range",
+  "ops_s": 8427.285437695346,
+  "p50_ms": 28.838977,
+  "p90_ms": 40.186949,
+  "p999_ms": 55.449358,
+  "p99_ms": 48.586928,
+  "revision_after": 84097,
+  "revision_before": 84097,
+  "start_utc": "2026-10-12T23:47:32.817195156Z",
+  "successes": 10000,
+  "terms": {
+    "2": 10000
+  },
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 256
+}
