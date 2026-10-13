@@ -3,6 +3,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"crypto/tls"
 	"io"
 	"net"
@@ -133,19 +134,24 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	}
 	defer conn.Close() //nolint:errcheck // closing a test client
 	st := retry(t, func(ctx context.Context) (*pb.StatusResponse, error) {
-		return pb.NewMaintenanceClient(conn).Status(ctx, &pb.StatusRequest{})
+		st, err := pb.NewMaintenanceClient(conn).Status(ctx, &pb.StatusRequest{})
+		if err == nil && st.Leader == 0 {
+			err = errors.New("no leader yet")
+		}
+		return st, err
 	})
 	leader := st.Leader
 	stalled, healthy := leader%3+1, (leader+1)%3+1
 	proxy := proxies[[2]uint64{leader, stalled}]
 	kv := c.client(healthy, cert)
+	before := proxy.accepted.Load()
 	proxy.stall()
 
 	bound := 10 * time.Duration(core.DefaultConfig(1, nil).ElectionTicks) * 10 * time.Millisecond
 	value := bytes.Repeat([]byte("v"), 64<<10)
 	deadline := time.Now().Add(30 * time.Second)
 	puts := 0
-	for proxy.accepted.Load() < 2 && time.Now().Before(deadline) {
+	for proxy.accepted.Load() == before && time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), bound)
 		_, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("q"), Value: value})
 		cancel()
@@ -162,7 +168,7 @@ func TestStalledPeerLinkKeepsQuorum(t *testing.T) {
 	default:
 		t.Fatal("the stall never took effect")
 	}
-	if proxy.accepted.Load() < 2 {
+	if proxy.accepted.Load() == before {
 		t.Fatalf("after %d puts, the leader's writer never hit its write deadline", puts)
 	}
 	t.Logf("%d puts of 64 KiB committed while the link from node %d to node %d was stalled", puts, leader, stalled)
