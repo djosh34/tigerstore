@@ -1,4 +1,9 @@
 import unittest
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 from summarize import disk_node, hist_upper, prometheus, queues
 
 
@@ -32,7 +37,20 @@ class SummaryTests(unittest.TestCase):
     def test_etcd_commit_apply_gap(self):
         text='etcd_server_proposals_pending 20\netcd_server_proposals_committed_total 300\netcd_server_proposals_applied_total 250\n'
         q=queues([{'nodes':[text]}],'etcd',0)
-        self.assertEqual(q['commit_apply_gap']['max'],50)
+        self.assertEqual(q['post_save_minus_applied']['max'],50)
+
+    def test_missing_windows_never_form_passing_group(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            plan={'windows':[{'case':'put-1k-leader-c256','kind':'etcd','rate':0,'rep':i,
+                              'path':f'put-1k-leader-c256/etcd-{i}/load.json'} for i in [1,2]]}
+            (root/'plan.json').write_text(json.dumps(plan))
+            run=subprocess.run([sys.executable,str(Path(__file__).with_name('summarize.py')),d],capture_output=True,text=True)
+            self.assertEqual(run.returncode,1)
+            summary=json.loads((root/'summary.json').read_text())
+            self.assertFalse(summary[0]['all_valid'])
+            self.assertEqual(summary[0]['expected_repetitions'],2)
+            self.assertEqual(summary[0]['repetitions'],2)
 
 
 if __name__=='__main__':

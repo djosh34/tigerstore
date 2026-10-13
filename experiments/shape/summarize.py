@@ -75,16 +75,26 @@ def queues(samples, kind, index):
             p = prometheus(node)
             fields = {k:p.get(k,0) for k in ['etcd_server_proposals_pending',
                       'etcd_server_proposals_committed_total', 'etcd_server_proposals_applied_total']}
-            fields['commit_apply_gap'] = fields['etcd_server_proposals_committed_total']-fields['etcd_server_proposals_applied_total']
+            # The first is a post-WAL.Save gauge, not the live commit index.
+            fields['post_save_minus_applied'] = fields['etcd_server_proposals_committed_total']-fields['etcd_server_proposals_applied_total']
         else:
             fields = node.get('node') or {}
             fields = {k:v for k,v in fields.items() if k in ['inbox_events', 'persist_queue_batches',
                       'persist_backlog_batches', 'pending_proposals', 'queued_writes', 'queued_reads',
                       'read_index_reads', 'read_index_batches']}
-            peers = node.get('peers') or []
-            fields['peer_data_bytes'] = sum(p['data_bytes'] for p in peers)
-            fields['peer_control_bytes'] = sum(p['control_bytes'] for p in peers)
-            fields['sample_age_us'] = node.get('node_sample_age_ns',0)/1000
+            peers = node.get('peers')
+            if peers is not None:
+                fields['peer_data_bytes'] = sum(p['data_bytes'] for p in peers)
+                fields['peer_control_bytes'] = sum(p['control_bytes'] for p in peers)
+            if node.get('node_sample_age_ns',-1) >= 0:
+                fields['sample_age_us'] = node['node_sample_age_ns']/1000
+            if node.get('peers_sample_age_ns',-1) >= 0:
+                fields['peer_sample_age_us'] = node['peers_sample_age_ns']/1000
+            for p in (node.get('node') or {}).get('raft_progress',[]):
+                fields[f'raft_{p["id"]}_inflight_count'] = p['inflight_count']
+                fields[f'raft_{p["id"]}_inflight_full'] = int(p['inflight_full'])
+                fields[f'raft_{p["id"]}_flow_paused'] = int(p['msg_app_flow_paused'])
+                fields[f'raft_{p["id"]}_next_match_gap'] = p['next']-p['match']-1
         for k,v in fields.items():
             columns.setdefault(k,[]).append(v)
     return {k:{'mean':statistics.mean(v), 'max':max(v), 'last':v[-1]} for k,v in columns.items()}
@@ -150,6 +160,8 @@ def one(path):
     a = json.loads(path.with_name('before.json').read_text())
     b = json.loads(path.with_name('after.json').read_text())
     samples = [json.loads(x) for x in path.with_name('samples.jsonl').read_text().splitlines()]
+    if samples and 'wall_unix_ns' in samples[0]:
+        samples=[s for s in samples if shape['start_unix_ns'] <= s['wall_unix_ns'] <= shape['done_unix_ns']]
     row['samples'] = len(samples)
     row['fenced_wall_s'] = b['monotonic']-a['monotonic']
     flatten('disk_', disk_window(a,b,samples),row)
@@ -168,11 +180,29 @@ def main():
     args = ap.parse_args()
     rows = []
     failures = []
-    for p in sorted(args.root.rglob('load.json')):
+    expected = {}
+    failed_roots = {p.parent for p in args.root.rglob('failures.json')}
+    for plan_path in args.root.rglob('plan.json'):
+        plan = json.loads(plan_path.read_text())
+        for item in plan['windows']:
+            expected[str(plan_path.parent/item['path'])] = item
+    paths = set(map(str,args.root.rglob('load.json'))) | set(expected)
+    for name in sorted(paths):
+        p=Path(name)
         try:
-            rows.append(one(p))
+            row=one(p)
+            row['planned']=name in expected
+            row['job_failed']=any(p.is_relative_to(root) for root in failed_roots)
+            if row['job_failed']:
+                row['valid']=False
+            rows.append(row)
         except Exception as ex:
-            failures.append({'path':str(p),'error':repr(ex)})
+            failure={'path':str(p),'error':repr(ex)}
+            failures.append(failure)
+            item=expected.get(name)
+            if item:
+                rows.append({'path':str(p.parent),'case':item['case'],'kind':item['kind'],
+                             'offered_rate':item['rate'],'valid':False,'planned':True,'error':repr(ex)})
     (args.root/'summary-errors.json').write_text(json.dumps(failures,indent=2))
     fields = list(dict.fromkeys(k for r in rows for k in r))
     with (args.root/'windows.csv').open('w') as f:
@@ -182,7 +212,10 @@ def main():
         groups.setdefault((r['case'],r['kind'],r['offered_rate']),[]).append(r)
     summary=[]
     for (case,kind,rate), values in sorted(groups.items()):
-        s={'case':case,'kind':kind,'rate':rate,'repetitions':len(values),'all_valid':all(x['valid'] for x in values)}
+        expected_count=sum(1 for x in expected.values() if (x['case'],x['kind'],x['rate'])==(case,kind,rate))
+        s={'case':case,'kind':kind,'rate':rate,'repetitions':len(values),'expected_repetitions':expected_count,
+           'complete':expected_count>0 and len(values)==expected_count,
+           'all_valid':all(x['valid'] for x in values) and expected_count>0 and len(values)==expected_count}
         for k in fields:
             v=[x[k] for x in values if k in x and isinstance(x[k],(float,int)) and not isinstance(x[k],bool)]
             if v:
@@ -193,6 +226,9 @@ def main():
     lines=['| Case | Store | Rate | n | Valid | ops/s | p50 ms | p99 ms | p99.9 ms | CPU us/op L/F1/F2 | Generator cores |',
            '| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: |']
     for r in summary:
+        if 'throughput' not in r:
+            lines.append(f'| {r["case"]} | {r["kind"]} | {r["rate"]} | {r["repetitions"]} | False | unavailable | | | | | |')
+            continue
         cpu='/'.join(f'{r.get(f"n{i}_window_cpu_us_op",0):.2f}' for i in range(3))
         lines.append(f'| {r["case"]} | {r["kind"]} | {r["rate"]:g} | {r["repetitions"]} | {r["all_valid"]} | {r["throughput"]:.0f} | {r["latency_p50"]/1000:.3f} | {r["latency_p99"]/1000:.3f} | {r["latency_p999"]/1000:.3f} | {cpu} | {r["client_cores"]:.2f} |')
     (args.root/'tables.md').write_text('\n'.join(lines)+'\n')

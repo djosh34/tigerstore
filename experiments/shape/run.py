@@ -67,9 +67,28 @@ def fence(dirpath, kind, ports):
                 if not all(x >= max(committed) for x in saved):
                     time.sleep(.1)
                     continue
-            return st
+                return st, {'post_save_commit':saved,'target_applied':max(applied)}
+            cutoff = time.time_ns()
+            last = None
+            proofs = []
+            while time.monotonic() < until:
+                obs = [json.loads(http(p, '/debug/shape'))['node'] for p in ports]
+                good = all(o is not None and o['sampled_unix_ns'] >= cutoff
+                           and o['applied'] >= max(applied) and o['revision'] == int(revs[0])
+                           and o['persist_jobs_issued'] == o['persist_jobs_completed'] for o in obs)
+                sequences = [o['sequence'] if o else -1 for o in obs]
+                if good and (last is None or all(x>y for x,y in zip(sequences,last))):
+                    proofs.append(obs)
+                    last = sequences
+                    if len(proofs) == 2:
+                        return st, {'fresh_after_unix_ns':cutoff,'target_applied':max(applied),
+                                    'target_revision':int(revs[0]),'samples':proofs}
+                elif not good:
+                    proofs=[]
+                    last=None
+                time.sleep(.02)
         time.sleep(.1)
-    raise RuntimeError('replica fence timed out')
+    raise RuntimeError('replica and persistence fence timed out')
 
 
 def http(port, path):
@@ -172,12 +191,13 @@ def once(kind, rep, rate=None):
         COMMANDS.append({'argv': list(map(str, argv)), 'env': {'GOMAXPROCS': '1'}, 'time': time.time()})
         (OUT/'commands.json').write_text(json.dumps(COMMANDS, indent=2))
         with (dst/'load.log').open('w') as log:
+            check_deadline()
             process = subprocess.Popen(list(map(str, argv)), stdout=log, stderr=log, env=env)
             wait_file(Path(str(barrier)+'.ready'), process)
-            before_status = fence(data, kind, ports)
-            time.sleep(.2)
+            before_status, before_fence = fence(data, kind, ports)
             before = snapshot(kind, pids, ports)
             before['status'] = before_status
+            before['persistence_fence'] = before_fence
             before['affinity'] = affinities(pids)
             before['generator_affinity'] = sorted(os.sched_getaffinity(process.pid))
             if before['generator_affinity'] != [3]:
@@ -190,7 +210,7 @@ def once(kind, rep, rate=None):
                         while not sampling_stop.is_set():
                             start = time.monotonic()
                             # Full node metrics and disk queues, without per-thread /proc reads.
-                            row = {'monotonic': start, 'nodes': [json.loads(http(p, '/debug/shape'))
+                            row = {'monotonic': start, 'wall_unix_ns':time.time_ns(), 'nodes': [json.loads(http(p, '/debug/shape'))
                                    if kind != 'etcd' else http(p, '/metrics') for p in ports],
                                    'diskstats': Path('/proc/diskstats').read_text()}
                             f.write(json.dumps(row)+'\n')
@@ -202,6 +222,7 @@ def once(kind, rep, rate=None):
             profile = os.environ.get('PROFILE', 'none')
             if profile != 'none' and kind != 'etcd':
                 def capture(index, port):
+                    check_deadline()
                     duration = 6 if profile == 'cpu' else 2
                     endpoint = 'profile' if profile == 'cpu' else 'trace'
                     suffix = 'cpu.pb.gz' if profile == 'cpu' else 'run.trace'
@@ -219,10 +240,10 @@ def once(kind, rep, rate=None):
             wait_file(Path(str(barrier)+'.done'), process, 70)
             sampling_stop.set()
             sample_thread.join()
-            after_status = fence(data, kind, ports)
-            time.sleep(.2)
+            after_status, after_fence = fence(data, kind, ports)
             after = snapshot(kind, pids, ports)
             after['status'] = after_status
+            after['persistence_fence'] = after_fence
             after['affinity'] = affinities(pids)
             (dst/'after.json').write_text(json.dumps(after))
             Path(str(barrier)+'.finish').touch()
@@ -285,10 +306,33 @@ def main():
     OUT.mkdir(exist_ok=True)
     targets = os.environ.get('TARGETS', 'tigerstore etcd').split()
     rates = json.loads(os.environ.get('RATES', '{}'))
+    mode = CASE.split('-')[-1]
+    if mode == 'open':
+        if not rates or set(rates) != set(targets):
+            raise ValueError('open case requires explicit rates for every target')
+        lengths = {len(v) for v in rates.values()}
+        if len(lengths) != 1 or 0 in lengths:
+            raise ValueError('rate arrays must have equal nonzero lengths')
+        if any(not isinstance(r,(int,float)) or not 0 < r < float('inf') for rs in rates.values() for r in rs):
+            raise ValueError('rates must be finite and positive')
+    elif not re.fullmatch(r'c[1-9][0-9]*', mode) or rates:
+        raise ValueError('closed case requires cN and empty rates')
+    if REPS < 1:
+        raise ValueError('repetitions must be positive')
+    count = len(next(iter(rates.values()))) if rates else 1
+    planned = []
+    for rep in range(1,REPS+1):
+        for i in range(count):
+            for kind in targets:
+                rate = rates[kind][i] if rates else None
+                label = f'{kind}-{rep}' + (f'-r{rate}' if rate else '')
+                planned.append({'case':CASE,'kind':kind,'rep':rep,'rate':rate or 0,
+                                'path':f'{CASE}/{label}/load.json'})
+    (OUT/'plan.json').write_text(json.dumps({'case':CASE,'reps':REPS,'targets':targets,'rates':rates,
+       'duration':DURATION,'warmup':WARMUP,'profile':os.environ.get('PROFILE','none'),'windows':planned},indent=2))
     failures = []
     for rep in range(1, REPS+1):
         order = targets if rep % 2 else targets[::-1]
-        count = len(next(iter(rates.values()))) if rates else 1
         for i in range(count):
             for kind in order:
                 try:
