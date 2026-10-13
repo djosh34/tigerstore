@@ -90,6 +90,32 @@ def queues(samples, kind, index):
     return {k:{'mean':statistics.mean(v), 'max':max(v), 'last':v[-1]} for k,v in columns.items()}
 
 
+def diskstats(text):
+    devices = {}
+    for line in text.splitlines():
+        fields = line.split()
+        # Whole devices only. Keep every matching device in raw summaries.
+        if re.fullmatch(r'(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)', fields[2]):
+            devices[fields[2]] = list(map(int,fields[3:]))
+    return devices
+
+
+def disk_window(before, after, samples):
+    result = {}
+    a,b = diskstats(before['diskstats']),diskstats(after['diskstats'])
+    seconds = after['monotonic']-before['monotonic']
+    for device,x in a.items():
+        y=b[device]
+        inflight=[diskstats(s['diskstats'])[device][8] for s in samples]
+        result[device] = {'write_mib_s':(y[6]-x[6])*512/(1<<20)/seconds,
+                          'writes_s':(y[4]-x[4])/seconds,
+                          'write_await_ms':(y[7]-x[7])/(y[4]-x[4]) if y[4]!=x[4] else 0,
+                          'busy_fraction':(y[9]-x[9])/1000/seconds,
+                          'mean_io_queue':(y[10]-x[10])/1000/seconds,
+                          'sampled_inflight_max':max(inflight,default=0)}
+    return result
+
+
 def flatten(prefix, obj, row):
     for k,v in obj.items():
         key = f'{prefix}{k}'
@@ -117,6 +143,7 @@ def one(path):
     samples = [json.loads(x) for x in path.with_name('samples.jsonl').read_text().splitlines()]
     row['samples'] = len(samples)
     row['fenced_wall_s'] = b['monotonic']-a['monotonic']
+    flatten('disk_', disk_window(a,b,samples),row)
     for i,(before,after) in enumerate(zip(a['nodes'],b['nodes'])):
         flatten(f'n{i}_', disk_node(before,after,load['label'],load['cohort']),row)
         flatten(f'n{i}_q_', queues(samples,load['label'],i),row)
