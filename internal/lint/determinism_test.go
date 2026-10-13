@@ -20,6 +20,7 @@ import (
 // events.
 var corePackages = []string{
 	"history",
+	"internal/batchcmd",
 	"internal/core",
 	"internal/mvcc",
 	"internal/planted",
