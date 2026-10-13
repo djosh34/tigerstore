@@ -278,6 +278,9 @@ type node struct {
 
 	nextStream uint64
 	streams    map[uint64]*watchClient
+	// closing are streams the client left that the node has not yet
+	// handled the close of; what it sends on them goes nowhere.
+	closing map[uint64]bool
 
 	// tickEvery is this node's tick interval, off by up to the clock drift;
 	// pausedUntil holds the whole process back, and held keeps its events
@@ -451,7 +454,7 @@ func newSim(cfg Config) *Sim {
 }
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
-	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}})
+	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}, closing: map[uint64]bool{}})
 }
 
 // loop runs events until the end.
@@ -579,6 +582,7 @@ func (s *Sim) handle(e *event) {
 		}
 	case evStreamClose:
 		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
+			delete(n.closing, e.stream)
 			n.core.CloseWatchStream(e.stream)
 			s.process(n)
 		}
@@ -899,6 +903,7 @@ func (s *Sim) crash(n *node) {
 		}
 	}
 	n.streams = map[uint64]*watchClient{}
+	n.closing = map[uint64]bool{}
 }
 
 func (s *Sim) changeLinks() {

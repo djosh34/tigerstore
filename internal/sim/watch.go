@@ -94,6 +94,7 @@ func (s *Sim) closeStream(w *watchClient) {
 	n := s.nodes[w.node]
 	if n.up && n.gen == w.gen {
 		delete(n.streams, w.stream)
+		n.closing[w.stream] = true
 		s.push(&event{at: s.now, kind: evStreamClose, node: n.idx, gen: n.gen, stream: w.stream})
 	}
 }
@@ -143,6 +144,9 @@ func (w *watchClient) create(n *node, gen uint64) {
 // watchResponse routes a response from a node to its client, in order.
 func (s *Sim) watchResponse(n *node, r core.WatchResponse) {
 	w, ok := n.streams[r.Stream]
+	if !ok && n.closing[r.Stream] {
+		return
+	}
 	if !ok {
 		s.fail("node %d answered unknown watch stream %d", n.id, r.Stream)
 		return
