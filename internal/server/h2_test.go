@@ -275,8 +275,12 @@ func TestRawFrames(t *testing.T) {
 		t.Helper()
 		hb.Reset()
 		for _, f := range []hpack.HeaderField{
-			{Name: ":method", Value: "POST"}, {Name: ":scheme", Value: "https"}, {Name: ":path", Value: path},
-			{Name: ":authority", Value: "localhost"}, {Name: "content-type", Value: "application/grpc"}, {Name: "te", Value: "trailers"},
+			{Name: ":method", Value: "POST"},
+			{Name: ":scheme", Value: "https"},
+			{Name: ":path", Value: path},
+			{Name: ":authority", Value: "localhost"},
+			{Name: "content-type", Value: "application/grpc"},
+			{Name: "te", Value: "trailers"},
 		} {
 			must(enc.WriteField(f))
 		}
