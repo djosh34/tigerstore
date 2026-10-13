@@ -217,6 +217,10 @@ func TestLateCompletionsInCohort(t *testing.T) {
 	}
 	// With 200 ms answers, the last 200 ms of arrivals complete after the
 	// window, so the window counts fewer completions than its cohort.
+	// 200 arrivals a second for 0.3 s: about 60, all in the cohort.
+	if s.cohort < 50 {
+		t.Fatalf("cohort %d, want about 60: arrivals left out", s.cohort)
+	}
 	if s.ops >= s.cohort {
 		t.Fatalf("%d completions in the window, cohort %d: late completions were not in the cohort", s.ops, s.cohort)
 	}
@@ -232,5 +236,56 @@ func TestFailedCPUSampleIsInvalid(t *testing.T) {
 	})
 	if err == nil || res == nil || res.Valid {
 		t.Fatalf("a run without server CPU: error %v, result %+v", err, res)
+	}
+}
+
+// TestResponseShapes feeds the CAS and Range handlers answers that look
+// right on the surface: each must be refused.
+func TestResponseShapes(t *testing.T) {
+	header := func(rev uint64) *msg {
+		h := newMsg()
+		h.varint(headerRevision, rev)
+		return h
+	}
+	ks := makeKeys(1)
+	b := base{ks: ks, writes: newRevisionSet()}
+	st := &stream{slot: 0}
+
+	cas := newCASLoad(b, make([]int64, 1))
+	noOps := newMsg()
+	noOps.sub(respHeader, header(5))
+	noOps.varint(txnSucceeded, 1)
+	if err := cas.message(st, noOps.b); err == nil {
+		t.Fatal("a CAS answer without a put response was taken")
+	}
+	put := newMsg()
+	put.sub(respHeader, header(6))
+	op := newMsg()
+	op.sub(opResponsePut, put)
+	ok := newMsg()
+	ok.sub(respHeader, header(6))
+	ok.varint(txnSucceeded, 1)
+	ok.sub(txnResponses, op)
+	if err := cas.message(st, ok.b); err != nil {
+		t.Fatalf("a good CAS answer: %v", err)
+	}
+
+	want := []byte("the value that was put")
+	rng := &rangeLoad{base: b, valueSize: len(want), want: [][]byte{want}}
+	answer := func(value []byte) []byte {
+		kv := newMsg()
+		kv.bytes(kvKey, ks.key(0))
+		kv.bytes(kvValue, value)
+		r := newMsg()
+		r.sub(respHeader, header(7))
+		r.sub(rangeKVs, kv)
+		r.varint(rangeCount, 1)
+		return r.b
+	}
+	if err := rng.message(st, answer(make([]byte, len(want)))); err == nil {
+		t.Fatal("a range answer with zeros of the right size was taken")
+	}
+	if err := rng.message(st, answer(want)); err != nil {
+		t.Fatalf("a good range answer: %v", err)
 	}
 }

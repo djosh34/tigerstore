@@ -236,15 +236,17 @@ func run(cfg config) (*result, error) {
 	}
 
 	var revs []int64
+	var putVals [][]byte
 	if cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "delete" {
 		revs = make([]int64, cfg.keys)
+		putVals = make([][]byte, cfg.keys)
 		loads := make([]load, len(workers))
 		for i := range workers {
 			b, err := base(i, "/etcdserverpb.KV/Put", putRequest(ks.size, cfg.valueSize))
 			if err != nil {
 				return nil, err
 			}
-			loads[i] = &putLoad{base: b, once: true, revs: revs}
+			loads[i] = &putLoad{base: b, once: true, revs: revs, vals: putVals}
 		}
 		start := now()
 		if err := runPhase(workers, loads, phase{start: start, stop: start + int64(preloadTimeout), drain: drainTimeout}); err != nil {
@@ -287,7 +289,7 @@ func run(cfg config) (*result, error) {
 		case "delete":
 			loads[i] = &deleteLoad{base: b}
 		case "range":
-			loads[i] = &rangeLoad{base: b, valueSize: cfg.valueSize}
+			loads[i] = &rangeLoad{base: b, valueSize: cfg.valueSize, want: putVals}
 		}
 	}
 

@@ -50,10 +50,11 @@ status() {
 place() {
 	local kind=$1 dir=$2 endpoints=$3 pids=$4
 	shift 4
-	local cpus=("$@") leader term
+	local cpus=("$@") leader term st
 	read -r -a pid <<<"${pids//,/ }"
 	read -r -a ep <<<"${endpoints//,/ }"
-	read -r leader term <<<"$(status)"
+	st=$(status) || exit 1
+	read -r leader term <<<"$st"
 	local order=() i
 	for i in 0 1 2; do
 		if [ "${ep[i]}" = "$leader" ]; then
@@ -157,9 +158,10 @@ start() {
 }
 
 check() {
-	local dir=$1 leader term
+	local dir=$1 leader term st
 	endpoints=$(cat "$dir/endpoints")
-	read -r leader term <<<"$(status)"
+	st=$(status) || return 1
+	read -r leader term <<<"$st"
 	if [ "$leader" != "$(cat "$dir/leader")" ] || [ "$term" != "$(cat "$dir/term")" ]; then
 		echo "the leader changed during the run: $(cat "$dir/leader") term $(cat "$dir/term"), now $leader term $term" >&2
 		return 1

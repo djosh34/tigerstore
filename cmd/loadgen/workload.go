@@ -100,6 +100,7 @@ type base struct {
 	stats  *stats
 	limit  int // streams in flight on this connection
 	writes *revisionSet
+	last   []byte // the pool value that fill copied last
 }
 
 func (b *base) done(st *stream, at int64, err error) { b.stats.complete(st, at, err) }
@@ -113,17 +114,19 @@ func (b *base) fill(r []byte, k int) []byte {
 		return nil
 	}
 	v := r[b.tpl.value : b.tpl.value+b.vals.size]
-	copy(v, b.vals.next())
+	b.last = b.vals.next()
+	copy(v, b.last)
 	return v
 }
 
 // putLoad overwrites keys with Put.
 type putLoad struct {
 	base
-	once  bool    // put each key once, in order, then stop
-	next  int     // with once: the next key
-	revs  []int64 // if set: the mod revision of each key after its put
-	stamp bool    // write the intended send time into the value
+	once  bool     // put each key once, in order, then stop
+	next  int      // with once: the next key
+	revs  []int64  // if set: the mod revision of each key after its put
+	vals  [][]byte // if set: the value of each key after its put
+	stamp bool     // write the intended send time into the value
 }
 
 func (w *putLoad) start(c *conn, st *stream) bool {
@@ -139,6 +142,9 @@ func (w *putLoad) start(c *conn, st *stream) bool {
 	}
 	st.slot = k
 	v := w.fill(c.startStream(st, w.tpl), k)
+	if w.vals != nil {
+		w.vals[k] = w.last
+	}
 	if w.stamp {
 		binary.LittleEndian.PutUint64(v, uint64(st.intended))
 	}
@@ -208,13 +214,25 @@ func (w *casLoad) message(st *stream, m []byte) error {
 	if ok != 1 {
 		return errCASFailed
 	}
-	// The success branch is one put, which answers with a response.
-	op, err := bytesField(m, txnResponses)
+	// The success branch is one put, which answers with one response.
+	var puts, ops int
+	err = fields(m, func(num protowire.Number, _ uint64, b []byte) error {
+		if num != txnResponses {
+			return nil
+		}
+		ops++
+		return fields(b, func(n protowire.Number, _ uint64, put []byte) error {
+			if n == opResponsePut && put != nil {
+				puts++
+			}
+			return nil
+		})
+	})
 	if err != nil {
 		return err
 	}
-	if _, err := bytesField(op, opResponsePut); err != nil {
-		return fmt.Errorf("CAS txn without a put response: %w", err)
+	if ops != 1 || puts != 1 {
+		return fmt.Errorf("CAS txn answered %d operations with %d put responses, want one put", ops, puts)
 	}
 	if err := w.writes.add(rev); err != nil {
 		return err
@@ -270,6 +288,7 @@ func (w *deleteLoad) message(_ *stream, m []byte) error {
 type rangeLoad struct {
 	base
 	valueSize int
+	want      [][]byte // the value the preload put for each key
 }
 
 func (w *rangeLoad) start(c *conn, st *stream) bool {
@@ -308,8 +327,8 @@ func (w *rangeLoad) message(st *stream, m []byte) error {
 			if err != nil {
 				return err
 			}
-			if len(val) != w.valueSize {
-				return fmt.Errorf("range returned a %d byte value, want %d", len(val), w.valueSize)
+			if !bytes.Equal(val, w.want[st.slot]) {
+				return fmt.Errorf("range returned a %d byte value that is not the one put", len(val))
 			}
 		default:
 		}

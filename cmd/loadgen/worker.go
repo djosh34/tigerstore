@@ -111,11 +111,20 @@ func (wk *worker) run(l load, p phase) error {
 			// belong to it, and make the result invalid.
 			c.mu.Lock()
 			wk.unsent += int64(len(backlog))
-			for _, at := range backlog {
+			inWindow := func(at int64) {
 				if at >= wk.stats.winStart && at < wk.stats.winStop {
 					wk.stats.cohort++
 					wk.stats.cohortFailed++
 				}
+			}
+			for _, at := range backlog {
+				inWindow(at)
+			}
+			// Requests still in flight fail too, once: their streams are
+			// forgotten, so a late answer counts nothing.
+			for id, st := range c.streams {
+				inWindow(st.intended)
+				delete(c.streams, id)
 			}
 			c.mu.Unlock()
 			return fmt.Errorf("%s: %d requests in flight and %d never sent %v after the phase", c.addr, inflight, len(backlog), p.drain)
