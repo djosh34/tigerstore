@@ -200,16 +200,25 @@ func (c *conn) Complete(cs []node.Completion) {
 	c.signal()
 }
 
-// takeCompletions returns the replies the node queued, oldest first.
-func (c *conn) takeCompletions() [][]node.Completion {
+// takeCompletions returns the replies the node queued, oldest first,
+// and their estimated size, which still counts as waiting until complete
+// has charged them to their calls.
+func (c *conn) takeCompletions() ([][]node.Completion, int64) {
 	var out [][]node.Completion
+	var bytes int64
 	for n := c.completions.Swap(nil); n != nil; n = n.next {
 		out = append(out, n.cs)
-		// complete charges each reply to its call from here on.
-		c.waitingReplies.Add(-n.bytes)
+		bytes += n.bytes
 	}
 	slices.Reverse(out)
-	return out
+	return out, bytes
+}
+
+// completeWaiting encodes and queues the replies the node handed over.
+func (c *conn) completeWaiting() {
+	if cs, bytes := c.takeCompletions(); cs != nil {
+		c.complete(cs, bytes)
+	}
 }
 
 // finished is one encoded reply, or an error, for a stream.
@@ -221,7 +230,9 @@ type finished struct {
 
 // complete encodes the replies the node handed over and queues them on
 // their streams, taking the lock once.
-func (c *conn) complete(batches [][]node.Completion) {
+// waiting is their estimated size, released once each reply is charged
+// to its call.
+func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	var out []finished
 	for _, cs := range batches {
 		for _, cp := range cs {
@@ -247,6 +258,8 @@ func (c *conn) complete(batches [][]node.Completion) {
 		}
 		f.st.pushLocked(f.msg, true, s)
 	}
+	c.waitingReplies.Add(-waiting)
+	c.creditLocked()
 	c.mu.Unlock()
 }
 
@@ -254,9 +267,7 @@ func (c *conn) complete(batches [][]node.Completion) {
 // node's last replies came in Complete calls before it stopped, so they
 // are encoded first.
 func (c *conn) nodeStopped() {
-	if cs := c.takeCompletions(); cs != nil {
-		c.complete(cs)
-	}
+	c.completeWaiting()
 	c.mu.Lock()
 	// The node answers none of these; calls that ended meanwhile, at a
 	// deadline or a reset, still had their request charge.
