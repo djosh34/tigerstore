@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -65,9 +66,12 @@ type pre47Stats struct {
 
 var _ stats.Handler = (*pre47Stats)(nil)
 
-func (h *pre47Stats) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
+func (h *pre47Stats) TagConn(ctx context.Context, info *stats.ConnTagInfo) context.Context {
 	conn := &pre47Conn{id: h.nextConn.Add(1)}
 	expclock.Event("grpc_tag_conn", conn.id, 0, 0, 0)
+	if addr, ok := info.RemoteAddr.(*net.TCPAddr); ok {
+		expclock.Event("grpc_conn_port", conn.id, 0, uint64(addr.Port), 0)
+	}
 	return context.WithValue(ctx, pre47ConnKey{}, conn)
 }
 

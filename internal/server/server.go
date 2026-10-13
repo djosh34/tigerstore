@@ -52,7 +52,7 @@ func New(n *node.Node, cfg Config) *grpc.Server {
 		grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
 	}
 	if cfg.TLS != nil {
-		opts = append(opts, grpc.Creds(credentials.NewTLS(cfg.TLS)))
+		opts = append(opts, grpc.Creds(pre47TLSCredentials(credentials.NewTLS(cfg.TLS))))
 	}
 	opts = append(opts, pre47Options()...)
 	g := grpc.NewServer(opts...)
