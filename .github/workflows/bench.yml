@@ -1,51 +1,43 @@
-# Benchmarks a tigerstore ref against a baseline ref and etcd v3.7.2, back
-# to back on one runner, with disk write barriers on and pinned cores:
-# generator on CPU 3, leader on CPU 0, followers on CPUs 1 and 2. One job
-# per benchmark. Started by hand.
+# Throwaway extension of PR86 bench. Never merge this workflow.
 name: bench
-
 on:
   workflow_dispatch:
     inputs:
-      candidate:
-        description: tigerstore ref to measure
-        default: main
-      baseline:
-        description: tigerstore ref to compare against
-        default: main
-      benchmarks:
-        description: space-separated <workload>-<size> (workload put, txn, delete, range or watch; size 1k or 10k)
-        default: put-1k txn-1k
-      modes:
-        description: max (every stream busy), rate (open loop at half of etcd's max), or both
-        default: max rate
+      cases:
+        description: JSON list of workload-size-ingress-cN or workload-size-ingress-open
+        default: '["put-1k-leader-c256"]'
       reps:
-        description: repetitions
-        default: "5"
-
+        default: '5'
+      duration:
+        default: '3s'
+      rates:
+        description: JSON object of target to rate array for open-loop jobs
+        default: '{}'
+      targets:
+        default: 'tigerstore etcd'
+      warmup:
+        default: '1s'
+      profile:
+        description: none, cpu or trace. Diagnostic runs, not headline measurements.
+        default: 'none'
+permissions:
+  contents: read
 jobs:
-  plan:
-    runs-on: ubuntu-24.04-arm
-    outputs:
-      benchmarks: ${{ steps.plan.outputs.benchmarks }}
-    steps:
-      - id: plan
-        env:
-          BENCHMARKS: ${{ inputs.benchmarks || 'put-1k txn-1k' }}
-        run: echo "benchmarks=$(jq -cn --arg b "$BENCHMARKS" '$b | split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
-
   bench:
-    needs: plan
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        bench: ${{ fromJSON(needs.plan.outputs.benchmarks) }}
+        case: ${{ fromJSON(inputs.cases) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -p=2
+      GOMEMLIMIT: 2GiB
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+      - name: Deadline
+        run: test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -56,67 +48,37 @@ jobs:
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
           mkdir -p bin
           cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
-      - name: Build the generator, the report and both tigerstore refs
-        env:
-          CANDIDATE: ${{ inputs.candidate || 'main' }}
-          BASELINE: ${{ inputs.baseline || 'main' }}
+      - name: Build
         run: |
           go build -o bin/loadgen ./cmd/loadgen
-          go build -o bin/benchreport ./cmd/benchreport
-          for target in baseline candidate; do
-            ref=$BASELINE
-            if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
-            git worktree add --detach "$RUNNER_TEMP/$target" "origin/$ref" 2>/dev/null || git worktree add --detach "$RUNNER_TEMP/$target" "$ref"
-            (cd "$RUNNER_TEMP/$target" && go build -o "$GITHUB_WORKSPACE/bin/$target" ./cmd/tigerstore)
-            echo "$target $ref $(git -C "$RUNNER_TEMP/$target" rev-parse HEAD)" >> commits.txt
+          go build -o bin/tigerstore ./cmd/tigerstore
+          go test -short -parallel 2 ./cmd/loadgen ./internal/osfs
+      - name: Measure
+        env:
+          CASE: ${{ matrix.case }}
+          REPS: ${{ inputs.reps }}
+          DURATION: ${{ inputs.duration }}
+          WARMUP: ${{ inputs.warmup }}
+          RATES: ${{ inputs.rates }}
+          TARGETS: ${{ inputs.targets }}
+          PROFILE: ${{ inputs.profile }}
+        run: bash experiments/shape/run.sh
+      - name: Profile analysis
+        if: always() && inputs.profile != 'none'
+        run: |
+          mkdir -p results/binaries
+          cp bin/tigerstore bin/loadgen results/binaries/
+          find results -name '*cpu.pb.gz' -print0 | while IFS= read -r -d '' f; do
+            go tool pprof -top -nodecount=100 bin/tigerstore "$f" > "$f.top.txt"
           done
-          cat commits.txt
-      - run: scripts/dev-certs.sh certs
-      - name: Turn disk write barriers on and record the runner
-        env:
-          LAYOUT: 3 0 1 2
-        run: |
-          sudo mount -o remount,barrier=1 /
-          findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
-          test "$(findmnt -T "$RUNNER_TEMP" -n -o FSTYPE)" = ext4
-          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
-          mkdir -p results
-          {
-            echo "## Runner"
-            echo '```'
-            lscpu | grep -E 'Model name|^CPU\(s\)|Thread'
-            free -b | head -2
-            findmnt -T "$RUNNER_TEMP" -n -o SOURCE,FSTYPE,OPTIONS
-            uname -r
-            go version
-            bin/etcd --version | head -1
-            cat commits.txt
-            echo "generator, scripts and report: $GITHUB_SHA"
-            echo "layout (generator, leader, followers): $LAYOUT"
-            echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
-            echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
-            echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
-            echo '```'
-          } | tee results/runner.md
-      - name: Run ${{ matrix.bench }}
-        env:
-          TARGETS: etcd baseline candidate
-          BINS: bin
-          CERTS: certs
-          LAYOUT: 3 0 1 2
-          MODES: ${{ inputs.modes || 'max rate' }}
-          REPS: ${{ inputs.reps || '5' }}
-        run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
-      # A failed run leaves no comparison: the report would be over the
-      # runs that survived. The raw results are uploaded either way.
-      - name: Report
-        run: |
-          {
-            cat results/runner.md
-            bin/benchreport results
-          } >> "$GITHUB_STEP_SUMMARY"
+          find results -name '*.trace' -print0 | while IFS= read -r -d '' f; do
+            for kind in sched syscall sync net; do
+              go tool trace -pprof="$kind" "$f" > "$f.$kind.pb.gz"
+              go tool pprof -top -nodecount=60 "$f.$kind.pb.gz" > "$f.$kind.txt"
+            done
+          done
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: bench-${{ matrix.bench }}
+          name: shape-${{ matrix.case }}
           path: results

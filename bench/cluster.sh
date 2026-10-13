@@ -113,9 +113,10 @@ start() {
 		local extra=()
 		if [ "$kind" = etcd ]; then
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
-				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth)
+				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth
+				--listen-metrics-urls "http://127.0.0.1:$((42000 + i))" --enable-pprof)
 		fi
-		taskset -c "${cpus[i - 1]}" "$bin" \
+		GOMAXPROCS=2 SHAPE_DEBUG="127.0.0.1:$((42000 + i))" taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
 			--data-dir "$dir/n$i" \
 			--listen-client-urls "$client" \
