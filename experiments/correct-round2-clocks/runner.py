@@ -22,13 +22,19 @@ class Controller(base.Controller):
         self.cgroup = None
         self.offsets = {}
 
+    @staticmethod
+    def set_offset(path, value):
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(f'{value}\n')
+        tmp.replace(path)
+
     def certs(self):
         super().certs()
         if self.a.scenario not in ('clock', 'clock-control'):
             return
         for i in range(1, 4):
             self.offsets[i] = self.out / f'offset-n{i}.txt'
-            self.offsets[i].write_text('0\n')
+            self.set_offset(self.offsets[i], 0)
             log = self.out / f'canary-n{i}.jsonl'
             with log.open('ab', buffering=0) as stream:
                 p = subprocess.Popen([self.a.clockwrap, str(self.offsets[i]),
@@ -115,7 +121,7 @@ class Controller(base.Controller):
                        role=self.a.fault_role, offset_seconds=delta, status=selection)
             before = {n: self.canary(n) for n in range(1, 4)}
             counts = {n: len(self.traces(n)) for n in range(1, 4)}
-            self.offsets[i].write_text(f'{delta}\n')
+            self.set_offset(self.offsets[i], delta)
             self.phase(name, 'installed', offsets={n: p.read_text() for n, p in self.offsets.items()})
             self.sleep(3, require_workload=True)
             after = {n: self.canary(n) for n in range(1, 4)}
@@ -127,19 +133,22 @@ class Controller(base.Controller):
                 require(2 < elapsed < 5, f'monotonic affected n{n}: {elapsed}')
                 require(abs(wall-elapsed-expected) < .2, f'clock effect differs n{n}: wall={wall}, mono={elapsed}, expected={expected}')
                 hits = [x for x in self.traces(n)[counts[n]:] if x['event'] == 'realtime']
-                require(hits and all(x['offset_sec'] == expected and x['returned_sec']-x['native_sec'] == expected for x in hits), f'actual server clock effect absent or wrong n{n}')
+                require(hits and hits[-1]['offset_sec'] == expected, f'actual server clock effect absent n{n}')
+                require(all(x['offset_sec'] in (0, expected) and x['returned_sec']-x['native_sec'] == x['offset_sec'] for x in hits), f'wrong server clock effect n{n}')
+                hits = [x for x in hits if x['offset_sec'] == expected]
+                require(hits, f'no matching server clock hit n{n}')
                 proof[n] = {'canary_before': before[n], 'canary_after': after[n],
                     'wall_seconds': wall, 'monotonic_seconds': elapsed,
                     'server_clock_hits': len(hits), 'server_first_hit': hits[0], 'server_last_hit': hits[-1]}
             self.phase(name, 'exercised', nodes=proof)
-            self.offsets[i].write_text('0\n')
+            self.set_offset(self.offsets[i], 0)
             self.sleep(.6, require_workload=True)
             require(self.traces(i)[-1].get('offset_sec') == 0, 'server clock did not heal')
             self.phase(name, 'healed', actual_server_clock=self.traces(i)[-1], status=self.ready())
 
     def cleanup(self):
         for p in self.offsets.values():
-            p.write_text('0\n')
+            self.set_offset(p, 0)
         for p in self.canaries:
             if p.poll() is None:
                 os.killpg(p.pid, signal.SIGKILL)

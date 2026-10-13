@@ -53,14 +53,14 @@ func fitLimit(q *history.Request, identity string, extra int) {
 	n := capBytes + extra - framedSize(*q)
 	p.Value = p.Value[:len(p.Value)+n]
 }
-func probeLimit(r *recorder, cs []*clientv3.Client, c config, prefix string) (int, error) {
+func probeLimit(r *recorder, cs []*clientv3.Client, c config, prefix string) (extra int, err error) {
 	var evidence []map[string]any
 	record := func(label string, cl *clientv3.Client, id int, q history.Request) history.Op {
 		op := r.call(cl, id, q, c.requestTimeout)
 		evidence = append(evidence, map[string]any{"label": label, "client": id, "value_bytes": len(q.Put.Value), "strict_framed_bytes": framedSize(q), "response": op.Resp, "error": op.Err})
 		return op
 	}
-	defer func() { _ = save(c.out+"/limit.json", evidence) }()
+	defer func() { err = errors.Join(err, save(c.out+"/limit.json", evidence)) }()
 	for i, cl := range cs {
 		q := history.Request{Put: &history.PutRequest{Key: prefix + "k0", Value: strings.Repeat("z", capBytes), PrevKV: true}}
 		op := record("exact-1.5-MiB-rejection", cl, 30+i, q)

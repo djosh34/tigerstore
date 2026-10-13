@@ -26,7 +26,8 @@ struct pending { pid_t tid; uintptr_t addr; int active; } slots[4096];
 static void die(const char *s) { perror(s); exit(2); }
 static unsigned long peek(pid_t p, uintptr_t addr) {
     errno=0; long v=ptrace(PTRACE_PEEKDATA,p,(void*)addr,0);
-    if(errno) die("peek"); return (unsigned long)v;
+    if(errno) die("peek");
+    return (unsigned long)v;
 }
 static void poke(pid_t p, uintptr_t addr, unsigned long v) {
     if(ptrace(PTRACE_POKEDATA,p,(void*)addr,(void*)v)) die("poke");
@@ -63,7 +64,8 @@ static void auxv(pid_t tid) {
 }
 static long offset(void) {
     FILE *f=fopen(offset_path,"r"); long n=0;
-    if(!f || fscanf(f,"%ld",&n)!=1) die("offset"); fclose(f); return n;
+    if(!f || fscanf(f,"%ld",&n)!=1) die("offset");
+    fclose(f); return n;
 }
 int main(int argc,char **argv) {
     if(argc<4) { fprintf(stderr,"clockwrap OFFSET EVIDENCE EXEC ARGS...\n"); return 2; }
