@@ -22,6 +22,7 @@ var corePackages = []string{
 	"history",
 	"internal/core",
 	"internal/mvcc",
+	"internal/planted",
 	"internal/sim",
 	"internal/simfs",
 	"internal/wal",

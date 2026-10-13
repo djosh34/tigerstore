@@ -8,6 +8,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // The rules below follow etcd v3.7.2's watch server
@@ -114,14 +115,27 @@ func (n *Node) Watch(stream uint64, r *pb.WatchRequest) {
 	}
 }
 
+// WatcherCount is the number of live watchers.
+func (n *Node) WatcherCount() int {
+	c := 0
+	for _, w := range n.watchers {
+		if !w.dead {
+			c++
+		}
+	}
+	return c
+}
+
 // CloseWatchStream drops a stream and its watchers.
 func (n *Node) CloseWatchStream(stream uint64) {
 	s, ok := n.streams[stream]
 	if !ok {
 		return
 	}
-	for _, w := range s.byID {
-		w.dead = true
+	if !planted.On("B18") {
+		for _, w := range s.byID {
+			w.dead = true
+		}
 	}
 	delete(n.streams, stream)
 	n.pruneWatchers()
@@ -185,6 +199,9 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		return
 	}
 	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, start: c.StartRevision, asked: c.StartRevision}
+	if planted.On("B07") && w.start > 1 {
+		w.start--
+	}
 	for _, f := range c.Filters {
 		switch f {
 		case pb.WatchCreateRequest_NOPUT:
@@ -241,7 +258,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 // event returns the watch event of a change for this watcher, or nil if
 // the watcher filters it out.
 func (w *watcher) event(c mvcc.Change) *mvccpb.Event {
-	ev := c.Event(w.prevKV)
+	ev := c.Event(w.prevKV && !planted.On("B06c"))
 	if (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete) {
 		return nil
 	}
@@ -259,10 +276,16 @@ func (n *Node) matchWatches() {
 		if w.dead {
 			continue
 		}
-		for _, c := range changes {
+		for i, c := range changes {
+			if planted.On("B06a") && len(changes) > 1 && i == len(changes)-1 {
+				continue
+			}
 			if c.ModRev() >= w.start && mvcc.InRange(c.Key(), w.key, w.end) {
 				if ev := w.event(c); ev != nil {
 					w.pending = append(w.pending, ev)
+					if planted.On("B06b") && i == 0 {
+						w.pending = append(w.pending, ev)
+					}
 				}
 			}
 		}
@@ -290,7 +313,8 @@ func (n *Node) progressNotify() {
 	rev := n.kv.Rev()
 	for _, w := range n.watchers {
 		if !w.dead && w.progress && !w.sent && !w.ahead(rev) {
-			n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id})
+			r := &pb.WatchResponse{WatchId: w.id}
+			n.watchReply(w.stream.id, r)
 		}
 		w.sent = false
 	}

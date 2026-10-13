@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -291,11 +292,21 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// durableLast is the last entry index of the last append the node
+	// reported durable to its core; recovery must give at least that.
+	durableLast uint64
 	// syncing is the event that ends the disk write in flight.
 	syncing *event
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
+	// inflight are the jobs of the disk write under way. replaceFrom is the
+	// lowest index at which they replace entries already reported durable,
+	// or 0: Raft may replace acknowledged entries that never committed.
+	inflight    []core.PersistJob
+	replaceFrom uint64
+	// recoverFloor is how far recovery must reach after the last crash.
+	recoverFloor uint64
 }
 
 type link struct {
@@ -663,6 +674,12 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
+	last := lastIndex(rec)
+	if last < n.recoverFloor {
+		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.recoverFloor)
+	}
+	// What recovery returned is now durable, and nothing is in flight.
+	n.durableLast, n.recoverFloor, n.inflight, n.replaceFrom = last, 0, nil, 0
 	// Small segments, so that most of the log is in sealed ones, where
 	// any damage is detectable.
 	w.SetSegmentBytes(32 << 10)
@@ -731,6 +748,12 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	n.inflight, n.replaceFrom = jobs, 0
+	for _, j := range jobs {
+		if len(j.Entries) > 0 && j.Entries[0].GetIndex() <= n.durableLast && (n.replaceFrom == 0 || j.Entries[0].GetIndex() < n.replaceFrom) {
+			n.replaceFrom = j.Entries[0].GetIndex()
+		}
+	}
 	if s.diskFaultDue && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
 		// Only an append with entries surely writes, and a write fault
 		// fires in the Flush below; a sync can stall until healing. It
@@ -754,6 +777,17 @@ func (s *Sim) startDisk(n *node) {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
 	}
 	lat = max(lat, n.stallUntil-s.now)
+	leader := n.core.Leader() == n.id
+	if (planted.On("B02") && leader) || (planted.On("B03") && !leader) {
+		// Planted: report the jobs durable before the fsync.
+		n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen}
+		s.push(n.syncing)
+		for _, j := range jobs {
+			s.persisted(n, j)
+		}
+		s.process(n)
+		return
+	}
 	n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen, jobs: jobs}
 	s.push(n.syncing)
 }
@@ -769,8 +803,9 @@ func (s *Sim) diskDone(e *event) {
 		return
 	}
 	n.diskBusy = false
+	n.inflight, n.replaceFrom = nil, 0
 	for _, j := range e.jobs {
-		n.core.Persisted(j)
+		s.persisted(n, j)
 	}
 	s.process(n)
 }
@@ -882,6 +917,12 @@ func (s *Sim) crashRandom() {
 }
 
 func (s *Sim) crash(n *node) {
+	// The crash may keep part of an unsynced write that replaces entries
+	// reported durable; recovery may then end below them.
+	n.recoverFloor = n.durableLast
+	if n.inflight != nil && n.replaceFrom > 0 {
+		n.recoverFloor = min(n.recoverFloor, n.replaceFrom-1)
+	}
 	s.stats.Crashes++
 	n.up = false
 	if n.pausedUntil > s.now {
@@ -1036,4 +1077,20 @@ func (s *Sim) replied(n *node, r core.Reply) {
 		s.mixBytes([]byte(r.Err.Error()))
 	}
 	s.push(&event{at: s.now + s.clientLatency(), kind: evClientReply, op: op, resp: r.Resp, err: r.Err})
+}
+
+// persisted tells a node's core that an append is durable, and remembers
+// how far its log then reached.
+func (s *Sim) persisted(n *node, j core.PersistJob) {
+	if len(j.Entries) > 0 {
+		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
+	}
+	n.core.Persisted(j)
+}
+
+func lastIndex(rec *wal.Recovered) uint64 {
+	if len(rec.Entries) == 0 {
+		return 0
+	}
+	return rec.Entries[len(rec.Entries)-1].GetIndex()
 }

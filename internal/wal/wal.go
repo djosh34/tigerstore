@@ -26,6 +26,8 @@ import (
 	"strings"
 
 	"go.etcd.io/raft/v3/raftpb"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // FS is the directory that holds the log.
@@ -163,7 +165,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			break
 		}
 		w.seq, w.crc = seq, crc
-		good, err := w.replay(data, rec)
+		good, lastStart, err := w.replay(data, rec)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
 		}
@@ -173,6 +175,14 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			// A torn tail: the write was never synced, so nothing in it was
 			// acknowledged.
+			if planted.On("B04b") && lastStart > 0 {
+				// Planted: the repair also cuts the last synced record, and
+				// recovery starts over on what is left.
+				if err := errors.Join(f.Truncate(lastStart), f.Sync(), f.Close()); err != nil {
+					return nil, nil, err
+				}
+				return Open(fs)
+			}
 			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
 				return nil, nil, errors.Join(err, f.Close())
 			}
@@ -208,34 +218,40 @@ func parseHeader(data []byte) (seq uint64, crc uint32, ok bool) {
 // replay applies the records of one segment to rec and returns the length
 // of the valid prefix. A record that does not verify ends the prefix. A
 // record that verifies but does not fit the log is an error.
-func (w *WAL) replay(data []byte, rec *Recovered) (int64, error) {
+// replay applies the records of one segment and returns where its valid
+// records end and where the last of them starts.
+func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err error) {
 	off := headerSize
 	for off < len(data) {
 		if len(data)-off < recHdrSize {
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		n := int(binary.LittleEndian.Uint32(data[off:]))
 		sum := binary.LittleEndian.Uint32(data[off+4:])
 		end := off + recHdrSize + n
 		if end > len(data) {
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		body := data[off+8 : end]
-		if got := crc32.Update(w.crc, castagnoli, body); got != sum {
+		// Planted: B04a skips the check; B04c skips it for a record that
+		// still decodes.
+		skip := planted.On("B04a") || (planted.On("B04c") && w.decodes(body))
+		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !skip {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
 			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
-				return int64(off), fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
+				return int64(off), lastStart, fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
 			}
-			return int64(off), nil
+			return int64(off), lastStart, nil
 		}
 		if err := w.apply(body[0], body[1:], rec); err != nil {
-			return int64(off), err
+			return int64(off), lastStart, err
 		}
+		lastStart = int64(off)
 		w.crc = sum
 		off = end
 	}
-	return int64(off), nil
+	return int64(off), lastStart, nil
 }
 
 // verifiesAfter reports whether a whole record starts at off and verifies
@@ -367,6 +383,10 @@ func (w *WAL) Flush() error {
 	w.size += int64(n)
 	w.dirty = true
 	if err != nil {
+		if planted.On("B12") {
+			w.buf = w.buf[:0]
+			return nil
+		}
 		return err
 	}
 	w.buf = w.buf[:0]
@@ -402,3 +422,17 @@ func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
 // Close closes the newest segment without syncing.
 func (w *WAL) Close() error { return w.seg.Close() }
+
+// decodes reports whether a record body looks like the next record: an
+// entry that follows the last one, or a hard state. Only the planted bug
+// B04c uses it, to accept such a record without its checksum.
+func (w *WAL) decodes(body []byte) bool {
+	switch {
+	case len(body) == 1+24 && body[0] == recHardState:
+		return true
+	case len(body) >= 1+17 && body[0] == recEntry:
+		index := binary.LittleEndian.Uint64(body[9:])
+		return index >= 1 && index <= w.last+1
+	}
+	return false
+}

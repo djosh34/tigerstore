@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Checkable converts a run into the format the checkers read. Watch
@@ -53,7 +54,9 @@ func (r *Result) Checkable() (*history.History, error) {
 		}
 		op := history.Op{Client: rec.Client, Call: rec.Call, Return: rec.Return, Req: req}
 		if rec.Err != nil {
-			op.Err = historyError(rec.Err, rec.Ambiguous)
+			// Planted: a call that may have taken effect counts as one
+			// that certainly did not.
+			op.Err = historyError(rec.Err, rec.Ambiguous && !planted.On("B15"))
 		} else if op.Resp, err = response(rec.Resp); err != nil {
 			return nil, err
 		}

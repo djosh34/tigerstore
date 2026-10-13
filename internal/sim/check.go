@@ -85,6 +85,9 @@ func (s *Sim) check(res *Result) error {
 	if err := s.checkLeasesExpire(res); err != nil {
 		return err
 	}
+	if err := s.checkWatchersFreed(); err != nil {
+		return err
+	}
 	if err := s.checkColdRestarts(res); err != nil {
 		return err
 	}
@@ -593,14 +596,38 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 	return nil
 }
 
-// liveFrom is when the liveness rule starts: LiveAfter after healing, or
-// Config.LiveFrom. If the guaranteed disk fault fired after healing, the
+// checkWatchersFreed requires every node to hold exactly the watchers of
+// the streams that are still open on it, so closed streams leak nothing.
+func (s *Sim) checkWatchersFreed() error {
+	for _, n := range s.live() {
+		open := 0
+		for _, w := range s.watchers {
+			if w.open && w.node == n.idx && w.gen == n.gen {
+				open++
+			}
+		}
+		if got := n.core.WatcherCount(); got != open {
+			return fmt.Errorf("node %d holds %d watchers for %d open watch streams", n.id, got, open)
+		}
+	}
+	return nil
+}
+
+// liveFrom is when the liveness rule starts: LiveAfter after healing, 2 s
+// more with a node fenced, or Config.LiveFrom. If the guaranteed disk fault fired after healing, the
 // node restarts within MaxDown and then gets the same time.
 func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
 	}
 	t := s.healAt + s.cfg.LiveAfter
+	if len(s.live()) < len(s.nodes) {
+		// With a node fenced, every election needs both others. One with
+		// the longer log and one with the higher term reject each other's
+		// pre-votes until the first learns the term from a rejection: one
+		// more election timeout, plus one to win (seed 714720575).
+		t += 2 * Second
+	}
 	if s.lateFaultAt > 0 {
 		t = max(t, s.lateFaultAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
 	}

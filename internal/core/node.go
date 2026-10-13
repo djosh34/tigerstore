@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -292,7 +293,7 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
-	if n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
+	if !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
 		// never elect a replacement. It stops instead; the healthy pair
 		// elects, and a restart brings it back from its log.
@@ -347,7 +348,7 @@ func (n *Node) Submit(r Request) {
 	p := &pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
 	switch op := r.Op.(type) {
 	case *pb.RangeRequest:
-		if op.Serializable {
+		if op.Serializable || planted.On("B01a") {
 			n.serveRead(p)
 			return
 		}
@@ -582,6 +583,15 @@ func (n *Node) Process() (Effects, error) {
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
 		}
+		if planted.On("B06d") {
+			// Planted: a progress notification at the current revision
+			// goes out ahead of the events it covers.
+			for _, w := range n.watchers {
+				if !w.dead && w.progress && len(w.pending) > 0 {
+					n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id})
+				}
+			}
+		}
 		n.flushWatches()
 	}
 	if n.err != nil {
@@ -684,7 +694,7 @@ func (n *Node) readIndexKnown(rs raft.ReadState) {
 func (n *Node) serveReads() {
 	left := n.readBatches[:0]
 	for _, b := range n.readBatches {
-		if b.index != 0 && b.index <= n.applied {
+		if b.index != 0 && (b.index <= n.applied || planted.On("B01b")) {
 			for _, p := range b.reads {
 				n.serveRead(p)
 			}
@@ -795,7 +805,7 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
 		n.out.Expired = append(n.out.Expired, e.ID)
 	}
-	if n.isLeader {
+	if n.isLeader || planted.On("B10") {
 		switch op := op.(type) {
 		case *pb.LeaseGrantRequest:
 			n.arm(op.ID)

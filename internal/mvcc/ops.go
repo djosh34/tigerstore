@@ -8,6 +8,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // The rules below follow etcd v3.7.2 (server/etcdserver/txn and
@@ -29,6 +31,9 @@ func (s *Store) start() *writer {
 func (w *writer) finish() {
 	if w.changed {
 		w.s.rev = w.begin + 1
+		if planted.On("B09a") {
+			w.s.rev = w.begin + int64(len(w.s.changes))
+		}
 	}
 }
 
@@ -216,6 +221,9 @@ func (w *writer) latest(key []byte) (*keyIndex, *version) {
 
 func (w *writer) add(k *keyIndex, v version) {
 	v.mod = rev{main: w.begin + 1, sub: int64(len(w.s.changes))}
+	if planted.On("B09a") {
+		v.mod = rev{main: w.begin + 1 + int64(len(w.s.changes))}
+	}
 	k.vers = append(k.vers, v)
 	w.changed = true
 	w.s.changes = append(w.s.changes, Change{k: k, i: len(k.vers) - 1})
@@ -237,6 +245,9 @@ func (w *writer) put(p *pb.PutRequest) *pb.PutResponse {
 		}
 		v.create = prev.create
 		v.ver = prev.ver + 1
+	} else if planted.On("B09b") && k != nil && len(k.vers) >= 2 && k.vers[len(k.vers)-2].ver != 0 {
+		old := k.vers[len(k.vers)-2]
+		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
 		k = &keyIndex{key: p.Key}

@@ -2,6 +2,8 @@ package core
 
 import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
+	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 // Only the leader arms lease expiry, in ticks of its own clock, as etcd's
@@ -51,6 +53,16 @@ func (n *Node) remaining(id int64) int64 {
 
 // expireLeases proposes the revoke of every expired lease, on the leader.
 func (n *Node) expireLeases() {
+	if !n.isLeader && planted.On("B10") {
+		for _, l := range n.state.sortedLeases() {
+			if l.expiry != 0 && l.expiry <= n.now {
+				if _, err := n.state.revoke(l.id); err != nil {
+					n.fail(err)
+				}
+			}
+		}
+		return
+	}
 	if !n.isLeader {
 		return
 	}
