@@ -34,7 +34,7 @@ func drain(c *conn) {
 func TestCallCharges(t *testing.T) {
 	reply := func(c *conn, st *stream) {
 		c.Complete([]node.Completion{{Tag: st, Resp: &pb.RangeResponse{Header: &pb.ResponseHeader{}}}})
-		c.complete(c.takeCompletions())
+		c.completeWaiting()
 	}
 	charge := func(c *conn, st *stream) {
 		c.mu.Lock()
@@ -88,7 +88,11 @@ func TestCallCharges(t *testing.T) {
 			if c.waitingReplies.Load() == 0 {
 				t.Error("a reply waiting for the writer counts nothing")
 			}
-			c.complete(c.takeCompletions())
+			cs, bytes := c.takeCompletions()
+			if c.waitingReplies.Load() == 0 {
+				t.Error("a reply the writer is encoding counts nothing")
+			}
+			c.complete(cs, bytes)
 			drain(c)
 		},
 		"deadline before the batch goes out": func(c *conn, st *stream) {
