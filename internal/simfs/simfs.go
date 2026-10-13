@@ -320,3 +320,24 @@ func (h *Handle) Close() error {
 	h.closed = true
 	return nil
 }
+
+// DurableNames returns the names of the files on the durable directory,
+// sorted.
+func (d *Disk) DurableNames() []string { return sortedNames(d.durable) }
+
+// DurableBytes returns a copy of a file's synced bytes.
+func (d *Disk) DurableBytes(name string) []byte {
+	if f, ok := d.durable[name]; ok {
+		return slices.Clone(f.durable)
+	}
+	return nil
+}
+
+// FlipDurable flips the lowest bit of one synced byte, like a bit that
+// rots on the medium.
+func (d *Disk) FlipDurable(name string, off int) {
+	f := d.durable[name]
+	f.durable[off] ^= 1
+	f.data = slices.Clone(f.durable)
+	f.cut = false
+}

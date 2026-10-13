@@ -319,6 +319,9 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// durableLast is the last entry index of the last append the node
+	// reported durable to its core; recovery must give at least that.
+	durableLast uint64
 	// syncing is the event that ends the disk write in flight.
 	syncing *event
 	// corrupted is set when the run damaged the disk on purpose; fenced
@@ -732,6 +735,10 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
+	if last := lastIndex(rec); last < n.durableLast {
+		// A replaced suffix moves durableLast down, so this is a loss.
+		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.durableLast)
+	}
 	// Small segments, so that most of the log is in sealed ones, where
 	// any damage is detectable.
 	w.SetSegmentBytes(32 << 10)
@@ -839,7 +846,7 @@ func (s *Sim) startDisk(n *node) {
 		n.syncing = &event{at: s.now + lat, kind: evDiskDone, node: n.idx, gen: n.gen}
 		s.push(n.syncing)
 		for _, j := range jobs {
-			n.core.Persisted(j)
+			s.persisted(n, j)
 		}
 		s.process(n)
 		return
@@ -860,7 +867,7 @@ func (s *Sim) diskDone(e *event) {
 	}
 	n.diskBusy = false
 	for _, j := range e.jobs {
-		n.core.Persisted(j)
+		s.persisted(n, j)
 	}
 	s.process(n)
 }
@@ -1137,4 +1144,20 @@ func (s *Sim) replied(n *node, r core.Reply) {
 		s.mixBytes([]byte(r.Err.Error()))
 	}
 	s.push(&event{at: s.now + s.clientLatency(), kind: evClientReply, op: op, resp: r.Resp, err: r.Err})
+}
+
+// persisted tells a node's core that an append is durable, and remembers
+// how far its log then reached.
+func (s *Sim) persisted(n *node, j core.PersistJob) {
+	if len(j.Entries) > 0 {
+		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
+	}
+	n.core.Persisted(j)
+}
+
+func lastIndex(rec *wal.Recovered) uint64 {
+	if len(rec.Entries) == 0 {
+		return 0
+	}
+	return rec.Entries[len(rec.Entries)-1].GetIndex()
 }

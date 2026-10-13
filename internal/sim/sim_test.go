@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -99,19 +100,29 @@ func TestSeeds(t *testing.T) {
 // histories of TestLinearizable.
 func checkers(t *testing.T, res *Result) {
 	t.Helper()
+	if err := independent(res); err != nil {
+		t.Error(err)
+	}
+}
+
+// independent runs the durability, revision and watch checkers of package
+// check on a run.
+func independent(res *Result) error {
 	h, err := res.Checkable()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
+	var errs []error
 	if err := check.Durable(h); err != nil {
-		t.Errorf("durability: %v", err)
+		errs = append(errs, fmt.Errorf("durability: %w", err))
 	}
 	if err := check.Revisions(h); err != nil {
-		t.Errorf("revisions: %v", err)
+		errs = append(errs, fmt.Errorf("revisions: %w", err))
 	}
 	if err := check.Watches(h); err != nil {
-		t.Errorf("watches: %v", err)
+		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
+	return errors.Join(errs...)
 }
 
 // linearizableConfig is a short run whose history Porcupine can check:

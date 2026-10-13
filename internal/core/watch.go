@@ -315,9 +315,6 @@ func (n *Node) progressNotify() {
 		if !w.dead && w.progress && !w.sent && !w.ahead(rev) {
 			r := &pb.WatchResponse{WatchId: w.id}
 			n.watchReply(w.stream.id, r)
-			if planted.On("B06d") {
-				r.Header.Revision++
-			}
 		}
 		w.sent = false
 	}
