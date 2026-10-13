@@ -22,8 +22,17 @@ type keys struct {
 	flat []byte
 }
 
+// nsCount is the number of namespaces keys spread over: key i lives in
+// namespace i % nsCount.
+const nsCount = 100
+
+// listPrefix is the prefix of namespace ns's keys, which a LIST ranges
+// over. Every prefix has the same length.
+func listPrefix(ns int) []byte {
+	return fmt.Appendf(nil, "%sbench-%03d/", keyPrefix, ns)
+}
+
 func makeKeys(n int) keys {
-	const nsCount = 100
 	ks := keys{n: n}
 	for i := range n {
 		x := uint64(i) * 0x9e3779b97f4a7c15 // odd multiplier: a bijection on uint64

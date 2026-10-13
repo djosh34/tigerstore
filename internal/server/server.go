@@ -46,6 +46,8 @@ const stopGrace = time.Second
 type Server struct {
 	n   *node.Node
 	cfg Config
+	// cluster and member go in every response header.
+	cluster, member uint64
 
 	// ctx ends at Stop; it bounds TLS handshakes in progress.
 	ctx    context.Context
@@ -74,7 +76,7 @@ func New(n *node.Node, cfg Config) *Server {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{n: n, cfg: cfg, ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
+	return &Server{n: n, cfg: cfg, cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
 }
 
 // Serve accepts clients on ln until Stop.
