@@ -162,5 +162,7 @@ class Controller(base.Controller):
         return errors
 
 base.Controller = Controller
+# The shared main re-execs its __file__ inside unshare. Keep this extension.
+base.__file__ = str(Path(__file__).resolve())
 if __name__ == '__main__':
     sys.exit(base.main())
