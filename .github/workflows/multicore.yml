@@ -1,5 +1,8 @@
 name: multicore experiment
 on:
+  push:
+    branches: [exp/multicore]
+    paths: [.github/workflows/multicore.yml]
   workflow_dispatch:
 jobs:
   bench:
