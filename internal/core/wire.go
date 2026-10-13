@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -63,7 +64,7 @@ func ParsePut(b []byte) (Put, error) {
 			}
 			// Capped, so an append can never write into the bytes after
 			// it, which are the log's.
-			v = v[:len(v):len(v)]
+			v = slices.Clip(v)
 			if num == 1 {
 				p.Key = v
 			} else {
