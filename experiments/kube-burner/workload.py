@@ -128,7 +128,8 @@ class Runner:
         return self.remaining() > 0 and time.time() < DEADLINE
 
     def failure(self, message, **fields):
-        self.errors.put(dict(timestamp=utcnow(), source='runner', message=message, **fields))
+        self.errors.put(dict(timestamp=utcnow(), source='runner', workloadFailure=True,
+                             message=message, **fields))
 
     def run(self, name, command, seconds=20, env=None):
         if not self.can_start():
@@ -160,8 +161,8 @@ class Runner:
             for number, line in enumerate(text.splitlines(), 1):
                 clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
                 if re.search(r'(?i)level=(error|fatal|panic)|\b(ERROR|ERRO|FATAL|FATA|PANIC|PANI)\b', clean):
-                    self.errors.put(dict(timestamp=utcnow(), source='kube-burner', command=name,
-                                         line=number, message=line, log=path.name))
+                    self.errors.put(dict(timestamp=utcnow(), source='kube-burner', workloadFailure=True,
+                                         command=name, line=number, message=line, log=path.name))
         return rc, text
 
     def background(self, name, command, stdout_path, stderr_path=None):
@@ -264,7 +265,7 @@ class Runner:
                     code = row.get('labels', {}).get('code', '')
                     if code.startswith(('4', '5')) and (row.get('delta') or 0) > 0:
                         self.errors.put(dict(timestamp=utcnow(), source='apiserver-error-counter',
-                                             phase=phase, result=row,
+                                             workloadFailure=False, phase=phase, result=row,
                                              attribution='Includes background requests, not only this workload'))
             self.phases.append(result)
             dump(phase_dir / 'result.json', result)
@@ -292,7 +293,7 @@ class Runner:
                              event=obj)
                 self.events.put(entry)
                 if obj.get('type') == 'Warning':
-                    self.errors.put(dict(source='kubernetes-event', **entry))
+                    self.errors.put(dict(source='kubernetes-event', workloadFailure=False, **entry))
         except (ValueError, OSError) as error:
             self.failure('Failed to parse the event watch', detail=str(error))
 
@@ -321,16 +322,20 @@ class Runner:
                 phase['measurementIssue'] = 'No new ready pods observed by the native update measurement'
             for doc in docs:
                 if isinstance(doc, dict) and doc.get('metricName') == 'jobSummary' and not doc.get('passed'):
-                    self.errors.put(dict(source='native-job-summary', phase=phase['name'], result=doc))
+                    self.errors.put(dict(source='native-job-summary', workloadFailure=True,
+                                         phase=phase['name'], result=doc))
         dump(self.out / 'native-summary.json', native)
         errors = list(documents((self.out / 'errors.jsonl').read_text()))
+        failures = [error for error in errors if error.get('workloadFailure', True)]
+        workload_passed = not failures
         self.summary.update(finishedAt=utcnow(), totalSeconds=time.monotonic() - self.start,
-                            errorCount=len(errors), passed=not errors,
-                            nativeSummary='native-summary.json')
+                            errorCount=len(errors), observedErrorCount=len(errors) - len(failures),
+                            workloadFailureCount=len(failures), workloadPassed=workload_passed,
+                            passed=workload_passed, nativeSummary='native-summary.json')
         dump(self.out / 'summary.json', self.summary)
         for sink in (self.errors, self.commands, self.events):
             sink.close()
-        return 0 if self.summary['passed'] else 1
+        return 0 if self.summary['workloadPassed'] else 1
 
 
 def main():

@@ -37,4 +37,9 @@ rc=$?
 set -e
 python3 "$script/metrics.py" snapshot "$OUT/after"
 python3 "$script/metrics.py" diff "$OUT/before" "$OUT/after" "$OUT/metrics.json"
+set +e
+python3 "$script/verify-delete.py" "$OUT" > "$OUT/storage-delete-verification.log" 2>&1
+verify_rc=$?
+set -e
+if [[ "$rc" == 0 ]]; then rc=$verify_rc; fi
 exit "$rc"

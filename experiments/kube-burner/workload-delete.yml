@@ -19,7 +19,8 @@ jobs:
         labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
       - kind: Pod
         apiVersion: v1
-        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        # Deployment Pods disappear through garbage collection; do not race it.
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}', app: density-pause}
       - kind: Service
         apiVersion: v1
         labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}

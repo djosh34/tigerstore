@@ -1,0 +1,2174 @@
+arch,store,rep,metric,value,unit,workload_passed,run_exit
+ARM64,etcd,1,total.script,289.9117708206177,s,False,1
+ARM64,etcd,1,total.workload,228.69639378399995,s,False,1
+ARM64,etcd,1,errors.observed,30,records,False,1
+ARM64,etcd,1,total.window,229.7010504025,s,False,1
+ARM64,etcd,1,total.api.all.p50,4.1622409326424865,ms,False,1
+ARM64,etcd,1,total.api.all.p99,182.14537444933893,ms,False,1
+ARM64,etcd,1,total.api.verb.DELETE.p50,3.460760517799353,ms,False,1
+ARM64,etcd,1,total.api.verb.DELETE.p99,454.33333333333195,ms,False,1
+ARM64,etcd,1,total.api.verb.GET.p50,3.6025528169014085,ms,False,1
+ARM64,etcd,1,total.api.verb.GET.p99,154.18518518518476,ms,False,1
+ARM64,etcd,1,total.api.verb.LIST.p50,4.015804597701149,ms,False,1
+ARM64,etcd,1,total.api.verb.LIST.p99,170.5789473684209,ms,False,1
+ARM64,etcd,1,total.api.verb.PATCH.p50,3.519198664440735,ms,False,1
+ARM64,etcd,1,total.api.verb.PATCH.p99,99.92727272727281,ms,False,1
+ARM64,etcd,1,total.api.verb.POST.p50,5.7882676443629695,ms,False,1
+ARM64,etcd,1,total.api.verb.POST.p99,153.76923076923086,ms,False,1
+ARM64,etcd,1,total.api.verb.PUT.p50,11.883821932681869,ms,False,1
+ARM64,etcd,1,total.api.verb.PUT.p99,176.13953488372098,ms,False,1
+ARM64,etcd,1,total.api.resource..p50,2.6724137931034484,ms,False,1
+ARM64,etcd,1,total.api.resource..p99,90.99999999999966,ms,False,1
+ARM64,etcd,1,total.api.resource.configmaps.p50,2.9306352007057783,ms,False,1
+ARM64,etcd,1,total.api.resource.configmaps.p99,73.73076923076951,ms,False,1
+ARM64,etcd,1,total.api.resource.controllerrevisions.p50,3.928571428571429,ms,False,1
+ARM64,etcd,1,total.api.resource.controllerrevisions.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.cronjobs.p50,3.928571428571429,ms,False,1
+ARM64,etcd,1,total.api.resource.cronjobs.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.csistoragecapacities.p50,5.0,ms,False,1
+ARM64,etcd,1,total.api.resource.csistoragecapacities.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.daemonsets.p50,4.583333333333333,ms,False,1
+ARM64,etcd,1,total.api.resource.daemonsets.p99,98.90000000000002,ms,False,1
+ARM64,etcd,1,total.api.resource.deployments.p50,9.71502590673575,ms,False,1
+ARM64,etcd,1,total.api.resource.deployments.p99,122.59999999999992,ms,False,1
+ARM64,etcd,1,total.api.resource.endpoints.p50,15.213675213675216,ms,False,1
+ARM64,etcd,1,total.api.resource.endpoints.p99,193.68181818181824,ms,False,1
+ARM64,etcd,1,total.api.resource.endpointslices.p50,15.816326530612248,ms,False,1
+ARM64,etcd,1,total.api.resource.endpointslices.p99,217.33333333333275,ms,False,1
+ARM64,etcd,1,total.api.resource.events.p50,13.393501805054154,ms,False,1
+ARM64,etcd,1,total.api.resource.events.p99,262.5,ms,False,1
+ARM64,etcd,1,total.api.resource.horizontalpodautoscalers.p50,4.583333333333333,ms,False,1
+ARM64,etcd,1,total.api.resource.horizontalpodautoscalers.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.ingresses.p50,21.0,ms,False,1
+ARM64,etcd,1,total.api.resource.ingresses.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.ipaddresses.p50,4.545454545454546,ms,False,1
+ARM64,etcd,1,total.api.resource.ipaddresses.p99,320.0000000000003,ms,False,1
+ARM64,etcd,1,total.api.resource.jobs.p50,4.583333333333333,ms,False,1
+ARM64,etcd,1,total.api.resource.jobs.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.leases.p50,2.9600694444444446,ms,False,1
+ARM64,etcd,1,total.api.resource.leases.p99,97.94999999999987,ms,False,1
+ARM64,etcd,1,total.api.resource.limitranges.p50,3.6029411764705883,ms,False,1
+ARM64,etcd,1,total.api.resource.limitranges.p99,175.49999999999991,ms,False,1
+ARM64,etcd,1,total.api.resource.namespaces.p50,2.8543307086614176,ms,False,1
+ARM64,etcd,1,total.api.resource.namespaces.p99,23.735849056603765,ms,False,1
+ARM64,etcd,1,total.api.resource.networkpolicies.p50,3.235294117647059,ms,False,1
+ARM64,etcd,1,total.api.resource.networkpolicies.p99,96.33333333333336,ms,False,1
+ARM64,etcd,1,total.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,etcd,1,total.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,etcd,1,total.api.resource.persistentvolumeclaims.p50,3.055555555555556,ms,False,1
+ARM64,etcd,1,total.api.resource.persistentvolumeclaims.p99,94.50000000000003,ms,False,1
+ARM64,etcd,1,total.api.resource.podcertificaterequests.p50,3.4375,ms,False,1
+ARM64,etcd,1,total.api.resource.podcertificaterequests.p99,97.25000000000001,ms,False,1
+ARM64,etcd,1,total.api.resource.poddisruptionbudgets.p50,3.928571428571429,ms,False,1
+ARM64,etcd,1,total.api.resource.poddisruptionbudgets.p99,97.80000000000003,ms,False,1
+ARM64,etcd,1,total.api.resource.pods.p50,13.176211453744493,ms,False,1
+ARM64,etcd,1,total.api.resource.pods.p99,332.0909090909089,ms,False,1
+ARM64,etcd,1,total.api.resource.podtemplates.p50,3.6666666666666665,ms,False,1
+ARM64,etcd,1,total.api.resource.podtemplates.p99,97.25000000000001,ms,False,1
+ARM64,etcd,1,total.api.resource.replicasets.p50,12.901639344262295,ms,False,1
+ARM64,etcd,1,total.api.resource.replicasets.p99,153.2222222222218,ms,False,1
+ARM64,etcd,1,total.api.resource.replicationcontrollers.p50,54.16666666666667,ms,False,1
+ARM64,etcd,1,total.api.resource.replicationcontrollers.p99,99.08333333333334,ms,False,1
+ARM64,etcd,1,total.api.resource.resourceclaims.p50,3.6666666666666665,ms,False,1
+ARM64,etcd,1,total.api.resource.resourceclaims.p99,97.80000000000003,ms,False,1
+ARM64,etcd,1,total.api.resource.resourceclaimtemplates.p50,4.583333333333333,ms,False,1
+ARM64,etcd,1,total.api.resource.resourceclaimtemplates.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.resourcequotas.p50,13.000000000000002,ms,False,1
+ARM64,etcd,1,total.api.resource.resourcequotas.p99,189.00000000000006,ms,False,1
+ARM64,etcd,1,total.api.resource.rolebindings.p50,4.583333333333333,ms,False,1
+ARM64,etcd,1,total.api.resource.rolebindings.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.roles.p50,4.230769230769231,ms,False,1
+ARM64,etcd,1,total.api.resource.roles.p99,178.00000000000014,ms,False,1
+ARM64,etcd,1,total.api.resource.secrets.p50,2.7013422818791946,ms,False,1
+ARM64,etcd,1,total.api.resource.secrets.p99,93.89999999999988,ms,False,1
+ARM64,etcd,1,total.api.resource.serviceaccounts.p50,12.222222222222223,ms,False,1
+ARM64,etcd,1,total.api.resource.serviceaccounts.p99,95.87500000000003,ms,False,1
+ARM64,etcd,1,total.api.resource.services.p50,4.6875,ms,False,1
+ARM64,etcd,1,total.api.resource.services.p99,393.33333333333326,ms,False,1
+ARM64,etcd,1,total.api.resource.statefulsets.p50,4.230769230769231,ms,False,1
+ARM64,etcd,1,total.api.resource.statefulsets.p99,189.00000000000006,ms,False,1
+ARM64,etcd,1,total.api.requests,55.95533837341178,requests/s,False,1
+ARM64,etcd,1,total.api.creates.count,2715.0,requests,False,1
+ARM64,etcd,1,total.api.creates.rate,11.819710860018127,requests/s,False,1
+ARM64,etcd,1,total.api.deletes.count,1681.0,requests,False,1
+ARM64,etcd,1,total.api.deletes.rate,7.318207718486361,requests/s,False,1
+ARM64,etcd,1,total.api.updates.count,4714.0,requests,False,1
+ARM64,etcd,1,total.api.updates.rate,20.522326701335338,requests/s,False,1
+ARM64,etcd,1,total.api.http403,21.0,responses,False,1
+ARM64,etcd,1,total.api.http404,115.0,responses,False,1
+ARM64,etcd,1,total.api.http409,70.0,responses,False,1
+ARM64,etcd,1,total.api.http500,0.0,responses,False,1
+ARM64,etcd,1,total.storage.etcd_request_duration_seconds,79.74277857198969,RPC/s,False,1
+ARM64,etcd,1,total.cpu.member1,20.26,CPU s,False,1
+ARM64,etcd,1,total.cpu.member2,15.64,CPU s,False,1
+ARM64,etcd,1,total.cpu.member3,16.88,CPU s,False,1
+ARM64,etcd,1,total.cpu.all,52.78,CPU s,False,1
+ARM64,etcd,1,total.cpu.cores,0.22971986917626952,cores,False,1
+ARM64,etcd,1,total.revision.member1,11710,revisions,False,1
+ARM64,etcd,1,total.revision.member2,11710,revisions,False,1
+ARM64,etcd,1,total.revision.member3,11710,revisions,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_mvcc_delete_total,11.816777274826151,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_mvcc_put_total,39.149875354350364,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_mvcc_range_total,70.18251696374648,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,25241.223833589287,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,78167.81192921303,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_server_proposals_applied_total,51.83713345973461,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.etcd_server_proposals_committed_total,51.83713345973461,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-1.grpc_server_handled_total,27.102420659426315,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_mvcc_delete_total,11.816745220453278,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_mvcc_put_total,39.14976915579272,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_mvcc_range_total,65.44692371269096,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,23988.55425613284,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,30246.82874426294,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_server_proposals_applied_total,51.83699284552433,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.etcd_server_proposals_committed_total,51.83699284552433,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-2.grpc_server_handled_total,27.14151867209821,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_mvcc_delete_total,11.816608886558743,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_mvcc_put_total,39.149317471306034,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_mvcc_range_total,88.02176726400148,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,25251.40552051928,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,75516.93122089992,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_server_proposals_applied_total,51.83639478413062,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.etcd_server_proposals_committed_total,51.83639478413062,counter increments/s,False,1
+ARM64,etcd,1,total.server.external-etcd-3.grpc_server_handled_total,27.110739136049506,counter increments/s,False,1
+ARM64,etcd,1,mixed.duration,44.289758667,s,False,1
+ARM64,etcd,1,mixed.exit,0,exit code,False,1
+ARM64,etcd,1,mixed.window,44.9104416745,s,False,1
+ARM64,etcd,1,mixed.api.all.p50,3.8812301166489926,ms,False,1
+ARM64,etcd,1,mixed.api.all.p99,72.82926829268268,ms,False,1
+ARM64,etcd,1,mixed.api.verb.DELETE.p50,3.6206896551724137,ms,False,1
+ARM64,etcd,1,mixed.api.verb.DELETE.p99,515.9999999999997,ms,False,1
+ARM64,etcd,1,mixed.api.verb.GET.p50,2.983695652173913,ms,False,1
+ARM64,etcd,1,mixed.api.verb.GET.p99,24.42093023255814,ms,False,1
+ARM64,etcd,1,mixed.api.verb.LIST.p50,3.260869565217391,ms,False,1
+ARM64,etcd,1,mixed.api.verb.LIST.p99,94.0,ms,False,1
+ARM64,etcd,1,mixed.api.verb.PATCH.p50,13.181818181818183,ms,False,1
+ARM64,etcd,1,mixed.api.verb.PATCH.p99,47.12499999999995,ms,False,1
+ARM64,etcd,1,mixed.api.verb.POST.p50,3.7700534759358293,ms,False,1
+ARM64,etcd,1,mixed.api.verb.POST.p99,45.19354838709674,ms,False,1
+ARM64,etcd,1,mixed.api.verb.PUT.p50,9.870466321243523,ms,False,1
+ARM64,etcd,1,mixed.api.verb.PUT.p99,95.5555555555555,ms,False,1
+ARM64,etcd,1,mixed.api.resource..p50,2.567567567567568,ms,False,1
+ARM64,etcd,1,mixed.api.resource..p99,17.39999999999995,ms,False,1
+ARM64,etcd,1,mixed.api.resource.configmaps.p50,3.3642629904559915,ms,False,1
+ARM64,etcd,1,mixed.api.resource.configmaps.p99,44.432291666666636,ms,False,1
+ARM64,etcd,1,mixed.api.resource.controllerrevisions.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.controllerrevisions.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.cronjobs.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.cronjobs.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.csistoragecapacities.p50,25.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.csistoragecapacities.p99,99.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.daemonsets.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.daemonsets.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.deployments.p50,8.584905660377359,ms,False,1
+ARM64,etcd,1,mixed.api.resource.deployments.p99,83.83333333333336,ms,False,1
+ARM64,etcd,1,mixed.api.resource.endpoints.p50,9.428571428571429,ms,False,1
+ARM64,etcd,1,mixed.api.resource.endpoints.p99,97.30000000000005,ms,False,1
+ARM64,etcd,1,mixed.api.resource.endpointslices.p50,8.898305084745763,ms,False,1
+ARM64,etcd,1,mixed.api.resource.endpointslices.p99,98.24999999999993,ms,False,1
+ARM64,etcd,1,mixed.api.resource.events.p50,8.125,ms,False,1
+ARM64,etcd,1,mixed.api.resource.events.p99,74.1250000000001,ms,False,1
+ARM64,etcd,1,mixed.api.resource.horizontalpodautoscalers.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.horizontalpodautoscalers.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.ingresses.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.ingresses.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.ipaddresses.p50,2.727272727272727,ms,False,1
+ARM64,etcd,1,mixed.api.resource.ipaddresses.p99,22.59999999999998,ms,False,1
+ARM64,etcd,1,mixed.api.resource.jobs.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.jobs.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.leases.p50,2.88135593220339,ms,False,1
+ARM64,etcd,1,mixed.api.resource.leases.p99,82.99999999999983,ms,False,1
+ARM64,etcd,1,mixed.api.resource.limitranges.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.limitranges.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.namespaces.p50,2.886435331230284,ms,False,1
+ARM64,etcd,1,mixed.api.resource.namespaces.p99,23.506122448979582,ms,False,1
+ARM64,etcd,1,mixed.api.resource.networkpolicies.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.networkpolicies.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.persistentvolumeclaims.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.persistentvolumeclaims.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.podcertificaterequests.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.podcertificaterequests.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.poddisruptionbudgets.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.poddisruptionbudgets.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.pods.p50,10.097087378640776,ms,False,1
+ARM64,etcd,1,mixed.api.resource.pods.p99,87.91666666666677,ms,False,1
+ARM64,etcd,1,mixed.api.resource.podtemplates.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.podtemplates.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.replicasets.p50,13.461538461538462,ms,False,1
+ARM64,etcd,1,mixed.api.resource.replicasets.p99,92.12499999999997,ms,False,1
+ARM64,etcd,1,mixed.api.resource.replicationcontrollers.p50,5.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.replicationcontrollers.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourceclaims.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourceclaims.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourceclaimtemplates.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourceclaimtemplates.p99,98.0,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourcequotas.p50,3.3333333333333335,ms,False,1
+ARM64,etcd,1,mixed.api.resource.resourcequotas.p99,24.2,ms,False,1
+ARM64,etcd,1,mixed.api.resource.rolebindings.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.rolebindings.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.roles.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.roles.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.resource.secrets.p50,2.916666666666667,ms,False,1
+ARM64,etcd,1,mixed.api.resource.secrets.p99,164.99999999999986,ms,False,1
+ARM64,etcd,1,mixed.api.resource.serviceaccounts.p50,11.666666666666666,ms,False,1
+ARM64,etcd,1,mixed.api.resource.serviceaccounts.p99,46.499999999999986,ms,False,1
+ARM64,etcd,1,mixed.api.resource.services.p50,15.952380952380954,ms,False,1
+ARM64,etcd,1,mixed.api.resource.services.p99,93.75,ms,False,1
+ARM64,etcd,1,mixed.api.resource.statefulsets.p50,2.5,ms,False,1
+ARM64,etcd,1,mixed.api.resource.statefulsets.p99,4.95,ms,False,1
+ARM64,etcd,1,mixed.api.requests,65.19641960374014,requests/s,False,1
+ARM64,etcd,1,mixed.api.creates.count,1640.0,requests,False,1
+ARM64,etcd,1,mixed.api.creates.rate,36.51712026985445,requests/s,False,1
+ARM64,etcd,1,mixed.api.deletes.count,80.0,requests,False,1
+ARM64,etcd,1,mixed.api.deletes.rate,1.7813229399929,requests/s,False,1
+ARM64,etcd,1,mixed.api.updates.count,242.0,requests,False,1
+ARM64,etcd,1,mixed.api.updates.rate,5.388501893478523,requests/s,False,1
+ARM64,etcd,1,mixed.api.http403,12.0,responses,False,1
+ARM64,etcd,1,mixed.api.http404,8.0,responses,False,1
+ARM64,etcd,1,mixed.api.http409,16.0,responses,False,1
+ARM64,etcd,1,mixed.api.http500,0.0,responses,False,1
+ARM64,etcd,1,mixed.storage.etcd_request_duration_seconds,80.20406537318033,RPC/s,False,1
+ARM64,etcd,1,mixed.cpu.member1,4.14,CPU s,False,1
+ARM64,etcd,1,mixed.cpu.member2,3.23,CPU s,False,1
+ARM64,etcd,1,mixed.cpu.member3,3.5,CPU s,False,1
+ARM64,etcd,1,mixed.cpu.all,10.87,CPU s,False,1
+ARM64,etcd,1,mixed.cpu.cores,0.24178145976764837,cores,False,1
+ARM64,etcd,1,mixed.revision.member1,2488,revisions,False,1
+ARM64,etcd,1,mixed.revision.member2,2488,revisions,False,1
+ARM64,etcd,1,mixed.revision.member3,2488,revisions,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_delete_total,7.296482924089135,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_put_total,48.05000950009918,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_range_total,69.27209702930965,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,24559.78355948588,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,48982.26866590018,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_server_proposals_applied_total,55.902626793402426,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.etcd_server_proposals_committed_total,55.902626793402426,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-1.grpc_server_handled_total,27.117111842880046,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_delete_total,7.295885175430148,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_put_total,48.04607310649122,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_range_total,68.04302668183178,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,24629.640469767426,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,27549.662806366792,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_server_proposals_applied_total,55.898047091024274,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.etcd_server_proposals_committed_total,55.898047091024274,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-2.grpc_server_handled_total,27.315082303134822,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_delete_total,7.295801574628261,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_put_total,48.04552256462513,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_range_total,74.73747954497243,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,25059.120998669518,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,63149.50007141691,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_server_proposals_applied_total,55.89740657634396,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.etcd_server_proposals_committed_total,55.89740657634396,counter increments/s,False,1
+ARM64,etcd,1,mixed.server.external-etcd-3.grpc_server_handled_total,27.248039417437866,counter increments/s,False,1
+ARM64,etcd,1,node.duration,19.601720879000027,s,False,1
+ARM64,etcd,1,node.exit,0,exit code,False,1
+ARM64,etcd,1,node.window,20.3256922605,s,False,1
+ARM64,etcd,1,node.api.all.p50,18.54587869362364,ms,False,1
+ARM64,etcd,1,node.api.all.p99,183.82191780821927,ms,False,1
+ARM64,etcd,1,node.api.verb.DELETE.p50,32.5,ms,False,1
+ARM64,etcd,1,node.api.verb.DELETE.p99,92.0,ms,False,1
+ARM64,etcd,1,node.api.verb.GET.p50,11.625,ms,False,1
+ARM64,etcd,1,node.api.verb.GET.p99,176.11111111111106,ms,False,1
+ARM64,etcd,1,node.api.verb.LIST.p50,10.0,ms,False,1
+ARM64,etcd,1,node.api.verb.LIST.p99,90.49999999999994,ms,False,1
+ARM64,etcd,1,node.api.verb.PATCH.p50,22.58823529411765,ms,False,1
+ARM64,etcd,1,node.api.verb.PATCH.p99,193.42105263157896,ms,False,1
+ARM64,etcd,1,node.api.verb.POST.p50,20.30821917808219,ms,False,1
+ARM64,etcd,1,node.api.verb.POST.p99,184.36111111111114,ms,False,1
+ARM64,etcd,1,node.api.verb.PUT.p50,4.666666666666667,ms,False,1
+ARM64,etcd,1,node.api.verb.PUT.p99,96.49999999999999,ms,False,1
+ARM64,etcd,1,node.api.resource..p50,3.1896551724137927,ms,False,1
+ARM64,etcd,1,node.api.resource..p99,163.00000000000026,ms,False,1
+ARM64,etcd,1,node.api.resource.configmaps.p50,15.0,ms,False,1
+ARM64,etcd,1,node.api.resource.configmaps.p99,24.800000000000004,ms,False,1
+ARM64,etcd,1,node.api.resource.endpoints.p50,25.0,ms,False,1
+ARM64,etcd,1,node.api.resource.endpoints.p99,49.5,ms,False,1
+ARM64,etcd,1,node.api.resource.endpointslices.p50,2.5,ms,False,1
+ARM64,etcd,1,node.api.resource.endpointslices.p99,4.95,ms,False,1
+ARM64,etcd,1,node.api.resource.events.p50,19.578947368421055,ms,False,1
+ARM64,etcd,1,node.api.resource.events.p99,182.4999999999999,ms,False,1
+ARM64,etcd,1,node.api.resource.leases.p50,4.666666666666667,ms,False,1
+ARM64,etcd,1,node.api.resource.leases.p99,96.49999999999999,ms,False,1
+ARM64,etcd,1,node.api.resource.limitranges.p50,2.5,ms,False,1
+ARM64,etcd,1,node.api.resource.limitranges.p99,4.95,ms,False,1
+ARM64,etcd,1,node.api.resource.namespaces.p50,2.5,ms,False,1
+ARM64,etcd,1,node.api.resource.namespaces.p99,4.95,ms,False,1
+ARM64,etcd,1,node.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,etcd,1,node.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,etcd,1,node.api.resource.pods.p50,19.01360544217687,ms,False,1
+ARM64,etcd,1,node.api.resource.pods.p99,185.55999999999995,ms,False,1
+ARM64,etcd,1,node.api.resource.serviceaccounts.p50,15.0,ms,False,1
+ARM64,etcd,1,node.api.resource.serviceaccounts.p99,24.800000000000004,ms,False,1
+ARM64,etcd,1,node.api.requests,67.94356533104514,requests/s,False,1
+ARM64,etcd,1,node.api.creates.count,483.0,requests,False,1
+ARM64,etcd,1,node.api.creates.rate,23.763028280155538,requests/s,False,1
+ARM64,etcd,1,node.api.deletes.count,16.0,requests,False,1
+ARM64,etcd,1,node.api.deletes.rate,0.787181061040349,requests/s,False,1
+ARM64,etcd,1,node.api.updates.count,44.0,requests,False,1
+ARM64,etcd,1,node.api.updates.rate,2.16474791786096,requests/s,False,1
+ARM64,etcd,1,node.api.http403,0.0,responses,False,1
+ARM64,etcd,1,node.api.http404,21.0,responses,False,1
+ARM64,etcd,1,node.api.http409,5.0,responses,False,1
+ARM64,etcd,1,node.api.http500,0.0,responses,False,1
+ARM64,etcd,1,node.storage.etcd_request_duration_seconds,69.46872863681081,RPC/s,False,1
+ARM64,etcd,1,node.cpu.member1,1.45,CPU s,False,1
+ARM64,etcd,1,node.cpu.member2,1.13,CPU s,False,1
+ARM64,etcd,1,node.cpu.member3,1.18,CPU s,False,1
+ARM64,etcd,1,node.cpu.all,3.76,CPU s,False,1
+ARM64,etcd,1,node.cpu.cores,0.1848974178631034,cores,False,1
+ARM64,etcd,1,node.revision.member1,929,revisions,False,1
+ARM64,etcd,1,node.revision.member2,929,revisions,False,1
+ARM64,etcd,1,node.revision.member3,929,revisions,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_mvcc_delete_total,0.7867815011508588,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_mvcc_put_total,44.84654556559895,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_mvcc_range_total,74.25250417111229,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,34151.67709892386,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,170240.63409301822,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_server_proposals_applied_total,46.174239348791026,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.etcd_server_proposals_committed_total,46.174239348791026,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-1.grpc_server_handled_total,23.505097346881907,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_mvcc_delete_total,0.7868426289440695,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_mvcc_put_total,44.85002984981196,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_mvcc_range_total,53.70200942543274,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,34854.66957900683,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,23420.124962198683,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_server_proposals_applied_total,46.17782678615508,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.etcd_server_proposals_committed_total,46.17782678615508,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-2.grpc_server_handled_total,23.703634196940094,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_mvcc_delete_total,0.7869378681982243,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_mvcc_put_total,44.85545848729878,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_mvcc_range_total,56.118506725885865,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,31937.479911890834,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,65746.44562520733,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_server_proposals_applied_total,46.183416139883285,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.etcd_server_proposals_committed_total,46.183416139883285,counter increments/s,False,1
+ARM64,etcd,1,node.server.external-etcd-3.grpc_server_handled_total,23.854054129758673,counter increments/s,False,1
+ARM64,etcd,1,update.duration,86.628028589,s,False,1
+ARM64,etcd,1,update.exit,0,exit code,False,1
+ARM64,etcd,1,update.window,87.2973351515,s,False,1
+ARM64,etcd,1,update.api.all.p50,3.84111909650924,ms,False,1
+ARM64,etcd,1,update.api.all.p99,95.8549618320612,ms,False,1
+ARM64,etcd,1,update.api.verb.DELETE.p50,19.482758620689655,ms,False,1
+ARM64,etcd,1,update.api.verb.DELETE.p99,178.66666666666663,ms,False,1
+ARM64,etcd,1,update.api.verb.GET.p50,3.0320699708454812,ms,False,1
+ARM64,etcd,1,update.api.verb.GET.p99,58.39999999999976,ms,False,1
+ARM64,etcd,1,update.api.verb.LIST.p50,3.75,ms,False,1
+ARM64,etcd,1,update.api.verb.LIST.p99,87.99999999999991,ms,False,1
+ARM64,etcd,1,update.api.verb.PATCH.p50,3.16722972972973,ms,False,1
+ARM64,etcd,1,update.api.verb.PATCH.p99,82.62711864406779,ms,False,1
+ARM64,etcd,1,update.api.verb.POST.p50,8.745019920318725,ms,False,1
+ARM64,etcd,1,update.api.verb.POST.p99,128.6666666666671,ms,False,1
+ARM64,etcd,1,update.api.verb.PUT.p50,12.481804949053858,ms,False,1
+ARM64,etcd,1,update.api.verb.PUT.p99,153.68421052631604,ms,False,1
+ARM64,etcd,1,update.api.resource..p50,2.66260162601626,ms,False,1
+ARM64,etcd,1,update.api.resource..p99,46.12499999999997,ms,False,1
+ARM64,etcd,1,update.api.resource.configmaps.p50,2.8897228637413397,ms,False,1
+ARM64,etcd,1,update.api.resource.configmaps.p99,88.9576271186439,ms,False,1
+ARM64,etcd,1,update.api.resource.deployments.p50,10.461538461538462,ms,False,1
+ARM64,etcd,1,update.api.resource.deployments.p99,136.24999999999974,ms,False,1
+ARM64,etcd,1,update.api.resource.endpoints.p50,15.140845070422536,ms,False,1
+ARM64,etcd,1,update.api.resource.endpoints.p99,175.00000000000003,ms,False,1
+ARM64,etcd,1,update.api.resource.endpointslices.p50,15.24390243902439,ms,False,1
+ARM64,etcd,1,update.api.resource.endpointslices.p99,170.00000000000077,ms,False,1
+ARM64,etcd,1,update.api.resource.events.p50,7.8431372549019605,ms,False,1
+ARM64,etcd,1,update.api.resource.events.p99,113.19999999999938,ms,False,1
+ARM64,etcd,1,update.api.resource.leases.p50,2.7455357142857144,ms,False,1
+ARM64,etcd,1,update.api.resource.leases.p99,22.76363636363636,ms,False,1
+ARM64,etcd,1,update.api.resource.limitranges.p50,4.0,ms,False,1
+ARM64,etcd,1,update.api.resource.limitranges.p99,48.666666666666664,ms,False,1
+ARM64,etcd,1,update.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,etcd,1,update.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,etcd,1,update.api.resource.pods.p50,5.759219088937093,ms,False,1
+ARM64,etcd,1,update.api.resource.pods.p99,79.8333333333335,ms,False,1
+ARM64,etcd,1,update.api.resource.replicasets.p50,13.50622406639004,ms,False,1
+ARM64,etcd,1,update.api.resource.replicasets.p99,162.37500000000014,ms,False,1
+ARM64,etcd,1,update.api.resource.secrets.p50,2.5337837837837838,ms,False,1
+ARM64,etcd,1,update.api.resource.secrets.p99,10.0,ms,False,1
+ARM64,etcd,1,update.api.resource.services.p50,2.765957446808511,ms,False,1
+ARM64,etcd,1,update.api.resource.services.p99,22.919999999999987,ms,False,1
+ARM64,etcd,1,update.api.requests,68.57024890406572,requests/s,False,1
+ARM64,etcd,1,update.api.creates.count,480.0,requests,False,1
+ARM64,etcd,1,update.api.creates.rate,5.498449628124214,requests/s,False,1
+ARM64,etcd,1,update.api.deletes.count,64.0,requests,False,1
+ARM64,etcd,1,update.api.deletes.rate,0.7331266170832285,requests/s,False,1
+ARM64,etcd,1,update.api.updates.count,4197.0,requests,False,1
+ARM64,etcd,1,update.api.updates.rate,48.07706893591109,requests/s,False,1
+ARM64,etcd,1,update.api.http403,0.0,responses,False,1
+ARM64,etcd,1,update.api.http404,29.0,responses,False,1
+ARM64,etcd,1,update.api.http409,38.0,responses,False,1
+ARM64,etcd,1,update.api.http500,0.0,responses,False,1
+ARM64,etcd,1,update.storage.etcd_request_duration_seconds,70.25414910267875,RPC/s,False,1
+ARM64,etcd,1,update.cpu.member1,8.4,CPU s,False,1
+ARM64,etcd,1,update.cpu.member2,6.37,CPU s,False,1
+ARM64,etcd,1,update.cpu.member3,7.05,CPU s,False,1
+ARM64,etcd,1,update.cpu.all,21.82,CPU s,False,1
+ARM64,etcd,1,update.cpu.cores,0.24994101617785716,cores,False,1
+ARM64,etcd,1,update.revision.member1,5493,revisions,False,1
+ARM64,etcd,1,update.revision.member2,5493,revisions,False,1
+ARM64,etcd,1,update.revision.member3,5493,revisions,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_mvcc_delete_total,0.7330691004137254,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_mvcc_put_total,62.184877283533055,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_mvcc_range_total,77.88859191895833,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,39661.14590604624,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,105344.68710494135,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_server_proposals_applied_total,63.605198665584645,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.etcd_server_proposals_committed_total,63.605198665584645,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-1.grpc_server_handled_total,23.98510462916158,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_mvcc_delete_total,0.7330392592574566,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_mvcc_put_total,62.17089217577304,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_mvcc_range_total,71.73476376139767,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,36118.6196330709,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,38543.77693867836,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_server_proposals_applied_total,63.59115574058436,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.etcd_server_proposals_committed_total,63.59115574058436,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-2.grpc_server_handled_total,23.903952094848623,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_mvcc_delete_total,0.7330165856469403,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_mvcc_put_total,62.16896917018112,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_mvcc_range_total,106.01252369918873,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,39417.84090593855,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,100940.7017694085,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_server_proposals_applied_total,63.589188804872066,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.etcd_server_proposals_committed_total,63.589188804872066,counter increments/s,False,1
+ARM64,etcd,1,update.server.external-etcd-3.grpc_server_handled_total,23.811585649374823,counter increments/s,False,1
+ARM64,etcd,1,delete.duration,67.84788135600002,s,False,1
+ARM64,etcd,1,delete.exit,0,exit code,False,1
+ARM64,etcd,1,delete.window,68.5640804425,s,False,1
+ARM64,etcd,1,delete.api.all.p50,3.838289962825279,ms,False,1
+ARM64,etcd,1,delete.api.all.p99,386.7368421052625,ms,False,1
+ARM64,etcd,1,delete.api.verb.DELETE.p50,3.3140531276778065,ms,False,1
+ARM64,etcd,1,delete.api.verb.DELETE.p99,456.62499999999966,ms,False,1
+ARM64,etcd,1,delete.api.verb.GET.p50,3.630573248407644,ms,False,1
+ARM64,etcd,1,delete.api.verb.GET.p99,286.0,ms,False,1
+ARM64,etcd,1,delete.api.verb.LIST.p50,4.659763313609467,ms,False,1
+ARM64,etcd,1,delete.api.verb.LIST.p99,183.4210526315791,ms,False,1
+ARM64,etcd,1,delete.api.verb.PATCH.p50,42.5,ms,False,1
+ARM64,etcd,1,delete.api.verb.PATCH.p99,382.99999999999983,ms,False,1
+ARM64,etcd,1,delete.api.verb.POST.p50,28.240740740740744,ms,False,1
+ARM64,etcd,1,delete.api.verb.POST.p99,339.4999999999996,ms,False,1
+ARM64,etcd,1,delete.api.verb.PUT.p50,15.0,ms,False,1
+ARM64,etcd,1,delete.api.verb.PUT.p99,325.0,ms,False,1
+ARM64,etcd,1,delete.api.resource..p50,2.6327433628318584,ms,False,1
+ARM64,etcd,1,delete.api.resource..p99,140.5000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.configmaps.p50,2.6090263691683573,ms,False,1
+ARM64,etcd,1,delete.api.resource.configmaps.p99,23.172222222222242,ms,False,1
+ARM64,etcd,1,delete.api.resource.controllerrevisions.p50,4.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.controllerrevisions.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.cronjobs.p50,4.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.cronjobs.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.csistoragecapacities.p50,4.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.csistoragecapacities.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.daemonsets.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.daemonsets.p99,99.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.deployments.p50,13.000000000000002,ms,False,1
+ARM64,etcd,1,delete.api.resource.deployments.p99,171.9999999999999,ms,False,1
+ARM64,etcd,1,delete.api.resource.endpoints.p50,36.00000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.endpoints.p99,292.0000000000002,ms,False,1
+ARM64,etcd,1,delete.api.resource.endpointslices.p50,37.50000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.endpointslices.p99,333.4999999999994,ms,False,1
+ARM64,etcd,1,delete.api.resource.events.p50,25.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.events.p99,768.0000000000007,ms,False,1
+ARM64,etcd,1,delete.api.resource.horizontalpodautoscalers.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.horizontalpodautoscalers.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.ingresses.p50,25.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.ingresses.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.ipaddresses.p50,37.50000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.ipaddresses.p99,368.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.jobs.p50,25.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.jobs.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.leases.p50,3.0000000000000004,ms,False,1
+ARM64,etcd,1,delete.api.resource.leases.p99,192.99999999999997,ms,False,1
+ARM64,etcd,1,delete.api.resource.limitranges.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.limitranges.p99,191.00000000000003,ms,False,1
+ARM64,etcd,1,delete.api.resource.namespaces.p50,2.723214285714286,ms,False,1
+ARM64,etcd,1,delete.api.resource.namespaces.p99,34.750000000000014,ms,False,1
+ARM64,etcd,1,delete.api.resource.networkpolicies.p50,3.4615384615384612,ms,False,1
+ARM64,etcd,1,delete.api.resource.networkpolicies.p99,97.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,etcd,1,delete.api.resource.persistentvolumeclaims.p50,3.2142857142857144,ms,False,1
+ARM64,etcd,1,delete.api.resource.persistentvolumeclaims.p99,95.50000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.podcertificaterequests.p50,3.4615384615384612,ms,False,1
+ARM64,etcd,1,delete.api.resource.podcertificaterequests.p99,97.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.poddisruptionbudgets.p50,4.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.poddisruptionbudgets.p99,98.2,ms,False,1
+ARM64,etcd,1,delete.api.resource.pods.p50,78.97727272727273,ms,False,1
+ARM64,etcd,1,delete.api.resource.pods.p99,557.4000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.podtemplates.p50,3.75,ms,False,1
+ARM64,etcd,1,delete.api.resource.podtemplates.p99,97.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.replicasets.p50,9.000000000000002,ms,False,1
+ARM64,etcd,1,delete.api.resource.replicasets.p99,150.00000000000003,ms,False,1
+ARM64,etcd,1,delete.api.resource.replicationcontrollers.p50,59.09090909090909,ms,False,1
+ARM64,etcd,1,delete.api.resource.replicationcontrollers.p99,99.18181818181819,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourceclaims.p50,4.09090909090909,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourceclaims.p99,98.2,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourceclaimtemplates.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourceclaimtemplates.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourcequotas.p50,20.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.resourcequotas.p99,191.00000000000003,ms,False,1
+ARM64,etcd,1,delete.api.resource.rolebindings.p50,15.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.rolebindings.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.roles.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.roles.p99,182.00000000000006,ms,False,1
+ARM64,etcd,1,delete.api.resource.secrets.p50,2.8947368421052633,ms,False,1
+ARM64,etcd,1,delete.api.resource.secrets.p99,95.60000000000002,ms,False,1
+ARM64,etcd,1,delete.api.resource.serviceaccounts.p50,12.5,ms,False,1
+ARM64,etcd,1,delete.api.resource.serviceaccounts.p99,97.75,ms,False,1
+ARM64,etcd,1,delete.api.resource.services.p50,33.333333333333336,ms,False,1
+ARM64,etcd,1,delete.api.resource.services.p99,528.0000000000001,ms,False,1
+ARM64,etcd,1,delete.api.resource.statefulsets.p50,5.0,ms,False,1
+ARM64,etcd,1,delete.api.resource.statefulsets.p99,191.00000000000003,ms,False,1
+ARM64,etcd,1,delete.api.requests,36.1413729172395,requests/s,False,1
+ARM64,etcd,1,delete.api.creates.count,112.0,requests,False,1
+ARM64,etcd,1,delete.api.creates.rate,1.6335083804402033,requests/s,False,1
+ARM64,etcd,1,delete.api.deletes.count,1521.0,requests,False,1
+ARM64,etcd,1,delete.api.deletes.rate,22.18362720222812,requests/s,False,1
+ARM64,etcd,1,delete.api.updates.count,223.0,requests,False,1
+ARM64,etcd,1,delete.api.updates.rate,3.2524318646264763,requests/s,False,1
+ARM64,etcd,1,delete.api.http403,9.0,responses,False,1
+ARM64,etcd,1,delete.api.http404,57.0,responses,False,1
+ARM64,etcd,1,delete.api.http409,11.0,responses,False,1
+ARM64,etcd,1,delete.api.http500,0.0,responses,False,1
+ARM64,etcd,1,delete.storage.etcd_request_duration_seconds,103.27565037408108,RPC/s,False,1
+ARM64,etcd,1,delete.cpu.member1,5.98,CPU s,False,1
+ARM64,etcd,1,delete.cpu.member2,4.69,CPU s,False,1
+ARM64,etcd,1,delete.cpu.member3,4.92,CPU s,False,1
+ARM64,etcd,1,delete.cpu.all,15.59,CPU s,False,1
+ARM64,etcd,1,delete.cpu.cores,0.22737637577302228,cores,False,1
+ARM64,etcd,1,delete.revision.member1,2785,revisions,False,1
+ARM64,etcd,1,delete.revision.member2,2785,revisions,False,1
+ARM64,etcd,1,delete.revision.member3,2785,revisions,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_delete_total,33.64751445742008,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_put_total,6.957028346852786,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_range_total,67.8055026929111,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,7807.667265665144,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,44889.79515159751,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_server_proposals_applied_total,42.03386938287155,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.etcd_server_proposals_committed_total,42.03386938287155,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-1.grpc_server_handled_total,34.84348159461489,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_delete_total,33.64721398232679,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_put_total,6.956966220012951,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_range_total,66.74020424062739,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,7767.649679914838,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,26351.923348465538,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_server_proposals_applied_total,42.033494016933595,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.etcd_server_proposals_committed_total,42.033494016933595,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-2.grpc_server_handled_total,34.974433953021084,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_delete_total,33.646081804934134,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_put_total,6.956732128718501,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_range_total,93.47106124309617,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,8447.718793253407,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,63376.4714037653,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_server_proposals_applied_total,42.03207965401828,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.etcd_server_proposals_committed_total,42.03207965401828,counter increments/s,False,1
+ARM64,etcd,1,delete.server.external-etcd-3.grpc_server_handled_total,34.91491974036078,counter increments/s,False,1
+ARM64,etcd,1,mixed.pod.Ready.p50,1000,ms,False,1
+ARM64,etcd,1,mixed.pod.Ready.p99,1500,ms,False,1
+ARM64,etcd,1,mixed.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+ARM64,etcd,1,mixed.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+ARM64,etcd,1,mixed.pod.ContainersStarted.p50,1498,ms,False,1
+ARM64,etcd,1,mixed.pod.ContainersStarted.p99,2011,ms,False,1
+ARM64,etcd,1,mixed.pod.PodScheduled.p50,0,ms,False,1
+ARM64,etcd,1,mixed.pod.PodScheduled.p99,500,ms,False,1
+ARM64,etcd,1,mixed.pod.ContainersReady.p50,1000,ms,False,1
+ARM64,etcd,1,mixed.pod.ContainersReady.p99,1500,ms,False,1
+ARM64,etcd,1,mixed.pod.Initialized.p50,0,ms,False,1
+ARM64,etcd,1,mixed.pod.Initialized.p99,500,ms,False,1
+ARM64,etcd,1,node.pod.Ready.p50,4000,ms,False,1
+ARM64,etcd,1,node.pod.Ready.p99,6000,ms,False,1
+ARM64,etcd,1,node.pod.PodReadyToStartContainers.p50,3000,ms,False,1
+ARM64,etcd,1,node.pod.PodReadyToStartContainers.p99,5000,ms,False,1
+ARM64,etcd,1,node.pod.ContainersStarted.p50,4523,ms,False,1
+ARM64,etcd,1,node.pod.ContainersStarted.p99,6294,ms,False,1
+ARM64,etcd,1,node.pod.PodScheduled.p50,0,ms,False,1
+ARM64,etcd,1,node.pod.PodScheduled.p99,1000,ms,False,1
+ARM64,etcd,1,node.pod.ContainersReady.p50,4000,ms,False,1
+ARM64,etcd,1,node.pod.ContainersReady.p99,6000,ms,False,1
+ARM64,etcd,1,node.pod.Initialized.p50,0,ms,False,1
+ARM64,etcd,1,node.pod.Initialized.p99,1000,ms,False,1
+ARM64,etcd,1,update.pod.ContainersReady.p50,1000,ms,False,1
+ARM64,etcd,1,update.pod.ContainersReady.p99,2000,ms,False,1
+ARM64,etcd,1,update.pod.Initialized.p50,0,ms,False,1
+ARM64,etcd,1,update.pod.Initialized.p99,1000,ms,False,1
+ARM64,etcd,1,update.pod.Ready.p50,1000,ms,False,1
+ARM64,etcd,1,update.pod.Ready.p99,2000,ms,False,1
+ARM64,etcd,1,update.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+ARM64,etcd,1,update.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+ARM64,etcd,1,update.pod.ContainersStarted.p50,1659,ms,False,1
+ARM64,etcd,1,update.pod.ContainersStarted.p99,2286,ms,False,1
+ARM64,etcd,1,update.pod.PodScheduled.p50,0,ms,False,1
+ARM64,etcd,1,update.pod.PodScheduled.p99,1000,ms,False,1
+ARM64,etcd,1,events.unique,1094,events,False,1
+ARM64,etcd,1,events.observations,2212,watch notifications,False,1
+ARM64,tigerstore,1,total.script,298.2888627052307,s,False,1
+ARM64,tigerstore,1,total.workload,223.53431630100002,s,False,1
+ARM64,tigerstore,1,errors.observed,29,records,False,1
+ARM64,tigerstore,1,total.window,224.4655619795,s,False,1
+ARM64,tigerstore,1,total.api.all.p50,3.555938612099644,ms,False,1
+ARM64,tigerstore,1,total.api.all.p99,146.8589743589746,ms,False,1
+ARM64,tigerstore,1,total.api.verb.DELETE.p50,3.220754716981132,ms,False,1
+ARM64,tigerstore,1,total.api.verb.DELETE.p99,310.72222222222257,ms,False,1
+ARM64,tigerstore,1,total.api.verb.GET.p50,3.1985003946329917,ms,False,1
+ARM64,tigerstore,1,total.api.verb.GET.p99,85.33928571428565,ms,False,1
+ARM64,tigerstore,1,total.api.verb.LIST.p50,3.6933333333333334,ms,False,1
+ARM64,tigerstore,1,total.api.verb.LIST.p99,157.38461538461567,ms,False,1
+ARM64,tigerstore,1,total.api.verb.PATCH.p50,3.1326196848052335,ms,False,1
+ARM64,tigerstore,1,total.api.verb.PATCH.p99,95.7999999999998,ms,False,1
+ARM64,tigerstore,1,total.api.verb.POST.p50,4.129261363636363,ms,False,1
+ARM64,tigerstore,1,total.api.verb.POST.p99,129.5405405405401,ms,False,1
+ARM64,tigerstore,1,total.api.verb.PUT.p50,4.9528824833702885,ms,False,1
+ARM64,tigerstore,1,total.api.verb.PUT.p99,138.96153846153803,ms,False,1
+ARM64,tigerstore,1,total.api.resource..p50,2.6142857142857143,ms,False,1
+ARM64,tigerstore,1,total.api.resource..p99,29.24999999999969,ms,False,1
+ARM64,tigerstore,1,total.api.resource.configmaps.p50,2.7278792855676453,ms,False,1
+ARM64,tigerstore,1,total.api.resource.configmaps.p99,52.90816326530649,ms,False,1
+ARM64,tigerstore,1,total.api.resource.controllerrevisions.p50,4.230769230769231,ms,False,1
+ARM64,tigerstore,1,total.api.resource.controllerrevisions.p99,189.00000000000006,ms,False,1
+ARM64,tigerstore,1,total.api.resource.cronjobs.p50,2.8947368421052633,ms,False,1
+ARM64,tigerstore,1,total.api.resource.cronjobs.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.csistoragecapacities.p50,3.6666666666666665,ms,False,1
+ARM64,tigerstore,1,total.api.resource.csistoragecapacities.p99,98.42857142857144,ms,False,1
+ARM64,tigerstore,1,total.api.resource.daemonsets.p50,3.4375,ms,False,1
+ARM64,tigerstore,1,total.api.resource.daemonsets.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.deployments.p50,4.533492822966507,ms,False,1
+ARM64,tigerstore,1,total.api.resource.deployments.p99,97.53124999999994,ms,False,1
+ARM64,tigerstore,1,total.api.resource.endpoints.p50,8.910614525139666,ms,False,1
+ARM64,tigerstore,1,total.api.resource.endpoints.p99,180.66666666666674,ms,False,1
+ARM64,tigerstore,1,total.api.resource.endpointslices.p50,9.137931034482758,ms,False,1
+ARM64,tigerstore,1,total.api.resource.endpointslices.p99,133.4999999999994,ms,False,1
+ARM64,tigerstore,1,total.api.resource.events.p50,9.08207343412527,ms,False,1
+ARM64,tigerstore,1,total.api.resource.events.p99,197.32142857142858,ms,False,1
+ARM64,tigerstore,1,total.api.resource.horizontalpodautoscalers.p50,4.230769230769231,ms,False,1
+ARM64,tigerstore,1,total.api.resource.horizontalpodautoscalers.p99,98.77777777777779,ms,False,1
+ARM64,tigerstore,1,total.api.resource.ingresses.p50,4.230769230769231,ms,False,1
+ARM64,tigerstore,1,total.api.resource.ingresses.p99,98.42857142857144,ms,False,1
+ARM64,tigerstore,1,total.api.resource.ipaddresses.p50,3.4482758620689657,ms,False,1
+ARM64,tigerstore,1,total.api.resource.ipaddresses.p99,40.000000000000036,ms,False,1
+ARM64,tigerstore,1,total.api.resource.jobs.p50,3.235294117647059,ms,False,1
+ARM64,tigerstore,1,total.api.resource.jobs.p99,96.33333333333336,ms,False,1
+ARM64,tigerstore,1,total.api.resource.leases.p50,2.8498293515358357,ms,False,1
+ARM64,tigerstore,1,total.api.resource.leases.p99,76.14285714285734,ms,False,1
+ARM64,tigerstore,1,total.api.resource.limitranges.p50,4.051724137931035,ms,False,1
+ARM64,tigerstore,1,total.api.resource.limitranges.p99,176.50000000000009,ms,False,1
+ARM64,tigerstore,1,total.api.resource.namespaces.p50,2.6658476658476657,ms,False,1
+ARM64,tigerstore,1,total.api.resource.namespaces.p99,22.430769230769208,ms,False,1
+ARM64,tigerstore,1,total.api.resource.networkpolicies.p50,3.928571428571429,ms,False,1
+ARM64,tigerstore,1,total.api.resource.networkpolicies.p99,98.42857142857144,ms,False,1
+ARM64,tigerstore,1,total.api.resource.nodes.p50,3.0,ms,False,1
+ARM64,tigerstore,1,total.api.resource.nodes.p99,23.79999999999999,ms,False,1
+ARM64,tigerstore,1,total.api.resource.persistentvolumeclaims.p50,3.6666666666666665,ms,False,1
+ARM64,tigerstore,1,total.api.resource.persistentvolumeclaims.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.podcertificaterequests.p50,3.4375,ms,False,1
+ARM64,tigerstore,1,total.api.resource.podcertificaterequests.p99,97.80000000000003,ms,False,1
+ARM64,tigerstore,1,total.api.resource.poddisruptionbudgets.p50,3.4375,ms,False,1
+ARM64,tigerstore,1,total.api.resource.poddisruptionbudgets.p99,97.25000000000001,ms,False,1
+ARM64,tigerstore,1,total.api.resource.pods.p50,7.826815642458102,ms,False,1
+ARM64,tigerstore,1,total.api.resource.pods.p99,234.7333333333336,ms,False,1
+ARM64,tigerstore,1,total.api.resource.podtemplates.p50,5.0,ms,False,1
+ARM64,tigerstore,1,total.api.resource.podtemplates.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.replicasets.p50,4.787822878228783,ms,False,1
+ARM64,tigerstore,1,total.api.resource.replicasets.p99,99.47222222222207,ms,False,1
+ARM64,tigerstore,1,total.api.resource.replicationcontrollers.p50,3.928571428571429,ms,False,1
+ARM64,tigerstore,1,total.api.resource.replicationcontrollers.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourceclaims.p50,3.055555555555556,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourceclaims.p99,96.33333333333336,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourceclaimtemplates.p50,4.583333333333333,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourceclaimtemplates.p99,98.42857142857144,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourcequotas.p50,4.230769230769231,ms,False,1
+ARM64,tigerstore,1,total.api.resource.resourcequotas.p99,98.77777777777779,ms,False,1
+ARM64,tigerstore,1,total.api.resource.rolebindings.p50,3.6666666666666665,ms,False,1
+ARM64,tigerstore,1,total.api.resource.rolebindings.p99,96.33333333333336,ms,False,1
+ARM64,tigerstore,1,total.api.resource.roles.p50,3.6666666666666665,ms,False,1
+ARM64,tigerstore,1,total.api.resource.roles.p99,178.00000000000014,ms,False,1
+ARM64,tigerstore,1,total.api.resource.secrets.p50,2.6307189542483664,ms,False,1
+ARM64,tigerstore,1,total.api.resource.secrets.p99,84.74999999999966,ms,False,1
+ARM64,tigerstore,1,total.api.resource.serviceaccounts.p50,4.852941176470589,ms,False,1
+ARM64,tigerstore,1,total.api.resource.serviceaccounts.p99,95.87500000000003,ms,False,1
+ARM64,tigerstore,1,total.api.resource.services.p50,4.10958904109589,ms,False,1
+ARM64,tigerstore,1,total.api.resource.services.p99,98.88888888888889,ms,False,1
+ARM64,tigerstore,1,total.api.resource.statefulsets.p50,3.6666666666666665,ms,False,1
+ARM64,tigerstore,1,total.api.resource.statefulsets.p99,98.16666666666669,ms,False,1
+ARM64,tigerstore,1,total.api.requests,56.97978739904915,requests/s,False,1
+ARM64,tigerstore,1,total.api.creates.count,2715.0,requests,False,1
+ARM64,tigerstore,1,total.api.creates.rate,12.095396621455704,requests/s,False,1
+ARM64,tigerstore,1,total.api.deletes.count,1678.0,requests,False,1
+ARM64,tigerstore,1,total.api.deletes.rate,7.475534265489013,requests/s,False,1
+ARM64,tigerstore,1,total.api.updates.count,4684.0,requests,False,1
+ARM64,tigerstore,1,total.api.updates.rate,20.867343563498533,requests/s,False,1
+ARM64,tigerstore,1,total.api.http403,24.0,responses,False,1
+ARM64,tigerstore,1,total.api.http404,113.0,responses,False,1
+ARM64,tigerstore,1,total.api.http409,56.0,responses,False,1
+ARM64,tigerstore,1,total.api.http500,0.0,responses,False,1
+ARM64,tigerstore,1,total.storage.etcd_request_duration_seconds,81.40224201371588,RPC/s,False,1
+ARM64,tigerstore,1,total.cpu.member1,14.14,CPU s,False,1
+ARM64,tigerstore,1,total.cpu.member2,9.45,CPU s,False,1
+ARM64,tigerstore,1,total.cpu.member3,9.16,CPU s,False,1
+ARM64,tigerstore,1,total.cpu.all,32.75,CPU s,False,1
+ARM64,tigerstore,1,total.cpu.cores,0.14586604836687103,cores,False,1
+ARM64,tigerstore,1,total.revision.member1,11677,revisions,False,1
+ARM64,tigerstore,1,total.revision.member2,11677,revisions,False,1
+ARM64,tigerstore,1,total.revision.member3,11677,revisions,False,1
+ARM64,tigerstore,1,mixed.duration,43.16074557800002,s,False,1
+ARM64,tigerstore,1,mixed.exit,0,exit code,False,1
+ARM64,tigerstore,1,mixed.window,43.7331323555,s,False,1
+ARM64,tigerstore,1,mixed.api.all.p50,3.2238871749669458,ms,False,1
+ARM64,tigerstore,1,mixed.api.all.p99,56.67857142857105,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.DELETE.p50,3.4322033898305087,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.DELETE.p99,318.9999999999998,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.GET.p50,2.6960784313725488,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.GET.p99,22.250000000000004,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.LIST.p50,3.179347826086956,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.LIST.p99,99.39285714285714,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.PATCH.p50,9.736842105263158,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.PATCH.p99,39.83333333333334,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.POST.p50,3.1226971260132643,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.POST.p99,35.624999999999964,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.PUT.p50,4.3389423076923075,ms,False,1
+ARM64,tigerstore,1,mixed.api.verb.PUT.p99,69.91666666666656,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource..p50,2.6027397260273974,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource..p99,19.933333333333298,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.configmaps.p50,2.8658536585365852,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.configmaps.p99,40.5543478260869,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.controllerrevisions.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.controllerrevisions.p99,98.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.cronjobs.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.cronjobs.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.csistoragecapacities.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.csistoragecapacities.p99,98.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.daemonsets.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.daemonsets.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.deployments.p50,4.12280701754386,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.deployments.p99,90.60000000000002,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.endpoints.p50,4.358108108108108,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.endpoints.p99,78.4999999999999,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.endpointslices.p50,4.012345679012346,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.endpointslices.p99,67.49999999999973,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.events.p50,4.14,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.events.p99,48.25000000000018,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.horizontalpodautoscalers.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.horizontalpodautoscalers.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.ingresses.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.ingresses.p99,49.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.ipaddresses.p50,2.727272727272727,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.ipaddresses.p99,22.59999999999998,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.jobs.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.jobs.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.leases.p50,2.7118644067796613,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.leases.p99,83.99999999999999,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.limitranges.p50,2.727272727272727,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.limitranges.p99,93.99999999999996,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.namespaces.p50,2.675438596491228,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.namespaces.p99,21.94999999999998,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.networkpolicies.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.networkpolicies.p99,98.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.persistentvolumeclaims.p50,5.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.persistentvolumeclaims.p99,99.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.podcertificaterequests.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.podcertificaterequests.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.poddisruptionbudgets.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.poddisruptionbudgets.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.pods.p50,4.711538461538462,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.pods.p99,44.04166666666664,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.podtemplates.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.podtemplates.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.replicasets.p50,7.903225806451614,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.replicasets.p99,69.50000000000003,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.replicationcontrollers.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.replicationcontrollers.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourceclaims.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourceclaims.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourceclaimtemplates.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourceclaimtemplates.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourcequotas.p50,5.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.resourcequotas.p99,99.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.rolebindings.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.rolebindings.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.roles.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.roles.p99,98.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.secrets.p50,2.651515151515152,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.secrets.p99,21.49999999999999,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.serviceaccounts.p50,5.0,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.serviceaccounts.p99,46.499999999999986,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.services.p50,15.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.services.p99,175.00000000000003,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.statefulsets.p50,2.5,ms,False,1
+ARM64,tigerstore,1,mixed.api.resource.statefulsets.p99,4.95,ms,False,1
+ARM64,tigerstore,1,mixed.api.requests,66.90579527244904,requests/s,False,1
+ARM64,tigerstore,1,mixed.api.creates.count,1640.0,requests,False,1
+ARM64,tigerstore,1,mixed.api.creates.rate,37.50017233315668,requests/s,False,1
+ARM64,tigerstore,1,mixed.api.deletes.count,77.0,requests,False,1
+ARM64,tigerstore,1,mixed.api.deletes.rate,1.7606788229591854,requests/s,False,1
+ARM64,tigerstore,1,mixed.api.updates.count,247.0,requests,False,1
+ARM64,tigerstore,1,mixed.api.updates.rate,5.647891808713231,requests/s,False,1
+ARM64,tigerstore,1,mixed.api.http403,15.0,responses,False,1
+ARM64,tigerstore,1,mixed.api.http404,8.0,responses,False,1
+ARM64,tigerstore,1,mixed.api.http409,14.0,responses,False,1
+ARM64,tigerstore,1,mixed.api.http500,0.0,responses,False,1
+ARM64,tigerstore,1,mixed.storage.etcd_request_duration_seconds,81.86013228823225,RPC/s,False,1
+ARM64,tigerstore,1,mixed.cpu.member1,2.94,CPU s,False,1
+ARM64,tigerstore,1,mixed.cpu.member2,1.95,CPU s,False,1
+ARM64,tigerstore,1,mixed.cpu.member3,1.91,CPU s,False,1
+ARM64,tigerstore,1,mixed.cpu.all,6.8,CPU s,False,1
+ARM64,tigerstore,1,mixed.cpu.cores,0.1553197829942472,cores,False,1
+ARM64,tigerstore,1,mixed.revision.member1,2494,revisions,False,1
+ARM64,tigerstore,1,mixed.revision.member2,2494,revisions,False,1
+ARM64,tigerstore,1,mixed.revision.member3,2494,revisions,False,1
+ARM64,tigerstore,1,node.duration,18.54672960299996,s,False,1
+ARM64,tigerstore,1,node.exit,0,exit code,False,1
+ARM64,tigerstore,1,node.window,19.165345571,s,False,1
+ARM64,tigerstore,1,node.api.all.p50,16.892744479495267,ms,False,1
+ARM64,tigerstore,1,node.api.all.p99,181.73076923076925,ms,False,1
+ARM64,tigerstore,1,node.api.verb.DELETE.p50,15.769230769230772,ms,False,1
+ARM64,tigerstore,1,node.api.verb.DELETE.p99,48.0,ms,False,1
+ARM64,tigerstore,1,node.api.verb.GET.p50,7.066666666666667,ms,False,1
+ARM64,tigerstore,1,node.api.verb.GET.p99,131.8333333333328,ms,False,1
+ARM64,tigerstore,1,node.api.verb.LIST.p50,8.333333333333334,ms,False,1
+ARM64,tigerstore,1,node.api.verb.LIST.p99,91.00000000000003,ms,False,1
+ARM64,tigerstore,1,node.api.verb.PATCH.p50,22.083333333333332,ms,False,1
+ARM64,tigerstore,1,node.api.verb.PATCH.p99,194.91304347826082,ms,False,1
+ARM64,tigerstore,1,node.api.verb.POST.p50,19.604810996563575,ms,False,1
+ARM64,tigerstore,1,node.api.verb.POST.p99,184.21739130434784,ms,False,1
+ARM64,tigerstore,1,node.api.verb.PUT.p50,4.21875,ms,False,1
+ARM64,tigerstore,1,node.api.verb.PUT.p99,93.25000000000001,ms,False,1
+ARM64,tigerstore,1,node.api.resource..p50,2.8703703703703702,ms,False,1
+ARM64,tigerstore,1,node.api.resource..p99,84.50000000000007,ms,False,1
+ARM64,tigerstore,1,node.api.resource.configmaps.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.configmaps.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.endpoints.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.endpoints.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.endpointslices.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.endpointslices.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.events.p50,18.92857142857143,ms,False,1
+ARM64,tigerstore,1,node.api.resource.events.p99,179.642857142857,ms,False,1
+ARM64,tigerstore,1,node.api.resource.leases.p50,4.21875,ms,False,1
+ARM64,tigerstore,1,node.api.resource.leases.p99,93.25000000000001,ms,False,1
+ARM64,tigerstore,1,node.api.resource.limitranges.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.limitranges.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.namespaces.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.namespaces.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.resource.pods.p50,17.046511627906977,ms,False,1
+ARM64,tigerstore,1,node.api.resource.pods.p99,184.2631578947368,ms,False,1
+ARM64,tigerstore,1,node.api.resource.serviceaccounts.p50,2.5,ms,False,1
+ARM64,tigerstore,1,node.api.resource.serviceaccounts.p99,4.95,ms,False,1
+ARM64,tigerstore,1,node.api.requests,70.43963778262102,requests/s,False,1
+ARM64,tigerstore,1,node.api.creates.count,483.0,requests,False,1
+ARM64,tigerstore,1,node.api.creates.rate,25.201737073337743,requests/s,False,1
+ARM64,tigerstore,1,node.api.deletes.count,16.0,requests,False,1
+ARM64,tigerstore,1,node.api.deletes.rate,0.8348401514977306,requests/s,False,1
+ARM64,tigerstore,1,node.api.updates.count,43.0,requests,False,1
+ARM64,tigerstore,1,node.api.updates.rate,2.243632907150151,requests/s,False,1
+ARM64,tigerstore,1,node.api.http403,0.0,responses,False,1
+ARM64,tigerstore,1,node.api.http404,19.0,responses,False,1
+ARM64,tigerstore,1,node.api.http409,1.0,responses,False,1
+ARM64,tigerstore,1,node.api.http500,0.0,responses,False,1
+ARM64,tigerstore,1,node.storage.etcd_request_duration_seconds,73.36157831286307,RPC/s,False,1
+ARM64,tigerstore,1,node.cpu.member1,0.87,CPU s,False,1
+ARM64,tigerstore,1,node.cpu.member2,0.66,CPU s,False,1
+ARM64,tigerstore,1,node.cpu.member3,0.62,CPU s,False,1
+ARM64,tigerstore,1,node.cpu.all,2.15,CPU s,False,1
+ARM64,tigerstore,1,node.cpu.cores,0.11215502916727774,cores,False,1
+ARM64,tigerstore,1,node.revision.member1,923,revisions,False,1
+ARM64,tigerstore,1,node.revision.member2,923,revisions,False,1
+ARM64,tigerstore,1,node.revision.member3,923,revisions,False,1
+ARM64,tigerstore,1,update.duration,86.57558178900001,s,False,1
+ARM64,tigerstore,1,update.exit,0,exit code,False,1
+ARM64,tigerstore,1,update.window,87.1894639295,s,False,1
+ARM64,tigerstore,1,update.api.all.p50,3.2478260869565214,ms,False,1
+ARM64,tigerstore,1,update.api.all.p99,78.19512195121939,ms,False,1
+ARM64,tigerstore,1,update.api.verb.DELETE.p50,18.846153846153847,ms,False,1
+ARM64,tigerstore,1,update.api.verb.DELETE.p99,167.99999999999997,ms,False,1
+ARM64,tigerstore,1,update.api.verb.GET.p50,2.7380952380952377,ms,False,1
+ARM64,tigerstore,1,update.api.verb.GET.p99,24.30909090909092,ms,False,1
+ARM64,tigerstore,1,update.api.verb.LIST.p50,3.5294117647058822,ms,False,1
+ARM64,tigerstore,1,update.api.verb.LIST.p99,87.99999999999991,ms,False,1
+ARM64,tigerstore,1,update.api.verb.PATCH.p50,2.844488188976378,ms,False,1
+ARM64,tigerstore,1,update.api.verb.PATCH.p99,64.12499999999982,ms,False,1
+ARM64,tigerstore,1,update.api.verb.POST.p50,4.177215189873418,ms,False,1
+ARM64,tigerstore,1,update.api.verb.POST.p99,92.00000000000018,ms,False,1
+ARM64,tigerstore,1,update.api.verb.PUT.p50,6.062124248496994,ms,False,1
+ARM64,tigerstore,1,update.api.verb.PUT.p99,102.91666666666592,ms,False,1
+ARM64,tigerstore,1,update.api.resource..p50,2.5393700787401574,ms,False,1
+ARM64,tigerstore,1,update.api.resource..p99,12.099999999999937,ms,False,1
+ARM64,tigerstore,1,update.api.resource.configmaps.p50,2.7349726775956285,ms,False,1
+ARM64,tigerstore,1,update.api.resource.configmaps.p99,71.55681818181796,ms,False,1
+ARM64,tigerstore,1,update.api.resource.deployments.p50,4.844961240310077,ms,False,1
+ARM64,tigerstore,1,update.api.resource.deployments.p99,116.66666666666667,ms,False,1
+ARM64,tigerstore,1,update.api.resource.endpoints.p50,11.410256410256409,ms,False,1
+ARM64,tigerstore,1,update.api.resource.endpoints.p99,49.98684210526317,ms,False,1
+ARM64,tigerstore,1,update.api.resource.endpointslices.p50,11.296296296296298,ms,False,1
+ARM64,tigerstore,1,update.api.resource.endpointslices.p99,91.80000000000008,ms,False,1
+ARM64,tigerstore,1,update.api.resource.events.p50,3.9454545454545453,ms,False,1
+ARM64,tigerstore,1,update.api.resource.events.p99,97.1666666666664,ms,False,1
+ARM64,tigerstore,1,update.api.resource.leases.p50,2.7477477477477477,ms,False,1
+ARM64,tigerstore,1,update.api.resource.leases.p99,34.750000000000014,ms,False,1
+ARM64,tigerstore,1,update.api.resource.limitranges.p50,3.3333333333333335,ms,False,1
+ARM64,tigerstore,1,update.api.resource.limitranges.p99,92.0,ms,False,1
+ARM64,tigerstore,1,update.api.resource.nodes.p50,5.0,ms,False,1
+ARM64,tigerstore,1,update.api.resource.nodes.p99,24.6,ms,False,1
+ARM64,tigerstore,1,update.api.resource.pods.p50,3.552816901408451,ms,False,1
+ARM64,tigerstore,1,update.api.resource.pods.p99,55.68749999999981,ms,False,1
+ARM64,tigerstore,1,update.api.resource.replicasets.p50,4.773809523809524,ms,False,1
+ARM64,tigerstore,1,update.api.resource.replicasets.p99,119.80000000000018,ms,False,1
+ARM64,tigerstore,1,update.api.resource.secrets.p50,2.5,ms,False,1
+ARM64,tigerstore,1,update.api.resource.secrets.p99,4.95,ms,False,1
+ARM64,tigerstore,1,update.api.resource.services.p50,2.5,ms,False,1
+ARM64,tigerstore,1,update.api.resource.services.p99,4.949999999999999,ms,False,1
+ARM64,tigerstore,1,update.api.requests,68.54039158713142,requests/s,False,1
+ARM64,tigerstore,1,update.api.creates.count,480.0,requests,False,1
+ARM64,tigerstore,1,update.api.creates.rate,5.505252336315777,requests/s,False,1
+ARM64,tigerstore,1,update.api.deletes.count,64.0,requests,False,1
+ARM64,tigerstore,1,update.api.deletes.rate,0.7340336448421035,requests/s,False,1
+ARM64,tigerstore,1,update.api.updates.count,4187.0,requests,False,1
+ARM64,tigerstore,1,update.api.updates.rate,48.02185735865449,requests/s,False,1
+ARM64,tigerstore,1,update.api.http403,0.0,responses,False,1
+ARM64,tigerstore,1,update.api.http404,22.0,responses,False,1
+ARM64,tigerstore,1,update.api.http409,31.0,responses,False,1
+ARM64,tigerstore,1,update.api.http500,0.0,responses,False,1
+ARM64,tigerstore,1,update.storage.etcd_request_duration_seconds,70.35253714783536,RPC/s,False,1
+ARM64,tigerstore,1,update.cpu.member1,6.12,CPU s,False,1
+ARM64,tigerstore,1,update.cpu.member2,4.05,CPU s,False,1
+ARM64,tigerstore,1,update.cpu.member3,3.85,CPU s,False,1
+ARM64,tigerstore,1,update.cpu.all,14.02,CPU s,False,1
+ARM64,tigerstore,1,update.cpu.cores,0.16079936545795748,cores,False,1
+ARM64,tigerstore,1,update.revision.member1,5490,revisions,False,1
+ARM64,tigerstore,1,update.revision.member2,5490,revisions,False,1
+ARM64,tigerstore,1,update.revision.member3,5490,revisions,False,1
+ARM64,tigerstore,1,delete.duration,65.848263094,s,False,1
+ARM64,tigerstore,1,delete.exit,0,exit code,False,1
+ARM64,tigerstore,1,delete.window,66.4648422445,s,False,1
+ARM64,tigerstore,1,delete.api.all.p50,3.4997155858930604,ms,False,1
+ARM64,tigerstore,1,delete.api.all.p99,275.7368421052625,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.DELETE.p50,3.0895283772981617,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.DELETE.p99,314.94117647058806,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.GET.p50,3.310055865921788,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.GET.p99,97.68749999999999,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.LIST.p50,4.067357512953368,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.LIST.p99,173.83333333333346,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.PATCH.p50,33.333333333333336,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.PATCH.p99,364.0000000000001,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.POST.p50,22.000000000000004,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.POST.p99,197.89999999999992,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.PUT.p50,4.934210526315789,ms,False,1
+ARM64,tigerstore,1,delete.api.verb.PUT.p99,198.21428571428572,ms,False,1
+ARM64,tigerstore,1,delete.api.resource..p50,2.6535087719298245,ms,False,1
+ARM64,tigerstore,1,delete.api.resource..p99,44.7499999999998,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.configmaps.p50,2.5445103857566767,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.configmaps.p99,16.014285714285766,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.controllerrevisions.p50,4.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.controllerrevisions.p99,191.00000000000003,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.cronjobs.p50,3.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.cronjobs.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.csistoragecapacities.p50,3.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.csistoragecapacities.p99,98.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.daemonsets.p50,3.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.daemonsets.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.deployments.p50,4.375,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.deployments.p99,97.19999999999999,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.endpoints.p50,17.142857142857142,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.endpoints.p99,301.00000000000057,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.endpointslices.p50,16.153846153846153,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.endpointslices.p99,180.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.events.p50,20.2,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.events.p99,389.3333333333336,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.horizontalpodautoscalers.p50,5.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.horizontalpodautoscalers.p99,99.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.ingresses.p50,4.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.ingresses.p99,98.71428571428572,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.ipaddresses.p50,7.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.ipaddresses.p99,46.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.jobs.p50,3.4615384615384612,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.jobs.p99,97.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.leases.p50,2.8282828282828287,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.leases.p99,71.9999999999999,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.limitranges.p50,50.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.limitranges.p99,191.00000000000003,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.namespaces.p50,2.586206896551724,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.namespaces.p99,18.999999999999986,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.networkpolicies.p50,4.09090909090909,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.networkpolicies.p99,98.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.nodes.p50,2.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.nodes.p99,4.95,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.persistentvolumeclaims.p50,3.4615384615384612,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.persistentvolumeclaims.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.podcertificaterequests.p50,3.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.podcertificaterequests.p99,98.2,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.poddisruptionbudgets.p50,3.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.poddisruptionbudgets.p99,97.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.pods.p50,56.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.pods.p99,383.5555555555556,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.podtemplates.p50,25.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.podtemplates.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.replicasets.p50,4.464285714285714,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.replicasets.p99,95.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.replicationcontrollers.p50,4.5,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.replicationcontrollers.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourceclaims.p50,3.2142857142857144,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourceclaims.p99,97.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourceclaimtemplates.p50,15.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourceclaimtemplates.p99,98.71428571428572,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourcequotas.p50,4.09090909090909,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.resourcequotas.p99,98.71428571428572,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.rolebindings.p50,4.09090909090909,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.rolebindings.p99,97.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.roles.p50,3.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.roles.p99,182.00000000000006,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.secrets.p50,2.8947368421052633,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.secrets.p99,156.00000000000026,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.serviceaccounts.p50,5.0,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.serviceaccounts.p99,97.75,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.services.p50,14.230769230769232,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.services.p99,97.42857142857144,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.statefulsets.p50,4.09090909090909,ms,False,1
+ARM64,tigerstore,1,delete.api.resource.statefulsets.p99,98.5,ms,False,1
+ARM64,tigerstore,1,delete.api.requests,37.02709457952033,requests/s,False,1
+ARM64,tigerstore,1,delete.api.creates.count,112.0,requests,False,1
+ARM64,tigerstore,1,delete.api.creates.rate,1.6851014193036478,requests/s,False,1
+ARM64,tigerstore,1,delete.api.deletes.count,1521.0,requests,False,1
+ARM64,tigerstore,1,delete.api.deletes.rate,22.884279096079002,requests/s,False,1
+ARM64,tigerstore,1,delete.api.updates.count,198.0,requests,False,1
+ARM64,tigerstore,1,delete.api.updates.rate,2.979018580554663,requests/s,False,1
+ARM64,tigerstore,1,delete.api.http403,9.0,responses,False,1
+ARM64,tigerstore,1,delete.api.http404,64.0,responses,False,1
+ARM64,tigerstore,1,delete.api.http409,10.0,responses,False,1
+ARM64,tigerstore,1,delete.api.http500,0.0,responses,False,1
+ARM64,tigerstore,1,delete.storage.etcd_request_duration_seconds,106.4623003838626,RPC/s,False,1
+ARM64,tigerstore,1,delete.cpu.member1,4.07,CPU s,False,1
+ARM64,tigerstore,1,delete.cpu.member2,2.69,CPU s,False,1
+ARM64,tigerstore,1,delete.cpu.member3,2.66,CPU s,False,1
+ARM64,tigerstore,1,delete.cpu.all,9.42,CPU s,False,1
+ARM64,tigerstore,1,delete.cpu.cores,0.141723514094876,cores,False,1
+ARM64,tigerstore,1,delete.revision.member1,2759,revisions,False,1
+ARM64,tigerstore,1,delete.revision.member2,2759,revisions,False,1
+ARM64,tigerstore,1,delete.revision.member3,2759,revisions,False,1
+ARM64,tigerstore,1,mixed.pod.ContainersReady.p50,1000,ms,False,1
+ARM64,tigerstore,1,mixed.pod.ContainersReady.p99,1000,ms,False,1
+ARM64,tigerstore,1,mixed.pod.Initialized.p50,0,ms,False,1
+ARM64,tigerstore,1,mixed.pod.Initialized.p99,0,ms,False,1
+ARM64,tigerstore,1,mixed.pod.Ready.p50,1000,ms,False,1
+ARM64,tigerstore,1,mixed.pod.Ready.p99,1000,ms,False,1
+ARM64,tigerstore,1,mixed.pod.PodReadyToStartContainers.p50,0,ms,False,1
+ARM64,tigerstore,1,mixed.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+ARM64,tigerstore,1,mixed.pod.ContainersStarted.p50,1385,ms,False,1
+ARM64,tigerstore,1,mixed.pod.ContainersStarted.p99,1957,ms,False,1
+ARM64,tigerstore,1,mixed.pod.PodScheduled.p50,0,ms,False,1
+ARM64,tigerstore,1,mixed.pod.PodScheduled.p99,0,ms,False,1
+ARM64,tigerstore,1,node.pod.ContainersStarted.p50,4116,ms,False,1
+ARM64,tigerstore,1,node.pod.ContainersStarted.p99,6829,ms,False,1
+ARM64,tigerstore,1,node.pod.PodScheduled.p50,0,ms,False,1
+ARM64,tigerstore,1,node.pod.PodScheduled.p99,1000,ms,False,1
+ARM64,tigerstore,1,node.pod.ContainersReady.p50,4000,ms,False,1
+ARM64,tigerstore,1,node.pod.ContainersReady.p99,6500,ms,False,1
+ARM64,tigerstore,1,node.pod.Initialized.p50,0,ms,False,1
+ARM64,tigerstore,1,node.pod.Initialized.p99,1000,ms,False,1
+ARM64,tigerstore,1,node.pod.Ready.p50,4000,ms,False,1
+ARM64,tigerstore,1,node.pod.Ready.p99,6500,ms,False,1
+ARM64,tigerstore,1,node.pod.PodReadyToStartContainers.p50,2000,ms,False,1
+ARM64,tigerstore,1,node.pod.PodReadyToStartContainers.p99,4500,ms,False,1
+ARM64,tigerstore,1,update.pod.PodScheduled.p50,0,ms,False,1
+ARM64,tigerstore,1,update.pod.PodScheduled.p99,0,ms,False,1
+ARM64,tigerstore,1,update.pod.ContainersReady.p50,1000,ms,False,1
+ARM64,tigerstore,1,update.pod.ContainersReady.p99,2000,ms,False,1
+ARM64,tigerstore,1,update.pod.Initialized.p50,0,ms,False,1
+ARM64,tigerstore,1,update.pod.Initialized.p99,500,ms,False,1
+ARM64,tigerstore,1,update.pod.Ready.p50,1000,ms,False,1
+ARM64,tigerstore,1,update.pod.Ready.p99,2000,ms,False,1
+ARM64,tigerstore,1,update.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+ARM64,tigerstore,1,update.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+ARM64,tigerstore,1,update.pod.ContainersStarted.p50,1542,ms,False,1
+ARM64,tigerstore,1,update.pod.ContainersStarted.p99,2251,ms,False,1
+ARM64,tigerstore,1,events.unique,1094,events,False,1
+ARM64,tigerstore,1,events.observations,2212,watch notifications,False,1
+X64,etcd,1,total.script,299.0847866535187,s,False,1
+X64,etcd,1,total.workload,236.15478982,s,False,1
+X64,etcd,1,errors.observed,36,records,False,1
+X64,etcd,1,total.window,237.3685401195,s,False,1
+X64,etcd,1,total.api.all.p50,4.4219455465864,ms,False,1
+X64,etcd,1,total.api.all.p99,194.36162361623593,ms,False,1
+X64,etcd,1,total.api.verb.DELETE.p50,3.5936188077246016,ms,False,1
+X64,etcd,1,total.api.verb.DELETE.p99,360.34782608695605,ms,False,1
+X64,etcd,1,total.api.verb.GET.p50,3.745412844036698,ms,False,1
+X64,etcd,1,total.api.verb.GET.p99,177.3928571428574,ms,False,1
+X64,etcd,1,total.api.verb.LIST.p50,4.33641975308642,ms,False,1
+X64,etcd,1,total.api.verb.LIST.p99,190.2962962962963,ms,False,1
+X64,etcd,1,total.api.verb.PATCH.p50,3.826197387518142,ms,False,1
+X64,etcd,1,total.api.verb.PATCH.p99,140.44897959183615,ms,False,1
+X64,etcd,1,total.api.verb.POST.p50,4.984567901234567,ms,False,1
+X64,etcd,1,total.api.verb.POST.p99,207.1538461538449,ms,False,1
+X64,etcd,1,total.api.verb.PUT.p50,14.299492385786802,ms,False,1
+X64,etcd,1,total.api.verb.PUT.p99,160.63157894736833,ms,False,1
+X64,etcd,1,total.api.resource..p50,2.80791788856305,ms,False,1
+X64,etcd,1,total.api.resource..p99,129.25000000000043,ms,False,1
+X64,etcd,1,total.api.resource.configmaps.p50,3.074386857936141,ms,False,1
+X64,etcd,1,total.api.resource.configmaps.p99,84.93181818181836,ms,False,1
+X64,etcd,1,total.api.resource.controllerrevisions.p50,4.583333333333333,ms,False,1
+X64,etcd,1,total.api.resource.controllerrevisions.p99,189.00000000000006,ms,False,1
+X64,etcd,1,total.api.resource.cronjobs.p50,3.928571428571429,ms,False,1
+X64,etcd,1,total.api.resource.cronjobs.p99,98.62500000000001,ms,False,1
+X64,etcd,1,total.api.resource.csistoragecapacities.p50,3.235294117647059,ms,False,1
+X64,etcd,1,total.api.resource.csistoragecapacities.p99,189.00000000000006,ms,False,1
+X64,etcd,1,total.api.resource.daemonsets.p50,4.230769230769231,ms,False,1
+X64,etcd,1,total.api.resource.daemonsets.p99,189.00000000000006,ms,False,1
+X64,etcd,1,total.api.resource.deployments.p50,12.756097560975611,ms,False,1
+X64,etcd,1,total.api.resource.deployments.p99,97.61363636363635,ms,False,1
+X64,etcd,1,total.api.resource.endpoints.p50,15.365853658536585,ms,False,1
+X64,etcd,1,total.api.resource.endpoints.p99,170.75000000000006,ms,False,1
+X64,etcd,1,total.api.resource.endpointslices.p50,15.974842767295598,ms,False,1
+X64,etcd,1,total.api.resource.endpointslices.p99,164.0625,ms,False,1
+X64,etcd,1,total.api.resource.events.p50,14.744990892531877,ms,False,1
+X64,etcd,1,total.api.resource.events.p99,347.72727272727275,ms,False,1
+X64,etcd,1,total.api.resource.horizontalpodautoscalers.p50,3.928571428571429,ms,False,1
+X64,etcd,1,total.api.resource.horizontalpodautoscalers.p99,189.00000000000006,ms,False,1
+X64,etcd,1,total.api.resource.ingresses.p50,3.235294117647059,ms,False,1
+X64,etcd,1,total.api.resource.ingresses.p99,96.33333333333336,ms,False,1
+X64,etcd,1,total.api.resource.ipaddresses.p50,4.545454545454546,ms,False,1
+X64,etcd,1,total.api.resource.ipaddresses.p99,93.33333333333337,ms,False,1
+X64,etcd,1,total.api.resource.jobs.p50,3.6666666666666665,ms,False,1
+X64,etcd,1,total.api.resource.jobs.p99,178.00000000000014,ms,False,1
+X64,etcd,1,total.api.resource.leases.p50,3.238007380073801,ms,False,1
+X64,etcd,1,total.api.resource.leases.p99,169.80000000000018,ms,False,1
+X64,etcd,1,total.api.resource.limitranges.p50,4.895833333333334,ms,False,1
+X64,etcd,1,total.api.resource.limitranges.p99,188.25000000000003,ms,False,1
+X64,etcd,1,total.api.resource.namespaces.p50,2.979452054794521,ms,False,1
+X64,etcd,1,total.api.resource.namespaces.p99,24.308823529411757,ms,False,1
+X64,etcd,1,total.api.resource.networkpolicies.p50,4.583333333333333,ms,False,1
+X64,etcd,1,total.api.resource.networkpolicies.p99,178.00000000000014,ms,False,1
+X64,etcd,1,total.api.resource.nodes.p50,2.5,ms,False,1
+X64,etcd,1,total.api.resource.nodes.p99,4.949999999999999,ms,False,1
+X64,etcd,1,total.api.resource.persistentvolumeclaims.p50,3.4375,ms,False,1
+X64,etcd,1,total.api.resource.persistentvolumeclaims.p99,178.00000000000014,ms,False,1
+X64,etcd,1,total.api.resource.podcertificaterequests.p50,3.235294117647059,ms,False,1
+X64,etcd,1,total.api.resource.podcertificaterequests.p99,97.25000000000001,ms,False,1
+X64,etcd,1,total.api.resource.poddisruptionbudgets.p50,3.055555555555556,ms,False,1
+X64,etcd,1,total.api.resource.poddisruptionbudgets.p99,94.50000000000003,ms,False,1
+X64,etcd,1,total.api.resource.pods.p50,14.038642789820925,ms,False,1
+X64,etcd,1,total.api.resource.pods.p99,353.46875000000045,ms,False,1
+X64,etcd,1,total.api.resource.podtemplates.p50,4.583333333333333,ms,False,1
+X64,etcd,1,total.api.resource.podtemplates.p99,98.62500000000001,ms,False,1
+X64,etcd,1,total.api.resource.replicasets.p50,16.575562700964632,ms,False,1
+X64,etcd,1,total.api.resource.replicasets.p99,195.99999999999983,ms,False,1
+X64,etcd,1,total.api.resource.replicationcontrollers.p50,3.928571428571429,ms,False,1
+X64,etcd,1,total.api.resource.replicationcontrollers.p99,98.42857142857144,ms,False,1
+X64,etcd,1,total.api.resource.resourceclaims.p50,59.09090909090909,ms,False,1
+X64,etcd,1,total.api.resource.resourceclaims.p99,189.00000000000006,ms,False,1
+X64,etcd,1,total.api.resource.resourceclaimtemplates.p50,5.0,ms,False,1
+X64,etcd,1,total.api.resource.resourceclaimtemplates.p99,178.00000000000014,ms,False,1
+X64,etcd,1,total.api.resource.resourcequotas.p50,3.6666666666666665,ms,False,1
+X64,etcd,1,total.api.resource.resourcequotas.p99,97.25000000000001,ms,False,1
+X64,etcd,1,total.api.resource.rolebindings.p50,4.230769230769231,ms,False,1
+X64,etcd,1,total.api.resource.rolebindings.p99,97.80000000000003,ms,False,1
+X64,etcd,1,total.api.resource.roles.p50,3.235294117647059,ms,False,1
+X64,etcd,1,total.api.resource.roles.p99,178.00000000000014,ms,False,1
+X64,etcd,1,total.api.resource.secrets.p50,3.469827586206897,ms,False,1
+X64,etcd,1,total.api.resource.secrets.p99,93.89999999999988,ms,False,1
+X64,etcd,1,total.api.resource.serviceaccounts.p50,15.625,ms,False,1
+X64,etcd,1,total.api.resource.serviceaccounts.p99,98.16666666666669,ms,False,1
+X64,etcd,1,total.api.resource.services.p50,4.545454545454545,ms,False,1
+X64,etcd,1,total.api.resource.services.p99,179.99999999999997,ms,False,1
+X64,etcd,1,total.api.resource.statefulsets.p50,4.230769230769231,ms,False,1
+X64,etcd,1,total.api.resource.statefulsets.p99,98.62500000000001,ms,False,1
+X64,etcd,1,total.api.requests,54.46383077341071,requests/s,False,1
+X64,etcd,1,total.api.creates.count,2715.0,requests,False,1
+X64,etcd,1,total.api.creates.rate,11.437910005399914,requests/s,False,1
+X64,etcd,1,total.api.deletes.count,1678.0,requests,False,1
+X64,etcd,1,total.api.deletes.rate,7.0691760549027824,requests/s,False,1
+X64,etcd,1,total.api.updates.count,4763.0,requests,False,1
+X64,etcd,1,total.api.updates.rate,20.06584359326696,requests/s,False,1
+X64,etcd,1,total.api.http403,24.0,responses,False,1
+X64,etcd,1,total.api.http404,114.0,responses,False,1
+X64,etcd,1,total.api.http409,88.0,responses,False,1
+X64,etcd,1,total.api.http500,0.0,responses,False,1
+X64,etcd,1,total.storage.etcd_request_duration_seconds,77.60927370883138,RPC/s,False,1
+X64,etcd,1,total.cpu.member1,20.31,CPU s,False,1
+X64,etcd,1,total.cpu.member2,17.17,CPU s,False,1
+X64,etcd,1,total.cpu.member3,15.93,CPU s,False,1
+X64,etcd,1,total.cpu.all,53.41,CPU s,False,1
+X64,etcd,1,total.cpu.cores,0.22494246215484381,cores,False,1
+X64,etcd,1,total.revision.member1,11758,revisions,False,1
+X64,etcd,1,total.revision.member2,11758,revisions,False,1
+X64,etcd,1,total.revision.member3,11758,revisions,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_mvcc_delete_total,11.434717649077598,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_mvcc_put_total,38.09045540267322,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_mvcc_range_total,67.87547316115453,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,24341.4561934817,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,33094.28400967763,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_server_proposals_applied_total,50.47280158620476,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.etcd_server_proposals_committed_total,50.47280158620476,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-1.grpc_server_handled_total,26.40724849344992,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_mvcc_delete_total,11.435248456510735,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_mvcc_put_total,38.092223587728576,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_mvcc_range_total,87.30801666851234,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,24048.319080286306,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,115623.47347117808,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_server_proposals_applied_total,50.47514456825954,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.etcd_server_proposals_committed_total,50.47514456825954,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-2.grpc_server_handled_total,26.437957481222053,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_mvcc_delete_total,11.435239447730835,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_mvcc_put_total,38.09219357837115,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_mvcc_range_total,62.664269798651695,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,24070.201882574005,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,30770.83943523677,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_server_proposals_applied_total,50.475104803538244,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.etcd_server_proposals_committed_total,50.475104803538244,counter increments/s,False,1
+X64,etcd,1,total.server.external-etcd-3.grpc_server_handled_total,26.395817907524545,counter increments/s,False,1
+X64,etcd,1,mixed.duration,44.26144937800001,s,False,1
+X64,etcd,1,mixed.exit,0,exit code,False,1
+X64,etcd,1,mixed.window,45.0226746865,s,False,1
+X64,etcd,1,mixed.api.all.p50,3.6758844045839565,ms,False,1
+X64,etcd,1,mixed.api.all.p99,72.90277777777749,ms,False,1
+X64,etcd,1,mixed.api.verb.DELETE.p50,4.13265306122449,ms,False,1
+X64,etcd,1,mixed.api.verb.DELETE.p99,437.99999999999955,ms,False,1
+X64,etcd,1,mixed.api.verb.GET.p50,3.0420353982300883,ms,False,1
+X64,etcd,1,mixed.api.verb.GET.p99,24.680851063829788,ms,False,1
+X64,etcd,1,mixed.api.verb.LIST.p50,3.5542168674698793,ms,False,1
+X64,etcd,1,mixed.api.verb.LIST.p99,140.9999999999997,ms,False,1
+X64,etcd,1,mixed.api.verb.PATCH.p50,12.777777777777777,ms,False,1
+X64,etcd,1,mixed.api.verb.PATCH.p99,69.24999999999991,ms,False,1
+X64,etcd,1,mixed.api.verb.POST.p50,3.4256265157639447,ms,False,1
+X64,etcd,1,mixed.api.verb.POST.p99,47.2007042253521,ms,False,1
+X64,etcd,1,mixed.api.verb.PUT.p50,8.618090452261306,ms,False,1
+X64,etcd,1,mixed.api.verb.PUT.p99,79.71428571428548,ms,False,1
+X64,etcd,1,mixed.api.resource..p50,2.673611111111111,ms,False,1
+X64,etcd,1,mixed.api.resource..p99,30.7500000000001,ms,False,1
+X64,etcd,1,mixed.api.resource.configmaps.p50,3.0711519845111326,ms,False,1
+X64,etcd,1,mixed.api.resource.configmaps.p99,47.94298245614033,ms,False,1
+X64,etcd,1,mixed.api.resource.controllerrevisions.p50,5.0,ms,False,1
+X64,etcd,1,mixed.api.resource.controllerrevisions.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.cronjobs.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.cronjobs.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.csistoragecapacities.p50,5.0,ms,False,1
+X64,etcd,1,mixed.api.resource.csistoragecapacities.p99,196.0,ms,False,1
+X64,etcd,1,mixed.api.resource.daemonsets.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.daemonsets.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.deployments.p50,6.190476190476191,ms,False,1
+X64,etcd,1,mixed.api.resource.deployments.p99,99.49999999999997,ms,False,1
+X64,etcd,1,mixed.api.resource.endpoints.p50,9.027777777777777,ms,False,1
+X64,etcd,1,mixed.api.resource.endpoints.p99,92.24999999999994,ms,False,1
+X64,etcd,1,mixed.api.resource.endpointslices.p50,9.729729729729732,ms,False,1
+X64,etcd,1,mixed.api.resource.endpointslices.p99,77.5000000000001,ms,False,1
+X64,etcd,1,mixed.api.resource.events.p50,5.3125,ms,False,1
+X64,etcd,1,mixed.api.resource.events.p99,96.50000000000036,ms,False,1
+X64,etcd,1,mixed.api.resource.horizontalpodautoscalers.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.horizontalpodautoscalers.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.ingresses.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.ingresses.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.ipaddresses.p50,2.727272727272727,ms,False,1
+X64,etcd,1,mixed.api.resource.ipaddresses.p99,22.59999999999998,ms,False,1
+X64,etcd,1,mixed.api.resource.jobs.p50,5.0,ms,False,1
+X64,etcd,1,mixed.api.resource.jobs.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.leases.p50,2.741935483870968,ms,False,1
+X64,etcd,1,mixed.api.resource.leases.p99,82.99999999999983,ms,False,1
+X64,etcd,1,mixed.api.resource.limitranges.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.limitranges.p99,4.949999999999999,ms,False,1
+X64,etcd,1,mixed.api.resource.namespaces.p50,2.9901960784313726,ms,False,1
+X64,etcd,1,mixed.api.resource.namespaces.p99,24.427586206896546,ms,False,1
+X64,etcd,1,mixed.api.resource.networkpolicies.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.networkpolicies.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.nodes.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.nodes.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.persistentvolumeclaims.p50,5.0,ms,False,1
+X64,etcd,1,mixed.api.resource.persistentvolumeclaims.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.podcertificaterequests.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.podcertificaterequests.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.poddisruptionbudgets.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.poddisruptionbudgets.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.pods.p50,9.202127659574469,ms,False,1
+X64,etcd,1,mixed.api.resource.pods.p99,75.83333333333353,ms,False,1
+X64,etcd,1,mixed.api.resource.podtemplates.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.podtemplates.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.replicasets.p50,13.13953488372093,ms,False,1
+X64,etcd,1,mixed.api.resource.replicasets.p99,92.12499999999997,ms,False,1
+X64,etcd,1,mixed.api.resource.replicationcontrollers.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.replicationcontrollers.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.resourceclaims.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.resourceclaims.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.resourceclaimtemplates.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.resourceclaimtemplates.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.resourcequotas.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.resourcequotas.p99,24.2,ms,False,1
+X64,etcd,1,mixed.api.resource.rolebindings.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.rolebindings.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.resource.roles.p50,2.5,ms,False,1
+X64,etcd,1,mixed.api.resource.roles.p99,4.95,ms,False,1
+X64,etcd,1,mixed.api.resource.secrets.p50,2.651515151515152,ms,False,1
+X64,etcd,1,mixed.api.resource.secrets.p99,21.49999999999999,ms,False,1
+X64,etcd,1,mixed.api.resource.serviceaccounts.p50,15.0,ms,False,1
+X64,etcd,1,mixed.api.resource.serviceaccounts.p99,96.49999999999999,ms,False,1
+X64,etcd,1,mixed.api.resource.services.p50,15.0,ms,False,1
+X64,etcd,1,mixed.api.resource.services.p99,93.75,ms,False,1
+X64,etcd,1,mixed.api.resource.statefulsets.p50,3.3333333333333335,ms,False,1
+X64,etcd,1,mixed.api.resource.statefulsets.p99,98.0,ms,False,1
+X64,etcd,1,mixed.api.requests,65.54475096267113,requests/s,False,1
+X64,etcd,1,mixed.api.creates.count,1640.0,requests,False,1
+X64,etcd,1,mixed.api.creates.rate,36.42608999619812,requests/s,False,1
+X64,etcd,1,mixed.api.deletes.count,77.0,requests,False,1
+X64,etcd,1,mixed.api.deletes.rate,1.710249347382473,requests/s,False,1
+X64,etcd,1,mixed.api.updates.count,260.0,requests,False,1
+X64,etcd,1,mixed.api.updates.rate,5.7748679262265314,requests/s,False,1
+X64,etcd,1,mixed.api.http403,15.0,responses,False,1
+X64,etcd,1,mixed.api.http404,9.0,responses,False,1
+X64,etcd,1,mixed.api.http409,20.0,responses,False,1
+X64,etcd,1,mixed.api.http500,0.0,responses,False,1
+X64,etcd,1,mixed.storage.etcd_request_duration_seconds,80.67046272328756,RPC/s,False,1
+X64,etcd,1,mixed.cpu.member1,4.05,CPU s,False,1
+X64,etcd,1,mixed.cpu.member2,3.46,CPU s,False,1
+X64,etcd,1,mixed.cpu.member3,3.2,CPU s,False,1
+X64,etcd,1,mixed.cpu.all,10.71,CPU s,False,1
+X64,etcd,1,mixed.cpu.cores,0.23761681084842412,cores,False,1
+X64,etcd,1,mixed.revision.member1,2508,revisions,False,1
+X64,etcd,1,mixed.revision.member2,2508,revisions,False,1
+X64,etcd,1,mixed.revision.member3,2508,revisions,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_delete_total,7.275685919920587,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_put_total,48.35669300435024,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_mvcc_range_total,69.98411304069955,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,25415.10219871528,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,26892.31044212111,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_server_proposals_applied_total,56.2312920945082,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.etcd_server_proposals_committed_total,56.2312920945082,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-1.grpc_server_handled_total,27.350368107506352,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_delete_total,7.276417600038064,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_put_total,48.36155600025299,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_mvcc_range_total,77.71125260040652,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,24767.727563729564,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,95000.86381769697,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_server_proposals_applied_total,56.23694700029419,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.etcd_server_proposals_committed_total,56.23694700029419,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-2.grpc_server_handled_total,27.308750200142857,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_delete_total,7.27716744063644,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_put_total,48.36653969691292,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_mvcc_range_total,65.91605020161849,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,24893.303963098802,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,19743.132758335458,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_server_proposals_applied_total,56.2427422622359,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.etcd_server_proposals_committed_total,56.2427422622359,counter increments/s,False,1
+X64,etcd,1,mixed.server.external-etcd-3.grpc_server_handled_total,27.46686979118266,counter increments/s,False,1
+X64,etcd,1,node.duration,25.240355507999993,s,False,1
+X64,etcd,1,node.exit,0,exit code,False,1
+X64,etcd,1,node.window,26.058430787,s,False,1
+X64,etcd,1,node.api.all.p50,20.894736842105264,ms,False,1
+X64,etcd,1,node.api.all.p99,378.69565217391266,ms,False,1
+X64,etcd,1,node.api.verb.DELETE.p50,18.333333333333332,ms,False,1
+X64,etcd,1,node.api.verb.DELETE.p99,184.0,ms,False,1
+X64,etcd,1,node.api.verb.GET.p50,13.354430379746836,ms,False,1
+X64,etcd,1,node.api.verb.GET.p99,363.4285714285706,ms,False,1
+X64,etcd,1,node.api.verb.LIST.p50,17.0,ms,False,1
+X64,etcd,1,node.api.verb.LIST.p99,551.9999999999995,ms,False,1
+X64,etcd,1,node.api.verb.PATCH.p50,24.271523178807946,ms,False,1
+X64,etcd,1,node.api.verb.PATCH.p99,362.83333333333303,ms,False,1
+X64,etcd,1,node.api.verb.POST.p50,24.511111111111113,ms,False,1
+X64,etcd,1,node.api.verb.POST.p99,386.41666666666674,ms,False,1
+X64,etcd,1,node.api.verb.PUT.p50,16.428571428571427,ms,False,1
+X64,etcd,1,node.api.verb.PUT.p99,364.0000000000001,ms,False,1
+X64,etcd,1,node.api.resource..p50,4.0740740740740735,ms,False,1
+X64,etcd,1,node.api.resource..p99,312.0000000000005,ms,False,1
+X64,etcd,1,node.api.resource.configmaps.p50,15.0,ms,False,1
+X64,etcd,1,node.api.resource.configmaps.p99,24.800000000000004,ms,False,1
+X64,etcd,1,node.api.resource.endpoints.p50,3.75,ms,False,1
+X64,etcd,1,node.api.resource.endpoints.p99,49.24999999999999,ms,False,1
+X64,etcd,1,node.api.resource.endpointslices.p50,2.5,ms,False,1
+X64,etcd,1,node.api.resource.endpointslices.p99,4.949999999999999,ms,False,1
+X64,etcd,1,node.api.resource.events.p50,22.044025157232703,ms,False,1
+X64,etcd,1,node.api.resource.events.p99,364.3749999999997,ms,False,1
+X64,etcd,1,node.api.resource.leases.p50,16.428571428571427,ms,False,1
+X64,etcd,1,node.api.resource.leases.p99,364.0000000000001,ms,False,1
+X64,etcd,1,node.api.resource.limitranges.p50,15.0,ms,False,1
+X64,etcd,1,node.api.resource.limitranges.p99,24.800000000000004,ms,False,1
+X64,etcd,1,node.api.resource.namespaces.p50,2.5,ms,False,1
+X64,etcd,1,node.api.resource.namespaces.p99,4.95,ms,False,1
+X64,etcd,1,node.api.resource.nodes.p50,2.5,ms,False,1
+X64,etcd,1,node.api.resource.nodes.p99,4.95,ms,False,1
+X64,etcd,1,node.api.resource.pods.p50,21.373056994818654,ms,False,1
+X64,etcd,1,node.api.resource.pods.p99,391.55555555555566,ms,False,1
+X64,etcd,1,node.api.resource.serviceaccounts.p50,15.0,ms,False,1
+X64,etcd,1,node.api.resource.serviceaccounts.p99,24.800000000000004,ms,False,1
+X64,etcd,1,node.api.requests,53.341661720223065,requests/s,False,1
+X64,etcd,1,node.api.creates.count,483.0,requests,False,1
+X64,etcd,1,node.api.creates.rate,18.535268065372474,requests/s,False,1
+X64,etcd,1,node.api.deletes.count,16.0,requests,False,1
+X64,etcd,1,node.api.deletes.rate,0.6140047392255892,requests/s,False,1
+X64,etcd,1,node.api.updates.count,52.0,requests,False,1
+X64,etcd,1,node.api.updates.rate,1.995515402483165,requests/s,False,1
+X64,etcd,1,node.api.http403,0.0,responses,False,1
+X64,etcd,1,node.api.http404,21.0,responses,False,1
+X64,etcd,1,node.api.http409,3.0,responses,False,1
+X64,etcd,1,node.api.http500,0.0,responses,False,1
+X64,etcd,1,node.storage.etcd_request_duration_seconds,54.37779471766625,RPC/s,False,1
+X64,etcd,1,node.cpu.member1,1.68,CPU s,False,1
+X64,etcd,1,node.cpu.member2,1.38,CPU s,False,1
+X64,etcd,1,node.cpu.member3,1.31,CPU s,False,1
+X64,etcd,1,node.cpu.all,4.37,CPU s,False,1
+X64,etcd,1,node.cpu.cores,0.16737934469955534,cores,False,1
+X64,etcd,1,node.revision.member1,938,revisions,False,1
+X64,etcd,1,node.revision.member2,938,revisions,False,1
+X64,etcd,1,node.revision.member3,938,revisions,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_mvcc_delete_total,0.6130492353170298,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_mvcc_put_total,35.32696218514384,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_mvcc_range_total,43.94796705678957,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,26662.967235871503,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,42011.19126011425,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_server_proposals_applied_total,36.43811392415596,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.etcd_server_proposals_committed_total,36.43811392415596,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-1.grpc_server_handled_total,18.62137052275478,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_mvcc_delete_total,0.613051904703696,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_mvcc_put_total,35.32711600855048,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_mvcc_range_total,58.50814115515899,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,26969.302760236907,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,133365.3803994204,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_server_proposals_applied_total,36.438272585825935,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.etcd_server_proposals_committed_total,36.438272585825935,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-2.grpc_server_handled_total,18.698083093462728,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_mvcc_delete_total,0.6130345251918995,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_mvcc_put_total,35.3261145141832,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_mvcc_range_total,42.49095552736353,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,25891.704744768995,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,26701.29346460055,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_server_proposals_applied_total,36.43723959109352,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.etcd_server_proposals_committed_total,36.43723959109352,counter increments/s,False,1
+X64,etcd,1,node.server.external-etcd-3.grpc_server_handled_total,18.429350413581478,counter increments/s,False,1
+X64,etcd,1,update.duration,86.75694799899998,s,False,1
+X64,etcd,1,update.exit,0,exit code,False,1
+X64,etcd,1,update.window,87.6144864705,s,False,1
+X64,etcd,1,update.api.all.p50,4.405076291079812,ms,False,1
+X64,etcd,1,update.api.all.p99,99.53409090909088,ms,False,1
+X64,etcd,1,update.api.verb.DELETE.p50,40.0,ms,False,1
+X64,etcd,1,update.api.verb.DELETE.p99,271.9999999999999,ms,False,1
+X64,etcd,1,update.api.verb.GET.p50,3.3146964856230032,ms,False,1
+X64,etcd,1,update.api.verb.GET.p99,65.41666666666686,ms,False,1
+X64,etcd,1,update.api.verb.LIST.p50,8.529411764705882,ms,False,1
+X64,etcd,1,update.api.verb.LIST.p99,303.9999999999992,ms,False,1
+X64,etcd,1,update.api.verb.PATCH.p50,3.4706316956039895,ms,False,1
+X64,etcd,1,update.api.verb.PATCH.p99,87.15476190476195,ms,False,1
+X64,etcd,1,update.api.verb.POST.p50,13.082191780821917,ms,False,1
+X64,etcd,1,update.api.verb.POST.p99,157.20000000000027,ms,False,1
+X64,etcd,1,update.api.verb.PUT.p50,16.181556195965417,ms,False,1
+X64,etcd,1,update.api.verb.PUT.p99,135.7647058823525,ms,False,1
+X64,etcd,1,update.api.resource..p50,2.73109243697479,ms,False,1
+X64,etcd,1,update.api.resource..p99,67.49999999999973,ms,False,1
+X64,etcd,1,update.api.resource.configmaps.p50,3.202858361774744,ms,False,1
+X64,etcd,1,update.api.resource.configmaps.p99,90.11184210526304,ms,False,1
+X64,etcd,1,update.api.resource.deployments.p50,15.261437908496731,ms,False,1
+X64,etcd,1,update.api.resource.deployments.p99,97.42307692307686,ms,False,1
+X64,etcd,1,update.api.resource.endpoints.p50,16.953125,ms,False,1
+X64,etcd,1,update.api.resource.endpoints.p99,159.80000000000018,ms,False,1
+X64,etcd,1,update.api.resource.endpointslices.p50,17.596685082872927,ms,False,1
+X64,etcd,1,update.api.resource.endpointslices.p99,142.00000000000045,ms,False,1
+X64,etcd,1,update.api.resource.events.p50,12.350427350427351,ms,False,1
+X64,etcd,1,update.api.resource.events.p99,133.19999999999936,ms,False,1
+X64,etcd,1,update.api.resource.leases.p50,3.1842105263157894,ms,False,1
+X64,etcd,1,update.api.resource.leases.p99,44.7499999999998,ms,False,1
+X64,etcd,1,update.api.resource.limitranges.p50,18.333333333333332,ms,False,1
+X64,etcd,1,update.api.resource.limitranges.p99,194.66666666666666,ms,False,1
+X64,etcd,1,update.api.resource.nodes.p50,2.5,ms,False,1
+X64,etcd,1,update.api.resource.nodes.p99,4.95,ms,False,1
+X64,etcd,1,update.api.resource.pods.p50,6.86936936936937,ms,False,1
+X64,etcd,1,update.api.resource.pods.p99,134.92857142857133,ms,False,1
+X64,etcd,1,update.api.resource.replicasets.p50,18.06772908366534,ms,False,1
+X64,etcd,1,update.api.resource.replicasets.p99,149.333333333333,ms,False,1
+X64,etcd,1,update.api.resource.secrets.p50,3.2327586206896552,ms,False,1
+X64,etcd,1,update.api.resource.secrets.p99,24.117647058823533,ms,False,1
+X64,etcd,1,update.api.resource.services.p50,2.8260869565217392,ms,False,1
+X64,etcd,1,update.api.resource.services.p99,23.26666666666666,ms,False,1
+X64,etcd,1,update.api.requests,68.53889398783268,requests/s,False,1
+X64,etcd,1,update.api.creates.count,480.0,requests,False,1
+X64,etcd,1,update.api.creates.rate,5.478546063973304,requests/s,False,1
+X64,etcd,1,update.api.deletes.count,64.0,requests,False,1
+X64,etcd,1,update.api.deletes.rate,0.7304728085297738,requests/s,False,1
+X64,etcd,1,update.api.updates.count,4194.0,requests,False,1
+X64,etcd,1,update.api.updates.rate,47.86879623396674,requests/s,False,1
+X64,etcd,1,update.api.http403,0.0,responses,False,1
+X64,etcd,1,update.api.http404,28.0,responses,False,1
+X64,etcd,1,update.api.http409,56.0,responses,False,1
+X64,etcd,1,update.api.http500,0.0,responses,False,1
+X64,etcd,1,update.storage.etcd_request_duration_seconds,70.47921238548989,RPC/s,False,1
+X64,etcd,1,update.cpu.member1,7.93,CPU s,False,1
+X64,etcd,1,update.cpu.member2,6.94,CPU s,False,1
+X64,etcd,1,update.cpu.member3,6.29,CPU s,False,1
+X64,etcd,1,update.cpu.all,21.16,CPU s,False,1
+X64,etcd,1,update.cpu.cores,0.2415940142581084,cores,False,1
+X64,etcd,1,update.revision.member1,5488,revisions,False,1
+X64,etcd,1,update.revision.member2,5488,revisions,False,1
+X64,etcd,1,update.revision.member3,5488,revisions,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_mvcc_delete_total,0.7306728277714346,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_mvcc_put_total,61.92452215362908,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_mvcc_range_total,70.87526429382915,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,38115.8220630073,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,27315.198991096895,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_server_proposals_applied_total,63.47720191264338,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.etcd_server_proposals_committed_total,63.47720191264338,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-1.grpc_server_handled_total,24.089369790589483,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_mvcc_delete_total,0.7304394282568529,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_mvcc_put_total,61.9161546608348,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_mvcc_range_total,113.58333109394063,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,38138.1827790216,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,174013.82902328132,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_server_proposals_applied_total,63.46833844588061,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.etcd_server_proposals_committed_total,63.46833844588061,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-2.grpc_server_handled_total,23.990369971811013,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_mvcc_delete_total,0.7303432035276366,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_mvcc_put_total,61.90799811152232,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_mvcc_range_total,71.08293460583826,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,38365.92129159904,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,44042.21713909117,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_server_proposals_applied_total,63.45997741901855,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.etcd_server_proposals_committed_total,63.45997741901855,counter increments/s,False,1
+X64,etcd,1,update.server.external-etcd-3.grpc_server_handled_total,24.01003281597105,counter increments/s,False,1
+X64,etcd,1,delete.duration,67.83596812899998,s,False,1
+X64,etcd,1,delete.exit,0,exit code,False,1
+X64,etcd,1,delete.window,68.7573767285,s,False,1
+X64,etcd,1,delete.api.all.p50,3.9502849905003163,ms,False,1
+X64,etcd,1,delete.api.all.p99,318.40909090909173,ms,False,1
+X64,etcd,1,delete.api.verb.DELETE.p50,3.434455270150576,ms,False,1
+X64,etcd,1,delete.api.verb.DELETE.p99,359.4761904761905,ms,False,1
+X64,etcd,1,delete.api.verb.GET.p50,3.472222222222222,ms,False,1
+X64,etcd,1,delete.api.verb.GET.p99,175.00000000000003,ms,False,1
+X64,etcd,1,delete.api.verb.LIST.p50,4.715568862275449,ms,False,1
+X64,etcd,1,delete.api.verb.LIST.p99,184.25000000000014,ms,False,1
+X64,etcd,1,delete.api.verb.PATCH.p50,15.0,ms,False,1
+X64,etcd,1,delete.api.verb.PATCH.p99,187.99999999999991,ms,False,1
+X64,etcd,1,delete.api.verb.POST.p50,21.379310344827587,ms,False,1
+X64,etcd,1,delete.api.verb.POST.p99,195.79999999999987,ms,False,1
+X64,etcd,1,delete.api.verb.PUT.p50,13.026315789473685,ms,False,1
+X64,etcd,1,delete.api.verb.PUT.p99,189.94117647058837,ms,False,1
+X64,etcd,1,delete.api.resource..p50,2.704545454545454,ms,False,1
+X64,etcd,1,delete.api.resource..p99,140.5000000000001,ms,False,1
+X64,etcd,1,delete.api.resource.configmaps.p50,2.7425373134328357,ms,False,1
+X64,etcd,1,delete.api.resource.configmaps.p99,85.7068965517242,ms,False,1
+X64,etcd,1,delete.api.resource.controllerrevisions.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.controllerrevisions.p99,191.00000000000003,ms,False,1
+X64,etcd,1,delete.api.resource.cronjobs.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.cronjobs.p99,98.875,ms,False,1
+X64,etcd,1,delete.api.resource.csistoragecapacities.p50,3.0,ms,False,1
+X64,etcd,1,delete.api.resource.csistoragecapacities.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.daemonsets.p50,5.0,ms,False,1
+X64,etcd,1,delete.api.resource.daemonsets.p99,191.00000000000003,ms,False,1
+X64,etcd,1,delete.api.resource.deployments.p50,9.000000000000002,ms,False,1
+X64,etcd,1,delete.api.resource.deployments.p99,97.66666666666667,ms,False,1
+X64,etcd,1,delete.api.resource.endpoints.p50,21.086956521739133,ms,False,1
+X64,etcd,1,delete.api.resource.endpoints.p99,197.33333333333343,ms,False,1
+X64,etcd,1,delete.api.resource.endpointslices.p50,19.126984126984127,ms,False,1
+X64,etcd,1,delete.api.resource.endpointslices.p99,186.63636363636365,ms,False,1
+X64,etcd,1,delete.api.resource.events.p50,19.91525423728814,ms,False,1
+X64,etcd,1,delete.api.resource.events.p99,576.0000000000005,ms,False,1
+X64,etcd,1,delete.api.resource.horizontalpodautoscalers.p50,4.09090909090909,ms,False,1
+X64,etcd,1,delete.api.resource.horizontalpodautoscalers.p99,191.00000000000003,ms,False,1
+X64,etcd,1,delete.api.resource.ingresses.p50,3.4615384615384612,ms,False,1
+X64,etcd,1,delete.api.resource.ingresses.p99,97.0,ms,False,1
+X64,etcd,1,delete.api.resource.ipaddresses.p50,21.0,ms,False,1
+X64,etcd,1,delete.api.resource.ipaddresses.p99,97.33333333333333,ms,False,1
+X64,etcd,1,delete.api.resource.jobs.p50,3.4615384615384612,ms,False,1
+X64,etcd,1,delete.api.resource.jobs.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.leases.p50,3.037634408602151,ms,False,1
+X64,etcd,1,delete.api.resource.leases.p99,143.50000000000023,ms,False,1
+X64,etcd,1,delete.api.resource.limitranges.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.limitranges.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.namespaces.p50,2.9901960784313726,ms,False,1
+X64,etcd,1,delete.api.resource.namespaces.p99,23.78,ms,False,1
+X64,etcd,1,delete.api.resource.networkpolicies.p50,5.0,ms,False,1
+X64,etcd,1,delete.api.resource.networkpolicies.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.nodes.p50,2.5,ms,False,1
+X64,etcd,1,delete.api.resource.nodes.p99,4.95,ms,False,1
+X64,etcd,1,delete.api.resource.persistentvolumeclaims.p50,3.2142857142857144,ms,False,1
+X64,etcd,1,delete.api.resource.persistentvolumeclaims.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.podcertificaterequests.p50,3.4615384615384612,ms,False,1
+X64,etcd,1,delete.api.resource.podcertificaterequests.p99,97.75,ms,False,1
+X64,etcd,1,delete.api.resource.poddisruptionbudgets.p50,3.2142857142857144,ms,False,1
+X64,etcd,1,delete.api.resource.poddisruptionbudgets.p99,95.50000000000001,ms,False,1
+X64,etcd,1,delete.api.resource.pods.p50,71.42857142857143,ms,False,1
+X64,etcd,1,delete.api.resource.pods.p99,399.5294117647058,ms,False,1
+X64,etcd,1,delete.api.resource.podtemplates.p50,37.50000000000001,ms,False,1
+X64,etcd,1,delete.api.resource.podtemplates.p99,98.875,ms,False,1
+X64,etcd,1,delete.api.resource.replicasets.p50,7.352941176470588,ms,False,1
+X64,etcd,1,delete.api.resource.replicasets.p99,375.0,ms,False,1
+X64,etcd,1,delete.api.resource.replicationcontrollers.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.replicationcontrollers.p99,98.71428571428572,ms,False,1
+X64,etcd,1,delete.api.resource.resourceclaims.p50,65.0,ms,False,1
+X64,etcd,1,delete.api.resource.resourceclaims.p99,191.00000000000003,ms,False,1
+X64,etcd,1,delete.api.resource.resourceclaimtemplates.p50,15.0,ms,False,1
+X64,etcd,1,delete.api.resource.resourceclaimtemplates.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.resourcequotas.p50,3.75,ms,False,1
+X64,etcd,1,delete.api.resource.resourcequotas.p99,97.75,ms,False,1
+X64,etcd,1,delete.api.resource.rolebindings.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.rolebindings.p99,97.75,ms,False,1
+X64,etcd,1,delete.api.resource.roles.p50,3.4615384615384612,ms,False,1
+X64,etcd,1,delete.api.resource.roles.p99,182.00000000000006,ms,False,1
+X64,etcd,1,delete.api.resource.secrets.p50,9.000000000000002,ms,False,1
+X64,etcd,1,delete.api.resource.secrets.p99,156.00000000000026,ms,False,1
+X64,etcd,1,delete.api.resource.serviceaccounts.p50,17.0,ms,False,1
+X64,etcd,1,delete.api.resource.serviceaccounts.p99,98.71428571428572,ms,False,1
+X64,etcd,1,delete.api.resource.services.p50,25.0,ms,False,1
+X64,etcd,1,delete.api.resource.services.p99,194.0,ms,False,1
+X64,etcd,1,delete.api.resource.statefulsets.p50,4.5,ms,False,1
+X64,etcd,1,delete.api.resource.statefulsets.p99,98.71428571428572,ms,False,1
+X64,etcd,1,delete.api.requests,36.287015571462604,requests/s,False,1
+X64,etcd,1,delete.api.creates.count,112.0,requests,False,1
+X64,etcd,1,delete.api.creates.rate,1.6289161298612471,requests/s,False,1
+X64,etcd,1,delete.api.deletes.count,1521.0,requests,False,1
+X64,etcd,1,delete.api.deletes.rate,22.121262799276398,requests/s,False,1
+X64,etcd,1,delete.api.updates.count,244.0,requests,False,1
+X64,etcd,1,delete.api.updates.rate,3.5487101400548595,requests/s,False,1
+X64,etcd,1,delete.api.http403,9.0,responses,False,1
+X64,etcd,1,delete.api.http404,56.0,responses,False,1
+X64,etcd,1,delete.api.http409,9.0,responses,False,1
+X64,etcd,1,delete.api.http500,0.0,responses,False,1
+X64,etcd,1,delete.storage.etcd_request_duration_seconds,103.50889371627228,RPC/s,False,1
+X64,etcd,1,delete.cpu.member1,6.34,CPU s,False,1
+X64,etcd,1,delete.cpu.member2,5.1,CPU s,False,1
+X64,etcd,1,delete.cpu.member3,4.85,CPU s,False,1
+X64,etcd,1,delete.cpu.all,16.29,CPU s,False,1
+X64,etcd,1,delete.cpu.cores,0.23708839596757492,cores,False,1
+X64,etcd,1,delete.revision.member1,2807,revisions,False,1
+X64,etcd,1,delete.revision.member2,2807,revisions,False,1
+X64,etcd,1,delete.revision.member3,2807,revisions,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_delete_total,33.57771069035518,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_put_total,7.2773538557336765,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_mvcc_range_total,80.83684662948967,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_network_client_grpc_received_bytes_total,8649.862792925047,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_network_client_grpc_sent_bytes_total,45662.04786195518,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_server_proposals_applied_total,42.47063710206174,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.etcd_server_proposals_committed_total,42.47063710206174,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-1.grpc_server_handled_total,35.03318146150192,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_delete_total,33.57738768640772,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_put_total,7.277283850543502,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_mvcc_range_total,82.8882630576905,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_network_client_grpc_received_bytes_total,7929.474029229211,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_network_client_grpc_sent_bytes_total,64609.70544633256,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_server_proposals_applied_total,42.47022855177188,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.etcd_server_proposals_committed_total,42.47022855177188,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-2.grpc_server_handled_total,35.076508159619685,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_delete_total,33.57995319717082,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_put_total,7.277839878017083,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_mvcc_range_total,65.80622817703046,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_network_client_grpc_received_bytes_total,8013.600378325098,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_network_client_grpc_sent_bytes_total,26016.501770980834,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_server_proposals_applied_total,42.4734735281077,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.etcd_server_proposals_committed_total,42.4734735281077,counter increments/s,False,1
+X64,etcd,1,delete.server.external-etcd-3.grpc_server_handled_total,34.962742773994066,counter increments/s,False,1
+X64,etcd,1,mixed.pod.Ready.p50,2000,ms,False,1
+X64,etcd,1,mixed.pod.Ready.p99,2000,ms,False,1
+X64,etcd,1,mixed.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+X64,etcd,1,mixed.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+X64,etcd,1,mixed.pod.ContainersStarted.p50,2084,ms,False,1
+X64,etcd,1,mixed.pod.ContainersStarted.p99,2531,ms,False,1
+X64,etcd,1,mixed.pod.PodScheduled.p50,0,ms,False,1
+X64,etcd,1,mixed.pod.PodScheduled.p99,500,ms,False,1
+X64,etcd,1,mixed.pod.ContainersReady.p50,2000,ms,False,1
+X64,etcd,1,mixed.pod.ContainersReady.p99,2000,ms,False,1
+X64,etcd,1,mixed.pod.Initialized.p50,0,ms,False,1
+X64,etcd,1,mixed.pod.Initialized.p99,500,ms,False,1
+X64,etcd,1,node.pod.PodReadyToStartContainers.p50,6000,ms,False,1
+X64,etcd,1,node.pod.PodReadyToStartContainers.p99,9500,ms,False,1
+X64,etcd,1,node.pod.ContainersStarted.p50,9514,ms,False,1
+X64,etcd,1,node.pod.ContainersStarted.p99,11942,ms,False,1
+X64,etcd,1,node.pod.PodScheduled.p50,0,ms,False,1
+X64,etcd,1,node.pod.PodScheduled.p99,1000,ms,False,1
+X64,etcd,1,node.pod.ContainersReady.p50,9000,ms,False,1
+X64,etcd,1,node.pod.ContainersReady.p99,11500,ms,False,1
+X64,etcd,1,node.pod.Initialized.p50,0,ms,False,1
+X64,etcd,1,node.pod.Initialized.p99,1000,ms,False,1
+X64,etcd,1,node.pod.Ready.p50,9000,ms,False,1
+X64,etcd,1,node.pod.Ready.p99,11500,ms,False,1
+X64,etcd,1,update.pod.Initialized.p50,0,ms,False,1
+X64,etcd,1,update.pod.Initialized.p99,1000,ms,False,1
+X64,etcd,1,update.pod.Ready.p50,2000,ms,False,1
+X64,etcd,1,update.pod.Ready.p99,3000,ms,False,1
+X64,etcd,1,update.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+X64,etcd,1,update.pod.PodReadyToStartContainers.p99,2000,ms,False,1
+X64,etcd,1,update.pod.ContainersStarted.p50,2632,ms,False,1
+X64,etcd,1,update.pod.ContainersStarted.p99,3310,ms,False,1
+X64,etcd,1,update.pod.PodScheduled.p50,0,ms,False,1
+X64,etcd,1,update.pod.PodScheduled.p99,1000,ms,False,1
+X64,etcd,1,update.pod.ContainersReady.p50,2000,ms,False,1
+X64,etcd,1,update.pod.ContainersReady.p99,3000,ms,False,1
+X64,etcd,1,events.unique,1094,events,False,1
+X64,etcd,1,events.observations,2212,watch notifications,False,1
+X64,tigerstore,1,total.script,307.44953060150146,s,False,1
+X64,tigerstore,1,total.workload,226.01208565400003,s,False,1
+X64,tigerstore,1,errors.observed,32,records,False,1
+X64,tigerstore,1,total.window,226.900674437,s,False,1
+X64,tigerstore,1,total.api.all.p50,3.9128317506695884,ms,False,1
+X64,tigerstore,1,total.api.all.p99,192.9063180827888,ms,False,1
+X64,tigerstore,1,total.api.verb.DELETE.p50,3.377470355731225,ms,False,1
+X64,tigerstore,1,total.api.verb.DELETE.p99,323.5172413793109,ms,False,1
+X64,tigerstore,1,total.api.verb.GET.p50,3.184984520123839,ms,False,1
+X64,tigerstore,1,total.api.verb.GET.p99,88.34374999999994,ms,False,1
+X64,tigerstore,1,total.api.verb.LIST.p50,3.3554216867469884,ms,False,1
+X64,tigerstore,1,total.api.verb.LIST.p99,172.53846153846118,ms,False,1
+X64,tigerstore,1,total.api.verb.PATCH.p50,3.6405172413793108,ms,False,1
+X64,tigerstore,1,total.api.verb.PATCH.p99,179.97794117647027,ms,False,1
+X64,tigerstore,1,total.api.verb.POST.p50,4.685686653771761,ms,False,1
+X64,tigerstore,1,total.api.verb.POST.p99,238.4999999999991,ms,False,1
+X64,tigerstore,1,total.api.verb.PUT.p50,8.809523809523808,ms,False,1
+X64,tigerstore,1,total.api.verb.PUT.p99,186.57831325301194,ms,False,1
+X64,tigerstore,1,total.api.resource..p50,2.6440922190201728,ms,False,1
+X64,tigerstore,1,total.api.resource..p99,72.1666666666664,ms,False,1
+X64,tigerstore,1,total.api.resource.configmaps.p50,3.1412529550827424,ms,False,1
+X64,tigerstore,1,total.api.resource.configmaps.p99,175.08849557522157,ms,False,1
+X64,tigerstore,1,total.api.resource.controllerrevisions.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.controllerrevisions.p99,178.00000000000014,ms,False,1
+X64,tigerstore,1,total.api.resource.cronjobs.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.cronjobs.p99,94.50000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.csistoragecapacities.p50,3.055555555555556,ms,False,1
+X64,tigerstore,1,total.api.resource.csistoragecapacities.p99,96.33333333333336,ms,False,1
+X64,tigerstore,1,total.api.resource.daemonsets.p50,3.055555555555556,ms,False,1
+X64,tigerstore,1,total.api.resource.daemonsets.p99,89.00000000000007,ms,False,1
+X64,tigerstore,1,total.api.resource.deployments.p50,4.836683417085427,ms,False,1
+X64,tigerstore,1,total.api.resource.deployments.p99,168.3333333333331,ms,False,1
+X64,tigerstore,1,total.api.resource.endpoints.p50,11.96969696969697,ms,False,1
+X64,tigerstore,1,total.api.resource.endpoints.p99,187.52631578947364,ms,False,1
+X64,tigerstore,1,total.api.resource.endpointslices.p50,12.1689497716895,ms,False,1
+X64,tigerstore,1,total.api.resource.endpointslices.p99,183.7619047619049,ms,False,1
+X64,tigerstore,1,total.api.resource.events.p50,12.712895377128955,ms,False,1
+X64,tigerstore,1,total.api.resource.events.p99,303.12500000000006,ms,False,1
+X64,tigerstore,1,total.api.resource.horizontalpodautoscalers.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.horizontalpodautoscalers.p99,96.33333333333336,ms,False,1
+X64,tigerstore,1,total.api.resource.ingresses.p50,3.4375,ms,False,1
+X64,tigerstore,1,total.api.resource.ingresses.p99,178.00000000000014,ms,False,1
+X64,tigerstore,1,total.api.resource.ipaddresses.p50,4.545454545454546,ms,False,1
+X64,tigerstore,1,total.api.resource.ipaddresses.p99,160.00000000000014,ms,False,1
+X64,tigerstore,1,total.api.resource.jobs.p50,3.055555555555556,ms,False,1
+X64,tigerstore,1,total.api.resource.jobs.p99,94.50000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.leases.p50,3.076923076923077,ms,False,1
+X64,tigerstore,1,total.api.resource.leases.p99,183.14285714285705,ms,False,1
+X64,tigerstore,1,total.api.resource.limitranges.p50,3.4558823529411766,ms,False,1
+X64,tigerstore,1,total.api.resource.limitranges.p99,176.50000000000009,ms,False,1
+X64,tigerstore,1,total.api.resource.namespaces.p50,2.6271186440677963,ms,False,1
+X64,tigerstore,1,total.api.resource.namespaces.p99,21.65999999999997,ms,False,1
+X64,tigerstore,1,total.api.resource.networkpolicies.p50,3.928571428571429,ms,False,1
+X64,tigerstore,1,total.api.resource.networkpolicies.p99,98.62500000000001,ms,False,1
+X64,tigerstore,1,total.api.resource.nodes.p50,2.5,ms,False,1
+X64,tigerstore,1,total.api.resource.nodes.p99,4.95,ms,False,1
+X64,tigerstore,1,total.api.resource.persistentvolumeclaims.p50,3.235294117647059,ms,False,1
+X64,tigerstore,1,total.api.resource.persistentvolumeclaims.p99,97.80000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.podcertificaterequests.p50,3.235294117647059,ms,False,1
+X64,tigerstore,1,total.api.resource.podcertificaterequests.p99,97.25000000000001,ms,False,1
+X64,tigerstore,1,total.api.resource.poddisruptionbudgets.p50,2.75,ms,False,1
+X64,tigerstore,1,total.api.resource.poddisruptionbudgets.p99,94.50000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.pods.p50,8.394495412844037,ms,False,1
+X64,tigerstore,1,total.api.resource.pods.p99,280.9743589743588,ms,False,1
+X64,tigerstore,1,total.api.resource.podtemplates.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.podtemplates.p99,94.50000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.replicasets.p50,10.238095238095237,ms,False,1
+X64,tigerstore,1,total.api.resource.replicasets.p99,185.48275862068954,ms,False,1
+X64,tigerstore,1,total.api.resource.replicationcontrollers.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.replicationcontrollers.p99,96.33333333333336,ms,False,1
+X64,tigerstore,1,total.api.resource.resourceclaims.p50,2.8947368421052633,ms,False,1
+X64,tigerstore,1,total.api.resource.resourceclaims.p99,96.33333333333336,ms,False,1
+X64,tigerstore,1,total.api.resource.resourceclaimtemplates.p50,3.235294117647059,ms,False,1
+X64,tigerstore,1,total.api.resource.resourceclaimtemplates.p99,97.25000000000001,ms,False,1
+X64,tigerstore,1,total.api.resource.resourcequotas.p50,3.4375,ms,False,1
+X64,tigerstore,1,total.api.resource.resourcequotas.p99,97.25000000000001,ms,False,1
+X64,tigerstore,1,total.api.resource.rolebindings.p50,3.6666666666666665,ms,False,1
+X64,tigerstore,1,total.api.resource.rolebindings.p99,178.00000000000014,ms,False,1
+X64,tigerstore,1,total.api.resource.roles.p50,2.75,ms,False,1
+X64,tigerstore,1,total.api.resource.roles.p99,94.50000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.secrets.p50,2.937956204379562,ms,False,1
+X64,tigerstore,1,total.api.resource.secrets.p99,173.16666666666646,ms,False,1
+X64,tigerstore,1,total.api.resource.serviceaccounts.p50,11.25,ms,False,1
+X64,tigerstore,1,total.api.resource.serviceaccounts.p99,193.40000000000003,ms,False,1
+X64,tigerstore,1,total.api.resource.services.p50,3.846153846153846,ms,False,1
+X64,tigerstore,1,total.api.resource.services.p99,319.99999999999983,ms,False,1
+X64,tigerstore,1,total.api.resource.statefulsets.p50,3.055555555555556,ms,False,1
+X64,tigerstore,1,total.api.resource.statefulsets.p99,97.25000000000001,ms,False,1
+X64,tigerstore,1,total.api.requests,56.65915287338437,requests/s,False,1
+X64,tigerstore,1,total.api.creates.count,2715.0,requests,False,1
+X64,tigerstore,1,total.api.creates.rate,11.96558805625689,requests/s,False,1
+X64,tigerstore,1,total.api.deletes.count,1676.0,requests,False,1
+X64,tigerstore,1,total.api.deletes.rate,7.3864919271773655,requests/s,False,1
+X64,tigerstore,1,total.api.updates.count,4704.0,requests,False,1
+X64,tigerstore,1,total.api.updates.rate,20.731538201337905,requests/s,False,1
+X64,tigerstore,1,total.api.http403,24.0,responses,False,1
+X64,tigerstore,1,total.api.http404,120.0,responses,False,1
+X64,tigerstore,1,total.api.http409,72.0,responses,False,1
+X64,tigerstore,1,total.api.http422,0.0,responses,False,1
+X64,tigerstore,1,total.api.http500,0.0,responses,False,1
+X64,tigerstore,1,total.storage.etcd_request_duration_seconds,81.01782881700566,RPC/s,False,1
+X64,tigerstore,1,total.cpu.member1,10.24,CPU s,False,1
+X64,tigerstore,1,total.cpu.member2,7.59,CPU s,False,1
+X64,tigerstore,1,total.cpu.member3,7.69,CPU s,False,1
+X64,tigerstore,1,total.cpu.all,25.52,CPU s,False,1
+X64,tigerstore,1,total.cpu.cores,0.11244656404015119,cores,False,1
+X64,tigerstore,1,total.revision.member1,11689,revisions,False,1
+X64,tigerstore,1,total.revision.member2,11689,revisions,False,1
+X64,tigerstore,1,total.revision.member3,11689,revisions,False,1
+X64,tigerstore,1,mixed.duration,44.175560202,s,False,1
+X64,tigerstore,1,mixed.exit,0,exit code,False,1
+X64,tigerstore,1,mixed.window,44.6927133875,s,False,1
+X64,tigerstore,1,mixed.api.all.p50,3.343635531135531,ms,False,1
+X64,tigerstore,1,mixed.api.all.p99,196.59999999999994,ms,False,1
+X64,tigerstore,1,mixed.api.verb.DELETE.p50,3.6574074074074074,ms,False,1
+X64,tigerstore,1,mixed.api.verb.DELETE.p99,520.9999999999993,ms,False,1
+X64,tigerstore,1,mixed.api.verb.GET.p50,2.705882352941177,ms,False,1
+X64,tigerstore,1,mixed.api.verb.GET.p99,24.20000000000001,ms,False,1
+X64,tigerstore,1,mixed.api.verb.LIST.p50,2.892156862745098,ms,False,1
+X64,tigerstore,1,mixed.api.verb.LIST.p99,98.71428571428567,ms,False,1
+X64,tigerstore,1,mixed.api.verb.PATCH.p50,8.090909090909092,ms,False,1
+X64,tigerstore,1,mixed.api.verb.PATCH.p99,187.5,ms,False,1
+X64,tigerstore,1,mixed.api.verb.POST.p50,3.433954619124797,ms,False,1
+X64,tigerstore,1,mixed.api.verb.POST.p99,245.9090909090905,ms,False,1
+X64,tigerstore,1,mixed.api.verb.PUT.p50,3.8260869565217392,ms,False,1
+X64,tigerstore,1,mixed.api.verb.PUT.p99,156.00000000000026,ms,False,1
+X64,tigerstore,1,mixed.api.resource..p50,2.638888888888889,ms,False,1
+X64,tigerstore,1,mixed.api.resource..p99,30.999999999999876,ms,False,1
+X64,tigerstore,1,mixed.api.resource.configmaps.p50,3.33596214511041,ms,False,1
+X64,tigerstore,1,mixed.api.resource.configmaps.p99,289.652173913043,ms,False,1
+X64,tigerstore,1,mixed.api.resource.controllerrevisions.p50,3.3333333333333335,ms,False,1
+X64,tigerstore,1,mixed.api.resource.controllerrevisions.p99,196.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.cronjobs.p50,5.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.cronjobs.p99,99.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.csistoragecapacities.p50,3.3333333333333335,ms,False,1
+X64,tigerstore,1,mixed.api.resource.csistoragecapacities.p99,24.2,ms,False,1
+X64,tigerstore,1,mixed.api.resource.daemonsets.p50,5.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.daemonsets.p99,98.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.deployments.p50,3.6328125,ms,False,1
+X64,tigerstore,1,mixed.api.resource.deployments.p99,88.37499999999993,ms,False,1
+X64,tigerstore,1,mixed.api.resource.endpoints.p50,3.734939759036145,ms,False,1
+X64,tigerstore,1,mixed.api.resource.endpoints.p99,138.00000000000026,ms,False,1
+X64,tigerstore,1,mixed.api.resource.endpointslices.p50,3.8125,ms,False,1
+X64,tigerstore,1,mixed.api.resource.endpointslices.p99,139.00000000000006,ms,False,1
+X64,tigerstore,1,mixed.api.resource.events.p50,3.6443661971830985,ms,False,1
+X64,tigerstore,1,mixed.api.resource.events.p99,73.25000000000017,ms,False,1
+X64,tigerstore,1,mixed.api.resource.horizontalpodautoscalers.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.horizontalpodautoscalers.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.ingresses.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.ingresses.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.ipaddresses.p50,2.727272727272727,ms,False,1
+X64,tigerstore,1,mixed.api.resource.ipaddresses.p99,87.99999999999991,ms,False,1
+X64,tigerstore,1,mixed.api.resource.jobs.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.jobs.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.leases.p50,2.9464285714285716,ms,False,1
+X64,tigerstore,1,mixed.api.resource.leases.p99,178.0000000000001,ms,False,1
+X64,tigerstore,1,mixed.api.resource.limitranges.p50,2.727272727272727,ms,False,1
+X64,tigerstore,1,mixed.api.resource.limitranges.p99,93.99999999999996,ms,False,1
+X64,tigerstore,1,mixed.api.resource.namespaces.p50,2.644508670520231,ms,False,1
+X64,tigerstore,1,mixed.api.resource.namespaces.p99,22.199999999999974,ms,False,1
+X64,tigerstore,1,mixed.api.resource.networkpolicies.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.networkpolicies.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.nodes.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.nodes.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.persistentvolumeclaims.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.persistentvolumeclaims.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.podcertificaterequests.p50,5.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.podcertificaterequests.p99,99.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.poddisruptionbudgets.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.poddisruptionbudgets.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.pods.p50,4.2682926829268295,ms,False,1
+X64,tigerstore,1,mixed.api.resource.pods.p99,187.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.podtemplates.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.podtemplates.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.replicasets.p50,4.357142857142857,ms,False,1
+X64,tigerstore,1,mixed.api.resource.replicasets.p99,169.50000000000003,ms,False,1
+X64,tigerstore,1,mixed.api.resource.replicationcontrollers.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.replicationcontrollers.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourceclaims.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourceclaims.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourceclaimtemplates.p50,3.3333333333333335,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourceclaimtemplates.p99,98.0,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourcequotas.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.resourcequotas.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.rolebindings.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.rolebindings.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.roles.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.roles.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.resource.secrets.p50,3.017241379310345,ms,False,1
+X64,tigerstore,1,mixed.api.resource.secrets.p99,82.49999999999993,ms,False,1
+X64,tigerstore,1,mixed.api.resource.serviceaccounts.p50,13.571428571428571,ms,False,1
+X64,tigerstore,1,mixed.api.resource.serviceaccounts.p99,92.99999999999997,ms,False,1
+X64,tigerstore,1,mixed.api.resource.services.p50,3.90625,ms,False,1
+X64,tigerstore,1,mixed.api.resource.services.p99,350.00000000000006,ms,False,1
+X64,tigerstore,1,mixed.api.resource.statefulsets.p50,2.5,ms,False,1
+X64,tigerstore,1,mixed.api.resource.statefulsets.p99,4.95,ms,False,1
+X64,tigerstore,1,mixed.api.requests,65.35741015932516,requests/s,False,1
+X64,tigerstore,1,mixed.api.creates.count,1640.0,requests,False,1
+X64,tigerstore,1,mixed.api.creates.rate,36.69501974025788,requests/s,False,1
+X64,tigerstore,1,mixed.api.deletes.count,75.0,requests,False,1
+X64,tigerstore,1,mixed.api.deletes.rate,1.6781259027556956,requests/s,False,1
+X64,tigerstore,1,mixed.api.updates.count,240.0,requests,False,1
+X64,tigerstore,1,mixed.api.updates.rate,5.370002888818226,requests/s,False,1
+X64,tigerstore,1,mixed.api.http403,15.0,responses,False,1
+X64,tigerstore,1,mixed.api.http404,9.0,responses,False,1
+X64,tigerstore,1,mixed.api.http409,13.0,responses,False,1
+X64,tigerstore,1,mixed.api.http422,0.0,responses,False,1
+X64,tigerstore,1,mixed.api.http500,0.0,responses,False,1
+X64,tigerstore,1,mixed.storage.etcd_request_duration_seconds,80.41579326005294,RPC/s,False,1
+X64,tigerstore,1,mixed.cpu.member1,2.12,CPU s,False,1
+X64,tigerstore,1,mixed.cpu.member2,1.57,CPU s,False,1
+X64,tigerstore,1,mixed.cpu.member3,1.62,CPU s,False,1
+X64,tigerstore,1,mixed.cpu.all,5.3100000000000005,CPU s,False,1
+X64,tigerstore,1,mixed.cpu.cores,0.11869093018530753,cores,False,1
+X64,tigerstore,1,mixed.revision.member1,2487,revisions,False,1
+X64,tigerstore,1,mixed.revision.member2,2487,revisions,False,1
+X64,tigerstore,1,mixed.revision.member3,2487,revisions,False,1
+X64,tigerstore,1,node.duration,20.467382187,s,False,1
+X64,tigerstore,1,node.exit,0,exit code,False,1
+X64,tigerstore,1,node.window,21.086208929,s,False,1
+X64,tigerstore,1,node.api.all.p50,18.10126582278481,ms,False,1
+X64,tigerstore,1,node.api.all.p99,280.60869565217376,ms,False,1
+X64,tigerstore,1,node.api.verb.DELETE.p50,5.0,ms,False,1
+X64,tigerstore,1,node.api.verb.DELETE.p99,24.6,ms,False,1
+X64,tigerstore,1,node.api.verb.GET.p50,4.953271028037384,ms,False,1
+X64,tigerstore,1,node.api.verb.GET.p99,145.99999999999986,ms,False,1
+X64,tigerstore,1,node.api.verb.LIST.p50,12.5,ms,False,1
+X64,tigerstore,1,node.api.verb.LIST.p99,360.00000000000017,ms,False,1
+X64,tigerstore,1,node.api.verb.PATCH.p50,29.824561403508774,ms,False,1
+X64,tigerstore,1,node.api.verb.PATCH.p99,320.0000000000003,ms,False,1
+X64,tigerstore,1,node.api.verb.POST.p50,24.455445544554458,ms,False,1
+X64,tigerstore,1,node.api.verb.POST.p99,306.16666666666674,ms,False,1
+X64,tigerstore,1,node.api.verb.PUT.p50,3.947368421052632,ms,False,1
+X64,tigerstore,1,node.api.verb.PUT.p99,339.9999999999999,ms,False,1
+X64,tigerstore,1,node.api.resource..p50,2.962962962962963,ms,False,1
+X64,tigerstore,1,node.api.resource..p99,167.99999999999997,ms,False,1
+X64,tigerstore,1,node.api.resource.configmaps.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.configmaps.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.resource.endpoints.p50,5.0,ms,False,1
+X64,tigerstore,1,node.api.resource.endpoints.p99,99.0,ms,False,1
+X64,tigerstore,1,node.api.resource.endpointslices.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.endpointslices.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.resource.events.p50,24.612403100775197,ms,False,1
+X64,tigerstore,1,node.api.resource.events.p99,314.44444444444395,ms,False,1
+X64,tigerstore,1,node.api.resource.leases.p50,3.947368421052632,ms,False,1
+X64,tigerstore,1,node.api.resource.leases.p99,339.9999999999999,ms,False,1
+X64,tigerstore,1,node.api.resource.limitranges.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.limitranges.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.resource.namespaces.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.namespaces.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.resource.nodes.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.nodes.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.resource.pods.p50,16.91176470588235,ms,False,1
+X64,tigerstore,1,node.api.resource.pods.p99,258.9230769230776,ms,False,1
+X64,tigerstore,1,node.api.resource.serviceaccounts.p50,2.5,ms,False,1
+X64,tigerstore,1,node.api.resource.serviceaccounts.p99,4.95,ms,False,1
+X64,tigerstore,1,node.api.requests,65.11364867070553,requests/s,False,1
+X64,tigerstore,1,node.api.creates.count,483.0,requests,False,1
+X64,tigerstore,1,node.api.creates.rate,22.90596672101294,requests/s,False,1
+X64,tigerstore,1,node.api.deletes.count,16.0,requests,False,1
+X64,tigerstore,1,node.api.deletes.rate,0.758789787859642,requests/s,False,1
+X64,tigerstore,1,node.api.updates.count,46.0,requests,False,1
+X64,tigerstore,1,node.api.updates.rate,2.181520640096471,requests/s,False,1
+X64,tigerstore,1,node.api.http403,0.0,responses,False,1
+X64,tigerstore,1,node.api.http404,23.0,responses,False,1
+X64,tigerstore,1,node.api.http409,2.0,responses,False,1
+X64,tigerstore,1,node.api.http422,0.0,responses,False,1
+X64,tigerstore,1,node.api.http500,0.0,responses,False,1
+X64,tigerstore,1,node.storage.etcd_request_duration_seconds,67.53229111950814,RPC/s,False,1
+X64,tigerstore,1,node.cpu.member1,0.75,CPU s,False,1
+X64,tigerstore,1,node.cpu.member2,0.58,CPU s,False,1
+X64,tigerstore,1,node.cpu.member3,0.53,CPU s,False,1
+X64,tigerstore,1,node.cpu.all,1.8599999999999999,CPU s,False,1
+X64,tigerstore,1,node.cpu.cores,0.08812423383001555,cores,False,1
+X64,tigerstore,1,node.revision.member1,925,revisions,False,1
+X64,tigerstore,1,node.revision.member2,925,revisions,False,1
+X64,tigerstore,1,node.revision.member3,925,revisions,False,1
+X64,tigerstore,1,update.duration,86.56303275600001,s,False,1
+X64,tigerstore,1,update.exit,0,exit code,False,1
+X64,tigerstore,1,update.window,87.1686613095,s,False,1
+X64,tigerstore,1,update.api.all.p50,3.8923556942277693,ms,False,1
+X64,tigerstore,1,update.api.all.p99,173.6321839080459,ms,False,1
+X64,tigerstore,1,update.api.verb.DELETE.p50,25.0,ms,False,1
+X64,tigerstore,1,update.api.verb.DELETE.p99,271.9999999999999,ms,False,1
+X64,tigerstore,1,update.api.verb.GET.p50,2.855191256830601,ms,False,1
+X64,tigerstore,1,update.api.verb.GET.p99,60.249999999999915,ms,False,1
+X64,tigerstore,1,update.api.verb.LIST.p50,3.75,ms,False,1
+X64,tigerstore,1,update.api.verb.LIST.p99,303.9999999999992,ms,False,1
+X64,tigerstore,1,update.api.verb.PATCH.p50,3.35148161370939,ms,False,1
+X64,tigerstore,1,update.api.verb.PATCH.p99,162.44047619047598,ms,False,1
+X64,tigerstore,1,update.api.verb.POST.p50,9.545454545454545,ms,False,1
+X64,tigerstore,1,update.api.verb.POST.p99,185.73913043478274,ms,False,1
+X64,tigerstore,1,update.api.verb.PUT.p50,11.862348178137653,ms,False,1
+X64,tigerstore,1,update.api.verb.PUT.p99,187.5,ms,False,1
+X64,tigerstore,1,update.api.resource..p50,2.620967741935484,ms,False,1
+X64,tigerstore,1,update.api.resource..p99,84.99999999999943,ms,False,1
+X64,tigerstore,1,update.api.resource.configmaps.p50,3.2234864748819234,ms,False,1
+X64,tigerstore,1,update.api.resource.configmaps.p99,152.4915254237285,ms,False,1
+X64,tigerstore,1,update.api.resource.deployments.p50,10.172413793103448,ms,False,1
+X64,tigerstore,1,update.api.resource.deployments.p99,177.57142857142867,ms,False,1
+X64,tigerstore,1,update.api.resource.endpoints.p50,14.035087719298248,ms,False,1
+X64,tigerstore,1,update.api.resource.endpoints.p99,190.81818181818193,ms,False,1
+X64,tigerstore,1,update.api.resource.endpointslices.p50,12.924528301886792,ms,False,1
+X64,tigerstore,1,update.api.resource.endpointslices.p99,184.4999999999999,ms,False,1
+X64,tigerstore,1,update.api.resource.events.p50,8.707865168539326,ms,False,1
+X64,tigerstore,1,update.api.resource.events.p99,186.99999999999983,ms,False,1
+X64,tigerstore,1,update.api.resource.leases.p50,3.1989247311827955,ms,False,1
+X64,tigerstore,1,update.api.resource.leases.p99,183.00000000000006,ms,False,1
+X64,tigerstore,1,update.api.resource.limitranges.p50,5.0,ms,False,1
+X64,tigerstore,1,update.api.resource.limitranges.p99,184.0,ms,False,1
+X64,tigerstore,1,update.api.resource.nodes.p50,2.5,ms,False,1
+X64,tigerstore,1,update.api.resource.nodes.p99,4.95,ms,False,1
+X64,tigerstore,1,update.api.resource.pods.p50,3.9992088607594938,ms,False,1
+X64,tigerstore,1,update.api.resource.pods.p99,182.13043478260866,ms,False,1
+X64,tigerstore,1,update.api.resource.replicasets.p50,13.141025641025642,ms,False,1
+X64,tigerstore,1,update.api.resource.replicasets.p99,188.34615384615373,ms,False,1
+X64,tigerstore,1,update.api.resource.secrets.p50,3.125,ms,False,1
+X64,tigerstore,1,update.api.resource.secrets.p99,187.5,ms,False,1
+X64,tigerstore,1,update.api.resource.services.p50,3.0952380952380953,ms,False,1
+X64,tigerstore,1,update.api.resource.services.p99,182.6666666666666,ms,False,1
+X64,tigerstore,1,update.api.requests,68.69441276308099,requests/s,False,1
+X64,tigerstore,1,update.api.creates.count,480.0,requests,False,1
+X64,tigerstore,1,update.api.creates.rate,5.506566153353185,requests/s,False,1
+X64,tigerstore,1,update.api.deletes.count,64.0,requests,False,1
+X64,tigerstore,1,update.api.deletes.rate,0.7342088204470913,requests/s,False,1
+X64,tigerstore,1,update.api.updates.count,4188.0,requests,False,1
+X64,tigerstore,1,update.api.updates.rate,48.04478968800654,requests/s,False,1
+X64,tigerstore,1,update.api.http403,0.0,responses,False,1
+X64,tigerstore,1,update.api.http404,26.0,responses,False,1
+X64,tigerstore,1,update.api.http409,47.0,responses,False,1
+X64,tigerstore,1,update.api.http422,0.0,responses,False,1
+X64,tigerstore,1,update.api.http500,0.0,responses,False,1
+X64,tigerstore,1,update.storage.etcd_request_duration_seconds,70.64465494239357,RPC/s,False,1
+X64,tigerstore,1,update.cpu.member1,4.31,CPU s,False,1
+X64,tigerstore,1,update.cpu.member2,3.24,CPU s,False,1
+X64,tigerstore,1,update.cpu.member3,3.31,CPU s,False,1
+X64,tigerstore,1,update.cpu.all,10.86,CPU s,False,1
+X64,tigerstore,1,update.cpu.cores,0.1245604752512178,cores,False,1
+X64,tigerstore,1,update.revision.member1,5483,revisions,False,1
+X64,tigerstore,1,update.revision.member2,5483,revisions,False,1
+X64,tigerstore,1,update.revision.member3,5483,revisions,False,1
+X64,tigerstore,1,delete.duration,65.830072465,s,False,1
+X64,tigerstore,1,delete.exit,0,exit code,False,1
+X64,tigerstore,1,delete.window,66.4462632655,s,False,1
+X64,tigerstore,1,delete.api.all.p50,3.5909614277489927,ms,False,1
+X64,tigerstore,1,delete.api.all.p99,250.35714285714417,ms,False,1
+X64,tigerstore,1,delete.api.verb.DELETE.p50,3.2617845117845117,ms,False,1
+X64,tigerstore,1,delete.api.verb.DELETE.p99,311.53846153846155,ms,False,1
+X64,tigerstore,1,delete.api.verb.GET.p50,3.1510416666666665,ms,False,1
+X64,tigerstore,1,delete.api.verb.GET.p99,91.1249999999999,ms,False,1
+X64,tigerstore,1,delete.api.verb.LIST.p50,3.488888888888889,ms,False,1
+X64,tigerstore,1,delete.api.verb.LIST.p99,171.45454545454558,ms,False,1
+X64,tigerstore,1,delete.api.verb.PATCH.p50,32.142857142857146,ms,False,1
+X64,tigerstore,1,delete.api.verb.PATCH.p99,194.50000000000003,ms,False,1
+X64,tigerstore,1,delete.api.verb.POST.p50,23.085106382978722,ms,False,1
+X64,tigerstore,1,delete.api.verb.POST.p99,186.5555555555555,ms,False,1
+X64,tigerstore,1,delete.api.verb.PUT.p50,10.263157894736842,ms,False,1
+X64,tigerstore,1,delete.api.verb.PUT.p99,195.81818181818176,ms,False,1
+X64,tigerstore,1,delete.api.resource..p50,2.6086956521739126,ms,False,1
+X64,tigerstore,1,delete.api.resource..p99,23.999999999999986,ms,False,1
+X64,tigerstore,1,delete.api.resource.configmaps.p50,2.730891719745223,ms,False,1
+X64,tigerstore,1,delete.api.resource.configmaps.p99,87.404761904762,ms,False,1
+X64,tigerstore,1,delete.api.resource.controllerrevisions.p50,2.8125,ms,False,1
+X64,tigerstore,1,delete.api.resource.controllerrevisions.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.cronjobs.p50,2.6470588235294117,ms,False,1
+X64,tigerstore,1,delete.api.resource.cronjobs.p99,21.400000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.csistoragecapacities.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.csistoragecapacities.p99,97.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.daemonsets.p50,2.8125,ms,False,1
+X64,tigerstore,1,delete.api.resource.daemonsets.p99,23.200000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.deployments.p50,3.181818181818182,ms,False,1
+X64,tigerstore,1,delete.api.resource.deployments.p99,185.99999999999994,ms,False,1
+X64,tigerstore,1,delete.api.resource.endpoints.p50,24.28571428571429,ms,False,1
+X64,tigerstore,1,delete.api.resource.endpoints.p99,198.33333333333346,ms,False,1
+X64,tigerstore,1,delete.api.resource.endpointslices.p50,27.30263157894737,ms,False,1
+X64,tigerstore,1,delete.api.resource.endpointslices.p99,195.57142857142856,ms,False,1
+X64,tigerstore,1,delete.api.resource.events.p50,21.170212765957448,ms,False,1
+X64,tigerstore,1,delete.api.resource.events.p99,568.0000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.horizontalpodautoscalers.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.horizontalpodautoscalers.p99,97.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.ingresses.p50,3.75,ms,False,1
+X64,tigerstore,1,delete.api.resource.ingresses.p99,182.00000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.ipaddresses.p50,33.333333333333336,ms,False,1
+X64,tigerstore,1,delete.api.resource.ipaddresses.p99,184.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.jobs.p50,3.2142857142857144,ms,False,1
+X64,tigerstore,1,delete.api.resource.jobs.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.leases.p50,2.925531914893617,ms,False,1
+X64,tigerstore,1,delete.api.resource.leases.p99,145.00000000000028,ms,False,1
+X64,tigerstore,1,delete.api.resource.limitranges.p50,3.2142857142857144,ms,False,1
+X64,tigerstore,1,delete.api.resource.limitranges.p99,182.00000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.namespaces.p50,2.542372881355932,ms,False,1
+X64,tigerstore,1,delete.api.resource.namespaces.p99,12.999999999999973,ms,False,1
+X64,tigerstore,1,delete.api.resource.networkpolicies.p50,4.5,ms,False,1
+X64,tigerstore,1,delete.api.resource.networkpolicies.p99,98.875,ms,False,1
+X64,tigerstore,1,delete.api.resource.nodes.p50,2.5,ms,False,1
+X64,tigerstore,1,delete.api.resource.nodes.p99,4.95,ms,False,1
+X64,tigerstore,1,delete.api.resource.persistentvolumeclaims.p50,3.4615384615384612,ms,False,1
+X64,tigerstore,1,delete.api.resource.persistentvolumeclaims.p99,98.2,ms,False,1
+X64,tigerstore,1,delete.api.resource.podcertificaterequests.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.podcertificaterequests.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.poddisruptionbudgets.p50,2.8125,ms,False,1
+X64,tigerstore,1,delete.api.resource.poddisruptionbudgets.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.pods.p50,58.06451612903226,ms,False,1
+X64,tigerstore,1,delete.api.resource.pods.p99,375.36842105263156,ms,False,1
+X64,tigerstore,1,delete.api.resource.podtemplates.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.podtemplates.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.replicasets.p50,4.032258064516129,ms,False,1
+X64,tigerstore,1,delete.api.resource.replicasets.p99,150.00000000000003,ms,False,1
+X64,tigerstore,1,delete.api.resource.replicationcontrollers.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.replicationcontrollers.p99,97.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourceclaims.p50,3.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourceclaims.p99,97.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourceclaimtemplates.p50,3.2142857142857144,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourceclaimtemplates.p99,97.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourcequotas.p50,3.75,ms,False,1
+X64,tigerstore,1,delete.api.resource.resourcequotas.p99,97.75,ms,False,1
+X64,tigerstore,1,delete.api.resource.rolebindings.p50,4.09090909090909,ms,False,1
+X64,tigerstore,1,delete.api.resource.rolebindings.p99,182.00000000000006,ms,False,1
+X64,tigerstore,1,delete.api.resource.roles.p50,2.8125,ms,False,1
+X64,tigerstore,1,delete.api.resource.roles.p99,95.50000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.secrets.p50,2.682926829268293,ms,False,1
+X64,tigerstore,1,delete.api.resource.secrets.p99,92.6666666666667,ms,False,1
+X64,tigerstore,1,delete.api.resource.serviceaccounts.p50,5.0,ms,False,1
+X64,tigerstore,1,delete.api.resource.serviceaccounts.p99,196.4,ms,False,1
+X64,tigerstore,1,delete.api.resource.services.p50,21.666666666666668,ms,False,1
+X64,tigerstore,1,delete.api.resource.services.p99,364.0000000000001,ms,False,1
+X64,tigerstore,1,delete.api.resource.statefulsets.p50,3.2142857142857144,ms,False,1
+X64,tigerstore,1,delete.api.resource.statefulsets.p99,97.75,ms,False,1
+X64,tigerstore,1,delete.api.requests,37.549139370421834,requests/s,False,1
+X64,tigerstore,1,delete.api.creates.count,112.0,requests,False,1
+X64,tigerstore,1,delete.api.creates.rate,1.685572588972844,requests/s,False,1
+X64,tigerstore,1,delete.api.deletes.count,1521.0,requests,False,1
+X64,tigerstore,1,delete.api.deletes.rate,22.890677748461567,requests/s,False,1
+X64,tigerstore,1,delete.api.updates.count,219.0,requests,False,1
+X64,tigerstore,1,delete.api.updates.rate,3.295896401652257,requests/s,False,1
+X64,tigerstore,1,delete.api.http403,9.0,responses,False,1
+X64,tigerstore,1,delete.api.http404,62.0,responses,False,1
+X64,tigerstore,1,delete.api.http409,10.0,responses,False,1
+X64,tigerstore,1,delete.api.http422,0.0,responses,False,1
+X64,tigerstore,1,delete.api.http500,0.0,responses,False,1
+X64,tigerstore,1,delete.storage.etcd_request_duration_seconds,107.39505352598405,RPC/s,False,1
+X64,tigerstore,1,delete.cpu.member1,2.96,CPU s,False,1
+X64,tigerstore,1,delete.cpu.member2,2.1,CPU s,False,1
+X64,tigerstore,1,delete.cpu.member3,2.14,CPU s,False,1
+X64,tigerstore,1,delete.cpu.all,7.2,CPU s,False,1
+X64,tigerstore,1,delete.cpu.cores,0.1083487501906021,cores,False,1
+X64,tigerstore,1,delete.revision.member1,2782,revisions,False,1
+X64,tigerstore,1,delete.revision.member2,2782,revisions,False,1
+X64,tigerstore,1,delete.revision.member3,2782,revisions,False,1
+X64,tigerstore,1,mixed.pod.Ready.p50,1000,ms,False,1
+X64,tigerstore,1,mixed.pod.Ready.p99,2000,ms,False,1
+X64,tigerstore,1,mixed.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+X64,tigerstore,1,mixed.pod.PodReadyToStartContainers.p99,1000,ms,False,1
+X64,tigerstore,1,mixed.pod.ContainersStarted.p50,1901,ms,False,1
+X64,tigerstore,1,mixed.pod.ContainersStarted.p99,2461,ms,False,1
+X64,tigerstore,1,mixed.pod.PodScheduled.p50,0,ms,False,1
+X64,tigerstore,1,mixed.pod.PodScheduled.p99,500,ms,False,1
+X64,tigerstore,1,mixed.pod.ContainersReady.p50,1000,ms,False,1
+X64,tigerstore,1,mixed.pod.ContainersReady.p99,2000,ms,False,1
+X64,tigerstore,1,mixed.pod.Initialized.p50,0,ms,False,1
+X64,tigerstore,1,mixed.pod.Initialized.p99,1000,ms,False,1
+X64,tigerstore,1,node.pod.ContainersStarted.p50,6121,ms,False,1
+X64,tigerstore,1,node.pod.ContainersStarted.p99,7464,ms,False,1
+X64,tigerstore,1,node.pod.PodScheduled.p50,0,ms,False,1
+X64,tigerstore,1,node.pod.PodScheduled.p99,1000,ms,False,1
+X64,tigerstore,1,node.pod.ContainersReady.p50,6000,ms,False,1
+X64,tigerstore,1,node.pod.ContainersReady.p99,7000,ms,False,1
+X64,tigerstore,1,node.pod.Initialized.p50,0,ms,False,1
+X64,tigerstore,1,node.pod.Initialized.p99,1000,ms,False,1
+X64,tigerstore,1,node.pod.Ready.p50,6000,ms,False,1
+X64,tigerstore,1,node.pod.Ready.p99,7000,ms,False,1
+X64,tigerstore,1,node.pod.PodReadyToStartContainers.p50,3000,ms,False,1
+X64,tigerstore,1,node.pod.PodReadyToStartContainers.p99,5500,ms,False,1
+X64,tigerstore,1,update.pod.Ready.p50,2000,ms,False,1
+X64,tigerstore,1,update.pod.Ready.p99,2000,ms,False,1
+X64,tigerstore,1,update.pod.PodReadyToStartContainers.p50,1000,ms,False,1
+X64,tigerstore,1,update.pod.PodReadyToStartContainers.p99,2000,ms,False,1
+X64,tigerstore,1,update.pod.ContainersStarted.p50,2037,ms,False,1
+X64,tigerstore,1,update.pod.ContainersStarted.p99,2851,ms,False,1
+X64,tigerstore,1,update.pod.PodScheduled.p50,0,ms,False,1
+X64,tigerstore,1,update.pod.PodScheduled.p99,1000,ms,False,1
+X64,tigerstore,1,update.pod.ContainersReady.p50,2000,ms,False,1
+X64,tigerstore,1,update.pod.ContainersReady.p99,2000,ms,False,1
+X64,tigerstore,1,update.pod.Initialized.p50,0,ms,False,1
+X64,tigerstore,1,update.pod.Initialized.p99,1000,ms,False,1
+X64,tigerstore,1,events.unique,1094,events,False,1
+X64,tigerstore,1,events.observations,2212,watch notifications,False,1

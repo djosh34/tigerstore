@@ -1,0 +1,46 @@
+[
+  {
+    "store": "etcd",
+    "rep": 1,
+    "arch": "ARM64",
+    "tigerstore_ref": "90870876b6459334c7eddd67c0f9d184267f2eba",
+    "experiment_ref": "a503526ee91d4a816f9a0a3b3f0d82a7e4a5a984",
+    "exit": 1,
+    "total_seconds": 289.9117708206177,
+    "directory": "../runs/38420832209/kube-burner-ubuntu-24.04-arm-etcd-1/etcd-ARM64-1",
+    "workload_passed": false
+  },
+  {
+    "store": "tigerstore",
+    "rep": 1,
+    "arch": "ARM64",
+    "tigerstore_ref": "90870876b6459334c7eddd67c0f9d184267f2eba",
+    "experiment_ref": "a503526ee91d4a816f9a0a3b3f0d82a7e4a5a984",
+    "exit": 1,
+    "total_seconds": 298.2888627052307,
+    "directory": "../runs/38420832209/kube-burner-ubuntu-24.04-arm-tigerstore-1/tigerstore-ARM64-1",
+    "workload_passed": false
+  },
+  {
+    "store": "etcd",
+    "rep": 1,
+    "arch": "X64",
+    "tigerstore_ref": "90870876b6459334c7eddd67c0f9d184267f2eba",
+    "experiment_ref": "a503526ee91d4a816f9a0a3b3f0d82a7e4a5a984",
+    "exit": 1,
+    "total_seconds": 299.0847866535187,
+    "directory": "../runs/38420832209/kube-burner-ubuntu-24.04-etcd-1/etcd-X64-1",
+    "workload_passed": false
+  },
+  {
+    "store": "tigerstore",
+    "rep": 1,
+    "arch": "X64",
+    "tigerstore_ref": "90870876b6459334c7eddd67c0f9d184267f2eba",
+    "experiment_ref": "a503526ee91d4a816f9a0a3b3f0d82a7e4a5a984",
+    "exit": 1,
+    "total_seconds": 307.44953060150146,
+    "directory": "../runs/38420832209/kube-burner-ubuntu-24.04-tigerstore-1/tigerstore-X64-1",
+    "workload_passed": false
+  }
+]
