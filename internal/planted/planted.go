@@ -23,6 +23,7 @@ var Bugs = map[string]string{
 	"B10":  "followers expire leases on their own clock, without the log",
 	"B11":  "the disk driver treats a failed fsync as success",
 	"B12":  "the WAL keeps going after a short write",
+	"B15":  "the history treats a call that timed out as certainly aborted",
 	"B17":  "the leader's stalled-disk watchdog never fires",
 	"B18":  "closing a watch stream leaves its watchers in place",
 }

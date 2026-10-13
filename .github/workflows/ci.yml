@@ -142,11 +142,12 @@ jobs:
 
   # Every planted bug (internal/planted) must be caught within its seed
   # budget; TestPlanted fails otherwise, and a crash is a failure too.
+  # TestPlantedInventory checks that this list names every bug.
   planted:
     strategy:
       fail-fast: false
       matrix:
-        bug: [B01a, B01b, B02, B03, B04a, B04b, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B17, B18]
+        bug: [B01a, B01b, B02, B03, B04a, B04b, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B15, B17, B18]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:

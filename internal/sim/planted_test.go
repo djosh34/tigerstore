@@ -5,7 +5,10 @@ package sim
 import (
 	"errors"
 	"flag"
-	"fmt"
+	"os"
+	"regexp"
+	"slices"
+	"strings"
 	"testing"
 	"testing/cryptotest"
 
@@ -51,6 +54,7 @@ var plantedCases = map[string]plantedCase{
 	"B10":  {seeds: 64, cfg: DefaultConfig},
 	"B11":  {seeds: 64, cfg: DefaultConfig},
 	"B12":  {seeds: 256, cfg: DefaultConfig},
+	"B15":  {seeds: 16, cfg: DefaultConfig},
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, extra: func(r *Result) error {
 		if r.Stats.StalledStops == 0 {
 			return errors.New("the stalled leader never fenced itself")
@@ -81,6 +85,23 @@ func TestPlantedInventory(t *testing.T) {
 			t.Errorf("case %s plants no known bug", name)
 		}
 	}
+	ci, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*bug: \[(.*)\]$`).FindSubmatch(ci)
+	if m == nil {
+		t.Fatal("ci.yml has no planted bug matrix")
+	}
+	inCI := strings.Split(string(m[1]), ", ")
+	for name := range planted.Bugs {
+		if !slices.Contains(inCI, name) {
+			t.Errorf("planted bug %s is not in the CI matrix", name)
+		}
+	}
+	if len(inCI) != len(planted.Bugs) {
+		t.Errorf("the CI matrix has %d bugs, the inventory %d", len(inCI), len(planted.Bugs))
+	}
 }
 
 // TestPlanted switches on the bug named by -planted and fails unless a
@@ -99,7 +120,7 @@ func TestPlanted(t *testing.T) {
 	t.Cleanup(func() { planted.Active = "" })
 	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
 		cryptotest.SetGlobalRandom(t, seed)
-		res, err := runCatching(c.cfg(seed))
+		res, err := Run(c.cfg(seed))
 		if err == nil {
 			err = independent(res)
 		}
@@ -112,15 +133,4 @@ func TestPlanted(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s (%s) was not caught within %d seeds", name, planted.Bugs[name], c.seeds)
-}
-
-// runCatching runs a seed and turns a panic into an error: Raft panics on
-// broken invariants, which stops a real node too.
-func runCatching(cfg Config) (res *Result, err error) {
-	defer func() {
-		if p := recover(); p != nil {
-			err = fmt.Errorf("seed %d panicked: %v", cfg.Seed, p)
-		}
-	}()
-	return Run(cfg)
 }

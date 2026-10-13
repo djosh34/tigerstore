@@ -295,6 +295,12 @@ func (h *Handle) Truncate(size int64) error {
 // Sync makes the content durable.
 func (h *Handle) Sync() error {
 	if err := h.check(OpSync); err != nil {
+		if errors.Is(err, ErrIO) && !h.f.cut {
+			// As on Linux, a failed writeback marks the pages clean: the
+			// unsynced bytes stay readable but never reach the disk, which
+			// keeps zeros there, and a later sync does not retry them.
+			h.f.durable = append(h.f.durable, make([]byte, len(h.f.data)-len(h.f.durable))...)
+		}
 		return err
 	}
 	if h.f.cut {
