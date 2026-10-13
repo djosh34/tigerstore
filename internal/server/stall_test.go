@@ -3,8 +3,8 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"sync"
