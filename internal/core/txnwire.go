@@ -17,7 +17,7 @@ import (
 // TestTxnDecodeMatchesProtobuf compares them with proto.Unmarshal.
 
 // wireField is one field: its number and type, its varint or its bytes,
-// and all of its encoding, tag included.
+// and the encoding of its value.
 type wireField struct {
 	num protowire.Number
 	typ protowire.Type
@@ -49,7 +49,7 @@ func nextField(b []byte) (wireField, []byte, error) {
 	if m < 0 {
 		return wireField{}, nil, errBadMessage
 	}
-	f.raw = b[:n+m]
+	f.raw = b[n : n+m]
 	return f, b[n+m:], nil
 }
 
@@ -64,10 +64,10 @@ func (f *wireField) varintField(num protowire.Number) bool {
 }
 
 // keepUnknown appends a field that m does not know to its unknown fields,
-// as protobuf does.
-func keepUnknown(m proto.Message, raw []byte) {
+// as protobuf does: the tag in its minimal encoding, then the value.
+func keepUnknown(m proto.Message, f *wireField) {
 	r := m.ProtoReflect()
-	r.SetUnknown(append(r.GetUnknown(), raw...))
+	r.SetUnknown(append(protowire.AppendTag(r.GetUnknown(), f.num, f.typ), f.raw...))
 }
 
 // DecodeAlias decodes m from b like UnmarshalAlias, with the written-out
@@ -117,7 +117,7 @@ func decodeTxn(b []byte, m *pb.TxnRequest, depth int) error {
 			}
 			err = decodeOp(f.b, op, depth-1)
 		default:
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 		}
 		if err != nil {
 			return err
@@ -153,7 +153,7 @@ func decodeCompare(b []byte, m *pb.Compare) error {
 		case f.bytesField(64):
 			m.RangeEnd = f.b
 		default:
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 		}
 	}
 	return nil
@@ -170,7 +170,7 @@ func decodeOp(b []byte, m *pb.RequestOp, depth int) error {
 		}
 		b = rest
 		if f.typ != protowire.BytesType || f.num < 1 || f.num > 4 {
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 			continue
 		}
 		if depth <= 0 {
@@ -248,7 +248,7 @@ func decodeRange(b []byte, m *pb.RangeRequest) error {
 		case f.varintField(13):
 			m.MaxCreateRevision = int64(f.v)
 		default:
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 		}
 	}
 	return nil
@@ -275,7 +275,7 @@ func decodePutRequest(b []byte, m *pb.PutRequest) error {
 		case f.varintField(6):
 			m.IgnoreLease = f.v != 0
 		default:
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 		}
 	}
 	return nil
@@ -296,7 +296,7 @@ func decodeDelete(b []byte, m *pb.DeleteRangeRequest) error {
 		case f.varintField(3):
 			m.PrevKv = f.v != 0
 		default:
-			keepUnknown(m, f.raw)
+			keepUnknown(m, &f)
 		}
 	}
 	return nil

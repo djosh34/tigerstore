@@ -88,6 +88,8 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 			// An unknown field 7, and field 1 (compare) as a varint, which
 			// protobuf keeps as unknown too.
 			in = append(append([]byte{}, in...), 0x3a, 2, 'u', 'v', 0x08, 0x05)
+			// An unknown field 768 with a tag in more bytes than needed.
+			in = append(in, 0x82, 0xb0, 0x00, 0x00)
 		}
 		for _, cut := range []int{len(in), r.IntN(len(in) + 1)} {
 			want := &pb.TxnRequest{}
@@ -98,7 +100,7 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 				if (err != nil) != (wantErr != nil) {
 					t.Fatalf("%s, case %d cut %d: error %v, protobuf error %v", name, i, cut, err, wantErr)
 				}
-				if err == nil && !proto.Equal(got, want) {
+				if err == nil && (!proto.Equal(got, want) || proto.Size(got) != proto.Size(want)) {
 					t.Fatalf("%s, case %d cut %d:\n got %v\nwant %v", name, i, cut, got, want)
 				}
 			}

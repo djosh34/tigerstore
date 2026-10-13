@@ -34,7 +34,6 @@ func decodeAlias(b []byte, m protoreflect.Message, depth int) error {
 		if n < 0 || num > protowire.MaxValidNumber {
 			return errBadMessage
 		}
-		tag := b[:n]
 		b = b[n:]
 		fd := fields.ByNumber(num)
 		if fd == nil || !wireTypeFits(fd, typ) {
@@ -44,7 +43,8 @@ func decodeAlias(b []byte, m protoreflect.Message, depth int) error {
 			if n < 0 {
 				return errBadMessage
 			}
-			m.SetUnknown(append(append(m.GetUnknown(), tag...), b[:n]...))
+			// protobuf keeps the tag in its minimal encoding.
+			m.SetUnknown(append(protowire.AppendTag(m.GetUnknown(), num, typ), b[:n]...))
 			b = b[n:]
 			continue
 		}

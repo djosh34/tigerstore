@@ -131,6 +131,7 @@ func TestParsePutMatchesProtobuf(t *testing.T) {
 		append(append([]byte{}, base...), 0x1a, 1, 'x'),                                                     // lease with the wrong wire type
 		append(append([]byte{}, base...), 0x0d, 1, 2, 3, 4),                                                 // key with the wrong wire type
 		append(append([]byte{}, base...), 0x98, 0x06, 0x01),                                                 // unknown varint field 99
+		append(append([]byte{}, base...), 0x82, 0xb0, 0x00, 0x00),                                           // unknown field 768, tag in more bytes than needed
 		append(append([]byte{}, base...), 0x18, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01), // lease -1
 		{0x0a, 0x01, 'k', 0x80, 0x80, 0x80, 0x80, 0x10, 0x01},                                               // field 2^29, above the largest
 	}
