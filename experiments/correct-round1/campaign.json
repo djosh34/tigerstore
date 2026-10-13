@@ -1,0 +1,4 @@
+[
+  {"target":"tigerstore","scenario":"signals","seed":49,"rep":1,"duration":65},
+  {"target":"etcd","scenario":"signals","seed":49,"rep":1,"duration":65}
+]
