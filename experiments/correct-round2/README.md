@@ -16,4 +16,4 @@ Each part uses both `ubuntu-24.04-arm` and `ubuntu-24.04`, with stock etcd v3.7.
 
 The deadline is 2026-10-13T22:00:00Z. No work starts after it. All fault runs execute on GitHub-hosted runners. Local Go commands, if needed, use `GOFLAGS=-p=2 GOMEMLIMIT=2GiB`, with tests limited to `-parallel 2`.
 
-This file describes the assignments, not completed coverage. The final report records actual results and gaps.
+Testing has stopped. [REPORT.md](REPORT.md) records the results and remaining validation gaps. [summary.json](summary.json) pins every source commit and workflow run. The `audit-*.json` files contain the parent's independent archive and checker-completeness audits. Later main `b5f2e28` is not covered by these runs.

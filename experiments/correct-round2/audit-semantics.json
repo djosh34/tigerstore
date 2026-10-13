@@ -1,0 +1,1561 @@
+{
+  "cases": [
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:55.346614+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001785565,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:39:31.784021+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001021694,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:22.554386+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001569811,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:38:40.538952+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001510379,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-lease-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:31:29.919176+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.003496024,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-lease-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:38:00.983012+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 15.329283513,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-lease-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:31:40.469884+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 1,
+      "max_checker_seconds": 30.000871542,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-lease-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:36:32.316747+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 1,
+      "max_checker_seconds": 30.011447712,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-watchers-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:35:25.903686+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.044681266,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-watchers-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:41:02.321197+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.061655033,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-watchers-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:34:55.226012+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.036069671,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-etcd-watchers-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:40:10.145404+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.03426814,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:40.704921+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.002097436,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:38:43.476970+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001290026,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:21.642123+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001528804,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:38:14.722085+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.0014189,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:31:30.626983+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 10.311414985,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:36:57.055484+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.006251195,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:31:36.198065+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 1,
+      "max_checker_seconds": 30.010862013,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:36:32.226691+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.025094623,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:36:31.304075+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.036604502,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:40:12.272128+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.042891935,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:34:58.448759+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.034845932,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38431093077/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:40:09.472812+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.034078519,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:46:00.017982+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001191425,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:50:44.613822+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001669715,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:46:02.454192+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001273372,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:50:02.698025+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 4.408492164,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-lease-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:44:07.935394+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.005994505,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-lease-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:48:56.580412+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.006008597,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-lease-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:44:07.786562+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.005781777,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-lease-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:48:40.858005+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.006370172,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-watchers-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:28.585887+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.055699717,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-watchers-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:52:05.293205+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.237397858,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-watchers-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:09.546150+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.033757235,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-etcd-watchers-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:51:47.532525+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.034015008,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:45:52.872631+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.00174323,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:50:29.911347+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001826462,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:45:57.981307+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.003997234,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:50:03.972450+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001418272,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": [
+        "semantic workload failed; see workload.log"
+      ]
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:44:03.298953+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.003716075,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:48:20.075015+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.003538173,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:44:08.528880+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.006313014,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-lease-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "lease",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:48:20.536235+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.00589206,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:17.172956+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.063208775,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:51:42.784676+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.054217036,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:02.962502+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.033733938,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38432805534/correct-round2-semantics-tigerstore-watchers-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "watchers",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:51:19.276049+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.034672102,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:54:55.884733+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.002290484,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-etcd-compaction-ubuntu-24.04-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:57:28.548209+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001937444,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:55:02.504783+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 21.340003736,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "etcd",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:56:18.297515+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001534105,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:55:04.122217+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001503764,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:56:15.006329+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001218351,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-1",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:54:58.738458+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001492688,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../semantics/experiments/correct-round2-semantics/results/38434252340/correct-round2-semantics-tigerstore-compaction-ubuntu-24.04-arm-4901-2",
+      "target": "tigerstore",
+      "scenario": "compaction",
+      "seed": 4901,
+      "repetition": 2,
+      "utc_origin": "2026-10-13T16:56:18.163529+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.001743947,
+      "required_faults": [
+        "peer-blackhole",
+        "stop-leader",
+        "kill-leader"
+      ],
+      "failures": []
+    }
+  ],
+  "totals": {
+    "cases": 56,
+    "passed": 28,
+    "failed": 28,
+    "oracle_sets": 140,
+    "checker_verdicts": 560,
+    "checker_passes": 464,
+    "checker_timeouts": 3
+  }
+}

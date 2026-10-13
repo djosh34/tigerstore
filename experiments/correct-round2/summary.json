@@ -1,0 +1,113 @@
+{
+  "product": "5d964228952d6983ba273bc2e6813770aad796c6",
+  "newer_main_not_covered": "b5f2e28ef2edd94393d62952b1568763ebc12fe2",
+  "baseline": "etcd v3.7.2",
+  "runners": [
+    "ubuntu-24.04-arm",
+    "ubuntu-24.04"
+  ],
+  "parts": {
+    "faults": {
+      "commit": "374b44c6d0a4e0fe732275285aa7e85118e4e7d7",
+      "branch": "exp/correct-round2-faults",
+      "report": "REPORT.md",
+      "evidence": "experiments/correct-round2/results",
+      "runs": [
+        38431592382,
+        38431990591,
+        38433467628,
+        38437268687
+      ],
+      "operations": 66057,
+      "client_histories": 52,
+      "history_variants": 205,
+      "nonhistory_checker_verdicts": 68,
+      "cases": 56,
+      "passed": 32,
+      "failed": 24,
+      "oracle_sets": 209,
+      "checker_verdicts": 888,
+      "checker_passes": 744,
+      "checker_timeouts": 72,
+      "timed_out_cases": 18,
+      "checker_failures": 144,
+      "true_history_checker_verdicts": 820
+    },
+    "semantics": {
+      "commit": "32a438e53be46195e766b9c5f19d5d0730c75714",
+      "branch": "exp/correct-round2-semantics",
+      "report": "experiments/correct-round2-semantics/REPORT.md",
+      "evidence": "experiments/correct-round2-semantics/results",
+      "runs": [
+        38431093077,
+        38432805534,
+        38434252340
+      ],
+      "operations": 5809,
+      "client_histories": 56,
+      "history_variants": 140,
+      "nonhistory_checker_verdicts": 0,
+      "cases": 56,
+      "passed": 28,
+      "failed": 28,
+      "oracle_sets": 140,
+      "checker_verdicts": 560,
+      "checker_passes": 464,
+      "checker_timeouts": 3,
+      "timed_out_cases": 3,
+      "checker_failures": 96,
+      "true_history_checker_verdicts": 560
+    },
+    "clocks": {
+      "commit": "6651b1ae5928972bcd7e66234b61b70faa7f9096",
+      "branch": "exp/correct-round2-clocks",
+      "report": "experiments/correct-round2-clocks/REPORT.md",
+      "evidence": "experiments/correct-round2-clocks/results",
+      "runs": [
+        38430785949,
+        38431403716,
+        38432244287
+      ],
+      "operations": 6499,
+      "client_histories": 40,
+      "history_variants": 130,
+      "nonhistory_checker_verdicts": 0,
+      "cases": 40,
+      "passed": 30,
+      "failed": 10,
+      "oracle_sets": 130,
+      "checker_verdicts": 520,
+      "checker_passes": 496,
+      "checker_timeouts": 0,
+      "timed_out_cases": 0,
+      "checker_failures": 24,
+      "true_history_checker_verdicts": 520
+    }
+  },
+  "totals": {
+    "operations": 78365,
+    "client_histories": 148,
+    "history_variants": 475,
+    "nonhistory_checker_verdicts": 68,
+    "cases": 152,
+    "passed": 90,
+    "failed": 62,
+    "oracle_sets": 479,
+    "checker_verdicts": 1968,
+    "checker_passes": 1704,
+    "checker_timeouts": 75,
+    "timed_out_cases": 21,
+    "checker_failures": 264,
+    "true_history_checker_verdicts": 1900
+  },
+  "synthetic_expiry_operations": 40,
+  "recorded_request_operations": 78325,
+  "confirmed_product_failures": 0,
+  "bug_issues": [],
+  "limits": [
+    "256-client whole-history linearizability remains unverified due checker timeouts",
+    "No power-loss test",
+    "Tigerstore physical WAL reader shared with product",
+    "CLOCK_REALTIME jumps only, not monotonic jumps or drift"
+  ]
+}

@@ -1,0 +1,979 @@
+{
+  "cases": [
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:29:30.472703+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/log exit 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 6.8324e-05,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "workload exited before required fault completed"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:29:26.281662+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-forward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "fault clock-backward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.000183244,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:29:28.034538+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.02062102,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:29:28.320384+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-forward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "fault clock-backward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.000141663,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:30:32.950268+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/log exit 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 8.583e-05,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "workload exited before required fault completed"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:30:29.028719+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-forward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "fault clock-backward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.000288621,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:30:30.294009+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.031175166,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38430785949/clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:30:25.097104+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-forward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "fault clock-backward missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 4,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.000313414,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": [
+        "'Controller' object has no attribute 'clock_fault'"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-arm-etcd-clock-control-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:34:01.803162+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/log exit 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 8.9267e-05,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "workload exited before required fault completed"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-arm-etcd-clock-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:34:01.563633+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.002875137,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:58.934738+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.235901641,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-arm-tigerstore-clock-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:33:57.706732+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.002697039,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-etcd-clock-control-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:36:37.832563+00:00",
+      "controller_started": true,
+      "controller_pass": false,
+      "audit_pass": false,
+      "issues": [
+        "controller did not pass",
+        "fault clock-zero-control missing phases: ['exercised', 'healed', 'installed', 'requested']",
+        "expected four disk sets, found 1",
+        "offline original/log exit 1",
+        "offline original/check exit 1",
+        "original/Linearizable failed",
+        "original/Watches failed",
+        "original/Durable failed",
+        "original/Revisions failed"
+      ],
+      "oracle_sets": 1,
+      "checker_verdicts": 4,
+      "checker_passes": 0,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 6.5068e-05,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": [
+        "workload exited before required fault completed"
+      ]
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-etcd-clock-leader-149-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:36:39.968731+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.003027571,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-tigerstore-clock-control-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:35:40.256455+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.191486212,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38431403716/clocks-ubuntu-24.04-tigerstore-clock-leader-149-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 149,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:34:58.732487+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.00291171,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-clock-control-leader-150-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:56.773579+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.251281868,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-clock-follower-150-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:40.815471+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.237646379,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-clock-leader-150-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:13.857235+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.25504414,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-cpu-follower-150-1",
+      "target": "etcd",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:44:04.586365+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.235000589,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-cpu-leader-150-1",
+      "target": "etcd",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:43:59.755491+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.247802841,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-etcd-signals-leader-150-1",
+      "target": "etcd",
+      "scenario": "signals",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:47:55.008084+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.231461703,
+      "required_faults": [
+        "kill-leader",
+        "kill-follower",
+        "stop-leader",
+        "stop-follower"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-clock-control-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:43:37.777146+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.247482943,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-clock-follower-150-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:40:07.214727+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.258365059,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-clock-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:40:07.426889+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.255601054,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-cpu-follower-150-1",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:40:05.578286+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.236348669,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-cpu-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:40:06.464503+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.239322109,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-arm-tigerstore-signals-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:43:56.267499+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.240257832,
+      "required_faults": [
+        "kill-leader",
+        "kill-follower",
+        "stop-leader",
+        "stop-follower"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-clock-control-leader-150-1",
+      "target": "etcd",
+      "scenario": "clock-control",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:58:38.642142+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.227571859,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-clock-follower-150-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:59:20.384088+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.287449143,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-clock-leader-150-1",
+      "target": "etcd",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:57:52.931316+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.505336095,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-cpu-follower-150-1",
+      "target": "etcd",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:55:11.575525+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.455694527,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-cpu-leader-150-1",
+      "target": "etcd",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:54:55.205695+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.227157667,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-etcd-signals-leader-150-1",
+      "target": "etcd",
+      "scenario": "signals",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:59:23.390597+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.268477675,
+      "required_faults": [
+        "kill-leader",
+        "kill-follower",
+        "stop-leader",
+        "stop-follower"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-clock-control-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "clock-control",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:54:15.435467+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.148357803,
+      "required_faults": [
+        "clock-zero-control"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-clock-follower-150-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:51:52.949974+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.126108022,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-clock-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "clock",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:51:31.969605+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.120965859,
+      "required_faults": [
+        "clock-forward",
+        "clock-backward"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-cpu-follower-150-1",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:51:32.460147+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.526138562,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-cpu-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "cpu",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:51:11.082694+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.458229788,
+      "required_faults": [
+        "cpu-quota"
+      ],
+      "failures": []
+    },
+    {
+      "artifact": "../clocks/experiments/correct-round2-clocks/results/run-38432244287/clocks-ubuntu-24.04-tigerstore-signals-leader-150-1",
+      "target": "tigerstore",
+      "scenario": "signals",
+      "seed": 150,
+      "repetition": 1,
+      "utc_origin": "2026-10-13T16:54:57.269878+00:00",
+      "controller_started": true,
+      "controller_pass": true,
+      "audit_pass": true,
+      "issues": [],
+      "oracle_sets": 4,
+      "checker_verdicts": 16,
+      "checker_passes": 16,
+      "checker_timeouts": 0,
+      "max_checker_seconds": 0.549338271,
+      "required_faults": [
+        "kill-leader",
+        "kill-follower",
+        "stop-leader",
+        "stop-follower"
+      ],
+      "failures": []
+    }
+  ],
+  "totals": {
+    "cases": 40,
+    "passed": 30,
+    "failed": 10,
+    "oracle_sets": 130,
+    "checker_verdicts": 520,
+    "checker_passes": 496,
+    "checker_timeouts": 0
+  }
+}
