@@ -1,0 +1,58 @@
+name: pre50next experiment
+on:
+  push:
+    branches: [exp/pre-50-next, exp/pre-50-next-harness]
+    paths:
+      - experiments/pre50next/**
+      - .github/workflows/pre50next.yml
+permissions:
+  contents: read
+concurrency:
+  group: pre50next-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  paired:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        clients: [64, 256]
+        mode: [primary, profile]
+    steps:
+      - name: Deadline gate
+        id: deadline
+        run: |
+          # Reserve the full job limit so later Actions steps cannot start past the deadline.
+          if [[ $(( $(date -u +%s) + 840 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
+            echo 'open=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'open=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          go-version-file: go.mod
+      - name: Baseline and etcd, separate profile controls
+        if: steps.deadline.outputs.open == 'true'
+        env:
+          CLIENTS: ${{ matrix.clients }}
+          MODE: ${{ matrix.mode }}
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          timeout --kill-after=5s 780s bash experiments/pre50next/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always() && steps.deadline.outputs.open == 'true'
+        with:
+          name: pre50next-${{ matrix.mode }}-c${{ matrix.clients }}-${{ github.run_id }}
+          path: evidence/pre50next/${{ matrix.mode }}/c${{ matrix.clients }}
+          if-no-files-found: warn
+      - name: Job summary
+        if: always() && steps.deadline.outputs.open == 'true'
+        run: |
+          report=evidence/pre50next/${{ matrix.mode }}/c${{ matrix.clients }}/summary.md
+          if [[ -f $report ]]; then printf '%s\n' "$(<"$report")" >> "$GITHUB_STEP_SUMMARY"; fi

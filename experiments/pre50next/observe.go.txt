@@ -1,0 +1,57 @@
+package main
+
+// Experiment-only observation, injected into disposable source archives.
+import (
+	"encoding/json"
+	"log"
+	"net"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"runtime"
+	"runtime/metrics"
+
+	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/osfs"
+)
+
+func pre50Observe(n *node.Node) error {
+	addr := os.Getenv("PRE50_DEBUG")
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	// Do not depend on the custom client server or http.DefaultServeMux.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]uint64{
+			"id": n.ID(), "leader": n.Leader(), "gomaxprocs": uint64(runtime.GOMAXPROCS(0)),
+		}); err != nil {
+			log.Printf("debug leader: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("gc") == "1" {
+			runtime.GC()
+		}
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		samples := []metrics.Sample{{Name: "/cpu/classes/gc/total:cpu-seconds"}}
+		metrics.Read(samples)
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"mallocs": m.Mallocs, "total_alloc": m.TotalAlloc,
+			"gc_cpu_seconds": samples[0].Value.Float64(), "num_gc": m.NumGC,
+			"heap_alloc": m.HeapAlloc, "heap_inuse": m.HeapInuse,
+			"heap_objects": m.HeapObjects, "sys": m.Sys, "disk": osfs.Pre50Stats(),
+		}); err != nil {
+			log.Printf("debug snapshot: %v", err)
+		}
+	})
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	go func() {
+		if err := http.Serve(ln, mux); err != nil {
+			log.Printf("debug HTTP: %v", err)
+		}
+	}()
+	return nil
+}
