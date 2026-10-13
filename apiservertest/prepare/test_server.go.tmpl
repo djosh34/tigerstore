@@ -58,6 +58,9 @@ func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
 	cmd := exec.Command(factory)
 	cmd.Env = append(os.Environ(), "STORAGE_TEST_DATA_DIR="+dir+"/data", "STORAGE_TEST_PROGRESS_INTERVAL="+interval.String())
 	cmd.Stderr = log
+	// The factory stops its nodes on SIGTERM, also when the test binary
+	// dies without running its cleanups.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Close()
