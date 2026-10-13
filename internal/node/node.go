@@ -41,6 +41,9 @@ type Config struct {
 	// behind before it is closed; 0 means watchBytes.
 	WatchBytes int64
 	Logf       func(format string, args ...any)
+	// ObserveInterval enables file counters and asynchronous queue/gauge
+	// sampling. Zero disables observation. Set before New; no hot toggle.
+	ObserveInterval time.Duration
 }
 
 // input is one event for the committer from a client or a peer.
@@ -213,13 +216,25 @@ type Node struct {
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
+
+	observation *observationState
 }
 
 // New recovers the node's log from disk.
 func New(cfg Config) (*Node, error) {
+	if cfg.ObserveInterval < 0 {
+		return nil, errors.New("node: observation interval must not be negative")
+	}
+	var observation *observationState
+	if cfg.ObserveInterval > 0 {
+		observation = &observationState{request: make(chan struct{}, 1)}
+	}
 	dir, err := osfs.New(filepath.Join(cfg.DataDir, "wal"))
 	if err != nil {
 		return nil, err
+	}
+	if observation != nil {
+		dir = dir.Observe(&observation.files)
 	}
 	w, rec, err := wal.Open(dir)
 	if err != nil {
@@ -231,13 +246,14 @@ func New(cfg Config) (*Node, error) {
 		return nil, errors.Join(err, w.Close())
 	}
 	return &Node{
-		cfg:       cfg,
-		core:      c,
-		wal:       w,
-		inbox:     make(chan input, 8192),
-		persistQ:  make(chan []core.PersistJob, maxBacklog),
-		persisted: make(chan persistDone, 1),
-		done:      make(chan struct{}),
+		cfg:         cfg,
+		observation: observation,
+		core:        c,
+		wal:         w,
+		inbox:       make(chan input, 8192),
+		persistQ:    make(chan []core.PersistJob, maxBacklog),
+		persisted:   make(chan persistDone, 1),
+		done:        make(chan struct{}),
 	}, nil
 }
 
@@ -304,6 +320,9 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx) })
+	if n.observation != nil {
+		wg.Go(func() { n.sampleObservation(ctx, t) })
+	}
 	err := n.commit(ctx, t)
 	close(n.done)
 	cancel()
@@ -321,6 +340,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
 	streams := map[uint64]*WatchStream{}
+	var observe <-chan struct{}
+	if n.observation != nil {
+		observe = n.observation.request
+	}
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
@@ -332,6 +355,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			toDisk, next = n.persistQ, backlog[0]
 		}
 		select {
+		case <-observe:
+			n.publishObservation(len(backlog))
+			continue
 		case in := <-inbox:
 			n.handle(in, waiters, streams)
 		drain:

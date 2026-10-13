@@ -12,7 +12,10 @@ import (
 )
 
 // Dir is a directory on disk.
-type Dir struct{ path string }
+type Dir struct {
+	path        string
+	observation *FileObservation
+}
 
 var _ wal.FS = Dir{}
 
@@ -55,6 +58,9 @@ func (d Dir) Create(name string) (wal.File, error) {
 	if err != nil {
 		return nil, err
 	}
+	if d.observation != nil {
+		return observedFile{file: file{f}, observation: d.observation}, nil
+	}
 	return file{f}, nil
 }
 
@@ -63,6 +69,9 @@ func (d Dir) Open(name string) (wal.File, error) {
 	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR|os.O_APPEND, 0)
 	if err != nil {
 		return nil, err
+	}
+	if d.observation != nil {
+		return observedFile{file: file{f}, observation: d.observation}, nil
 	}
 	return file{f}, nil
 }

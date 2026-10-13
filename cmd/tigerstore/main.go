@@ -33,6 +33,7 @@ type flags struct {
 	certFile, keyFile, caFile                 string
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
+	shapeDebug                                string
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -72,6 +73,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	fs.StringVar(&f.shapeDebug, "shape-debug", os.Getenv("SHAPE_DEBUG"), "opt-in loopback debug HTTP address (default SHAPE_DEBUG; empty disables)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -205,11 +207,27 @@ func run(args []string, logger *log.Logger) error {
 		return err
 	}
 
+	debugListener, err := listenShapeDebug(f.shapeDebug)
+	if err != nil {
+		return err
+	}
+	if debugListener != nil {
+		defer func() {
+			if err := debugListener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				logger.Printf("shape debug close: %v", err)
+			}
+		}()
+	}
+
 	h := fnv.New64a()
 	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
 	ccfg := core.DefaultConfig(self.id, ids)
 	ccfg.ClusterID = h.Sum64()
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: 100 * time.Millisecond, Logf: logger.Printf})
+	var observeInterval time.Duration
+	if debugListener != nil {
+		observeInterval = shapeSampleInterval
+	}
+	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: 100 * time.Millisecond, Logf: logger.Printf, ObserveInterval: observeInterval})
 	if err != nil {
 		return err
 	}
@@ -233,6 +251,15 @@ func run(args []string, logger *log.Logger) error {
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())
+	}
+
+	if debugListener != nil {
+		debugServer := serveShapeDebug(debugListener, n, logger)
+		defer func() {
+			if err := debugServer.Close(); err != nil {
+				logger.Printf("shape debug server close: %v", err)
+			}
+		}()
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
