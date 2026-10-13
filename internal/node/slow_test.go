@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -28,7 +29,10 @@ func (noPeers) Close() error         { return nil }
 // then each finish within 10 election timeouts.
 func slowWatcherIsCut(t *testing.T) error {
 	cfg := core.DefaultConfig(1, []uint64{1})
-	tick := 10 * time.Millisecond
+	// The leader stops itself when an append takes two election
+	// timeouts (core.StallTicks); with 10 ms ticks that is 200 ms, which
+	// one slow fsync on a shared runner can exceed.
+	tick := 50 * time.Millisecond
 	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: tick, WatchQueue: 8, Logf: t.Logf})
 	if err != nil {
 		return err
@@ -69,6 +73,16 @@ func slowWatcherIsCut(t *testing.T) error {
 	}
 	for i := 1; i <= 50; i++ {
 		if err := put(i); err != nil {
+			// If the node stopped, say why. Run returns only after its
+			// disk goroutine, so wait for it.
+			if errors.Is(err, rpctypes.ErrGRPCStopped) {
+				select {
+				case runErr := <-ran:
+					ran <- runErr
+					return fmt.Errorf("put %d: the node stopped: %w", i, runErr)
+				case <-time.After(bound):
+				}
+			}
 			return fmt.Errorf("%w: put %d did not finish within %v: %w", errSlowWatcher, i, bound, err)
 		}
 	}

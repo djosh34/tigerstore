@@ -40,6 +40,9 @@ type Config struct {
 	ID uint64
 	// Listen is the host:port to accept peers on.
 	Listen string
+	// Listener, if set, is used instead of listening on Listen. Tests
+	// pass one they hold open, so no other process can take its port.
+	Listener net.Listener
 	// Peers maps every other node's Raft ID to its host:port.
 	Peers map[uint64]string
 	// Certificate is this node's peer certificate and CA the pool that
@@ -86,15 +89,19 @@ type TCP struct {
 
 // Start listens for peers and starts one writer per peer.
 func Start(cfg Config) (*TCP, error) {
-	ln, err := tls.Listen("tcp", cfg.Listen, &tls.Config{
+	raw := cfg.Listener
+	if raw == nil {
+		var err error
+		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
+			return nil, err
+		}
+	}
+	ln := tls.NewListener(raw, &tls.Config{
 		Certificates: []tls.Certificate{cfg.Certificate},
 		ClientCAs:    cfg.CA,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS13,
 	})
-	if err != nil {
-		return nil, err
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
 		cfg:     cfg,
