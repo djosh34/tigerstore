@@ -9,6 +9,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B02 | The leader's disk driver reports an append durable before its fsync | A node recovers less than it reported durable, or an erase-one-disk cold restart loses an applied entry | 128 | planted; its CI job must catch it |
 | B03 | A follower's disk driver reports an append durable before its fsync | Same as B02 | 128 | planted; its CI job must catch it |
 | B04a | WAL recovery accepts a record whose checksum fails | Recovery refuses the log (see deviations) | 256 | planted; its CI job must catch it |
+| B04c | WAL recovery skips checksums, and a payload bit flips so that the record still decodes | Two nodes applied different entries at one index, or the state disagrees with the model or the final log | 256 | planted; its CI job must catch it |
 | B04b | Torn-tail repair also cuts the last synced record | A node recovers less than it reported durable | 256 | planted; its CI job must catch it |
 | B06a | A watcher drops the last event of a multi-key write | The watch history differs from the committed history | 32 | planted; its CI job must catch it |
 | B06b | A watcher gets the first event of every write twice | Same as B06a | 32 | planted; its CI job must catch it |
@@ -31,9 +32,11 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 
 ## Deviations from the pre-work
 
-These need sign-off on #47:
+The owner approved these on #47:
 
-- **B04a.** With checksums skipped, the record decoder still rejects the random bytes of a torn record, so the bug shows as recovery refusing the log, not as invented state.
+- **B04a.** With checksums skipped, the record decoder still rejects the random bytes of a torn record, so the bug shows as recovery refusing the log, not as invented state. B04c covers invented state: under it, the damage a crash leaves is one flipped payload bit in an entry, which still decodes, and recovery accepts a record that fails its checksum only if it still decodes cleanly. The node is not marked damaged, so the run must catch what it applies.
 - **B12.** The pre-work's bug is recovery accepting a partial append after ENOSPC. The plant is the write side: the WAL ignores the short write and keeps appending after the partial bytes. That is caught as acknowledged data that recovery does not return, which is the pre-work's assertion.
 - **B17.** The pre-work's bug holds the core across a stalled fsync. The core never waits for the disk; the driver does. The plant switches off the leader's stalled-disk watchdog, and the assertion is the same: the stalled leader must stop.
 - There is no forced seed-0 schedule; each bug runs the full fault mix from seed 1.
+
+B05, B13, B14 and B16 follow in a later pull request, and #47 does not close without them. Any of them that targets code this design lacks is replaced by the nearest real bug of the same class.

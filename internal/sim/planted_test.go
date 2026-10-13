@@ -49,6 +49,8 @@ const (
 	badWatch = `watch \d+`
 	// A read or the replayed log that disagrees with the model.
 	badState = `call at \d+ ms|replaying the committed log`
+	// A node applied a value that no client wrote.
+	inventedState = `applied different entries|applied the same log to different states|differs from the final log|replaying the committed log|call at \d+ ms|durability|revisions|watch \d+`
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
 )
@@ -59,6 +61,7 @@ var plantedCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
+	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState},
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},

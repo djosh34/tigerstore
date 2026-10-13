@@ -148,10 +148,21 @@ func (s *Sim) stopNode(n *node) {
 	s.push(&event{at: s.now + 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)), kind: evRestart, node: n.idx, gen: n.gen})
 }
 
+// flipPayload is set only in planted builds (planted_flip.go).
+var flipPayload func(*Sim, *node) bool
+
 // maybeCorrupt damages the synced bytes of a node that just crashed, at
 // most once per run and only if no node is damaged yet, so a quorum stays.
 func (s *Sim) maybeCorrupt(n *node) {
 	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(5) != 0 {
+		return
+	}
+	if planted.On("B04c") && flipPayload != nil {
+		// Planted: flip one payload bit that still decodes, and do not
+		// expect the node to notice; the run must catch what it applies.
+		if flipPayload(s, n) {
+			s.mix(0xc4, uint64(n.idx))
+		}
 		return
 	}
 	for _, m := range s.nodes {

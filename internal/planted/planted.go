@@ -11,6 +11,7 @@ var Bugs = map[string]string{
 	"B02":  "the leader's disk driver reports an append durable before its fsync",
 	"B03":  "a follower's disk driver reports an append durable before its fsync",
 	"B04a": "WAL recovery accepts a record whose checksum does not verify",
+	"B04c": "WAL recovery skips checksums, and a payload bit flips so that the record still decodes",
 	"B04b": "WAL recovery cuts the record before a torn tail too",
 	"B06a": "a watcher drops the last event of a write that changes several keys",
 	"B06b": "a watcher gets the first event of every write twice",

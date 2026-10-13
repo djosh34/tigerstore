@@ -233,7 +233,7 @@ func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err er
 			return int64(off), lastStart, nil
 		}
 		body := data[off+8 : end]
-		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !planted.On("B04a") {
+		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !planted.On("B04a") && !(planted.On("B04c") && w.decodes(body)) {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
 			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
@@ -419,3 +419,17 @@ func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
 // Close closes the newest segment without syncing.
 func (w *WAL) Close() error { return w.seg.Close() }
+
+// decodes reports whether a record body looks like the next record: an
+// entry that follows the last one, or a hard state. Only the planted bug
+// B04c uses it, to accept such a record without its checksum.
+func (w *WAL) decodes(body []byte) bool {
+	switch {
+	case len(body) == 1+24 && body[0] == recHardState:
+		return true
+	case len(body) >= 1+17 && body[0] == recEntry:
+		index := binary.LittleEndian.Uint64(body[9:])
+		return index >= 1 && index <= w.last+1
+	}
+	return false
+}
