@@ -316,19 +316,16 @@ func (p *Proxy) accept() {
 			p.hit(s.gen, q.id, 0, Reset, 0, 0)
 			q.close(true)
 		}
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
+		p.wg.Go(func() {
 			var w sync.WaitGroup
-			w.Add(2)
-			go func() { defer w.Done(); p.relay(q, Forward, q.a, q.b, &p.fwd) }()
-			go func() { defer w.Done(); p.relay(q, Backward, q.b, q.a, &p.bwd) }()
+			w.Go(func() { p.relay(q, Forward, q.a, q.b, &p.fwd) })
+			w.Go(func() { p.relay(q, Backward, q.b, q.a, &p.bwd) })
 			w.Wait()
 			q.close(false)
 			p.mu.Lock()
 			delete(p.pairs, q)
 			p.mu.Unlock()
-		}()
+		})
 	}
 }
 
@@ -417,6 +414,7 @@ func switching(f Fault, t time.Duration) time.Duration {
 // mutate applies the byte faults to one read.
 func (p *Proxy) mutate(q *pair, d Dir, s *state, data []byte, off uint64, first bool, rng *rand.Rand) []byte {
 	switch s.fault.Kind {
+	case None, Stall, Reset:
 	case Cut:
 		p.hit(s.gen, q.id, d, Cut, len(data), off)
 		q.damaged.Store(true)
@@ -428,15 +426,14 @@ func (p *Proxy) mutate(q *pair, d Dir, s *state, data []byte, off uint64, first 
 		i := rng.IntN(len(data))
 		p.hit(s.gen, q.id, d, s.fault.Kind, 1, off+uint64(i))
 		q.damaged.Store(true)
-		switch s.fault.Kind {
-		case Drop:
+		if s.fault.Kind == Drop {
 			return append(data[:i], data[i+1:]...)
-		case Corrupt:
+		}
+		if s.fault.Kind == Corrupt {
 			data[i] ^= 1 << rng.IntN(8)
 			return data
-		default:
-			return append(data[:i+1], data[i:]...)
 		}
+		return append(data[:i+1], data[i:]...)
 	case Delay, Switching, Rate:
 		// The writer delays or paces; a hit is one read it holds back.
 		p.hit(s.gen, q.id, d, s.fault.Kind, len(data), off)
