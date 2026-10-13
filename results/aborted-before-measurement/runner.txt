@@ -1,0 +1,74 @@
+2026-10-13T15:02:38Z
+Architecture:                            aarch64
+CPU op-mode(s):                          64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  8
+On-line CPU(s) list:                     0-7
+Vendor ID:                               Apple
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per cluster:                     8
+Socket(s):                               -
+Cluster(s):                              1
+Stepping:                                0x0
+BogoMIPS:                                48.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm ssbs sb dcpodp flagm2 frint
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-7
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, but not BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     12178378752  7044374528   569757696    44163072  4860178432  5134004224
+Swap:    12884897792  1256087552 11628810240
+SOURCE    FSTYPE OPTIONS
+/dev/vda3 xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
+Linux lima-opencode-vm 5.14.0-611.26.1.el9_7.aarch64 #1 SMP PREEMPT_DYNAMIC Thu Jan 29 15:47:59 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+go version go1.27.2 linux/arm64
+etcd Version: 3.7.2
+Git SHA: 68c065e
+Go Version: go1.26.8
+Go OS/Arch: linux/arm64
+17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d  bin/etcd
+ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572  bin/etcdctl
+a40fbabba72895c1163b0b98c6a94a5fff4c05364da0b335366edeabe2805d5a  bin/loadgen
+13463ffbd8ce8195f8e20c0fb88c6d422ed183ae4fab616f6878e51cb5f2b945  bin/tigerstore
+f4e17504e5a3d11c4bf3ad8ec5b0bd08e1520952
+server main 36eda3cd, no server/internal/module edits
+Full CPU affinity, no GOMAXPROCS or GOMEMLIMIT at runtime; no CPU limit. Scope MemoryMax=3G and MemorySwapMax=0.
+Host windows: 1s warmup + 3s measurement, shorter than runner 3s+10s to fit retained MVCC history inside 3 GiB without swap.
+0::/user.slice/user-501.slice/user@501.service/app.slice/sol-multicore-host.scope
+Cpus_allowed_list:	0-7
+memory.max
+3221225472
+memory.swap.max
+0
+cpu.max
+max 100000
+procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+ 4  0 1226648 457580      0 4809448   18   26    72   160    2    3  4  2 95  0  0
+ 5  0 1226648 394768      0 4824716    0    0     0    60 18102 28008 31  6 63  0  0
+ 1  0 1226648 328232      0 4824716    0    0     0     0 16591 25310 23  4 73  0  0
+ 5  0 1226648 326972      0 4824712    0    0     0    36 15522 24135 23  5 73  0  0
+ 3  0 1226648 312608      0 4824712    0    0     0     0 14516 22093 23  3 74  0  0
+ 1  0 1226648 317408      0 4825852    0    0     0  1216 16133 24914 22  3 75  0  0
+ 1  0 1226648 324844      0 4825872    0    0     0     0 14348 22445 23  3 74  0  0
+ 1  0 1226648 341004      0 4825892    0    0     0     0 9598 14721 23  2 75  0  0
+ 1  0 1226648 336076      0 4825632    0    0     0    28 12277 19699 24  4 72  0  0
+ 1  0 1226648 335716      0 4825768    0    0     0     0 8723 13340 26  2 72  0  0
+ 1  0 1226648 365196      0 4814816    0    0     0    44 14259 23852 25  5 70  0  0

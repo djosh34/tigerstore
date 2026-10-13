@@ -1,0 +1,5 @@
+Running scope as unit: sol-multicore-build.scope
+ok  	github.com/djosh34/tigerstore/cmd/loadgen	5.021s
+/tmp/sol-multicore-etcd.tgz: OK
+certificates in /home/joshazimullah.linux/work_mounts/scratch/sol-multicore/certs
+build complete

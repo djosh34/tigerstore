@@ -1,0 +1,18 @@
+2026-10-13T15:06:10Z
+pid 6478
+Threads:	9
+Cpus_allowed_list:	0-3
+Mems_allowed_list:	0
+0::/system.slice/hosted-compute-agent.service
+pid 6479
+Threads:	9
+Cpus_allowed_list:	0-3
+Mems_allowed_list:	0
+0::/system.slice/hosted-compute-agent.service
+pid 6480
+Threads:	9
+Cpus_allowed_list:	0-3
+Mems_allowed_list:	0
+0::/system.slice/hosted-compute-agent.service
+generator inherits same full affinity and unset GOMAXPROCS/GOMEMLIMIT
+Cpus_allowed_list:	0-3

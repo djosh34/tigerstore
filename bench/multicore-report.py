@@ -7,8 +7,8 @@ import sys
 
 root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'results')
 venues = [('github-arm64', 'GitHub ubuntu-24.04-arm, 4 cores'),
-          ('github-amd64', 'GitHub ubuntu-24.04, amd64, 4 cores'),
-          ('host', 'Host arm64, 8 cores, 11 GiB RAM, 3 GiB scope')]
+          ('github-amd64', 'GitHub ubuntu-24.04, amd64, 4 vCPUs'),
+          ('host', 'Host arm64, 8 vCPUs, 11 GiB RAM, 3 GiB scope')]
 summary = {}
 for venue, title in venues:
     summary[venue] = {}

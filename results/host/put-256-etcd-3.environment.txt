@@ -1,0 +1,18 @@
+2026-10-13T15:10:48Z
+pid 238941
+Threads:	12
+Cpus_allowed_list:	0-7
+Mems_allowed_list:	0
+0::/user.slice/user-501.slice/user@501.service/app.slice/sol-multicore-host2.scope
+pid 238939
+Threads:	10
+Cpus_allowed_list:	0-7
+Mems_allowed_list:	0
+0::/user.slice/user-501.slice/user@501.service/app.slice/sol-multicore-host2.scope
+pid 238940
+Threads:	12
+Cpus_allowed_list:	0-7
+Mems_allowed_list:	0
+0::/user.slice/user-501.slice/user@501.service/app.slice/sol-multicore-host2.scope
+generator inherits same full affinity and unset GOMAXPROCS/GOMEMLIMIT
+Cpus_allowed_list:	0-7

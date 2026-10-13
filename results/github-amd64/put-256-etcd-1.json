@@ -1,0 +1,58 @@
+{
+  "valid": true,
+  "label": "etcd",
+  "workload": "put",
+  "value_size": 1024,
+  "keys": 10000,
+  "endpoints": [
+    "127.0.0.1:40010"
+  ],
+  "conns": 8,
+  "streams_per_conn": 32,
+  "offered_rate": 0,
+  "warmup_s": 3,
+  "duration_s": 10,
+  "ops": 77087,
+  "throughput": 7708.7,
+  "latency_us": {
+    "count": 77087,
+    "mean": 33163.344016098694,
+    "p50": 20119.551,
+    "p90": 62783.487,
+    "p99": 215482.367,
+    "p999": 353370.111,
+    "max": 375920.181
+  },
+  "service_latency_us": {
+    "count": 77087,
+    "mean": 33163.344016098694,
+    "p50": 20119.551,
+    "p90": 62783.487,
+    "p99": 215482.367,
+    "p999": 353370.111,
+    "max": 375920.181
+  },
+  "cohort": 77087,
+  "cohort_failed": 0,
+  "unsent": 0,
+  "server_cpu_us_per_op": 249.0692334634893,
+  "server_cpu_us_per_op_by_node": [
+    179.01851155188294,
+    34.506466719420914,
+    35.54425519218545
+  ],
+  "server_cores_by_node": [
+    1.3801156670800234,
+    0.26602229524875814,
+    0.2740229657825554
+  ],
+  "client_cpu_us_per_op": 22.429839013063162,
+  "client_cores": 0.17291939232239473,
+  "cpu_window_s": 9.999161903,
+  "machine_cpu_seconds": 21.09,
+  "machine_cores": 2.1091767694722967,
+  "machine_busy_pct": 53.405925550772345,
+  "machine_iowait_pct": 26.816915674854393,
+  "machine_steal_pct": 0,
+  "errors": {}
+}

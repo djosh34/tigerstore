@@ -1,0 +1,21 @@
+# Unpinned multicore measurements, 2026-10-13
+
+Server source is main at 36eda3cd874e5a5aa81aca41fdf70c7b9373bec2, with no changes to cmd/tigerstore, internal, go.mod or go.sum. The generator is the PR #86 implementation on main, with aggregate /proc/stat CPU counters added. No server runtime settings changed.
+
+Primary GitHub run: https://github.com/djosh34/tigerstore/actions/runs/38418222318 . All six jobs passed. Its experiment commit is b5fd133730f138395035d1f7d33e2fa1effd1675.
+
+Supplementary scaling run: https://github.com/djosh34/tigerstore/actions/runs/38419612456 . Its experiment commit is f4890342. Both Range jobs passed. The four write jobs stopped on their first etcd run at 8192 clients, with `etcdserver: too many requests`. The preceding 1024- and 4096-client points each have three valid repetitions for both stores. Invalid 8192-client results are retained and must not be reported as valid throughput. Tigerstore writes at 8192 clients did not run.
+
+`github-arm64/` and `github-amd64/` contain primary raw JSON, affinity/environment checks, leader placement and per-job runner descriptions. Each has 54 valid results. `scaling-artifacts/` contains the supplementary raw artifacts in their original job directories. `scaling-logs/` contains the four failed job logs.
+
+`host/` contains 54 valid results collected on the 8-vCPU arm64 VM. Both stores, all three nodes and the generator ran inside `systemd-run --user --scope --unit=sol-multicore-host2 -p MemoryMax=3G -p MemorySwapMax=0`. CPU quota was unlimited. GOMAXPROCS, GOMEMLIMIT and GOFLAGS were unset before running servers and generator. Builds ran inside a separate MemoryMax=3G scope, with GOFLAGS=-p=2 and GOMEMLIMIT=2GiB.
+
+Host runs used 1 second of warmup and 3 seconds of measurement, rather than the runners' 3 and 10 seconds, to limit retained history. The host reached the memory cap despite the shorter windows. Its memory events, memory peak and one-second memory samples are retained. There was no OOM kill or scope swap use. These are memory-capped host results, not uncapped 8-core results.
+
+Before each host run, a gate required five consecutive one-second samples with background below 0.8 CPU in total and no single process above 0.4 CPU. A measurement with total-machine CPU minus benchmark process CPU above 0.8 CPU was excluded and retried. Ten excluded windows remain in `host/excluded/`. Long-lived services remained on the host. The gate is evidence against sustained competing work, not proof of zero background activity. Process and aggregate CPU accounting do not match exactly on this VM; some calculated residuals are slightly negative. One earlier scope was stopped before measurements when other work became active; its metadata is in `aborted-before-measurement/`.
+
+Every primary point uses three repetitions, fresh three-node clusters with client and peer mTLS, 1 KiB values, 10,000 keys, the leader endpoint and closed-loop requests. There are eight HTTP/2 connections with N/8 concurrent request slots each. Clients means those request slots, not TCP connection count. Store order is etcd then tigerstore in repetitions 1 and 3, reversed in repetition 2. Etcd has the bench/ 8 GiB quota and stock safe persistence settings. No unsafe-no-fsync setting was used. The runners remounted ext4 with barrier=1 as bench/ does. Host data was on /tmp on the local XFS disk, not the virtiofs checkout.
+
+CPU seconds per operation are the raw CPU microseconds per operation divided by 1e6. Process CPU is user plus system time from /proc/PID/stat for servers and getrusage for the generator. Machine busy CPU comes from /proc/stat user, nice, system, irq and softirq. Idle, iowait and steal are excluded from busy and the latter two are in the raw JSON. CPU sampling covers the same measurement window, excluding preload and warmup. Average cores means CPU seconds divided by elapsed wall seconds. Percent busy uses total accounted /proc/stat ticks. All table values are medians of the three per-run statistics, not pooled quantiles. Independently computed medians and VM CPU accounting need not sum exactly.
+
+Run `python3 bench/multicore-report.py results` and `python3 bench/scaling-report.py` to regenerate tables. The full posted report is `comment-50.md`. No code or results from this branch are merged.

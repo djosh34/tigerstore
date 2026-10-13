@@ -1,0 +1,205 @@
+Running scope as unit: sol-multicore-host2.scope
+Host quiet for 5 s 2026-10-13T15:05:01Z
+Host quiet for 5 s 2026-10-13T15:06:06Z
+etcd put 1024B: 8903 ops/s, p50 4866us p99 31130us p99.9 42598us, server 219.4 us/op, client 34.1 us/op
+Measured background cores: 1.25
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:06:27Z
+etcd put 1024B: 11034 ops/s, p50 4932us p99 23921us p99.9 30736us, server 224.8 us/op, client 35.1 us/op
+Measured background cores: 0.116
+Host quiet for 5 s 2026-10-13T15:06:59Z
+tigerstore put 1024B: 18309 ops/s, p50 3334us p99 8421us p99.9 23527us, server 43.3 us/op, client 7.7 us/op
+Measured background cores: 0.402
+Host quiet for 5 s 2026-10-13T15:07:15Z
+tigerstore put 1024B: 25299 ops/s, p50 2564us p99 5226us p99.9 6767us, server 41.0 us/op, client 7.8 us/op
+Measured background cores: 0.119
+Host quiet for 5 s 2026-10-13T15:07:25Z
+etcd put 1024B: 12534 ops/s, p50 4243us p99 25362us p99.9 71565us, server 217.0 us/op, client 33.9 us/op
+Measured background cores: 0.422
+Host quiet for 5 s 2026-10-13T15:07:49Z
+etcd put 1024B: 13700 ops/s, p50 3744us p99 24314us p99.9 44958us, server 207.5 us/op, client 33.1 us/op
+Measured background cores: 0.129
+Host quiet for 5 s 2026-10-13T15:08:19Z
+tigerstore put 1024B: 19525 ops/s, p50 3187us p99 7225us p99.9 18547us, server 42.3 us/op, client 7.4 us/op
+Measured background cores: 0.792
+Host quiet for 5 s 2026-10-13T15:08:35Z
+etcd put 1024B: 20679 ops/s, p50 9142us p99 51249us p99.9 60162us, server 169.6 us/op, client 24.9 us/op
+Measured background cores: 0.573
+Host quiet for 5 s 2026-10-13T15:08:54Z
+tigerstore put 1024B: 58365 ops/s, p50 4153us p99 11174us p99.9 21955us, server 20.2 us/op, client 3.6 us/op
+Measured background cores: 0.319
+Host quiet for 5 s 2026-10-13T15:09:05Z
+tigerstore put 1024B: 52195 ops/s, p50 4309us p99 21168us p99.9 53084us, server 20.2 us/op, client 3.6 us/op
+Measured background cores: 1.267
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:10:10Z
+tigerstore put 1024B: 36449 ops/s, p50 4637us p99 103023us p99.9 178426us, server 24.4 us/op, client 4.2 us/op
+Measured background cores: 0.483
+Host quiet for 5 s 2026-10-13T15:10:24Z
+etcd put 1024B: 22114 ops/s, p50 9535us p99 42598us p99.9 76284us, server 171.1 us/op, client 24.9 us/op
+Measured background cores: 0.34
+Host quiet for 5 s 2026-10-13T15:10:45Z
+etcd put 1024B: 21173 ops/s, p50 8815us p99 60686us p99.9 76284us, server 172.4 us/op, client 25.3 us/op
+Measured background cores: 0.36
+Host quiet for 5 s 2026-10-13T15:11:34Z
+tigerstore put 1024B: 55496 ops/s, p50 4342us p99 11502us p99.9 31261us, server 20.8 us/op, client 3.6 us/op
+Measured background cores: 0.426
+Host quiet for 5 s 2026-10-13T15:11:45Z
+etcd put 1024B: 27219 ops/s, p50 32834us p99 78905us p99.9 85721us, server 162.0 us/op, client 18.1 us/op
+Measured background cores: 0.208
+Host quiet for 5 s 2026-10-13T15:12:12Z
+tigerstore put 1024B: 73021 ops/s, p50 9470us p99 141033us p99.9 286261us, server 14.6 us/op, client 2.4 us/op
+Measured background cores: 0.867
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:12:23Z
+tigerstore put 1024B: 74287 ops/s, p50 7520us p99 286261us p99.9 397410us, server 13.8 us/op, client 2.4 us/op
+Measured background cores: 0.34
+Host quiet for 5 s 2026-10-13T15:12:35Z
+tigerstore put 1024B: 88494 ops/s, p50 7946us p99 178782us p99.9 306824us, server 13.8 us/op, client 2.4 us/op
+Measured background cores: 0.674
+Host quiet for 5 s 2026-10-13T15:12:46Z
+etcd put 1024B: 30182 ops/s, p50 31523us p99 66978us p99.9 77857us, server 160.0 us/op, client 17.6 us/op
+Measured background cores: 0.271
+Host quiet for 5 s 2026-10-13T15:13:14Z
+etcd put 1024B: 24655 ops/s, p50 38928us p99 104595us p99.9 121897us, server 159.8 us/op, client 17.8 us/op
+Measured background cores: 1.198
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:13:43Z
+etcd put 1024B: 31461 ops/s, p50 28770us p99 96731us p99.9 108265us, server 149.4 us/op, client 17.4 us/op
+Measured background cores: -0.018
+Host quiet for 5 s 2026-10-13T15:14:15Z
+tigerstore put 1024B: 51875 ops/s, p50 8012us p99 309330us p99.9 347079us, server 13.7 us/op, client 2.4 us/op
+Measured background cores: 0.193
+Host quiet for 5 s 2026-10-13T15:14:26Z
+etcd txn 1024B: 13613 ops/s, p50 4243us p99 14057us p99.9 18153us, server 241.7 us/op, client 35.5 us/op
+Measured background cores: 0.24
+Host quiet for 5 s 2026-10-13T15:14:45Z
+tigerstore txn 1024B: 22443 ops/s, p50 2843us p99 6210us p99.9 9339us, server 48.9 us/op, client 7.5 us/op
+Measured background cores: 1.008
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:14:57Z
+tigerstore txn 1024B: 23563 ops/s, p50 2662us p99 5784us p99.9 16482us, server 48.7 us/op, client 7.4 us/op
+Measured background cores: 0.345
+Host quiet for 5 s 2026-10-13T15:15:17Z
+tigerstore txn 1024B: 23163 ops/s, p50 2793us p99 5652us p99.9 11829us, server 49.5 us/op, client 7.9 us/op
+Measured background cores: 0.548
+Host quiet for 5 s 2026-10-13T15:15:29Z
+etcd txn 1024B: 13378 ops/s, p50 4309us p99 13730us p99.9 20644us, server 244.9 us/op, client 34.9 us/op
+Measured background cores: 1.023
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:16:02Z
+etcd txn 1024B: 14004 ops/s, p50 4006us p99 14123us p99.9 42598us, server 234.7 us/op, client 34.3 us/op
+Measured background cores: 0.586
+Host quiet for 5 s 2026-10-13T15:16:22Z
+etcd txn 1024B: 14429 ops/s, p50 3940us p99 16351us p99.9 34472us, server 236.3 us/op, client 34.4 us/op
+Measured background cores: 0.136
+Host quiet for 5 s 2026-10-13T15:16:41Z
+tigerstore txn 1024B: 22259 ops/s, p50 2826us p99 6373us p99.9 9404us, server 49.3 us/op, client 7.5 us/op
+Measured background cores: 0.25
+Host quiet for 5 s 2026-10-13T15:17:07Z
+etcd txn 1024B: 22087 ops/s, p50 10125us p99 32702us p99.9 58589us, server 199.5 us/op, client 26.0 us/op
+Measured background cores: 0.152
+Host quiet for 5 s 2026-10-13T15:17:55Z
+tigerstore txn 1024B: 42763 ops/s, p50 3973us p99 24183us p99.9 339949us, server 26.6 us/op, client 3.5 us/op
+Measured background cores: 0.707
+Host quiet for 5 s 2026-10-13T15:18:13Z
+tigerstore txn 1024B: 30503 ops/s, p50 4801us p99 132383us p99.9 369936us, server 27.0 us/op, client 3.6 us/op
+Measured background cores: 1.231
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:18:37Z
+tigerstore txn 1024B: 32220 ops/s, p50 3727us p99 182977us p99.9 258091us, server 26.9 us/op, client 3.6 us/op
+Measured background cores: 0.33
+Host quiet for 5 s 2026-10-13T15:18:48Z
+etcd txn 1024B: 22943 ops/s, p50 9863us p99 28246us p99.9 36307us, server 198.9 us/op, client 25.4 us/op
+Measured background cores: 0.168
+Host quiet for 5 s 2026-10-13T15:19:34Z
+etcd txn 1024B: 16725 ops/s, p50 12288us p99 48103us p99.9 94110us, server 227.4 us/op, client 27.9 us/op
+Measured background cores: 0.24
+Host quiet for 5 s 2026-10-13T15:19:54Z
+tigerstore txn 1024B: 59525 ops/s, p50 3908us p99 11239us p99.9 47841us, server 25.1 us/op, client 3.5 us/op
+Measured background cores: 0.185
+Host quiet for 5 s 2026-10-13T15:20:07Z
+etcd txn 1024B: 22668 ops/s, p50 40501us p99 92537us p99.9 103547us, server 195.6 us/op, client 20.5 us/op
+Measured background cores: 0.158
+Host quiet for 5 s 2026-10-13T15:20:26Z
+tigerstore txn 1024B: 90789 ops/s, p50 9339us p99 32702us p99.9 311427us, server 18.6 us/op, client 2.3 us/op
+Measured background cores: 0.095
+Host quiet for 5 s 2026-10-13T15:20:38Z
+tigerstore txn 1024B: 116951 ops/s, p50 8143us p99 17367us p99.9 24707us, server 18.4 us/op, client 2.4 us/op
+Measured background cores: 0.253
+Host quiet for 5 s 2026-10-13T15:20:50Z
+etcd txn 1024B: 23029 ops/s, p50 37618us p99 135791us p99.9 151519us, server 195.6 us/op, client 19.6 us/op
+Measured background cores: 0.129
+Host quiet for 5 s 2026-10-13T15:21:10Z
+etcd txn 1024B: 25802 ops/s, p50 36307us p99 85721us p99.9 91488us, server 180.0 us/op, client 19.4 us/op
+Measured background cores: 0.183
+Host quiet for 5 s 2026-10-13T15:21:29Z
+tigerstore txn 1024B: 98605 ops/s, p50 9470us p99 21692us p99.9 29032us, server 19.0 us/op, client 2.4 us/op
+Measured background cores: 0.224
+Host quiet for 5 s 2026-10-13T15:21:40Z
+etcd range 1024B: 41095 ops/s, p50 1307us p99 5259us p99.9 9929us, server 108.4 us/op, client 29.0 us/op
+Measured background cores: 0.427
+Host quiet for 5 s 2026-10-13T15:21:59Z
+tigerstore range 1024B: 172886 ops/s, p50 355us p99 715us p99.9 1241us, server 18.6 us/op, client 6.3 us/op
+Measured background cores: -0.184
+Host quiet for 5 s 2026-10-13T15:22:11Z
+tigerstore range 1024B: 167620 ops/s, p50 364us p99 743us p99.9 1290us, server 18.9 us/op, client 6.3 us/op
+Measured background cores: -0.188
+Host quiet for 5 s 2026-10-13T15:22:22Z
+etcd range 1024B: 40309 ops/s, p50 1356us p99 5095us p99.9 8077us, server 107.8 us/op, client 28.9 us/op
+Measured background cores: 0.794
+Host quiet for 5 s 2026-10-13T15:22:47Z
+etcd range 1024B: 45196 ops/s, p50 1249us p99 4006us p99.9 6636us, server 110.1 us/op, client 30.2 us/op
+Measured background cores: 0.126
+Host quiet for 5 s 2026-10-13T15:23:06Z
+tigerstore range 1024B: 170299 ops/s, p50 359us p99 723us p99.9 1192us, server 18.8 us/op, client 6.4 us/op
+Measured background cores: -0.062
+Host quiet for 5 s 2026-10-13T15:23:17Z
+etcd range 1024B: 53959 ops/s, p50 4309us p99 11502us p99.9 14778us, server 93.2 us/op, client 21.9 us/op
+Measured background cores: 0.159
+Host quiet for 5 s 2026-10-13T15:23:36Z
+tigerstore range 1024B: 386812 ops/s, p50 600us p99 1438us p99.9 2105us, server 8.8 us/op, client 3.2 us/op
+Measured background cores: -0.155
+Host quiet for 5 s 2026-10-13T15:23:47Z
+tigerstore range 1024B: 308102 ops/s, p50 694us p99 2826us p99.9 5554us, server 8.5 us/op, client 3.0 us/op
+Measured background cores: 1.786
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:24:29Z
+tigerstore range 1024B: 386245 ops/s, p50 604us p99 1389us p99.9 2187us, server 8.9 us/op, client 3.2 us/op
+Measured background cores: -0.144
+Host quiet for 5 s 2026-10-13T15:24:42Z
+etcd range 1024B: 48798 ops/s, p50 4637us p99 13468us p99.9 19726us, server 94.6 us/op, client 23.0 us/op
+Measured background cores: 0.892
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:25:09Z
+etcd range 1024B: 56006 ops/s, p50 4153us p99 11305us p99.9 14516us, server 93.1 us/op, client 22.2 us/op
+Measured background cores: 0.001
+Host quiet for 5 s 2026-10-13T15:25:28Z
+etcd range 1024B: 47203 ops/s, p50 4866us p99 13271us p99.9 16843us, server 106.5 us/op, client 26.4 us/op
+Measured background cores: -0.026
+Host quiet for 5 s 2026-10-13T15:25:47Z
+tigerstore range 1024B: 296711 ops/s, p50 723us p99 2662us p99.9 6308us, server 10.8 us/op, client 4.0 us/op
+Measured background cores: -0.269
+Host quiet for 5 s 2026-10-13T15:25:58Z
+etcd range 1024B: 53034 ops/s, p50 17760us p99 47579us p99.9 64094us, server 95.1 us/op, client 18.0 us/op
+Measured background cores: 0.435
+Host quiet for 5 s 2026-10-13T15:26:18Z
+tigerstore range 1024B: 553347 ops/s, p50 1642us p99 3891us p99.9 6242us, server 6.5 us/op, client 2.4 us/op
+Measured background cores: -0.043
+Host quiet for 5 s 2026-10-13T15:26:29Z
+tigerstore range 1024B: 548398 ops/s, p50 1642us p99 4071us p99.9 7586us, server 6.5 us/op, client 2.5 us/op
+Measured background cores: 0.046
+Host quiet for 5 s 2026-10-13T15:26:40Z
+etcd range 1024B: 51028 ops/s, p50 18940us p99 46268us p99.9 59376us, server 95.4 us/op, client 17.5 us/op
+Measured background cores: 0.445
+Host quiet for 5 s 2026-10-13T15:27:14Z
+etcd range 1024B: 57385 ops/s, p50 16744us p99 40501us p99.9 51773us, server 95.1 us/op, client 17.0 us/op
+Measured background cores: -0.168
+Host quiet for 5 s 2026-10-13T15:27:33Z
+tigerstore range 1024B: 495357 ops/s, p50 1774us p99 5292us p99.9 13009us, server 6.3 us/op, client 2.3 us/op
+Measured background cores: 1.075
+Discarding noisy host window; retrying same store/rep
+Host quiet for 5 s 2026-10-13T15:27:52Z
+tigerstore range 1024B: 556572 ops/s, p50 1642us p99 3793us p99.9 5489us, server 6.4 us/op, client 2.4 us/op
+Measured background cores: -0.078
+host measurements complete
