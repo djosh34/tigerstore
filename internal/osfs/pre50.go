@@ -2,10 +2,11 @@ package osfs
 
 // Throwaway follow-up instrumentation. The paired baseline predates this file.
 import (
-	"github.com/djosh34/tigerstore/internal/expclock"
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/expclock"
 )
 
 var (

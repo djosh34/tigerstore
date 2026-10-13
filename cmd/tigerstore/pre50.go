@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
+	"strconv"
 
 	"github.com/djosh34/tigerstore/internal/expclock"
 	"github.com/djosh34/tigerstore/internal/node"
@@ -20,6 +21,17 @@ func pre50Observe(n *node.Node) error {
 	if addr == "" {
 		return nil
 	}
+	http.HandleFunc("/debug/procs", func(w http.ResponseWriter, r *http.Request) {
+		value, err := strconv.Atoi(r.URL.Query().Get("n"))
+		if err != nil || value < 1 || value > 2 {
+			http.Error(w, "expected n=1 or n=2", 400)
+			return
+		}
+		previous := runtime.GOMAXPROCS(value)
+		if err := json.NewEncoder(w).Encode(map[string]int{"previous": previous, "current": runtime.GOMAXPROCS(0)}); err != nil {
+			return
+		}
+	})
 	http.HandleFunc("/debug/trace/start", expclock.Start)
 	http.HandleFunc("/debug/trace/stop", expclock.Stop)
 	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {

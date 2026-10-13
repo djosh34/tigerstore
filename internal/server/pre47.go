@@ -42,8 +42,10 @@ func pre47Options() []grpc.ServerOption {
 	return opts
 }
 
-type pre47ConnKey struct{}
-type pre47RPCKey struct{}
+type (
+	pre47ConnKey struct{}
+	pre47RPCKey  struct{}
+)
 
 type pre47Conn struct {
 	id     uint64

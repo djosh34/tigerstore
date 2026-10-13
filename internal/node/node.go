@@ -7,13 +7,15 @@ package node
 import (
 	"context"
 	"errors"
-	"github.com/djosh34/tigerstore/internal/expclock"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/expclock"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -384,12 +386,16 @@ type persistDone struct {
 // released until the whole group is durable. Entry order must not change:
 // an append can replace a previous job's suffix. A failure is never retried.
 func (n *Node) persist(ctx context.Context) {
+	yield := os.Getenv("PRE47_DISK_YIELD")
 	for {
 		var jobs []core.PersistJob
 		select {
 		case jobs = <-n.persistQ:
 		case <-ctx.Done():
 			return
+		}
+		if yield == "before" {
+			runtime.Gosched()
 		}
 		group := jobs[0].TraceGroup
 		expclock.Event("persist_start", group, uint64(len(jobs)), 0, 0)
@@ -407,6 +413,9 @@ func (n *Node) persist(ctx context.Context) {
 			done = persistDone{err: err}
 		}
 		expclock.Event("persist_end", group, 0, 0, 0)
+		if yield == "after" {
+			runtime.Gosched()
+		}
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():

@@ -18,10 +18,12 @@ type Record struct {
 	D    uint64 `json:"d,omitempty"`
 }
 
-var enabled atomic.Bool
-var mu sync.Mutex
-var records []Record
-var dropped uint64
+var (
+	enabled atomic.Bool
+	mu      sync.Mutex
+	records []Record
+	dropped uint64
+)
 
 const capacity = 2000000
 
@@ -52,6 +54,7 @@ func Start(w http.ResponseWriter, _ *http.Request) {
 	mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
+
 func Stop(w http.ResponseWriter, _ *http.Request) {
 	mu.Lock()
 	enabled.Store(false)

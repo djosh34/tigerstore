@@ -17,7 +17,7 @@ import urllib.request
 ROOT = Path.cwd()
 WORKERS = int(os.environ['CLIENTS'])
 MODE = os.environ.get('MODE', 'diagnose')
-TOTAL = 12000 if MODE == 'diagnose' else 60000
+TOTAL = 60000 if MODE == 'paired' else 12000
 OUT = ROOT / f'evidence/pre47batch256/{MODE}/c{WORKERS}'
 TMP = Path(os.environ['RUNNER_TEMP']) / 'pre47batch256'
 CERT = TMP / 'certs'
@@ -81,6 +81,12 @@ def cluster(store, label):
                 env['PRE47_TRACE'] = '1'
             if 'window' in store:
                 env['PRE47_GRPC_WINDOW'] = str(16 << 20)
+            if 'h2' in store:
+                env['PRE47_H2_TRACE'] = '1'
+            if 'yield-before' in store:
+                env['PRE47_DISK_YIELD'] = 'before'
+            if 'yield-after' in store:
+                env['PRE47_DISK_YIELD'] = 'after'
             (dest/f'n{i}-env.json').write_text(json.dumps({k:v for k,v in env.items() if k.startswith(('PRE47_', 'PRE50_')) or k=='GOMAXPROCS'}, indent=2))
             log = open(dest/f'n{i}.log', 'w')
             handles.append(log)
@@ -108,6 +114,12 @@ def cluster(store, label):
                 if time.monotonic() >= until:
                     raise
                 time.sleep(.25)
+        if store in ('leader2', 'followers2'):
+            changes = {}
+            for i in range(3):
+                target = 2 if (i == leader) == (store == 'leader2') else 1
+                changes[str(i)] = json.loads(http(6060+i, f'/debug/procs?n={target}'))
+            (dest/'runtime-procs.json').write_text(json.dumps(changes, indent=2))
         order = [leader]+[i for i in range(3) if i != leader]
         for core,i in enumerate(order):
             run(['taskset','-apc',str(core),str(procs[i].pid)], stdout=sp.DEVNULL)
@@ -223,10 +235,12 @@ def cluster(store, label):
 def main():
     check_time()
     OUT.mkdir(parents=True,exist_ok=True)
-    repetitions = 1 if MODE == 'diagnose' else 5
+    repetitions = 5 if MODE == 'paired' else 3 if MODE == 'isolate' else 1
     for rep in range(1, repetitions+1):
         # All variants run sequentially with identical physical CPU placement.
-        stores = ['prototype','trace-p1','trace-p2','trace-window-p1','trace-conns256-p1','p2','runtime-p1','runtime-p2'] if MODE == 'diagnose' else ['prototype','p2','etcd']
+        stores = {'diagnose': ['trace-h2-p1', 'trace-h2-p2'],
+                  'isolate': ['prototype','off-p1','leader2','followers2','yield-before-p1','yield-after-p1','window-p1','p2'],
+                  'paired': ['prototype','p2','etcd']}[MODE]
         if rep % 2 == 0:
             stores.reverse()
         for store in stores:
