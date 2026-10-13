@@ -384,6 +384,10 @@ func (r *run) watch(do string, req *pb.WatchCreateRequest) {
 		if status.Code(err) == codes.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
 			break
 		}
+		if err != nil && ctx.Err() != nil {
+			// The deadline passed, and the server ended the stream first.
+			break
+		}
 		if err != nil {
 			r.t.Fatalf("%s: %v", do, err)
 		}

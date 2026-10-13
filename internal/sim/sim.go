@@ -268,9 +268,11 @@ type Sim struct {
 	// applied is the highest index any node has applied.
 	applied    uint64
 	stallStops []int64
-	history    []*Record
-	stats      Stats
-	err        error
+	// diskFaultDue arms a disk fault at the next append with entries.
+	diskFaultDue bool
+	history      []*Record
+	stats        Stats
+	err          error
 }
 
 // Stats counts what happened in a run.
@@ -288,6 +290,9 @@ type Stats struct {
 	// that found their disk damaged, and ColdRestarts the erase-one-disk
 	// restarts checked.
 	DiskFaults, StalledStops, Fenced, ColdRestarts int
+	// DiskFaultIdle is 1 when the run's guaranteed disk fault stayed due
+	// because no node appended entries from then until healing.
+	DiskFaultIdle int
 }
 
 // Result is the outcome of a run.
@@ -329,7 +334,7 @@ func Run(cfg Config) (*Result, error) {
 		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evCrashOnce})
 	}
 	if cfg.Faults.LinkEvery > 0 {
-		s.push(&event{at: s.exp(cfg.Faults.LinkEvery), kind: evLinks})
+		s.push(&event{at: min(s.exp(cfg.Faults.LinkEvery), 3*cfg.Faults.LinkEvery), kind: evLinks})
 		// One change at a uniform time, so that no run goes without.
 		s.push(&event{at: 1 + s.rng.Int64N(cfg.Duration), kind: evLinksOnce})
 	}
@@ -451,8 +456,12 @@ func (s *Sim) handle(e *event) {
 			s.push(&event{at: s.exp(s.cfg.Faults.DiskErrorEvery), kind: evDiskFault})
 		}
 	case evDiskFaultOnce:
-		if !s.injectDiskFault() && !s.healed {
-			s.push(&event{at: s.now + 100*Millisecond, kind: evDiskFaultOnce})
+		// Armed on the next disk write, since a node picked now may write
+		// nothing until healing. Again every 500 ms until one has fired:
+		// an armed fault can stay unused, on a node that is then fenced.
+		if s.stats.DiskFaults == 0 && !s.healed {
+			s.diskFaultDue = true
+			s.push(&event{at: s.now + 500*Millisecond, kind: evDiskFaultOnce})
 		}
 	case evStall:
 		s.injectStall()
@@ -592,6 +601,13 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	if s.diskFaultDue && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
+		// Only an append with entries surely writes, and a write fault
+		// fires in the Flush below; a sync can stall until healing. It
+		// replaces a fault that waits for a sync.
+		s.diskFaultDue = false
+		s.armDiskFault(n, 1+s.rng.IntN(2))
+	}
 	for _, j := range jobs {
 		n.log.Append(j.HardState, j.Entries)
 	}
@@ -740,7 +756,9 @@ func (s *Sim) changeLinks() {
 		mask = s.rng.Uint64() & mask
 	}
 	s.setLinks(mask)
-	s.push(&event{at: s.exp(s.cfg.Faults.LinkEvery), kind: evLinks})
+	// At most three times the mean, so that one random partition cannot
+	// hold through most of the faults; TestAllLinkMasks holds each mask.
+	s.push(&event{at: min(s.exp(s.cfg.Faults.LinkEvery), s.now+3*s.cfg.Faults.LinkEvery), kind: evLinks})
 }
 
 // setLinks sets the six directed links between three nodes from a mask:
@@ -765,6 +783,10 @@ func (s *Sim) setLinks(mask uint64) {
 }
 
 func (s *Sim) heal() {
+	if s.diskFaultDue {
+		// No node appended entries from the time the fault was due.
+		s.stats.DiskFaultIdle++
+	}
 	s.healed = true
 	s.setLinks(1<<6 - 1)
 	for _, n := range s.nodes {
