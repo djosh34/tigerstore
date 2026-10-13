@@ -1,0 +1,11 @@
+{
+  "metadata": {"annotations": {"experiment.kube-burner/generation": "{{.Iteration}}"}},
+  "spec": {"template": {"metadata": {
+    "annotations": {"experiment.kube-burner/generation": "{{.Iteration}}"},
+    "labels": {
+      "kube-burner.io/runid": "{{.RunID}}",
+      "kube-burner.io/uuid": "{{.UUID}}",
+      "experiment.kube-burner/run": "{{.UUID}}"
+    }
+  }}}
+}

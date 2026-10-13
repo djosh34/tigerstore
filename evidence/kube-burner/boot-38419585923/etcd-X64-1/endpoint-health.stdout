@@ -1,0 +1,3 @@
+https://external-etcd-2:2379 is healthy: successfully committed proposal: took = 460.397726ms
+https://external-etcd-1:2379 is healthy: successfully committed proposal: took = 461.222961ms
+https://external-etcd-3:2379 is healthy: successfully committed proposal: took = 464.162152ms

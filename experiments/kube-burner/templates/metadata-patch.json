@@ -1,0 +1,1 @@
+{"metadata":{"annotations":{"experiment.kube-burner/generation":"{{.Iteration}}"}}}

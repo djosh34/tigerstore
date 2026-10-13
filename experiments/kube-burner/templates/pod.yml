@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: density-{{.Iteration}}-{{.Replica}}
+  labels:
+    experiment.kube-burner/run: '{{.UUID}}'
+    app: density-pause
+spec:
+  automountServiceAccountToken: false
+  terminationGracePeriodSeconds: 0
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          experiment.kube-burner/run: '{{.UUID}}'
+  containers:
+    - name: pause
+      image: '{{.Image}}'
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          cpu: 2m
+          memory: 4Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi

@@ -1,0 +1,50 @@
+# kube-burner v2.8.6. The runner supplies user-data and a shared UUID.
+metricsEndpoints:
+  - indexer:
+      type: local
+      metricsDirectory: '{{.METRICS_DIRECTORY}}'
+global:
+  gc: false
+  requestTimeout: 20s
+  measurements:
+    - name: podLatency
+jobs:
+  - name: mixed-density
+    namespace: '{{.WORKLOAD_PREFIX}}-mixed'
+    namespaceLabels:
+      experiment.kube-burner/run: '{{.UUID}}'
+    jobType: create
+    jobIterations: 8
+    namespacedIterations: true
+    cleanup: false
+    preLoadImages: false
+    qps: 40
+    burst: 50
+    maxWaitTimeout: 90s
+    waitWhenFinished: true
+    verifyObjects: true
+    errorOnVerify: true
+    churnConfig:
+      mode: namespaces
+      cycles: 1
+      percent: 25
+      duration: 90s
+      delay: 2s
+    objects:
+      - objectTemplate: templates/configmap.yml
+        replicas: 125
+        wait: false
+      - objectTemplate: templates/secret.yml
+        replicas: 3
+        wait: false
+      - objectTemplate: templates/service.yml
+        replicas: 2
+        wait: false
+      - objectTemplate: templates/deployment.yml
+        replicas: 1
+        inputVars:
+          Image: '{{.WORKLOAD_IMAGE}}'
+      - objectTemplate: templates/pod.yml
+        replicas: 2
+        inputVars:
+          Image: '{{.WORKLOAD_IMAGE}}'

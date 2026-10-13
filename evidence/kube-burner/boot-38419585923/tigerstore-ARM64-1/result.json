@@ -1,0 +1,9 @@
+{
+  "store": "tigerstore",
+  "rep": 1,
+  "arch": "ARM64",
+  "tigerstore_ref": "90870876b6459334c7eddd67c0f9d184267f2eba",
+  "experiment_ref": "cfd3b2e44ce7815ff76af272d0362d47dbbb2613",
+  "exit": 0,
+  "total_seconds": 72.4724428653717
+}

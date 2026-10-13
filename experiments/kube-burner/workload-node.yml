@@ -1,0 +1,36 @@
+metricsEndpoints:
+  - indexer:
+      type: local
+      metricsDirectory: '{{.METRICS_DIRECTORY}}'
+global:
+  gc: false
+  requestTimeout: 20s
+  measurements:
+    - name: podLatency
+jobs:
+  - name: node-density
+    namespace: '{{.WORKLOAD_PREFIX}}-node'
+    namespaceLabels:
+      experiment.kube-burner/run: '{{.UUID}}'
+    jobType: create
+    jobIterations: 80
+    namespacedIterations: false
+    cleanup: false
+    preLoadImages: false
+    qps: 15
+    burst: 20
+    maxWaitTimeout: 90s
+    waitWhenFinished: true
+    verifyObjects: true
+    errorOnVerify: true
+    churnConfig:
+      mode: objects
+      cycles: 2
+      percent: 10
+      duration: 90s
+      delay: 2s
+    objects:
+      - objectTemplate: templates/pod.yml
+        replicas: 1
+        inputVars:
+          Image: '{{.WORKLOAD_IMAGE}}'

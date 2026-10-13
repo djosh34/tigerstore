@@ -1,0 +1,290 @@
+[
+  {
+    "name": "external-etcd-1",
+    "argv": [
+      "docker",
+      "logs",
+      "--timestamps",
+      "external-etcd-1"
+    ],
+    "exit": 0,
+    "elapsed": 0.01249074935913086
+  },
+  {
+    "name": "external-etcd-1-inspect",
+    "argv": [
+      "docker",
+      "inspect",
+      "external-etcd-1"
+    ],
+    "exit": 0,
+    "elapsed": 0.01159358024597168
+  },
+  {
+    "name": "external-etcd-2",
+    "argv": [
+      "docker",
+      "logs",
+      "--timestamps",
+      "external-etcd-2"
+    ],
+    "exit": 0,
+    "elapsed": 0.011193513870239258
+  },
+  {
+    "name": "external-etcd-2-inspect",
+    "argv": [
+      "docker",
+      "inspect",
+      "external-etcd-2"
+    ],
+    "exit": 0,
+    "elapsed": 0.011186361312866211
+  },
+  {
+    "name": "external-etcd-3",
+    "argv": [
+      "docker",
+      "logs",
+      "--timestamps",
+      "external-etcd-3"
+    ],
+    "exit": 0,
+    "elapsed": 0.011308908462524414
+  },
+  {
+    "name": "external-etcd-3-inspect",
+    "argv": [
+      "docker",
+      "inspect",
+      "external-etcd-3"
+    ],
+    "exit": 0,
+    "elapsed": 0.011095285415649414
+  },
+  {
+    "name": "burner-control-plane-kubelet",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "journalctl",
+      "-u",
+      "kubelet",
+      "--no-pager"
+    ],
+    "exit": 0,
+    "elapsed": 0.037998199462890625
+  },
+  {
+    "name": "burner-control-plane-containers",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "ps",
+      "-a",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.04770541191101074
+  },
+  {
+    "name": "burner-control-plane-coredns-873b60389745",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "logs",
+      "873b60389745537816f153db86e7642c0a86b82138c2fd259ce874339845bd71"
+    ],
+    "exit": 0,
+    "elapsed": 0.04499006271362305
+  },
+  {
+    "name": "burner-control-plane-coredns-cf36d271c89c",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "logs",
+      "cf36d271c89c0f02ba76343619e705e965bc8751366a2f89ad06c69e3b956506"
+    ],
+    "exit": 0,
+    "elapsed": 0.04566001892089844
+  },
+  {
+    "name": "burner-control-plane-kube-controller-manager-2eefe1ca8f4f",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "logs",
+      "2eefe1ca8f4fdace043644fcd0576260fafd26dffddb414e2bb3dc6552c4b0f8"
+    ],
+    "exit": 0,
+    "elapsed": 0.04378652572631836
+  },
+  {
+    "name": "burner-control-plane-kube-scheduler-550acb69f6f9",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "logs",
+      "550acb69f6f966b2847ac4fd727980a487fda0a063441ddffb2a6c1159a37ba3"
+    ],
+    "exit": 0,
+    "elapsed": 0.043814897537231445
+  },
+  {
+    "name": "burner-control-plane-kube-apiserver-00f6f5fd8846",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-control-plane",
+      "crictl",
+      "logs",
+      "00f6f5fd8846368d6589f5e833c7f892cc2d521751cfb171d52655a0ccd2a8d0"
+    ],
+    "exit": 0,
+    "elapsed": 0.04371023178100586
+  },
+  {
+    "name": "burner-worker-kubelet",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-worker",
+      "journalctl",
+      "-u",
+      "kubelet",
+      "--no-pager"
+    ],
+    "exit": 0,
+    "elapsed": 0.03856182098388672
+  },
+  {
+    "name": "burner-worker-containers",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-worker",
+      "crictl",
+      "ps",
+      "-a",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.04266095161437988
+  },
+  {
+    "name": "burner-worker2-kubelet",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-worker2",
+      "journalctl",
+      "-u",
+      "kubelet",
+      "--no-pager"
+    ],
+    "exit": 0,
+    "elapsed": 0.039370059967041016
+  },
+  {
+    "name": "burner-worker2-containers",
+    "argv": [
+      "docker",
+      "exec",
+      "burner-worker2",
+      "crictl",
+      "ps",
+      "-a",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.04616665840148926
+  },
+  {
+    "name": "pods",
+    "argv": [
+      "kubectl",
+      "--request-timeout=20s",
+      "get",
+      "pods",
+      "-A",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.05846405029296875
+  },
+  {
+    "name": "events",
+    "argv": [
+      "kubectl",
+      "--request-timeout=20s",
+      "get",
+      "events",
+      "-A",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.05706334114074707
+  },
+  {
+    "name": "namespaces",
+    "argv": [
+      "kubectl",
+      "--request-timeout=20s",
+      "get",
+      "namespaces",
+      "-A",
+      "-o",
+      "json"
+    ],
+    "exit": 0,
+    "elapsed": 0.0428767204284668
+  },
+  {
+    "name": "readyz",
+    "argv": [
+      "kubectl",
+      "--request-timeout=20s",
+      "get",
+      "--raw",
+      "/readyz?verbose"
+    ],
+    "exit": 0,
+    "elapsed": 0.03930068016052246
+  },
+  {
+    "name": "disk",
+    "argv": [
+      "df",
+      "-B1",
+      "/home/runner/work/_temp"
+    ],
+    "exit": 0,
+    "elapsed": 0.002442598342895508
+  },
+  {
+    "name": "memory",
+    "argv": [
+      "free",
+      "-b"
+    ],
+    "exit": 0,
+    "elapsed": 0.002562999725341797
+  }
+]

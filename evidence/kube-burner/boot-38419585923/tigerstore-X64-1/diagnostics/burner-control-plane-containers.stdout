@@ -1,0 +1,265 @@
+{
+  "containers":  [
+    {
+      "id":  "c891acfa940c7b87e908e738d3884a787bac62a20b579981fd2e8b62b60e3dff",
+      "podSandboxId":  "3c5885fa6f5779aa8c22af43ebd7703aca363bc22ec4ea31cc581e5d52c00fad",
+      "metadata":  {
+        "name":  "coredns",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/coredns/coredns:v1.14.6",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904255986162533",
+      "labels":  {
+        "io.kubernetes.container.name":  "coredns",
+        "io.kubernetes.pod.name":  "coredns-559f6c778d-vwzr8",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "e2743e26-2c6f-454e-8a3e-7cbc3697c35f"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "dadcd0c6",
+        "io.kubernetes.container.ports":  "[{\"name\":\"dns\",\"containerPort\":53,\"protocol\":\"UDP\"},{\"name\":\"dns-tcp\",\"containerPort\":53,\"protocol\":\"TCP\"},{\"name\":\"metrics\",\"containerPort\":9153,\"protocol\":\"TCP\"},{\"name\":\"liveness-probe\",\"containerPort\":8080,\"protocol\":\"TCP\"},{\"name\":\"readiness-probe\",\"containerPort\":8181,\"protocol\":\"TCP\"}]",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9"
+    },
+    {
+      "id":  "a1a554c770d5307240382e0f190f7be6e3910c285fe1c01a81369c38fb26e427",
+      "podSandboxId":  "45a9600a0f951d7d15220b2379e4a116e28cdc6d1c54224fc189875cf80b24c7",
+      "metadata":  {
+        "name":  "coredns",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/coredns/coredns:v1.14.6",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904255915875605",
+      "labels":  {
+        "io.kubernetes.container.name":  "coredns",
+        "io.kubernetes.pod.name":  "coredns-559f6c778d-lmz97",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "33718b78-2749-4475-997e-4d6f7758daa7"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "dadcd0c6",
+        "io.kubernetes.container.ports":  "[{\"name\":\"dns\",\"containerPort\":53,\"protocol\":\"UDP\"},{\"name\":\"dns-tcp\",\"containerPort\":53,\"protocol\":\"TCP\"},{\"name\":\"metrics\",\"containerPort\":9153,\"protocol\":\"TCP\"},{\"name\":\"liveness-probe\",\"containerPort\":8080,\"protocol\":\"TCP\"},{\"name\":\"readiness-probe\",\"containerPort\":8181,\"protocol\":\"TCP\"}]",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:520212b8b0fcd9309d7362d592f513b72880fa5a4e9e8b91442e7ee3b622c6a9"
+    },
+    {
+      "id":  "cf2ce6e40931f61e626bc3140c70dccb22f56b3e24e3e9b56d44f0e36c4f7d18",
+      "podSandboxId":  "c8bc9529a166bebcdfb2b874445e6d3f8ad34842efae23773aa2e10eb77113a0",
+      "metadata":  {
+        "name":  "local-path-provisioner",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:c82008e2cd0186ef96bfd05d6b49d3286768fae5bd7a961f70bd485a3785c006",
+        "annotations":  {},
+        "userSpecifiedImage":  "docker.io/kindest/local-path-provisioner:v20260820-69b56db7",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:c82008e2cd0186ef96bfd05d6b49d3286768fae5bd7a961f70bd485a3785c006",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904255824199315",
+      "labels":  {
+        "io.kubernetes.container.name":  "local-path-provisioner",
+        "io.kubernetes.pod.name":  "local-path-provisioner-75f7fc7dc5-dt4xz",
+        "io.kubernetes.pod.namespace":  "local-path-storage",
+        "io.kubernetes.pod.uid":  "608aa9ec-3b47-41f5-ac7b-a25d68f86d11"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "7f9045dd",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:c82008e2cd0186ef96bfd05d6b49d3286768fae5bd7a961f70bd485a3785c006"
+    },
+    {
+      "id":  "59a6ac55ad9e629a86e27fa966a3d0a9a0c63cd891f965234bda1c817e304481",
+      "podSandboxId":  "c3b9165650c3a0616a67d2cf618dd25ecd0ce957c63b80ac86bc62f1834ff569",
+      "metadata":  {
+        "name":  "kindnet-cni",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:4626fe10df5b930638e6e1662143ee1c7a698de6174fdb61a8ce658e688be2cd",
+        "annotations":  {},
+        "userSpecifiedImage":  "docker.io/kindest/kindnetd:v20260820-69b56db7",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:4626fe10df5b930638e6e1662143ee1c7a698de6174fdb61a8ce658e688be2cd",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904244543376872",
+      "labels":  {
+        "io.kubernetes.container.name":  "kindnet-cni",
+        "io.kubernetes.pod.name":  "kindnet-n899v",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "b69d1dd1-4b0e-4d4e-82f5-ba2f8a0c69fe"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "b6357c87",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:4626fe10df5b930638e6e1662143ee1c7a698de6174fdb61a8ce658e688be2cd"
+    },
+    {
+      "id":  "579cf2f99f9e8e6479a9f0a43025e1bced822289f1d2884c68d38372d3279bfd",
+      "podSandboxId":  "23ec904508e5ef1b5321d434638beb1b64bfb34b0cd84ceaac4a4477771588bf",
+      "metadata":  {
+        "name":  "kube-proxy",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:d6a28daf3e6b0ac88d2c74d715a4a156a33c1acef57fe89bcd334c47532949e7",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/kube-proxy:v1.37.0",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:d6a28daf3e6b0ac88d2c74d715a4a156a33c1acef57fe89bcd334c47532949e7",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904244304364696",
+      "labels":  {
+        "io.kubernetes.container.name":  "kube-proxy",
+        "io.kubernetes.pod.name":  "kube-proxy-bhgz4",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "13aa86fd-574f-4ca3-927b-30e50d2be531"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "7091c023",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:d6a28daf3e6b0ac88d2c74d715a4a156a33c1acef57fe89bcd334c47532949e7"
+    },
+    {
+      "id":  "2a24c2662d66f512855c709115d314b75202f2fc50be68fc6ce2401091d8aa4a",
+      "podSandboxId":  "91791e62acf19d15bc16b256812949eb58ac7d9e8bc820b165283175763e9b1b",
+      "metadata":  {
+        "name":  "kube-apiserver",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:bec5f0e1e2eeb613b139d1f11f4d3d651ace46da25fd6c578e415fb9e911b9cf",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/kube-apiserver:v1.37.0",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:bec5f0e1e2eeb613b139d1f11f4d3d651ace46da25fd6c578e415fb9e911b9cf",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904231638226270",
+      "labels":  {
+        "io.kubernetes.container.name":  "kube-apiserver",
+        "io.kubernetes.pod.name":  "kube-apiserver-burner-control-plane",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "90b184dc697f908f9d901c991907b225"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "28770e01",
+        "io.kubernetes.container.ports":  "[{\"name\":\"probe-port\",\"hostPort\":6443,\"containerPort\":6443,\"protocol\":\"TCP\"}]",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:bec5f0e1e2eeb613b139d1f11f4d3d651ace46da25fd6c578e415fb9e911b9cf"
+    },
+    {
+      "id":  "a1a3cc5c5e2002f87b8d381d69ddb0d29cec44bfe60f7f6924f484793477cc07",
+      "podSandboxId":  "0735bcc5b8c5a5c5b8b3b1ab3b9b45d53319ad5ddc933ff8184224a6c81dd7c7",
+      "metadata":  {
+        "name":  "kube-scheduler",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:1fabf80a1273af13d05ef7528d2e48302da8b2c82c6e40eee9133debd484c428",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/kube-scheduler:v1.37.0",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:1fabf80a1273af13d05ef7528d2e48302da8b2c82c6e40eee9133debd484c428",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904231595582093",
+      "labels":  {
+        "io.kubernetes.container.name":  "kube-scheduler",
+        "io.kubernetes.pod.name":  "kube-scheduler-burner-control-plane",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "eed3988ac3febf9e02e36b7571cf29d0"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "9e95aea1",
+        "io.kubernetes.container.ports":  "[{\"name\":\"probe-port\",\"hostPort\":10259,\"containerPort\":10259,\"protocol\":\"TCP\"}]",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:1fabf80a1273af13d05ef7528d2e48302da8b2c82c6e40eee9133debd484c428"
+    },
+    {
+      "id":  "0e8d8b8719885c58e3cafbe04516a0c945dc47f5b09c1ed004eeb4ad013724b5",
+      "podSandboxId":  "6fbe2cbb4aae02edb66ab959382aed93fe790d1975fefd0385cf5a1ff90e1326",
+      "metadata":  {
+        "name":  "kube-controller-manager",
+        "attempt":  0
+      },
+      "image":  {
+        "image":  "sha256:364b3c3d9ec198179631af61ca9ff18efa5316ba19ce79f301fbeaee7b060989",
+        "annotations":  {},
+        "userSpecifiedImage":  "registry.k8s.io/kube-controller-manager:v1.37.0",
+        "runtimeHandler":  "",
+        "imageRef":  ""
+      },
+      "imageRef":  "sha256:364b3c3d9ec198179631af61ca9ff18efa5316ba19ce79f301fbeaee7b060989",
+      "state":  "CONTAINER_RUNNING",
+      "createdAt":  "1791904231594421082",
+      "labels":  {
+        "io.kubernetes.container.name":  "kube-controller-manager",
+        "io.kubernetes.pod.name":  "kube-controller-manager-burner-control-plane",
+        "io.kubernetes.pod.namespace":  "kube-system",
+        "io.kubernetes.pod.uid":  "0bdafdda388c8e0af59aed326d332033"
+      },
+      "annotations":  {
+        "io.kubernetes.container.hash":  "256a6863",
+        "io.kubernetes.container.ports":  "[{\"name\":\"probe-port\",\"hostPort\":10257,\"containerPort\":10257,\"protocol\":\"TCP\"}]",
+        "io.kubernetes.container.restartCount":  "0",
+        "io.kubernetes.container.terminationMessagePath":  "/dev/termination-log",
+        "io.kubernetes.container.terminationMessagePolicy":  "File",
+        "io.kubernetes.pod.terminationGracePeriod":  "30"
+      },
+      "imageId":  "sha256:364b3c3d9ec198179631af61ca9ff18efa5316ba19ce79f301fbeaee7b060989"
+    }
+  ]
+}

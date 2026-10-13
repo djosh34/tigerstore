@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ $(date -u +%s) -lt $(date -u -d '2026-10-13T22:00:00Z' +%s) ]]
 : "${RUNNER_TEMP:?}" "${STORE:?}" "${REP:?}" "${TIGERSTORE_REF:?}"
-export OUT="$PWD/evidence/kube-burner/$STORE-$RUNNER_ARCH-$REP"
+export OUT="$PWD/.burner-results/$STORE-$RUNNER_ARCH-$REP"
 export PRIVATE="$RUNNER_TEMP/burner-private" BIN="$RUNNER_TEMP/burner-bin"
 export KUBECONFIG="$PRIVATE/kubeconfig" PATH="$BIN:$PATH"
 mkdir -p "$OUT" "$PRIVATE" "$BIN"

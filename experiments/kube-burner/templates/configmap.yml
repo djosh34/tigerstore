@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: density-{{.Iteration}}-{{.Replica}}
+  labels:
+    experiment.kube-burner/run: '{{.UUID}}'
+data:
+  generation: '0'
+  payload: 'Small synthetic configuration for the density experiment.'

@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 25
     env:
       TIGERSTORE_REF: 90870876b6459334c7eddd67c0f9d184267f2eba
-      BOOT_ONLY: '1'
+      BOOT_ONLY: '0'
       STORE: ${{ matrix.store }}
       REP: ${{ matrix.rep }}
       GOFLAGS: -p=2
@@ -45,6 +45,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kube-burner-${{ matrix.runner }}-${{ matrix.store }}-${{ matrix.rep }}
-          path: evidence/kube-burner/
+          path: .burner-results/
+          include-hidden-files: true
           retention-days: 30
           if-no-files-found: error

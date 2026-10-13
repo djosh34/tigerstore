@@ -1,0 +1,49 @@
+metricsEndpoints:
+  - indexer:
+      type: local
+      metricsDirectory: '{{.METRICS_DIRECTORY}}'
+global:
+  gc: false
+  requestTimeout: 20s
+  measurements:
+    - name: podLatency
+jobs:
+  - name: update-churn
+    jobType: patch
+    jobIterations: 3
+    executionMode: sequential
+    objectWait: true
+    qps: 40
+    burst: 50
+    maxWaitTimeout: 60s
+    preLoadImages: false
+    waitWhenFinished: true
+    objects:
+      - kind: Deployment
+        apiVersion: apps/v1
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        objectTemplate: templates/deployment-patch.json
+        patchType: application/merge-patch+json
+      - kind: ConfigMap
+        apiVersion: v1
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        objectTemplate: templates/configmap-patch.json
+        patchType: application/merge-patch+json
+        wait: false
+      - kind: Secret
+        apiVersion: v1
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        objectTemplate: templates/secret-patch.json
+        patchType: application/merge-patch+json
+        wait: false
+      - kind: Service
+        apiVersion: v1
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        objectTemplate: templates/metadata-patch.json
+        patchType: application/merge-patch+json
+        wait: false
+      - kind: Pod
+        apiVersion: v1
+        labelSelector: {experiment.kube-burner/run: '{{.UUID}}'}
+        objectTemplate: templates/metadata-patch.json
+        patchType: application/merge-patch+json
