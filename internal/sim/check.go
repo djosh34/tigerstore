@@ -614,8 +614,8 @@ func (s *Sim) checkWatchersFreed() error {
 }
 
 // liveFrom is when the liveness rule starts: LiveAfter after healing, 2 s
-// more with a node fenced, or Config.LiveFrom. If the guaranteed disk fault fired after healing, the
-// node restarts within MaxDown and then gets the same time.
+// more with a node fenced, or Config.LiveFrom. If a node stopped after healing, it restarts within
+// MaxDown and then gets the same time.
 func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
@@ -628,8 +628,8 @@ func (s *Sim) liveFrom() int64 {
 		// more election timeout, plus one to win (seed 714720575).
 		t += 2 * Second
 	}
-	if s.lateFaultAt > 0 {
-		t = max(t, s.lateFaultAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
+	if s.lateStopAt > 0 {
+		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
 	}
 	return t
 }

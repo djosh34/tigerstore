@@ -15,7 +15,8 @@ func PayloadEnds(data []byte) []int {
 		if end > len(data) {
 			break
 		}
-		if body := data[off+recHdrSize : end]; len(body) > 18 && body[0] == recEntry {
+		// The body starts with the record type, after length and crc.
+		if body := data[off+8 : end]; len(body) > 18 && body[0] == recEntry {
 			out = append(out, end-1)
 		}
 		off = end

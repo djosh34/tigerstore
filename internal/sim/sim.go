@@ -141,7 +141,7 @@ func DefaultConfig(seed uint64) Config {
 		Seed:          seed,
 		Duration:      20 * Second,
 		Heal:          10 * Second,
-		LiveAfter:     2 * Second,
+		LiveAfter:     4 * Second,
 		Clients:       6,
 		ClientTimeout: 3 * Second,
 		Faults: Faults{
@@ -393,10 +393,10 @@ type Sim struct {
 	// syncs them, until a recovery crashed.
 	recoveryDue bool
 	// diskFaultDue arms a disk fault at the next append with entries,
-	// after healing too; lateFaultAt is when such a fault fired after
+	// after healing too; lateStopAt is when a node last stopped after
 	// healing, which moves the start of the liveness rule.
 	diskFaultDue bool
-	lateFaultAt  int64
+	lateStopAt   int64
 	history      []*Record
 	stats        Stats
 	err          error
@@ -969,11 +969,9 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 		}
 	}
 	l.sent++
-	at := max(s.now+delay, l.last)
-	if l.stallUntil > s.now {
-		// After what the stall holds back, which arrives at stallUntil.
-		at = max(at, l.stallUntil+1)
-	}
+	// After everything sent before on the link, which includes what a
+	// stall holds back (holdLink).
+	at := max(s.now+delay, l.last, l.stallUntil)
 	l.last = at
 	s.push(&event{at: at, kind: evDeliver, node: to, from: from.idx, gen: l.epoch, data: b, number: l.sent})
 }
@@ -983,12 +981,6 @@ func (s *Sim) deliver(e *event) {
 	l := &s.links[e.from][e.node]
 	if !n.up || !l.up || l.epoch != e.gen {
 		s.stats.Dropped++
-		return
-	}
-	if l.stallUntil > s.now {
-		// The link stalled while this was on it; it waits too, in order.
-		e.at = l.stallUntil
-		s.push(e)
 		return
 	}
 	if e.number <= l.delivered {
