@@ -1,0 +1,184 @@
+paired (256)	Build and run matched cohorts	﻿2026-10-13T07:32:34.7595749Z ##[group]Run timeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7596521Z ^[[36;1mtimeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh^[[0m
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7703660Z shell: /usr/bin/bash -e {0}
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7704016Z env:
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7704236Z   CLIENTS: 256
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7704560Z   NATIVE_REF: 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7704774Z   TUNED_REF: 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7704969Z   MODE: 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7705261Z   SELECTED_VARIANT: 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7705502Z   GOFLAGS: -p=2
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7705782Z   GOMEMLIMIT: 2GiB
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7706023Z   GOTOOLCHAIN: local
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.7706245Z ##[endgroup]
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.9149294Z TARGET SOURCE    FSTYPE OPTIONS
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.9150005Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.9244974Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.9246128Z                                  Dload  Upload   Total   Spent    Left  Speed
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:34.9246684Z 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.1199785Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.1200403Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.1894746Z 
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.1895821Z 100 20.9M  100 20.9M    0     0  79.0M      0 --:--:-- --:--:-- --:--:-- 79.0M
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.5284431Z /home/runner/work/_temp/pre50frontend/bin/etcd: OK
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.5384708Z patching file cmd/tigerstore/main.go
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.5831078Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.5845369Z go: downloading go.etcd.io/raft/v3 v3.7.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.5873721Z go: downloading google.golang.org/grpc v1.84.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.6541816Z go: downloading google.golang.org/protobuf v1.36.11
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8761866Z go: downloading github.com/golang/protobuf v1.5.4
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8762428Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8767774Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8768535Z go: downloading github.com/google/btree v1.1.3
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8885235Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.8984584Z go: downloading golang.org/x/net v0.58.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:35.9066348Z go: downloading golang.org/x/sys v0.47.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:36.0526997Z go: downloading golang.org/x/text v0.41.0
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:53.1762263Z patching file cmd/tigerstore/main.go
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:53.1929700Z go: downloading github.com/soheilhy/cmux v0.1.5
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:54.4655903Z patching file cmd/tigerstore/main.go
+paired (256)	Build and run matched cohorts	2026-10-13T07:32:59.9157015Z ok  	github.com/djosh34/tigerstore/experiments/pre50frontend/load	0.004s
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:00.1821820Z certificates in /home/runner/work/_temp/pre50frontend/certs
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8335167Z Traceback (most recent call last):
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8336111Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 406, in <module>
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8336646Z     main()
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8337173Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 394, in main
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8337776Z     cluster('b', 'smoke-b', smoke_only=True)
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8338374Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 246, in cluster
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8339369Z     smoke(leader, dest)
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8339944Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 129, in smoke
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8340530Z     health = ctl(leader, 'endpoint', 'health')
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8341354Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8342007Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 53, in ctl
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8343209Z     p = run([BIN/'etcdctl', f'--endpoints=https://127.0.0.1:{2379+index*100}',
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8343850Z         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8344463Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 34, in run
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8345228Z     return sp.run(args, check=True, text=True, timeout=kwargs.pop('timeout', 20), **kwargs)
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8346010Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8346454Z   File "/usr/lib/python3.12/subprocess.py", line 571, in run
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8389605Z     raise CalledProcessError(retcode, process.args,
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8391754Z subprocess.CalledProcessError: Command '[PosixPath('/home/runner/work/_temp/pre50frontend/bin/etcdctl'), '--endpoints=https://127.0.0.1:2579', '--cacert=/home/runner/work/_temp/pre50frontend/certs/ca.pem', '--cert=/home/runner/work/_temp/pre50frontend/certs/client.pem', '--key=/home/runner/work/_temp/pre50frontend/certs/client-key.pem', '--command-timeout=5s', '-w=json', 'endpoint', 'health']' returned non-zero exit status 1.
+paired (256)	Build and run matched cohorts	2026-10-13T07:33:01.8804493Z ##[error]Process completed with exit code 1.
+paired (16)	Build and run matched cohorts	﻿2026-10-13T07:32:34.8889259Z ##[group]Run timeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.8890094Z ^[[36;1mtimeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh^[[0m
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9003996Z shell: /usr/bin/bash -e {0}
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9004634Z env:
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9005339Z   CLIENTS: 16
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9005600Z   NATIVE_REF: 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9005912Z   TUNED_REF: 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9006121Z   MODE: 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9006458Z   SELECTED_VARIANT: 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9006711Z   GOFLAGS: -p=2
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9006933Z   GOMEMLIMIT: 2GiB
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9007199Z   GOTOOLCHAIN: local
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:34.9007430Z ##[endgroup]
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.0436862Z TARGET SOURCE    FSTYPE OPTIONS
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.0437912Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.0528469Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.0529739Z                                  Dload  Upload   Total   Spent    Left  Speed
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.0530270Z 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.2240226Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.2241055Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.3195388Z 
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.3196018Z 100 20.9M  100 20.9M    0     0  78.4M      0 --:--:-- --:--:-- --:--:-- 78.4M
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.6576990Z /home/runner/work/_temp/pre50frontend/bin/etcd: OK
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.6674785Z patching file cmd/tigerstore/main.go
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.6991920Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.7118617Z go: downloading go.etcd.io/raft/v3 v3.7.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.7591135Z go: downloading google.golang.org/grpc v1.84.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:35.7592121Z go: downloading google.golang.org/protobuf v1.36.11
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0078104Z go: downloading github.com/google/btree v1.1.3
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0090414Z go: downloading github.com/golang/protobuf v1.5.4
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0092168Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0092845Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0326107Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0385682Z go: downloading golang.org/x/net v0.58.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.0466312Z go: downloading golang.org/x/sys v0.47.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:36.1924711Z go: downloading golang.org/x/text v0.41.0
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:53.5293500Z patching file cmd/tigerstore/main.go
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:53.5631659Z go: downloading github.com/soheilhy/cmux v0.1.5
+paired (16)	Build and run matched cohorts	2026-10-13T07:32:54.9427270Z patching file cmd/tigerstore/main.go
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:00.7236712Z ok  	github.com/djosh34/tigerstore/experiments/pre50frontend/load	0.004s
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:00.9966234Z certificates in /home/runner/work/_temp/pre50frontend/certs
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6642188Z Traceback (most recent call last):
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6643053Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 406, in <module>
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6643604Z     main()
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6644392Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 394, in main
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6645332Z     cluster('b', 'smoke-b', smoke_only=True)
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6645996Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 246, in cluster
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6646978Z     smoke(leader, dest)
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6647542Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 129, in smoke
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6648155Z     health = ctl(leader, 'endpoint', 'health')
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6648593Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6649196Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 53, in ctl
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6650113Z     p = run([BIN/'etcdctl', f'--endpoints=https://127.0.0.1:{2379+index*100}',
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6650710Z         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6651328Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 34, in run
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6652048Z     return sp.run(args, check=True, text=True, timeout=kwargs.pop('timeout', 20), **kwargs)
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6652791Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6653232Z   File "/usr/lib/python3.12/subprocess.py", line 571, in run
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6653718Z     raise CalledProcessError(retcode, process.args,
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.6655899Z subprocess.CalledProcessError: Command '[PosixPath('/home/runner/work/_temp/pre50frontend/bin/etcdctl'), '--endpoints=https://127.0.0.1:2579', '--cacert=/home/runner/work/_temp/pre50frontend/certs/ca.pem', '--cert=/home/runner/work/_temp/pre50frontend/certs/client.pem', '--key=/home/runner/work/_temp/pre50frontend/certs/client-key.pem', '--command-timeout=5s', '-w=json', 'endpoint', 'health']' returned non-zero exit status 1.
+paired (16)	Build and run matched cohorts	2026-10-13T07:33:02.7112083Z ##[error]Process completed with exit code 1.
+paired (64)	Build and run matched cohorts	﻿2026-10-13T07:32:34.8325060Z ##[group]Run timeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8325826Z ^[[36;1mtimeout --kill-after=5s 800s bash experiments/pre50frontend/run.sh^[[0m
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8431967Z shell: /usr/bin/bash -e {0}
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8432352Z env:
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8432786Z   CLIENTS: 64
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8433008Z   NATIVE_REF: 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8433259Z   TUNED_REF: 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8433473Z   MODE: 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8433722Z   SELECTED_VARIANT: 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8433987Z   GOFLAGS: -p=2
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8434219Z   GOMEMLIMIT: 2GiB
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8434453Z   GOTOOLCHAIN: local
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.8434683Z ##[endgroup]
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.9883272Z TARGET SOURCE    FSTYPE OPTIONS
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.9884101Z /      /dev/sda1 ext4   rw,relatime,discard,journal_async_commit,errors=remount-ro,commit=30,data=writeback
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.9982159Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.9983330Z                                  Dload  Upload   Total   Spent    Left  Speed
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:34.9983715Z 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.1774403Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.1774998Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.1775764Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.2716149Z 
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.2717179Z 100 20.9M  100 20.9M    0     0  76.5M      0 --:--:-- --:--:-- --:--:-- 76.5M
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.6088951Z /home/runner/work/_temp/pre50frontend/bin/etcd: OK
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.6187506Z patching file cmd/tigerstore/main.go
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.6601584Z go: downloading go.etcd.io/etcd/api/v3 v3.7.2
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.6611181Z go: downloading go.etcd.io/raft/v3 v3.7.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.6654909Z go: downloading google.golang.org/grpc v1.84.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.7077517Z go: downloading google.golang.org/protobuf v1.36.11
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9355718Z go: downloading github.com/golang/protobuf v1.5.4
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9358826Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9359447Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9360208Z go: downloading github.com/google/btree v1.1.3
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9501411Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9603068Z go: downloading golang.org/x/net v0.58.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:35.9674705Z go: downloading golang.org/x/sys v0.47.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:36.1090345Z go: downloading golang.org/x/text v0.41.0
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:53.7174915Z patching file cmd/tigerstore/main.go
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:53.7478242Z go: downloading github.com/soheilhy/cmux v0.1.5
+paired (64)	Build and run matched cohorts	2026-10-13T07:32:55.1001612Z patching file cmd/tigerstore/main.go
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:00.8461472Z ok  	github.com/djosh34/tigerstore/experiments/pre50frontend/load	0.004s
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:01.1155364Z certificates in /home/runner/work/_temp/pre50frontend/certs
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7556998Z Traceback (most recent call last):
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7557773Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 406, in <module>
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7558325Z     main()
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7558869Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 394, in main
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7559846Z     cluster('b', 'smoke-b', smoke_only=True)
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7560780Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 246, in cluster
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7561326Z     smoke(leader, dest)
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7561866Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 129, in smoke
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7562475Z     health = ctl(leader, 'endpoint', 'health')
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7562930Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7563486Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 53, in ctl
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7564512Z     p = run([BIN/'etcdctl', f'--endpoints=https://127.0.0.1:{2379+index*100}',
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7565080Z         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7565701Z   File "/home/runner/work/tigerstore/tigerstore/experiments/pre50frontend/run.py", line 34, in run
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7566479Z     return sp.run(args, check=True, text=True, timeout=kwargs.pop('timeout', 20), **kwargs)
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7567214Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7567657Z   File "/usr/lib/python3.12/subprocess.py", line 571, in run
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7568104Z     raise CalledProcessError(retcode, process.args,
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.7569781Z subprocess.CalledProcessError: Command '[PosixPath('/home/runner/work/_temp/pre50frontend/bin/etcdctl'), '--endpoints=https://127.0.0.1:2479', '--cacert=/home/runner/work/_temp/pre50frontend/certs/ca.pem', '--cert=/home/runner/work/_temp/pre50frontend/certs/client.pem', '--key=/home/runner/work/_temp/pre50frontend/certs/client-key.pem', '--command-timeout=5s', '-w=json', 'endpoint', 'health']' returned non-zero exit status 1.
+paired (64)	Build and run matched cohorts	2026-10-13T07:33:02.8009097Z ##[error]Process completed with exit code 1.

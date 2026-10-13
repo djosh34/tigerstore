@@ -126,9 +126,24 @@ def watch_matches(text, revision):
 
 def smoke(leader, dest):
     endpoint = f'https://127.0.0.1:{2379+leader*100}'
-    health = ctl(leader, 'endpoint', 'health')
-    assert len(health) == 1 and health[0]['health'] is True
-    save(dest/'smoke-health.json', health)
+    # Record the missing Alarm API rather than change the measured variants.
+    # etcdctl health also calls AlarmList, which pinned main does not implement.
+    try:
+        health = ctl(leader, 'endpoint', 'health')
+        assert len(health) == 1 and health[0]['health'] is True
+        save(dest/'smoke-health.json', {'exit_code': 0, 'result': health, 'compatible': True})
+    except sp.CalledProcessError as err:
+        save(dest/'smoke-health.json', {'exit_code': err.returncode, 'stdout': err.stdout,
+                                      'stderr': err.stderr, 'compatible': False})
+        assert 'Unable to fetch the alarm list' in err.stdout, (err.stdout, err.stderr)
+        try:
+            ctl(leader, 'alarm', 'list')
+        except sp.CalledProcessError as alarm:
+            save(dest/'smoke-alarm.json', {'exit_code': alarm.returncode, 'stdout': alarm.stdout,
+                                         'stderr': alarm.stderr})
+            assert 'Unimplemented' in alarm.stderr and 'Alarm' in alarm.stderr, alarm.stderr
+        else:
+            raise RuntimeError('health failed despite successful AlarmList')
     # Watch from a known revision avoids a watch-start race without sleeps.
     put = ctl(leader, 'put', '/pre50-smoke', 'first')
     revision = put['header']['revision']+1
@@ -391,6 +406,7 @@ def main():
         cluster('b', 'smoke-b', smoke_only=True)
         return
     if MODE == 'primary':
+        cluster('a', 'smoke-a', smoke_only=True)
         cluster('b', 'smoke-b', smoke_only=True)
     stores = ['a', 'b', 'c', 'etcd'] if MODE == 'primary' else [SELECTED, 'etcd']
     assert MODE != 'profile' or SELECTED in ('a', 'b', 'c'), 'choose winner after primary results'

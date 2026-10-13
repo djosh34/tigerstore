@@ -1,0 +1,24 @@
+internal/server/native_test.go:207:6: comparing with == will fail on wrapped errors. Use errors.Is to check for a specific error (errorlint)
+		if err == io.EOF {
+		   ^
+internal/server/native_test.go:57:1: File is not properly formatted (gofumpt)
+	cfg := &tls.Config{Certificates: []tls.Certificate{cert}, ClientCAs: ca.Pool,
+^
+internal/server/native.go:158:3: embedlit: embedded field type can be removed from struct literal (modernize)
+		CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity},
+		^
+internal/server/server.go:69:3: SA1019: google.golang.org/grpc.SharedWriteBuffer is deprecated: shared write buffer is enabled by default. SharedWriteBuffer will be removed in a future release. (staticcheck)
+		grpc.SharedWriteBuffer(true),
+		^
+internal/server/native_test.go:96:39: "200" can be replaced by http.StatusOK (usestdlibvars)
+		if err != nil || resp.StatusCode != 200 || resp.ProtoMajor != wantProto ||
+		                                    ^
+internal/server/native_test.go:109:71: "200" can be replaced by http.StatusOK (usestdlibvars)
+		if err != nil || resp.ProtoMajor != wantProto || resp.StatusCode != 200 ||
+		                                                                    ^
+6 issues:
+* errorlint: 1
+* gofumpt: 1
+* modernize: 1
+* staticcheck: 1
+* usestdlibvars: 2

@@ -1,0 +1,43 @@
+Native frontend local correctness evidence
+Working directory: /home/joshazimullah.linux/work_mounts/scratch/pre-50-frontend/native
+These are recorded outputs from the completed runs, not new test executions.
+No vet command was executed. No local benchmarks, measurements or etcdctl smoke were executed.
+
+Variant b
+Commit: 2d4052e96939b12fd68f0252dfd1154127cdf7c6
+Final targeted test command, executed before committing b:
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOCACHE="$PWD/.local-cache/go-build" GOMODCACHE="$PWD/.local-cache/go-mod" go test ./internal/server -run '^(TestNative.*|TestThreeNodesOverTLS|TestStatusHealthVersionRangeStream|TestClientCertificateRequired|TestWatchOverTLS|TestManyStreamsOnOneConnection)$' -parallel 2 -count=1 -timeout 90s
+Output:
+ok  	github.com/djosh34/tigerstore/internal/server	1.602s
+Exit status: 0
+
+Final race test command:
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOCACHE="$PWD/.local-cache/go-build" GOMODCACHE="$PWD/.local-cache/go-mod" go test -race ./internal/server -run '^TestNative' -parallel 2 -count=1 -timeout 60s
+Output:
+ok  	github.com/djosh34/tigerstore/internal/server	1.062s
+Exit status: 0
+
+git diff --check
+Output: none
+Exit status: 0
+
+Variant c
+Commit: 78db0c56fe2b051b651bbfa3f1aed03ca3724b9c
+Final targeted test command, executed before committing c:
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOCACHE="$PWD/.local-cache/go-build" GOMODCACHE="$PWD/.local-cache/go-mod" go test ./internal/server -run '^(TestNative.*|TestThreeNodesOverTLS|TestStatusHealthVersionRangeStream|TestClientCertificateRequired|TestWatchOverTLS|TestManyStreamsOnOneConnection)$' -parallel 2 -count=1 -timeout 90s
+Output:
+ok  	github.com/djosh34/tigerstore/internal/server	2.341s
+Exit status: 0
+
+Final race test command:
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOCACHE="$PWD/.local-cache/go-build" GOMODCACHE="$PWD/.local-cache/go-mod" go test -race ./internal/server -run '^TestNative' -parallel 2 -count=1 -timeout 60s
+Output:
+ok  	github.com/djosh34/tigerstore/internal/server	1.075s
+Exit status: 0
+
+git diff --check
+Output: none
+Exit status: 0
+
+Each targeted run selected eight tests. Each race run selected three native tests.
+The displayed durations are go test's ordinary completion output, not performance measurements.
