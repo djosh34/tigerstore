@@ -1,0 +1,15 @@
+scope,store,fault,budget,histories,count,ok,fail,info,info_mutations,no_leader_infos,no_leader_at_most_10ms,no_leader_p50_ms,max_info_mutations_per_key
+bounded-10,etcd,kill,10,2,3847,3161,643,43,43,0,0,,3
+bounded-10,etcd,partition,10,2,4188,3304,854,30,30,0,0,,4
+bounded-10,tigerstore,kill,10,2,4038,3114,692,232,232,200,167,5.942653,10
+bounded-10,tigerstore,partition,10,2,4486,3195,565,726,726,678,621,5.049085,10
+core,etcd,kill,50,1,1607,1291,291,25,25,0,0,,5
+core,etcd,kill,200,3,5041,4048,931,62,62,0,0,,10
+core,etcd,partition,50,1,1744,1376,348,20,20,0,0,,7
+core,etcd,partition,200,3,6240,5024,1157,59,59,0,0,,7
+core,tigerstore,kill,50,1,1653,1210,314,129,128,106,79,7.705953,46
+core,tigerstore,kill,200,3,5298,4082,910,306,306,239,192,6.266323,61
+core,tigerstore,partition,50,1,2348,891,221,1236,1236,1219,1172,4.976601,50
+core,tigerstore,partition,200,3,6688,4031,804,1853,1853,1794,1684,5.628295,185
+earlier-50-control,etcd,kill,50,2,3378,2690,638,50,50,0,0,,6
+earlier-50-control,etcd,partition,50,2,3805,2999,762,44,44,0,0,,15

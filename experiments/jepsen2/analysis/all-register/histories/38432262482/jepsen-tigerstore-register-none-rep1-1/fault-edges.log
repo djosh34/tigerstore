@@ -1,0 +1,1 @@
+history=38432262482/jepsen-tigerstore-register-none-rep1-1 fault=none budget=50 Open counts refer to client calls without a recorded completion, not checker ambiguity.

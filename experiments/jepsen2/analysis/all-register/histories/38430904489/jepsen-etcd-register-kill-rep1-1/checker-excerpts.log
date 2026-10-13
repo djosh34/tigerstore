@@ -1,0 +1,14 @@
+2026-10-13 16:32:55,661{GMT}	INFO	[clojure-agent-send-off-pool-11] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:55,973{GMT}	INFO	[clojure-agent-send-off-pool-4] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:56,094{GMT}	INFO	[clojure-agent-send-off-pool-15] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:56,315{GMT}	INFO	[clojure-agent-send-off-pool-12] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:56,376{GMT}	INFO	[Thread-132] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:56,783{GMT}	INFO	[clojure-agent-send-off-pool-4] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:56,903{GMT}	INFO	[Thread-141] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,123{GMT}	INFO	[Thread-148] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,165{GMT}	INFO	[Thread-154] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,344{GMT}	INFO	[clojure-agent-send-off-pool-28] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,351{GMT}	INFO	[Thread-175] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,497{GMT}	INFO	[clojure-agent-send-off-pool-27] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,621{GMT}	INFO	[clojure-agent-send-off-pool-2] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:32:57,661{GMT}	INFO	[Thread-190] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search

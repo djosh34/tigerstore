@@ -1,0 +1,11 @@
+2026-10-13 16:27:47,807{GMT}	INFO	[clojure-agent-send-off-pool-3] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,429{GMT}	INFO	[clojure-agent-send-off-pool-21] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,612{GMT}	INFO	[Thread-161] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,714{GMT}	INFO	[clojure-agent-send-off-pool-3] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,731{GMT}	INFO	[clojure-agent-send-off-pool-24] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,935{GMT}	INFO	[Thread-184] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:48,980{GMT}	INFO	[clojure-agent-send-off-pool-15] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:49,259{GMT}	INFO	[Thread-199] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:49,294{GMT}	INFO	[clojure-agent-send-off-pool-36] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:49,365{GMT}	INFO	[Thread-201] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:27:49,659{GMT}	INFO	[Thread-205] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search

@@ -1,0 +1,32 @@
+2026-10-13 16:29:38,548{GMT}	INFO	[clojure-agent-send-off-pool-9] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:38,707{GMT}	INFO	[clojure-agent-send-off-pool-13] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:38,797{GMT}	INFO	[clojure-agent-send-off-pool-14] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:38,811{GMT}	INFO	[clojure-agent-send-off-pool-2] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:38,829{GMT}	INFO	[clojure-agent-send-off-pool-5] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:38,871{GMT}	INFO	[Thread-1051] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,239{GMT}	INFO	[Thread-1053] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,241{GMT}	INFO	[Thread-1057] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,324{GMT}	INFO	[Thread-1055] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,328{GMT}	INFO	[clojure-agent-send-off-pool-14] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,395{GMT}	INFO	[clojure-agent-send-off-pool-4] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,455{GMT}	INFO	[Thread-1059] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,554{GMT}	INFO	[Thread-1061] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,698{GMT}	INFO	[clojure-agent-send-off-pool-9] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,766{GMT}	INFO	[clojure-agent-send-off-pool-14] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,878{GMT}	INFO	[Thread-1063] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:39,969{GMT}	INFO	[clojure-agent-send-off-pool-4] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:40,247{GMT}	INFO	[Thread-1067] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:40,440{GMT}	INFO	[Thread-1065] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:40,444{GMT}	INFO	[Thread-1069] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:40,591{GMT}	INFO	[clojure-agent-send-off-pool-10] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:42,802{GMT}	INFO	[Thread-1071] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,831{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 1.12E+115, :op {:process 0, :type :ok, :f :read, :value [33 4], :index 3260, :time 69954687860}}, :wgl [:WGL]}
+2026-10-13 16:29:43,839{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 8.18E+81, :op {:process 1, :type :ok, :f :read, :value [38 1], :index 439, :time 16055042644}}, :wgl [:WGL]}
+2026-10-13 16:29:44,712{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 6.42E+219, :op {:process 2, :type :ok, :f :read, :value [nil nil], :index 1065, :time 29422301891}}, :wgl [:WGL]}
+2026-10-13 16:29:45,035{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 4.87E+19, :op {:process 0, :type :ok, :f :read, :value [nil nil], :index 3264, :time 69955845030}}, :wgl [:WGL]}
+2026-10-13 16:29:45,642{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 1.07E+21, :op {:process 1, :type :ok, :f :read, :value [nil nil], :index 442, :time 16101099556}}, :wgl [:WGL]}
+2026-10-13 16:29:54,502{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:29:54,508{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:29:54,508{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:29:54,508{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:29:54,508{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search

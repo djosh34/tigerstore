@@ -1,0 +1,28 @@
+2026-10-13 16:29:42,964{GMT}	INFO	[clojure-agent-send-off-pool-14] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,070{GMT}	INFO	[clojure-agent-send-off-pool-2] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,076{GMT}	INFO	[clojure-agent-send-off-pool-8] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,083{GMT}	INFO	[clojure-agent-send-off-pool-6] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,101{GMT}	INFO	[clojure-agent-send-off-pool-11] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,197{GMT}	INFO	[clojure-agent-send-off-pool-9] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,666{GMT}	INFO	[Thread-281] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,840{GMT}	INFO	[Thread-283] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:43,883{GMT}	INFO	[Thread-285] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,089{GMT}	INFO	[clojure-agent-send-off-pool-8] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,161{GMT}	INFO	[Thread-287] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,286{GMT}	INFO	[Thread-291] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,356{GMT}	INFO	[clojure-agent-send-off-pool-17] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,419{GMT}	INFO	[Thread-289] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,953{GMT}	INFO	[clojure-agent-send-off-pool-9] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:44,968{GMT}	INFO	[Thread-295] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:45,142{GMT}	INFO	[Thread-297] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:45,774{GMT}	INFO	[Thread-299] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:29:48,027{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 5.95E+23, :op {:process 106, :type :ok, :f :write, :value [3 0], :index 1271, :time 31487562303}}, :wgl [:WGL]}
+2026-10-13 16:29:48,092{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 1.00E+40, :op {:process 1, :type :ok, :f :read, :value [33 2], :index 3085, :time 80332369074}}, :wgl [:WGL]}
+2026-10-13 16:29:48,117{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 1.05E+28, :op {:process 1, :type :ok, :f :read, :value [22 2], :index 1813, :time 49803131591}}, :wgl [:WGL]}
+2026-10-13 16:29:49,376{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 2.94E+29, :op {:process 183, :type :ok, :f :write, :value [11 1], :index 2155, :time 61120245662}}, :wgl [:WGL]}
+2026-10-13 16:30:13,047{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 2.47E+22, :op {:process 15, :type :ok, :f :write, :value [4 3], :index 1272, :time 31509686728}}, :wgl [:WGL]}
+2026-10-13 16:30:18,048{GMT}	INFO	[knossos reporter] knossos.search: {:linear {:space 1, :cost 2.47E+22, :op {:process 15, :type :ok, :f :write, :value [5 4], :index 1274, :time 31517224921}}, :wgl [:WGL]}
+2026-10-13 16:30:19,348{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:30:19,348{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:30:19,348{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search
+2026-10-13 16:30:19,349{GMT}	WARN	[Notification Thread] knossos.search: Out of memory; aborting search

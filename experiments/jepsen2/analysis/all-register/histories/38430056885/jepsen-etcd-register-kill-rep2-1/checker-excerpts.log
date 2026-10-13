@@ -1,0 +1,14 @@
+2026-10-13 16:26:16,082{GMT}	INFO	[clojure-agent-send-off-pool-8] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,199{GMT}	INFO	[clojure-agent-send-off-pool-0] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,284{GMT}	INFO	[clojure-agent-send-off-pool-6] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,471{GMT}	INFO	[clojure-agent-send-off-pool-11] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,551{GMT}	INFO	[clojure-agent-send-off-pool-13] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,746{GMT}	INFO	[clojure-agent-send-off-pool-15] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,771{GMT}	INFO	[Thread-99] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,779{GMT}	INFO	[Thread-101] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,839{GMT}	INFO	[Thread-97] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,933{GMT}	INFO	[clojure-agent-send-off-pool-8] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:16,948{GMT}	INFO	[Thread-104] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:17,105{GMT}	INFO	[Thread-107] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:17,247{GMT}	INFO	[Thread-109] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search
+2026-10-13 16:26:17,306{GMT}	INFO	[Thread-111] knossos.model.memo: More than 1024 reachable models; not memoizing models for this search

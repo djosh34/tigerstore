@@ -1,0 +1,72 @@
+[
+  {
+    "file": "etcd-register.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/etcd/b47cc401f27bfb7c28afd9ac088b5f0dca4501b8/src/jepsen/etcd/register.clj",
+    "sha256": "02d9feff2d36ab137887d760184db6375cf83d5520158b0a322418af3aa58c92"
+  },
+  {
+    "file": "etcd-client.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/etcd/b47cc401f27bfb7c28afd9ac088b5f0dca4501b8/src/jepsen/etcd/client.clj",
+    "sha256": "3c35f619e519625364d17ccabc1af0fcf697161353f05360931021a53faaf4d1"
+  },
+  {
+    "file": "etcd-project.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/etcd/b47cc401f27bfb7c28afd9ac088b5f0dca4501b8/project.clj",
+    "sha256": "72aa23549f70956469666bb077a790ea2b552e18f7c4711bf55c57ea97f946c5"
+  },
+  {
+    "file": "jepsen-project.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/jepsen/v0.3.11/jepsen/project.clj",
+    "sha256": "4d0bf68cee0bc4e75bfe94bf08da0a118ee26341e391bf36679ace538f34ddc6"
+  },
+  {
+    "file": "jepsen-checker.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/jepsen/v0.3.11/jepsen/src/jepsen/checker.clj",
+    "sha256": "0d464ac61454a9fedf0a11718d9da7fb35fd31051c211e5432f8a2de95a46c64"
+  },
+  {
+    "file": "jepsen-independent.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/jepsen/v0.3.11/jepsen/src/jepsen/independent.clj",
+    "sha256": "4ba40676537156d338bbcbbbe1a49a7de8e9224f69108919e61daa4ca89ce24c"
+  },
+  {
+    "file": "knossos-history.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/history.clj",
+    "sha256": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780"
+  },
+  {
+    "file": "knossos-linear.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/linear.clj",
+    "sha256": "21af97c4a3468d134cc23a9fdafcf78397b17dc6c09d22e5ab8360c08937282c"
+  },
+  {
+    "file": "knossos-wgl.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/wgl.clj",
+    "sha256": "10671f8ea89c2b9e076c2cdd7e0c70c6bf883ff7f5ba331aebed42264a6f6634"
+  },
+  {
+    "file": "knossos-search.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/search.clj",
+    "sha256": "36203d920001b3815423e4b2dc816fb3a9f540e11fafee32542950632503e760"
+  },
+  {
+    "file": "knossos-memo.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/model/memo.clj",
+    "sha256": "5babc83081a79866a273d15873f88b18132175e28b7076f6db20f704844475c8"
+  },
+  {
+    "file": "knossos-dll-history.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/wgl/dll_history.clj",
+    "sha256": "3d9790c3f0d414b4a5da2a35104ef9ef02373df20a6ffbb10d2bd85c4d0c982f"
+  },
+  {
+    "file": "knossos-memory.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/memory.clj",
+    "sha256": "af7371d4d17b1732150517af24177d1c599697c6e87b21cc9eededa5a647f76a"
+  },
+  {
+    "file": "knossos-config.clj",
+    "url": "https://raw.githubusercontent.com/jepsen-io/knossos/v0.3.15/src/knossos/linear/config.clj",
+    "sha256": "a2434516b5a80f1968b863a080011a11b0fbef526283df0aaf79d69e3a85c138"
+  }
+]
