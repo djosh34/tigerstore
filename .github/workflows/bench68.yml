@@ -1,0 +1,34 @@
+name: PR 68 paired write batching benchmark
+on:
+  push:
+    branches: [exp/bench-68]
+    paths:
+      - 'experiments/**'
+      - '.github/workflows/bench68.yml'
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        clients: [16, 64, 256]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: Main merge base, PR 68 and etcd back to back
+        env:
+          CLIENTS: ${{ matrix.clients }}
+        run: timeout --kill-after=5s 820s bash experiments/pre47groupcommit/run.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench68-${{ matrix.clients }}
+          path: evidence/bench68
+          retention-days: 14

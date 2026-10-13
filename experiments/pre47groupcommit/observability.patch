@@ -1,0 +1,119 @@
+diff --git a/cmd/tigerstore/main.go b/cmd/tigerstore/main.go
+index c6d47ac..0e8dbcc 100644
+--- a/cmd/tigerstore/main.go
++++ b/cmd/tigerstore/main.go
+@@ -200,6 +200,9 @@ func run(args []string, logger *log.Logger) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if err := pre50Observe(n); err != nil {
++		return err
++	}
+ 	t, err := peer.Start(peer.Config{
+ 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
+ 		Certificate: peerCert, CA: peerCA,
+diff --git a/cmd/tigerstore/pre50.go b/cmd/tigerstore/pre50.go
+new file mode 100644
+index 0000000..806a14b
+--- /dev/null
++++ b/cmd/tigerstore/pre50.go
+@@ -0,0 +1,52 @@
++package main
++
++// Throwaway observability only. No core, storage or transport code changes.
++import (
++	"encoding/json"
++	"log"
++	"net"
++	"net/http"
++	_ "net/http/pprof"
++	"os"
++	"runtime"
++
++	"github.com/djosh34/tigerstore/internal/node"
++	"github.com/djosh34/tigerstore/internal/osfs"
++)
++
++func pre50Observe(n *node.Node) error {
++	addr := os.Getenv("PRE50_DEBUG")
++	if addr == "" {
++		return nil
++	}
++	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
++		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader()}); err != nil {
++			return
++		}
++	})
++	http.HandleFunc("/debug/disk", func(w http.ResponseWriter, r *http.Request) {
++		if err := json.NewEncoder(w).Encode(osfs.Pre50Stats()); err != nil {
++			return
++		}
++	})
++	http.HandleFunc("/debug/rates", func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Query().Get("on") == "1" {
++			runtime.SetMutexProfileFraction(1)
++			runtime.SetBlockProfileRate(1000000)
++		} else {
++			runtime.SetMutexProfileFraction(0)
++			runtime.SetBlockProfileRate(0)
++		}
++		w.WriteHeader(http.StatusNoContent)
++	})
++	ln, err := net.Listen("tcp", addr)
++	if err != nil {
++		return err
++	}
++	go func() {
++		if err := http.Serve(ln, nil); err != nil {
++			log.Printf("debug HTTP: %v", err)
++		}
++	}()
++	return nil
++}
+diff --git a/internal/osfs/pre50.go b/internal/osfs/pre50.go
+new file mode 100644
+index 0000000..6e218ec
+--- /dev/null
++++ b/internal/osfs/pre50.go
+@@ -0,0 +1,41 @@
++package osfs
++
++// Throwaway follow-up instrumentation. The paired baseline predates this file.
++import (
++	"os"
++	"sync/atomic"
++	"time"
++)
++
++var (
++	timing                                           = os.Getenv("PRE50_DISK_TIMING") == "1"
++	writes, writeBytes, writeNanos, syncs, syncNanos atomic.Uint64
++)
++
++// Pre50Stats returns cumulative file calls. Directory syncs are excluded.
++func Pre50Stats() map[string]uint64 {
++	return map[string]uint64{"writes": writes.Load(), "write_bytes": writeBytes.Load(), "write_ns": writeNanos.Load(), "syncs": syncs.Load(), "sync_ns": syncNanos.Load()}
++}
++
++func (f file) Write(b []byte) (int, error) {
++	if !timing {
++		return f.File.Write(b)
++	}
++	start := time.Now()
++	n, err := f.File.Write(b)
++	writeNanos.Add(uint64(time.Since(start)))
++	writeBytes.Add(uint64(n))
++	writes.Add(1)
++	return n, err
++}
++
++func (f file) Sync() error {
++	if !timing {
++		return f.File.Sync()
++	}
++	start := time.Now()
++	err := f.File.Sync()
++	syncNanos.Add(uint64(time.Since(start)))
++	syncs.Add(1)
++	return err
++}
