@@ -37,8 +37,8 @@ jobs:
       - name: Compare
         env:
           VERSION: ${{ inputs.version || 'v0.37.0' }}
-          RUN: ${{ inputs.run || '^TestCompact$' }}
-          ROUNDS: ${{ inputs.rounds || '20' }}
+          RUN: ${{ inputs.run || '.' }}
+          ROUNDS: ${{ inputs.rounds || '3' }}
         run: |
           export WORK="$RUNNER_TEMP/work"
           # Builds everything and checks that the tests compile.
