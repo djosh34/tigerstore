@@ -387,9 +387,13 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 func (c *conn) credit(n int) {
 	c.mu.Lock()
 	c.recvCredit += n
+	before := len(c.ctrl)
 	c.creditLocked()
+	queued := len(c.ctrl) > before
 	c.mu.Unlock()
-	c.signal()
+	if queued {
+		c.signal()
+	}
 }
 
 // reqHeaders is what the server reads from a request's header block.
