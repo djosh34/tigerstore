@@ -42,6 +42,7 @@ class Controller(base.Controller):
         base.require('--dport 2380 -j DROP' in installed and '--sport 2380 -j DROP' in installed,
                      'peer selectors not installed')
         self.phase(name, 'installed', iptables=installed)
+        (self.out / 'workload/blackhole-live').write_text('peer DROP rules active\n')
         self.sleep(2, require_workload=True)
         state = self.cmd(['iptables', '-L', 'SEMANTICS', '-nvx']).stdout
         packets = sum(int(line.split()[0]) for line in state.splitlines() if ' DROP ' in line)
@@ -49,9 +50,12 @@ class Controller(base.Controller):
         # Client ports are not selected. A bounded read fails without a quorum.
         read = self.cmd(self.client_args('status') + ['--request-timeout', '1s'], check=False, timeout=5)
         base.require(read.returncode != 0, 'all members passed linearizable health while peer quorum was blackholed')
+        if self.a.scenario == 'lease':
+            self.wait_file(self.out / 'workload/grant-during-blackhole', 4)
         self.phase(name, 'exercised', actual_peer_packets=packets, counters=state,
                    quorum_read_returncode=read.returncode, quorum_read_output=read.stdout+read.stderr)
         self.heal_partition()
+        (self.out / 'workload/blackhole-live').unlink(missing_ok=True)
         status = self.ready(timeout=25)
         self.phase(name, 'healed', iptables=self.cmd(['iptables-save', '-c']).stdout, status=status)
 
@@ -86,6 +90,8 @@ class Controller(base.Controller):
         if self.a.scenario == 'compaction':
             # Workload receipt alone is not proof of fault overlap.
             self.wait_file(self.out / 'workload/compacted-during-fault', 8)
+        if self.a.scenario == 'lease':
+            self.wait_file(self.out / 'workload/lease-grants-during-fault', 8)
         self.phase(name, 'exercised', proc_first=first, proc_last=second, new_leader_status=status,
                    compaction_overlap=self.a.scenario == 'compaction')
         os.kill(p.pid, signal.SIGCONT)

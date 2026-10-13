@@ -115,7 +115,11 @@ func semantics(c config) (err error) {
 		_, e := must(i, history.Request{Range: &history.RangeRequest{Key: prefix, End: end}})
 		return e
 	}
-	for seq := 0; seq < 3; seq++ {
+	smokeRounds := 3
+	if c.scenario == "lease" {
+		smokeRounds = 1
+	}
+	for seq := 0; seq < smokeRounds; seq++ {
 		if e := mixed(seq); e != nil {
 			return e
 		}
@@ -123,7 +127,7 @@ func semantics(c config) (err error) {
 	var grant history.Op
 	const leaseID int64 = 49001
 	if c.scenario == "lease" {
-		grant, err = must(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: leaseID, TTL: 6}})
+		grant, err = must(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: leaseID, TTL: 12}})
 		if err != nil {
 			return err
 		}
@@ -140,7 +144,7 @@ func semantics(c config) (err error) {
 	}
 	// During faults, keep writes and renewals running. Ambiguous writes remain in history.
 	lastKA := grant.Call
-	ttl := int64(6)
+	ttl := int64(12)
 	renew := func(i int) bool {
 		d := leaseDiagnostic{Kind: "keepalive", Call: r.now(), ID: leaseID}
 		ctx, stop := context.WithTimeout(clientv3.WithRequireLeader(context.Background()), c.requestTimeout)
@@ -163,6 +167,8 @@ func semantics(c config) (err error) {
 		Healthy []int `json:"healthy"`
 	}
 	compacted := false
+	grantedDuringFault := false
+	blackholeGrant := false
 	seq := 3
 	faultEnd := time.Now().Add(45 * time.Second)
 	for {
@@ -173,10 +179,69 @@ func semantics(c config) (err error) {
 			return errors.New("controller did not heal faults within 45s")
 		}
 		q := history.Request{Put: &history.PutRequest{Key: prefix + fmt.Sprintf("k%d", seq%6), Value: fmt.Sprintf("fault-seed%d-op%d", c.seed, seq), PrevKV: true}}
+		if c.scenario == "lease" {
+			q = history.Request{Range: &history.RangeRequest{Key: prefix + "lease", End: prefix + "leasf"}}
+		}
 		call(seq%3, q)
 		seq++
 		if c.scenario == "lease" {
+			if !blackholeGrant {
+				if _, e := os.Stat(filepath.Join(c.out, "blackhole-live")); e == nil {
+					g := r.call(cs[1], 1, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 49003, TTL: 2}}, 200*time.Millisecond)
+					if g.Resp != nil || g.Err != nil && g.Err.Ambiguous {
+						r.mu.Lock()
+						r.h.Ops = append(r.h.Ops, history.Op{Client: 10002, Call: g.Call, Return: g.Call, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 49003}}, Err: &history.Error{Code: "Unknown", Message: "lease expiry", Ambiguous: true}})
+						r.mu.Unlock()
+					}
+					blackholeGrant = true
+					if e = os.WriteFile(filepath.Join(c.out, "grant-during-blackhole"), []byte("partitioned grant attempted, ambiguity retained\n"), 0644); e != nil {
+						return e
+					}
+				}
+			}
 			renew(seq % 3)
+			if !grantedDuringFault {
+				if e := load(filepath.Join(c.out, "fault-live.json"), &live); e == nil && len(live.Healthy) == 2 {
+					i := live.Healthy[0] - 1
+					// Node numbers sum to six; convert the missing node to index.
+					isolated := 6 - live.Healthy[0] - live.Healthy[1] - 1
+					if !renew(i) {
+						continue
+					}
+					g, e := must(i, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 49002, TTL: 2}})
+					if e != nil {
+						continue
+					}
+					r.mu.Lock()
+					r.h.Ops = append(r.h.Ops, history.Op{Client: 10001, Call: g.Call, Return: g.Call, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 49002}}, Err: &history.Error{Code: "Unknown", Message: "lease expiry", Ambiguous: true}})
+					r.mu.Unlock()
+					if _, e = must(i, history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{put("faultlease0", "fault0", 49002), put("faultlease1", "fault1", 49002)}}}); e != nil {
+						return e
+					}
+					isolatedGrant := r.call(cs[isolated], isolated, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 49004, TTL: 2}}, 200*time.Millisecond)
+					if isolatedGrant.Resp != nil || isolatedGrant.Err != nil && isolatedGrant.Err.Ambiguous {
+						r.mu.Lock()
+						r.h.Ops = append(r.h.Ops, history.Op{Client: 10003, Call: isolatedGrant.Call, Return: isolatedGrant.Call, Req: history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 49004}}, Err: &history.Error{Code: "Unknown", Message: "lease expiry", Ambiguous: true}})
+						r.mu.Unlock()
+					}
+					if !renew(i) {
+						return errors.New("majority renewal failed during paused leader")
+					}
+					time.Sleep(3 * time.Second)
+					o, e := must(i, history.Request{Range: &history.RangeRequest{Key: prefix + "faultlease", End: prefix + "faultleasf"}})
+					if e != nil {
+						return e
+					}
+					if o.Resp.Range.Count != 0 || o.Call < g.Call+2*int64(time.Second)-int64(100*time.Millisecond) {
+						return errors.New("short lease did not expire atomically during leader pause")
+					}
+					if e = os.WriteFile(filepath.Join(c.out, "lease-grants-during-fault"), []byte("majority grant, isolated ambiguous grant, majority expiry verified\n"), 0644); e != nil {
+						return e
+					}
+					assertions = append(assertions, "majority lease grant and two-key expiry acknowledged during leader pause; isolated grant retained as ambiguous")
+					grantedDuringFault = true
+				}
+			}
 		}
 		if c.scenario == "compaction" && !compacted {
 			if e := load(filepath.Join(c.out, "fault-live.json"), &live); e == nil && len(live.Healthy) == 2 {
@@ -211,9 +276,12 @@ func semantics(c config) (err error) {
 		return errors.New("compaction did not acknowledge during the fault")
 	}
 	if c.scenario == "lease" {
+		if !grantedDuringFault || !blackholeGrant {
+			return errors.New("lease grant coverage missing during partition or paused leader")
+		}
 		// Renew after healing, then keep all attached keys alive for longer than the
 		// granted TTL. The final renewal begins the no-early-expiry interval.
-		for j := 0; j < 8; j++ {
+		for j := 0; j < 14; j++ {
 			if !renew(j % 3) {
 				return errors.New("post-heal keepalive failed")
 			}
@@ -226,7 +294,7 @@ func semantics(c config) (err error) {
 			}
 			time.Sleep(time.Second)
 		}
-		assertions = append(assertions, "three attached keys survived eight successful post-heal renewals")
+		assertions = append(assertions, "three attached keys survived fourteen successful post-heal renewals")
 		expiryEnd := time.Now().Add(25 * time.Second)
 		for {
 			o, e := must(0, history.Request{Range: &history.RangeRequest{Key: prefix + "lease", End: prefix + "leasf"}})
@@ -245,7 +313,7 @@ func semantics(c config) (err error) {
 			if time.Now().After(expiryEnd) {
 				return errors.New("lease did not expire within 25s after last keepalive")
 			}
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 		ctx, stop := context.WithTimeout(context.Background(), c.requestTimeout)
 		lt, e := cs[1].TimeToLive(ctx, clientv3.LeaseID(leaseID))
@@ -263,8 +331,27 @@ func semantics(c config) (err error) {
 		// Header revisions, values, previous values and delete uniqueness are checked
 		// against the independent committed log by all repository checkers below.
 		assertions = append(assertions, fmt.Sprintf("lease expired after last renewal call %d plus TTL %d", lastKA, ttl))
+		for _, id := range []int64{49002, 49003, 49004} {
+			ctx, stop := context.WithTimeout(context.Background(), c.requestTimeout)
+			lt, e := cs[1].TimeToLive(ctx, clientv3.LeaseID(id))
+			stop()
+			d := leaseDiagnostic{Kind: "fault-grant-ttl-after-expiry", Call: r.now(), Return: r.now(), ID: id}
+			if e != nil {
+				d.Error = e.Error()
+			} else {
+				d.TTL = lt.TTL
+			}
+			raw = append(raw, d)
+			if e != nil || lt.TTL != -1 {
+				return fmt.Errorf("fault-time lease %d did not expire", id)
+			}
+		}
 	}
-	for j := 0; j < 12; j++ {
+	finalRounds := 12
+	if c.scenario == "lease" {
+		finalRounds = 1
+	}
+	for j := 0; j < finalRounds; j++ {
 		if e := mixed(seq + j); e != nil {
 			return e
 		}
@@ -312,7 +399,7 @@ func semantics(c config) (err error) {
 			return errors.New("watch progress/cancellation target timeout")
 		}
 		for _, cl := range cs {
-			ctx, stop := context.WithTimeout(context.Background(), c.requestTimeout)
+			ctx, stop := context.WithTimeout(clientv3.WithRequireLeader(context.Background()), c.requestTimeout)
 			e := cl.RequestProgress(ctx)
 			stop()
 			if e != nil {
@@ -349,6 +436,26 @@ func semantics(c config) (err error) {
 			}
 		}
 		assertions = append(assertions, "each watch received exactly three lease deletes at one revision with prev_kv")
+		for i, w := range r.h.Watches {
+			count := 0
+			rev := int64(0)
+			for _, v := range w.Responses {
+				for _, ev := range v.Events {
+					if ev.Type == history.EventDelete && ev.PrevKV != nil && ev.PrevKV.Lease == 49002 {
+						count++
+						if rev == 0 {
+							rev = ev.Revision()
+						} else if rev != ev.Revision() {
+							return errors.New("fault-time lease expiry split revisions")
+						}
+					}
+				}
+			}
+			if count != 2 {
+				return fmt.Errorf("watch %d has %d fault-time lease deletes, want two", i, count)
+			}
+		}
+		assertions = append(assertions, "each watch received exactly two deletes from fault-time lease at one revision with prev_kv")
 	}
 	if c.scenario == "compaction" {
 		canceled := 0

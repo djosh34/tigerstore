@@ -104,6 +104,20 @@ jobs:
         run: |
           printf '%s\n' '${{ toJSON(steps) }}' > evidence/steps.json
           sudo chmod -R a+rX evidence
+      - name: Archive compact evidence for permanent retention
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p compact-input compact
+          name='correct-round2-semantics-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.seed }}-${{ matrix.rep }}'
+          ln -s "$PWD/evidence" "compact-input/$name"
+          python3 experiments/correct-round2-semantics/archive-results.py compact-input compact > compact/archive.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: compact-correct-round2-semantics-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: compact
+          retention-days: 30
       - uses: actions/upload-artifact@v6
         if: always()
         with:

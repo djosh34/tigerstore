@@ -29,7 +29,9 @@ def main():
         f=load(run/'faults.json',{});r=load(run/'result.json',{});h=load(run/'workload/history.json',{})
         offline=load(run/'offline-results.json',[]);oracles=load(run/'oracles.json',[])
         checks=[]
-        for report in run.glob('check-*.json'):checks+=load(report,[])
+        for report in run.glob('check-*.json'):
+            rows=load(report,[])
+            if isinstance(rows,list):checks+=rows
         fault_complete=bool(f.get('required')) and all(all(phase in f.get('faults',{}).get(name,{}) for phase in ('requested','installed','exercised','healed')) for name in f.get('required',[]))
         passed=bool(r.get('controller_pass')) and len(oracles)==4 and len(checks)==16 and all(x['passed'] for x in checks) and bool(offline) and all(x['returncode']==0 for x in offline) and fault_complete
         summary={'artifact':artifact.name,'attempt':load(artifact/'attempt.json',{}),'reached_controller':bool(f),
@@ -40,6 +42,7 @@ def main():
                  'faults':{k:sorted(v) for k,v in f.get('faults',{}).items()},
                  'failures':[e.get('error') for e in f.get('events',[]) if e['name']=='controller-failure'],
                  'checker_failures':[x for x in checks if not x['passed']]}
+        (dst/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
         summaries.append(summary)
     (a.destination/'summary.json').write_text(json.dumps(summaries,indent=2)+'\n')
     print(json.dumps(summaries,indent=2))
