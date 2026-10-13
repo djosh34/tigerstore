@@ -359,3 +359,48 @@ func TestHistory(t *testing.T) {
 		t.Fatal("InRange is wrong")
 	}
 }
+
+func TestCompact(t *testing.T) {
+	s := New()
+	put(t, s, "a", "1")                                                                // 2
+	put(t, s, "a", "2")                                                                // 3
+	put(t, s, "b", "1")                                                                // 4
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("b")}); err != nil { // 5
+		t.Fatal(err)
+	}
+	put(t, s, "c", "1")                                                                // 6
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("c")}); err != nil { // 7
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		rev  int64
+		want error
+	}{{8, rpctypes.ErrGRPCFutureRev}, {7, nil}, {7, rpctypes.ErrGRPCCompacted}, {0, rpctypes.ErrGRPCCompacted}} {
+		if err := s.Compact(c.rev); !errors.Is(err, c.want) {
+			t.Fatalf("compact at %d: %v, want %v", c.rev, err, c.want)
+		}
+	}
+	if s.Rev() != 7 || s.CompactRev() != 7 {
+		t.Fatalf("rev %d, compact rev %d", s.Rev(), s.CompactRev())
+	}
+	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), Revision: 6}); !errors.Is(err, rpctypes.ErrGRPCCompacted) {
+		t.Fatalf("range below the compaction: %v", err)
+	}
+	r := get(t, s, &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte{0}, Revision: 7})
+	if keys(r.Kvs) != "a=2;" {
+		t.Fatalf("range at the compaction = %s", keys(r.Kvs))
+	}
+	// b's old tombstone is gone with the key; c's tombstone at 7 stays for
+	// a watch from 7.
+	h := s.History([]byte("a"), []byte{0}, 0)
+	if len(h) != 2 || string(h[0].Key()) != "a" || string(h[1].Key()) != "c" || h[1].Event(false).Type != mvccpb.Event_DELETE {
+		t.Fatalf("history after compaction has %d changes", len(h))
+	}
+	if _, ok := s.keys.Get(&keyIndex{key: []byte("b")}); ok {
+		t.Fatal("a key deleted before the compaction is still indexed")
+	}
+	put(t, s, "a", "3")
+	if kv := get(t, s, &pb.RangeRequest{Key: []byte("a")}).Kvs[0]; kv.Version != 3 || kv.CreateRevision != 2 {
+		t.Fatalf("a after compaction and put = %v", kv)
+	}
+}

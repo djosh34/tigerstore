@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -27,6 +28,9 @@ type watchClient struct {
 	start, next int64
 	events      []*mvccpb.Event
 	responses   []WatchRecord
+	// ended holds the logical watches that a compaction canceled; the
+	// client then started a new one from the current revision.
+	ended []segment
 
 	// The current stream, if any.
 	open   bool
@@ -40,6 +44,13 @@ type watchClient struct {
 type WatchRecord struct {
 	Time int64
 	Resp *pb.WatchResponse
+}
+
+// segment is a logical watch that a compaction ended.
+type segment struct {
+	start     int64
+	events    []*mvccpb.Event
+	responses []WatchRecord
 }
 
 // WatchResult is one logical watch at the end of a run.
@@ -80,6 +91,10 @@ func (s *Sim) startWatchers() {
 // resumes up to 2 s later, so the next stream catches up on history.
 func (w *watchClient) drop() {
 	s := w.sim
+	if s.now >= s.stopAt {
+		// Watches stay open once the clients stop, so they reach the end.
+		return
+	}
 	if w.open {
 		n := s.nodes[w.node]
 		if n.up && n.gen == w.gen {
@@ -90,9 +105,7 @@ func (w *watchClient) drop() {
 		w.open = false
 		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
 	}
-	if s.now < s.stopAt {
-		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
-	}
+	s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
 }
 
 // openWatch picks a node and sends the create request.
@@ -150,6 +163,20 @@ func (w *watchClient) receive(e *event) {
 		return
 	}
 	w.responses = append(w.responses, WatchRecord{Time: s.now, Resp: r})
+	if r.Canceled && r.CompactRevision != 0 {
+		// The revision it needed is compacted. Like Kubernetes, start a
+		// new logical watch from now.
+		s.stats.WatchCompacted++
+		if n := s.nodes[w.node]; n.up && n.gen == w.gen {
+			delete(n.streams, w.stream)
+			n.core.CloseWatchStream(w.stream)
+			s.process(n)
+		}
+		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
+		w.start, w.next, w.events, w.responses, w.open = 0, 0, nil, nil, false
+		s.push(&event{at: s.now + s.clientLatency(), kind: evWatchOpen, watch: w})
+		return
+	}
 	if r.Canceled {
 		s.fail("watch %d was canceled: %v", w.id, r)
 		return
@@ -201,24 +228,40 @@ func (w *watchClient) broken() {
 	w.openWatch()
 }
 
-// checkWatches requires every watch to have delivered exactly the final
-// store's history of its range, from its start to the final revision, in
-// order, without duplicates, with previous values where asked.
-func (s *Sim) checkWatches(final *mvcc.Store, res *Result) error {
+// checkWatches requires every logical watch to have delivered exactly the
+// model's history of its range from its start, in order, without
+// duplicates, with previous values where asked. The current one must reach
+// the final revision; one that a compaction ended must be complete up to
+// its last event.
+func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 	for _, w := range s.watchers {
-		res.Watches = append(res.Watches, WatchResult{Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: w.start, Responses: w.responses})
-		if w.start == 0 {
-			return fmt.Errorf("watch %d was never created", w.id)
-		}
-		// The final history runs to the final revision, so equality also
-		// means the watch delivered everything.
-		want := final.History(w.key, w.end, w.start)
-		if len(w.events) != len(want) {
-			return fmt.Errorf("watch %d on %q from %d got %d events, the store has %d", w.id, w.key, w.start, len(w.events), len(want))
-		}
-		for i, c := range want {
-			if ev := c.Event(w.prevKV); !proto.Equal(ev, w.events[i]) {
-				return fmt.Errorf("watch %d event %d is %v, the store has %v", w.id, i, w.events[i], ev)
+		segs := append(slices.Clone(w.ended), segment{start: w.start, events: w.events, responses: w.responses})
+		for i, sg := range segs {
+			current := i == len(segs)-1
+			res.Watches = append(res.Watches, WatchResult{
+				Key: w.key, End: w.end, PrevKV: w.prevKV, ProgressNotify: w.progress, Start: sg.start, Responses: sg.responses,
+			})
+			if sg.start == 0 {
+				if current {
+					return fmt.Errorf("watch %d was never created", w.id)
+				}
+				return fmt.Errorf("watch %d was canceled before it was created", w.id)
+			}
+			want := model.History(w.key, w.end, sg.start)
+			if !current {
+				last := sg.start - 1
+				if len(sg.events) > 0 {
+					last = sg.events[len(sg.events)-1].Kv.ModRevision
+				}
+				want = slices.DeleteFunc(want, func(c mvcc.Change) bool { return c.ModRev() > last })
+			}
+			if len(sg.events) != len(want) {
+				return fmt.Errorf("watch %d (part %d) on %q from %d got %d events, the history has %d", w.id, i, w.key, sg.start, len(sg.events), len(want))
+			}
+			for j, c := range want {
+				if ev := c.Event(w.prevKV); !proto.Equal(ev, sg.events[j]) {
+					return fmt.Errorf("watch %d (part %d) event %d is %v, the history has %v", w.id, i, j, sg.events[j], ev)
+				}
 			}
 		}
 	}

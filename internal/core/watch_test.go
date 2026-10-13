@@ -188,3 +188,33 @@ func TestWatchProgress(t *testing.T) {
 		t.Fatalf("notification right after events = %v", rs)
 	}
 }
+
+// TestWatchFromCompactedRevision follows etcd for watches that start below
+// the compaction, and cancels a prev_kv watch that starts at it, whose
+// first events would lack previous values.
+func TestWatchFromCompactedRevision(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.put(1, "1") // 2
+	s.put(2, "2") // 3
+	s.put(3, "3") // 4
+	if r := s.do(4, &pb.CompactionRequest{Revision: 3}); r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	cases := []struct {
+		start    int64
+		prevKV   bool
+		canceled bool
+	}{{2, false, true}, {3, true, true}, {3, false, false}, {4, true, false}}
+	for i, c := range cases {
+		s.n.Watch(uint64(i+1), create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: c.start, PrevKv: c.prevKV}))
+		s.run()
+		rs := s.responses()
+		canceled := len(rs) == 2 && rs[1].Canceled && rs[1].CompactRevision == 3 && rs[1].Header.Revision == 0 && rs[1].CancelReason == ""
+		if canceled != c.canceled {
+			t.Errorf("watch from %d, prev_kv %v: %v", c.start, c.prevKV, rs)
+		}
+		if !c.canceled && (len(rs) != 2 || len(rs[1].Events) == 0 || rs[1].Events[0].Kv.ModRevision != c.start) {
+			t.Errorf("watch from %d, prev_kv %v got %v", c.start, c.prevKV, rs)
+		}
+	}
+}

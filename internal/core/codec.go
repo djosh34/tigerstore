@@ -19,9 +19,10 @@ import (
 // request answer it once the entry applies.
 
 const (
-	kindPut    = 1
-	kindDelete = 2
-	kindTxn    = 3
+	kindPut     = 1
+	kindDelete  = 2
+	kindTxn     = 3
+	kindCompact = 4
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -37,6 +38,8 @@ func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
 			kind = kindDelete
 		case *pb.TxnRequest:
 			kind = kindTxn
+		case *pb.CompactionRequest:
+			kind = kindCompact
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
@@ -83,6 +86,8 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
 			op = &pb.DeleteRangeRequest{}
 		case kindTxn:
 			op = &pb.TxnRequest{}
+		case kindCompact:
+			op = &pb.CompactionRequest{}
 		default:
 			return errBadBatch
 		}

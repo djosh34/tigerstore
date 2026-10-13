@@ -70,10 +70,10 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 }
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
-// *pb.DeleteRangeRequest or *pb.TxnRequest. ID is chosen by the driver and
-// comes back in the Reply. It must never repeat within one run of the
-// node: a write that timed out can still commit later, and its entry
-// carries its ID.
+// *pb.DeleteRangeRequest, *pb.TxnRequest or *pb.CompactionRequest. ID is
+// chosen by the driver and comes back in the Reply. It must never repeat
+// within one run of the node: a write that timed out can still commit
+// later, and its entry carries its ID.
 type Request struct {
 	ID uint64
 	Op proto.Message
@@ -311,7 +311,8 @@ func (n *Node) Submit(r Request) {
 // v3.7.2 limits the marshaled InternalRaftRequest, whose header holds an ID
 // made from the low 16 bits of the member ID. When bit 15 of the member ID
 // is set, the ID is a 10-byte varint, etcd's strictest case, which this
-// matches to the byte; for other members etcd accepts one byte more.
+// matches to the byte; for other members etcd accepts one or more bytes
+// more.
 const sizeRequestID = 1 << 63
 
 // check validates a request like etcd's gRPC layer, then limits the size of
@@ -332,6 +333,8 @@ func check(op proto.Message) error {
 		if err == nil && mvcc.IsTxnReadOnly(op) {
 			return nil
 		}
+	case *pb.CompactionRequest:
+		r.Compaction = op
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
 	}
@@ -641,6 +644,13 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	case *pb.TxnRequest:
 		var r *pb.TxnResponse
 		if r, err = n.kv.Txn(op); err == nil {
+			h, resp = r.Header, r
+		}
+	case *pb.CompactionRequest:
+		// Compact keeps the revision; physical compaction is the same,
+		// because it happens at once.
+		if err = n.kv.Compact(op.Revision); err == nil {
+			r := &pb.CompactionResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}}
 			h, resp = r.Header, r
 		}
 	default:

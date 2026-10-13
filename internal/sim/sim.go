@@ -230,6 +230,9 @@ type Stats struct {
 	Events, Messages, Dropped, DiskWrites int
 	Crashes, LinkChanges                  int
 	OK, Failed, Ambiguous                 int
+	// Compactions counts successful compactions and WatchCompacted the
+	// watches that a compaction canceled.
+	Compactions, WatchCompacted int
 }
 
 // Result is the outcome of a run.

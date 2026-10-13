@@ -148,6 +148,8 @@ func request(m proto.Message) (history.Request, error) {
 		return history.Request{Put: hp}, err
 	case *pb.DeleteRangeRequest:
 		return history.Request{Delete: deleteRequest(r)}, nil
+	case *pb.CompactionRequest:
+		return history.Request{Compact: &history.CompactRequest{Revision: r.Revision, Physical: r.Physical}}, nil
 	case *pb.TxnRequest:
 		t := &history.TxnRequest{}
 		for _, c := range r.Compare {
@@ -202,6 +204,8 @@ func response(m proto.Message) (*history.Response, error) {
 		return &history.Response{Revision: r.Header.Revision, Range: rangeResponse(r)}, nil
 	case *pb.PutResponse:
 		return &history.Response{Revision: r.Header.Revision, Put: &history.PutResponse{PrevKV: prevKV(r.PrevKv)}}, nil
+	case *pb.CompactionResponse:
+		return &history.Response{Revision: r.Header.Revision, Compact: &history.CompactResponse{}}, nil
 	case *pb.DeleteRangeResponse:
 		return &history.Response{Revision: r.Header.Revision, Delete: &history.DeleteResponse{Deleted: r.Deleted, PrevKVs: keyValues(r.PrevKvs)}}, nil
 	case *pb.TxnResponse:

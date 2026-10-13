@@ -168,6 +168,10 @@ func (s *kvServer) Txn(ctx context.Context, r *pb.TxnRequest) (*pb.TxnResponse, 
 	return do[*pb.TxnResponse](ctx, s.n, r)
 }
 
+func (s *kvServer) Compact(ctx context.Context, r *pb.CompactionRequest) (*pb.CompactionResponse, error) {
+	return do[*pb.CompactionResponse](ctx, s.n, r)
+}
+
 type clusterServer struct {
 	pb.UnimplementedClusterServer
 	n   *node.Node
