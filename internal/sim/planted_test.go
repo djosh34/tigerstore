@@ -47,10 +47,11 @@ const (
 	lostAppend = `reported \d+ durable|erasing node \d+`
 	// A watch that broke the watch rules.
 	badWatch = `watch \d+`
-	// A read or the replayed log that disagrees with the model.
-	badState = `call at \d+ ms|replaying the committed log`
+	// A read or the replayed log that disagrees with the model; not a
+	// liveness failure, which names the call but not its node.
+	badState = `call at \d+ ms on node \d+:|replaying the committed log`
 	// A node applied a value that no client wrote.
-	inventedState = `applied different entries|applied the same log to different states|differs from the final log|replaying the committed log|call at \d+ ms|durability|revisions|watch \d+`
+	inventedState = `applied different entries|applied the same log to different states|differs from the final log|` + badState
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
 )
