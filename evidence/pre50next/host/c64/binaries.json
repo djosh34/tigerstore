@@ -1,0 +1,11 @@
+{
+  "base": "396bced923ee47540e89e1e2ca1053ecde5673ce",
+  "candidates": [],
+  "harness": "dd08f1ad3313356772075606c3da97f343a4dd74",
+  "sha256": {
+    "etcd": "17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d",
+    "etcdctl": "ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572",
+    "load": "078dfe4d0daae66a7eed810ae3e6ab0530e5ad221d54507ac30e19c6e5caa1c7",
+    "baseline": "ac222a94360c5d8f3f08077a63e7c1672e5fe0c8500647f315e86ba5ae93f270"
+  }
+}

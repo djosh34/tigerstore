@@ -1,0 +1,144 @@
+{
+  "peer": {
+    "paired": [
+      {
+        "rep": 1,
+        "throughput_gain_percent": 51.130490654180605,
+        "leader_cpu_saved_percent": 1.9704433497536922,
+        "leader_cpu_saved_us_put": 0.6666666666666643,
+        "leader_write_calls_saved_percent": 19.785500604671903,
+        "p99_reduction_percent": 88.35491671763873
+      },
+      {
+        "rep": 2,
+        "throughput_gain_percent": 9.650523227760832,
+        "leader_cpu_saved_percent": 1.4851485148514865,
+        "leader_cpu_saved_us_put": 0.5,
+        "leader_write_calls_saved_percent": 17.49919639987142,
+        "p99_reduction_percent": 11.561786484562209
+      },
+      {
+        "rep": 3,
+        "throughput_gain_percent": 2.712106276246451,
+        "leader_cpu_saved_percent": -0.9756097560975396,
+        "leader_cpu_saved_us_put": -0.3333333333333286,
+        "leader_write_calls_saved_percent": 16.897214217098945,
+        "p99_reduction_percent": 0.021202212847715174
+      },
+      {
+        "rep": 4,
+        "throughput_gain_percent": -13.593776381215783,
+        "leader_cpu_saved_percent": 0.4761904761904856,
+        "leader_cpu_saved_us_put": 0.1666666666666714,
+        "leader_write_calls_saved_percent": 20.63408761152101,
+        "p99_reduction_percent": -148.34939302393272
+      },
+      {
+        "rep": 5,
+        "throughput_gain_percent": -2.911358462837066,
+        "leader_cpu_saved_percent": -3.7735849056603543,
+        "leader_cpu_saved_us_put": -1.3333333333333286,
+        "leader_write_calls_saved_percent": 20.13937282229965,
+        "p99_reduction_percent": 10.417482816414614
+      }
+    ],
+    "changes": {
+      "throughput_gain_percent": {
+        "median": 2.712106276246451,
+        "min": -13.593776381215783,
+        "max": 51.130490654180605
+      },
+      "leader_cpu_saved_percent": {
+        "median": 0.4761904761904856,
+        "min": -3.7735849056603543,
+        "max": 1.9704433497536922
+      },
+      "leader_cpu_saved_us_put": {
+        "median": 0.1666666666666714,
+        "min": -1.3333333333333286,
+        "max": 0.6666666666666643
+      },
+      "leader_write_calls_saved_percent": {
+        "median": 19.785500604671903,
+        "min": 16.897214217098945,
+        "max": 20.63408761152101
+      },
+      "p99_reduction_percent": {
+        "median": 10.417482816414614,
+        "min": -148.34939302393272,
+        "max": 88.35491671763873
+      }
+    }
+  },
+  "wake": {
+    "paired": [
+      {
+        "rep": 1,
+        "throughput_gain_percent": 50.95326250551202,
+        "leader_cpu_saved_percent": 1.477832512315247,
+        "leader_cpu_saved_us_put": 0.4999999999999929,
+        "leader_write_calls_saved_percent": 1.005664820826191,
+        "p99_reduction_percent": 88.80383047219695
+      },
+      {
+        "rep": 2,
+        "throughput_gain_percent": 9.073168407520038,
+        "leader_cpu_saved_percent": 2.970297029702973,
+        "leader_cpu_saved_us_put": 1.0,
+        "leader_write_calls_saved_percent": -1.0607521697203692,
+        "p99_reduction_percent": 6.428697372366054
+      },
+      {
+        "rep": 3,
+        "throughput_gain_percent": -15.982844622465464,
+        "leader_cpu_saved_percent": -0.4878048780488031,
+        "leader_cpu_saved_us_put": -0.1666666666666714,
+        "leader_write_calls_saved_percent": -1.9372398334934315,
+        "p99_reduction_percent": -377.9971765917305
+      },
+      {
+        "rep": 4,
+        "throughput_gain_percent": 1.080305713051355,
+        "leader_cpu_saved_percent": 4.761904761904756,
+        "leader_cpu_saved_us_put": 1.6666666666666643,
+        "leader_write_calls_saved_percent": 3.760071620411831,
+        "p99_reduction_percent": 9.964543345004396
+      },
+      {
+        "rep": 5,
+        "throughput_gain_percent": -2.4205588541417966,
+        "leader_cpu_saved_percent": 3.301886792452846,
+        "leader_cpu_saved_us_put": 1.1666666666666714,
+        "leader_write_calls_saved_percent": 1.5235983528666508,
+        "p99_reduction_percent": -10.61944144101339
+      }
+    ],
+    "changes": {
+      "throughput_gain_percent": {
+        "median": 1.080305713051355,
+        "min": -15.982844622465464,
+        "max": 50.95326250551202
+      },
+      "leader_cpu_saved_percent": {
+        "median": 2.970297029702973,
+        "min": -0.4878048780488031,
+        "max": 4.761904761904756
+      },
+      "leader_cpu_saved_us_put": {
+        "median": 1.0,
+        "min": -0.1666666666666714,
+        "max": 1.6666666666666643
+      },
+      "leader_write_calls_saved_percent": {
+        "median": 1.005664820826191,
+        "min": -1.9372398334934315,
+        "max": 3.760071620411831
+      },
+      "p99_reduction_percent": {
+        "median": 6.428697372366054,
+        "min": -377.9971765917305,
+        "max": 88.80383047219695
+      }
+    }
+  }
+}

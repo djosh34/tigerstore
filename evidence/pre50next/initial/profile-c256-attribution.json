@@ -1,0 +1,3505 @@
+{
+  "method": "CPU sample nanoseconds divided by completed Puts. Inclusive rows overlap. The ordered context partition sums to total.",
+  "aggregate": {
+    "256/baseline-profile/leader": {
+      "operations": 2344998,
+      "sampled_cpu_us_put": 21.38168134898196,
+      "sample_cpu_ns": 50140000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 8.217491017049907,
+          "sample_percent": 38.43238930993219,
+          "sample_cpu_ns": 19270000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 2.204692711891439,
+          "sample_percent": 10.3111288392501,
+          "sample_cpu_ns": 5170000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 1.206824056992799,
+          "sample_percent": 5.644196250498604,
+          "sample_cpu_ns": 2830000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 6.012798305158469,
+          "sample_percent": 28.121260470682092,
+          "sample_cpu_ns": 14100000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 9.326233966937286,
+          "sample_percent": 43.61786996410052,
+          "sample_cpu_ns": 21870000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 3.833691969033662,
+          "sample_percent": 17.929796569605106,
+          "sample_cpu_ns": 8990000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.9637534872097971,
+          "sample_percent": 4.507379337854009,
+          "sample_cpu_ns": 2260000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.2857145293940549,
+          "sample_percent": 1.336258476266454,
+          "sample_cpu_ns": 670000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.4669522106202222,
+          "sample_percent": 6.860789788591942,
+          "sample_cpu_ns": 3440000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7590624810767429,
+          "sample_percent": 3.5500598324690866,
+          "sample_cpu_ns": 1780000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.211090158712289,
+          "sample_percent": 15.017949740725967,
+          "sample_cpu_ns": 7530000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9339027154820602,
+          "sample_percent": 4.367770243318708,
+          "sample_cpu_ns": 2190000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.6311323080019684,
+          "sample_percent": 12.305544475468688,
+          "sample_cpu_ns": 6170000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.9296383195209548,
+          "sample_percent": 4.3478260869565215,
+          "sample_cpu_ns": 2180000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.5692977136867494,
+          "sample_percent": 7.339449541284404,
+          "sample_cpu_ns": 3680000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4285726469702746,
+          "sample_percent": 6.68129238133227,
+          "sample_cpu_ns": 3350000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.134329325654009,
+          "sample_percent": 5.305145592341444,
+          "sample_cpu_ns": 2660000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.5202563072548463,
+          "sample_percent": 2.433187076186677,
+          "sample_cpu_ns": 1220000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 2.8272945222128123,
+          "sample_percent": 13.222975668129239,
+          "sample_cpu_ns": 6630000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 5.931774781897468,
+          "sample_percent": 27.742321499800557,
+          "sample_cpu_ns": 13910000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.2473366715024916,
+          "sample_percent": 10.51057040287196,
+          "sample_cpu_ns": 5270000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.6887008005976978,
+          "sample_percent": 7.897885919425608,
+          "sample_cpu_ns": 3960000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.5692977136867494,
+          "sample_percent": 7.339449541284404,
+          "sample_cpu_ns": 3680000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.061834594315219,
+          "sample_percent": 4.966094934184284,
+          "sample_cpu_ns": 2490000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.211090158712289,
+          "sample_percent": 15.017949740725967,
+          "sample_cpu_ns": 7530000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9339027154820602,
+          "sample_percent": 4.367770243318708,
+          "sample_cpu_ns": 2190000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 2.8272945222128123,
+          "sample_percent": 13.222975668129239,
+          "sample_cpu_ns": 6630000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 5.931774781897468,
+          "sample_percent": 27.742321499800557,
+          "sample_cpu_ns": 13910000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4285726469702746,
+          "sample_percent": 6.68129238133227,
+          "sample_cpu_ns": 3350000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.2857145293940549,
+          "sample_percent": 1.336258476266454,
+          "sample_cpu_ns": 670000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7590624810767429,
+          "sample_percent": 3.5500598324690866,
+          "sample_cpu_ns": 1780000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 1.147122513537325,
+          "sample_percent": 5.364978061428001,
+          "sample_cpu_ns": 2690000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.5117275153326357,
+          "sample_percent": 2.3932987634623055,
+          "sample_cpu_ns": 1200000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.6375280490644342,
+          "sample_percent": 7.658556043079377,
+          "sample_cpu_ns": 3840000000
+        },
+        "other": {
+          "cpu_us_put": 0.07675912729989535,
+          "sample_percent": 0.35899481451934584,
+          "sample_cpu_ns": 180000000
+        }
+      },
+      "profiles": [
+        "1-baseline-profile/n0-cpu-raw.txt",
+        "2-baseline-profile/n2-cpu-raw.txt",
+        "3-baseline-profile/n1-cpu-raw.txt",
+        "4-baseline-profile/n0-cpu-raw.txt",
+        "5-baseline-profile/n1-cpu-raw.txt"
+      ]
+    },
+    "256/baseline-profile/follower1": {
+      "operations": 2344998,
+      "sampled_cpu_us_put": 9.044783833504336,
+      "sample_cpu_ns": 21210000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.8145013343294965,
+          "sample_percent": 31.117397454031117,
+          "sample_cpu_ns": 6600000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.6098086224380576,
+          "sample_percent": 6.742102781706742,
+          "sample_cpu_ns": 1430000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.34968046881063436,
+          "sample_percent": 3.866100895803866,
+          "sample_cpu_ns": 820000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.204692711891439,
+          "sample_percent": 24.375294672324376,
+          "sample_cpu_ns": 5170000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.652455993565879,
+          "sample_percent": 51.43800094295144,
+          "sample_cpu_ns": 10910000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.2366748287205362,
+          "sample_percent": 13.672795851013673,
+          "sample_cpu_ns": 2900000000
+        },
+        "raft": {
+          "cpu_us_put": 0.2985077172773708,
+          "sample_percent": 3.3003300330033003,
+          "sample_cpu_ns": 700000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5863552975311705,
+          "sample_percent": 17.53889674681754,
+          "sample_cpu_ns": 3720000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.162048752280386,
+          "sample_percent": 23.903818953323903,
+          "sample_cpu_ns": 5070000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.4392344897522302,
+          "sample_percent": 26.968411126826968,
+          "sample_cpu_ns": 5720000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.9381671114431654,
+          "sample_percent": 10.372465818010372,
+          "sample_cpu_ns": 2200000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.36034231159259,
+          "sample_percent": 15.04007543611504,
+          "sample_cpu_ns": 3190000000
+        },
+        "apply": {
+          "cpu_us_put": 1.2366748287205362,
+          "sample_percent": 13.672795851013673,
+          "sample_cpu_ns": 2900000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.0831565741207456,
+          "sample_percent": 11.975483262611975,
+          "sample_cpu_ns": 2540000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6183374143602681,
+          "sample_percent": 6.836397925506836,
+          "sample_cpu_ns": 1450000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.7292117093490058,
+          "sample_percent": 8.062234794908063,
+          "sample_cpu_ns": 1710000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.36034231159259,
+          "sample_percent": 15.04007543611504,
+          "sample_cpu_ns": 3190000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.0788921781596401,
+          "sample_percent": 11.92833569071193,
+          "sample_cpu_ns": 2530000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5863552975311705,
+          "sample_percent": 17.53889674681754,
+          "sample_cpu_ns": 3720000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.162048752280386,
+          "sample_percent": 23.903818953323903,
+          "sample_cpu_ns": 5070000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.2366748287205362,
+          "sample_percent": 13.672795851013673,
+          "sample_cpu_ns": 2900000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.2985077172773708,
+          "sample_percent": 3.3003300330033003,
+          "sample_cpu_ns": 700000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.4648191597604774,
+          "sample_percent": 5.139085337105139,
+          "sample_cpu_ns": 1090000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.11940308691094832,
+          "sample_percent": 1.3201320132013201,
+          "sample_cpu_ns": 280000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.7121541255045847,
+          "sample_percent": 7.873644507307874,
+          "sample_cpu_ns": 1670000000
+        },
+        "other": {
+          "cpu_us_put": 0.025586375766631784,
+          "sample_percent": 0.2828854314002829,
+          "sample_cpu_ns": 60000000
+        }
+      },
+      "profiles": [
+        "1-baseline-profile/n1-cpu-raw.txt",
+        "2-baseline-profile/n0-cpu-raw.txt",
+        "3-baseline-profile/n0-cpu-raw.txt",
+        "4-baseline-profile/n1-cpu-raw.txt",
+        "5-baseline-profile/n0-cpu-raw.txt"
+      ]
+    },
+    "256/baseline-profile/follower2": {
+      "operations": 2344998,
+      "sampled_cpu_us_put": 8.123674305905592,
+      "sample_cpu_ns": 19050000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.5373155968576517,
+          "sample_percent": 31.233595800524935,
+          "sample_cpu_ns": 5950000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.5629002668658992,
+          "sample_percent": 6.929133858267717,
+          "sample_cpu_ns": 1320000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.3113009051606867,
+          "sample_percent": 3.832020997375328,
+          "sample_cpu_ns": 730000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 1.9744153299917526,
+          "sample_percent": 24.304461942257216,
+          "sample_cpu_ns": 4630000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.149257270155454,
+          "sample_percent": 51.0761154855643,
+          "sample_cpu_ns": 9730000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.1727088893039568,
+          "sample_percent": 14.435695538057743,
+          "sample_cpu_ns": 2750000000
+        },
+        "raft": {
+          "cpu_us_put": 0.24307056978300196,
+          "sample_percent": 2.9921259842519685,
+          "sample_cpu_ns": 570000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4882741904257488,
+          "sample_percent": 18.32020997375328,
+          "sample_cpu_ns": 3490000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.9275069744195943,
+          "sample_percent": 23.72703412073491,
+          "sample_cpu_ns": 4520000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.0895540209415957,
+          "sample_percent": 25.721784776902886,
+          "sample_cpu_ns": 4900000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.7761200649211641,
+          "sample_percent": 9.553805774278215,
+          "sample_cpu_ns": 1820000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.206824056992799,
+          "sample_percent": 14.855643044619423,
+          "sample_cpu_ns": 2830000000
+        },
+        "apply": {
+          "cpu_us_put": 1.1727088893039568,
+          "sample_percent": 14.435695538057743,
+          "sample_cpu_ns": 2750000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.9978686548986395,
+          "sample_percent": 12.283464566929133,
+          "sample_cpu_ns": 2340000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6695101658935316,
+          "sample_percent": 8.241469816272966,
+          "sample_cpu_ns": 1570000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.6481881860880052,
+          "sample_percent": 7.979002624671916,
+          "sample_cpu_ns": 1520000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.206824056992799,
+          "sample_percent": 14.855643044619423,
+          "sample_cpu_ns": 2830000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.8827299639487965,
+          "sample_percent": 10.866141732283465,
+          "sample_cpu_ns": 2070000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4882741904257488,
+          "sample_percent": 18.32020997375328,
+          "sample_cpu_ns": 3490000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.9275069744195943,
+          "sample_percent": 23.72703412073491,
+          "sample_cpu_ns": 4520000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.1727088893039568,
+          "sample_percent": 14.435695538057743,
+          "sample_cpu_ns": 2750000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.24307056978300196,
+          "sample_percent": 2.9921259842519685,
+          "sample_cpu_ns": 570000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.4434971799549509,
+          "sample_percent": 5.459317585301838,
+          "sample_cpu_ns": 1040000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.12366748287205362,
+          "sample_percent": 1.5223097112860893,
+          "sample_cpu_ns": 290000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.6183374143602681,
+          "sample_percent": 7.611548556430447,
+          "sample_cpu_ns": 1450000000
+        },
+        "other": {
+          "cpu_us_put": 0.01705758384442119,
+          "sample_percent": 0.2099737532808399,
+          "sample_cpu_ns": 40000000
+        }
+      },
+      "profiles": [
+        "1-baseline-profile/n2-cpu-raw.txt",
+        "2-baseline-profile/n1-cpu-raw.txt",
+        "3-baseline-profile/n2-cpu-raw.txt",
+        "4-baseline-profile/n2-cpu-raw.txt",
+        "5-baseline-profile/n2-cpu-raw.txt"
+      ]
+    }
+  },
+  "profiles": [
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 1,
+      "role": "leader",
+      "operations": 414394,
+      "raw": "1-baseline-profile/n0-cpu-raw.txt",
+      "sampled_cpu_us_put": 22.370015009869835,
+      "sample_cpu_ns": 9270000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 8.470199858106053,
+          "sample_percent": 37.86407766990291,
+          "sample_cpu_ns": 3510000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 2.509688846846238,
+          "sample_percent": 11.218985976267529,
+          "sample_cpu_ns": 1040000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 1.182449552841016,
+          "sample_percent": 5.28586839266451,
+          "sample_cpu_ns": 490000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 5.960511011259816,
+          "sample_percent": 26.645091693635383,
+          "sample_cpu_ns": 2470000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 9.097622069817612,
+          "sample_percent": 40.668824163969795,
+          "sample_cpu_ns": 3770000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 4.46435035256302,
+          "sample_percent": 19.956850053937433,
+          "sample_cpu_ns": 1850000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 1.3031076704778544,
+          "sample_percent": 5.825242718446602,
+          "sample_cpu_ns": 540000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.41023759996525044,
+          "sample_percent": 1.8338727076591155,
+          "sample_cpu_ns": 170000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.4961606586967957,
+          "sample_percent": 6.68824163969795,
+          "sample_cpu_ns": 620000000
+        },
+        "raft": {
+          "cpu_us_put": 0.8687384469852363,
+          "sample_percent": 3.883495145631068,
+          "sample_cpu_ns": 360000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.1612426820851653,
+          "sample_percent": 14.13160733549083,
+          "sample_cpu_ns": 1310000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.8687384469852363,
+          "sample_percent": 3.883495145631068,
+          "sample_cpu_ns": 360000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.3890307292094,
+          "sample_percent": 10.679611650485437,
+          "sample_cpu_ns": 990000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 1.03765981167681,
+          "sample_percent": 4.638619201725998,
+          "sample_cpu_ns": 430000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.254844423423119,
+          "sample_percent": 5.6094929881337645,
+          "sample_cpu_ns": 520000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4237657881146928,
+          "sample_percent": 6.3646170442286945,
+          "sample_cpu_ns": 590000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.110054682258913,
+          "sample_percent": 4.962243797195254,
+          "sample_cpu_ns": 460000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.45850084701998584,
+          "sample_percent": 2.0496224379719523,
+          "sample_cpu_ns": 190000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 2.751005082119915,
+          "sample_percent": 12.297734627831716,
+          "sample_cpu_ns": 1140000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 6.780986211190316,
+          "sample_percent": 30.312837108953612,
+          "sample_cpu_ns": 2810000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.4131623527367676,
+          "sample_percent": 10.787486515641856,
+          "sample_cpu_ns": 1000000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.9063982586620463,
+          "sample_percent": 8.522114347357066,
+          "sample_cpu_ns": 790000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.254844423423119,
+          "sample_percent": 5.6094929881337645,
+          "sample_cpu_ns": 520000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.1341863057862807,
+          "sample_percent": 5.070118662351672,
+          "sample_cpu_ns": 470000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.1612426820851653,
+          "sample_percent": 14.13160733549083,
+          "sample_cpu_ns": 1310000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.8687384469852363,
+          "sample_percent": 3.883495145631068,
+          "sample_cpu_ns": 360000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 2.751005082119915,
+          "sample_percent": 12.297734627831716,
+          "sample_cpu_ns": 1140000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 6.780986211190316,
+          "sample_percent": 30.312837108953612,
+          "sample_cpu_ns": 2810000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4237657881146928,
+          "sample_percent": 6.3646170442286945,
+          "sample_cpu_ns": 590000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.41023759996525044,
+          "sample_percent": 1.8338727076591155,
+          "sample_cpu_ns": 170000000
+        },
+        "raft": {
+          "cpu_us_put": 0.8687384469852363,
+          "sample_percent": 3.883495145631068,
+          "sample_cpu_ns": 360000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 1.327239294005222,
+          "sample_percent": 5.93311758360302,
+          "sample_cpu_ns": 550000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.5067640940747211,
+          "sample_percent": 2.26537216828479,
+          "sample_cpu_ns": 210000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.8340033880799433,
+          "sample_percent": 8.19848975188781,
+          "sample_cpu_ns": 760000000
+        },
+        "other": {
+          "cpu_us_put": 0.04826324705473535,
+          "sample_percent": 0.21574973031283712,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 1,
+      "role": "follower1",
+      "operations": 414394,
+      "raw": "1-baseline-profile/n1-cpu-raw.txt",
+      "sampled_cpu_us_put": 9.363069928618657,
+      "sample_cpu_ns": 3880000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.6062153409557087,
+          "sample_percent": 27.835051546391753,
+          "sample_cpu_ns": 1080000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.6756854587662949,
+          "sample_percent": 7.216494845360825,
+          "sample_cpu_ns": 280000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.41023759996525044,
+          "sample_percent": 4.381443298969073,
+          "sample_cpu_ns": 170000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 1.930529882189414,
+          "sample_percent": 20.61855670103093,
+          "sample_cpu_ns": 800000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.753929834891432,
+          "sample_percent": 50.77319587628866,
+          "sample_cpu_ns": 1970000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.2789760469504867,
+          "sample_percent": 13.65979381443299,
+          "sample_cpu_ns": 530000000
+        },
+        "raft": {
+          "cpu_us_put": 0.2895794823284121,
+          "sample_percent": 3.0927835051546393,
+          "sample_cpu_ns": 120000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.182449552841016,
+          "sample_percent": 12.628865979381443,
+          "sample_cpu_ns": 490000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.4372939762641352,
+          "sample_percent": 26.030927835051546,
+          "sample_cpu_ns": 1010000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.7027418350651797,
+          "sample_percent": 28.8659793814433,
+          "sample_cpu_ns": 1120000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8687384469852363,
+          "sample_percent": 9.278350515463918,
+          "sample_cpu_ns": 360000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.6409503998610018,
+          "sample_percent": 17.52577319587629,
+          "sample_cpu_ns": 680000000
+        },
+        "apply": {
+          "cpu_us_put": 1.2789760469504867,
+          "sample_percent": 13.65979381443299,
+          "sample_cpu_ns": 530000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.254844423423119,
+          "sample_percent": 13.402061855670103,
+          "sample_cpu_ns": 520000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6274222117115595,
+          "sample_percent": 6.701030927835052,
+          "sample_cpu_ns": 260000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.8204751999305009,
+          "sample_percent": 8.762886597938145,
+          "sample_cpu_ns": 340000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.6409503998610018,
+          "sample_percent": 17.52577319587629,
+          "sample_cpu_ns": 680000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.0617914352041777,
+          "sample_percent": 11.34020618556701,
+          "sample_cpu_ns": 440000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.182449552841016,
+          "sample_percent": 12.628865979381443,
+          "sample_cpu_ns": 490000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.4372939762641352,
+          "sample_percent": 26.030927835051546,
+          "sample_cpu_ns": 1010000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.2789760469504867,
+          "sample_percent": 13.65979381443299,
+          "sample_cpu_ns": 530000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.2895794823284121,
+          "sample_percent": 3.0927835051546393,
+          "sample_cpu_ns": 120000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.4826324705473535,
+          "sample_percent": 5.154639175257732,
+          "sample_cpu_ns": 200000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.14478974116420604,
+          "sample_percent": 1.5463917525773196,
+          "sample_cpu_ns": 60000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.8204751999305009,
+          "sample_percent": 8.762886597938145,
+          "sample_cpu_ns": 340000000
+        },
+        "other": {
+          "cpu_us_put": 0.024131623527367675,
+          "sample_percent": 0.25773195876288657,
+          "sample_cpu_ns": 10000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 1,
+      "role": "follower2",
+      "operations": 414394,
+      "raw": "1-baseline-profile/n2-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.373673363996582,
+      "sample_cpu_ns": 3470000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.2683726115725613,
+          "sample_percent": 27.089337175792508,
+          "sample_cpu_ns": 940000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.43436922349261814,
+          "sample_percent": 5.187319884726225,
+          "sample_cpu_ns": 180000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.24131623527367674,
+          "sample_percent": 2.881844380403458,
+          "sample_cpu_ns": 100000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 1.8340033880799433,
+          "sample_percent": 21.902017291066283,
+          "sample_cpu_ns": 760000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.223034117289343,
+          "sample_percent": 50.43227665706052,
+          "sample_cpu_ns": 1750000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.2307127998957514,
+          "sample_percent": 14.697406340057636,
+          "sample_cpu_ns": 510000000
+        },
+        "raft": {
+          "cpu_us_put": 0.3619743529105151,
+          "sample_percent": 4.322766570605188,
+          "sample_cpu_ns": 150000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.2789760469504867,
+          "sample_percent": 15.27377521613833,
+          "sample_cpu_ns": 530000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.0270563762988845,
+          "sample_percent": 24.207492795389047,
+          "sample_cpu_ns": 840000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.3166358586272966,
+          "sample_percent": 27.665706051873197,
+          "sample_cpu_ns": 960000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.7722119528757656,
+          "sample_percent": 9.221902017291066,
+          "sample_cpu_ns": 320000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.4237657881146928,
+          "sample_percent": 17.002881844380404,
+          "sample_cpu_ns": 590000000
+        },
+        "apply": {
+          "cpu_us_put": 1.2307127998957514,
+          "sample_percent": 14.697406340057636,
+          "sample_cpu_ns": 510000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.0617914352041777,
+          "sample_percent": 12.680115273775217,
+          "sample_cpu_ns": 440000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.8204751999305009,
+          "sample_percent": 9.798270893371757,
+          "sample_cpu_ns": 340000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.5067640940747211,
+          "sample_percent": 6.051873198847262,
+          "sample_cpu_ns": 210000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.4237657881146928,
+          "sample_percent": 17.002881844380404,
+          "sample_cpu_ns": 590000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.8928700705126039,
+          "sample_percent": 10.662824207492795,
+          "sample_cpu_ns": 370000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.2789760469504867,
+          "sample_percent": 15.27377521613833,
+          "sample_cpu_ns": 530000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.0270563762988845,
+          "sample_percent": 24.207492795389047,
+          "sample_cpu_ns": 840000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.2307127998957514,
+          "sample_percent": 14.697406340057636,
+          "sample_cpu_ns": 510000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.3619743529105151,
+          "sample_percent": 4.322766570605188,
+          "sample_cpu_ns": 150000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.5067640940747211,
+          "sample_percent": 6.051873198847262,
+          "sample_cpu_ns": 210000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.16892136469157373,
+          "sample_percent": 2.0172910662824206,
+          "sample_cpu_ns": 70000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.4826324705473535,
+          "sample_percent": 5.763688760806916,
+          "sample_cpu_ns": 200000000
+        },
+        "other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 2,
+      "role": "leader",
+      "operations": 485500,
+      "raw": "2-baseline-profile/n2-cpu-raw.txt",
+      "sampled_cpu_us_put": 20.988671472708546,
+      "sample_cpu_ns": 10190000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 8.218331616889804,
+          "sample_percent": 39.15603532875368,
+          "sample_cpu_ns": 3990000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 2.348094747682801,
+          "sample_percent": 11.187438665358194,
+          "sample_cpu_ns": 1140000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 1.380020597322348,
+          "sample_percent": 6.575073601570167,
+          "sample_cpu_ns": 670000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 5.8702368692070035,
+          "sample_percent": 27.968596663395484,
+          "sample_cpu_ns": 2850000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 9.351184346035016,
+          "sample_percent": 44.553483807654565,
+          "sample_cpu_ns": 4540000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 3.563336766220391,
+          "sample_percent": 16.977428851815507,
+          "sample_cpu_ns": 1730000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.7826982492276005,
+          "sample_percent": 3.7291462217860647,
+          "sample_cpu_ns": 380000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.2883625128733265,
+          "sample_percent": 1.3738959764474976,
+          "sample_cpu_ns": 140000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.4212152420185376,
+          "sample_percent": 6.77134445534838,
+          "sample_cpu_ns": 690000000
+        },
+        "raft": {
+          "cpu_us_put": 0.8444902162718847,
+          "sample_percent": 4.023552502453386,
+          "sample_cpu_ns": 410000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.25437693099897,
+          "sample_percent": 15.5053974484789,
+          "sample_cpu_ns": 1580000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9886714727085479,
+          "sample_percent": 4.710500490677134,
+          "sample_cpu_ns": 480000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.677651905252317,
+          "sample_percent": 12.757605495583906,
+          "sample_cpu_ns": 1300000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8856848609680742,
+          "sample_percent": 4.2198233562316,
+          "sample_cpu_ns": 430000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.6889804325437694,
+          "sample_percent": 8.047105004906772,
+          "sample_cpu_ns": 820000000
+        },
+        "apply": {
+          "cpu_us_put": 1.380020597322348,
+          "sample_percent": 6.575073601570167,
+          "sample_cpu_ns": 670000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.071060762100927,
+          "sample_percent": 5.103042198233562,
+          "sample_cpu_ns": 520000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.576725025746653,
+          "sample_percent": 2.7477919528949952,
+          "sample_cpu_ns": 280000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 2.801235839340886,
+          "sample_percent": 13.346418056918548,
+          "sample_cpu_ns": 1360000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 5.68486096807415,
+          "sample_percent": 27.08537782139352,
+          "sample_cpu_ns": 2760000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.1627188465499487,
+          "sample_percent": 10.304219823356231,
+          "sample_cpu_ns": 1050000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.709577754891864,
+          "sample_percent": 8.145240431795878,
+          "sample_cpu_ns": 830000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.6889804325437694,
+          "sample_percent": 8.047105004906772,
+          "sample_cpu_ns": 820000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.9886714727085479,
+          "sample_percent": 4.710500490677134,
+          "sample_cpu_ns": 480000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.25437693099897,
+          "sample_percent": 15.5053974484789,
+          "sample_cpu_ns": 1580000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9886714727085479,
+          "sample_percent": 4.710500490677134,
+          "sample_cpu_ns": 480000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 2.801235839340886,
+          "sample_percent": 13.346418056918548,
+          "sample_cpu_ns": 1360000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 5.68486096807415,
+          "sample_percent": 27.08537782139352,
+          "sample_cpu_ns": 2760000000
+        },
+        "apply": {
+          "cpu_us_put": 1.380020597322348,
+          "sample_percent": 6.575073601570167,
+          "sample_cpu_ns": 670000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.2883625128733265,
+          "sample_percent": 1.3738959764474976,
+          "sample_cpu_ns": 140000000
+        },
+        "raft": {
+          "cpu_us_put": 0.8444902162718847,
+          "sample_percent": 4.023552502453386,
+          "sample_cpu_ns": 410000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.8444902162718847,
+          "sample_percent": 4.023552502453386,
+          "sample_cpu_ns": 410000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.5149330587023687,
+          "sample_percent": 2.4533856722276743,
+          "sample_cpu_ns": 250000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.6683831101956745,
+          "sample_percent": 7.948969578017665,
+          "sample_cpu_ns": 810000000
+        },
+        "other": {
+          "cpu_us_put": 0.0411946446961895,
+          "sample_percent": 0.19627085377821393,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 2,
+      "role": "follower1",
+      "operations": 485500,
+      "raw": "2-baseline-profile/n0-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.898043254376931,
+      "sample_cpu_ns": 4320000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.8218331616889802,
+          "sample_percent": 31.712962962962962,
+          "sample_cpu_ns": 1370000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.576725025746653,
+          "sample_percent": 6.481481481481482,
+          "sample_cpu_ns": 280000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.329557157569516,
+          "sample_percent": 3.7037037037037037,
+          "sample_cpu_ns": 160000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.2451081359423273,
+          "sample_percent": 25.23148148148148,
+          "sample_cpu_ns": 1090000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.6549948506694125,
+          "sample_percent": 52.31481481481482,
+          "sample_cpu_ns": 2260000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.4418125643666324,
+          "sample_percent": 16.203703703703702,
+          "sample_cpu_ns": 700000000
+        },
+        "raft": {
+          "cpu_us_put": 0.329557157569516,
+          "sample_percent": 3.7037037037037037,
+          "sample_cpu_ns": 160000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.64778578784758,
+          "sample_percent": 18.51851851851852,
+          "sample_cpu_ns": 800000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.9361483007209064,
+          "sample_percent": 21.75925925925926,
+          "sample_cpu_ns": 940000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.3274974253347063,
+          "sample_percent": 26.15740740740741,
+          "sample_cpu_ns": 1130000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8032955715756952,
+          "sample_percent": 9.027777777777779,
+          "sample_cpu_ns": 390000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.4212152420185376,
+          "sample_percent": 15.972222222222221,
+          "sample_cpu_ns": 690000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4418125643666324,
+          "sample_percent": 16.203703703703702,
+          "sample_cpu_ns": 700000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.235839340885685,
+          "sample_percent": 13.88888888888889,
+          "sample_cpu_ns": 600000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.5355303810504635,
+          "sample_percent": 6.018518518518518,
+          "sample_cpu_ns": 260000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.7003089598352215,
+          "sample_percent": 7.87037037037037,
+          "sample_cpu_ns": 340000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.4212152420185376,
+          "sample_percent": 15.972222222222221,
+          "sample_cpu_ns": 690000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.9062821833161689,
+          "sample_percent": 10.185185185185185,
+          "sample_cpu_ns": 440000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.64778578784758,
+          "sample_percent": 18.51851851851852,
+          "sample_cpu_ns": 800000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.9361483007209064,
+          "sample_percent": 21.75925925925926,
+          "sample_cpu_ns": 940000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.4418125643666324,
+          "sample_percent": 16.203703703703702,
+          "sample_cpu_ns": 700000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.329557157569516,
+          "sample_percent": 3.7037037037037037,
+          "sample_cpu_ns": 160000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.3913491246138002,
+          "sample_percent": 4.398148148148148,
+          "sample_cpu_ns": 190000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.12358393408856849,
+          "sample_percent": 1.3888888888888888,
+          "sample_cpu_ns": 60000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.6797116374871267,
+          "sample_percent": 7.638888888888889,
+          "sample_cpu_ns": 330000000
+        },
+        "other": {
+          "cpu_us_put": 0.02059732234809475,
+          "sample_percent": 0.23148148148148148,
+          "sample_cpu_ns": 10000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 2,
+      "role": "follower2",
+      "operations": 485500,
+      "raw": "2-baseline-profile/n1-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.012358393408856,
+      "sample_cpu_ns": 3890000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.47167868177137,
+          "sample_percent": 30.848329048843187,
+          "sample_cpu_ns": 1200000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.4325437693099897,
+          "sample_percent": 5.3984575835475574,
+          "sample_cpu_ns": 210000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.22657054582904224,
+          "sample_percent": 2.827763496143959,
+          "sample_cpu_ns": 110000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.03913491246138,
+          "sample_percent": 25.44987146529563,
+          "sample_cpu_ns": 990000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.098867147270854,
+          "sample_percent": 51.15681233933162,
+          "sample_cpu_ns": 1990000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.3388259526261586,
+          "sample_percent": 16.709511568123393,
+          "sample_cpu_ns": 650000000
+        },
+        "raft": {
+          "cpu_us_put": 0.26776519052523173,
+          "sample_percent": 3.341902313624679,
+          "sample_cpu_ns": 130000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4418125643666324,
+          "sample_percent": 17.994858611825194,
+          "sample_cpu_ns": 700000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.8949536560247169,
+          "sample_percent": 23.65038560411311,
+          "sample_cpu_ns": 920000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.018537590113285,
+          "sample_percent": 25.19280205655527,
+          "sample_cpu_ns": 980000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.7003089598352215,
+          "sample_percent": 8.740359897172237,
+          "sample_cpu_ns": 340000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.235839340885685,
+          "sample_percent": 15.424164524421593,
+          "sample_cpu_ns": 600000000
+        },
+        "apply": {
+          "cpu_us_put": 1.3388259526261586,
+          "sample_percent": 16.709511568123393,
+          "sample_cpu_ns": 650000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.132852729145211,
+          "sample_percent": 14.138817480719794,
+          "sample_cpu_ns": 550000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6797116374871267,
+          "sample_percent": 8.483290488431876,
+          "sample_cpu_ns": 330000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.6179196704428425,
+          "sample_percent": 7.712082262210797,
+          "sample_cpu_ns": 300000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.235839340885685,
+          "sample_percent": 15.424164524421593,
+          "sample_cpu_ns": 600000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.7826982492276005,
+          "sample_percent": 9.768637532133676,
+          "sample_cpu_ns": 380000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4418125643666324,
+          "sample_percent": 17.994858611825194,
+          "sample_cpu_ns": 700000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.8949536560247169,
+          "sample_percent": 23.65038560411311,
+          "sample_cpu_ns": 920000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.3388259526261586,
+          "sample_percent": 16.709511568123393,
+          "sample_cpu_ns": 650000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.26776519052523173,
+          "sample_percent": 3.341902313624679,
+          "sample_cpu_ns": 130000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.3707518022657055,
+          "sample_percent": 4.627249357326479,
+          "sample_cpu_ns": 180000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.061791967044284246,
+          "sample_percent": 0.7712082262210797,
+          "sample_cpu_ns": 30000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.5973223480947477,
+          "sample_percent": 7.455012853470437,
+          "sample_cpu_ns": 290000000
+        },
+        "other": {
+          "cpu_us_put": 0.02059732234809475,
+          "sample_percent": 0.2570694087403599,
+          "sample_cpu_ns": 10000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 3,
+      "role": "leader",
+      "operations": 470635,
+      "raw": "3-baseline-profile/n1-cpu-raw.txt",
+      "sampled_cpu_us_put": 21.481615264483093,
+      "sample_cpu_ns": 10110000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 7.755479299244637,
+          "sample_percent": 36.102868447082095,
+          "sample_cpu_ns": 3650000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 1.721078967777577,
+          "sample_percent": 8.011869436201781,
+          "sample_cpu_ns": 810000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.9349070936075727,
+          "sample_percent": 4.3521266073194855,
+          "sample_cpu_ns": 440000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 6.034400331467061,
+          "sample_percent": 28.090999010880317,
+          "sample_cpu_ns": 2840000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 9.710285040424107,
+          "sample_percent": 45.202769535113745,
+          "sample_cpu_ns": 4570000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 3.4846537125373165,
+          "sample_percent": 16.2215628090999,
+          "sample_cpu_ns": 1640000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.7861718741700043,
+          "sample_percent": 3.659742828882295,
+          "sample_cpu_ns": 370000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.212478884910812,
+          "sample_percent": 0.9891196834817013,
+          "sample_cpu_ns": 100000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.699831079286496,
+          "sample_percent": 7.9129574678536105,
+          "sample_cpu_ns": 800000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7011803202056796,
+          "sample_percent": 3.264094955489614,
+          "sample_cpu_ns": 330000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.208431162153261,
+          "sample_percent": 14.93570722057369,
+          "sample_cpu_ns": 1510000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.0198986475718976,
+          "sample_percent": 4.747774480712166,
+          "sample_cpu_ns": 480000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.7834733923316373,
+          "sample_percent": 12.957467853610288,
+          "sample_cpu_ns": 1310000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8711634281343291,
+          "sample_percent": 4.055390702274975,
+          "sample_cpu_ns": 410000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.806070521741902,
+          "sample_percent": 8.40751730959446,
+          "sample_cpu_ns": 850000000
+        },
+        "apply": {
+          "cpu_us_put": 1.6573353023043336,
+          "sample_percent": 7.71513353115727,
+          "sample_cpu_ns": 780000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.296121197955953,
+          "sample_percent": 6.033630069238378,
+          "sample_cpu_ns": 610000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.6374366547324359,
+          "sample_percent": 2.9673590504451037,
+          "sample_cpu_ns": 300000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 2.698481838367312,
+          "sample_percent": 12.561819980217606,
+          "sample_cpu_ns": 1270000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 5.758177781083005,
+          "sample_percent": 26.805143422354107,
+          "sample_cpu_ns": 2710000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.3160198455278507,
+          "sample_percent": 10.781404549950544,
+          "sample_cpu_ns": 1090000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.7848226332508208,
+          "sample_percent": 8.308605341246292,
+          "sample_cpu_ns": 840000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.806070521741902,
+          "sample_percent": 8.40751730959446,
+          "sample_cpu_ns": 850000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.9774028705897352,
+          "sample_percent": 4.549950544015826,
+          "sample_cpu_ns": 460000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.208431162153261,
+          "sample_percent": 14.93570722057369,
+          "sample_cpu_ns": 1510000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.0198986475718976,
+          "sample_percent": 4.747774480712166,
+          "sample_cpu_ns": 480000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 2.698481838367312,
+          "sample_percent": 12.561819980217606,
+          "sample_cpu_ns": 1270000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 5.758177781083005,
+          "sample_percent": 26.805143422354107,
+          "sample_cpu_ns": 2710000000
+        },
+        "apply": {
+          "cpu_us_put": 1.6573353023043336,
+          "sample_percent": 7.71513353115727,
+          "sample_cpu_ns": 780000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.212478884910812,
+          "sample_percent": 0.9891196834817013,
+          "sample_cpu_ns": 100000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7011803202056796,
+          "sample_percent": 3.264094955489614,
+          "sample_cpu_ns": 330000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 1.0198986475718976,
+          "sample_percent": 4.747774480712166,
+          "sample_cpu_ns": 480000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.4887014352948676,
+          "sample_percent": 2.274975272007913,
+          "sample_cpu_ns": 230000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.7635747447597394,
+          "sample_percent": 8.209693372898121,
+          "sample_cpu_ns": 830000000
+        },
+        "other": {
+          "cpu_us_put": 0.1699831079286496,
+          "sample_percent": 0.7912957467853611,
+          "sample_cpu_ns": 80000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 3,
+      "role": "follower1",
+      "operations": 470635,
+      "raw": "3-baseline-profile/n0-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.945361054745185,
+      "sample_cpu_ns": 4210000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.762225503840556,
+          "sample_percent": 30.878859857482187,
+          "sample_cpu_ns": 1300000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.6374366547324359,
+          "sample_percent": 7.1258907363420425,
+          "sample_cpu_ns": 300000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.3824619928394616,
+          "sample_percent": 4.275534441805226,
+          "sample_cpu_ns": 180000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.12478884910812,
+          "sample_percent": 23.752969121140143,
+          "sample_cpu_ns": 1000000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.568296025582458,
+          "sample_percent": 51.06888361045131,
+          "sample_cpu_ns": 2150000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.168633867009466,
+          "sample_percent": 13.064133016627078,
+          "sample_cpu_ns": 550000000
+        },
+        "raft": {
+          "cpu_us_put": 0.40370988133054275,
+          "sample_percent": 4.513064133016627,
+          "sample_cpu_ns": 190000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5935916368310898,
+          "sample_percent": 17.81472684085511,
+          "sample_cpu_ns": 750000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.146036737599201,
+          "sample_percent": 23.990498812351543,
+          "sample_cpu_ns": 1010000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.570994507420825,
+          "sample_percent": 28.741092636579573,
+          "sample_cpu_ns": 1210000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.9136592051164916,
+          "sample_percent": 10.21377672209026,
+          "sample_cpu_ns": 430000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.487352194375684,
+          "sample_percent": 16.6270783847981,
+          "sample_cpu_ns": 700000000
+        },
+        "apply": {
+          "cpu_us_put": 1.168633867009466,
+          "sample_percent": 13.064133016627078,
+          "sample_cpu_ns": 550000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.9986507590808164,
+          "sample_percent": 11.163895486935868,
+          "sample_cpu_ns": 470000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6374366547324359,
+          "sample_percent": 7.1258907363420425,
+          "sample_cpu_ns": 300000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.5099493237859488,
+          "sample_percent": 5.7007125890736345,
+          "sample_cpu_ns": 240000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.487352194375684,
+          "sample_percent": 16.6270783847981,
+          "sample_cpu_ns": 700000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.0836423130451411,
+          "sample_percent": 12.114014251781473,
+          "sample_cpu_ns": 510000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5935916368310898,
+          "sample_percent": 17.81472684085511,
+          "sample_cpu_ns": 750000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.146036737599201,
+          "sample_percent": 23.990498812351543,
+          "sample_cpu_ns": 1010000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.168633867009466,
+          "sample_percent": 13.064133016627078,
+          "sample_cpu_ns": 550000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.40370988133054275,
+          "sample_percent": 4.513064133016627,
+          "sample_cpu_ns": 190000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.4887014352948676,
+          "sample_percent": 5.463182897862233,
+          "sample_cpu_ns": 230000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.0849915539643248,
+          "sample_percent": 0.9501187648456056,
+          "sample_cpu_ns": 40000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.4887014352948676,
+          "sample_percent": 5.463182897862233,
+          "sample_cpu_ns": 230000000
+        },
+        "other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 3,
+      "role": "follower2",
+      "operations": 470635,
+      "raw": "3-baseline-profile/n2-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.052949738119775,
+      "sample_cpu_ns": 3790000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.4222592879832567,
+          "sample_percent": 30.07915567282322,
+          "sample_cpu_ns": 1140000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.6799324317145984,
+          "sample_percent": 8.443271767810026,
+          "sample_cpu_ns": 320000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.4462056583127052,
+          "sample_percent": 5.54089709762533,
+          "sample_cpu_ns": 210000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 1.7423268562686582,
+          "sample_percent": 21.63588390501319,
+          "sample_cpu_ns": 820000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 3.8883635938678593,
+          "sample_percent": 48.284960422163586,
+          "sample_cpu_ns": 1830000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.0836423130451411,
+          "sample_percent": 13.45646437994723,
+          "sample_cpu_ns": 510000000
+        },
+        "raft": {
+          "cpu_us_put": 0.2762225503840556,
+          "sample_percent": 3.430079155672823,
+          "sample_cpu_ns": 130000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4661043058846026,
+          "sample_percent": 18.20580474934037,
+          "sample_cpu_ns": 690000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.7635747447597394,
+          "sample_percent": 21.899736147757256,
+          "sample_cpu_ns": 830000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.061045183634876,
+          "sample_percent": 25.593667546174142,
+          "sample_cpu_ns": 970000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8711634281343291,
+          "sample_percent": 10.817941952506596,
+          "sample_cpu_ns": 410000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.1048902015362223,
+          "sample_percent": 13.720316622691293,
+          "sample_cpu_ns": 520000000
+        },
+        "apply": {
+          "cpu_us_put": 1.0836423130451411,
+          "sample_percent": 13.45646437994723,
+          "sample_cpu_ns": 510000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.9349070936075727,
+          "sample_percent": 11.609498680738787,
+          "sample_cpu_ns": 440000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6374366547324359,
+          "sample_percent": 7.915567282321899,
+          "sample_cpu_ns": 300000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.8074197626610855,
+          "sample_percent": 10.026385224274406,
+          "sample_cpu_ns": 380000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.1048902015362223,
+          "sample_percent": 13.720316622691293,
+          "sample_cpu_ns": 520000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.9561549820986539,
+          "sample_percent": 11.87335092348285,
+          "sample_cpu_ns": 450000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.4661043058846026,
+          "sample_percent": 18.20580474934037,
+          "sample_cpu_ns": 690000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.7635747447597394,
+          "sample_percent": 21.899736147757256,
+          "sample_cpu_ns": 830000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.0836423130451411,
+          "sample_percent": 13.45646437994723,
+          "sample_cpu_ns": 510000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.2762225503840556,
+          "sample_percent": 3.430079155672823,
+          "sample_cpu_ns": 130000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.424957769821624,
+          "sample_percent": 5.277044854881266,
+          "sample_cpu_ns": 200000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.1487352194375684,
+          "sample_percent": 1.8469656992084433,
+          "sample_cpu_ns": 70000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.7861718741700043,
+          "sample_percent": 9.762532981530343,
+          "sample_cpu_ns": 370000000
+        },
+        "other": {
+          "cpu_us_put": 0.0424957769821624,
+          "sample_percent": 0.5277044854881267,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 4,
+      "role": "leader",
+      "operations": 494874,
+      "raw": "4-baseline-profile/n0-cpu-raw.txt",
+      "sampled_cpu_us_put": 20.611307120600394,
+      "sample_cpu_ns": 10200000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 8.42638732283369,
+          "sample_percent": 40.88235294117647,
+          "sample_cpu_ns": 4170000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 2.30361667818475,
+          "sample_percent": 11.176470588235293,
+          "sample_cpu_ns": 1140000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 1.333672813685908,
+          "sample_percent": 6.470588235294118,
+          "sample_cpu_ns": 660000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 6.122770644648941,
+          "sample_percent": 29.705882352941178,
+          "sample_cpu_ns": 3030000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 8.850737763551935,
+          "sample_percent": 42.94117647058823,
+          "sample_cpu_ns": 4380000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 3.8999826218390945,
+          "sample_percent": 18.92156862745098,
+          "sample_cpu_ns": 1930000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.8891152091239386,
+          "sample_percent": 4.313725490196078,
+          "sample_cpu_ns": 440000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 0.9803921568627451,
+          "sample_cpu_ns": 100000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.151808339092375,
+          "sample_percent": 5.588235294117647,
+          "sample_cpu_ns": 570000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7678722260615833,
+          "sample_percent": 3.7254901960784315,
+          "sample_cpu_ns": 380000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.132110395777511,
+          "sample_percent": 15.196078431372548,
+          "sample_cpu_ns": 1550000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9093223729676645,
+          "sample_percent": 4.411764705882353,
+          "sample_cpu_ns": 450000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.3844453335596536,
+          "sample_percent": 11.568627450980392,
+          "sample_cpu_ns": 1180000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8689080452802127,
+          "sample_percent": 4.215686274509804,
+          "sample_cpu_ns": 430000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.2730513221547304,
+          "sample_percent": 6.176470588235294,
+          "sample_cpu_ns": 630000000
+        },
+        "apply": {
+          "cpu_us_put": 1.1316011752486492,
+          "sample_percent": 5.490196078431373,
+          "sample_cpu_ns": 560000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.9295295368113904,
+          "sample_percent": 4.509803921568627,
+          "sample_cpu_ns": 460000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.4647647684056952,
+          "sample_percent": 2.2549019607843137,
+          "sample_cpu_ns": 230000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 3.031074576558882,
+          "sample_percent": 14.705882352941176,
+          "sample_cpu_ns": 1500000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 5.900491842367956,
+          "sample_percent": 28.627450980392158,
+          "sample_cpu_ns": 2920000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.2834095143410242,
+          "sample_percent": 11.07843137254902,
+          "sample_cpu_ns": 1130000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.4347086329045373,
+          "sample_percent": 6.96078431372549,
+          "sample_cpu_ns": 710000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.2730513221547304,
+          "sample_percent": 6.176470588235294,
+          "sample_cpu_ns": 630000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.1113940114049232,
+          "sample_percent": 5.392156862745098,
+          "sample_cpu_ns": 550000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.132110395777511,
+          "sample_percent": 15.196078431372548,
+          "sample_cpu_ns": 1550000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.9093223729676645,
+          "sample_percent": 4.411764705882353,
+          "sample_cpu_ns": 450000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 3.031074576558882,
+          "sample_percent": 14.705882352941176,
+          "sample_cpu_ns": 1500000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 5.900491842367956,
+          "sample_percent": 28.627450980392158,
+          "sample_cpu_ns": 2920000000
+        },
+        "apply": {
+          "cpu_us_put": 1.1316011752486492,
+          "sample_percent": 5.490196078431373,
+          "sample_cpu_ns": 560000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 0.9803921568627451,
+          "sample_cpu_ns": 100000000
+        },
+        "raft": {
+          "cpu_us_put": 0.7678722260615833,
+          "sample_percent": 3.7254901960784315,
+          "sample_cpu_ns": 380000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 1.2326369944672786,
+          "sample_percent": 5.980392156862745,
+          "sample_cpu_ns": 610000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.5051790960931469,
+          "sample_percent": 2.450980392156863,
+          "sample_cpu_ns": 250000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.3740871413733597,
+          "sample_percent": 6.666666666666667,
+          "sample_cpu_ns": 680000000
+        },
+        "other": {
+          "cpu_us_put": 0.040414327687451755,
+          "sample_percent": 0.19607843137254902,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 4,
+      "role": "follower1",
+      "operations": 494874,
+      "raw": "4-baseline-profile/n1-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.648666125114676,
+      "sample_cpu_ns": 4280000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 3.031074576558882,
+          "sample_percent": 35.046728971962615,
+          "sample_cpu_ns": 1500000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.6466292429992281,
+          "sample_percent": 7.4766355140186915,
+          "sample_cpu_ns": 320000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.30310745765588815,
+          "sample_percent": 3.5046728971962615,
+          "sample_cpu_ns": 150000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.3844453335596536,
+          "sample_percent": 27.570093457943926,
+          "sample_cpu_ns": 1180000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.465783209463419,
+          "sample_percent": 51.63551401869159,
+          "sample_cpu_ns": 2210000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.2730513221547304,
+          "sample_percent": 14.719626168224298,
+          "sample_cpu_ns": 630000000
+        },
+        "raft": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 2.336448598130841,
+          "sample_cpu_ns": 100000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.6974017628729736,
+          "sample_percent": 19.626168224299064,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.162166531278669,
+          "sample_percent": 25.0,
+          "sample_cpu_ns": 1070000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.1015450397474913,
+          "sample_percent": 24.299065420560748,
+          "sample_cpu_ns": 1040000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.9699438644988422,
+          "sample_percent": 11.214953271028037,
+          "sample_cpu_ns": 480000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.0103581921862939,
+          "sample_percent": 11.682242990654206,
+          "sample_cpu_ns": 500000000
+        },
+        "apply": {
+          "cpu_us_put": 1.2730513221547304,
+          "sample_percent": 14.719626168224298,
+          "sample_cpu_ns": 630000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.0305653560300199,
+          "sample_percent": 11.91588785046729,
+          "sample_cpu_ns": 510000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.666836406842954,
+          "sample_percent": 7.710280373831775,
+          "sample_cpu_ns": 330000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.7274578983741316,
+          "sample_percent": 8.411214953271028,
+          "sample_cpu_ns": 360000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.0103581921862939,
+          "sample_percent": 11.682242990654206,
+          "sample_cpu_ns": 500000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.0911868475611974,
+          "sample_percent": 12.616822429906541,
+          "sample_cpu_ns": 540000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.6974017628729736,
+          "sample_percent": 19.626168224299064,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.162166531278669,
+          "sample_percent": 25.0,
+          "sample_cpu_ns": 1070000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.2730513221547304,
+          "sample_percent": 14.719626168224298,
+          "sample_cpu_ns": 630000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 2.336448598130841,
+          "sample_cpu_ns": 100000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.30310745765588815,
+          "sample_percent": 3.5046728971962615,
+          "sample_cpu_ns": 150000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.1818644745935329,
+          "sample_percent": 2.102803738317757,
+          "sample_cpu_ns": 90000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.6870435706866799,
+          "sample_percent": 7.94392523364486,
+          "sample_cpu_ns": 340000000
+        },
+        "other": {
+          "cpu_us_put": 0.040414327687451755,
+          "sample_percent": 0.4672897196261682,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 4,
+      "role": "follower2",
+      "operations": 494874,
+      "raw": "4-baseline-profile/n2-cpu-raw.txt",
+      "sampled_cpu_us_put": 7.779758079834463,
+      "sample_cpu_ns": 3850000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.7481742827467195,
+          "sample_percent": 35.324675324675326,
+          "sample_cpu_ns": 1360000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.7072507345304058,
+          "sample_percent": 9.090909090909092,
+          "sample_cpu_ns": 350000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.34352178534333994,
+          "sample_percent": 4.415584415584416,
+          "sample_cpu_ns": 170000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.0409235482163135,
+          "sample_percent": 26.233766233766232,
+          "sample_cpu_ns": 1010000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.182882915651256,
+          "sample_percent": 53.76623376623377,
+          "sample_cpu_ns": 2070000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 0.7678722260615833,
+          "sample_percent": 9.87012987012987,
+          "sample_cpu_ns": 380000000
+        },
+        "raft": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 2.5974025974025974,
+          "sample_cpu_ns": 100000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.6974017628729736,
+          "sample_percent": 21.818181818181817,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.8792662374665066,
+          "sample_percent": 24.155844155844157,
+          "sample_cpu_ns": 930000000
+        },
+        "WAL total": {
+          "cpu_us_put": 1.9600948928414101,
+          "sample_percent": 25.194805194805195,
+          "sample_cpu_ns": 970000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.7274578983741316,
+          "sample_percent": 9.35064935064935,
+          "sample_cpu_ns": 360000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.1113940114049232,
+          "sample_percent": 14.285714285714286,
+          "sample_cpu_ns": 550000000
+        },
+        "apply": {
+          "cpu_us_put": 0.7678722260615833,
+          "sample_percent": 9.87012987012987,
+          "sample_cpu_ns": 380000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.6466292429992281,
+          "sample_percent": 8.311688311688311,
+          "sample_cpu_ns": 320000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.5455934237805987,
+          "sample_percent": 7.012987012987013,
+          "sample_cpu_ns": 270000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.7072507345304058,
+          "sample_percent": 9.090909090909092,
+          "sample_cpu_ns": 350000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.1113940114049232,
+          "sample_percent": 14.285714285714286,
+          "sample_cpu_ns": 550000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.8487008814364868,
+          "sample_percent": 10.909090909090908,
+          "sample_cpu_ns": 420000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.6974017628729736,
+          "sample_percent": 21.818181818181817,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 1.8792662374665066,
+          "sample_percent": 24.155844155844157,
+          "sample_cpu_ns": 930000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 0.7678722260615833,
+          "sample_percent": 9.87012987012987,
+          "sample_cpu_ns": 380000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.20207163843725878,
+          "sample_percent": 2.5974025974025974,
+          "sample_cpu_ns": 100000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.4647647684056952,
+          "sample_percent": 5.974025974025974,
+          "sample_cpu_ns": 230000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.10103581921862939,
+          "sample_percent": 1.2987012987012987,
+          "sample_cpu_ns": 50000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.6870435706866799,
+          "sample_percent": 8.831168831168831,
+          "sample_cpu_ns": 340000000
+        },
+        "other": {
+          "cpu_us_put": 0.020207163843725878,
+          "sample_percent": 0.2597402597402597,
+          "sample_cpu_ns": 10000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 5,
+      "role": "leader",
+      "operations": 479595,
+      "raw": "5-baseline-profile/n1-cpu-raw.txt",
+      "sampled_cpu_us_put": 21.62241057558982,
+      "sample_cpu_ns": 10370000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 8.236115889448389,
+          "sample_percent": 38.09064609450338,
+          "sample_cpu_ns": 3950000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 2.1684963354497024,
+          "sample_percent": 10.028929604628736,
+          "sample_cpu_ns": 1040000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 1.1885027992368562,
+          "sample_percent": 5.496624879459981,
+          "sample_cpu_ns": 570000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 6.067619553998687,
+          "sample_percent": 28.061716489874637,
+          "sample_cpu_ns": 2910000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 9.612277025406854,
+          "sample_percent": 44.455159112825456,
+          "sample_cpu_ns": 4610000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 3.8365704396417812,
+          "sample_percent": 17.743490838958536,
+          "sample_cpu_ns": 1840000000
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 1.1050990940272523,
+          "sample_percent": 5.110896817743491,
+          "sample_cpu_ns": 530000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.33361482083841576,
+          "sample_percent": 1.5429122468659595,
+          "sample_cpu_ns": 160000000
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.5846703989824749,
+          "sample_percent": 7.328833172613308,
+          "sample_cpu_ns": 760000000
+        },
+        "raft": {
+          "cpu_us_put": 0.6255277890720295,
+          "sample_percent": 2.892960462873674,
+          "sample_cpu_ns": 300000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.2944463557793555,
+          "sample_percent": 15.23625843780135,
+          "sample_cpu_ns": 1580000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.8757389047008414,
+          "sample_percent": 4.050144648023144,
+          "sample_cpu_ns": 420000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.898278756033737,
+          "sample_percent": 13.404050144648023,
+          "sample_cpu_ns": 1390000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 1.0008444625152473,
+          "sample_percent": 4.628736740597878,
+          "sample_cpu_ns": 480000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.7931796620064846,
+          "sample_percent": 8.293153326904532,
+          "sample_cpu_ns": 860000000
+        },
+        "apply": {
+          "cpu_us_put": 1.5638194726800738,
+          "sample_percent": 7.232401157184185,
+          "sample_cpu_ns": 750000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.2719065044464601,
+          "sample_percent": 5.882352941176471,
+          "sample_cpu_ns": 610000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.45872037865282167,
+          "sample_percent": 2.1215043394406945,
+          "sample_cpu_ns": 220000000
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 2.835725977126534,
+          "sample_percent": 13.114754098360656,
+          "sample_cpu_ns": 1360000000
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 5.650601027950667,
+          "sample_percent": 26.13307618129219,
+          "sample_cpu_ns": 2710000000
+        },
+        "allocation and GC": {
+          "cpu_us_put": 2.0850926302400983,
+          "sample_percent": 9.643201542912246,
+          "sample_cpu_ns": 1000000000
+        },
+        "scheduler": {
+          "cpu_us_put": 1.6472231778896778,
+          "sample_percent": 7.618129218900675,
+          "sample_cpu_ns": 790000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.7931796620064846,
+          "sample_percent": 8.293153326904532,
+          "sample_cpu_ns": 860000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.1050990940272523,
+          "sample_percent": 5.110896817743491,
+          "sample_cpu_ns": 530000000
+        },
+        "peer send": {
+          "cpu_us_put": 3.2944463557793555,
+          "sample_percent": 15.23625843780135,
+          "sample_cpu_ns": 1580000000
+        },
+        "peer receive": {
+          "cpu_us_put": 0.8757389047008414,
+          "sample_percent": 4.050144648023144,
+          "sample_cpu_ns": 420000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 2.835725977126534,
+          "sample_percent": 13.114754098360656,
+          "sample_cpu_ns": 1360000000
+        },
+        "frontend reader": {
+          "cpu_us_put": 5.650601027950667,
+          "sample_percent": 26.13307618129219,
+          "sample_cpu_ns": 2710000000
+        },
+        "apply": {
+          "cpu_us_put": 1.5638194726800738,
+          "sample_percent": 7.232401157184185,
+          "sample_cpu_ns": 750000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.33361482083841576,
+          "sample_percent": 1.5429122468659595,
+          "sample_cpu_ns": 160000000
+        },
+        "raft": {
+          "cpu_us_put": 0.6255277890720295,
+          "sample_percent": 2.892960462873674,
+          "sample_cpu_ns": 300000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 1.334459283353663,
+          "sample_percent": 6.171648987463838,
+          "sample_cpu_ns": 640000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.5421240838624256,
+          "sample_percent": 2.507232401157184,
+          "sample_cpu_ns": 260000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 1.5846703989824749,
+          "sample_percent": 7.328833172613308,
+          "sample_cpu_ns": 760000000
+        },
+        "other": {
+          "cpu_us_put": 0.08340370520960394,
+          "sample_percent": 0.3857280617164899,
+          "sample_cpu_ns": 40000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 5,
+      "role": "follower1",
+      "operations": 479595,
+      "raw": "5-baseline-profile/n0-cpu-raw.txt",
+      "sampled_cpu_us_put": 9.424618688685245,
+      "sample_cpu_ns": 4520000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.8148750508241327,
+          "sample_percent": 29.86725663716814,
+          "sample_cpu_ns": 1350000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.5212731575600246,
+          "sample_percent": 5.530973451327434,
+          "sample_cpu_ns": 250000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.33361482083841576,
+          "sample_percent": 3.5398230088495577,
+          "sample_cpu_ns": 160000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.2936018932641082,
+          "sample_percent": 24.336283185840706,
+          "sample_cpu_ns": 1100000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.837414902157028,
+          "sample_percent": 51.32743362831859,
+          "sample_cpu_ns": 2320000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.0216953888176483,
+          "sample_percent": 10.84070796460177,
+          "sample_cpu_ns": 490000000
+        },
+        "raft": {
+          "cpu_us_put": 0.2710620419312128,
+          "sample_percent": 2.8761061946902653,
+          "sample_cpu_ns": 130000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.7514778094016827,
+          "sample_percent": 18.58407079646018,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.1684963354497024,
+          "sample_percent": 23.008849557522122,
+          "sample_cpu_ns": 1040000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.5438130088929203,
+          "sample_percent": 26.991150442477878,
+          "sample_cpu_ns": 1220000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 1.125950020329653,
+          "sample_percent": 11.946902654867257,
+          "sample_cpu_ns": 540000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.292757430748861,
+          "sample_percent": 13.716814159292035,
+          "sample_cpu_ns": 620000000
+        },
+        "apply": {
+          "cpu_us_put": 1.0216953888176483,
+          "sample_percent": 10.84070796460177,
+          "sample_cpu_ns": 490000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 0.9174407573056433,
+          "sample_percent": 9.734513274336283,
+          "sample_cpu_ns": 440000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6255277890720295,
+          "sample_percent": 6.6371681415929205,
+          "sample_cpu_ns": 300000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.8965898310032423,
+          "sample_percent": 9.513274336283185,
+          "sample_cpu_ns": 430000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.292757430748861,
+          "sample_percent": 13.716814159292035,
+          "sample_cpu_ns": 620000000
+        },
+        "WAL other": {
+          "cpu_us_put": 1.251055578144059,
+          "sample_percent": 13.274336283185841,
+          "sample_cpu_ns": 600000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.7514778094016827,
+          "sample_percent": 18.58407079646018,
+          "sample_cpu_ns": 840000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.1684963354497024,
+          "sample_percent": 23.008849557522122,
+          "sample_cpu_ns": 1040000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.0216953888176483,
+          "sample_percent": 10.84070796460177,
+          "sample_cpu_ns": 490000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.2710620419312128,
+          "sample_percent": 2.8761061946902653,
+          "sample_cpu_ns": 130000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.6672296416768315,
+          "sample_percent": 7.079646017699115,
+          "sample_cpu_ns": 320000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.06255277890720295,
+          "sample_percent": 0.6637168141592921,
+          "sample_cpu_ns": 30000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.8965898310032423,
+          "sample_percent": 9.513274336283185,
+          "sample_cpu_ns": 430000000
+        },
+        "other": {
+          "cpu_us_put": 0.04170185260480197,
+          "sample_percent": 0.4424778761061947,
+          "sample_cpu_ns": 20000000
+        }
+      }
+    },
+    {
+      "clients": 256,
+      "variant": "baseline-profile",
+      "rep": 5,
+      "role": "follower2",
+      "operations": 479595,
+      "raw": "5-baseline-profile/n2-cpu-raw.txt",
+      "sampled_cpu_us_put": 8.4446251524724,
+      "sample_cpu_ns": 4050000000,
+      "inclusive": {
+        "TLS with socket descendants": {
+          "cpu_us_put": 2.731471345614529,
+          "sample_percent": 32.34567901234568,
+          "sample_cpu_ns": 1310000000
+        },
+        "TLS without socket syscall samples": {
+          "cpu_us_put": 0.5421240838624256,
+          "sample_percent": 6.419753086419753,
+          "sample_cpu_ns": 260000000
+        },
+        "crypto implementation": {
+          "cpu_us_put": 0.2919129682336138,
+          "sample_percent": 3.45679012345679,
+          "sample_cpu_ns": 140000000
+        },
+        "socket syscall samples": {
+          "cpu_us_put": 2.1893472617521033,
+          "sample_percent": 25.925925925925927,
+          "sample_cpu_ns": 1050000000
+        },
+        "all syscall samples": {
+          "cpu_us_put": 4.357843597201805,
+          "sample_percent": 51.60493827160494,
+          "sample_cpu_ns": 2090000000
+        },
+        "HTTP2 and HPACK inclusive": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "HTTP2 and HPACK excluding TLS descendants": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "entry walk and parse": {
+          "cpu_us_put": 1.4595648411680688,
+          "sample_percent": 17.28395061728395,
+          "sample_cpu_ns": 700000000
+        },
+        "raft": {
+          "cpu_us_put": 0.1251055578144059,
+          "sample_percent": 1.4814814814814814,
+          "sample_cpu_ns": 60000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5221176200752717,
+          "sample_percent": 18.02469135802469,
+          "sample_cpu_ns": 730000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.0850926302400983,
+          "sample_percent": 24.691358024691358,
+          "sample_cpu_ns": 1000000000
+        },
+        "WAL total": {
+          "cpu_us_put": 2.1267944828449004,
+          "sample_percent": 25.185185185185187,
+          "sample_cpu_ns": 1020000000
+        },
+        "file write under WAL": {
+          "cpu_us_put": 0.8131861257936384,
+          "sample_percent": 9.62962962962963,
+          "sample_cpu_ns": 390000000
+        },
+        "file fsync": {
+          "cpu_us_put": 1.1885027992368562,
+          "sample_percent": 14.074074074074074,
+          "sample_cpu_ns": 570000000
+        },
+        "apply": {
+          "cpu_us_put": 1.4595648411680688,
+          "sample_percent": 17.28395061728395,
+          "sample_cpu_ns": 700000000
+        },
+        "MVCC and index": {
+          "cpu_us_put": 1.230204651841658,
+          "sample_percent": 14.567901234567902,
+          "sample_cpu_ns": 590000000
+        },
+        "reply encode and queue": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend writer including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader including TLS": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "allocation and GC": {
+          "cpu_us_put": 0.6880805679792324,
+          "sample_percent": 8.148148148148149,
+          "sample_cpu_ns": 330000000
+        },
+        "scheduler": {
+          "cpu_us_put": 0.5838259364672276,
+          "sample_percent": 6.91358024691358,
+          "sample_cpu_ns": 280000000
+        }
+      },
+      "partition": {
+        "WAL fsync": {
+          "cpu_us_put": 1.1885027992368562,
+          "sample_percent": 14.074074074074074,
+          "sample_cpu_ns": 570000000
+        },
+        "WAL other": {
+          "cpu_us_put": 0.9382916836080443,
+          "sample_percent": 11.11111111111111,
+          "sample_cpu_ns": 450000000
+        },
+        "peer send": {
+          "cpu_us_put": 1.5221176200752717,
+          "sample_percent": 18.02469135802469,
+          "sample_cpu_ns": 730000000
+        },
+        "peer receive": {
+          "cpu_us_put": 2.0850926302400983,
+          "sample_percent": 24.691358024691358,
+          "sample_cpu_ns": 1000000000
+        },
+        "frontend reply and writer": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "frontend reader": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "apply": {
+          "cpu_us_put": 1.4595648411680688,
+          "sample_percent": 17.28395061728395,
+          "sample_cpu_ns": 700000000
+        },
+        "entry encode": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "raft": {
+          "cpu_us_put": 0.1251055578144059,
+          "sample_percent": 1.4814814814814814,
+          "sample_cpu_ns": 60000000
+        },
+        "core and driver other": {
+          "cpu_us_put": 0.45872037865282167,
+          "sample_percent": 5.432098765432099,
+          "sample_cpu_ns": 220000000
+        },
+        "frontend other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        },
+        "runtime GC": {
+          "cpu_us_put": 0.1459564841168069,
+          "sample_percent": 1.728395061728395,
+          "sample_cpu_ns": 70000000
+        },
+        "runtime scheduler": {
+          "cpu_us_put": 0.5212731575600246,
+          "sample_percent": 6.172839506172839,
+          "sample_cpu_ns": 250000000
+        },
+        "other": {
+          "cpu_us_put": 0.0,
+          "sample_percent": 0.0,
+          "sample_cpu_ns": 0
+        }
+      }
+    }
+  ]
+}

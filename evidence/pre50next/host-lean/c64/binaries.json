@@ -1,0 +1,12 @@
+{
+  "base": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+  "candidates": [],
+  "generator": "lean",
+  "harness": "c3cc3d91456269af520ee5cdbe9fa51199368a2a",
+  "sha256": {
+    "etcd": "17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d",
+    "etcdctl": "ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572",
+    "load": "8f603f6a2b8f252a301f61174593d225d633b690832311ba9d519c28b7c13a39",
+    "baseline": "e242ae7f6301d3b495eadea6a29100301467f527de293d35f1123cb18a6283a5"
+  }
+}

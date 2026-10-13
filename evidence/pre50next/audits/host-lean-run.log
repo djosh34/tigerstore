@@ -1,0 +1,70 @@
+Running as unit: pre50next-host-lean.service
++ root=/home/joshazimullah.linux/work_mounts/scratch/pre-50-next
++ cd /home/joshazimullah.linux/work_mounts/scratch/pre-50-next/repo
++ export GOFLAGS=-p=2 GOMEMLIMIT=2GiB GOMAXPROCS=2
++ GOFLAGS=-p=2
++ GOMEMLIMIT=2GiB
++ GOMAXPROCS=2
++ export HOST=1 MODE=primary GENERATOR=lean TOTAL_PUTS=60000 PYTHONDONTWRITEBYTECODE=1
++ HOST=1
++ MODE=primary
++ GENERATOR=lean
++ TOTAL_PUTS=60000
++ PYTHONDONTWRITEBYTECODE=1
++ export BIN_DIR=/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/bin WORK_DIR=/tmp/pre-50-next-host-lean-8f27a1
++ BIN_DIR=/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/bin
++ WORK_DIR=/tmp/pre-50-next-host-lean-8f27a1
++ python3 -
+cgroup /sys/fs/cgroup/user.slice/user-501.slice/user@501.service/app.slice/pre50next-host-lean.service
+memory.max 1073741824
+
+memory.swap.max 0
+
+memory.current 6074368
+
+memory.events low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+
++ for clients in 64 256
+++ date -u +%s
+++ date -ud 2026-10-13T22:00:00Z +%s
++ test 1791894802 -lt 1791928800
++ CLIENTS=64
++ OUT=/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/c64
++ python3 experiments/pre50next/run.py
+certificates in /tmp/pre-50-next-host-lean-8f27a1/certs
+host, clients=64, rep=1, baseline
+host, clients=64, rep=1, etcd
++ python3 experiments/pre50next/summarize.py /home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/c64
++ for clients in 64 256
+++ date -u +%s
+++ date -ud 2026-10-13T22:00:00Z +%s
++ test 1791894842 -lt 1791928800
++ CLIENTS=256
++ OUT=/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/c256
++ python3 experiments/pre50next/run.py
+host, clients=256, rep=1, baseline
+host, clients=256, rep=1, etcd
++ python3 experiments/pre50next/summarize.py /home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host-lean/c256
++ python3 -
+memory.max 1073741824
+
+memory.current 75780096
+
+memory.events low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+
++ rm -rf /tmp/pre-50-next-host-lean-8f27a1
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1min 14.446s
+CPU time consumed: 37.848s
+Memory peak: 1.8M

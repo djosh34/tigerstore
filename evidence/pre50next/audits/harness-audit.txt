@@ -1,0 +1,11 @@
+Audit complete. No files changed, Go commands, builds, or posts.
+
+- **Etcd fence is correct.** At pinned etcd commit `68c065e`, `proposalsCommitted.Set(HardState.Commit)` runs after `storage.Save`. Waiting for that gauge, then taking a fresh scrape, correctly strengthens the replica-applied fence.
+- **Correct README sync wording.** Tigerstore excludes directory syncs. Etcd’s WAL histogram includes directory fsync observations during WAL creation/rotation. Rotation can occur in 12-second controls. Say “Tigerstore file syncs versus etcd WAL sync observations, including rotation-related directory syncs.”
+- **Profile bounds need offline verification.** `run.py` checks HTTP request/response bounds, not actual sampler bounds. A delayed response could conceal a profile ending before drain. Before attribution, check profile metadata against `put.json:start_utc + elapsed_s`. Normalize sampled CPU by that profile’s completed Puts. The idle margins and observation calls remain included.
+- **Aggregation is reasonable but permits partial cohorts.** Independent medians of per-run metrics are correct. `summarize.py` reports repetition count but does not require five. Parent should require five complete windows per expected variant and 15 profiles per concurrency. Zero syncs currently produce `puts_sync=0`; interpret that as undefined instead.
+- **Validity checks cover this benchmark, not correctness proof.** Errors, success/revision delta, response term, leadership, process identity, affinities and replica completion are checked. Repeated overwrite values cannot detect stale-value responses or prove crash durability.
+- **Syscall counters are wider-window observations.** `syscr/syscw` include observation traffic and background work, exclude fsync counts, and are not total syscall or physical-I/O counts. CPU uses the narrower generator interval.
+- **Generator provenance is factual.** Both generator files are byte-identical to frontend commit `b66573f`. Suggested wording: “Copied unchanged from frontend `b66573f`, including its controller barriers.” It is not unchanged from the older bench68 generator.
+
+No finding requires cancelling the baseline launch. Stopping for deletion.

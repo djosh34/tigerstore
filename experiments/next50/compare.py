@@ -7,13 +7,16 @@ from pathlib import Path
 import statistics
 
 
-def compare(root):
-    rows = list(csv.DictReader((root / 'runs.csv').open()))
-    baseline = {int(r['rep']): r for r in rows if r['variant'] == 'baseline'}
-    if set(baseline) != set(range(1, 6)):
+def compare(root, baseline_name='baseline'):
+    with (root / 'runs.csv').open() as stream:
+        rows = list(csv.DictReader(stream))
+    baseline_rows = [r for r in rows if r['variant'] == baseline_name]
+    baseline = {int(r['rep']): r for r in baseline_rows}
+    if len(baseline_rows) != 5 or set(baseline) != set(range(1, 6)):
         raise ValueError('need five baseline repetitions')
     results = {}
-    for variant in sorted({r['variant'] for r in rows} - {'baseline', 'etcd'}):
+    variants = {r['variant'] for r in rows if not r['variant'].startswith('etcd')}
+    for variant in sorted(variants - {baseline_name}):
         cohort = sorted((r for r in rows if r['variant'] == variant), key=lambda r: int(r['rep']))
         if {int(r['rep']) for r in cohort} != set(baseline) or len(cohort) != 5:
             raise ValueError(f'incomplete paired candidate {variant}')
@@ -39,5 +42,6 @@ def compare(root):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('root', type=Path)
+    parser.add_argument('--baseline', default='baseline')
     args = parser.parse_args()
-    print(json.dumps(compare(args.root), indent=2))
+    print(json.dumps(compare(args.root, args.baseline), indent=2))

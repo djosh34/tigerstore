@@ -1,0 +1,8 @@
+Running as unit: pre50next-wake-check.service
+go: downloading go1.27.2 (linux/arm64)
+/usr/bin/bash: line 1: golangci-lint: command not found
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=127
+Service runtime: 6.133s
+CPU time consumed: 4.961s
+Memory peak: 1.1M

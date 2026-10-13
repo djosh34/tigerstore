@@ -1,0 +1,70 @@
+2026-10-13T11:12:00Z
+Linux lima-opencode-vm 5.14.0-611.26.1.el9_7.aarch64 #1 SMP PREEMPT_DYNAMIC Thu Jan 29 15:47:59 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  8
+On-line CPU(s) list:                     0-7
+Vendor ID:                               Apple
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per cluster:                     8
+Socket(s):                               -
+Cluster(s):                              1
+Stepping:                                0x0
+BogoMIPS:                                48.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm ssbs sb dcpodp flagm2 frint
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-7
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, but not BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:     12178378752  6587084800   210456576    35782656  5643046912  5591293952
+Swap:    12884897792  1258184704 11626713088
+    PID    PPID   RSS COMMAND
+   1231     894 950556 bun
+3755617 3755606 490272 Paseo Daemon
+4061598 3755617 352040 claude
+  38717   38485 301436 server.test
+4107157 3755617 272160 claude
+4172322 3755617 266720 pi
+3757119 3755617 236496 claude
+4163703 3755617 232336 claude
+4142460 3755617 231888 claude
+4036289 3755617 230284 claude
+4139625 3755617 217016 pi
+4136706 3755617 214220 pi
+4042548 3755617 213632 pi
+  28601 3755617 206104 pi
+4121937 3755617 203364 pi
+4081984 3755617 188620 pi
+  23109 3755617 184544 pi
+  25104 3755617 176020 pi
+4164875 3755617 166096 pi
+4143859 3755617 160652 pi
+3914882 3755617 159640 pi
+3908993 3755617 155660 pi
+4108800 3755617 154860 pi
+3885217 3755617 151668 pi
+TARGET                                SOURCE FSTYPE   OPTIONS
+/home/joshazimullah.linux/work_mounts mount0 virtiofs rw,relatime,context=system_u:object_r:nfs_t:s0
+ac222a94360c5d8f3f08077a63e7c1672e5fe0c8500647f315e86ba5ae93f270  host/bin/baseline
+92d2bdca5f8a25460ca787bed11eab734f2e14923492734d41cdb3bae0701b9a  host/bin/binaries.json
+17122293e6713e3d8b14b33964af8f6eae0a83af03e87487f34731ee0e28112d  host/bin/etcd
+ced79ebc0b6fd8e297e4c021ba07c03ee7943599d9a22d903b82a4342d76a572  host/bin/etcdctl
+078dfe4d0daae66a7eed810ae3e6ab0530e5ad221d54507ac30e19c6e5caa1c7  host/bin/load

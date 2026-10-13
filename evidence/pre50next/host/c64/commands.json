@@ -1,0 +1,2121 @@
+[
+  {
+    "utc": "2026-10-13T11:12:43.266900+00:00",
+    "argv": [
+      "bash",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/repo/scripts/dev-certs.sh",
+      "/tmp/pre-50-next-host-45d4f623/certs"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.332077+00:00",
+    "argv": [
+      "findmnt",
+      "-T",
+      "/tmp/pre-50-next-host-45d4f623",
+      "-o",
+      "TARGET,SOURCE,FSTYPE,OPTIONS"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.335533+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "0,1",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/baseline",
+      "--name",
+      "n0",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-baseline/n0",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-baseline",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2380",
+      "--listen-client-urls",
+      "https://127.0.0.1:2379",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2379",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6060"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.337213+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "2,3",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/baseline",
+      "--name",
+      "n1",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-baseline/n1",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-baseline",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2480",
+      "--listen-client-urls",
+      "https://127.0.0.1:2479",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2479",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6061"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.338271+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "4,5",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/baseline",
+      "--name",
+      "n2",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-baseline/n2",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-baseline",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2580",
+      "--listen-client-urls",
+      "https://127.0.0.1:2579",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2579",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6062"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.339316+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.370532+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.407839+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.690512+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.752461+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:43.782565+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.060942+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.103532+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.132155+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.409875+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.483700+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.516429+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.792209+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.848530+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:44.877479+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.152418+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.221017+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.253572+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.277288+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "38922"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.279801+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "38920"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.282068+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "38921"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.335405+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "38922"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.338095+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "38920"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.340436+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "38921"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.393459+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "38922"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.396283+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "38920"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.398709+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "38921"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.454130+00:00",
+    "http_get": "http://127.0.0.1:6062/debug/leader",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:45.476454+00:00",
+    "http_get": "http://127.0.0.1:6060/debug/leader",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:45.477154+00:00",
+    "http_get": "http://127.0.0.1:6061/debug/leader",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:45.479577+00:00",
+    "argv": [
+      "getconf",
+      "CLK_TCK"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.483809+00:00",
+    "argv": [
+      "curl",
+      "--http1.1",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/version"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.498323+00:00",
+    "argv": [
+      "curl",
+      "--http1.1",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/health"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.510295+00:00",
+    "argv": [
+      "curl",
+      "--http2",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/version"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.521407+00:00",
+    "argv": [
+      "curl",
+      "--http2",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/health"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.531815+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "38922,38920,38921",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "4096",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-baseline/seed.json"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:45.848693+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "38922,38920,38921",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "8000",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-baseline/warmup.json"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:47.422875+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "38922,38920,38921",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "30000",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-baseline/put.json",
+      "-barrier-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-baseline/barrier"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:47.552349+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:47.577284+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:47.601369+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:47.625951+00:00",
+    "http_get": "http://127.0.0.1:6062/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:47.626668+00:00",
+    "http_get": "http://127.0.0.1:6060/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:47.627090+00:00",
+    "http_get": "http://127.0.0.1:6061/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:49.229325+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.253229+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.277364+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.301730+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.326883+00:00",
+    "http_get": "http://127.0.0.1:6062/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:49.327484+00:00",
+    "http_get": "http://127.0.0.1:6060/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:49.327910+00:00",
+    "http_get": "http://127.0.0.1:6061/debug/snapshot",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:49.335254+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.359891+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:49.383012+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:57.407783+00:00",
+    "http_get": "http://127.0.0.1:6062/debug/snapshot?gc=1",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:57.425350+00:00",
+    "http_get": "http://127.0.0.1:6060/debug/snapshot?gc=1",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:57.432348+00:00",
+    "http_get": "http://127.0.0.1:6061/debug/snapshot?gc=1",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:12:57.466387+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "0,1",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcd",
+      "--name",
+      "n0",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-etcd/n0",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-etcd",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2380",
+      "--listen-client-urls",
+      "https://127.0.0.1:2379",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2379",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node1-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--peer-client-cert-auth",
+      "--initial-advertise-peer-urls",
+      "https://127.0.0.1:2380",
+      "--quota-backend-bytes",
+      "8589934592",
+      "--tls-min-version",
+      "TLS1.3",
+      "--tls-max-version",
+      "TLS1.3",
+      "--listen-metrics-urls",
+      "http://127.0.0.1:6060",
+      "--logger",
+      "zap",
+      "--log-level",
+      "warn"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6060"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:57.468678+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "2,3",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcd",
+      "--name",
+      "n1",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-etcd/n1",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-etcd",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2480",
+      "--listen-client-urls",
+      "https://127.0.0.1:2479",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2479",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node2-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--peer-client-cert-auth",
+      "--initial-advertise-peer-urls",
+      "https://127.0.0.1:2480",
+      "--quota-backend-bytes",
+      "8589934592",
+      "--tls-min-version",
+      "TLS1.3",
+      "--tls-max-version",
+      "TLS1.3",
+      "--listen-metrics-urls",
+      "http://127.0.0.1:6061",
+      "--logger",
+      "zap",
+      "--log-level",
+      "warn"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6061"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:57.470626+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "4,5",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcd",
+      "--name",
+      "n2",
+      "--data-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-etcd/n2",
+      "--initial-cluster",
+      "n0=https://127.0.0.1:2380,n1=https://127.0.0.1:2480,n2=https://127.0.0.1:2580",
+      "--initial-cluster-token",
+      "1-etcd",
+      "--listen-peer-urls",
+      "https://127.0.0.1:2580",
+      "--listen-client-urls",
+      "https://127.0.0.1:2579",
+      "--advertise-client-urls",
+      "https://127.0.0.1:2579",
+      "--cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3.pem",
+      "--key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3-key.pem",
+      "--trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--client-cert-auth",
+      "--peer-cert-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3.pem",
+      "--peer-key-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/node3-key.pem",
+      "--peer-trusted-ca-file",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--peer-client-cert-auth",
+      "--initial-advertise-peer-urls",
+      "https://127.0.0.1:2580",
+      "--quota-backend-bytes",
+      "8589934592",
+      "--tls-min-version",
+      "TLS1.3",
+      "--tls-max-version",
+      "TLS1.3",
+      "--listen-metrics-urls",
+      "http://127.0.0.1:6062",
+      "--logger",
+      "zap",
+      "--log-level",
+      "warn"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB",
+      "PRE50_DEBUG": "127.0.0.1:6062"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:12:57.472222+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.336858+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.364447+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.388336+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "39186"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.390856+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "39184"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.393132+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "39185"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.446566+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "39186"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.449306+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "39184"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.451680+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "39185"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.504356+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "0,1",
+      "39186"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.506968+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "2,3",
+      "39184"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.509409+00:00",
+    "argv": [
+      "taskset",
+      "-apc",
+      "4,5",
+      "39185"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.564732+00:00",
+    "argv": [
+      "getconf",
+      "CLK_TCK"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.567839+00:00",
+    "argv": [
+      "curl",
+      "--http1.1",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/version"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.577039+00:00",
+    "argv": [
+      "curl",
+      "--http1.1",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/health"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.585564+00:00",
+    "argv": [
+      "curl",
+      "--http2",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/version"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.593630+00:00",
+    "argv": [
+      "curl",
+      "--http2",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "10",
+      "--cacert",
+      "/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert",
+      "/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key",
+      "/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--write-out",
+      "\n%{http_version}",
+      "https://127.0.0.1:2579/health"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:00.602581+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "39186,39184,39185",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "4096",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-etcd/seed.json"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:01.118701+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "39186,39184,39185",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "8000",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-etcd/warmup.json"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.186426+00:00",
+    "argv": [
+      "taskset",
+      "-c",
+      "6",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/load",
+      "-endpoint",
+      "127.0.0.1:2579",
+      "-certdir",
+      "/tmp/pre-50-next-host-45d4f623/certs",
+      "-pids",
+      "39186,39184,39185",
+      "-hz",
+      "100",
+      "-op",
+      "put",
+      "-total",
+      "30000",
+      "-workers",
+      "64",
+      "-conns",
+      "16",
+      "-out",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/c64/1-etcd/put.json",
+      "-barrier-dir",
+      "/tmp/pre-50-next-host-45d4f623/1-etcd/barrier"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.270094+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.296430+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.323905+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.348966+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.374221+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:03.379072+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:03.383150+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.415629+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:03.420465+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:03.424561+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:03.448921+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:03.453174+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.584790+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.610199+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.635289+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.659077+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "get",
+      "/registry/pods/ns-000/pod-00000000",
+      "--consistency=s"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.685303+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.711386+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.715929+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.720115+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.744449+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.748876+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.752935+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.776150+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.780465+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:06.790141+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.813474+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:06.837585+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:14.863640+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2579",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:14.931522+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:14.938230+00:00",
+    "http_get": "http://127.0.0.1:6062/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:14.943796+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2379",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:14.969021+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:14.973526+00:00",
+    "http_get": "http://127.0.0.1:6060/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:14.977520+00:00",
+    "argv": [
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-next/host/bin/etcdctl",
+      "--endpoints=https://127.0.0.1:2479",
+      "--cacert=/tmp/pre-50-next-host-45d4f623/certs/ca.pem",
+      "--cert=/tmp/pre-50-next-host-45d4f623/certs/client.pem",
+      "--key=/tmp/pre-50-next-host-45d4f623/certs/client-key.pem",
+      "--command-timeout=5s",
+      "-w=json",
+      "endpoint",
+      "status"
+    ],
+    "env": {
+      "GOMAXPROCS": "2",
+      "GOFLAGS": "-p=2",
+      "GOMEMLIMIT": "2GiB"
+    }
+  },
+  {
+    "utc": "2026-10-13T11:13:15.001439+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  },
+  {
+    "utc": "2026-10-13T11:13:15.006070+00:00",
+    "http_get": "http://127.0.0.1:6061/metrics",
+    "timeout": 15
+  }
+]

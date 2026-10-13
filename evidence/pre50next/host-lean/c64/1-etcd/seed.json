@@ -1,0 +1,93 @@
+{
+  "admitted": 4096,
+  "all_servers_cpu_us_op": 173.33984375,
+  "client_kind": "lean HTTP/2 Framer/HPACK Put; grpc-go Range probes outside CPU window",
+  "clock_hz": 100,
+  "completion_fence": "one HTTP/2 PING round trip per connection, inside CPU/elapsed",
+  "conns": 16,
+  "controller_barriers": false,
+  "cpu_after": [
+    {
+      "PID": 87108,
+      "Ticks": 56,
+      "Start": 100221177
+    },
+    {
+      "PID": 87106,
+      "Ticks": 20,
+      "Start": 100221177
+    },
+    {
+      "PID": 87107,
+      "Ticks": 19,
+      "Start": 100221177
+    },
+    {
+      "PID": 87179,
+      "Ticks": 19,
+      "Start": 100221460
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 87108,
+      "Ticks": 9,
+      "Start": 100221177
+    },
+    {
+      "PID": 87106,
+      "Ticks": 8,
+      "Start": 100221177
+    },
+    {
+      "PID": 87107,
+      "Ticks": 7,
+      "Start": 100221177
+    },
+    {
+      "PID": 87179,
+      "Ticks": 6,
+      "Start": 100221460
+    }
+  ],
+  "cpu_us_op": [
+    114.74609375,
+    29.296875,
+    29.296875,
+    31.73828125
+  ],
+  "duration_s": 0,
+  "elapsed_s": 0.417299135,
+  "errors": {},
+  "generator_cpu_us_op": 31.73828125,
+  "grpc_timeout_metadata": false,
+  "keyspace": 4096,
+  "lean_source_sha": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+  "max_ms": 20.247618,
+  "mean_ms": 6.468337392578125,
+  "occupied_cores": [
+    1.126290376806077,
+    0.28756350046112605,
+    0.28756350046112605,
+    0.31152712549955325
+  ],
+  "op": "put",
+  "ops_s": 9815.50081573977,
+  "p50_ms": 6.005802,
+  "p90_ms": 8.698057,
+  "p999_ms": 19.48295,
+  "p99_ms": 19.051241,
+  "per_put_context": false,
+  "revision_after": 4097,
+  "revision_before": 1,
+  "start_utc": "2026-10-13T12:31:41.291877444Z",
+  "successes": 4096,
+  "terms": {
+    "2": 4096
+  },
+  "timeout_s": 10,
+  "total": 4096,
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 64
+}

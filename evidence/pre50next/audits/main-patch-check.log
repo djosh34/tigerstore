@@ -1,0 +1,10 @@
+Running as unit: pre50next-main-patch-check.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/server	17.444s
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/peer	8.789s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 29.664s
+CPU time consumed: 7.763s
+Memory peak: 2.4M

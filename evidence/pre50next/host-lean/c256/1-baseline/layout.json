@@ -1,0 +1,37 @@
+{
+  "host": true,
+  "server_go_processors": [
+    {
+      "gomaxprocs": 2,
+      "id": 1,
+      "leader": 1
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 2,
+      "leader": 1
+    },
+    {
+      "gomaxprocs": 2,
+      "id": 3,
+      "leader": 1
+    }
+  ],
+  "server_cpus_in_role_order": [
+    [
+      0,
+      1
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      4,
+      5
+    ]
+  ],
+  "generator_cpu": 6,
+  "generator_gomaxprocs": 2,
+  "conns": 16
+}

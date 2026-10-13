@@ -1,0 +1,13 @@
+Running as unit: pre50next-wake-regression.service
+--- FAIL: TestCreditWakesOnlyForQueuedUpdate (0.00s)
+    credit_wake_test.go:10: small credit: wakes=1 controls=0 credit=1024
+--- FAIL: TestCreditBackpressureReleaseStillWakes (0.00s)
+    credit_wake_test.go:29: held credit: wakes=1 controls=0 credit=4194304
+FAIL
+FAIL	github.com/djosh34/tigerstore/internal/server	0.006s
+FAIL
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 1.138s
+CPU time consumed: 2.123s
+Memory peak: 5.0M

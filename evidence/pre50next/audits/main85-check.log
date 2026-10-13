@@ -1,0 +1,12 @@
+Running as unit: pre50next-main85-check.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/server	(cached)
+ok  	github.com/djosh34/tigerstore/internal/peer	5.833s
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/server	12.837s
+ok  	github.com/djosh34/tigerstore/internal/peer	8.894s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 21.905s
+CPU time consumed: 8.594s
+Memory peak: 10.2M

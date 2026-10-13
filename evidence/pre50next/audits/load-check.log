@@ -1,0 +1,8 @@
+Running as unit: pre50next-load-check.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/experiments/pre50next/load	0.005s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1.306s
+CPU time consumed: 2.070s
+Memory peak: 5.5M

@@ -1,0 +1,73 @@
+{
+  "peer": {
+    "paired": [
+      {
+        "rep": 1,
+        "throughput_gain_percent": 8.070542717618846,
+        "leader_cpu_saved_percent": -4.138732444502069,
+        "leader_cpu_saved_us_put": -0.8344502281410335,
+        "leader_write_calls_saved_percent": 28.08307964492929,
+        "p99_reduction_percent": 44.55878348421175
+      },
+      {
+        "rep": 2,
+        "throughput_gain_percent": 1.8788945483561914,
+        "leader_cpu_saved_percent": 0.7151354093728246,
+        "leader_cpu_saved_us_put": 0.15295808692907542,
+        "leader_write_calls_saved_percent": 28.196574737267877,
+        "p99_reduction_percent": 0.07610498541132937
+      },
+      {
+        "rep": 3,
+        "throughput_gain_percent": 2.7114794953952526,
+        "leader_cpu_saved_percent": 2.2647910675801852,
+        "leader_cpu_saved_us_put": 0.48200958030791696,
+        "leader_write_calls_saved_percent": 28.95969892149558,
+        "p99_reduction_percent": 6.2704666511491975
+      },
+      {
+        "rep": 4,
+        "throughput_gain_percent": 2.3747093752861215,
+        "leader_cpu_saved_percent": 1.224039308294378,
+        "leader_cpu_saved_us_put": 0.2544879438413936,
+        "leader_write_calls_saved_percent": 28.28493028584298,
+        "p99_reduction_percent": 13.088582323214936
+      },
+      {
+        "rep": 5,
+        "throughput_gain_percent": -2.703500099422329,
+        "leader_cpu_saved_percent": -2.8731819320336305,
+        "leader_cpu_saved_us_put": -0.5864135709124483,
+        "leader_write_calls_saved_percent": 27.79121341327828,
+        "p99_reduction_percent": -2.75470200491279
+      }
+    ],
+    "changes": {
+      "throughput_gain_percent": {
+        "median": 2.3747093752861215,
+        "min": -2.703500099422329,
+        "max": 8.070542717618846
+      },
+      "leader_cpu_saved_percent": {
+        "median": 0.7151354093728246,
+        "min": -4.138732444502069,
+        "max": 2.2647910675801852
+      },
+      "leader_cpu_saved_us_put": {
+        "median": 0.15295808692907542,
+        "min": -0.8344502281410335,
+        "max": 0.48200958030791696
+      },
+      "leader_write_calls_saved_percent": {
+        "median": 28.196574737267877,
+        "min": 27.79121341327828,
+        "max": 28.95969892149558
+      },
+      "p99_reduction_percent": {
+        "median": 6.2704666511491975,
+        "min": -2.75470200491279,
+        "max": 44.55878348421175
+      }
+    }
+  }
+}

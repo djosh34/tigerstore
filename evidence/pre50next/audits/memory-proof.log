@@ -1,0 +1,10 @@
+Running as unit: pre50next-memory-proof.service
+cgroup /user.slice/user-501.slice/user@501.service/app.slice/pre50next-memory-proof.service
+before [('memory.max', '1073741824\n'), ('memory.current', '5545984\n'), ('memory.peak', '5545984\n')]
+after [('memory.max', '1073741824\n'), ('memory.current', '72654848\n'), ('memory.peak', '72654848\n')]
+	   76072 kB
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 29ms
+CPU time consumed: 28ms
+Memory peak: 2.6M

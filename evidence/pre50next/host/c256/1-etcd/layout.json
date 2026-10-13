@@ -1,0 +1,31 @@
+{
+  "host": true,
+  "server_go_processors": [
+    {
+      "gomaxprocs_env": 2
+    },
+    {
+      "gomaxprocs_env": 2
+    },
+    {
+      "gomaxprocs_env": 2
+    }
+  ],
+  "server_cpus_in_role_order": [
+    [
+      0,
+      1
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      4,
+      5
+    ]
+  ],
+  "generator_cpu": 6,
+  "generator_gomaxprocs": 2,
+  "conns": 16
+}

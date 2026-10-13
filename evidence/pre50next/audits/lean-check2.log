@@ -1,0 +1,8 @@
+Running as unit: pre50next-lean-check2.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/experiments/pre50next/leanload	0.378s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1.718s
+CPU time consumed: 2.822s
+Memory peak: 8.1M

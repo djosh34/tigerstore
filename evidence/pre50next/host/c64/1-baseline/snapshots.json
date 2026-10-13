@@ -1,0 +1,192 @@
+{
+  "before": [
+    {
+      "disk": {
+        "syncs": 659,
+        "write_bytes": 13078408,
+        "writes": 659
+      },
+      "gc_cpu_seconds": 0.016275066,
+      "heap_alloc": 30926336,
+      "heap_inuse": 32931840,
+      "heap_objects": 54054,
+      "mallocs": 320314,
+      "num_gc": 10,
+      "sys": 44144904,
+      "total_alloc": 84397920
+    },
+    {
+      "disk": {
+        "syncs": 623,
+        "write_bytes": 13078408,
+        "writes": 623
+      },
+      "gc_cpu_seconds": 0.004992218,
+      "heap_alloc": 19338800,
+      "heap_inuse": 21102592,
+      "heap_objects": 23407,
+      "mallocs": 93510,
+      "num_gc": 5,
+      "sys": 30775560,
+      "total_alloc": 24251360
+    },
+    {
+      "disk": {
+        "syncs": 619,
+        "write_bytes": 13078375,
+        "writes": 619
+      },
+      "gc_cpu_seconds": 0.005322046,
+      "heap_alloc": 19116864,
+      "heap_inuse": 20807680,
+      "heap_objects": 19887,
+      "mallocs": 93630,
+      "num_gc": 5,
+      "sys": 34969864,
+      "total_alloc": 24263392
+    }
+  ],
+  "after": [
+    {
+      "disk": {
+        "syncs": 2312,
+        "write_bytes": 45541491,
+        "writes": 2312
+      },
+      "gc_cpu_seconds": 0.028165417,
+      "heap_alloc": 91810568,
+      "heap_inuse": 94765056,
+      "heap_objects": 153989,
+      "mallocs": 954321,
+      "num_gc": 15,
+      "sys": 103721240,
+      "total_alloc": 255067704
+    },
+    {
+      "disk": {
+        "syncs": 2188,
+        "write_bytes": 45541458,
+        "writes": 2188
+      },
+      "gc_cpu_seconds": 0.009706097,
+      "heap_alloc": 58743936,
+      "heap_inuse": 60653568,
+      "heap_objects": 42174,
+      "mallocs": 255059,
+      "num_gc": 7,
+      "sys": 73312536,
+      "total_alloc": 72561752
+    },
+    {
+      "disk": {
+        "syncs": 2159,
+        "write_bytes": 45541326,
+        "writes": 2159
+      },
+      "gc_cpu_seconds": 0.009205969,
+      "heap_alloc": 58361128,
+      "heap_inuse": 60317696,
+      "heap_objects": 31950,
+      "mallocs": 254407,
+      "num_gc": 7,
+      "sys": 77506840,
+      "total_alloc": 72656040
+    }
+  ],
+  "proc_before": [
+    {
+      "pid": 38922,
+      "ticks": 44,
+      "start": 99747673,
+      "io": {
+        "rchar": 13770142,
+        "wchar": 40654728,
+        "syscr": 16214,
+        "syscw": 10990,
+        "read_bytes": 0,
+        "write_bytes": 15773696,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 55242752
+    },
+    {
+      "pid": 38920,
+      "ticks": 16,
+      "start": 99747673,
+      "io": {
+        "rchar": 13154476,
+        "wchar": 13135515,
+        "syscr": 2165,
+        "syscw": 1498,
+        "read_bytes": 69632,
+        "write_bytes": 15626240,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 39686144
+    },
+    {
+      "pid": 38921,
+      "ticks": 16,
+      "start": 99747673,
+      "io": {
+        "rchar": 13154210,
+        "wchar": 13135495,
+        "syscr": 2157,
+        "syscw": 1503,
+        "read_bytes": 0,
+        "write_bytes": 15609856,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 41787392
+    }
+  ],
+  "proc_after": [
+    {
+      "pid": 38922,
+      "ticks": 127,
+      "start": 99747673,
+      "io": {
+        "rchar": 47476972,
+        "wchar": 141214030,
+        "syscr": 53095,
+        "syscw": 37031,
+        "read_bytes": 0,
+        "write_bytes": 55009280,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 113410048
+    },
+    {
+      "pid": 38920,
+      "ticks": 45,
+      "start": 99747673,
+      "io": {
+        "rchar": 45688408,
+        "wchar": 45672499,
+        "syscr": 6688,
+        "syscw": 4824,
+        "read_bytes": 69632,
+        "write_bytes": 54501376,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 79953920
+    },
+    {
+      "pid": 38921,
+      "ticks": 45,
+      "start": 99747673,
+      "io": {
+        "rchar": 45687609,
+        "wchar": 45672116,
+        "syscr": 6586,
+        "syscw": 4815,
+        "read_bytes": 0,
+        "write_bytes": 54378496,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 82046976
+    }
+  ],
+  "hz": 100,
+  "scope": "workers parked; all replicas applied; etcd also post-WAL.Save"
+}

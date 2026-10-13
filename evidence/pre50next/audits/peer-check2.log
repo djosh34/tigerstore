@@ -1,0 +1,8 @@
+Running as unit: pre50next-peer-check2.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/peer	8.910s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 9.999s
+CPU time consumed: 1.926s
+Memory peak: 5.4M

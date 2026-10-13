@@ -1,0 +1,98 @@
+{
+  "forced_gc": true,
+  "quiet_seconds": 8,
+  "nodes": [
+    {
+      "disk": {
+        "syncs": 917,
+        "write_bytes": 45484053,
+        "writes": 917
+      },
+      "gc_cpu_seconds": 0.044013407,
+      "heap_alloc": 59985320,
+      "heap_inuse": 63848448,
+      "heap_objects": 21353,
+      "mallocs": 783287,
+      "num_gc": 15,
+      "sys": 103471400,
+      "total_alloc": 250430680
+    },
+    {
+      "disk": {
+        "syncs": 888,
+        "write_bytes": 45484020,
+        "writes": 888
+      },
+      "gc_cpu_seconds": 0.013188519,
+      "heap_alloc": 56022840,
+      "heap_inuse": 58130432,
+      "heap_objects": 16005,
+      "mallocs": 177287,
+      "num_gc": 8,
+      "sys": 73050392,
+      "total_alloc": 69636384
+    },
+    {
+      "disk": {
+        "syncs": 873,
+        "write_bytes": 45483954,
+        "writes": 873
+      },
+      "gc_cpu_seconds": 0.011632813,
+      "heap_alloc": 55949616,
+      "heap_inuse": 57942016,
+      "heap_objects": 16004,
+      "mallocs": 176707,
+      "num_gc": 7,
+      "sys": 73050392,
+      "total_alloc": 69267488
+    }
+  ],
+  "proc": [
+    {
+      "pid": 39841,
+      "ticks": 98,
+      "start": 99751264,
+      "io": {
+        "rchar": 47261211,
+        "wchar": 140545197,
+        "syscr": 46258,
+        "syscw": 18317,
+        "read_bytes": 0,
+        "write_bytes": 49238016,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 107655168
+    },
+    {
+      "pid": 39839,
+      "ticks": 32,
+      "start": 99751264,
+      "io": {
+        "rchar": 45614176,
+        "wchar": 45560183,
+        "syscr": 4052,
+        "syscw": 2296,
+        "read_bytes": 0,
+        "write_bytes": 49119232,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 81686528
+    },
+    {
+      "pid": 39840,
+      "ticks": 32,
+      "start": 99751264,
+      "io": {
+        "rchar": 45612828,
+        "wchar": 45559234,
+        "syscr": 3952,
+        "syscw": 2203,
+        "read_bytes": 0,
+        "write_bytes": 49057792,
+        "cancelled_write_bytes": 0
+      },
+      "rss_bytes": 80273408
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "records": {
+    "confirm/run-38390703857-primary-c256.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "confirm/run-38390703857-primary-c64.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "confirm/run-38390703857-profile-c256.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 30
+    },
+    "initial/run-38387195114-primary-c256.tar.gz": {
+      "windows": 10,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "initial/run-38387195114-primary-c64.tar.gz": {
+      "windows": 10,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "initial/run-38387195114-profile-c256.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 15
+    },
+    "initial/run-38387195114-profile-c64.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 15
+    },
+    "lean-initial/run-38395499741-primary-c256.tar.gz": {
+      "windows": 10,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "lean-initial/run-38395499741-primary-c64.tar.gz": {
+      "windows": 10,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "lean-initial/run-38395499741-profile-c256.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 15
+    },
+    "lean-initial/run-38395499741-profile-c64.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 15
+    },
+    "lean-screen/run-38397622813-primary-c256.tar.gz": {
+      "windows": 20,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "lean-screen/run-38397622813-primary-c64.tar.gz": {
+      "windows": 20,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "lean-screen/run-38397622813-profile-c256.tar.gz": {
+      "windows": 15,
+      "host_windows": 0,
+      "profiles": 30
+    },
+    "screen/run-38389143652-primary-c256.tar.gz": {
+      "windows": 25,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "screen/run-38389143652-primary-c64.tar.gz": {
+      "windows": 25,
+      "host_windows": 0,
+      "profiles": 0
+    },
+    "host/c256": {
+      "windows": 2,
+      "host_windows": 2,
+      "profiles": 0
+    },
+    "host/c64": {
+      "windows": 2,
+      "host_windows": 2,
+      "profiles": 0
+    },
+    "host-lean/c256": {
+      "windows": 2,
+      "host_windows": 2,
+      "profiles": 0
+    },
+    "host-lean/c64": {
+      "windows": 2,
+      "host_windows": 2,
+      "profiles": 0
+    }
+  },
+  "totals": {
+    "windows": 258,
+    "host_windows": 8,
+    "profiles": 120
+  }
+}

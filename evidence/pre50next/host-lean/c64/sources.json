@@ -1,0 +1,22 @@
+{
+  "base": "aa9d9b6eea79c73f12fe0153aefa809841967e88",
+  "candidates": [
+    {
+      "name": "wake",
+      "ref": "66625cd9502e64526f0cf3bbd339e5bde9c68564"
+    },
+    {
+      "name": "peer",
+      "ref": "8963bb646e98642772971e542f0156aa80e7403b"
+    }
+  ],
+  "provenance": {
+    "initial_pr80": "396bced923ee47540e89e1e2ca1053ecde5673ce",
+    "lean_generator": "d2408301966b99471bfed06d4c2dc1cd1e5af462",
+    "bench68": "32ceb80fb36fd4229c2e2e7594b40da197fe4eaf",
+    "frontend": "b66573fe05eb7f3a241092be6b6ca1e870403d82",
+    "wholebatch": "c7c39ac8ba2d61799310a9a3219ce9f72cd04d3d",
+    "profile": "1d90dcebf4ff9c910f7053dc0634d251767fd92b",
+    "etcd": "68c065e562994b89e333e77b039ad066f933c586"
+  }
+}

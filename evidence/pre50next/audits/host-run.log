@@ -1,0 +1,11 @@
+Running as unit: pre50next-host.service
+certificates in /tmp/pre-50-next-host-45d4f623/certs
+host, clients=64, rep=1, baseline
+host, clients=64, rep=1, etcd
+host, clients=256, rep=1, baseline
+host, clients=256, rep=1, etcd
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1min 8.526s
+CPU time consumed: 28.249s
+Memory peak: 2.8M

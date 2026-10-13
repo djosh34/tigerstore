@@ -1,0 +1,8 @@
+Running as unit: pre50next-wake-check2.service
+0 issues.
+ok  	github.com/djosh34/tigerstore/internal/server	17.259s
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 18.870s
+CPU time consumed: 6.039s
+Memory peak: 7.6M

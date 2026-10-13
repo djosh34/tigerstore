@@ -1,0 +1,15 @@
+Running as unit: pre50next-peer-check.service
+internal/peer/buffer.go:37:57: QF1008: could remove embedded field "Conn" from selector (staticcheck)
+func (c *outboundConn) Close() error { return c.records.Conn.Close() }
+                                                        ^
+internal/peer/buffer_test.go:503:17: unnecessary conversion (unconvert)
+			want := error(context.DeadlineExceeded)
+			             ^
+2 issues:
+* staticcheck: 1
+* unconvert: 1
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 804ms
+CPU time consumed: 1.333s
+Memory peak: 5.4M
