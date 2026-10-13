@@ -138,6 +138,7 @@ def cluster(variant, label):
                     '-op','put','-total',str(total),'-workers',str(workers),'-conns','16',
                     '-out',str(dest/f'{name}.json')]
             if allocations:
+                args += ['-health-interval', '100ms']
                 path = '/metrics' if store == 'etcd' else '/debug/alloc'
                 args += ['-alloc-urls', ','.join(f'http://127.0.0.1:{6060+i}{path}' for i in order)]
             run(args, env=os.environ | {'GOMAXPROCS':'1'}, timeout=100)

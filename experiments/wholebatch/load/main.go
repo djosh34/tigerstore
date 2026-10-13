@@ -63,6 +63,7 @@ func run() error {
 	conns := flag.Int("conns", 16, "connections")
 	pidstr := flag.String("pids", "", "leader,follower1,follower2")
 	allocURLs := flag.String("alloc-urls", "", "allocation counter URLs in server role order")
+	healthInterval := flag.Duration("health-interval", 0, "alternate health/version GET interval on same TLS port, zero disables")
 	hz := flag.Float64("hz", 100, "getconf CLK_TCK")
 	out := flag.String("out", "", "json output")
 	flag.Parse()
@@ -121,6 +122,14 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	var probes *httpProbes
+	if *healthInterval > 0 {
+		probes, e = newHTTPProbes(*endpoint, cfg, *healthInterval)
+		if e != nil {
+			return e
+		}
+		defer probes.transport.CloseIdleConnections()
+	}
 	pids := []int{}
 	if *pidstr != "" {
 		for p := range strings.SplitSeq(*pidstr, ",") {
@@ -137,6 +146,10 @@ func run() error {
 	var next atomic.Uint64
 	var wg sync.WaitGroup
 	start := make(chan struct{})
+	stopHTTP := make(chan struct{})
+	if probes != nil {
+		probes.start(start, stopHTTP)
+	}
 	latencies := make([][]int64, *workers)
 	errs := make([]map[string]int, *workers)
 	terms := make([]map[uint64]int, *workers)
@@ -206,6 +219,10 @@ func run() error {
 	}
 	close(start)
 	wg.Wait()
+	close(stopHTTP)
+	if probes != nil {
+		probes.wg.Wait()
+	}
 	elapsed := time.Since(t).Seconds()
 	for i, p := range pids {
 		post[i], e = sample(p)
@@ -255,6 +272,12 @@ func run() error {
 	delta := after.Header.Revision - before.Header.Revision
 	valid := len(em) == 0 && len(tm) == 1 && (*total == 0 || uint64(len(all)) == *total) && ((*op == "put" && delta == int64(len(all))) || (*op == "range" && delta == 0))
 	result := map[string]any{"valid": valid, "op": *op, "successes": len(all), "errors": em, "terms": tm, "elapsed_s": elapsed, "ops_s": float64(len(all)) / elapsed, "mean_ms": sum / float64(len(all)) / 1e6, "p50_ms": pct(.5), "p90_ms": pct(.9), "p95_ms": pct(.95), "p99_ms": pct(.99), "p999_ms": pct(.999), "max_ms": float64(all[len(all)-1]) / 1e6, "cpu_us_op": cpus, "alloc_before": allocBefore, "alloc_after": allocAfter, "alloc_urls": *allocURLs, "occupied_cores": occup, "cpu_before": pre, "cpu_after": post, "revision_before": before.Header.Revision, "revision_after": after.Header.Revision, "workers": *workers, "conns": *conns, "keyspace": keyspace, "value_bytes": 1024, "clock_hz": *hz, "start_utc": t.UTC().Format(time.RFC3339Nano)}
+	if probes != nil {
+		valid = valid && probes.Errors == 0 && probes.Requests > 0
+		result["valid"] = valid
+		result["http_probes"] = probes
+		result["http_probe_interval"] = healthInterval.String()
+	}
 	b, e := json.MarshalIndent(result, "", "  ")
 	if e != nil {
 		return e

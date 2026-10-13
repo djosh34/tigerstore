@@ -15,6 +15,10 @@ def read_row(file):
     assert j['workers'] in (16, 64, 256) and j['conns'] == 16, file
     assert j['keyspace'] == 4096 and j['value_bytes'] == 1024, file
     assert len(j['cpu_us_op']) == 4, file
+    probes = j.get('http_probes', {'requests': 0, 'errors': 0})
+    assert probes['errors'] == 0, file
+    if 'http_probes' in j:
+        assert probes['requests'] > 0 and j['http_probe_interval'] == '100ms', file
     rep, store = file.parent.name.split('-', 1)
     layout = json.loads((file.parent/'layout.json').read_text())
     assert layout['server_go_processors'] == [2, 2, 2], file
@@ -28,7 +32,7 @@ def read_row(file):
     retained_file = file.parent/'retained.json'
     retained = json.loads(retained_file.read_text())['nodes'] if retained_file.exists() else None
     row = dict(clients=j['workers'], conns=j['conns'], store=store,
-               source_ref=layout['variant']['ref'], rep=int(rep), successes=j['successes'])
+               source_ref=layout['variant']['ref'], rep=int(rep), successes=j['successes'], http_probe_requests=probes['requests'])
     for k in ('ops_s', 'mean_ms', 'p50_ms', 'p90_ms', 'p95_ms', 'p99_ms', 'p999_ms', 'elapsed_s'):
         row[k] = j[k]
     for i, role in enumerate((*ROLES, 'generator')):
@@ -58,7 +62,11 @@ def read_row(file):
         row[f'{role}_retained_sys_bytes'] = retained[i]['sys'] if retained else float('nan')
         bb, ba = alloc_b.get('batch'), alloc_a.get('batch')
         for counter, metric in (('AdmissionSends','admission_sends_op'), ('ResponseSends','response_sends_op'), ('ControlSends','control_sends_op')):
-            row[f'{role}_{metric}'] = ((ba[counter]-bb[counter])/j['successes']
+            extra = 0
+            if i == 0:
+                if counter == 'AdmissionSends': extra = (probes['requests']+1)//2
+                if counter == 'ResponseSends': extra = probes['requests']
+            row[f'{role}_{metric}'] = ((ba[counter]-bb[counter]-extra)/j['successes']
                                        if bb and ba and counter in ba else float('nan'))
         if i == 0 and bb and ba:
             assert ba['Commands']-bb['Commands'] == j['successes'], (file, bb, ba)
