@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare main's merge base, PR #68 acfe8fa, and stock etcd v3.7.2.
+"""Compare main's merge base, PR #68 b4fb26b, and stock etcd v3.7.2.
 
 Same pre47 group-commit benchmark, pre50 client, TLS and CPU placement.
 """
@@ -106,6 +106,17 @@ def cluster(store, label):
         for core,i in enumerate(order):
             run(['taskset','-apc',str(core),str(procs[i].pid)], stdout=sp.DEVNULL)
         pids = ','.join(str(procs[i].pid) for i in order)
+        go_procs = [status[i]['gomaxprocs'] for i in order] if store != 'etcd' else [1, 1, 1]
+        expected_go_procs = 2 if store == 'tigerstore' else 1
+        assert go_procs == [expected_go_procs]*3, (store, go_procs)
+        (dest/'layout.json').write_text(json.dumps({
+            'server_gomaxprocs_env': 1,
+            'server_go_processors': go_procs,
+            'go_processors_source': 'debug runtime.GOMAXPROCS(0)' if store != 'etcd' else 'GOMAXPROCS environment',
+            'server_cpus_in_role_order': [0, 1, 2],
+            'generator_cpu': 3,
+            'generator_gomaxprocs': 1,
+        }, indent=2))
         (dest/'placement.json').write_text(json.dumps({'leader_index':leader,'node_order':order,'pids':pids,'status_before':status},indent=2))
         endpoint = f'127.0.0.1:{2379+leader*100}'
 
@@ -173,7 +184,7 @@ def cluster(store, label):
         (dest/'disk.json').write_text(json.dumps({'before':before,'after':after_disk},indent=2))
         if store != 'etcd':
             after = [json.loads(http(6060+i,'/debug/leader')) for i in range(3)]
-            assert all(s['leader']==leader+1 for s in after), after
+            assert all(s['leader']==leader+1 and s['gomaxprocs']==expected_go_procs for s in after), after
         else:
             after = [ctl(i,'endpoint','status')[0]['Status'] for i in range(3)]
             assert all(s['leader']==status[0]['leader'] and s['raftTerm']==status[0]['raftTerm'] for s in after), after

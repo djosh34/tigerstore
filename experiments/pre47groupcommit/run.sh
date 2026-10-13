@@ -3,7 +3,7 @@ set -euo pipefail
 check_time() { [[ $(date -u +%s) -lt $(date -ud 2026-10-13T22:00:00Z +%s) ]]; }
 check_time
 BASELINE=72bd5d7680dbf456e7811b02f300c26e2b3b805a
-PROTOTYPE=acfe8fa43993c447b1a322e6dfd59a0492222297
+PROTOTYPE=b4fb26bc596d2f89acfefe73d36cf5f86f7a2ad5
 OUT=$PWD/evidence/bench68/c${CLIENTS:?}
 PRIVATE=$RUNNER_TEMP/bench68
 mkdir -p "$OUT" "$PRIVATE/bin" "$PRIVATE/baseline" "$PRIVATE/prototype"
@@ -35,7 +35,8 @@ git diff --exit-code
 git status --short > "$OUT/build-status.txt"
 git archive "$BASELINE" | tar -x -C "$PRIVATE/baseline"
 git archive "$PROTOTYPE" | tar -x -C "$PRIVATE/prototype"
-# Apply precisely the same pre-work counters to each archive. No behavioral patch.
+# Apply the same pre-work counters and runtime-layout metadata to each archive.
+# No behavioral patch. The candidate itself enforces at least two Go processors.
 OBSERVABILITY=$PWD/experiments/pre47groupcommit/observability.patch
 for source in baseline prototype; do
  check_time

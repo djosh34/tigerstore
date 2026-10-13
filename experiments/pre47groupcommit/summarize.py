@@ -2,10 +2,11 @@
 """Reproduce all rows and medians from archived JSON; reject invalid windows."""
 import csv
 import json
+import sys
 from pathlib import Path
 from statistics import median
 
-root = Path('evidence/bench68')
+root = Path(sys.argv[1] if len(sys.argv) > 1 else 'evidence/bench68')
 rows = []
 for file in sorted(root.glob('c*/*/put.json')):
     j = json.loads(file.read_text())

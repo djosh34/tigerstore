@@ -20,7 +20,7 @@ index 0000000..806a14b
 @@ -0,0 +1,52 @@
 +package main
 +
-+// Throwaway observability only. No core, storage or transport code changes.
++// Throwaway observability only. No core, storage or transport behavior changes.
 +import (
 +	"encoding/json"
 +	"log"
@@ -40,7 +40,7 @@ index 0000000..806a14b
 +		return nil
 +	}
 +	http.HandleFunc("/debug/leader", func(w http.ResponseWriter, r *http.Request) {
-+		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader()}); err != nil {
++		if err := json.NewEncoder(w).Encode(map[string]uint64{"id": n.ID(), "leader": n.Leader(), "gomaxprocs": uint64(runtime.GOMAXPROCS(0))}); err != nil {
 +			return
 +		}
 +	})
