@@ -194,7 +194,7 @@ def main():
     failures = []
     expected = {}
     failed_roots = {p.parent for p in args.root.rglob('failures.json')}
-    for plan_path in args.root.rglob('plan.json'):
+    for plan_path in list(args.root.rglob('plan.json')) + list(args.root.rglob('expected-plan.json')):
         plan = json.loads(plan_path.read_text())
         for item in plan['windows']:
             expected[str(plan_path.parent/item['path'])] = item
@@ -227,7 +227,8 @@ def main():
     for (case,kind,rate), values in sorted(groups.items()):
         expected_count=sum(1 for x in expected.values() if (x['case'],x['kind'],x['rate'])==(case,kind,rate))
         s={'case':case,'kind':kind,'rate':rate,'repetitions':len(values),'expected_repetitions':expected_count,
-           'complete':expected_count>0 and len(values)==expected_count,
+           'complete':expected_count>0 and len(values)==expected_count and all('error' not in x for x in values),
+           'parsed_windows':sum('error' not in x for x in values),
            'valid_windows':sum(1 for x in values if x.get('window_valid',x['valid'])),
            'all_valid':all(x['valid'] for x in values) and expected_count>0 and len(values)==expected_count,
            'observation_control':any(x.get('observation_control',False) for x in values),

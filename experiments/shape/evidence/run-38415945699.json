@@ -1,0 +1,15 @@
+{
+  "run_id": 38415945699,
+  "folder": "cpu",
+  "role": "profile",
+  "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+  "compression": "zstd --long=27",
+  "combined_sha256": "7b861d950b0da4decc6414e841b76ef54f96e492c0e375b167e3fcc144b37f00",
+  "parts": [
+    {
+      "file": "run-38415945699.tar.zst",
+      "sha256": "7b861d950b0da4decc6414e841b76ef54f96e492c0e375b167e3fcc144b37f00",
+      "bytes": 27431927
+    }
+  ]
+}

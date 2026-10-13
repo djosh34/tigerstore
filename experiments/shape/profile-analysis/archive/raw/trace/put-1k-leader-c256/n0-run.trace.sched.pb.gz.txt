@@ -1,0 +1,178 @@
+PeriodType: trace count
+Period: 1
+Samples:
+contentions/count delay/nanoseconds
+          4     101248: 1 2 3 4 5 6 
+          6      78720: 7 8 5 6 
+          1       7744: 9 10 11 12 13 14 15 16 17 18 19 20 21 
+          2     144000: 22 23 24 25 18 19 20 21 
+          2       8384: 26 27 28 29 30 31 32 
+      35380 4083285184: 33 34 35 24 25 18 19 20 21 
+          1       1216: 36 37 38 39 40 41 27 28 29 30 31 32 
+          1      28736: 9 10 42 43 29 30 31 32 
+          4      81792: 44 45 46 19 20 21 
+      44311 5196729088: 
+          1    1522240: 47 48 49 50 51 52 53 54 55 56 57 58 6 
+          2     501312: 59 60 30 31 32 
+       2740  552085760: 33 61 62 63 30 31 32 
+         19      29376: 64 65 
+          1     158144: 66 67 
+      35022  242126976: 68 69 70 71 46 19 20 21 
+       1044  110004544: 68 72 73 6 
+       2016    6091392: 68 74 75 58 6 
+          7     105408: 76 77 78 79 80 81 82 
+         28   42186560: 83 84 85 86 87 88 89 25 18 19 20 21 
+          1       5568: 90 91 92 93 94 95 96 40 97 98 99 100 30 31 32 
+          4    2706880: 83 101 102 67 
+      12072 5345021504: 33 103 104 105 106 30 31 32 
+          1      46208: 107 108 109 110 111 112 113 114 115 116 38 39 40 41 27 28 29 30 31 32 
+         54   23117248: 83 117 
+       2907    2413632: 118 119 
+          2    1185280: 83 120 102 67 
+          5     638144: 121 122 73 6 
+          1      35008: 9 10 123 52 53 54 55 56 57 58 6 
+          1     148160: 124 125 126 127 128 73 6 
+        537   17731648: 68 60 30 31 32 
+          5     132160: 129 130 131 132 17 18 19 20 21 
+          2     832192: 83 133 85 86 87 88 89 25 18 19 20 21 
+          8       6336: 33 134 135 6 
+          1     222144: 136 71 46 19 20 21 
+Locations
+     1: 0x54c478 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:65:0 s=0
+     2: 0x54c474 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:292:0 s=0
+     3: 0x54bfdb M=1 github.com/djosh34/tigerstore/internal/server.(*conn).completeWaiting /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:236:0 s=0
+     4: 0x55503b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /home/runner/work/tigerstore/tigerstore/internal/server/write.go:39:0 s=0
+     5: 0x5561b3 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1 /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:142:0 s=0
+     6: 0xad5e7 M=1 sync.(*WaitGroup).Go.func1 /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/waitgroup.go:258:0 s=0
+     7: 0x555180 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:65:0 s=0
+     8: 0x55517c M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /home/runner/work/tigerstore/tigerstore/internal/server/write.go:46:0 s=0
+     9: 0x61537 M=1 runtime.asyncPreempt2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/preempt.go:320:0 s=0
+    10: 0xa3427 M=1 runtime.asyncPreempt /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/preempt_arm64.s:44:0 s=0
+    11: 0x42eee3 M=1 golang.org/x/net/http2/hpack.huffmanDecode /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/huffman.go:56:0 s=0
+    12: 0x42ecaf M=1 golang.org/x/net/http2/hpack.(*Decoder).decodeString /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:515:0 s=0
+    13: 0x42e55b M=1 golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:385:0 s=0
+    14: 0x42e0f7 M=1 golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:325:0 s=0
+    15: 0x42df3f M=1 golang.org/x/net/http2/hpack.(*Decoder).Write /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:261:0 s=0
+    16: 0x54e623 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).headerFragment /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:422:0 s=0
+    17: 0x54de3b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onFrame /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:290:0 s=0
+    18: 0x54dc47 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:280:0 s=0
+    19: 0x54d24f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).serve /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:144:0 s=0
+    20: 0x552403 M=1 github.com/djosh34/tigerstore/internal/server.(*Server).serveConn /home/runner/work/tigerstore/tigerstore/internal/server/server.go:151:0 s=0
+    21: 0x55685f M=1 github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1 /home/runner/work/tigerstore/tigerstore/internal/server/server.go:115:0 s=0
+    22: 0x54e53c M=1 github.com/djosh34/tigerstore/internal/server.(*conn).credit /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:65:0 s=0
+    23: 0x54e538 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).credit /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:391:0 s=0
+    24: 0x54f5a7 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onData /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:603:0 s=0
+    25: 0x54dd7f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onFrame /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:294:0 s=0
+    26: 0x51f973 M=1 go.etcd.io/raft/v3.(*RawNode).Propose /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:90:0 s=0
+    27: 0x535dd7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).propose /home/runner/work/tigerstore/tigerstore/internal/core/node.go:585:0 s=0
+    28: 0x536767 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Process /home/runner/work/tigerstore/tigerstore/internal/core/node.go:662:0 s=0
+    29: 0x5489cf M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:391:0 s=0
+    30: 0x548393 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Run /home/runner/work/tigerstore/tigerstore/internal/node/node.go:326:0 s=0
+    31: 0x56fac3 M=1 main.run /home/runner/work/tigerstore/tigerstore/cmd/tigerstore/main.go:277:0 s=0
+    32: 0x56dae7 M=1 main.main /home/runner/work/tigerstore/tigerstore/cmd/tigerstore/main.go:53:0 s=0
+    33: 0x2b063 M=1 runtime.selectnbsend /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/chan.go:785:0 s=0
+    34: 0x54e597 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).credit /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:201:0 s=0
+    35: 0x54e58c M=1 github.com/djosh34/tigerstore/internal/server.(*conn).credit /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:392:0 s=0
+    36: 0x33d5ab M=1 google.golang.org/protobuf/internal/impl.(*messageState).Interface /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/message_reflect_gen.go:23:0 s=0
+    37: 0x274f8b M=1 google.golang.org/protobuf/proto.Clone /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:59:0 s=0
+    38: 0x516f0f M=1 go.etcd.io/raft/v3.(*raft).appendEntry /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:817:0 s=0
+    39: 0x51c307 M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1349:0 s=0
+    40: 0x519c6b M=1 go.etcd.io/raft/v3.(*raft).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1265:0 s=0
+    41: 0x51f957 M=1 go.etcd.io/raft/v3.(*RawNode).Propose /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:91:0 s=0
+    42: 0x536177 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).requestReads /home/runner/work/tigerstore/tigerstore/internal/core/node.go:608:0 s=0
+    43: 0x53676f M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Process /home/runner/work/tigerstore/tigerstore/internal/core/node.go:664:0 s=0
+    44: 0x54b844 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).flush /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:65:0 s=0
+    45: 0x54b840 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).flush /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:119:0 s=0
+    46: 0x54db7b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:259:0 s=0
+    47: 0xeed63 M=1 internal/poll.(*FD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:176:0 s=0
+    48: 0x19e5b7 M=1 net.(*netFD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:68:0 s=0
+    49: 0x1ab9e3 M=1 net.(*conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:196:0 s=0
+    50: 0x2064db M=1 crypto/tls.(*Conn).readFromUntil /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:820:0 s=0
+    51: 0x203e4f M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:626:0 s=0
+    52: 0x20962f M=1 crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:588:0 s=0
+    53: 0x209630 M=1 crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1392:0 s=0
+    54: 0x2e2ce7 M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:245:0 s=0
+    55: 0xd107f M=1 io.ReadAtLeast /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:335:0 s=0
+    56: 0x543edb M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=0
+    57: 0x543edc M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:230:0 s=0
+    58: 0x545373 M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1 /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:203:0 s=0
+    59: 0x7609f M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:497:0 s=0
+    60: 0x54888b M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:357:0 s=0
+    61: 0x5442cf M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).send /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:304:0 s=0
+    62: 0x543443 M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).Send /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:144:0 s=0
+    63: 0x548b8b M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:399:0 s=0
+    64: 0xab3fb M=1 sync.(*Cond).Broadcast /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/cond.go:95:0 s=0
+    65: 0x413eb7 M=1 net/http.(*connReader).backgroundRead /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:782:0 s=0
+    66: 0x3f564 M=1 runtime.gcMarkDone /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1143:0 s=0
+    67: 0x40cf7 M=1 runtime.gcBgMarkWorker /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1928:0 s=0
+    68: 0x75ea7 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:527:0 s=0
+    69: 0x547757 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).put /home/runner/work/tigerstore/tigerstore/internal/node/node.go:138:0 s=0
+    70: 0x54794f M=1 github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch /home/runner/work/tigerstore/tigerstore/internal/node/node.go:203:0 s=0
+    71: 0x54b977 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).flush /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:126:0 s=0
+    72: 0x549ac7 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).persist /home/runner/work/tigerstore/tigerstore/internal/node/node.go:538:0 s=0
+    73: 0x54a3b3 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1 /home/runner/work/tigerstore/tigerstore/internal/node/node.go:322:0 s=0
+    74: 0x570b33 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Deliver-fm /home/runner/work/tigerstore/tigerstore/internal/node/node.go:281:0 s=0
+    75: 0x543eab M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:254:0 s=0
+    76: 0xee07f M=1 internal/poll.setDeadlineImpl /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_poll_runtime.go:162:0 s=0
+    77: 0x1abf9b M=1 net.(*conn).SetReadDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_poll_runtime.go:138:0 s=0
+    78: 0x1abf8c M=1 net.(*conn).SetReadDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:155:0 s=0
+    79: 0x1abf9c M=1 net.(*conn).SetReadDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:263:0 s=0
+    80: 0x413fa7 M=1 net/http.(*connReader).abortPendingRead /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:792:0 s=0
+    81: 0x4188df M=1 net/http.(*response).finishRequest /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:1726:0 s=0
+    82: 0x419627 M=1 net/http.(*conn).serve /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:2164:0 s=0
+    83: 0xa0b57 M=1 runtime.systemstack_switch /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/asm_arm64.s:327:0 s=0
+    84: 0x3f10b M=1 runtime.gcStart /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:929:0 s=0
+    85: 0x31bf7 M=1 runtime.mallocgcSmallNoscan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1454:0 s=0
+    86: 0x990df M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1125:0 s=0
+    87: 0x9de7f M=1 runtime.makeslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:117:0 s=0
+    88: 0x552c2b M=1 github.com/djosh34/tigerstore/internal/server.(*stream).receive /home/runner/work/tigerstore/tigerstore/internal/server/stream.go:124:0 s=0
+    89: 0x54f783 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onData /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:631:0 s=0
+    90: 0x50c4f3 M=1 go.etcd.io/raft/v3/tracker.(*Progress).SentEntries /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/tracker/progress.go:165:0 s=0
+    91: 0x516183 M=1 go.etcd.io/raft/v3.(*raft).maybeSendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:659:0 s=0
+    92: 0x515e8f M=1 go.etcd.io/raft/v3.(*raft).sendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:606:0 s=0
+    93: 0x52467f M=1 go.etcd.io/raft/v3.(*raft).bcastAppend.func1 /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:719:0 s=0
+    94: 0x50d4ab M=1 go.etcd.io/raft/v3/tracker.(*ProgressTracker).Visit /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/tracker/tracker.go:202:0 s=0
+    95: 0x51af1f M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:715:0 s=0
+    96: 0x51af08 M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1554:0 s=0
+    97: 0x51fbd7 M=1 go.etcd.io/raft/v3.(*RawNode).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:124:0 s=0
+    98: 0x5493b7 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/core/node.go:353:0 s=0
+    99: 0x5493a0 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/node/node.go:496:0 s=0
+   100: 0x54897f M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:362:0 s=0
+   101: 0x4003b M=1 runtime.gcMarkTermination /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1516:0 s=0
+   102: 0x3f5ab M=1 runtime.gcMarkDone /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1155:0 s=0
+   103: 0x54bddb M=1 github.com/djosh34/tigerstore/internal/server.(*conn).Complete /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:201:0 s=0
+   104: 0x54bdd0 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).Complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:216:0 s=0
+   105: 0x54927f M=1 github.com/djosh34/tigerstore/internal/node.completeAll /home/runner/work/tigerstore/tigerstore/internal/node/node.go:464:0 s=0
+   106: 0x548bdf M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:401:0 s=0
+   107: 0x4382f M=1 runtime.gcAssistAlloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:403:0 s=0
+   108: 0x43820 M=1 runtime.gcAssistAlloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:659:0 s=0
+   109: 0x364d3 M=1 runtime.deductAssistCredit /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_stubs.go:176:0 s=0
+   110: 0x9909b M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1116:0 s=0
+   111: 0x9e393 M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:265:0 s=0
+   112: 0x331efb M=1 google.golang.org/protobuf/internal/impl.mergeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:188:0 s=0
+   113: 0x331007 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:79:0 s=0
+   114: 0x330d1f M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).merge /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:32:0 s=0
+   115: 0x27505b M=1 google.golang.org/protobuf/proto.mergeOptions.mergeMessage /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:79:0 s=0
+   116: 0x274f7b M=1 google.golang.org/protobuf/proto.Clone /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:58:0 s=0
+   117: 0x40c17 M=1 runtime.gcBgMarkWorker /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1863:0 s=0
+   118: 0x63173 M=1 runtime.goschedIfBusy /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:426:0 s=0
+   119: 0x4c6bb M=1 runtime.bgsweep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:303:0 s=0
+   120: 0x3fc03 M=1 runtime.gcMarkTermination /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1393:0 s=0
+   121: 0xcad63 M=1 context.(*cancelCtx).Done /opt/hostedtoolcache/go/1.27.2/arm64/src/context/context.go:449:0 s=0
+   122: 0x5498c7 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).persist /home/runner/work/tigerstore/tigerstore/internal/node/node.go:519:0 s=0
+   123: 0x203ee3 M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:633:0 s=0
+   124: 0x2e069b M=1 hash/crc32.update /opt/hostedtoolcache/go/1.27.2/arm64/src/hash/crc32/crc32.go:202:0 s=0
+   125: 0x532c57 M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).record /opt/hostedtoolcache/go/1.27.2/arm64/src/hash/crc32/crc32.go:220:0 s=0
+   126: 0x532a7c M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).record /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:353:0 s=0
+   127: 0x532df3 M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).Append /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:368:0 s=0
+   128: 0x5499ff M=1 github.com/djosh34/tigerstore/internal/node.(*Node).persist /home/runner/work/tigerstore/tigerstore/internal/node/node.go:532:0 s=0
+   129: 0x54f4d4 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).newStream /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:65:0 s=0
+   130: 0x54f4d0 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).newStream /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:595:0 s=0
+   131: 0x54ef73 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:542:0 s=0
+   132: 0x54e883 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).headerFragment /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:432:0 s=0
+   133: 0x3ef47 M=1 runtime.gcStart /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:851:0 s=0
+   134: 0x549f8f M=1 github.com/djosh34/tigerstore/internal/node.(*Node).sampleObservation /home/runner/work/tigerstore/tigerstore/internal/node/observation.go:99:0 s=0
+   135: 0x54a377 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Run.func2 /home/runner/work/tigerstore/tigerstore/internal/node/node.go:324:0 s=0
+   136: 0x547993 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch /home/runner/work/tigerstore/tigerstore/internal/node/node.go:193:0 s=0
+Mappings
+1: 0x0/0x0/0x0 /home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore  [FN][FL][LN][IN]

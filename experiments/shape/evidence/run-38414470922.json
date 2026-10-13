@@ -1,0 +1,15 @@
+{
+  "run_id": 38414470922,
+  "folder": "open/38414470922",
+  "role": "superseded-arrival-bug",
+  "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+  "compression": "zstd --long=27",
+  "combined_sha256": "01859dbc795b809a6aa50d81f0391a4292f8b27f72344fa91c148b11206d4850",
+  "parts": [
+    {
+      "file": "run-38414470922.tar.zst",
+      "sha256": "01859dbc795b809a6aa50d81f0391a4292f8b27f72344fa91c148b11206d4850",
+      "bytes": 4244476
+    }
+  ]
+}

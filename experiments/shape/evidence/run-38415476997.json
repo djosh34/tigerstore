@@ -1,0 +1,15 @@
+{
+  "run_id": 38415476997,
+  "folder": "range4096-retry",
+  "role": "setup-retry",
+  "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+  "compression": "zstd --long=27",
+  "combined_sha256": "569b5d08a667eaeabe478b1ce16c68699d1d80bec1959b9b43e9476099b22438",
+  "parts": [
+    {
+      "file": "run-38415476997.tar.zst",
+      "sha256": "569b5d08a667eaeabe478b1ce16c68699d1d80bec1959b9b43e9476099b22438",
+      "bytes": 361407
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "run_id": 38424937611,
+  "folder": "observation-controls/38424937611",
+  "role": "observation-control",
+  "commit": "a0d88e2e69593332ee64ac10f3d553dccdcdec4e",
+  "compression": "zstd --long=27",
+  "combined_sha256": "195a16bbdd761a87387882ddc18f47ecbd190845bf40a8673ac59c10df2d0923",
+  "parts": [
+    {
+      "file": "run-38424937611.tar.zst",
+      "sha256": "195a16bbdd761a87387882ddc18f47ecbd190845bf40a8673ac59c10df2d0923",
+      "bytes": 1911550
+    }
+  ]
+}

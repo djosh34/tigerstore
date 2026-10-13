@@ -1,0 +1,15 @@
+{
+  "run_id": 38421653015,
+  "folder": "inflight",
+  "role": "closed-control",
+  "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+  "compression": "zstd --long=27",
+  "combined_sha256": "bd46a84a6dce40a7a9552668107c1cea28da4d8931bf9b6d39c23bc8a4a0e5da",
+  "parts": [
+    {
+      "file": "run-38421653015.tar.zst",
+      "sha256": "bd46a84a6dce40a7a9552668107c1cea28da4d8931bf9b6d39c23bc8a4a0e5da",
+      "bytes": 856197
+    }
+  ]
+}

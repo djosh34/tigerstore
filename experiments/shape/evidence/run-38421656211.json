@@ -1,0 +1,15 @@
+{
+  "run_id": 38421656211,
+  "folder": "cap-open",
+  "role": "superseded-arrival-bug",
+  "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+  "compression": "zstd --long=27",
+  "combined_sha256": "7993b9fc08e9e5ccfb455eddbef4d0af515c51f69a2199f093e18b3fa2f465f0",
+  "parts": [
+    {
+      "file": "run-38421656211.tar.zst",
+      "sha256": "7993b9fc08e9e5ccfb455eddbef4d0af515c51f69a2199f093e18b3fa2f465f0",
+      "bytes": 1905122
+    }
+  ]
+}

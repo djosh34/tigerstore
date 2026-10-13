@@ -1,0 +1,15 @@
+{
+  "run_id": 38415950650,
+  "folder": "trace",
+  "role": "profile",
+  "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+  "compression": "zstd --long=27",
+  "combined_sha256": "3165a80be5add7569d95c622d9b22301a7341e5abe799bb00c4f5adae8c23fab",
+  "parts": [
+    {
+      "file": "run-38415950650.tar.zst",
+      "sha256": "3165a80be5add7569d95c622d9b22301a7341e5abe799bb00c4f5adae8c23fab",
+      "bytes": 18333427
+    }
+  ]
+}

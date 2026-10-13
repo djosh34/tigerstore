@@ -1,5 +1,7 @@
 # Source audit of non-CPU throughput limits
 
+This is the initial source-only audit. Later measurements and generator corrections are in [REPORT.md](REPORT.md). The LIST population arithmetic below uses 1024-byte values.
+
 ## Scope and evidence
 
 Audited tigerstore main at `e5c3327e3800edf64f86ed8c1971ba7ebc1e8342`, on branch `exp/pre-50-shape-audit`. All tigerstore paths and line numbers below refer to that immutable commit. This is source reasoning, not a benchmark. No Go command, server, test, benchmark or Actions job ran for this audit. No source code changed.
@@ -176,7 +178,7 @@ For a read-only steady state, ordinary point Range has no per-read WAL sync to a
 
 For exactly 1000 returned keys with 1 KiB values, value bytes alone are 1,024,000 per response. KeyValue metadata, 45-byte keys, nested fields and the response envelope make about 1.04 MiB a useful small-revision example, not an exact response size. At 10 KiB the corresponding response is about 9.83 MiB. The writer must marshal the whole unary message before sending its fragments.
 
-If every outstanding LIST reaches response preparation before clients drain it, value bytes alone are about 244 MiB at C=256, 977 MiB at C=1024 and 3.81 GiB at C=4096 for 1 KiB values. At 10 KiB multiply those figures by ten. This excludes log retention, response descriptors, encoded copies, TLS and client buffers. Do not launch a high-concurrency LIST pilot without an aggregate byte and memory budget.
+If every outstanding LIST reaches response preparation before clients drain it, value bytes alone are 250 MiB at C=256, 1000 MiB at C=1024 and 3.90625 GiB at C=4096 for 1 KiB values. At 10 KiB multiply those figures by ten. This excludes log retention, response descriptors, encoded copies, TLS and client buffers. Do not launch a high-concurrency LIST pilot without an aggregate byte and memory budget.
 
 For a client connection, sustained response delivery needs both enough network service bandwidth `B` and enough effective connection credit `W` over credit-return lifetime `Rc`. A conditional budget for `q` DATA bytes per result is `lambda_conn <= min(B / q, W / (q * Rc))`. Stream credit can add another condition, but client implementations can enlarge it while reading a large message. Credit replenishment batching and TCP buffers also matter. These formulas require actual effective credit and lifetime, not just the initial advertised window.
 

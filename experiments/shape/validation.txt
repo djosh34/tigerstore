@@ -1,0 +1,45 @@
+Final checks, 2026-10-13. Correctness tests and offline analysis only.
+No local performance measurement and no additional runner dispatch.
+Code parent: 223f8f6aad7923ff186ac77a2c9fc29b9f140c86.
+
+python3 -m unittest discover -s experiments/shape -p 'test_*.py'
+Ran 9 tests. OK.
+
+GOFLAGS=-p=2 GOMEMLIMIT=2GiB go test -short -parallel 2 \
+  ./cmd/loadgen ./internal/core ./internal/node ./internal/osfs ./cmd/tigerstore
+All five packages passed. The loadgen result was cached from the prior
+unchanged-source correctness run; the other four executed again.
+
+bash -n experiments/shape/*.sh, each file separately, and bench/cluster.sh
+python3 -m py_compile experiments/shape/*.py
+Both checks passed. Relative Markdown links under experiments/shape resolve.
+Git whitespace checking excludes only byte-preserved raw pprof text through
+its local .gitattributes; those recorded outputs contain original trailing spaces.
+
+python3 experiments/shape/extract-evidence.py /tmp/pre50-evidence-verify
+All 67 per-run compressed archive hashes, decoded streams and extractions passed.
+
+python3 experiments/shape/verify-extraction.py ../results /tmp/pre50-evidence-verify
+35,213 files, 24,838,735,005 uncompressed file bytes, all matching the original
+runner downloads. The content digest and timestamp are in evidence/verification.json.
+
+python3 experiments/shape/expected-plans.py /tmp/pre50-evidence-verify
+python3 experiments/shape/analyze-campaign.py /tmp/pre50-evidence-verify
+python3 experiments/shape/build-report-data.py /tmp/pre50-evidence-verify
+All seven report-data files matched SHA-256 sums generated from the original
+input folders: the per-window CSV and closed/open/matched JSON and Markdown.
+Expected missing/invalid records were retained rather than treated as successes.
+
+python3 experiments/shape/open-calculations.py \
+  --results /tmp/pre50-evidence-verify \
+  --campaign experiments/shape/campaign.json \
+  --output /tmp/pre50-open-reproduced
+planned=830 valid=823 missing=0 cells=166
+This independent open audit excludes the separately reported cap-open control.
+
+Read-only final checks also compared the 1494 planned CSV keys with the manifest,
+1469 actual raw load records with CSV values, all closed/open/matched cell
+aggregates and invalid-cell suppression, source pins, generator semantics,
+profile/trace denominators, CPU clocks, fence scope and the proposed issue comment.
+Corrections from those checks are included in the report. These checks do not
+constitute a new crash/linearizability proof or a long-duration SLO test.

@@ -1,0 +1,38 @@
+PeriodType: trace count
+Period: 1
+Samples:
+contentions/count delay/nanoseconds
+          7    1023040: 1 2 3 4 
+       2530 3664268032: 1 2 3 5 6 7 8 9 10 11 12 13 14 
+      40507 30100296576: 1 2 3 5 6 7 8 9 10 15 16 17 18 19 20 21 
+         18 1796987968: 22 23 24 25 26 27 
+Locations
+     1: 0xeecfc M=1 internal/poll.(*FD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:170:0 s=0
+     2: 0x19e5b7 M=1 net.(*netFD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:68:0 s=0
+     3: 0x1ab9e3 M=1 net.(*conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:196:0 s=0
+     4: 0x413db7 M=1 net/http.(*connReader).backgroundRead /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:746:0 s=0
+     5: 0x2064db M=1 crypto/tls.(*Conn).readFromUntil /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:820:0 s=0
+     6: 0x203e4f M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:626:0 s=0
+     7: 0x20962f M=1 crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:588:0 s=0
+     8: 0x209630 M=1 crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1392:0 s=0
+     9: 0x2e2ce7 M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:245:0 s=0
+    10: 0xd107f M=1 io.ReadAtLeast /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:335:0 s=0
+    11: 0x543edb M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=0
+    12: 0x543edc M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:230:0 s=0
+    13: 0x545373 M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1 /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:203:0 s=0
+    14: 0xad5e7 M=1 sync.(*WaitGroup).Go.func1 /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/waitgroup.go:258:0 s=0
+    15: 0x4315c7 M=1 golang.org/x/net/http2.readFrameHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=0
+    16: 0x43159c M=1 golang.org/x/net/http2.readFrameHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:250:0 s=0
+    17: 0x431b9b M=1 golang.org/x/net/http2.(*Framer).ReadFrameHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:513:0 s=0
+    18: 0x54db8b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:263:0 s=0
+    19: 0x54d24f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).serve /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:144:0 s=0
+    20: 0x552403 M=1 github.com/djosh34/tigerstore/internal/server.(*Server).serveConn /home/runner/work/tigerstore/tigerstore/internal/server/server.go:151:0 s=0
+    21: 0x55685f M=1 github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1 /home/runner/work/tigerstore/tigerstore/internal/server/server.go:115:0 s=0
+    22: 0xf1930 M=1 internal/poll.(*FD).Accept /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:618:0 s=0
+    23: 0x19fbb7 M=1 net.(*netFD).accept /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_unix.go:149:0 s=0
+    24: 0x1b3bd3 M=1 net.(*TCPListener).accept /opt/hostedtoolcache/go/1.27.2/arm64/src/net/tcpsock_posix.go:159:0 s=0
+    25: 0x1b2ffb M=1 net.(*TCPListener).Accept /opt/hostedtoolcache/go/1.27.2/arm64/src/net/tcpsock.go:387:0 s=0
+    26: 0x41dd47 M=1 net/http.(*Server).Serve /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:3574:0 s=0
+    27: 0x57099b M=1 main.serveShapeDebug.func1 /home/runner/work/tigerstore/tigerstore/cmd/tigerstore/observation.go:74:0 s=0
+Mappings
+1: 0x0/0x0/0x0 /home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore  [FN][FL][LN][IN]

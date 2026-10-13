@@ -1,0 +1,15 @@
+{
+  "run_id": 38415480337,
+  "folder": "client-controls",
+  "role": "closed-control",
+  "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+  "compression": "zstd --long=27",
+  "combined_sha256": "b4a8db50ca48df1bd7be76ea9e5087b77a9492cdeff1f785c486b7a06883248e",
+  "parts": [
+    {
+      "file": "run-38415480337.tar.zst",
+      "sha256": "b4a8db50ca48df1bd7be76ea9e5087b77a9492cdeff1f785c486b7a06883248e",
+      "bytes": 1646265
+    }
+  ]
+}

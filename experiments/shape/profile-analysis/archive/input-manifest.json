@@ -1,0 +1,801 @@
+{
+  "analysis_script_sha256": "4fd3db4facfa5db58daf40e834c0f3bd481478643a2bc1aa672bb1c7934a959d",
+  "commands": [
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n0-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n1-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n2-cpu.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.syscall.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.sched.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.sync.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.net.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "trace",
+      "-d=parsed",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.syscall.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.sched.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.sync.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.net.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "trace",
+      "-d=parsed",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.syscall.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.sched.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.sync.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "pprof",
+      "-raw",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/binaries/tigerstore",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.net.pb.gz"
+    ],
+    [
+      "go",
+      "tool",
+      "trace",
+      "-d=parsed",
+      "/home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace"
+    ]
+  ],
+  "go_environment": {
+    "GOFLAGS": "-p=2",
+    "GOMEMLIMIT": "2GiB"
+  },
+  "go_version": "go version go1.27.2 linux/arm64",
+  "inputs": {
+    "cpu/shape-list-1k-balanced-c64/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/after.json": {
+      "bytes": 15613,
+      "sha256": "73c4c514b4f9c7e48914d72b940bb57024d6f5c120b2c74d27f0bb1f1c135cc7"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/audit.json": {
+      "bytes": 129,
+      "sha256": "c11d6be01f0f28bf26b2f92b3322a2e16e785ebef864e9741f67ed59bdfb0769"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/before.json": {
+      "bytes": 15385,
+      "sha256": "2023aca80bb070efd2fd444cc16539b92634c28f65c9691acd2a48fc43450830"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/load.json": {
+      "bytes": 9979,
+      "sha256": "93c8f773e895801f8afb76499ff622db0aedf578e5d2d270aca2da1316f8e5aa"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 15886,
+      "sha256": "86ece9ee2e21afdcc140f7101f6bc48d52db205bd99ea15e97ee25bec0f085c6"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 14872,
+      "sha256": "f8d1095bde3bba439172dbf00fbe6407fe220bd5d73c7e6cba1f5e85e47c577e"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 16033,
+      "sha256": "f264823170bf4cbea8f3a8a8f9daf721d464f820d0b87509a38ae70b42fb9886"
+    },
+    "cpu/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/samples.jsonl": {
+      "bytes": 268521,
+      "sha256": "b2ea6ee5c24d55e00c5f61d0f77fec4eeb4516a61cebcafef56c64798d6ac0b1"
+    },
+    "cpu/shape-list-1k-leader-c64/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/after.json": {
+      "bytes": 15367,
+      "sha256": "07c98d5ec3f192c00107933b731bb9ddab97264b23037048ecb53344f92add4f"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/audit.json": {
+      "bytes": 129,
+      "sha256": "c11d6be01f0f28bf26b2f92b3322a2e16e785ebef864e9741f67ed59bdfb0769"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/before.json": {
+      "bytes": 15213,
+      "sha256": "2c54c80d7d6c710780ff486302763dd38e81a36bf1db51da54868a28490f18dd"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/load.json": {
+      "bytes": 9648,
+      "sha256": "658f4f5f93b13568f56abf4c7335bb3ef61661f3422c8efe010089f6a3850f6b"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 19368,
+      "sha256": "38206670bcd6f09ca70ed5695adbf3219bc0577426a14a9c06ab6e5a7b6989d0"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 1517,
+      "sha256": "6ee63e8c7cf5f618ae18e0602200a9443dccfe726b39696005bc75d2f0e814ba"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 2740,
+      "sha256": "0e6539a04d906e63707f2e4217496e337d9e26ae9c6785fba526a556f678d786"
+    },
+    "cpu/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/samples.jsonl": {
+      "bytes": 262897,
+      "sha256": "b528ec4408bcd3e043a3043c6d8ec00e8be12e6cfec1c042911606b9a652d6d3"
+    },
+    "cpu/shape-put-10k-leader-c256/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 15695,
+      "sha256": "97cf33682d528d9d718f673ea0f14ed915b66d489630a4d4d17479b0598f06a1"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 137,
+      "sha256": "e35bb1eec0e09caaa4966fbc61297eae00e7458643ab0a775fb2b37da416caac"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 15423,
+      "sha256": "9d681aa4521d5b8c1ef24f3eeb2bea306608f44b6d4ee3c52dbfbb4b02b0e482"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 9791,
+      "sha256": "66324e2b81267e3c20d34925479ae58fa1704fd2ead506a12b8baf6a97647542"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 11643,
+      "sha256": "b902f72e79ec16cf394dc3a44cec3b4f158f6752f979888f7b160ca2ae56e530"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 6849,
+      "sha256": "5c58554897efc4aa30f765be1e6c7361bc81f2a9e530d3c0e799312eaa974056"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 6097,
+      "sha256": "8e2b6e5aed038abf6d388825e3eb1aa2ff303e07e2df8702236845b2360a4ceb"
+    },
+    "cpu/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/samples.jsonl": {
+      "bytes": 267664,
+      "sha256": "e1786ad01d74a28e0dca8dd14ab34a51603e4a828966e9b9aea22c1fd6fb7082"
+    },
+    "cpu/shape-put-1k-balanced-c256/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/after.json": {
+      "bytes": 16132,
+      "sha256": "7f2c9f4315da5542fccd908555ced0f1428c7c93ee65d9b2b1f321421f9db47e"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "f6af1a862359734ce555e403b86bc913af6f15974b4be8839baec24fe01a4e77"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/before.json": {
+      "bytes": 15867,
+      "sha256": "78b0e987b0cff403ca1ce98d7ef73dbd747110962647dac84a94ba786988156f"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/load.json": {
+      "bytes": 10186,
+      "sha256": "455a9a2aa9e54c6bd8e4c80cda79e877e1095035551bd3c8d5f6890be6a1fc70"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 23225,
+      "sha256": "edf4ac196ba9a16954149a5140fd101211275fd4689803db2ed1903581f6958d"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 20527,
+      "sha256": "392d09dbd5c241e42243c29ac2386a9908bf35c6265825eb81ab13b633cc172d"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 19269,
+      "sha256": "1c980567d7d591cbc2ee224539b5ea3d8db99f07d9b6e18ef276cf6ac403bfee"
+    },
+    "cpu/shape-put-1k-balanced-c256/put-1k-balanced-c256/tigerstore-1/samples.jsonl": {
+      "bytes": 270791,
+      "sha256": "fdc3e72030d700934757fd0cb0e060593bb7d1fbd036912d8cef6b8afb8fad9f"
+    },
+    "cpu/shape-put-1k-balanced-c4096/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/after.json": {
+      "bytes": 16070,
+      "sha256": "91608cc99a0e2711484c6aa83965a236b4a9e5e66b7bede292e83006b9a644e2"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "f33e2f9c1f038cbf78cb16061737a774cda808f4ebb1b307821d3c959c5795db"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/before.json": {
+      "bytes": 15829,
+      "sha256": "e01892a65cefd5691261a10b8e6bc7a77cb168698608a84a4bd297ea1bb6b608"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/load.json": {
+      "bytes": 10299,
+      "sha256": "bee873eca4166bf7bec3880a41241bf9f47d275a24da1f79b48370a419ea3295"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 20593,
+      "sha256": "65333b8882e6ea034133e5619369dc6638d8eb667969f3f5d8783b14d05035e9"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 18542,
+      "sha256": "3f65d78d9e75f7c1d62af4af84adf369f2868cf79fd613061448fb79de2f0bdc"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 19523,
+      "sha256": "81bcc6c31f330bb7b092c8b134e38faead1e02c9616166c6e7926c13d6f5a1c7"
+    },
+    "cpu/shape-put-1k-balanced-c4096/put-1k-balanced-c4096/tigerstore-1/samples.jsonl": {
+      "bytes": 270144,
+      "sha256": "6f30fc8531ebb3b3d3346088324368c645e68691b0cc3dc5ebd04db57183beaa"
+    },
+    "cpu/shape-put-1k-leader-c256/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 15853,
+      "sha256": "8c35f6d1cded997f489235c58f9acab565185448ae8015d4bcb0335a855862ed"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "9c9b387065363ff8a4d27d67f2d386ec7f310862c3042bfe825b51b67c960eee"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 15484,
+      "sha256": "c607278c30410ffc1edf702fe86f396f8a3960f10c7e4187081ab6abab2f7204"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 9878,
+      "sha256": "40fa25eac2a74f3872e02d841d17c53d8add9fa37fe506fce8d47ac430a2aa7e"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 20129,
+      "sha256": "b3a05ef1b8c021a152df339d04735ccb85002cb957068936b03ea3848e3248d4"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 10213,
+      "sha256": "5af6949643fd9349546990cb7a60cc758f1573fef9b30b1796fdca1033150ede"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 9815,
+      "sha256": "ba8d4dbab4a2ede7b8824e5b90347e22a0a86735c65ac5e591ef88e479323bae"
+    },
+    "cpu/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/samples.jsonl": {
+      "bytes": 269943,
+      "sha256": "ad0932463b47d0e3849c2dc0d37f6d7afa462cb39fc9f12ed884e3cc569c6beb"
+    },
+    "cpu/shape-put-1k-leader-c4096/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/after.json": {
+      "bytes": 15723,
+      "sha256": "9763cd0f6f5c9f9753dd8c4360195d823002e6c99a6e52f93f9f097ec2a61b3e"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "d65828c9f6850caf4dc02b8e0baebd3c00c47a1e8151fc9cb4060bb1ac9d6652"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/before.json": {
+      "bytes": 15441,
+      "sha256": "889d2f69356a0731009bbfce34b860963ed2d254f029aa55ce5bfe2adb338478"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/load.json": {
+      "bytes": 9945,
+      "sha256": "02c09ecbdcf0de1a0248fe987bf52b16b212a37cb62b017a67b2b23a757aba9c"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 19627,
+      "sha256": "ee90f123c733ac830585ece1afa39527bc5af3d3aa407bde5948ad1453ae791a"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 7900,
+      "sha256": "3752a99230fd00d09d37481df09e0c1025eda69aa972ad7f6f1c678fa3b5725b"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 8158,
+      "sha256": "05b8ad18e1cdb9da39e213562050ed91d6432c6ca5b0351cdf1e489ac50a648c"
+    },
+    "cpu/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/samples.jsonl": {
+      "bytes": 267795,
+      "sha256": "1798787c42b6b5ce54ded84db50d8fc703f332bbf1542a779dfd4de5ebe6c337"
+    },
+    "cpu/shape-range-1k-balanced-c1024/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/after.json": {
+      "bytes": 15749,
+      "sha256": "49c1470b635d6b66debe6264877e8ea5ddc66e610b12bd5618cdad21abc9b618"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/audit.json": {
+      "bytes": 129,
+      "sha256": "c11d6be01f0f28bf26b2f92b3322a2e16e785ebef864e9741f67ed59bdfb0769"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/before.json": {
+      "bytes": 15514,
+      "sha256": "c26738e7c5ee97855c58a314301955e813d5979ce2ff7d84eafc7c26d9c2740a"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/load.json": {
+      "bytes": 10282,
+      "sha256": "080e9ab11a840bc619f5296b6fc336fb1314c7cfdee316d23c76b8d6a34c2f3d"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 28057,
+      "sha256": "940d18acd5d3eb69b9c3b825600879df9af09761f4c800ea87c9230f8fe28f58"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 25033,
+      "sha256": "6b17c1f644e33f7278869b16ec83062aaf8784fb1dbf35f196fcefa60c03e98c"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 27070,
+      "sha256": "79dedaf90e7dd11e33ee731478a2aae398c4669b9bae7405e5152c5681eb270d"
+    },
+    "cpu/shape-range-1k-balanced-c1024/range-1k-balanced-c1024/tigerstore-1/samples.jsonl": {
+      "bytes": 259498,
+      "sha256": "8c1013eccee4231556430867084602b2090aea1462fe54435f7c49df45114301"
+    },
+    "cpu/shape-range-1k-leader-c1024/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/after.json": {
+      "bytes": 15361,
+      "sha256": "226c40be43be7aeaf2c9fd5763d9498cbad207f01b7f480c8b8d6a3c9b132b5d"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/audit.json": {
+      "bytes": 129,
+      "sha256": "c11d6be01f0f28bf26b2f92b3322a2e16e785ebef864e9741f67ed59bdfb0769"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/before.json": {
+      "bytes": 15242,
+      "sha256": "fd9c33d5e699ae5f7426805fc0a6f4735ec1315b1d01ef8905a88b793fdbfbcd"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/load.json": {
+      "bytes": 9933,
+      "sha256": "c608330b4892b1d2a1bef343b4f1ec71c53f99bce94d7bb991f06fb689ddc09e"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n0-cpu.pb.gz": {
+      "bytes": 26079,
+      "sha256": "a3b032a52b8f3858ac27491192477242e604696cd404a86eb9c40f6c9b3bfe11"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n1-cpu.pb.gz": {
+      "bytes": 3590,
+      "sha256": "f9c8dd451f8303a52e7b5b6adbc918a7a69ce27786872902a958eb9e528b6abb"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/n2-cpu.pb.gz": {
+      "bytes": 5264,
+      "sha256": "e6a8dc0d8929797f09dce6de6e749f071a86294b1d410eb9d42665852f019ab2"
+    },
+    "cpu/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/samples.jsonl": {
+      "bytes": 258735,
+      "sha256": "11ade73199d0fc047a74be4639f7e2ea3082c7157fc7e6ef6a2c4140bd2dbe8c"
+    },
+    "trace/shape-put-10k-leader-c256/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 15599,
+      "sha256": "b97b30b3ac54409304870a9019612a854dff26691d0e48fec6360546734303af"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 137,
+      "sha256": "472d0567a9b5eadcb8ddac49b213458276cb4ca87ebc9ac708776e68fbd26939"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 15490,
+      "sha256": "84ee6ca87bf23522f937e2fc53aa547da0ea74414413ff1d1ed69a425ff275a3"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 8331,
+      "sha256": "6f8bd7c5977fb347463c182253e633c5c19ae8dd557a26db02a74a838920ee7e"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace": {
+      "bytes": 698991,
+      "sha256": "9772badb784854b63062e4c427e39a01634a18078e6aece318f2b3da5db2d3dd"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.net.pb.gz": {
+      "bytes": 1290,
+      "sha256": "e20c4ce2432506684a859c7c3de30915ebca1087f99747f6b3382349b8d4173f"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.sched.pb.gz": {
+      "bytes": 3371,
+      "sha256": "6ff059ecbf74ef18e5f864b083c774dfc5e5aca12974f0d5e9ccfb11e77ccd6b"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.sync.pb.gz": {
+      "bytes": 1770,
+      "sha256": "8fb3a4bb6f3a988cce8bc5ada06241f199e53bb9443d8fa70c295653693c830b"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/n0-run.trace.syscall.pb.gz": {
+      "bytes": 4453,
+      "sha256": "f426dfa48cf74a38726412163f55cb306c7fd8a484a0abe7254ba0d522fd0271"
+    },
+    "trace/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/samples.jsonl": {
+      "bytes": 208233,
+      "sha256": "e9227541a28f4e844c348de7d3fa4f5db8f8b54b9a9e80dd13e138ea2a37c12f"
+    },
+    "trace/shape-put-1k-leader-c256/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 15720,
+      "sha256": "b0ca40c69774ae83032a4df3425d0cddb8cd905e24614323cbdb052cf629b83b"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "438b2f6b4ebd7ccaf9109f5c0f573b44fdac3a118fca1eb5d0db5b591135b70c"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 15514,
+      "sha256": "6758f380d2b1e91c777280c77f4e6ad32855a47d608ce9c5aafd62bf25211f9a"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 8375,
+      "sha256": "6d71182934f200f8e9428a8662eb265f047c93a223d7e53840098c70e6883062"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace": {
+      "bytes": 3271620,
+      "sha256": "10ac7b7ea2ff79bab1ed2afdceb414b2f561ea7737272116aa5ab51c74ca9733"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.net.pb.gz": {
+      "bytes": 1290,
+      "sha256": "35417c5e455bc46a47053f25c64b624d49b78fbdae6d2d3217e0030c060d63b8"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.sched.pb.gz": {
+      "bytes": 4669,
+      "sha256": "816aa20e98ec34e4100d5a4c399820e1a2f1a3e44471c7a1495c3650d0548f48"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.sync.pb.gz": {
+      "bytes": 1876,
+      "sha256": "3ab8a91dd07183028b1c93ac4c912f300a6141e18b7776f04c5ef5441530dfd8"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/n0-run.trace.syscall.pb.gz": {
+      "bytes": 4413,
+      "sha256": "1fee761d547421c8fae4cdc17c412431ec011c93a1ac9921da30175e24edbaec"
+    },
+    "trace/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/samples.jsonl": {
+      "bytes": 208357,
+      "sha256": "4fc3d03578148e5c1f45b5dde51bdc9f998aeab488e188134258035d244b6738"
+    },
+    "trace/shape-put-1k-leader-c4096/binaries/tigerstore": {
+      "bytes": 21137878,
+      "sha256": "eec2f3e8fda3b27dc1ded4d468c6bf141dda7a6f6b2944b7d635451196089dcf"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/after.json": {
+      "bytes": 15610,
+      "sha256": "555e6a1f1b2190c8b927bdbd9dfe498d8357bfb7cad5b441661da26766428f37"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/audit.json": {
+      "bytes": 139,
+      "sha256": "86e5dc85cf5bf13a135af8dbc4f7d2517b4d90913fd0650064a76223185d323a"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/before.json": {
+      "bytes": 15524,
+      "sha256": "c1cb956d70fa62d003363e987ead7f0033684d5e6b480dc1114eb47096d609c6"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/load.json": {
+      "bytes": 8445,
+      "sha256": "7c97666770491bb372da2a6288c37b26dab5ef1fff42af6f8bdb95bd606cfcff"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace": {
+      "bytes": 1147785,
+      "sha256": "ad6919950c206476264d59c07f5be2920f5c3f10c30acee7858129880e297ca8"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.net.pb.gz": {
+      "bytes": 1522,
+      "sha256": "7dda64ec44d9ebbd1161c9cf0e370198c817159ba45b19db2de7781c89d434a2"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.sched.pb.gz": {
+      "bytes": 6550,
+      "sha256": "b26c85502e109fd2a2329defa92645909c45e67b201d3068ea6e459100cf547a"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.sync.pb.gz": {
+      "bytes": 1801,
+      "sha256": "b36f64015d0b9825a69a8419400c55c1ae910302604a422213dc91917df5d0c1"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/n0-run.trace.syscall.pb.gz": {
+      "bytes": 4477,
+      "sha256": "5453301cef703242aa3f5d1ca1eca6d04f4b421966f26da09c13edffe4d51b54"
+    },
+    "trace/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/samples.jsonl": {
+      "bytes": 202268,
+      "sha256": "4a5d5e08d00a9907c539277d95e551749eedad774ef8be05605aa29bf1ed64cc"
+    }
+  }
+}

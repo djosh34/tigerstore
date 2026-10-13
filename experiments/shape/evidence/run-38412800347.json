@@ -1,0 +1,15 @@
+{
+  "run_id": 38412800347,
+  "folder": "closed-complete",
+  "role": "primary-closed",
+  "commit": "7043fcd6a83a76b3a22753d54c8aca2739286e50",
+  "compression": "zstd --long=27",
+  "combined_sha256": "97bb107dd996c41bb18c0ed9b37bbc41a1ab82f0a9d457a06b61a6c44ea01ec1",
+  "parts": [
+    {
+      "file": "run-38412800347.tar.zst",
+      "sha256": "97bb107dd996c41bb18c0ed9b37bbc41a1ab82f0a9d457a06b61a6c44ea01ec1",
+      "bytes": 8656705
+    }
+  ]
+}

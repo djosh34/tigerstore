@@ -1,0 +1,2 @@
+# Preserve exact go tool pprof output, including its trailing spaces.
+**/*.txt -whitespace

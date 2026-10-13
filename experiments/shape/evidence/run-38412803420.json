@@ -1,0 +1,15 @@
+{
+  "run_id": 38412803420,
+  "folder": "lists",
+  "role": "primary-list",
+  "commit": "7043fcd6a83a76b3a22753d54c8aca2739286e50",
+  "compression": "zstd --long=27",
+  "combined_sha256": "26b983f4b97c9dbc3c6453a29a3750850845aaa13b655cb9dcc25260d92070fb",
+  "parts": [
+    {
+      "file": "run-38412803420.tar.zst",
+      "sha256": "26b983f4b97c9dbc3c6453a29a3750850845aaa13b655cb9dcc25260d92070fb",
+      "bytes": 3544592
+    }
+  ]
+}

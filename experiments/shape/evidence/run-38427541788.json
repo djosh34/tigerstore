@@ -1,0 +1,15 @@
+{
+  "run_id": 38427541788,
+  "folder": "open-fixed/38427541788",
+  "role": "primary-open",
+  "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+  "compression": "zstd --long=27",
+  "combined_sha256": "9b4d26d7a80a95890dd95e0574fca03c1e1387a7f7d7b52b3b83a18e5ebfbdcc",
+  "parts": [
+    {
+      "file": "run-38427541788.tar.zst",
+      "sha256": "9b4d26d7a80a95890dd95e0574fca03c1e1387a7f7d7b52b3b83a18e5ebfbdcc",
+      "bytes": 4567914
+    }
+  ]
+}

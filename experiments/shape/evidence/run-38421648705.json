@@ -1,0 +1,15 @@
+{
+  "run_id": 38421648705,
+  "folder": "static-caps",
+  "role": "closed-control",
+  "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+  "compression": "zstd --long=27",
+  "combined_sha256": "f924c0b6dfe10838d128483e29477dd9bc58824c2466ac25207a87cc6b40f92d",
+  "parts": [
+    {
+      "file": "run-38421648705.tar.zst",
+      "sha256": "f924c0b6dfe10838d128483e29477dd9bc58824c2466ac25207a87cc6b40f92d",
+      "bytes": 1090323
+    }
+  ]
+}

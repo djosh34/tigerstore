@@ -1,0 +1,15 @@
+{
+  "run_id": 38427624163,
+  "folder": "cap-open-fixed",
+  "role": "open-control",
+  "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+  "compression": "zstd --long=27",
+  "combined_sha256": "3983b46df2ff827a81cc56603b1a8694bf4996030b0663f889a24d805d5df0c8",
+  "parts": [
+    {
+      "file": "run-38427624163.tar.zst",
+      "sha256": "3983b46df2ff827a81cc56603b1a8694bf4996030b0663f889a24d805d5df0c8",
+      "bytes": 1913376
+    }
+  ]
+}

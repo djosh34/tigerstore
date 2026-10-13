@@ -1,0 +1,871 @@
+PeriodType: cpu nanoseconds
+Period: 10000000
+Time: 2026-10-13 16:45:06.161506434 +0200 CEST
+Duration: 6.00
+Samples:
+samples/count cpu/nanoseconds
+          2   20000000: 1 2 3 4 5 6 7 8 9 10 11 12 
+          1   10000000: 13 14 15 16 17 18 19 20 
+          1   10000000: 21 2 3 4 5 6 7 8 22 23 11 12 
+          1   10000000: 24 25 26 27 28 29 30 31 32 33 34 
+          1   10000000: 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 30 31 32 33 34 
+         12  120000000: 57 58 59 60 61 62 63 64 65 66 67 15 68 69 70 18 19 20 
+          1   10000000: 71 72 73 31 32 33 34 
+          8   80000000: 57 58 59 74 75 76 77 78 79 8 22 23 11 12 
+          1   10000000: 80 81 43 44 45 46 82 83 84 31 32 33 34 
+          1   10000000: 85 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 87 88 89 90 91 92 93 11 12 
+          1   10000000: 94 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+         12  120000000: 101 102 103 104 105 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 110 111 89 112 89 90 91 92 93 11 12 
+          1   10000000: 113 114 115 53 54 55 56 30 31 32 33 34 
+          1   10000000: 116 117 118 119 120 18 19 20 
+          5   50000000: 57 58 59 121 122 123 124 125 126 127 12 
+          1   10000000: 128 129 105 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+         25  250000000: 57 58 59 74 75 76 77 78 79 8 9 10 11 12 
+          2   20000000: 130 131 7 8 22 23 11 12 
+          1   10000000: 132 133 134 135 136 137 138 139 140 141 72 73 31 32 33 34 
+          1   10000000: 142 95 96 97 98 99 100 66 67 15 143 144 12 
+          7   70000000: 145 104 105 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 146 147 148 149 150 151 152 120 18 19 20 
+          1   10000000: 153 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 154 155 156 157 158 159 148 149 150 151 152 120 18 19 20 
+          1   10000000: 160 38 39 40 41 42 43 44 161 162 82 163 164 165 166 167 12 
+          1   10000000: 168 
+          1   10000000: 169 162 170 171 172 173 174 138 139 140 141 72 73 31 32 33 34 
+         19  190000000: 57 58 59 74 75 76 77 78 79 8 9 86 23 11 12 
+          1   10000000: 175 176 177 178 179 180 181 18 19 20 
+          1   10000000: 182 183 184 185 186 144 12 
+          1   10000000: 187 188 189 190 127 12 
+          1   10000000: 191 192 46 47 48 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          8   80000000: 57 58 59 60 61 62 63 64 65 66 67 15 143 144 12 
+          1   10000000: 193 194 195 38 39 40 41 42 43 44 161 162 196 197 198 199 152 120 18 19 20 
+          3   30000000: 57 58 59 74 75 76 77 78 79 8 9 200 167 12 
+          1   10000000: 201 114 202 140 141 72 84 31 32 33 34 
+          1   10000000: 203 2 3 4 5 6 7 8 9 10 11 12 
+          1   10000000: 204 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 205 2 3 4 5 6 7 8 9 10 11 12 
+          7   70000000: 57 58 59 74 75 206 207 208 209 126 127 12 
+          1   10000000: 210 211 54 55 56 30 31 32 33 34 
+          1   10000000: 212 213 31 32 33 34 
+          1   10000000: 214 215 216 217 30 31 32 33 34 
+          1   10000000: 218 2 3 4 5 6 7 8 9 10 11 12 
+          1   10000000: 57 58 59 60 61 62 63 219 220 221 222 223 224 225 226 
+          2   20000000: 57 227 228 229 230 231 232 
+          5   50000000: 233 133 134 135 136 137 138 139 140 234 235 217 30 31 32 33 34 
+          1   10000000: 13 131 7 8 22 23 11 12 
+          1   10000000: 233 236 48 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          2   20000000: 237 238 239 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 247 7 8 9 86 23 11 12 
+          1   10000000: 248 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          3   30000000: 249 105 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 250 2 3 4 5 6 7 8 22 23 11 12 
+          2   20000000: 251 147 148 149 150 151 152 120 18 19 20 
+          1   10000000: 252 253 254 255 256 39 257 
+          4   40000000: 258 259 260 256 39 257 
+          1   10000000: 261 262 260 256 39 257 
+          1   10000000: 263 264 82 265 266 119 120 18 19 20 
+          1   10000000: 267 268 269 60 61 62 63 64 65 66 67 15 68 69 70 18 19 20 
+          6   60000000: 270 211 54 55 56 30 31 32 33 34 
+          1   10000000: 271 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 250 2 3 4 5 6 7 8 9 86 23 11 12 
+          2   20000000: 272 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 273 274 275 165 166 167 12 
+          1   10000000: 276 162 82 163 164 165 166 167 12 
+          2   20000000: 277 147 148 149 150 151 152 120 18 19 20 
+          1   10000000: 278 279 280 281 282 283 140 141 72 73 31 32 33 34 
+          1   10000000: 284 165 166 167 12 
+          1   10000000: 285 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 286 114 287 72 73 31 32 33 34 
+          1   10000000: 57 58 59 60 61 62 63 64 65 66 288 15 289 144 12 
+          2   20000000: 132 133 134 135 136 137 138 139 140 234 235 217 30 31 32 33 34 
+          1   10000000: 290 291 292 293 84 31 32 33 34 
+          1   10000000: 294 2 3 4 5 6 7 8 9 10 11 12 
+          1   10000000: 295 296 297 298 47 299 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 300 238 301 134 135 136 137 138 139 140 141 72 73 31 32 33 34 
+          2   20000000: 302 114 115 53 54 55 56 30 31 32 33 34 
+          1   10000000: 303 199 152 120 18 19 20 
+          1   10000000: 304 305 306 307 38 39 40 41 42 43 44 308 264 82 265 266 119 120 18 19 20 
+          1   10000000: 309 2 3 4 5 6 7 8 9 10 11 12 
+         10  100000000: 310 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 311 172 173 174 138 139 140 141 72 73 31 32 33 34 
+          1   10000000: 312 313 274 275 165 166 167 12 
+          1   10000000: 314 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 315 316 317 318 319 11 12 
+          1   10000000: 320 147 148 149 150 151 152 120 18 19 20 
+          1   10000000: 132 131 7 8 9 86 23 11 12 
+          1   10000000: 321 322 256 39 257 
+          1   10000000: 233 133 134 135 136 137 138 139 140 141 72 73 31 32 33 34 
+          1   10000000: 323 324 260 325 39 257 
+          2   20000000: 326 259 260 325 39 257 
+          1   10000000: 327 262 260 325 39 257 
+          1   10000000: 252 253 254 255 325 39 257 
+          1   10000000: 328 329 330 331 
+          1   10000000: 332 238 239 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 333 334 44 308 264 335 301 134 135 136 137 138 139 140 141 72 73 31 32 33 34 
+          1   10000000: 132 111 89 112 89 90 91 92 93 11 12 
+          1   10000000: 336 337 117 118 119 120 18 19 20 
+          1   10000000: 338 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 339 14 15 289 144 12 
+          1   10000000: 191 192 46 47 340 292 293 73 31 32 33 34 
+          1   10000000: 341 342 343 344 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 345 15 68 69 70 18 19 20 
+          1   10000000: 346 95 96 97 98 99 100 66 67 15 143 144 12 
+          3   30000000: 57 58 59 60 61 62 63 64 347 66 67 15 143 144 12 
+          1   10000000: 348 349 350 38 39 40 41 42 43 44 161 162 196 351 280 281 282 352 140 141 72 73 31 32 33 34 
+          1   10000000: 353 354 7 8 9 200 167 12 
+          1   10000000: 130 215 216 217 30 31 32 33 34 
+          1   10000000: 13 355 23 11 12 
+          1   10000000: 356 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 272 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 357 105 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 145 104 105 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 358 90 91 92 93 11 12 
+          1   10000000: 359 360 279 361 140 141 72 73 31 32 33 34 
+          1   10000000: 339 362 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 363 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 364 365 366 17 18 19 20 
+          1   10000000: 367 368 369 370 92 93 11 12 
+          1   10000000: 371 63 64 65 66 67 15 143 144 12 
+          1   10000000: 309 2 3 4 5 6 7 8 9 86 23 11 12 
+          3   30000000: 132 215 216 217 30 31 32 33 34 
+          1   10000000: 372 291 292 293 84 31 32 33 34 
+          1   10000000: 373 100 66 67 15 143 144 12 
+          1   10000000: 374 375 254 255 256 39 257 
+          1   10000000: 376 377 378 379 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 380 260 256 39 257 
+          1   10000000: 381 262 260 256 39 257 
+          1   10000000: 382 262 260 325 39 257 
+          1   10000000: 383 2 3 4 5 6 7 8 9 86 23 11 12 
+          2   20000000: 384 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 385 241 243 244 245 246 144 12 
+          1   10000000: 386 43 44 308 264 335 239 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 387 388 230 231 232 
+          1   10000000: 389 95 96 97 98 99 100 66 67 15 289 144 12 
+          1   10000000: 390 391 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 392 393 394 149 150 151 152 120 18 19 20 
+          1   10000000: 395 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 208 209 126 127 12 
+          1   10000000: 396 149 150 151 152 120 18 19 20 
+          1   10000000: 110 188 189 190 127 12 
+          1   10000000: 397 118 119 120 18 19 20 
+          1   10000000: 398 165 166 167 12 
+          1   10000000: 399 2 3 4 5 6 7 8 22 23 11 12 
+          1   10000000: 400 114 115 53 54 55 56 30 31 32 33 34 
+          1   10000000: 401 402 316 317 318 319 11 12 
+          1   10000000: 57 58 59 60 61 62 63 64 65 66 67 15 289 144 12 
+          1   10000000: 403 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 404 79 8 9 10 11 12 
+          1   10000000: 405 406 74 75 76 77 78 79 8 22 23 11 12 
+          1   10000000: 407 408 293 84 31 32 33 34 
+          1   10000000: 409 410 47 411 412 280 281 282 352 140 141 72 73 31 32 33 34 
+          1   10000000: 413 67 15 68 69 70 18 19 20 
+          1   10000000: 372 414 73 31 32 33 34 
+          1   10000000: 415 2 3 4 5 6 7 8 22 23 11 12 
+          1   10000000: 416 2 3 4 5 6 7 8 9 200 167 12 
+          1   10000000: 417 418 181 18 19 20 
+          1   10000000: 348 349 350 38 39 40 41 42 43 44 308 264 335 239 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 419 420 195 38 39 40 41 42 43 44 45 46 82 83 73 31 32 33 34 
+          1   10000000: 332 238 301 134 135 136 137 138 139 140 141 72 73 31 32 33 34 
+          1   10000000: 421 422 423 149 150 151 152 120 18 19 20 
+          1   10000000: 424 362 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 424 111 89 112 89 90 91 92 93 11 12 
+          1   10000000: 425 365 366 17 18 19 20 
+          1   10000000: 101 102 103 129 105 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 415 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 426 394 149 150 151 152 120 18 19 20 
+          1   10000000: 233 427 266 119 120 18 19 20 
+          2   20000000: 233 362 240 241 242 240 241 243 244 245 246 144 12 
+          1   10000000: 428 176 429 430 431 185 186 144 12 
+          1   10000000: 432 44 308 264 82 265 266 119 120 18 19 20 
+          2   20000000: 233 236 299 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 419 433 195 38 39 40 41 42 43 44 434 157 82 435 165 166 167 12 
+          1   10000000: 13 215 216 217 30 31 32 33 34 
+          1   10000000: 436 437 438 167 12 
+          1   10000000: 439 95 96 97 98 99 100 66 67 15 68 69 70 18 19 20 
+          1   10000000: 339 133 134 135 136 137 138 139 140 234 235 217 30 31 32 33 34 
+          1   10000000: 440 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 441 442 443 444 298 47 299 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 445 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 446 53 54 55 56 30 31 32 33 34 
+          1   10000000: 447 427 266 119 120 18 19 20 
+          1   10000000: 448 18 19 20 
+          1   10000000: 449 46 47 337 117 118 119 120 18 19 20 
+          1   10000000: 450 2 3 4 5 6 7 8 22 23 11 12 
+          1   10000000: 451 452 453 454 455 11 12 
+          1   10000000: 456 412 280 281 282 352 140 141 72 73 31 32 33 34 
+          1   10000000: 457 458 70 18 19 20 
+          1   10000000: 459 414 73 31 32 33 34 
+          1   10000000: 460 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 461 259 260 256 39 257 
+          1   10000000: 462 463 464 331 
+          1   10000000: 465 15 16 17 18 19 20 
+          1   10000000: 57 227 228 466 230 231 232 
+          1   10000000: 182 183 184 467 468 11 12 
+          1   10000000: 469 470 471 472 473 230 231 232 
+          1   10000000: 474 475 368 369 476 477 478 11 12 
+          1   10000000: 479 131 7 8 22 23 11 12 
+          1   10000000: 480 102 103 104 105 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 481 165 166 167 12 
+          1   10000000: 482 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 483 368 369 476 477 484 485 486 487 280 281 282 352 140 141 72 73 31 32 33 34 
+          1   10000000: 488 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 489 185 186 144 12 
+          1   10000000: 490 264 82 265 266 119 120 18 19 20 
+          1   10000000: 333 334 44 161 162 82 163 164 165 166 167 12 
+          1   10000000: 491 2 3 4 5 6 7 8 9 86 23 11 12 
+          1   10000000: 492 467 468 11 12 
+          1   10000000: 110 493 23 11 12 
+          1   10000000: 494 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 495 95 96 97 98 99 100 66 67 15 289 144 12 
+          1   10000000: 496 497 162 196 197 198 199 152 120 18 19 20 
+          1   10000000: 233 498 67 15 289 144 12 
+          1   10000000: 499 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 110 427 266 119 120 18 19 20 
+          1   10000000: 500 162 196 197 198 199 152 120 18 19 20 
+          1   10000000: 501 368 369 476 477 478 11 12 
+          1   10000000: 502 503 9 10 11 12 
+          1   10000000: 504 95 96 97 98 99 100 66 67 15 143 144 12 
+          1   10000000: 505 506 65 66 67 15 68 69 70 18 19 20 
+          1   10000000: 233 215 216 217 30 31 32 33 34 
+          1   10000000: 507 90 91 92 93 11 12 
+          1   10000000: 508 106 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 509 102 103 104 105 106 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 510 511 512 9 513 514 
+          1   10000000: 515 66 67 15 68 69 70 18 19 20 
+          1   10000000: 516 517 518 42 43 44 161 162 196 197 198 199 152 120 18 19 20 
+          1   10000000: 519 165 166 167 12 
+          1   10000000: 520 184 185 186 144 12 
+          1   10000000: 521 46 47 337 117 118 119 120 18 19 20 
+          1   10000000: 522 523 524 117 118 119 120 18 19 20 
+          1   10000000: 525 438 167 12 
+          1   10000000: 526 105 107 108 109 49 50 51 52 53 54 55 56 30 31 32 33 34 
+          1   10000000: 527 528 137 138 139 140 234 235 217 30 31 32 33 34 
+          1   10000000: 529 230 231 232 
+          1   10000000: 530 531 532 533 51 52 53 54 55 56 30 31 32 33 34 
+Locations
+     1: 0x580740 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:610:0 s=373
+     2: 0x57de9b M=1 crypto/internal/fips140/aes/gcm.seal /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_asm.go:90:0 s=66
+     3: 0x57d7bf M=1 crypto/internal/fips140/aes/gcm.(*GCM).sealAfterIndicator /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm.go:87:0 s=68
+     4: 0x57f26f M=1 crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Seal /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_nonces.go:281:0 s=250
+     5: 0x1fe0c7 M=1 crypto/tls.(*xorNonceAEAD).Seal /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/cipher_suites.go:489:0 s=485
+     6: 0x2035bf M=1 crypto/tls.(*halfConn).encrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:529:0 s=479
+     7: 0x2072e7 M=1 crypto/tls.(*Conn).writeRecordLocked /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1030:0 s=979
+     8: 0x20858b M=1 crypto/tls.(*Conn).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1253:0 s=1201
+     9: 0x2e4127 M=1 bufio.(*Writer).Flush /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:642:0 s=635
+    10: 0x544f2f M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:410:0 s=397
+    11: 0x544883 M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).run /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:364:0 s=349
+    12: 0xad5e7 M=1 sync.(*WaitGroup).Go.func1 /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/waitgroup.go:258:0 s=238
+    13: 0xa32c0 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:173:0 s=29
+    14: 0x2e2daf M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:258:0 s=216
+    15: 0xd107f M=1 io.ReadAtLeast /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:335:0 s=329
+    16: 0x431e67 M=1 io.ReadFull /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=353
+             golang.org/x/net/http2.(*Framer).ReadFrameForHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:538:0 s=533
+    17: 0x54dbdb M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:267:0 s=230
+    18: 0x54d24f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).serve /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:144:0 s=138
+    19: 0x552403 M=1 github.com/djosh34/tigerstore/internal/server.(*Server).serveConn /home/runner/work/tigerstore/tigerstore/internal/server/server.go:151:0 s=122
+    20: 0x55685f M=1 github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1 /home/runner/work/tigerstore/tigerstore/internal/server/server.go:115:0 s=113
+    21: 0x58038c M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:554:0 s=373
+    22: 0x2e43bb M=1 bufio.(*Writer).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:682:0 s=676
+    23: 0x54514b M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:437:0 s=397
+    24: 0x33f4d4 M=1 google.golang.org/protobuf/internal/impl.(*messageState).LoadMessageInfo /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/pointer_unsafe.go:205:0 s=204
+    25: 0x50502b M=1 go.etcd.io/raft/v3/raftpb.(*Entry).ProtoReflect /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raftpb/raft.pb.go:370:0 s=366
+    26: 0x27597b M=1 google.golang.org/protobuf/proto.MarshalOptions.Size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:34:0 s=28
+    27: 0x520d7b M=1 google.golang.org/protobuf/proto.Size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:20:0 s=19
+             go.etcd.io/raft/v3.entsSize /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/util.go:277:0 s=274
+             go.etcd.io/raft/v3.(*RawNode).acceptReady /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:434:0 s=400
+    28: 0x51fcd3 M=1 go.etcd.io/raft/v3.(*RawNode).Ready /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:133:0 s=131
+    29: 0x53677b M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Process /home/runner/work/tigerstore/tigerstore/internal/core/node.go:666:0 s=654
+    30: 0x5489cf M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:391:0 s=335
+    31: 0x548393 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Run /home/runner/work/tigerstore/tigerstore/internal/node/node.go:326:0 s=318
+    32: 0x56fac3 M=1 main.run /home/runner/work/tigerstore/tigerstore/cmd/tigerstore/main.go:277:0 s=163
+    33: 0x56dae7 M=1 main.main /home/runner/work/tigerstore/tigerstore/cmd/tigerstore/main.go:53:0 s=48
+    34: 0x62ddf M=1 runtime.main /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:302:0 s=153
+    35: 0x5603c M=1 runtime.(*pageCache).allocN /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mpagecache.go:62:0 s=57
+    36: 0x55f97 M=1 runtime.(*pageCache).alloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mpagecache.go:48:0 s=37
+    37: 0x50163 M=1 runtime.(*mheap).allocSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1241:0 s=1215
+    38: 0x91da7 M=1 runtime.(*mheap).alloc.func1 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1008:0 s=1002
+    39: 0xa0bd7 M=1 runtime.systemstack /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/asm_arm64.s:379:0 s=333
+    40: 0x4fd3b M=1 runtime.(*mheap).alloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1002:0 s=997
+    41: 0x39123 M=1 runtime.(*mcentral).grow /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcentral.go:253:0 s=251
+    42: 0x38f93 M=1 runtime.(*mcentral).cacheSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcentral.go:171:0 s=82
+    43: 0x38487 M=1 runtime.(*mcache).refill /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcache.go:205:0 s=160
+    44: 0x317e3 M=1 runtime.(*mcache).nextFree /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1006:0 s=996
+    45: 0x3211f M=1 runtime.mallocgcSmallScanHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1633:0 s=1600
+    46: 0x990d7 M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1133:0 s=1067
+    47: 0x9e333 M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:273:0 s=178
+    48: 0x527623 M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).add /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:250:0 s=245
+             github.com/djosh34/tigerstore/internal/mvcc.(*writer).put /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:280:0 s=256
+    49: 0x5270bb M=1 github.com/djosh34/tigerstore/internal/mvcc.(*Store).PutKV /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:211:0 s=206
+    50: 0x5391b3 M=1 github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut /home/runner/work/tigerstore/tigerstore/internal/core/state.go:110:0 s=108
+    51: 0x537d47 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).applyPut /home/runner/work/tigerstore/tigerstore/internal/core/node.go:898:0 s=893
+    52: 0x53d373 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1 /home/runner/work/tigerstore/tigerstore/internal/core/node.go:859:0 s=853
+    53: 0x533ab7 M=1 github.com/djosh34/tigerstore/internal/core.walkBatch /home/runner/work/tigerstore/tigerstore/internal/core/codec.go:103:0 s=83
+    54: 0x537af3 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).apply /home/runner/work/tigerstore/tigerstore/internal/core/node.go:853:0 s=847
+    55: 0x537037 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).handleReady /home/runner/work/tigerstore/tigerstore/internal/core/node.go:752:0 s=695
+    56: 0x5367df M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Process /home/runner/work/tigerstore/tigerstore/internal/core/node.go:666:0 s=654
+    57: 0x24240 M=1 internal/runtime/syscall/linux.Syscall6 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/syscall/linux/asm_linux_arm64.s:17:0 s=8
+    58: 0xb652f M=1 syscall.RawSyscall6 /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_linux.go:65:0 s=63
+    59: 0xb658f M=1 syscall.Syscall /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_linux.go:87:0 s=73
+    60: 0xb4a5f M=1 syscall.read /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/zsyscall_linux_arm64.go:736:0 s=729
+    61: 0xeec77 M=1 syscall.Read /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_unix.go:183:0 s=182
+             internal/poll.ignoringEINTRIO /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:743:0 s=741
+             internal/poll.(*FD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:166:0 s=141
+    62: 0x19e5b7 M=1 net.(*netFD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:68:0 s=67
+    63: 0x1ab9e3 M=1 net.(*conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:196:0 s=192
+    64: 0x2064db M=1 crypto/tls.(*Conn).readFromUntil /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:820:0 s=805
+    65: 0x203e4f M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:626:0 s=609
+    66: 0x20962f M=1 crypto/tls.(*Conn).readRecord /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:588:0 s=587
+             crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1392:0 s=1378
+    67: 0x2e2ce7 M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:245:0 s=216
+    68: 0x4315c7 M=1 io.ReadFull /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=353
+             golang.org/x/net/http2.readFrameHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:250:0 s=249
+    69: 0x431b9b M=1 golang.org/x/net/http2.(*Framer).ReadFrameHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:513:0 s=511
+    70: 0x54db8b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:263:0 s=230
+    71: 0x51fad0 M=1 go.etcd.io/raft/v3.(*RawNode).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:118:0 s=116
+    72: 0x5493b7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Step /home/runner/work/tigerstore/tigerstore/internal/core/node.go:353:0 s=349
+             github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/node/node.go:496:0 s=471
+    73: 0x548e2b M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:367:0 s=335
+    74: 0xb4bff M=1 syscall.write /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/zsyscall_linux_arm64.go:964:0 s=957
+    75: 0xf0217 M=1 syscall.Write /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_unix.go:211:0 s=201
+             internal/poll.ignoringEINTRIO /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:743:0 s=741
+             internal/poll.(*FD).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_unix.go:379:0 s=365
+    76: 0x19eca7 M=1 net.(*netFD).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:109:0 s=108
+    77: 0x1abb73 M=1 net.(*conn).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:208:0 s=204
+    78: 0x206d73 M=1 crypto/tls.(*Conn).write /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:953:0 s=947
+    79: 0x207307 M=1 crypto/tls.(*Conn).writeRecordLocked /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1034:0 s=979
+    80: 0x375ac M=1 runtime.(*mspan).refillAllocCache /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1100:0 s=1097
+    81: 0x38cd3 M=1 runtime.(*mcentral).cacheSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcentral.go:192:0 s=82
+    82: 0x9de7f M=1 runtime.makeslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:117:0 s=102
+    83: 0x54976b M=1 github.com/djosh34/tigerstore/internal/core.(*Node).SubmitAll /home/runner/work/tigerstore/tigerstore/internal/core/node.go:373:0 s=372
+             github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/node/node.go:480:0 s=471
+    84: 0x54897f M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:362:0 s=335
+    85: 0x58066c M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:583:0 s=373
+    86: 0x2e43a3 M=1 bufio.(*Writer).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:686:0 s=676
+    87: 0x24eea0 M=1 google.golang.org/protobuf/encoding/protowire.AppendVarint /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:185:0 s=185
+    88: 0x302fcf M=1 google.golang.org/protobuf/internal/impl.appendInt32Ptr /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:681:0 s=679
+    89: 0x32629f M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:215:0 s=148
+    90: 0x325f27 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).marshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:142:0 s=135
+    91: 0x273143 M=1 google.golang.org/protobuf/proto.MarshalOptions.marshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/encode.go:195:0 s=174
+    92: 0x272d8f M=1 google.golang.org/protobuf/proto.MarshalOptions.MarshalAppend /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/encode.go:159:0 s=153
+    93: 0x5450cb M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:426:0 s=397
+    94: 0x580f58 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:868:0 s=748
+    95: 0x57e147 M=1 crypto/internal/fips140/aes/gcm.open /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_asm.go:123:0 s=96
+    96: 0x57da93 M=1 crypto/internal/fips140/aes/gcm.(*GCM).Open /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm.go:119:0 s=93
+    97: 0x57f3db M=1 crypto/internal/fips140/aes/gcm.(*GCMWithXORCounterNonce).Open /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_nonces.go:286:0 s=284
+    98: 0x1fe1f7 M=1 crypto/tls.(*xorNonceAEAD).Open /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/cipher_suites.go:501:0 s=497
+    99: 0x202e6f M=1 crypto/tls.(*halfConn).decrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:380:0 s=339
+   100: 0x204673 M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:686:0 s=609
+   101: 0x1da98 M=1 cmpbody /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/bytealg/compare_arm64.s:49:0 s=35
+   102: 0xd8743 M=1 bytes.Compare /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/bytes.go:29:0 s=28
+   103: 0x53d4e3 M=1 github.com/djosh34/tigerstore/internal/mvcc.New.func1 /home/runner/work/tigerstore/tigerstore/internal/mvcc/store.go:94:0 s=94
+   104: 0x526793 M=1 github.com/google/btree.items[go.shape.*uint8].find.func1 /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:216:0 s=215
+             sort.Search /opt/hostedtoolcache/go/1.27.2/arm64/src/sort/search.go:65:0 s=58
+             github.com/google/btree.items[go.shape.*uint8].find /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:215:0 s=214
+   105: 0x52cf8b M=1 github.com/google/btree.(*node[go.shape.*uint8]).get /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:322:0 s=321
+   106: 0x52cfdb M=1 github.com/google/btree.(*node[go.shape.*uint8]).get /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:326:0 s=321
+   107: 0x52afc7 M=1 github.com/google/btree.(*BTreeG[go.shape.*uint8]).Get /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:824:0 s=820
+   108: 0x52737b M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:234:0 s=233
+   109: 0x527427 M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).put /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:258:0 s=256
+   110: 0xa32b4 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:170:0 s=29
+   111: 0x314a37 M=1 google.golang.org/protobuf/encoding/protowire.AppendBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:455:0 s=454
+             google.golang.org/protobuf/internal/impl.appendBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:5405:0 s=5402
+   112: 0x2fd0d3 M=1 google.golang.org/protobuf/internal/impl.appendMessageSliceInfo /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_field.go:427:0 s=419
+   113: 0x1b9c8 M=1 runtime.mapaccess2_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:82:0 s=22
+   114: 0x1b88b M=1 runtime.mapaccess1_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:17:0 s=16
+   115: 0x53cea7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1 /home/runner/work/tigerstore/tigerstore/internal/core/node.go:856:0 s=853
+   116: 0x54b228 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).admit /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:64:0 s=46
+   117: 0x54fa37 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onEnd /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:658:0 s=642
+   118: 0x54f7b3 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onData /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:636:0 s=602
+   119: 0x54dd7f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onFrame /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:294:0 s=286
+   120: 0x54dc47 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:280:0 s=230
+   121: 0xb45db M=1 syscall.Fsync /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/zsyscall_linux_arm64.go:463:0 s=462
+   122: 0xed49b M=1 internal/poll.(*FD).Fsync.func1 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_fsync_posix.go:18:0 s=17
+             internal/poll.ignoringEINTR /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_posix.go:74:0 s=72
+             internal/poll.(*FD).Fsync /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_fsync_posix.go:17:0 s=12
+   123: 0xf9217 M=1 os.(*File).Sync /opt/hostedtoolcache/go/1.27.2/arm64/src/os/file_posix.go:167:0 s=163
+   124: 0x5406df M=1 github.com/djosh34/tigerstore/internal/osfs.observedFile.Sync /home/runner/work/tigerstore/tigerstore/internal/osfs/observation.go:102:0 s=100
+   125: 0x532f7b M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:416:0 s=403
+   126: 0x549a47 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).persist /home/runner/work/tigerstore/tigerstore/internal/node/node.go:535:0 s=514
+   127: 0x54a3b3 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Run.func1 /home/runner/work/tigerstore/tigerstore/internal/node/node.go:322:0 s=322
+   128: 0x53d4dc M=1 github.com/djosh34/tigerstore/internal/mvcc.New.func1 /home/runner/work/tigerstore/tigerstore/internal/mvcc/store.go:94:0 s=94
+   129: 0x5267df M=1 github.com/google/btree.items[go.shape.*uint8].find /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:218:0 s=214
+   130: 0xa32b8 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:171:0 s=29
+   131: 0x2034db M=1 crypto/tls.(*halfConn).encrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:519:0 s=479
+   132: 0xa32d4 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:178:0 s=29
+   133: 0x331f27 M=1 google.golang.org/protobuf/internal/impl.mergeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:188:0 s=187
+   134: 0x331007 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:79:0 s=36
+   135: 0x330d1f M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).merge /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:32:0 s=23
+   136: 0x27505b M=1 google.golang.org/protobuf/proto.mergeOptions.mergeMessage /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:79:0 s=72
+   137: 0x274f7b M=1 google.golang.org/protobuf/proto.Clone /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:58:0 s=41
+   138: 0x516f0f M=1 go.etcd.io/raft/v3.(*raft).appendEntry /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:817:0 s=812
+   139: 0x51c307 M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1349:0 s=1275
+   140: 0x519c6b M=1 go.etcd.io/raft/v3.(*raft).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1265:0 s=1089
+   141: 0x51fbd7 M=1 go.etcd.io/raft/v3.(*RawNode).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:124:0 s=116
+   142: 0x580f38 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:868:0 s=748
+   143: 0x543edb M=1 io.ReadFull /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=353
+             github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:230:0 s=212
+   144: 0x545373 M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).accept.func1 /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:203:0 s=201
+   145: 0x53d4d4 M=1 github.com/djosh34/tigerstore/internal/mvcc.New.func1 /home/runner/work/tigerstore/tigerstore/internal/mvcc/store.go:94:0 s=94
+   146: 0x42ef70 M=1 golang.org/x/net/http2/hpack.huffmanDecode /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/huffman.go:84:0 s=49
+   147: 0x42ecaf M=1 golang.org/x/net/http2/hpack.(*Decoder).decodeString /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:515:0 s=508
+   148: 0x42e55b M=1 golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:385:0 s=352
+   149: 0x42e0f7 M=1 golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:325:0 s=303
+   150: 0x42df3f M=1 golang.org/x/net/http2/hpack.(*Decoder).Write /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:261:0 s=243
+   151: 0x54e623 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).headerFragment /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:422:0 s=414
+   152: 0x54de3b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onFrame /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:290:0 s=286
+   153: 0x580c14 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:828:0 s=748
+   154: 0x45e74 M=1 runtime.markBits.setMarked /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1247:0 s=1243
+             runtime.gcmarknewobject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1773:0 s=1762
+   155: 0x362e7 M=1 runtime.mallocgcSmallNoScanSlowPath /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:2195:0 s=2107
+   156: 0x34c57 M=1 runtime.mallocgcSmallNoScanSC3 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:1308:0 s=1290
+   157: 0x99043 M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1082:0 s=1067
+   158: 0x7decf M=1 runtime.slicebytetostring /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/string.go:171:0 s=140
+   159: 0x42ecf7 M=1 bytes.(*Buffer).String /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/buffer.go:77:0 s=72
+             golang.org/x/net/http2/hpack.(*Decoder).decodeString /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:517:0 s=508
+   160: 0x505d4 M=1 runtime.(*mheap).allocSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1409:0 s=1215
+   161: 0x31d9b M=1 runtime.mallocgcSmallScanNoHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1535:0 s=1509
+   162: 0x990cf M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1131:0 s=1067
+   163: 0x553c43 M=1 github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked /home/runner/work/tigerstore/tigerstore/internal/server/stream.go:280:0 s=274
+   164: 0x54c433 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:288:0 s=251
+   165: 0x54bfdb M=1 github.com/djosh34/tigerstore/internal/server.(*conn).completeWaiting /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:236:0 s=234
+   166: 0x55503b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /home/runner/work/tigerstore/tigerstore/internal/server/write.go:39:0 s=33
+   167: 0x5561b3 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1 /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:142:0 s=140
+   168: 0xa0bfc M=1 runtime.systemstack /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/asm_arm64.s:390:0 s=333
+   169: 0x31df4 M=1 runtime.mallocgcSmallScanNoHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1587:0 s=1509
+   170: 0x9921b M=1 reflect.unsafe_New /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:2162:0 s=2161
+   171: 0x11b5bb M=1 reflect.New /opt/hostedtoolcache/go/1.27.2/arm64/src/reflect/value.go:3205:0 s=3195
+   172: 0x333fcb M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).New /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/message.go:228:0 s=227
+   173: 0x33d4d7 M=1 google.golang.org/protobuf/internal/impl.(*messageState).New /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/message_reflect_gen.go:21:0 s=20
+   174: 0x274f67 M=1 google.golang.org/protobuf/proto.Clone /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:57:0 s=41
+   175: 0x3079c M=1 runtime.(*mLockProfile).store /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mprof.go:748:0 s=747
+             runtime.unlock2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_spinbit.go:326:0 s=276
+   176: 0x7500f M=1 runtime.unlockWithRank /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lockrank_off.go:36:0 s=35
+             runtime.unlock /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_spinbit.go:270:0 s=269
+             runtime.selunlock /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:59:0 s=45
+   177: 0x75e67 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:492:0 s=122
+   178: 0x547757 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).put /home/runner/work/tigerstore/tigerstore/internal/node/node.go:138:0 s=137
+   179: 0x54794f M=1 github.com/djosh34/tigerstore/internal/node.(*Node).SubmitBatch /home/runner/work/tigerstore/tigerstore/internal/node/node.go:203:0 s=193
+   180: 0x54b977 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).flush /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:126:0 s=103
+   181: 0x54db7b M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:259:0 s=230
+   182: 0x30218 M=1 runtime.lock2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_spinbit.go:174:0 s=164
+   183: 0x74f2f M=1 runtime.lockWithRank /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lockrank_off.go:24:0 s=23
+             runtime.lock /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_spinbit.go:161:0 s=160
+             runtime.sellock /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:40:0 s=34
+   184: 0x754cb M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:252:0 s=122
+   185: 0x570b33 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).Deliver /home/runner/work/tigerstore/tigerstore/internal/node/node.go:281:0 s=280
+   186: 0x543eab M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:254:0 s=212
+   187: 0xa3284 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:155:0 s=29
+   188: 0x532bd7 M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).record /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:351:0 s=342
+   189: 0x532df3 M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).Append /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:368:0 s=362
+   190: 0x5499ff M=1 github.com/djosh34/tigerstore/internal/node.(*Node).persist /home/runner/work/tigerstore/tigerstore/internal/node/node.go:532:0 s=514
+   191: 0xa3114 M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:180:0 s=11
+   192: 0x3215f M=1 runtime.mallocgcSmallScanHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1637:0 s=1600
+   193: 0x4ff1c M=1 runtime.(*mheap).allocNeedsZero /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1088:0 s=1063
+   194: 0x507c3 M=1 runtime.(*mheap).initSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1436:0 s=1430
+   195: 0x504b7 M=1 runtime.(*mheap).allocSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1384:0 s=1215
+   196: 0x3283b M=1 runtime.newobject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:2141:0 s=2140
+   197: 0x54f0c3 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).newStream /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:561:0 s=559
+   198: 0x54ef73 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:542:0 s=518
+   199: 0x54e883 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).headerFragment /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:432:0 s=414
+   200: 0x5554ff M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /home/runner/work/tigerstore/tigerstore/internal/server/write.go:83:0 s=33
+   201: 0x1b8f8 M=1 runtime.mapaccess2_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:48:0 s=22
+   202: 0x51a66b M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1298:0 s=1275
+   203: 0x5807b8 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:613:0 s=373
+   204: 0x5805e4 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:569:0 s=373
+   205: 0x5802c0 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:546:0 s=373
+   206: 0xf7f03 M=1 os.(*File).write /opt/hostedtoolcache/go/1.27.2/arm64/src/os/file_posix.go:47:0 s=46
+             os.(*File).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/os/file.go:215:0 s=211
+   207: 0x540617 M=1 github.com/djosh34/tigerstore/internal/osfs.observedFile.Write /home/runner/work/tigerstore/tigerstore/internal/osfs/observation.go:95:0 s=93
+   208: 0x532ec3 M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).Flush /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:386:0 s=382
+   209: 0x532f5f M=1 github.com/djosh34/tigerstore/internal/wal.(*WAL).Sync /home/runner/work/tigerstore/tigerstore/internal/wal/wal.go:404:0 s=403
+   210: 0x533c64 M=1 github.com/djosh34/tigerstore/internal/core.uvarint /home/runner/work/tigerstore/tigerstore/internal/core/codec.go:157:0 s=152
+   211: 0x533a0b M=1 github.com/djosh34/tigerstore/internal/core.walkBatch /home/runner/work/tigerstore/tigerstore/internal/core/codec.go:90:0 s=83
+   212: 0x751b8 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:170:0 s=122
+   213: 0x54888b M=1 github.com/djosh34/tigerstore/internal/node.(*Node).commit /home/runner/work/tigerstore/tigerstore/internal/node/node.go:357:0 s=335
+   214: 0xa32b0 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:169:0 s=29
+   215: 0x53392f M=1 github.com/djosh34/tigerstore/internal/core.encodeBatch /home/runner/work/tigerstore/tigerstore/internal/core/codec.go:68:0 s=36
+   216: 0x535db7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).propose /home/runner/work/tigerstore/tigerstore/internal/core/node.go:580:0 s=571
+   217: 0x536767 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).Process /home/runner/work/tigerstore/tigerstore/internal/core/node.go:662:0 s=654
+   218: 0x58067c M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:587:0 s=373
+   219: 0x4142d7 M=1 net/http.(*connReader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:856:0 s=823
+   220: 0x2e27bb M=1 bufio.(*Reader).fill /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:113:0 s=99
+   221: 0x2e324f M=1 bufio.(*Reader).ReadSlice /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:377:0 s=348
+   222: 0x2e3413 M=1 bufio.(*Reader).ReadLine /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:406:0 s=405
+   223: 0x3c596b M=1 net/textproto.(*Reader).readLineSlice /opt/hostedtoolcache/go/1.27.2/arm64/src/net/textproto/reader.go:64:0 s=60
+   224: 0x40d70f M=1 net/textproto.(*Reader).ReadLine /opt/hostedtoolcache/go/1.27.2/arm64/src/net/textproto/reader.go:44:0 s=43
+             net/http.readRequestLimit /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/request.go:1106:0 s=1098
+   225: 0x414fdb M=1 net/http.(*conn).readRequest /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:1054:0 s=1032
+   226: 0x4193cf M=1 net/http.(*conn).serve /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:2075:0 s=1949
+   227: 0x2406f M=1 internal/runtime/syscall/linux.EpollWait /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/syscall/linux/syscall_linux.go:32:0 s=25
+   228: 0x5ce2b M=1 runtime.netpoll /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/netpoll_epoll.go:133:0 s=113
+   229: 0x691c7 M=1 runtime.findRunnable /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3769:0 s=3404
+   230: 0x6aa7f M=1 runtime.schedule /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:4179:0 s=4150
+   231: 0x6aefb M=1 runtime.park_m /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:4319:0 s=4268
+   232: 0xa0b43 M=1 runtime.mcall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/asm_arm64.s:319:0 s=282
+   233: 0xa32c8 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:175:0 s=29
+   234: 0x51f957 M=1 go.etcd.io/raft/v3.(*RawNode).Propose /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:91:0 s=90
+   235: 0x535dd7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).propose /home/runner/work/tigerstore/tigerstore/internal/core/node.go:585:0 s=571
+   236: 0x9e3c3 M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:284:0 s=178
+   237: 0xa2fd8 M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:54:0 s=11
+   238: 0x9e3ab M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:270:0 s=178
+   239: 0x314b03 M=1 google.golang.org/protobuf/internal/impl.consumeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:5418:0 s=5410
+   240: 0x324eb3 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:183:0 s=124
+   241: 0x324ba3 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:119:0 s=103
+   242: 0x2fd237 M=1 google.golang.org/protobuf/internal/impl.consumeMessageSliceInfo /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_field.go:448:0 s=438
+   243: 0x324a4b M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:81:0 s=74
+   244: 0x26ec0b M=1 google.golang.org/protobuf/proto.UnmarshalOptions.unmarshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/decode.go:122:0 s=90
+   245: 0x26e84b M=1 google.golang.org/protobuf/proto.Unmarshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/decode.go:62:0 s=61
+   246: 0x543f8b M=1 github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:248:0 s=212
+   247: 0x20326c M=1 crypto/tls.(*halfConn).encrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:506:0 s=479
+   248: 0x580ca4 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:830:0 s=748
+   249: 0x52678c M=1 github.com/google/btree.items[go.shape.*uint8].find.func1 /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:216:0 s=215
+             sort.Search /opt/hostedtoolcache/go/1.27.2/arm64/src/sort/search.go:65:0 s=58
+             github.com/google/btree.items[go.shape.*uint8].find /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:215:0 s=214
+   250: 0x58028c M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:532:0 s=373
+   251: 0x42ee90 M=1 golang.org/x/net/http2/hpack.huffmanDecode /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/huffman.go:63:0 s=49
+   252: 0x463b4 M=1 runtime.tryDeferToSpanScan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:290:0 s=264
+   253: 0x47a7b M=1 runtime.scanObjectsSmall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1055:0 s=1015
+   254: 0x47533 M=1 runtime.scanSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:897:0 s=844
+   255: 0x44cb7 M=1 runtime.gcDrain /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1347:0 s=1253
+   256: 0x91687 M=1 runtime.gcDrainMarkWorkerFractional /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1198:0 s=1197
+             runtime.gcBgMarkWorker.func2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1895:0 s=1863
+   257: 0x40c17 M=1 runtime.gcBgMarkWorker /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1863:0 s=1766
+   258: 0x99d24 M=1 runtime.findObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1364:0 s=1363
+   259: 0x480d3 M=1 runtime.scanObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1269:0 s=1187
+   260: 0x44cc7 M=1 runtime.gcDrain /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1345:0 s=1253
+   261: 0x462fc M=1 runtime.heapArenaOf /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:770:0 s=757
+             runtime.tryDeferToSpanScan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:270:0 s=264
+   262: 0x480bf M=1 runtime.scanObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1268:0 s=1187
+   263: 0x31a0c M=1 runtime.makeSpanClass /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:581:0 s=580
+             runtime.mallocgcSmallNoscan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1389:0 s=1364
+   264: 0x990df M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1125:0 s=1067
+   265: 0x552c2b M=1 github.com/djosh34/tigerstore/internal/server.(*stream).receive /home/runner/work/tigerstore/tigerstore/internal/server/stream.go:124:0 s=105
+   266: 0x54f783 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onData /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:631:0 s=602
+   267: 0x6bdb8 M=1 internal/runtime/atomic.(*Bool).Load /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/atomic/types.go:168:0 s=167
+             runtime.reentersyscall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:4721:0 s=4642
+   268: 0x9bbaf M=1 runtime.entersyscall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:4782:0 s=4776
+   269: 0xb656f M=1 syscall.Syscall /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_linux.go:74:0 s=73
+   270: 0x533bd4 M=1 encoding/binary.Uvarint /opt/hostedtoolcache/go/1.27.2/arm64/src/encoding/binary/varint.go:72:0 s=68
+             github.com/djosh34/tigerstore/internal/core.uvarint /home/runner/work/tigerstore/tigerstore/internal/core/codec.go:153:0 s=152
+   271: 0x580f08 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:856:0 s=748
+   272: 0x581020 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:885:0 s=748
+   273: 0x54ca94 M=1 google.golang.org/protobuf/encoding/protowire.AppendBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:455:0 s=454
+             github.com/djosh34/tigerstore/internal/server.appendPutResponse /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:344:0 s=334
+   274: 0x54c8a3 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).appendPutReply /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:319:0 s=316
+   275: 0x54c187 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:265:0 s=251
+   276: 0x31cfc M=1 runtime.nextFreeFast /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:972:0 s=969
+             runtime.mallocgcSmallScanNoHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1533:0 s=1509
+   277: 0x42ee98 M=1 golang.org/x/net/http2/hpack.huffmanDecode /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/huffman.go:66:0 s=49
+   278: 0x512590 M=1 go.etcd.io/raft/v3.(*raftLog).term /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log.go:392:0 s=387
+   279: 0x515f2f M=1 go.etcd.io/raft/v3.(*raft).maybeSendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:625:0 s=618
+   280: 0x515e8f M=1 go.etcd.io/raft/v3.(*raft).sendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:606:0 s=605
+   281: 0x52467f M=1 go.etcd.io/raft/v3.(*raft).bcastAppend.func1 /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:719:0 s=715
+   282: 0x50d4ab M=1 go.etcd.io/raft/v3/tracker.(*ProgressTracker).Visit /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/tracker/tracker.go:202:0 s=184
+   283: 0x51af1f M=1 go.etcd.io/raft/v3.(*raft).bcastAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:715:0 s=714
+             go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1554:0 s=1275
+   284: 0x54c0f4 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:258:0 s=251
+   285: 0x580bb4 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:827:0 s=748
+   286: 0x1baf4 M=1 runtime.mapaccess2_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:52:0 s=22
+   287: 0x51fba3 M=1 go.etcd.io/raft/v3.(*RawNode).Step /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go:121:0 s=116
+   288: 0x2e2c4b M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:231:0 s=216
+   289: 0x543f5b M=1 io.ReadFull /opt/hostedtoolcache/go/1.27.2/arm64/src/io/io.go:354:0 s=353
+             github.com/djosh34/tigerstore/internal/peer.(*TCP).receive /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:241:0 s=212
+   290: 0x1bd24 M=1 runtime.mapassign_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:236:0 s=182
+   291: 0x535a33 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite /home/runner/work/tigerstore/tigerstore/internal/core/node.go:523:0 s=514
+   292: 0x53500b M=1 github.com/djosh34/tigerstore/internal/core.(*Node).submit /home/runner/work/tigerstore/tigerstore/internal/core/node.go:391:0 s=380
+   293: 0x5497f7 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).SubmitAll /home/runner/work/tigerstore/tigerstore/internal/core/node.go:375:0 s=372
+             github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/node/node.go:480:0 s=471
+   294: 0x5807b0 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:612:0 s=373
+   295: 0xa3078 M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:116:0 s=11
+   296: 0x327ab M=1 runtime.memclrNoHeapPointersChunked /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:2133:0 s=2118
+   297: 0x32493 M=1 runtime.mallocgcLarge /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1769:0 s=1693
+   298: 0x990e7 M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1137:0 s=1067
+   299: 0x537ff3 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).applyPut /home/runner/work/tigerstore/tigerstore/internal/core/node.go:919:0 s=893
+   300: 0xa30ec M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:164:0 s=11
+   301: 0x331efb M=1 google.golang.org/protobuf/internal/impl.mergeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go:188:0 s=187
+   302: 0x1ba2c M=1 internal/runtime/maps.ctrlGroupMatchH2 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/group.go:162:0 s=161
+             internal/runtime/maps.ctrlGroup.matchH2 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/group.go:154:0 s=153
+             runtime.mapaccess2_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:85:0 s=22
+   303: 0x54f050 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:556:0 s=518
+   304: 0x56980 M=1 runtime.(*pallocBits).summarize /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mpallocbits.go:159:0 s=132
+   305: 0x53d07 M=1 runtime.(*pageAlloc).update /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mpagealloc.go:504:0 s=492
+   306: 0x56473 M=1 runtime.(*pageAlloc).allocToCache /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mpagecache.go:168:0 s=119
+   307: 0x50137 M=1 runtime.(*mheap).allocSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1236:0 s=1215
+   308: 0x31ad3 M=1 runtime.mallocgcSmallNoscan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1403:0 s=1364
+   309: 0x580494 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:559:0 s=373
+   310: 0x527398 M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:239:0 s=233
+   311: 0x11b59c M=1 reflect.New /opt/hostedtoolcache/go/1.27.2/arm64/src/reflect/value.go:3200:0 s=3195
+   312: 0x24f3c4 M=1 google.golang.org/protobuf/encoding/protowire.AppendVarint /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:262:0 s=185
+   313: 0x54ca1b M=1 github.com/djosh34/tigerstore/internal/server.appendPutResponse /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:340:0 s=334
+   314: 0x580334 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:553:0 s=373
+   315: 0xc0230 M=1 time.Until /opt/hostedtoolcache/go/1.27.2/arm64/src/time/time.go:1237:0 s=1237
+   316: 0xedf7f M=1 internal/poll.setDeadlineImpl /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_poll_runtime.go:149:0 s=146
+   317: 0x1ac0db M=1 internal/poll.(*FD).SetWriteDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/poll/fd_poll_runtime.go:143:0 s=142
+             net.(*netFD).SetWriteDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:159:0 s=158
+             net.(*conn).SetWriteDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/net/net.go:274:0 s=270
+   318: 0x202427 M=1 crypto/tls.(*Conn).SetWriteDeadline /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:157:0 s=156
+   319: 0x54511b M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:431:0 s=397
+   320: 0x42f010 M=1 golang.org/x/net/http2/hpack.huffmanDecode /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/huffman.go:105:0 s=49
+   321: 0x43f04 M=1 runtime.gcFlushBgCredit /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:836:0 s=836
+   322: 0x44d5f M=1 runtime.gcDrain /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1367:0 s=1253
+   323: 0x4570c M=1 runtime.addb /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1034:0 s=1030
+             runtime.(*gcBits).bytep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:2860:0 s=2859
+             runtime.(*mspan).markBitsForIndex /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:232:0 s=228
+             runtime.greyobject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1658:0 s=1653
+   324: 0x480ef M=1 runtime.scanObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1270:0 s=1187
+   325: 0x91673 M=1 runtime.gcDrainMarkWorkerIdle /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1182:0 s=1181
+             runtime.gcBgMarkWorker.func2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:1897:0 s=1863
+   326: 0x99d3c M=1 runtime.findObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1380:0 s=1363
+   327: 0x46538 M=1 runtime.tryDeferToSpanScan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:277:0 s=264
+   328: 0x5a778 M=1 runtime.add /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/stubs.go:25:0 s=24
+             runtime.spanSetSpinePointer.lookup /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mspanset.go:321:0 s=320
+             runtime.(*spanSet).pop /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mspanset.go:205:0 s=150
+   329: 0x4c1cb M=1 runtime.(*mheap).nextSpanForSweep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:103:0 s=96
+   330: 0x4c927 M=1 runtime.sweepone /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:378:0 s=359
+   331: 0x4c66f M=1 runtime.bgsweep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:300:0 s=272
+   332: 0xa2fdc M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:56:0 s=11
+   333: 0x49534 M=1 internal/runtime/atomic.(*Uint64).Add /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/atomic/types.go:344:0 s=343
+             runtime.(*gcControllerState).update /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcpacer.go:955:0 s=952
+   334: 0x384db M=1 runtime.(*mcache).refill /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcache.go:235:0 s=160
+   335: 0x9e393 M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:265:0 s=178
+   336: 0x9df24 M=1 runtime.growslice /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/slice.go:195:0 s=178
+   337: 0x54b2bf M=1 github.com/djosh34/tigerstore/internal/server.(*conn).admit /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:74:0 s=46
+   338: 0x580d44 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:833:0 s=748
+   339: 0xa32cc M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:176:0 s=29
+   340: 0x535a93 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).queueWrite /home/runner/work/tigerstore/tigerstore/internal/core/node.go:525:0 s=514
+   341: 0x24f400 M=1 google.golang.org/protobuf/encoding/protowire.ConsumeVarint /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:273:0 s=267
+   342: 0x24ee0f M=1 google.golang.org/protobuf/encoding/protowire.ConsumeTag /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:169:0 s=168
+   343: 0x53c90f M=1 github.com/djosh34/tigerstore/internal/core.ParsePut /home/runner/work/tigerstore/tigerstore/internal/core/wire.go:53:0 s=50
+   344: 0x537c5b M=1 github.com/djosh34/tigerstore/internal/core.(*Node).applyPut /home/runner/work/tigerstore/tigerstore/internal/core/node.go:894:0 s=893
+   345: 0x2e2cdc M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:245:0 s=216
+   346: 0x580fd0 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:881:0 s=748
+   347: 0x2045cf M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:677:0 s=609
+   348: 0x3e3bc M=1 runtime.(*fixalloc).alloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mfixalloc.go:82:0 s=74
+   349: 0x50087 M=1 runtime.(*mheap).allocMSpanLocked /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1163:0 s=1151
+   350: 0x50287 M=1 runtime.(*mheap).allocSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1304:0 s=1215
+   351: 0x51606b M=1 go.etcd.io/raft/v3.(*raft).maybeSendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:651:0 s=618
+   352: 0x51c32b M=1 go.etcd.io/raft/v3.(*raft).bcastAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:715:0 s=714
+             go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1352:0 s=1275
+   353: 0x202714 M=1 crypto/tls.(*halfConn).explicitNonceLen /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:261:0 s=256
+   354: 0x2030fb M=1 crypto/tls.(*halfConn).encrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:485:0 s=479
+   355: 0x2e438b M=1 bufio.(*Writer).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:684:0 s=676
+   356: 0x5276a0 M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).add /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:250:0 s=245
+             github.com/djosh34/tigerstore/internal/mvcc.(*writer).put /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:280:0 s=256
+   357: 0x5267ac M=1 github.com/google/btree.items[go.shape.*uint8].find /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:66:0 s=214
+   358: 0x32626c M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:212:0 s=148
+   359: 0x5134b4 M=1 go.etcd.io/raft/v3.(*unstable).maybeTerm /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log_unstable.go:95:0 s=79
+   360: 0x51246b M=1 go.etcd.io/raft/v3.(*raftLog).term /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log.go:391:0 s=387
+   361: 0x51be37 M=1 go.etcd.io/raft/v3.stepLeader /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:1569:0 s=1275
+   362: 0x314b3b M=1 google.golang.org/protobuf/internal/impl.consumeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:5418:0 s=5410
+   363: 0x5803bc M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:555:0 s=373
+   364: 0x33bec M=1 runtime.mallocgcSmallScanNoHeaderSC5 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:670:0 s=625
+   365: 0x43440b M=1 golang.org/x/net/http2.parseHeadersFrame /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:1071:0 s=1070
+   366: 0x431ebf M=1 golang.org/x/net/http2.(*Framer).ReadFrameForHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:544:0 s=533
+   367: 0x325d70 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:85:0 s=63
+   368: 0x325afb M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:60:0 s=47
+   369: 0x325a1f M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:41:0 s=34
+   370: 0x272f57 M=1 google.golang.org/protobuf/proto.MarshalOptions.marshal /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/encode.go:185:0 s=174
+   371: 0x19e644 M=1 net.(*netFD).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/net/fd_posix.go:70:0 s=67
+   372: 0x1bd74 M=1 internal/runtime/maps.ctrlGroupMatchH2 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/group.go:165:0 s=161
+             internal/runtime/maps.ctrlGroup.matchH2 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/group.go:154:0 s=153
+             runtime.mapassign_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:249:0 s=182
+   373: 0x202f38 M=1 crypto/tls.(*halfConn).decrypt /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:408:0 s=339
+   374: 0x458d8 M=1 runtime.(*gcWork).putObjFast /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcwork.go:203:0 s=202
+             runtime.greyobject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark.go:1703:0 s=1653
+   375: 0x47aab M=1 runtime.scanObjectsSmall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1057:0 s=1015
+   376: 0x36960 M=1 runtime.readUintptr /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1518:0 s=1517
+             runtime.(*mspan).typePointersOfType /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:189:0 s=179
+   377: 0x36e2f M=1 runtime.bulkBarrierPreWrite /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:431:0 s=388
+   378: 0x36653 M=1 runtime.wbMove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbarrier.go:197:0 s=192
+   379: 0x527683 M=1 github.com/djosh34/tigerstore/internal/mvcc.(*writer).add /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:250:0 s=245
+             github.com/djosh34/tigerstore/internal/mvcc.(*writer).put /home/runner/work/tigerstore/tigerstore/internal/mvcc/ops.go:280:0 s=256
+   380: 0x48088 M=1 runtime.scanObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:1254:0 s=1187
+   381: 0x46334 M=1 runtime.tryDeferToSpanScan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:276:0 s=264
+   382: 0x4632c M=1 runtime.tryDeferToSpanScan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:276:0 s=264
+   383: 0x5803f4 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:556:0 s=373
+   384: 0x580fc0 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:878:0 s=748
+   385: 0x324fbc M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/decode.go:170:0 s=124
+   386: 0x38ca8 M=1 runtime.(*mcentral).cacheSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcentral.go:185:0 s=82
+   387: 0x81e40 M=1 runtime.(*timers).check /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/time.go:982:0 s=982
+   388: 0x68873 M=1 runtime.findRunnable /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3430:0 s=3404
+   389: 0x580c24 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:828:0 s=748
+   390: 0x58014c M=1 crypto/internal/fips140/aes/gcm.gcmAesData /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:328:0 s=233
+   391: 0x57e0e3 M=1 crypto/internal/fips140/aes/gcm.open /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_asm.go:120:0 s=96
+   392: 0x42e8d4 M=1 golang.org/x/net/http2/hpack.readVarInt /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:441:0 s=441
+   393: 0x42eae3 M=1 golang.org/x/net/http2/hpack.(*Decoder).readString /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:483:0 s=478
+   394: 0x42e4e3 M=1 golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:374:0 s=352
+   395: 0x580394 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:555:0 s=373
+   396: 0x42e368 M=1 golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:359:0 s=352
+   397: 0x54f8c8 M=1 internal/sync.(*Mutex).Lock /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/sync/mutex.go:63:0 s=61
+             sync.(*Mutex).Lock /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/mutex.go:46:0 s=45
+             github.com/djosh34/tigerstore/internal/server.(*conn).onEnd /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:643:0 s=642
+   398: 0x54c3c8 M=1 sync/atomic.(*Bool).Swap /opt/hostedtoolcache/go/1.27.2/arm64/src/sync/atomic/type.go:25:0 s=25
+             github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:278:0 s=251
+   399: 0x580668 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:582:0 s=373
+   400: 0x1b9ac M=1 internal/runtime/maps.(*Map).directoryAt /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/map.go:365:0 s=364
+             runtime.mapaccess2_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:76:0 s=22
+   401: 0x9f673 M=1 runtime.nanotime /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/time_nofake.go:33:0 s=32
+             time.runtimeNano /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/time.go:44:0 s=39
+   402: 0xc0293 M=1 time.Until /opt/hostedtoolcache/go/1.27.2/arm64/src/time/time.go:1240:0 s=1237
+   403: 0x580808 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:615:0 s=373
+   404: 0x206ca4 M=1 crypto/tls.(*Conn).write /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:948:0 s=947
+   405: 0x9be28 M=1 runtime.exitsyscall /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:4922:0 s=4922
+   406: 0xb659f M=1 syscall.Syscall /opt/hostedtoolcache/go/1.27.2/arm64/src/syscall/syscall_linux.go:88:0 s=73
+   407: 0x5358d4 M=1 github.com/djosh34/tigerstore/internal/mvcc.CheckPutOp /home/runner/work/tigerstore/tigerstore/internal/mvcc/validate.go:39:0 s=35
+             github.com/djosh34/tigerstore/internal/core.checkPut /home/runner/work/tigerstore/tigerstore/internal/core/node.go:488:0 s=487
+   408: 0x534e83 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).submit /home/runner/work/tigerstore/tigerstore/internal/core/node.go:386:0 s=380
+   409: 0x33970 M=1 runtime.mallocgcSmallScanNoHeaderSC4 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:538:0 s=472
+   410: 0x9901b M=1 runtime.mallocgc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1089:0 s=1067
+   411: 0x515deb M=1 go.etcd.io/raft/v3.(*raft).send /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:598:0 s=514
+   412: 0x5160d7 M=1 go.etcd.io/raft/v3.(*raft).maybeSendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:651:0 s=618
+   413: 0x2096d8 M=1 bytes.(*Reader).Len /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/reader.go:27:0 s=26
+             crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1411:0 s=1378
+   414: 0x549717 M=1 github.com/djosh34/tigerstore/internal/node.(*Node).handle /home/runner/work/tigerstore/tigerstore/internal/node/node.go:478:0 s=471
+   415: 0x5806f0 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:608:0 s=373
+   416: 0x5806a8 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:599:0 s=373
+   417: 0x1c214 M=1 runtime.mapassign_fast64ptr /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:497:0 s=400
+   418: 0x54b813 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).flush /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:117:0 s=103
+   419: 0x53150 M=1 runtime.(*gcBitsArena).tryAlloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:2900:0 s=2895
+             runtime.newMarkBits /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:2917:0 s=2911
+   420: 0x508eb M=1 runtime.newAllocBits /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:2968:0 s=2967
+             runtime.(*mheap).initSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1485:0 s=1430
+   421: 0x54e94c M=1 github.com/djosh34/tigerstore/internal/server.(*conn).onField /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:460:0 s=457
+   422: 0x42e6eb M=1 golang.org/x/net/http2/hpack.(*Decoder).callEmit /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:405:0 s=398
+   423: 0x42e5f7 M=1 golang.org/x/net/http2/hpack.(*Decoder).parseFieldLiteral /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:395:0 s=352
+   424: 0xa32bc M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:172:0 s=29
+   425: 0x33bf4 M=1 runtime.mallocgcSmallScanNoHeaderSC5 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:671:0 s=625
+   426: 0x42eaf0 M=1 golang.org/x/net/http2/hpack.(*Decoder).readString /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/hpack/hpack.go:487:0 s=478
+   427: 0x552ceb M=1 github.com/djosh34/tigerstore/internal/server.(*stream).receive /home/runner/work/tigerstore/tigerstore/internal/server/stream.go:127:0 s=105
+   428: 0x3075c M=1 runtime.unlock2 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_spinbit.go:284:0 s=276
+   429: 0x94117 M=1 runtime.selectgo.func3 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:527:0 s=527
+   430: 0x2a00f M=1 runtime.send /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/chan.go:344:0 s=318
+   431: 0x75ea7 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:527:0 s=122
+   432: 0x382f4 M=1 runtime.(*mcache).refill /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcache.go:164:0 s=160
+   433: 0x508cb M=1 runtime.(*mheap).initSpan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mheap.go:1484:0 s=1430
+   434: 0x3542f M=1 runtime.mallocgcSmallNoScanSC6 /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc_generated.go:1657:0 s=1587
+   435: 0x54c16f M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:265:0 s=251
+   436: 0x9b91c M=1 runtime.gopark /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:475:0 s=457
+   437: 0x75947 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:351:0 s=122
+   438: 0x555253 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop /home/runner/work/tigerstore/tigerstore/internal/server/write.go:51:0 s=33
+   439: 0x581030 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:888:0 s=748
+   440: 0x580bc4 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:827:0 s=748
+   441: 0x570b0 M=1 runtime.stkbucket /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mprof.go:305:0 s=271
+   442: 0x576cf M=1 runtime.mProf_Malloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mprof.go:446:0 s=433
+   443: 0x328fb M=1 runtime.profilealloc /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:2229:0 s=2222
+   444: 0x32417 M=1 runtime.mallocgcLarge /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1754:0 s=1693
+   445: 0x580678 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:586:0 s=373
+   446: 0x53ceac M=1 github.com/djosh34/tigerstore/internal/core.(*Node).apply.func1 /home/runner/work/tigerstore/tigerstore/internal/core/node.go:858:0 s=853
+   447: 0xa3298 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:160:0 s=29
+   448: 0x54dba0 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).readLoop /home/runner/work/tigerstore/tigerstore/internal/server/h2.go:263:0 s=230
+   449: 0x32074 M=1 runtime.nextFreeFast /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:970:0 s=969
+             runtime.mallocgcSmallScanHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1631:0 s=1600
+   450: 0x5804d4 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:560:0 s=373
+   451: 0x9fa8b M=1 time.now /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/timestub.go:27:0 s=26
+   452: 0x9f5df M=1 time.runtimeNow /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/time.go:29:0 s=17
+   453: 0xc6feb M=1 time.Now /opt/hostedtoolcache/go/1.27.2/arm64/src/time/time.go:1348:0 s=1347
+   454: 0x54526b M=1 github.com/djosh34/tigerstore/internal/peer.writeDeadline /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:450:0 s=445
+   455: 0x5450ef M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:431:0 s=397
+   456: 0x5158f0 M=1 go.etcd.io/raft/v3/raftpb.(*Message).GetFrom /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raftpb/raft.pb.go:610:0 s=609
+             go.etcd.io/raft/v3.(*raft).send /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:515:0 s=514
+   457: 0xa056c M=1 gcWriteBarrier /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/asm_arm64.s:1081:0 s=1062
+   458: 0x431b77 M=1 golang.org/x/net/http2.(*Framer).ReadFrameHeader /home/runner/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go:512:0 s=511
+   459: 0x1bd88 M=1 runtime.mapassign_fast64 /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/runtime/maps/runtime_fast64.go:252:0 s=182
+   460: 0x5806cc M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:607:0 s=373
+   461: 0x99d4c M=1 runtime.findObject /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:1380:0 s=1363
+   462: 0x4622c M=1 runtime.(*mspan).moveInlineMarks /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcmark_greenteagc.go:201:0 s=196
+   463: 0x4d157 M=1 runtime.(*sweepLocked).sweep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:656:0 s=505
+   464: 0x4c98b M=1 runtime.sweepone /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgcsweep.go:396:0 s=359
+   465: 0x2e2dd4 M=1 bufio.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:260:0 s=216
+   466: 0x68c53 M=1 runtime.findRunnable /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3511:0 s=3404
+   467: 0x544407 M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).next /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:320:0 s=313
+   468: 0x544f43 M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:414:0 s=397
+   469: 0xa3cc0 M=1 runtime.futex /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/sys_linux_arm64.s:666:0 s=657
+   470: 0x5d0c7 M=1 runtime.futexsleep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/os_linux.go:73:0 s=66
+   471: 0x2fd3b M=1 runtime.notesleep /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/lock_futex.go:47:0 s=35
+   472: 0x67a93 M=1 runtime.mPark /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:1985:0 s=1978
+             runtime.stopm /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3023:0 s=3007
+   473: 0x69783 M=1 runtime.findRunnable /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3811:0 s=3404
+   474: 0x30a884 M=1 google.golang.org/protobuf/encoding/protowire.SizeVarint /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:397:0 s=371
+             google.golang.org/protobuf/internal/impl.sizeUint64Ptr /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go:2749:0 s=2747
+   475: 0x325d4b M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:111:0 s=63
+   476: 0x275aa7 M=1 google.golang.org/protobuf/proto.MarshalOptions.size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:43:0 s=40
+   477: 0x275993 M=1 google.golang.org/protobuf/proto.MarshalOptions.Size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:34:0 s=28
+   478: 0x544f67 M=1 google.golang.org/protobuf/proto.Size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:20:0 s=19
+             github.com/djosh34/tigerstore/internal/peer.(*sender).write /home/runner/work/tigerstore/tigerstore/internal/peer/peer.go:418:0 s=397
+   479: 0xa32c4 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:174:0 s=29
+   480: 0x1dab0 M=1 cmpbody /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/bytealg/compare_arm64.s:55:0 s=35
+   481: 0x54c154 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:262:0 s=251
+   482: 0x580768 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:611:0 s=373
+   483: 0x325c30 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:91:0 s=63
+   484: 0x52421b M=1 google.golang.org/protobuf/proto.Size /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/size.go:20:0 s=19
+             go.etcd.io/raft/v3.limitSize /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/util.go:290:0 s=286
+   485: 0x512b47 M=1 go.etcd.io/raft/v3.(*raftLog).slice /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log.go:507:0 s=499
+   486: 0x51263f M=1 go.etcd.io/raft/v3.(*raftLog).entries /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log.go:419:0 s=415
+   487: 0x515f9f M=1 go.etcd.io/raft/v3.(*raft).maybeSendAppend /home/runner/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go:640:0 s=618
+   488: 0x580b54 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:817:0 s=748
+   489: 0x7516c M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:155:0 s=122
+   490: 0x31a38 M=1 runtime.nextFreeFast /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:972:0 s=969
+             runtime.mallocgcSmallNoscan /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1401:0 s=1364
+   491: 0x5806e0 M=1 crypto/internal/fips140/aes/gcm.gcmAesEnc /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:607:0 s=373
+   492: 0x753a0 M=1 runtime.(*hchan).sortkey /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:546:0 s=545
+             runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:212:0 s=122
+   493: 0x2e442f M=1 bufio.(*Writer).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/bufio/bufio.go:694:0 s=676
+   494: 0x537e40 M=1 github.com/djosh34/tigerstore/internal/core.(*Node).applyPut /home/runner/work/tigerstore/tigerstore/internal/core/node.go:905:0 s=893
+   495: 0x580f40 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:868:0 s=748
+   496: 0x3e9e0 M=1 runtime.gcTrigger.test /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mgc.go:707:0 s=706
+   497: 0x31f2b M=1 runtime.mallocgcSmallScanNoHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1593:0 s=1509
+   498: 0x2096bf M=1 bytes.(*Reader).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/reader.go:44:0 s=39
+             crypto/tls.(*Conn).Read /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1402:0 s=1378
+   499: 0x52cf68 M=1 github.com/google/btree.(*node[go.shape.*uint8]).get /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:322:0 s=321
+   500: 0x31cec M=1 runtime.nextFreeFast /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:970:0 s=969
+             runtime.mallocgcSmallScanNoHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1533:0 s=1509
+   501: 0x325d24 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:108:0 s=63
+   502: 0x209c80 M=1 crypto/tls.(*Conn).handshakeContext /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1518:0 s=1518
+   503: 0x208357 M=1 crypto/tls.(*Conn).HandshakeContext /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1515:0 s=1512
+             crypto/tls.(*Conn).Handshake /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1499:0 s=1498
+             crypto/tls.(*Conn).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:1214:0 s=1201
+   504: 0x580b40 M=1 crypto/internal/fips140/aes/gcm.gcmAesDec /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/internal/fips140/aes/gcm/gcm_arm64.s:812:0 s=748
+   505: 0xd7680 M=1 bytes.(*Buffer).grow /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/buffer.go:144:0 s=144
+   506: 0x206463 M=1 bytes.(*Buffer).Grow /opt/hostedtoolcache/go/1.27.2/arm64/src/bytes/buffer.go:186:0 s=182
+             crypto/tls.(*Conn).readFromUntil /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:817:0 s=805
+   507: 0x3262a8 M=1 google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/encode.go:215:0 s=148
+   508: 0x52cf7c M=1 github.com/google/btree.(*node[go.shape.*uint8]).get /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:322:0 s=321
+   509: 0x1da88 M=1 cmpbody /opt/hostedtoolcache/go/1.27.2/arm64/src/internal/bytealg/compare_arm64.s:43:0 s=35
+   510: 0x4062a8 M=1 net/http.Header.writeSubset /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/header.go:191:0 s=190
+   511: 0x417eef M=1 net/http.Header.WriteSubset /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/header.go:187:0 s=186
+             net/http.(*chunkWriter).writeHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:1583:0 s=1313
+   512: 0x412ae3 M=1 net/http.(*chunkWriter).Write /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:379:0 s=377
+   513: 0x4188a7 M=1 net/http.(*response).finishRequest /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:1721:0 s=1714
+   514: 0x419627 M=1 net/http.(*conn).serve /opt/hostedtoolcache/go/1.27.2/arm64/src/net/http/server.go:2164:0 s=1949
+   515: 0x2040d4 M=1 crypto/tls.(*Conn).readRecordOrCCS /opt/hostedtoolcache/go/1.27.2/arm64/src/crypto/tls/conn.go:677:0 s=609
+   516: 0xa3110 M=1 runtime.memclrNoHeapPointers /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memclr_arm64.s:179:0 s=11
+   517: 0x37243 M=1 runtime.(*mspan).initHeapBits /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:516:0 s=508
+   518: 0x3912f M=1 runtime.(*mcentral).grow /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mcentral.go:257:0 s=251
+   519: 0x54c398 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).releaseLocked /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:159:0 s=158
+             github.com/djosh34/tigerstore/internal/server.(*conn).releaseReqLocked /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:168:0 s=166
+             github.com/djosh34/tigerstore/internal/server.(*conn).complete /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:277:0 s=251
+   520: 0x74f28 M=1 runtime.sellock /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:40:0 s=34
+   521: 0x3219c M=1 runtime.heapSetTypeSmallHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/mbitmap.go:739:0 s=718
+             runtime.mallocgcSmallScanHeader /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/malloc.go:1641:0 s=1600
+   522: 0x24f698 M=1 google.golang.org/protobuf/encoding/protowire.ConsumeBytes /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go:465:0 s=460
+   523: 0x53c983 M=1 github.com/djosh34/tigerstore/internal/core.ParsePut /home/runner/work/tigerstore/tigerstore/internal/core/wire.go:61:0 s=50
+   524: 0x54b197 M=1 github.com/djosh34/tigerstore/internal/server.(*conn).admit /home/runner/work/tigerstore/tigerstore/internal/server/batch.go:59:0 s=46
+   525: 0x759b8 M=1 runtime.selectgo /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/select.go:369:0 s=122
+   526: 0x526784 M=1 github.com/google/btree.items[go.shape.*uint8].find.func1 /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:216:0 s=215
+             sort.Search /opt/hostedtoolcache/go/1.27.2/arm64/src/sort/search.go:65:0 s=58
+             github.com/google/btree.items[go.shape.*uint8].find /home/runner/go/pkg/mod/github.com/google/btree@v1.1.3/btree_generic.go:215:0 s=214
+   527: 0x33d68c M=1 google.golang.org/protobuf/internal/impl.(*messageState).ProtoMethods /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/message_reflect_gen.go:32:0 s=29
+   528: 0x275037 M=1 google.golang.org/protobuf/proto.protoMethods /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/proto_methods.go:19:0 s=18
+             google.golang.org/protobuf/proto.mergeOptions.mergeMessage /home/runner/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go:73:0 s=72
+   529: 0x691db M=1 runtime.nanotime /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/time_nofake.go:33:0 s=32
+             runtime.findRunnable /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/proc.go:3771:0 s=3404
+   530: 0xa31d0 M=1 runtime.memmove /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/memmove_arm64.s:90:0 s=29
+   531: 0x7dedf M=1 runtime.slicebytetostring /opt/hostedtoolcache/go/1.27.2/arm64/src/runtime/string.go:173:0 s=140
+   532: 0x539067 M=1 github.com/djosh34/tigerstore/internal/core.(*State).track /home/runner/work/tigerstore/tigerstore/internal/core/state.go:92:0 s=89
+   533: 0x5391d3 M=1 github.com/djosh34/tigerstore/internal/core.(*State).ApplyPut /home/runner/work/tigerstore/tigerstore/internal/core/state.go:114:0 s=108
+Mappings
+1: 0x10000/0x5ca000/0x0 /home/joshazimullah.linux/work_mounts/scratch/pre-50-shape/results/cpu/shape-put-1k-balanced-c4096/binaries/tigerstore 43615ee7092c14270ffdbeab9bdd56ea6c9a3aa0 [FN]
+2: 0xffbd89040000/0xffbd891da000/0x0 /usr/lib/aarch64-linux-gnu/libc.so.6 27027b96e5b8c475fc327aa445bea1c71d37b4e2 
+3: 0xffbd8920a000/0xffbd89231000/0x0 /usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1 a4f6855872083bfbb0d3fa476d335f0dee573a6c 
+4: 0xffbd89246000/0xffbd89248000/0x0 [vdso]  

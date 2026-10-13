@@ -1,0 +1,2527 @@
+{
+  "inputs": {
+    "38424937611/shape-put-10k-leader-c256/commands.json": {
+      "bytes": 69028,
+      "sha256": "66edc07db233368f663bb3f5ad6b4dc3ebde95e2c37a555aed240e7615c75d4b"
+    },
+    "38424937611/shape-put-10k-leader-c256/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424937611/shape-put-10k-leader-c256/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424937611/shape-put-10k-leader-c256/plan.json": {
+      "bytes": 3619,
+      "sha256": "4184151faa6ad3269ab15bfc6bcf3efbb33e63e2048611119d9ec56d2d1ef034"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-1/after.json": {
+      "bytes": 588999,
+      "sha256": "7abf39d1ddcf4f92341d5db762ee7ce25626712aab52128fb6446dba5f9d16bc"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-1/audit.json": {
+      "bytes": 200,
+      "sha256": "9fa561825960a89996d80cd8e4fac32960cbd612ed8c71880ed43faf1c0b9322"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-1/before.json": {
+      "bytes": 588535,
+      "sha256": "151fb8415fe06cb43cc3d97643b0ee21489ac47b26a8de07f2bd04978015be55"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-1/load.json": {
+      "bytes": 6807,
+      "sha256": "3eea24f73cf3d2ca41f0628e2864e4073a80a80cc0a0b7855e33f4991f7aef26"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "daa0baabd11dd399034b9419eb99176b71c53a197912dc1eeb937de48db89d3c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-2/after.json": {
+      "bytes": 588892,
+      "sha256": "661eed6f4034447ef8305df836ee4eba08046a5cbf23d7c090ea9b6bb2020ca9"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-2/audit.json": {
+      "bytes": 200,
+      "sha256": "680c1eda007435bb644d9e141608a966403f7570aa4d556eb42552516c6ddeea"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-2/before.json": {
+      "bytes": 588616,
+      "sha256": "9256b7ed89461e7f90db7f5d99e43fc92e4f56ad33eba651493f57ef1f0c92db"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-2/load.json": {
+      "bytes": 6805,
+      "sha256": "5ea475bd5c02412c861d51365b49f0213f7e03f4b8d0de56eac490d19f505712"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "327316b3007e802b81cc2133b8335d1330243c3c58436e101be1bbd6cecc1f38"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-3/after.json": {
+      "bytes": 590391,
+      "sha256": "fb461852e8bd5daab07875089888ad93c95dfaafd2bedce7307d32f9f72a7d56"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-3/audit.json": {
+      "bytes": 200,
+      "sha256": "8d61da878489f6307b06af4b21d9cfbb3b6f51532257e4c46630d98ded7dcf99"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-3/before.json": {
+      "bytes": 590032,
+      "sha256": "6cf9713e28744c045742cae48ab1e0ca1fbe71d81825e58a136c921d558056a8"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-3/load.json": {
+      "bytes": 6950,
+      "sha256": "dc461b8a53e298f6d357dd84bf97ae8e1f274a071b2ae3430395a3b1b0953452"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "6bced43d9a7f74591e3f629f884a34779874564dcd2a0e7e95773c1ab97b167d"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-4/after.json": {
+      "bytes": 590426,
+      "sha256": "ab14123febf2e6f7c6669570b03ee8588aa711b77e230d949b540a90b11a1fce"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-4/audit.json": {
+      "bytes": 200,
+      "sha256": "28ae1338681f989da12a9d67555129011b51b9e8a52daf30e056ce852c5513fb"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-4/before.json": {
+      "bytes": 579351,
+      "sha256": "28a251ab70b035e1185253778b3c70ca345bf98b2b8f91985448be44acbaa9ee"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-4/load.json": {
+      "bytes": 6807,
+      "sha256": "035437f09387ed9f1cbad73c0f4eade4c149178ec5b4ec08be96ec558032a75a"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "aac19a545ac40f1ba33f6b612ad3c837dcb52541d2e632b8867b5aa39ece0002"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-5/after.json": {
+      "bytes": 588921,
+      "sha256": "4fb572bd468c863680785508433fbaff7d49dc2f6d978426c29e566058570ddb"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-5/audit.json": {
+      "bytes": 200,
+      "sha256": "2fb01ba959feb4bbf5c18e0d4db008930a2e0dc02206402350b295cb7131be60"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-5/before.json": {
+      "bytes": 588578,
+      "sha256": "65e6acd370bd601d08878c9660644b2b7ce9156382e6304f8ee9aef5d970e363"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-5/load.json": {
+      "bytes": 6814,
+      "sha256": "1fd5083a168e99fde61b825d6eb90ae12f0cd3b21ed8de4a9069dedf8a6b4c7e"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "5d3a59af74af6286ca42ff64086ef2c4e585ac3c345aa96298b553e5ce4fd22a"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-1/after.json": {
+      "bytes": 10002,
+      "sha256": "6c2733647f909bf37562d00df8ab08071846ee083e35cbd1557a7f43d8be3cc1"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-1/audit.json": {
+      "bytes": 203,
+      "sha256": "ef08052e86c88abef527e333bf2dd110e66d04c2658d680e32166053a510220c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-1/before.json": {
+      "bytes": 9980,
+      "sha256": "e67a5cddac619e8d20cd71cd02d717ea0ae7d8286bd22c73cd7f0fb7de83dc95"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-1/load.json": {
+      "bytes": 6841,
+      "sha256": "5f66e6c9258c3463fe318642ba2145589c17cfb5283112b9484e35bca68adf67"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "156f949b181f7cdfc3554dfb55569b279547e13457423af2fb36569f2da7c555"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-2/after.json": {
+      "bytes": 10101,
+      "sha256": "21d6433f75240edeba27b488212995fc032574cdac161019a75708a17ec607e0"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-2/audit.json": {
+      "bytes": 203,
+      "sha256": "818cd27333394d29da298d5a799476338445e61d342d14ca2339798c78fb5628"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-2/before.json": {
+      "bytes": 10028,
+      "sha256": "1a866071171eb6308df407cbfca9fd50db0ccfd74272be472a75c5c1afb7f89e"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-2/load.json": {
+      "bytes": 6850,
+      "sha256": "96714579c941695097f2362c83d8dfa52b61389dac6b6068446617f07889d542"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "379371559d90efd13df333c01697505c990354708f9acbcb9579b3039fe1a94b"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-3/after.json": {
+      "bytes": 10117,
+      "sha256": "81183f7a295a6b50a801a54c7842ec751f39d971be3c8c91ead76caa24359cba"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-3/audit.json": {
+      "bytes": 203,
+      "sha256": "d8b70a7a3f51d96307e5765fdc2549cd79f504852902e9cc8bb9d750c118093f"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-3/before.json": {
+      "bytes": 10039,
+      "sha256": "3dace9845ffe648f1403223c48f146ad49bdc933773b3d53b3fc96ef8795c3e8"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-3/load.json": {
+      "bytes": 6857,
+      "sha256": "0a38f725b5a0193f61819a8aaaebb1bd7b436954cfc089e998d0bbc7de7f7312"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "825513c7082d15f984afe007b6e4d5353c06eb1f72356a7ed08ca62be255fd94"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-4/after.json": {
+      "bytes": 10152,
+      "sha256": "3945a3f69ab1a46941232b3de94af321747015b5ea5ac00b8a9ab082883fd9e9"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-4/audit.json": {
+      "bytes": 203,
+      "sha256": "5f9924a6db56c9b78bc48ea71ac3c622fd21e4b683d4e8ff72c1f2cb480697c2"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-4/before.json": {
+      "bytes": 10129,
+      "sha256": "042c1c6403dadd74c102f1a87db8d3d3b6d1337036d59037cd0b814701a1fb30"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-4/load.json": {
+      "bytes": 6853,
+      "sha256": "66dccd5ea3fe5ce1bd95e8fabd73a66b693df366f78f8d8c4ef0df7659c6cccb"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "e1eb029db3e77181dec747dbcabaf3426adb9f30b790d217bbeb5228738980bc"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-5/after.json": {
+      "bytes": 10016,
+      "sha256": "4509c593fd4ac8f00d0aab1dc7db9c8ad3e15973dcb678ea31b2c2abcd64d71e"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-5/audit.json": {
+      "bytes": 203,
+      "sha256": "13403cf15ad0e69e5e1f092150df1b25f31d00c0c023ed03360e81f506c68773"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-5/before.json": {
+      "bytes": 9943,
+      "sha256": "2676aa855944a3cc1f452a9dd91e717b2755d34a018da8a8b6deaa37a8f694a0"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-5/load.json": {
+      "bytes": 6859,
+      "sha256": "9ab6b23067e009fb5ca76bb086688d1e203751efb00d1b097ebba12a5975f40c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "ce67ace382b827413a60862e665102c53ef11bd3987640a3a8d304328ecbbac0"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 14241,
+      "sha256": "68acedb11c00a722dd42574abd1aba39d7b8dda3d54dfd7d20f2f4e70d29b263"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 203,
+      "sha256": "2d32e41045c67e84015ca2b59d307aa41417e6f60a75523867133478b0f40104"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 14193,
+      "sha256": "779849ef82cc45dacfd12bc5db3ac73c9537ff783ec888ecc6904944ee0f310b"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 6857,
+      "sha256": "0929d495a92881b61845a61a45725d45475ad09c1981a24c912c2332f56d80f6"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "45173f3028a21a546750e5372174fd4825425ff8ef6ab967e6469db3e3f5ee07"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-2/after.json": {
+      "bytes": 14283,
+      "sha256": "10ce89f1687d40a8e71460e4cff4f20725410d6d94cefec34c728ece33585a3d"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-2/audit.json": {
+      "bytes": 203,
+      "sha256": "94e277e89a9f73ed743afea9362c1beeb3688889be0ad5c7b854e8584623227b"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-2/before.json": {
+      "bytes": 14195,
+      "sha256": "01c1a5a363014aec7cf4c6a8053bb97c0607c686c9a99eac3f5615c1a994a992"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-2/load.json": {
+      "bytes": 6859,
+      "sha256": "babfa4cfd1d9875386ef3fb7b3d4d5e8c01e068b8d71f0b48b5f48c98d68743a"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "565906e2633c97f0c80372b5d7f9f10b1d01aa26b9d98376fd29bb77a7abc122"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-3/after.json": {
+      "bytes": 14306,
+      "sha256": "967bcbc70c11e298205d3bf1c2e72ff746c331f712929e0adb1133607cc1510c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-3/audit.json": {
+      "bytes": 203,
+      "sha256": "4547db84d1dac9e332523a383ba05576c96093a4fa2af445f9763ef10fd9fc21"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-3/before.json": {
+      "bytes": 14154,
+      "sha256": "b919b8ea3107e0c5223b0273c075d7865c83ece8bc3dc1408ba2aa31d805bc0c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-3/load.json": {
+      "bytes": 6857,
+      "sha256": "da182f025e5711acc7ce9f1f081aff6f8b86b31b8913ac86e0da5eef0bf86eb6"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "06836cee2fff4e683d1116ea1f52f8b9f8e80a6a34c5aa8deb623514dcab3aec"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-4/after.json": {
+      "bytes": 14259,
+      "sha256": "f8fe0314789cffdc940a2aca13cb0a1a71624649f8a17187039425727ce631e5"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-4/audit.json": {
+      "bytes": 203,
+      "sha256": "fd333b47633784ff646df60295fd3f2591372a3969f1c8e10a7fed46bb11d7fa"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-4/before.json": {
+      "bytes": 14225,
+      "sha256": "d1749819a4aff9c5ca84aaecc785d8b237ffa4ff0762b8377b89aec01f618309"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-4/load.json": {
+      "bytes": 6854,
+      "sha256": "8fdb224beba61757641ed65fccc1f4bd3a30b5309c9bec99216729597c85af0c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "012d3358ad2d5dddce1213bf9a776fffea248a32edc4c982b48557e18a7ce558"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-5/after.json": {
+      "bytes": 14343,
+      "sha256": "c4300a1693548f585214eb1272fa563ba6087c843173a69adc6ef16d152f609d"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-5/audit.json": {
+      "bytes": 203,
+      "sha256": "32323dadabe47efc97e341013c5a50fca1b7fc2b75edc85b409fbc328e961956"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-5/before.json": {
+      "bytes": 14288,
+      "sha256": "29395c9af049787acc76bab14171c8ad2d83af5fc0b7a8eb0585a543f14c92d6"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-5/load.json": {
+      "bytes": 7161,
+      "sha256": "b895647af7067d962567195f2925722543ceeaec35e207c7485cf036b769c295"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "a089629c569f174f8adfadeb797a15cf348915053516fd0e9f28be28623f200f"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-1/after.json": {
+      "bytes": 10112,
+      "sha256": "b2234d418e3143cd1fac6ae68bef2d23722683705b3dbc7a97688a7b01508050"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-1/audit.json": {
+      "bytes": 203,
+      "sha256": "af5554a4ac0e3596637a9cd9eb0568f00fb901cd220b49a577651426dd2333dc"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-1/before.json": {
+      "bytes": 10084,
+      "sha256": "31156beea2313cfa2292c1225cbb5b53705de2a9e5c2dae1cea6b115d51d313f"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-1/load.json": {
+      "bytes": 6854,
+      "sha256": "118ebbe0b68ac327db8576eaef92bb42c7d4033575ab05bd03df155fe04c8d92"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "b6b56c0d5e0bb191d8bede3b7dbfd360893a9b0ce93f60b0cd5cbbd0d041f139"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-2/after.json": {
+      "bytes": 10092,
+      "sha256": "680d40541dae872af91c8583029fbea9fbe5254f4d17e96d3d20b211dec31d2f"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-2/audit.json": {
+      "bytes": 203,
+      "sha256": "536fa16214fb1caa5ef0b5c49a1789ca63080cfd326c17ce1205b7cc31d48c74"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-2/before.json": {
+      "bytes": 10063,
+      "sha256": "6ac94d519f73f5208f718335595125c3ab0b2acc9a2b4afef3732aadb1585952"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-2/load.json": {
+      "bytes": 6861,
+      "sha256": "4681e063d91bf69820df23a59776a2886f0e9cc2fc0a07b87e8ee3f6c1349cd7"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "aa6b68799ce4d6b2da6271d264e32170d3554d62e0a8195c111eeb1a1b090790"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-3/after.json": {
+      "bytes": 10091,
+      "sha256": "71d55dac45c80a9aa51ce7dd1032f0d16b63fd4f501c9658f44d8d633397b30b"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-3/audit.json": {
+      "bytes": 203,
+      "sha256": "09ea48e877de89a36fcacca9f90d67fb71319ffb0399532dddbd64c17d0ff69c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-3/before.json": {
+      "bytes": 10085,
+      "sha256": "c0fc98567c95c97d88d8073ef2845472d76a0fe12762af2c28d468a56edc6fa4"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-3/load.json": {
+      "bytes": 6849,
+      "sha256": "197d262e0e879bc78bbe43c1dfee0b65813c2ba28abb5cbe1135e6ae6db1a60d"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "5806b6900e5c52c977829a402c7e6daba12da2fe48d7657844ac96eca81b923e"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-4/after.json": {
+      "bytes": 10129,
+      "sha256": "ff89ba11b0f508dc1c55833443fb62006ec0b45175bf39a9818fd4590493da6c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-4/audit.json": {
+      "bytes": 203,
+      "sha256": "f50fcef4b7c67344abcce8bfbb380356d3ba4e922de2d12385400a9b43646067"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-4/before.json": {
+      "bytes": 10114,
+      "sha256": "7617616684e0675792bbfe67e3bc6afc71c096cafc3c9c3ef215c4d7229eb07d"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-4/load.json": {
+      "bytes": 6868,
+      "sha256": "165309f03ca746022774eeed8b6635e6c2b22a8cb66c8f622d78b876425030ed"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "ec2f879d83dc5beb87c54fc7172794986c4479df74445572bf14c29fadbd3d3b"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-5/after.json": {
+      "bytes": 10042,
+      "sha256": "27ac49e25491b0e60c26f9f673bc861b9b0d0af7d2c30d020a2fc10588bcca3c"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-5/audit.json": {
+      "bytes": 203,
+      "sha256": "d874499ac65472c6c7bd653e8e56071dce4b4ce793a2fb72a80b343c881b546e"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-5/before.json": {
+      "bytes": 10015,
+      "sha256": "1f2addad4b730b1c2c14ffaa3db8131a7a8b7f4596a17963db4ada919a7bd237"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-5/load.json": {
+      "bytes": 6863,
+      "sha256": "83fb7199e1a2c87e8d3eb8871e1c53037ca6672b55c809f45ab289af670b9ad0"
+    },
+    "38424937611/shape-put-10k-leader-c256/put-10k-leader-c256/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "4e0b864b7286164ed946ac4730804262c4e1687641ac848f1895e172ec39de94"
+    },
+    "38424937611/shape-put-10k-leader-c256/runner.txt": {
+      "bytes": 5518,
+      "sha256": "b44fc0a158326f381ca88bc1f05f3b23242af0df9ec33227d0e1da7e50c281cc"
+    },
+    "38424937611/shape-put-1k-leader-c256/commands.json": {
+      "bytes": 66921,
+      "sha256": "c667454e9068d4fdb0cf285c628c589b9656e6a1eb63ab7229434c42d94ae468"
+    },
+    "38424937611/shape-put-1k-leader-c256/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424937611/shape-put-1k-leader-c256/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424937611/shape-put-1k-leader-c256/plan.json": {
+      "bytes": 3578,
+      "sha256": "3b5d52e1f42aa71f3d0b14840ace41a27aea8d2b8c96573c71f210166923fbb2"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-1/after.json": {
+      "bytes": 590445,
+      "sha256": "16d6843233b05729cb75a7705ff12eb6b7d6b9593148834a7b57a81dda756239"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-1/audit.json": {
+      "bytes": 202,
+      "sha256": "2cf54ee42650f8bc0503d1df680bd7b24fca2953ee8fee64c49e008b82d5586b"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-1/before.json": {
+      "bytes": 579159,
+      "sha256": "23e949c5c4291c85ada455cd54262afa42751413ff10977bfb508146cb27e75c"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-1/load.json": {
+      "bytes": 6835,
+      "sha256": "7846c39747709a99cfea216968d69b421dede16438922b2b8a4248b3d9493707"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "b1c65233f0e53664e48f8c3d1ad24eca647a45af1d3262f14fbe9cc3f8de07b0"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-2/after.json": {
+      "bytes": 590310,
+      "sha256": "874acb9973c8c09a14913b68012dd8aee7991a970527357f5853daf56c96b7d2"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-2/audit.json": {
+      "bytes": 202,
+      "sha256": "25bb6d82e982b3aafd6404de6550e08fed3ca041c7bdb3e3d7b6380fcffefc5f"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-2/before.json": {
+      "bytes": 579245,
+      "sha256": "51e0880658468adc62f51af0caa4541b05c12fdb8d00ae1339e139e2a06e386c"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-2/load.json": {
+      "bytes": 6837,
+      "sha256": "e6446d32d816ea8ec66ca26009b910e687a90b066ccda0a6cc764e5c6a2e5933"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "b93a9b17f298f79f49d450d757742219417d107a1191c835870620881ceff155"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-3/after.json": {
+      "bytes": 590279,
+      "sha256": "7017dc107d655a8c558d750bc3410e383c329827fc3ae2f6708ed6a55d8ef58a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-3/audit.json": {
+      "bytes": 202,
+      "sha256": "b3e99a973e4c82b76b7f55f9e6afa59b1db22a3d65aeb9b0a3fbd915591cc854"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-3/before.json": {
+      "bytes": 579226,
+      "sha256": "ee0918058a902adf2cc665b55c58a5f7b194f4e4be8c4ef007eba4686701c832"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-3/load.json": {
+      "bytes": 6826,
+      "sha256": "62105c3d4b9bfdfa991a13abc3a46e2bff69640e9c2b46a30662288b3693f3c1"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "6e2bb5ad78d57b246bbfba5338c2f8bd45d6200c14a69270dd3e99eb7692a777"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-4/after.json": {
+      "bytes": 590388,
+      "sha256": "426bc0ccf92301db22bc31077a2d55f03afce1f122f48df844bbc13f0d63e6ec"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-4/audit.json": {
+      "bytes": 202,
+      "sha256": "8628235ae2c2c08feb6754567b7c52eecb272feef895b7eed47ad5bce9f1085b"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-4/before.json": {
+      "bytes": 579321,
+      "sha256": "c052ad553ee96b8e19e521fbe667e0bbeeb81efc2ca3a1e944e6dc8bb0074057"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-4/load.json": {
+      "bytes": 6842,
+      "sha256": "56f56c0e53344e1b282d6543f619021f996c59e1f8d171b10c69d0978bfa626a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "1e4f1fdbd5c532be71f652f4baa117f48379b4dcf20ae20603fdbc91064095fb"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-5/after.json": {
+      "bytes": 590366,
+      "sha256": "12d596a04ea11c6e8538e442fedb5173b28d29a67cff10215ec389ceef83a407"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-5/audit.json": {
+      "bytes": 202,
+      "sha256": "80903bc61292f183b2ca0309a4c38f21f7738c8422e8c668465ddb956808900d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-5/before.json": {
+      "bytes": 579244,
+      "sha256": "4ffc0d9850f280f78797274bfc29dca5284e819141f0267799f8dee96d47df9a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-5/load.json": {
+      "bytes": 6839,
+      "sha256": "93c6f41fd0f628656fb30140958fc9d0b992f1bd16b5a5ee2d39d1930400ab48"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "5cdd7dbfddec2655065ed69aa177d319626a0a7fe22fdccc6c2654d0fda5603d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-1/after.json": {
+      "bytes": 10131,
+      "sha256": "7430797a4b4bf246ba7684e4e6faee92ad11bf402b41dc46a6b48430606d4bbc"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-1/audit.json": {
+      "bytes": 205,
+      "sha256": "f3c230e4fc77b298766f4952a786cbbe090fe0ec2de4fe66534c64db80ba2b1d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-1/before.json": {
+      "bytes": 10016,
+      "sha256": "d4e9d005dcefbcec2ff9e5329eef120c148635e510988e05207d3970ea48ebcf"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-1/load.json": {
+      "bytes": 6895,
+      "sha256": "8756d5359473606b3d74f432c880adbbf96eea82c21d4010cd93c6b13a6b6931"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "aacd717fb3fe158da5beb7c9d926c105ecbd1cf8e7587272c66e5cea6ab9acd8"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-2/after.json": {
+      "bytes": 10107,
+      "sha256": "487b15b8fb1b09003b2d7516120225a33051cbbed7de43a94c26a1c27daeef3e"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-2/audit.json": {
+      "bytes": 205,
+      "sha256": "54e6d39ef5f71eeba7bd604fd38c1143018e5e88a6cee3a7057dc4cc5a06788f"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-2/before.json": {
+      "bytes": 10040,
+      "sha256": "583520a494c6b70063e92e20a9f77fc35497a32676245e234e83655f6d4ebe86"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-2/load.json": {
+      "bytes": 6893,
+      "sha256": "6db6ea216cf1c84388079f82fc2e179512534e70fb5d874ca9a170eb6b293f07"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "921915786d7f651c11736f8c8a6db6f2cb72b18be9c62b55e5da4a1e1685cf1d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-3/after.json": {
+      "bytes": 10103,
+      "sha256": "1d34ea433b5a1d4899ddb5bcbfc348a44cdce84742e6b629ae824b904ede107b"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-3/audit.json": {
+      "bytes": 205,
+      "sha256": "90f1c74590e80d5c3f784855bbe50d9086d469d0425acdef7eea912318195e95"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-3/before.json": {
+      "bytes": 10001,
+      "sha256": "69eea36eba59a6bad679c43a5c5a8f165584d094c28ec337ccde1b8b50e55adc"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-3/load.json": {
+      "bytes": 6878,
+      "sha256": "ba6288bbea3e0b8cd1aa0c96b94199f1d02a640470641ba90e1946b85c97581e"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "c1df0c5a3de83408275b3e7ed029f4267219636f8fbc6ec0acceb5056ec0091f"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-4/after.json": {
+      "bytes": 10151,
+      "sha256": "010e4a3834f93ac28f77adfd79401d46610238bf27420c6d7d7fa53901a6e2c5"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-4/audit.json": {
+      "bytes": 205,
+      "sha256": "588c477ac74a2546e76eff7a3b4a8475aa243338df01e6920a4b4ac851d2cbe9"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-4/before.json": {
+      "bytes": 9990,
+      "sha256": "565930573afa2c60fe835938bfdb678046a8b3f27230153ca6fadea8cc9bbd67"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-4/load.json": {
+      "bytes": 6891,
+      "sha256": "2faea65d09f5627692e69288683a8e1b5399f47985968654fa1ce492d2e306e5"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "c76bea37cb69b302f3f1330dbd7aa928a2ea39377b2b66c6b89a0a51dbbce3a6"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-5/after.json": {
+      "bytes": 10192,
+      "sha256": "f35f5697bd7a096ed3896cccb84b16b5584901f807655216f4cda5ebe1b44768"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-5/audit.json": {
+      "bytes": 205,
+      "sha256": "b28276ebb67a3e28e37050927d99bc80abf9698025b5866ce3ab9f57f6d60d40"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-5/before.json": {
+      "bytes": 10004,
+      "sha256": "6c2a6acf4f478851172e12dcee2560f95e743acf0592b170123ab3f5667e0209"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-5/load.json": {
+      "bytes": 6889,
+      "sha256": "7b8e6206c5e8888a3d4f04bc34f667e6d19af4aaeecea0658c0d23fac7075f56"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "cef1a52500494e63d746f2d227c6cb27e50913c1220686593673a3a7b05b5f81"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/after.json": {
+      "bytes": 14375,
+      "sha256": "7bc9692984afb442b145626c3873a71000771325e4d48c6cca358f7bb4e94eba"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/audit.json": {
+      "bytes": 205,
+      "sha256": "ab0fe4391011b7bc7c1c57472e7d39ecdbd67230d8c9f3799994343ec55c82db"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/before.json": {
+      "bytes": 14220,
+      "sha256": "35a7bbc60196f32c8674eb7e6da4b9122035b9df5bc5e02e257389704a3d7ef5"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/load.json": {
+      "bytes": 6892,
+      "sha256": "6e655b6abe9d32a08aff764692724c4228f7423906466aeaf99fe9c79959ffe4"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "4177ecef4b6424c3fe6fed0b69f52e12e91a746387bff9588cd19822adb85218"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-2/after.json": {
+      "bytes": 14418,
+      "sha256": "228b52863feb16c83407cc05b0ae9d1a2915e57c7b79fb182ddcaa2802ada861"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-2/audit.json": {
+      "bytes": 205,
+      "sha256": "e420845d76b93e0538046a2556c3e790647b2a0a8a43dc9e7aa4c72a938dd9de"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-2/before.json": {
+      "bytes": 14260,
+      "sha256": "33c846762fae40310de97beabbe30c2b035100a9d7cb76209b01637341aeafec"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-2/load.json": {
+      "bytes": 6899,
+      "sha256": "244aea2f573839ac075b073c35db75ddc121b86fae766c892c60de419c006f1e"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "4f72efac06559b9029ee6923e8ac9c4f24d0deee2bdb074c36a9cf892356279e"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-3/after.json": {
+      "bytes": 14373,
+      "sha256": "85b49018cbd18a2e4e227fc731ff6280044c57d89bf8d443838cd63f7ca353fd"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-3/audit.json": {
+      "bytes": 205,
+      "sha256": "40eac924b052300af2cb1b87c9874c5fb715d0127198ec6c336332d14fc54a98"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-3/before.json": {
+      "bytes": 14168,
+      "sha256": "214bd5891b090524d1453a778f599bf5fdadcb164095b4fbb9bf5b9d37cf5162"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-3/load.json": {
+      "bytes": 6889,
+      "sha256": "bac49992ba71f8254e9ddd09b08b0f40ef7a9258846b9278394a08b275ea31a1"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "01db604af5dd42c9b3b952d9fffbb0abe3e01223f57b210edfcfe81f2f84838a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-4/after.json": {
+      "bytes": 14278,
+      "sha256": "e5f617dae909b96f2944255791274a89d9f270f93349d86cfa56393534def3cb"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-4/audit.json": {
+      "bytes": 205,
+      "sha256": "72e59bf3b447c9d4b099b3c0e9f79baf5b8c9082be4d8a16dfaa399e084b86e2"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-4/before.json": {
+      "bytes": 14173,
+      "sha256": "456a595c1d9577c82c1d54095038f28c44bead26dba37664f290d64f54885a69"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-4/load.json": {
+      "bytes": 6893,
+      "sha256": "0fbb44c3db8672fd7cbc1e1526cd7faeaf9bc75f24ca5bd42fcc53dd46e17633"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "653760b92b2636bf810bacb198b663b8c621ae773df7c745bdd546130796aa0d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-5/after.json": {
+      "bytes": 14414,
+      "sha256": "42acbaf1c69f09687210c236c69797850e5a880339843b26973e39f36e03f5c7"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-5/audit.json": {
+      "bytes": 205,
+      "sha256": "572486b9a8b4867fc9eb07d8c03bc69eef21e7f35dff5436b5bd6ebd4eef683f"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-5/before.json": {
+      "bytes": 14255,
+      "sha256": "c21cec215c21d3dde6903a72ec323e38cca98e9388b66f6d12c0df52695a3391"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-5/load.json": {
+      "bytes": 6893,
+      "sha256": "f0e11638f6414fca849eeb80ae3e859ca3257c82bd05f8ccf89a5440e446df78"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "1fd831f54bb7ca3ce27d8c9d3acb8ca89ec860975509c5b86e2b6e4051a45206"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-1/after.json": {
+      "bytes": 10122,
+      "sha256": "ad01e7194c1686ca25da4b1efa059ecdee35337509f6c47ba9e5c60f1b8e992d"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-1/audit.json": {
+      "bytes": 205,
+      "sha256": "040db54cd1e3ca52420280039318120054a63c0beca3a33904270ec1372c6b52"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-1/before.json": {
+      "bytes": 10021,
+      "sha256": "b2c1835421bd36f9b3e07e591154ad3b7e1e3a68f00f0388c31721a2528687b8"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-1/load.json": {
+      "bytes": 6898,
+      "sha256": "b76382454aa61836df75f3d78f392227d911416ad8527f0b2050844138929686"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "9f9832b6c750824092cfc1a820cf31ef001408d2de2c42188a11744984b2c0f1"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-2/after.json": {
+      "bytes": 10167,
+      "sha256": "51b6e56dfccbef0a6fdca5896f167066eeecf47ba6fd17853d7f5fde361c8e94"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-2/audit.json": {
+      "bytes": 205,
+      "sha256": "655d0f49e1d17d5407d553bc92a30518790e39060f6800696f0c6961528dda71"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-2/before.json": {
+      "bytes": 10051,
+      "sha256": "c33ce81d9e6f134df058cb944116f89a7c0d3814f2d1a3f7674579981b1516af"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-2/load.json": {
+      "bytes": 6900,
+      "sha256": "9de854b596ab96524970ad91cd5b974cf562a6b783ba5d6eee378edf2a76cb63"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "cdcc4662703302d1e788b5b0a46bc9f1c25c9000cfcfbd9847cf5bd0010ba7cd"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-3/after.json": {
+      "bytes": 10209,
+      "sha256": "98f596f35c60c336e8e7ff3ad93a7c3f2bb773e151331afd7e1f263d66de9a27"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-3/audit.json": {
+      "bytes": 205,
+      "sha256": "1c8e0ae708750f12b906bc8e492f5ee6caa2e3456ff98fd91360b0e5c7ded4e2"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-3/before.json": {
+      "bytes": 10113,
+      "sha256": "bd465aa7bd95d0e4c48bb0cd7a00df5671621a28e3fb96692698623872292c8a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-3/load.json": {
+      "bytes": 6896,
+      "sha256": "6be8c709eec84873b44230f5b1c6a52ed0e21c51921bc7212c1aeadf30ce9e8a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "0725ae237c8bce22324f85e48dfe4da03cb59b2ffa1148c994221043074a3b97"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-4/after.json": {
+      "bytes": 10163,
+      "sha256": "d2656d821c9ceab8098aa110c28914dd8f301e4e17cf4395d233ad224459e390"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-4/audit.json": {
+      "bytes": 205,
+      "sha256": "a1edabbc35458bceb958adbf4c4725aa917aaaf1777088e14417ab46113717a1"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-4/before.json": {
+      "bytes": 10019,
+      "sha256": "ab5dccad0eecaeba8ead57c19cd13802dd601d88f0dbd88a834ed63a8f2f545a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-4/load.json": {
+      "bytes": 6899,
+      "sha256": "c08095aec5e5dd5d7d30e6a7addc237d66644d86d82ca3954d2264137e43ae22"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "0291d4d7aa62b4ff6647deb3084b83dade9a8e034fc7c4f163f0600d0e8f279e"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-5/after.json": {
+      "bytes": 10177,
+      "sha256": "143792065e46b4735719f98da4d17f433868d86c07d682bd507961dc8cc2975a"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-5/audit.json": {
+      "bytes": 205,
+      "sha256": "92a1444a41a7ee5713f91507ecdeaf0ad32b807572042d5292c826508c4ecbba"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-5/before.json": {
+      "bytes": 10074,
+      "sha256": "b01b5eec6af3580e498a676e4d32c506f8fc1a007b74c92cb7b905ffee7a3d76"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-5/load.json": {
+      "bytes": 6904,
+      "sha256": "358522a5bd17d694ec81b912f767f0ad0f83be3fc2756a1f408ab1fe6853f757"
+    },
+    "38424937611/shape-put-1k-leader-c256/put-1k-leader-c256/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "22ff254c3939bd7a6024dea4379899e530f4c536d4cd8f1c4a0da50a0a8e0b49"
+    },
+    "38424937611/shape-put-1k-leader-c256/runner.txt": {
+      "bytes": 5518,
+      "sha256": "4c3f89c36522e64d1d6e46a3fd77b0eba3388e56e3afc049c27a0d4d0b53f374"
+    },
+    "38424937611/shape-put-1k-leader-c4096/commands.json": {
+      "bytes": 67488,
+      "sha256": "1f19de620081466251f5a36b631dd028172d7af09924f155f2497ba57f3646ec"
+    },
+    "38424937611/shape-put-1k-leader-c4096/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424937611/shape-put-1k-leader-c4096/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424937611/shape-put-1k-leader-c4096/plan.json": {
+      "bytes": 3619,
+      "sha256": "7a19af5b9f651be0b16085bf4b67fc513296749b0460bd576f1d2f73d8d83564"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-1/after.json": {
+      "bytes": 590155,
+      "sha256": "1e2a2912e04643250a3d35eb3aea13f2b0ab19d1bbec2da84c05307fc1ac053a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-1/audit.json": {
+      "bytes": 202,
+      "sha256": "d52950df3d610df02d4a8ba745ae06d011018e29654d43c1287f88a2d1785266"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-1/before.json": {
+      "bytes": 579355,
+      "sha256": "709da146096f0bb3a1009946eb06be1b0ebd9a6eba7e11acc8d163822da584cb"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-1/load.json": {
+      "bytes": 7635,
+      "sha256": "c922ecfe72b08de4c914b5efc4a03c7b1f8449eb688bc9ffabe4956feef40d38"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "9f3702ff08b4c7758be948b8cf07698d148ef43d9cfd700ae672c88f8d860819"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-2/after.json": {
+      "bytes": 590343,
+      "sha256": "f459571b9fc6bd74d3d11626650bdfc2d76f60e1abf3509c626e06bd96dfd88c"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-2/audit.json": {
+      "bytes": 202,
+      "sha256": "3bad7a2a51f0ae4f1fd3cdec4097d7d9973d4d798212d796fd102b6c36f3a72f"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-2/before.json": {
+      "bytes": 579395,
+      "sha256": "38fd7abd89d9fd6464f57764aee171b8bdaa6a5e9a115697825cdc0a0fe84c1e"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-2/load.json": {
+      "bytes": 7476,
+      "sha256": "619363136d94c3057cd5b21aadd673dfa3b0581bd95a2a2b9b482b1c55679110"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "2bc931c17b06f53f8946c1ce1f604c22054e99dc63f020daf6b12192121ac783"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-3/after.json": {
+      "bytes": 588696,
+      "sha256": "de542c810a984b9489eb7b9d64284c50addd193e3b1df9bea4b4076c80e46ebf"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-3/audit.json": {
+      "bytes": 202,
+      "sha256": "4a1ffc86967239842f00cc3ce318f6b0d798bafa372668d8757d62922cc61212"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-3/before.json": {
+      "bytes": 577735,
+      "sha256": "bbe5fa1b30212638d8ee2a23a37a7f55289cfd79a77834efb0e299b5ae3ea39d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-3/load.json": {
+      "bytes": 7626,
+      "sha256": "6d97571da103d415594287a0744d7796fb554697dbc94f77c6ec4f9095fc3f02"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "33637782d18da08131c53e157f4379bbc6d238594f0d3d49234542887de3c8bc"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-4/after.json": {
+      "bytes": 590247,
+      "sha256": "9fa8ef9524f9f70101920a63c747131b05d83bbc202cc46cb4653a7d0ab18aa6"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-4/audit.json": {
+      "bytes": 202,
+      "sha256": "2d0cf1dfbaa059352f7cc1820aa74c710be90edec8dbfedb0fb6592be5a12dae"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-4/before.json": {
+      "bytes": 579366,
+      "sha256": "098c6ffc8f08096d1ee41b885c6acac79e76c876cb168beb7ea66df07ce48dd3"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-4/load.json": {
+      "bytes": 7634,
+      "sha256": "a68229094e10ffb142059ef58e5bcbdea10b4d5f74b7fb55ad385f6868dec3f5"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "ff6a588c671f91a21cd681dc1d4063a436880556209ff7a3fc0f5bc7a629a633"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-5/after.json": {
+      "bytes": 590183,
+      "sha256": "f6c96d1d2c6a02d2efab09667c8a378b01a281204afe75fce5480e5f126b943b"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-5/audit.json": {
+      "bytes": 202,
+      "sha256": "24d43c7dff31ce1fe237ccd2ba1039bbce9b19821dfb6d3a769d4264cb4ac1ea"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-5/before.json": {
+      "bytes": 579279,
+      "sha256": "7512e4fe86136181991a9e892506715deea42e1129e56c2b9b216e5ef7a1e75d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-5/load.json": {
+      "bytes": 7621,
+      "sha256": "b13a8c78429b5548119c2fc0d32f1f403ab2b521beb9bde6e9997c71a48a870a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "0173e451e75e3d056bd8b14b883588a61a7171d0b1bd4a298b91e23bebdf28a0"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-1/after.json": {
+      "bytes": 10057,
+      "sha256": "690124caef8730eb50cec7eabdba0f3e0850a6696285e5c257bfe6a8e627d6da"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-1/audit.json": {
+      "bytes": 205,
+      "sha256": "6565e89cb940e55e662ca6ddd81f6914b358271adcdc571e49b6365b419bb83f"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-1/before.json": {
+      "bytes": 9994,
+      "sha256": "e19a7ca1f39979f566fac6e93415cf05efc7f35dfa38e5a06802a19b23edfe61"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-1/load.json": {
+      "bytes": 6957,
+      "sha256": "b7cea99b4bb5311f9db79981b0590c12e6fd799d208ddaf6abc9cd085d6f3ddf"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "fd7e89177aeb90a4986d0e30da80d148c351da725a9570e6d09fe1aaa731e7e3"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-2/after.json": {
+      "bytes": 10029,
+      "sha256": "4feab2dc98ece3c4a2ab76fd00a6f832a21e47cf42ec0362f09db468c79931bf"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-2/audit.json": {
+      "bytes": 205,
+      "sha256": "5b2a4c04115472e5bc35361c4599385e01499d28643a10509ba92960b60cd875"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-2/before.json": {
+      "bytes": 9964,
+      "sha256": "5bff10c73d3c54d62a88d9886d7e5196c6d5ed049697b586b48e82d72b5486da"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-2/load.json": {
+      "bytes": 6958,
+      "sha256": "b6411bc1cc5c772f2b11102ad600335c67a909485296cb4d1225103b60c1574c"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "52bdc5737c48dbde104574ac90fea8a6de5ea8a7b9b9dbc34225562bc61c686e"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-3/after.json": {
+      "bytes": 10073,
+      "sha256": "f88dbca84217d029f12ad8f52d2a71226d8509a127edafcf02da6d136517f45a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-3/audit.json": {
+      "bytes": 205,
+      "sha256": "3a17458d70e67007b862d9b21193dae8f58eae70823dfe0a6f88251c6e60eb55"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-3/before.json": {
+      "bytes": 9962,
+      "sha256": "9eeb0b6872fd72381eb23d6aff8df43d53e934da411f02dd08c5a5ab83158e1d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-3/load.json": {
+      "bytes": 6941,
+      "sha256": "60d1852faf57dc86465e97eee823441fad52958d91077bf7378017c2a3add6ee"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "4ee3027b20ebb61352632de87c4bea1ada5e0c841392e3771efff1261fd567c1"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-4/after.json": {
+      "bytes": 10085,
+      "sha256": "36bb75824f95bfcf050be8eed492164a48c44c5cdec2a54a01ac8e7b4c023c27"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-4/audit.json": {
+      "bytes": 205,
+      "sha256": "64a499c7584a4a8ef32cfa8aae3ab710b5870982796357fd9f5bcfb3b4c6daec"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-4/before.json": {
+      "bytes": 9972,
+      "sha256": "4445d9f7129706a837d95fab80b103f86e162c4508f92bf98902a57458fead09"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-4/load.json": {
+      "bytes": 6956,
+      "sha256": "923a7afc25f4c3cd50568608d7f2771748a3a9370b455f215c5738ac4d21704a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "d09660cc76d5ff7d25317ac9678113945bffb42b272c98a9b9274e4cc22e05cf"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-5/after.json": {
+      "bytes": 10070,
+      "sha256": "bb25cc9ce0442655c6302dd99bc4c192ccc8c908d841a966024284caa0224adb"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-5/audit.json": {
+      "bytes": 205,
+      "sha256": "ee75e1fd0197f1875c72dd0e0a557567100b8b0b0e841ebdd9dd06b538762b10"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-5/before.json": {
+      "bytes": 10006,
+      "sha256": "b78478e48c17a138a77169e95e6c876d088f2cdf7e22219ec86d1959c3d3f395"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-5/load.json": {
+      "bytes": 6955,
+      "sha256": "261ce0e18553bea22ee6ff2bf6d317d4390ba642cf0ba0a83084762450efadbb"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "a3da10980d1974746f58081c552d8a41118f74b39df352e87e9a4e58fb9d6204"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/after.json": {
+      "bytes": 14278,
+      "sha256": "fd17adfce45d5fd032617b4ba41a4c625dbeb4c0795110f83808cb1c1e8d4f3a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/audit.json": {
+      "bytes": 205,
+      "sha256": "ceebd2e609beba3f85374ccbc8778a578f2e4d1654ee5e5924f758cc25c39f7d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/before.json": {
+      "bytes": 14039,
+      "sha256": "410d411dc7c4bdcab40447cceb0f733335cd8ed2a58545d36958b0623da17bb0"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/load.json": {
+      "bytes": 6951,
+      "sha256": "70b9baa10c0f62f5dc6118ce00a934020e349c4eeba63f7797c99577fa03c416"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "3cd91c246f4077a30bf1e2b7d9e2c33f9ba9bdfb0ce62b2b1d1a811d2ba8d4c3"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-2/after.json": {
+      "bytes": 14239,
+      "sha256": "92bc645111efb4007cb668c3cd5105c501cd43cd200080bd4eae60bc27a6b087"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-2/audit.json": {
+      "bytes": 205,
+      "sha256": "7b7d2730648f17277cdecadc5c4cb84bb2a3e14e4ffd9888c6db2451f10cac67"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-2/before.json": {
+      "bytes": 14144,
+      "sha256": "6d725f67894c7059819996532ac0e583532d7b8103c567f1a07e6e2c5a7d0f16"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-2/load.json": {
+      "bytes": 6952,
+      "sha256": "61de8472882633151e3d6f49afaabd0307a79b5668ba3a580c3a341c1868ee99"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "669eea3e1379445a5468401a1583fa34b356604cf9cae4d947dc09ad15dbfbb0"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-3/after.json": {
+      "bytes": 14251,
+      "sha256": "3d1aa3875ad33840c249afecd4dc32d2d09afe6eec5220446fb60aa29ca0d15a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-3/audit.json": {
+      "bytes": 205,
+      "sha256": "0a233de6deb74cfecc24eaa4e14422b9155004835422a2ff8831563258392b54"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-3/before.json": {
+      "bytes": 14104,
+      "sha256": "cde91f257d8485f50c4e2a7b1d0ce40f9886556187f1b5adf5d5428f0df313cd"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-3/load.json": {
+      "bytes": 6954,
+      "sha256": "dfb6c0eb8e856ed25ec3b57a146fb249955cc53cce2f7535baefc20cb967826f"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "ef72c15b75cd952ae082ea64ba3ea1f0bbb2d51eed68e75f6596f07c457ab1a0"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-4/after.json": {
+      "bytes": 14291,
+      "sha256": "5102d914b4c4050c1a58bcda2dcff8f5f6d2eb2c8dc672de7287ddcd98b69887"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-4/audit.json": {
+      "bytes": 205,
+      "sha256": "2100e18d3175a91decabad565108240719e864e006566336e3083e9d2e3a17e0"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-4/before.json": {
+      "bytes": 14113,
+      "sha256": "57b3aebce544e645a3d837dd45f83c8d89fd57091bb87f5e5bd70e7ba260f80a"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-4/load.json": {
+      "bytes": 6953,
+      "sha256": "23f481c1a9b0f734ddc662010ddf39c7b876f9bc9143b4f3b690e43b2b86d20b"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "9df4ae4d9f3b42884668a0b492ad7aad38a3fbe80475c8eff6ae007b9a9a33b2"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-5/after.json": {
+      "bytes": 14311,
+      "sha256": "a0a192a410daeb6bd7d35bc213ed45c49b49147fcd27d73c769a3c05ffa0d0de"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-5/audit.json": {
+      "bytes": 205,
+      "sha256": "2924532a179408972a4dd7b22522d6d66f2058ed6d85898277fcf4d1f66977ff"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-5/before.json": {
+      "bytes": 14208,
+      "sha256": "f30999fd7f7b11dd8114ae60d07d319d799a67984186d393fe7d8f260aa13216"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-5/load.json": {
+      "bytes": 6956,
+      "sha256": "88518bd0d81f2799f75b5d4e6a39bae17600d737618bdf8ed3117bbd86d55bff"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "b8c3b6ced0b4f91877d21c04845bd032e1277026e8cd3bb12ff909478f36e469"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-1/after.json": {
+      "bytes": 10086,
+      "sha256": "fd867afe84ab1846b02b7d02b38f94cdd3e87530fe9f125bb6c496f995f839c4"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-1/audit.json": {
+      "bytes": 205,
+      "sha256": "8b6f4b8dddf16691be390bc2e0912b7cf95f8d4b906f7b1749029edd03be8804"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-1/before.json": {
+      "bytes": 9972,
+      "sha256": "c20e23fe7f040729c93b1ed2e8b2287fdd631b11fb8b001492a3e12e3781de5f"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-1/load.json": {
+      "bytes": 6940,
+      "sha256": "90141667c72dd72f26ce041140ddc823a9a630679a74a7f613ad58a2a961ddbb"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "eb4121a1637ab2d9934449c8ecf2d3af8cdba234dfec953fd66f1d763a3fd4ee"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-2/after.json": {
+      "bytes": 10094,
+      "sha256": "63001c41ad968d34dfd24c47ed0dbaa672d895f9fc3ecbd86749355c75b9cc7e"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-2/audit.json": {
+      "bytes": 205,
+      "sha256": "81b94b3b5f751c547f12c82d2b2dad1733d7f3ec5fda0c72d2abeb570d08e4e2"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-2/before.json": {
+      "bytes": 10027,
+      "sha256": "882f71b73fd07adbf06719a1d79cf909532eb7eee338e46431cb2015afb62654"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-2/load.json": {
+      "bytes": 6963,
+      "sha256": "5f0498b192ae2fb56b4f0939e7f1f06494e35db98bb5e617e854faec2664746d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "cca310079157dafa7c95c23ff31c97d821085feda7f313157bb565e5f5e44248"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-3/after.json": {
+      "bytes": 10174,
+      "sha256": "4740ba4aae8849c2517c442f2b730962b2486655e72a4e75791f3f5db6fc2b2d"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-3/audit.json": {
+      "bytes": 205,
+      "sha256": "f85a52e237aed9a4a5a2c9f5bce2434226383ffa02e5eb3bf0bd7180b1084721"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-3/before.json": {
+      "bytes": 10028,
+      "sha256": "b34e2c25756eb11aa50d8ff2234ffca3908a3180bff13d4c8759a69c2875b934"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-3/load.json": {
+      "bytes": 6948,
+      "sha256": "56e05380420a3a29efa6ed5ab41244cab92a637c70a04bba63a669f83ce83359"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "1eb6a77bfaf77af18dd12619ca374c44c07d54be0d0b040fb2af7a764092d80f"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-4/after.json": {
+      "bytes": 10099,
+      "sha256": "20c14b922238d04825bb513423fbca385fedba721f552112ab191112391b8fe2"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-4/audit.json": {
+      "bytes": 205,
+      "sha256": "02454b527f2305e726975d1d4db638574227c1090cea43fb98a12fa709100a2c"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-4/before.json": {
+      "bytes": 9989,
+      "sha256": "ee03ab76b81200b274c56d09ed896ec04ebe5a50c4e80545920030234f0733af"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-4/load.json": {
+      "bytes": 6959,
+      "sha256": "26d617280d3b2cfeb99f9533fab4dcddfe08da53a74092249490b89396aa1785"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "ab3cde7be2aa24a925659f968ebfc73bbdc0d2df34bd7629246f3f58fdbe177b"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-5/after.json": {
+      "bytes": 10092,
+      "sha256": "055eaa818fcdb55aacfe140ece57192289083f877a6b6a5b801eaed5106a0593"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-5/audit.json": {
+      "bytes": 205,
+      "sha256": "e5262b04bed7a95fe57563eac8013eed11fe1c6d663ae7b53699d9b99e139639"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-5/before.json": {
+      "bytes": 9985,
+      "sha256": "d4d622b115a6f8289f9b032387835d2943cb4b7a6bea0718b42d8a5f3a7b4318"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-5/load.json": {
+      "bytes": 6957,
+      "sha256": "b42a4fcdbbdede13db3de74a1bfc042f648dfdef28ed48679c82be7531c0dbaf"
+    },
+    "38424937611/shape-put-1k-leader-c4096/put-1k-leader-c4096/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "b10d46a0586cd1233af30cb80312cdcc6ad0f7028e0232b7aef1cc43d17ab362"
+    },
+    "38424937611/shape-put-1k-leader-c4096/runner.txt": {
+      "bytes": 5518,
+      "sha256": "5fb225cdcb1179ed4c601c4271d07555aaf0786c61dd205a26794bd7e0972476"
+    },
+    "38424937611/shape-range-1k-leader-c1024/commands.json": {
+      "bytes": 67100,
+      "sha256": "4f5c257ddc172fa39a77df2410894a824456be9b3ef5b1754905792ac1a484bf"
+    },
+    "38424937611/shape-range-1k-leader-c1024/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424937611/shape-range-1k-leader-c1024/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424937611/shape-range-1k-leader-c1024/plan.json": {
+      "bytes": 3701,
+      "sha256": "7263a742f19ab9f90f4df94c55d1b09db5862d14ad06c756f6d0e964f67f8436"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-1/after.json": {
+      "bytes": 593289,
+      "sha256": "a076f145c24176b8dd7fd3436be7ed2d4463bc244e688591214248163d237ecb"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-1/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-1/before.json": {
+      "bytes": 582571,
+      "sha256": "2d935b145ffbe7ef9e9eb6e7141a149a0b26a3a84188a39e4830c28c8430bbab"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-1/load.json": {
+      "bytes": 7034,
+      "sha256": "714d11c887c3399e2a08c9d98a581bbbbfe868442268b6a38c8698b583e0503b"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "2d47771f9bc784fee874b8985b5967254f9590bc460e197a32e9e722f65fac1f"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-2/after.json": {
+      "bytes": 591815,
+      "sha256": "2baaa56f038d43c83ab3d490fba870df01f496c19b5cb76e2be035232e88e4e2"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-2/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-2/before.json": {
+      "bytes": 581077,
+      "sha256": "18980b236efef4a7f690af98b7f91285bc453ba14054645fbf8f011c400f1087"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-2/load.json": {
+      "bytes": 6888,
+      "sha256": "842aeed3b3f278655002f1d894fe8c429f23de1a47ecd066f3f837b46913a2fa"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "82e4a44f59622df3ba2c830900597d8b15be8123b8fc25d3566d27fd69beb457"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-3/after.json": {
+      "bytes": 593379,
+      "sha256": "de9e045603ef572c1187675551cf26fc0e4f2ed59913ddcab4c4759e17493991"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-3/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-3/before.json": {
+      "bytes": 582645,
+      "sha256": "16811ca14fe334cd02295cb17c8f588b4815c4b9919cc9f56ee747ca313b7357"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-3/load.json": {
+      "bytes": 7021,
+      "sha256": "e4936a2f02773f829018bc2ab5fe94a9c2cc59368209f4eecf72f439c27390b6"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "3e0ab01810866549eab4a2963616e7643c98c506d720de9bd3b171a2032aee60"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-4/after.json": {
+      "bytes": 593318,
+      "sha256": "11c19ee3be2957b5e4cb7bb5844756b3c5268ad65f78ac24055e3dee862ade8e"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-4/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-4/before.json": {
+      "bytes": 582568,
+      "sha256": "673a81635d4ecb18cae770ab68c369fe1c08149692bc0c18d4230fbedd1a0eab"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-4/load.json": {
+      "bytes": 6881,
+      "sha256": "21411b578d31dac4c4cdd9615e30063b674bea0a4c28e248f5897256d8cd5d88"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "2158b6d393b7a9b194516feb02b423ad4f0912a99a708a2bb488a303cd274a74"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-5/after.json": {
+      "bytes": 591894,
+      "sha256": "6ec2bf198547d4924bf56d7f5f07c3dc325274e7c73a1fb3bdbb03ccc5cacda0"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-5/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-5/before.json": {
+      "bytes": 581147,
+      "sha256": "23513eaa8e12ab6c88e3ba3d0ee94a839c001933258b929528c61fc04de35852"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-5/load.json": {
+      "bytes": 7029,
+      "sha256": "f03b5758c6f666a385e097bf1c2dc778a341f8fabe2438c0be59c69804347637"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "eda50a86f12bb427d03d0c44cecda7f059f16a2a12f94eecaaa7e0b36de1dcd1"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-1/after.json": {
+      "bytes": 9846,
+      "sha256": "c4a9a2bd6c62f36f3bb4625885be26f69c88b1d40a996ea8b66e75249afc62f5"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-1/before.json": {
+      "bytes": 9842,
+      "sha256": "f2b6f703fdd407a0618ea787c6ae54c6f2f4a6117450691a19b3f1068c973a14"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-1/load.json": {
+      "bytes": 6941,
+      "sha256": "b00e934d52b16818996c89bb32c03a041f4cf26ea0dbd8541b05ed76195d15fc"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "4b2689d4b2ada3e035ca3067e479d042723b7b39732e69c156594fe4d4d32677"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-2/after.json": {
+      "bytes": 9845,
+      "sha256": "ec6d37f3467705c22efb34a07560d6e475d4800a78d3eb49b68552b905cfe7b6"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-2/before.json": {
+      "bytes": 9839,
+      "sha256": "fedfcfa8a29d6df8a4294fe11d15d7f5acda57b1661e950a78c09ca78fc8e15a"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-2/load.json": {
+      "bytes": 6955,
+      "sha256": "024f3c1c6ff354b9083c1da03168d1ffb951c1ee64f21eaa717b27b9fcd941de"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "d9051ebc01e1b0e27bf136809de66b69eb1598ed575345d9760817d109528bda"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-3/after.json": {
+      "bytes": 9850,
+      "sha256": "dadd525cada1a7e33d48d2e4968e2597345038189c4077bfc04468898c47b6bd"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-3/before.json": {
+      "bytes": 9797,
+      "sha256": "a96364eadee917e1da7bd1c4607b374140e33e7dbaf151a7de2902d2c9e5108c"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-3/load.json": {
+      "bytes": 6956,
+      "sha256": "51c195771ea123673eefb4a661daa6a553b6f883224746d9cc48966a4c997455"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "959b10b73c19de6bdf74d95e7623cd0508a1bf166ab330085f8093657bbf15f6"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-4/after.json": {
+      "bytes": 9939,
+      "sha256": "14da5fba304442fd98ea930b3c9e5bf9b3f2919c7d582464957c66a186a10f83"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-4/before.json": {
+      "bytes": 9936,
+      "sha256": "85104b5eb16537bbfdedcb8f7a0884068784ef81234be28df403eded6f1f5182"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-4/load.json": {
+      "bytes": 6955,
+      "sha256": "c3050ac2e7bc5f2e7b1a3cb66426e12627b540d5248af9720e0e5d1430d3a960"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "eacc64ab1f60856dce42461c513e3660f076dff499dadc4447f2471654716912"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-5/after.json": {
+      "bytes": 9888,
+      "sha256": "0a5fcb7a2cb1e6505344e2192d26608074aa680447a14fe5742612849f31b34e"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-5/before.json": {
+      "bytes": 9883,
+      "sha256": "87a610b6d84f6285f44316140e192b3e3b13cddeff8a9f37012247dafa5bb2b9"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-5/load.json": {
+      "bytes": 6958,
+      "sha256": "ebc3a587ac3b8c3d1e082affeda1dbcfa15ae75bd411922e819d8efaf6d9695a"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "d09660cc76d5ff7d25317ac9678113945bffb42b272c98a9b9274e4cc22e05cf"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/after.json": {
+      "bytes": 13936,
+      "sha256": "7d266eb1cd354256db56b87657faca1b79e69846512b757c4da54562be54ea71"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/before.json": {
+      "bytes": 13933,
+      "sha256": "d05ac1d61be6bdc725b71110c0157e9b4e1d8d786f0fd27589c0f13ad32fb6b8"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/load.json": {
+      "bytes": 6956,
+      "sha256": "e1b9bcffec8762bd0d6656eb32282c4f4c11f1d7324279053b4043218692c36d"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "2301f715186039baad4d12a6fa99ec345e8e657d032ce25152fc9f44ec3ee46e"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-2/after.json": {
+      "bytes": 13998,
+      "sha256": "15ec4bda84d0a927fe6a6b270630d2f22a0a1770517c970d1e7cbbca3c613fd4"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-2/before.json": {
+      "bytes": 13982,
+      "sha256": "28af9bb9427450f440f4b1dade87c05760a4b38648011622113545edfc47cf93"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-2/load.json": {
+      "bytes": 6956,
+      "sha256": "b3e84a9bed43372054237e750864b53fda128bc48788cab5028c743a627702b7"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "1c912bddcdb18220e6daed23fcc324326c4e721a16ebea41808df961ab57861a"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-3/after.json": {
+      "bytes": 14035,
+      "sha256": "24bc661edd5e8dbce9066ed443a9e7514e68a01f78f0f3ad06e4f8ed9dee6915"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-3/before.json": {
+      "bytes": 14029,
+      "sha256": "01a254d2f113d207d9537c49781924aa935558cda1deb8079be766aca04f458f"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-3/load.json": {
+      "bytes": 6950,
+      "sha256": "15669b3b6088185e0816ac14ca7433dde1785273bb7856a39b39fb43e8c0ae4c"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "cc321963123466a3201d69a07bd6da3e94c1e2d39fcb3e26f4577494a9f29a37"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-4/after.json": {
+      "bytes": 13984,
+      "sha256": "b9fbb45a6ff1d02115b3f53182182a4e1f2c67ae2682cc833594e0ec2df3aedc"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-4/before.json": {
+      "bytes": 13979,
+      "sha256": "373703d6fe338ae57829a999ddf01920a897aa6a5523e0ff5c6d6ffb6fb0bf69"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-4/load.json": {
+      "bytes": 6949,
+      "sha256": "c777579d7754e4375ebc825c81a03730bcc370f00737dec7224fcb169b6fa540"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "5ce3917f570d836b424e1273cd2a5f58abb246c2074213cd9728bf9515b1a109"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-5/after.json": {
+      "bytes": 13931,
+      "sha256": "2de54134bc7db7e3a1290d1c82f34d42b7fa477a1705126669ed26dae060d8be"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-5/before.json": {
+      "bytes": 13880,
+      "sha256": "e6ea7b1827cce6557eeec42225367d0d07fbfdd8a61b8d17a14eb29fff385058"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-5/load.json": {
+      "bytes": 6935,
+      "sha256": "6fa2de259877521e936073f8eefb2c0637a5f6b92d9d39df54a4632a47b4a294"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "4a49844d971af7bd641e0d5fa496b38640cd7777db579c3789a0fa97d5ae344f"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-1/after.json": {
+      "bytes": 9948,
+      "sha256": "c251f634440827e8ceb1593bdfdc02334f29b5cfd483a3027eea0fb19c0de3c6"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-1/before.json": {
+      "bytes": 9944,
+      "sha256": "dcb917dda381953f73e783273c41db7facfa514f391c13cd7721e7a1fff35562"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-1/load.json": {
+      "bytes": 6945,
+      "sha256": "8cba05b487e0dc7918b3e49e909926dd5a30071ae484aac923b0c0e8e66e8a1a"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "138db39a549198db5fcdcc5c3e8ae5e0cd5f293c85b36a56d4e59f00b2665c50"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-2/after.json": {
+      "bytes": 9861,
+      "sha256": "02a1fb4abebe711ca32ecdca9e39a4d8e8fd3c0ba96010e3ec8aa62a385abdc1"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-2/before.json": {
+      "bytes": 9858,
+      "sha256": "13592e9d0417f73d29da67efcc164102a8056b520582969c4795d938754a2728"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-2/load.json": {
+      "bytes": 6948,
+      "sha256": "37cd513405d86169b744573f35b57ffc806eee05582079195ab968fe5f8fc982"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "7d5107792d5ea05a62f20175c417ffdffd665da0f979b26b343cdb7f9be84e40"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-3/after.json": {
+      "bytes": 9869,
+      "sha256": "090230430d0a6bc12f100e73ecd9dbcb0e30521cdac770c2273240a8bb9f80d8"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-3/before.json": {
+      "bytes": 9862,
+      "sha256": "03be372fccdd1156efeeb56380b28f3ed0eb992428794806fd16618e8ed41e9f"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-3/load.json": {
+      "bytes": 6942,
+      "sha256": "0c4f552bce92721192f263149bdebc724797338ef03a48d33b23fb5555ab7dc0"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "d8926f45c8f3e8772a643eaac3bb2d8ee07ca3656a65392eb93782b0c7d27e95"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-4/after.json": {
+      "bytes": 9911,
+      "sha256": "bb1abeb4c7537ef4921b12cdc540125346603e84b0f6b1adca760568e2ca5ebe"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-4/before.json": {
+      "bytes": 9904,
+      "sha256": "25f5a4dc280f6d26326d8b59f3e25e5e732223536ca69b70b7f2170af7c475ea"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-4/load.json": {
+      "bytes": 6961,
+      "sha256": "0e4349249ff4d1b7c87e048591ef8bc13f0a25839b6397513acc6ff864b53bef"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "db97d4f8bc25fff9672683e1705d8a8b7e7b068c0f74ede0f92867c93ec58028"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-5/after.json": {
+      "bytes": 9877,
+      "sha256": "b204fec0439690c97e7f5978962b1d224d2793c8eba4faf9d8702aebdbaa693f"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-5/before.json": {
+      "bytes": 9779,
+      "sha256": "d5dcc648f937b9ffca0e87bcc0de6f4f8f631b5f8cab955ac9f8d7037ee9bbd4"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-5/load.json": {
+      "bytes": 6962,
+      "sha256": "d548164cf84db0f464cdfe0fa40fd2bfbe8c089361c8c31dad7ab58378327174"
+    },
+    "38424937611/shape-range-1k-leader-c1024/range-1k-leader-c1024/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "a0d0295822e48aa0f3f6c294e6edc450037e138944d3d93cc18f57a8db58a192"
+    },
+    "38424937611/shape-range-1k-leader-c1024/runner.txt": {
+      "bytes": 5518,
+      "sha256": "05a5d5a10dff0870ff1d7af803da24d7a1965047cc7da06568c33d1d88288920"
+    },
+    "38424941260/shape-list-1k-balanced-c64/commands.json": {
+      "bytes": 68420,
+      "sha256": "448e2f4051bfa5657d03c04775c3e10dd6594344c765076c27d37a408ddc84ea"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-1/after.json": {
+      "bytes": 602186,
+      "sha256": "4cf62e855a1ecf92a9752ebc2e5cb525cb89b5840413c8eb466279cdd6be160e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-1/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-1/before.json": {
+      "bytes": 590879,
+      "sha256": "530b8fc9f26d43684bf38ebe848eb6ee42d44d34b480a818675977328f2e04ff"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-1/load.json": {
+      "bytes": 11412,
+      "sha256": "d786b89c999c17118c881faeb214664fb9fcd63ec70b1b64d3751cecb6b9b5f0"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "4261d8166fb217fcf7584bbf8689c6802999007360c4d0cfc5b62e299f5acc5a"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-2/after.json": {
+      "bytes": 602211,
+      "sha256": "c25df8648f886d91d98307f2fec1ce6bd69c29762b6e16430e8063ea4fdac4ed"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-2/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-2/before.json": {
+      "bytes": 591362,
+      "sha256": "f16761b068fe87722d0f45dd48f58d981401eb2532956c930546a447c3195610"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-2/load.json": {
+      "bytes": 11426,
+      "sha256": "e7a0955fc8502001722501bc9bb3b2029d58db2afed74362284ef732d2d723c2"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "c33fd7fe84bc8524da42c0a306a287dcd973946370737c88cb859ff62e90595d"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-3/after.json": {
+      "bytes": 602127,
+      "sha256": "38426c20b79b64c8b7b4be32e27e408244962e63881c34306682e8c952c2df2a"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-3/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-3/before.json": {
+      "bytes": 591194,
+      "sha256": "eec82095ce423ba400780f809100dd4c0731573fcf40cca292e9048d72eecfc7"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-3/load.json": {
+      "bytes": 11553,
+      "sha256": "be0f36b43103b214053da9fe04664c7978ee9070293a7b1db577675c5e07ab26"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "6f49ff81d228365fb2bea8bb46e04eb4d52011c0adcb96a2eef3845f065bf7c7"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-4/after.json": {
+      "bytes": 602222,
+      "sha256": "ef78fb801a7e5d1c18d62435b35884085b7fffb9b715f0c023827897bac8bf8c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-4/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-4/before.json": {
+      "bytes": 591267,
+      "sha256": "dcfc732bea362c40cd7017295d7d03b4e99968c683acddecd1108c74ab1b12bf"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-4/load.json": {
+      "bytes": 11423,
+      "sha256": "cfc7d6c327cb51c949f1eecb786aeaf418b391d75c10ba9a63f3ce6743a9b956"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "0a9bb6ed10af962c28c4bbebe4f88585adb3046888dadd6bea9f8c019345f778"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-5/after.json": {
+      "bytes": 602308,
+      "sha256": "6347658125928a728a0a608d3d828499e26b8cfad903cffa7d116a4cb9eadd06"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-5/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-5/before.json": {
+      "bytes": 591432,
+      "sha256": "2f260c3573aeaf677d56b189b0ee9264754ec4036c230baefc6fe12b086c4516"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-5/load.json": {
+      "bytes": 11432,
+      "sha256": "9fcb889a419a74fd5c289a9cf6e868ea9686c69181948f7e709632c3758f4635"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "4cd60fb0c9e86d5a1022a8f5208209a75c868ae9c5f19fe37538b1586e0c47cf"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-1/after.json": {
+      "bytes": 10057,
+      "sha256": "c2019a11e1c601e5ddd40b83acd7b68ec933d9e71cefc46be2191a52e1f8b10d"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-1/before.json": {
+      "bytes": 9983,
+      "sha256": "609730980eda79c7d560ef792f954c93a366eaa99d9842b7db7f9f745d503a2b"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-1/load.json": {
+      "bytes": 11296,
+      "sha256": "102ac5276c833d669cb1c1c8b77bfb534ea59f27209aba4a71eb1e7a413b4f68"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "57cf66764d8a54f0f47de43d5971f75ddbc19df62ecc37a2685e837523e4f39c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-2/after.json": {
+      "bytes": 10050,
+      "sha256": "19361c7601a3e3c121790b803a87dedbc0a430f7514492fa5c13d42df0a5295d"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-2/before.json": {
+      "bytes": 10026,
+      "sha256": "ce95deb0c435a15a7940f73fe5d84a52bca3614d53c1fc52c4aef54a728f01e1"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-2/load.json": {
+      "bytes": 11295,
+      "sha256": "d35a6c7ececc849aa5b44df2de69ccc4227eeff4ba73060a97e97cb1e0b3eb46"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "f56967126fca7451f18cc6ca53b3b74366df77ff7c41c7a85e067a555c2075c5"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-3/after.json": {
+      "bytes": 10051,
+      "sha256": "6c9723dd7b75102aac1c19a972c8b116f155d7d517d17dcc5660485688ae2b8c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-3/before.json": {
+      "bytes": 10020,
+      "sha256": "571ecfe50d956e8f569235d19c57587b479c97981f323fbb569fc1eb51384e25"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-3/load.json": {
+      "bytes": 11288,
+      "sha256": "36efaa206a8ce6ccb0af08d7637306962960ad6f69773ae34b9dd9adf7c0c250"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "2dd33e41ad6d37e5b8f3b69f1f7c2e523c305756460c3282084ecaebbc3584ca"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-4/after.json": {
+      "bytes": 10057,
+      "sha256": "a687463f418bf02408d2e39a1e1e76049b801b97d10b4b9eca5f774eebaec859"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-4/before.json": {
+      "bytes": 9987,
+      "sha256": "424b8a5b51f9ab337af6cb107283d3963e09e3524a9be0b8beb1ec17e28da10b"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-4/load.json": {
+      "bytes": 11277,
+      "sha256": "875096632933005a7d145f6d219fbabdfd892d96cf2149c98d4c3b3866038f8a"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "90d99d2ef6183a6bf9bac3f92fe0fa5b468705ee9665eabf233ef8b4fa34ff4f"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-5/after.json": {
+      "bytes": 10093,
+      "sha256": "55966d92ef83c7f0681b9c87655529880d1d4243d5d6c915b6cdb34ab042e0e9"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-5/before.json": {
+      "bytes": 10068,
+      "sha256": "3168325340f39421139258cb14c9a6d8c635cdd23df0fddc247bcf58d6b577a1"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-5/load.json": {
+      "bytes": 11274,
+      "sha256": "9a1dd975a03dc5c8239a6da0168b63227edd11c98dd8af337e2162f98fdd8978"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "fba04107d8835f36e9f3441c3c239ac738e1b2698113cc72f17f01eb29a17c10"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/after.json": {
+      "bytes": 14148,
+      "sha256": "383c41235b6e275037c5376d4547c352d906417398e33137016b16bd0a419a23"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/before.json": {
+      "bytes": 14082,
+      "sha256": "e64dfb04d172e31381444eefe2f1be66185c4913a3640242ce256d73a52ff80e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/load.json": {
+      "bytes": 11152,
+      "sha256": "75ba3881f255746ccc87fd3860a4c7ba3314ffddd9df1cbf0297b773c1c551a9"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "b8c4efc218580c11ee9cd095b3ac0cbfb9449faf9d7345a8ab00a53bf91bd84c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-2/after.json": {
+      "bytes": 14323,
+      "sha256": "35134c6b6d9251ce6662501cef1d7d38f9a3cf3016348c0951cf2ab2a044cd3e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-2/before.json": {
+      "bytes": 14177,
+      "sha256": "84a435fb108d906f4c5b17368afe487b41190103885fba62035d3ecc347f446d"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-2/load.json": {
+      "bytes": 11143,
+      "sha256": "b66a8f79160777a608f336e320e4ebcbfa7a987ac6d3865cb6d64a603a148d40"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "38c45574e004f3cd460835b04dabb2d351a19a6c0ce4f8f18073eef8aa88cc37"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-3/after.json": {
+      "bytes": 14121,
+      "sha256": "28e04ce2ec5fff598b3f7f9c4e9122e0fb8f448b00519d4e79ee10091b8b11b0"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-3/before.json": {
+      "bytes": 14093,
+      "sha256": "8567506e4bbbe3a7683685cda527cc4c8a70d1a054adb561c9bdf6096f54d394"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-3/load.json": {
+      "bytes": 11131,
+      "sha256": "d658209e1dc7ebf901450c60853281a23c30468063391c2f6bf291473a1a9a27"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "f1677210b3a13dc796b61691aa1ec02c4909b3b870895f1f6cfe2c06b0e2833b"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-4/after.json": {
+      "bytes": 14103,
+      "sha256": "8f7909ebe9feecccadc8367248838baafffc9b1697b6c7bd9a824d06b4e4b27b"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-4/before.json": {
+      "bytes": 14087,
+      "sha256": "fbd0319bfea2173b8f5abc8b234975ae4a4e1a589bf2533d13b0a02abb7462fd"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-4/load.json": {
+      "bytes": 11291,
+      "sha256": "7d4f892846791a7c69f2150a11878a68c52b169d6b72ecc253f0a61380dd3bec"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "18960e8e7cdd19eb421e1b03f0085825d543a3aa3596dc25c1f5130198f0137c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-5/after.json": {
+      "bytes": 14149,
+      "sha256": "49cb26a115871c21c600d5f369c7a4f21775cc6fd1aa99b3a3c4907140e5e564"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-5/before.json": {
+      "bytes": 14135,
+      "sha256": "6453f5fdcea4e03017fc14d4f9974559abf48796509452e464e5aec5c0048288"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-5/load.json": {
+      "bytes": 11288,
+      "sha256": "16053cd0544c3f1e11a891fb9bf8fde578bbce5ee6257e4e4e2ebe608487760d"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "d19f14376a1cf037987a9d28e65a89937300a3d7cac864de6a3c983a9968011c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-1/after.json": {
+      "bytes": 10028,
+      "sha256": "1da6a32b1f407b81dcf16e55fc31731d3fc2743ac45fc2bcaa27b4396f0144fb"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-1/before.json": {
+      "bytes": 9963,
+      "sha256": "95fe6f0dfcd6b0f20b7a84e585a6cb75e29e0536d46a3578056f5764cd491ed9"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-1/load.json": {
+      "bytes": 11436,
+      "sha256": "64b925ceb7df1838cbe7dee5c79243957ad7bf7415f3e2ccf013cd62317295de"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "b974eeeb335d826ce49d32884427e4bf44fe2ab4893917aedb82a08139ccd2ba"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-2/after.json": {
+      "bytes": 10158,
+      "sha256": "ea93710a6dd4321ee4992b727522c8737203d1640a4cd7770680c17e0ee5645e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-2/before.json": {
+      "bytes": 10017,
+      "sha256": "db3dc09c5e81b1a33127ec65b397cf9d5a3faea76935d042d3ade9eb2e9fd93e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-2/load.json": {
+      "bytes": 11142,
+      "sha256": "b53c91673a5428a50211529b6524452724ac9889584ae256a320072670bed7e0"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "6ff88047366d1be6974fb8bfb8cb10e00b77627553f006be380a18e0dcb610a6"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-3/after.json": {
+      "bytes": 10038,
+      "sha256": "ad3ebccb5117b6d93b62ec3b881f77509dd62348d51f47be7b483b37a58e5df3"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-3/before.json": {
+      "bytes": 9932,
+      "sha256": "f3d66c7c37406562de804bbeea0127e654e4bb7faa0c37bbecb7d783a0e6fad0"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-3/load.json": {
+      "bytes": 11292,
+      "sha256": "fad32edb11bb1cbe549629868b7ec34192b88259827a6776e90ef52a88ceeb23"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "a34678002ede4362eb7d43f917cc725a01ca5e6d56f527fe73bb242e3300700e"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-4/after.json": {
+      "bytes": 10035,
+      "sha256": "9ba0c7fd8b437f90ca41fc62c8acdc6830bafbda62c669678b436c0e25e07241"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-4/before.json": {
+      "bytes": 10005,
+      "sha256": "64847754ecb0f9958f5e75faf3a0f67709670bdc40334587464c0e99e98c8516"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-4/load.json": {
+      "bytes": 11145,
+      "sha256": "f599a1f90fc07f601eb037e8a1be2191dcd513db6411746e846e1519314c26c8"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "b47929ef15d11d94195263e15f3b2627c48b337fb5d363ddb3a60828e1f3f762"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-5/after.json": {
+      "bytes": 10167,
+      "sha256": "3d3d9038b7cee6e2adb3960cd1ed0dc31df434fcd6aad58b04739794dea70e74"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-5/before.json": {
+      "bytes": 10014,
+      "sha256": "337705f612033a7b8bf2804ff9f357c1c998dea1b23f46a75e4a6d68d0717855"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-5/load.json": {
+      "bytes": 11271,
+      "sha256": "eab8d9a65e33efc3663b24267863888955315eecad94297386e756b3643ea4c2"
+    },
+    "38424941260/shape-list-1k-balanced-c64/list-1k-balanced-c64/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "024b2158c4c22660d52275ee114ca190d3799ef3267ad7e5b2c7c5e24d5d26c3"
+    },
+    "38424941260/shape-list-1k-balanced-c64/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424941260/shape-list-1k-balanced-c64/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424941260/shape-list-1k-balanced-c64/plan.json": {
+      "bytes": 3660,
+      "sha256": "c3de9c30a4afe010eb578943637c7d8287edac56a48f4c0db0cfc59e609535f9"
+    },
+    "38424941260/shape-list-1k-balanced-c64/runner.txt": {
+      "bytes": 5518,
+      "sha256": "ed2c4b977686cff85297162c390972a1fa4ff00dcb3aacef5e0537f3785660ee"
+    },
+    "38424941260/shape-list-1k-leader-c64/commands.json": {
+      "bytes": 66915,
+      "sha256": "863c569033ab8d11fffbcc95be277a032f6aec1b87b3806e41552b055f73096d"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-1/after.json": {
+      "bytes": 593027,
+      "sha256": "6fa8d9737697c00c83289f2d1d0db53456cb1f572e36c3e6019f088f9a7b7656"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-1/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-1/before.json": {
+      "bytes": 582271,
+      "sha256": "3d800ca3aefb3cee7cd346b3690ebc017b0367a789d18e3a51ab427f3a09e69a"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-1/load.json": {
+      "bytes": 11336,
+      "sha256": "d69cbdb303a428dcfbc8557e8a660d80939173c07f2299b64229016689dd1be5"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-1/placement.json": {
+      "bytes": 139,
+      "sha256": "4e73969364a39ceb6ac4724cf1f61bd5ca4aeb77398c7d7c4f7e6a709e6c4a6a"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-2/after.json": {
+      "bytes": 593262,
+      "sha256": "d8974577b9b602d02f5e4d8ef3e60326609b069b3c561fbb8a06d70f9a50d5cb"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-2/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-2/before.json": {
+      "bytes": 582509,
+      "sha256": "c587cc4835759e641b00561298cd5bc65d7b7dc770e26fcaa9c9445896eab12f"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-2/load.json": {
+      "bytes": 11205,
+      "sha256": "06bee3bdf2a533d6ea524f7ce8db1287ca18fae8a766f6bf2a6d52fc289d4020"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-2/placement.json": {
+      "bytes": 139,
+      "sha256": "58da1e7902d88c278ba7478e65f2018574a398ad018805d31a9d14c4735883f1"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-3/after.json": {
+      "bytes": 593143,
+      "sha256": "6c00d1c74320ef9131914f3401ca1b821cc4bb975b93cfe1858bec3eb2168069"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-3/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-3/before.json": {
+      "bytes": 582390,
+      "sha256": "8995c4575a6834e28bf155e55cf154a13419c05a5ffa86996571ca90aa62b4d3"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-3/load.json": {
+      "bytes": 11197,
+      "sha256": "11c8a14dc982537d66075be22c2df7345a0aa5efc4a2819fe7b049947c9d5d93"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-3/placement.json": {
+      "bytes": 139,
+      "sha256": "e66dce0cfe39bc5259b01f0a7f03af58870f12ee35d52d7c334848bf117028ff"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-4/after.json": {
+      "bytes": 592995,
+      "sha256": "2b7451344105860eb5c81719b50cefbca6bd56b41e352ced4e9226b32bae8304"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-4/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-4/before.json": {
+      "bytes": 582138,
+      "sha256": "3885144b91bfa6f90fcc25294fdbe6e01f1da10644ed3216a2176879c9849e80"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-4/load.json": {
+      "bytes": 11198,
+      "sha256": "e2d08186042afb500f36ad5c5385770c1bb2fa47254cb3df305a4ec1270c11a6"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-4/placement.json": {
+      "bytes": 139,
+      "sha256": "9fd846a6400aae9ef94639b23a90445d45af5cb167438646b9c903d48986c8c4"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-5/after.json": {
+      "bytes": 593146,
+      "sha256": "0650056ab64b946eac94b39c11ba343afd4e1bdc508f425958aa2d23697973d2"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-5/audit.json": {
+      "bytes": 194,
+      "sha256": "722e10617b6f8e643b6056666e82caa54bbe0702bfe9f1190bc0ee7b75ad0598"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-5/before.json": {
+      "bytes": 582341,
+      "sha256": "d76d886254dd194a0624932debd0f30db65f9fb6c670429f13c10ad98a90560d"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-5/load.json": {
+      "bytes": 11204,
+      "sha256": "e2cf4edf4660e7138cbd18dd47de7c14a98096f90234cd4c83087a195ec332ae"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/etcd-5/placement.json": {
+      "bytes": 139,
+      "sha256": "3e6e07fa7c19fef7ba016a121ba86c48fa20ed7da5cba87434ef739b2fe3f0d2"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-1/after.json": {
+      "bytes": 9973,
+      "sha256": "83b9a0e607ea7fb5df928e1706b81323299a1bcab7f9e6ab2fd6afa2f23302da"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-1/before.json": {
+      "bytes": 9862,
+      "sha256": "974397979ba637f0ad342b9547a6f217359914786fb4a6fe86b9fb3812256630"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-1/load.json": {
+      "bytes": 11080,
+      "sha256": "1f9c27a1eae65ed693b5e31b2b65e395cfda10e9029c3a312b6f297658c1b513"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-1/placement.json": {
+      "bytes": 145,
+      "sha256": "2b74c588fa7c28ab077cd8abaf2312f9bfb447b93311d123d151f3c40a4f2fe6"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-2/after.json": {
+      "bytes": 9886,
+      "sha256": "ce77fb58d9bc71dc236e3da11bf0746d68f38560b18b0d32693cd6d1a3e29807"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-2/before.json": {
+      "bytes": 9872,
+      "sha256": "2773416fb1fad2420c27957f310dda865d2b3e013fcbfd803af90c599737fd34"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-2/load.json": {
+      "bytes": 11097,
+      "sha256": "4bb4b1acdc9fe9dd4c8c5325c2538845b9b4fc8524e63a0c8a41951d786b4ac1"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-2/placement.json": {
+      "bytes": 145,
+      "sha256": "e3c2120e14855dd221160a20709990fdd6daf1dc23b1cf1059ef3232eacc1147"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-3/after.json": {
+      "bytes": 9852,
+      "sha256": "8edf60877b391e58b7e307adcb5b35376f84ae5efc0e7724fa54270e15a5b896"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-3/before.json": {
+      "bytes": 9788,
+      "sha256": "39177c10e0cf0340bf203265ebeb467f75edc1172b2c0610e8178d14a731ea6e"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-3/load.json": {
+      "bytes": 11097,
+      "sha256": "063a2abb9c54b6184461286b6528125fa2e7683c2e6cfc690641193fd13571b4"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-3/placement.json": {
+      "bytes": 145,
+      "sha256": "acb875df592390050b43f4a6e9e1221e13b3e3d8cb7befbb23c6ec36f9285c67"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-4/after.json": {
+      "bytes": 9941,
+      "sha256": "73fd28d4d693882526aa28e0f4c3a0aa29dc611b00f7e632ec74dffbd09a5e21"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-4/before.json": {
+      "bytes": 9832,
+      "sha256": "5947a49e5747a577dcc29f00019f9f9a42787e44655bf3b836dd19fe5381e789"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-4/load.json": {
+      "bytes": 11098,
+      "sha256": "fb9ea396cf66b8c871d1c75211a0bb4b26a9ddc473fe976a72a444ec0ff4d1dd"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-4/placement.json": {
+      "bytes": 145,
+      "sha256": "533925f580e5242b61ddbfae38a78c9dce1293ddd391210e3130eb6c5d58b962"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-5/after.json": {
+      "bytes": 9891,
+      "sha256": "e900c55b783866f10adc02ab640319f2540f1bb7481de09b8f3c3772869fd4b9"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-5/before.json": {
+      "bytes": 9824,
+      "sha256": "5149958eab9d43180d1fe03d34407ceb0a2b61928ad5131cfa41f3bf55e07f0b"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-5/load.json": {
+      "bytes": 11098,
+      "sha256": "48e124d3772f4f67d26715b5e9be6900c4c0cad0f085d003aebffad3261259aa"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/pristine-5/placement.json": {
+      "bytes": 145,
+      "sha256": "24087931ac0f5f7cec77c98b6de53354363cdff8126e4e523ab7607d6a828ca8"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/after.json": {
+      "bytes": 13984,
+      "sha256": "9ccbeaa918a61007270defda4ebfa94b6fd9fbf3145b7907a595a5fa184cc398"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/before.json": {
+      "bytes": 13866,
+      "sha256": "cf45c0878701a01ce181635f752672e166b79cf62ffd76e3a0b03bd54e5b3169"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/load.json": {
+      "bytes": 11097,
+      "sha256": "c97ed04fb32b9d67e3a7bc268bf32a750f3737a416a2a88e60ad97e225fd9215"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-1/placement.json": {
+      "bytes": 145,
+      "sha256": "9ac12798f50eb3df0310cbe540b39a146266e93d960ebf3e694c0654942403ad"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-2/after.json": {
+      "bytes": 13980,
+      "sha256": "49f9c9423536daf854a6b54d83ad47729f80d114ec49c0ef2e61e2a67e63fbe7"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-2/before.json": {
+      "bytes": 13963,
+      "sha256": "7c22fdb1f121ab452e3e140b4f1c106f57d0ddd9e3de7c59d29c496fdda45425"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-2/load.json": {
+      "bytes": 11099,
+      "sha256": "074e4f87659f413ff0e397059b2150d117bbe728180fa8a80001c79c47acf30d"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-2/placement.json": {
+      "bytes": 145,
+      "sha256": "41840d83d449f7fc8f99e4970330ffa0ec9a5870e8214abebed1a5c1d1aedc28"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-3/after.json": {
+      "bytes": 13986,
+      "sha256": "0daaf38ab30dc17c6a8091804f1b8d798709496e1024dbb0c2023ddc8e69e7e8"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-3/before.json": {
+      "bytes": 13873,
+      "sha256": "e54653eaad76ef7f8f18c45ef763e3012733163b53713b45a3abf315d67dbe84"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-3/load.json": {
+      "bytes": 11086,
+      "sha256": "a67587ada15d27ec2b725cd1b8881fc42d0d71f6f72d50be136a89efdeccca02"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-3/placement.json": {
+      "bytes": 145,
+      "sha256": "5d137d5777bf304954c1f62293dd82cb707871af160cb6018f285059c9dc37ef"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-4/after.json": {
+      "bytes": 14031,
+      "sha256": "9f1faa73c02640320ca8c5e9ebfa79061c68cc8b37086013809f1af40a62a603"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-4/before.json": {
+      "bytes": 13967,
+      "sha256": "10e431a3dae7c6f30918bb3b7d081297ef52ae449ee56c7341be408406515b3a"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-4/load.json": {
+      "bytes": 11099,
+      "sha256": "1fff9e7fd8a762993afa8b6effb0a0aec474f9c18fcedd8d38fddef9da9d2ac2"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-4/placement.json": {
+      "bytes": 145,
+      "sha256": "aa3beb9310b5b02be659fe47704fa6ad9feba91b81b615951fffdad14be64549"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-5/after.json": {
+      "bytes": 13939,
+      "sha256": "7d473394a25c676ac50a19d2fbebcdec53e6baa09e158759f8288f620a2fb6e1"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-5/before.json": {
+      "bytes": 13869,
+      "sha256": "16520e1b9ae6b0d377afb41aa154bfa9b0a8c83c5cef64931776f8c8f3c84142"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-5/load.json": {
+      "bytes": 11088,
+      "sha256": "bff2fc3ea6305f1135a46031bfb13846d09a5b63e02bb92d7bfc715c711cbcda"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-5/placement.json": {
+      "bytes": 145,
+      "sha256": "1d2943ab010e468630f86f8c07c22179f7427832f9968713a116dcaebae31640"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-1/after.json": {
+      "bytes": 9941,
+      "sha256": "3983a59b2a4980fdb695d8e4bde4c572043542319e4cf0033af889937728a60c"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-1/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-1/before.json": {
+      "bytes": 9793,
+      "sha256": "dfdb07420e903a8690d0b780f9ee5aed362c053fa8b8022ad1eb0c2604e61e95"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-1/load.json": {
+      "bytes": 11101,
+      "sha256": "5b27eaeb7012a756178504543eebe1c4fe5fa846c2324d3a20712483d012759e"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-1/placement.json": {
+      "bytes": 145,
+      "sha256": "f7852bc03abdc53e694ccbbcee4a9fe8047eb108935ceadaea7322640a7fc824"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-2/after.json": {
+      "bytes": 10038,
+      "sha256": "ff741358ac94726c5ea13fccab7e78983701f4834818372e9425dd22e3ea2596"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-2/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-2/before.json": {
+      "bytes": 9881,
+      "sha256": "11e49c4cc9d0632d52d99eb1e992aaf7a165c672e3607be8ab323acbb8297b75"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-2/load.json": {
+      "bytes": 11105,
+      "sha256": "6a59d4d472a2ad7eb1e8a2ff39700c70a9c0087884598d8f2b7335954f6f5375"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-2/placement.json": {
+      "bytes": 145,
+      "sha256": "b6ba00a4077eae7b9dbb6e380fb0a432a1951c35ebddfaa5003ede950e14579f"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-3/after.json": {
+      "bytes": 9959,
+      "sha256": "f2d0f77055e4cdd21109967593a4717a56c6d51033ce45414123a99a06cbf07f"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-3/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-3/before.json": {
+      "bytes": 9845,
+      "sha256": "8326f086fa822d40daf5644c779e8bde97b8aea6c5172fb4f96ae8b6f160d48e"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-3/load.json": {
+      "bytes": 11106,
+      "sha256": "17aa4fbe4e54882fe40f95f2cd6bdad26c9b6741468b3e9264648395a24ee2a3"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-3/placement.json": {
+      "bytes": 145,
+      "sha256": "2340de6f83c00c785fcbd85ff716dd3d02c0ef4e64113b0a987b66fe0250b92f"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-4/after.json": {
+      "bytes": 9989,
+      "sha256": "aa8a0b18720a91088deb6b1c8c8bc8ef2d0e1b2fe19cd4f15d50be3114c99ca9"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-4/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-4/before.json": {
+      "bytes": 9840,
+      "sha256": "c99dc02dca08c4f2632bb2e7bf2423c2d33e0a830ae0476783a13a54d2672a1b"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-4/load.json": {
+      "bytes": 11108,
+      "sha256": "8cd47d4e408c9f6849053b8ed74d1793cd36ad23c36804f2970378272ba97cb6"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-4/placement.json": {
+      "bytes": 145,
+      "sha256": "f77bd3ea2af32d97016246f929a64a6739de1ed8ca46dca0e627f895eec20bf4"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-5/after.json": {
+      "bytes": 9944,
+      "sha256": "9a5d7ab85d3edcd432ccbabcbb53eb82c07e19a6e83ce780d4dc97747821f896"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-5/audit.json": {
+      "bytes": 195,
+      "sha256": "9881fa79d768e43a47475e0cad4ef04aa185a148d49ed22b1e6db2ec193d1253"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-5/before.json": {
+      "bytes": 9843,
+      "sha256": "d6079b0e3f8f48d404f7de10df4169961743b4ac1fcc7680a5caad6787893fe7"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-5/load.json": {
+      "bytes": 11091,
+      "sha256": "9fab7e08845fa54d514c180a9541a9bf5eef172c1e84f8b2f32cecbc12721546"
+    },
+    "38424941260/shape-list-1k-leader-c64/list-1k-leader-c64/tigerstore-off-5/placement.json": {
+      "bytes": 145,
+      "sha256": "746d8608494eea71fe540c42f55b473357f45dd3ced4cf38b3633bab7bf22878"
+    },
+    "38424941260/shape-list-1k-leader-c64/observation-control/binaries-sha256.txt": {
+      "bytes": 245,
+      "sha256": "3eaab46a3e10a09dd61da539804a6654139bf65ea2e97cb1897a81cee9f1ed0c"
+    },
+    "38424941260/shape-list-1k-leader-c64/observation-control/pristine-commit.txt": {
+      "bytes": 41,
+      "sha256": "b731d79e37680bd9727652a421d655d81a646d16c0c117482ffccfc17436fc13"
+    },
+    "38424941260/shape-list-1k-leader-c64/plan.json": {
+      "bytes": 3578,
+      "sha256": "8cf08ddd8fc0f92ef9cf80a8929b0ef40cc8d2235db2515f2710e666ab412af5"
+    },
+    "38424941260/shape-list-1k-leader-c64/runner.txt": {
+      "bytes": 5518,
+      "sha256": "7fbfc152fd236643a527392346e9d27b39ba2e860bd5fa6ad8c2277919536ef4"
+    }
+  },
+  "physical_claims": false,
+  "script_sha256": "bf01e1295dc9bca6b2bc060ffb979c0d09ee69e857ff9554b1914c2dc55e0ab3",
+  "subprocesses": []
+}

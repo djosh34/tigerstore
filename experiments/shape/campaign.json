@@ -1,0 +1,2384 @@
+{
+  "main_commit": "e5c3327e3800edf64f86ed8c1971ba7ebc1e8342",
+  "etcd_commit": "68c065e562994b89e333e77b039ad066f933c586",
+  "etcd_version": "3.7.2",
+  "deadline": "2026-10-13T22:00:00Z",
+  "runs": [
+    {
+      "id": 38412800347,
+      "folder": "closed-complete",
+      "role": "primary-closed",
+      "commit": "7043fcd6a83a76b3a22753d54c8aca2739286e50",
+      "created_at": "2026-10-13T14:22:34Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38412800347",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c1024",
+          "put-1k-leader-c4096",
+          "put-1k-balanced-c256",
+          "put-1k-balanced-c1024",
+          "put-1k-balanced-c4096",
+          "put-10k-leader-c256",
+          "put-10k-leader-c1024",
+          "put-10k-leader-c4096",
+          "put-10k-balanced-c256",
+          "put-10k-balanced-c1024",
+          "put-10k-balanced-c4096",
+          "range-1k-leader-c256",
+          "range-1k-leader-c1024",
+          "range-1k-leader-c4096",
+          "range-1k-balanced-c256",
+          "range-1k-balanced-c1024",
+          "range-1k-balanced-c4096"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38412803420,
+      "folder": "lists",
+      "role": "primary-list",
+      "commit": "7043fcd6a83a76b3a22753d54c8aca2739286e50",
+      "created_at": "2026-10-13T14:22:35Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38412803420",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-c1",
+          "list-1k-leader-c16",
+          "list-1k-leader-c64",
+          "list-1k-leader-c256",
+          "list-1k-balanced-c1",
+          "list-1k-balanced-c16",
+          "list-1k-balanced-c64",
+          "list-1k-balanced-c256"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "6s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414314087,
+      "folder": "open/38414314087",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:33:01Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414314087",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            1000,
+            2500,
+            4000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414453254,
+      "folder": "open/38414453254",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:33:59Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414453254",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            65000,
+            80000,
+            95000
+          ],
+          "etcd": [
+            5000,
+            6000,
+            7500
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414457842,
+      "folder": "open/38414457842",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:01Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414457842",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            2000,
+            4000,
+            6000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414462519,
+      "folder": "open/38414462519",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:03Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414462519",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            70000,
+            90000,
+            110000
+          ],
+          "etcd": [
+            8000,
+            10000,
+            12000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414466511,
+      "folder": "open/38414466511",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:04Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414466511",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414470922,
+      "folder": "open/38414470922",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:06Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414470922",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            12000,
+            15000
+          ],
+          "etcd": [
+            3000,
+            4000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414474484,
+      "folder": "open/38414474484",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:08Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414474484",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414478091,
+      "folder": "open/38414478091",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:09Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414478091",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            12000,
+            15000
+          ],
+          "etcd": [
+            3000,
+            4000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414481126,
+      "folder": "open/38414481126",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:11Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414481126",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414483910,
+      "folder": "open/38414483910",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:12Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414483910",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            65000,
+            80000,
+            100000
+          ],
+          "etcd": [
+            6500,
+            8000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414487584,
+      "folder": "open/38414487584",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:14Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414487584",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            60000
+          ],
+          "etcd": [
+            2000,
+            4000,
+            6000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414490696,
+      "folder": "open/38414490696",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:15Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414490696",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            90000,
+            120000,
+            150000
+          ],
+          "etcd": [
+            8000,
+            10000,
+            14000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414493802,
+      "folder": "open/38414493802",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:16Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414493802",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            500
+          ],
+          "etcd": [
+            50,
+            100,
+            200
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414497031,
+      "folder": "open/38414497031",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:18Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414497031",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            700,
+            900,
+            1100
+          ],
+          "etcd": [
+            300,
+            400,
+            500
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414500773,
+      "folder": "open/38414500773",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:19Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414500773",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            600
+          ],
+          "etcd": [
+            100,
+            200,
+            400
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38414504323,
+      "folder": "open/38414504323",
+      "role": "superseded-arrival-bug",
+      "commit": "b6d38746274ae1e874402eda5e63e77bbbfe0fbd",
+      "created_at": "2026-10-13T14:34:21Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38414504323",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            900,
+            1200,
+            1500
+          ],
+          "etcd": [
+            600,
+            800,
+            1000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38415476997,
+      "folder": "range4096-retry",
+      "role": "setup-retry",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:41:08Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38415476997",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-c4096"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38415480337,
+      "folder": "client-controls",
+      "role": "closed-control",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:41:09Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38415480337",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c1024",
+          "put-1k-leader-c4096"
+        ],
+        "targets": [
+          "tigerstore",
+          "tigerstore-static",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 16
+      }
+    },
+    {
+      "id": 38415945699,
+      "folder": "cpu",
+      "role": "profile",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:44:20Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38415945699",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c4096",
+          "put-1k-balanced-c256",
+          "put-1k-balanced-c4096",
+          "put-10k-leader-c256",
+          "range-1k-leader-c1024",
+          "range-1k-balanced-c1024",
+          "list-1k-leader-c64",
+          "list-1k-balanced-c64"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 1,
+        "duration": "5s",
+        "warmup": "1s",
+        "profile": "cpu",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38415950650,
+      "folder": "trace",
+      "role": "profile",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:44:22Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38415950650",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c4096",
+          "put-10k-leader-c256"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 1,
+        "duration": "4s",
+        "warmup": "1s",
+        "profile": "trace",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416417154,
+      "folder": "matched/38416417154",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:35Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416417154",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            1000,
+            3000,
+            5000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416421023,
+      "folder": "matched/38416421023",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:37Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416421023",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            2000,
+            5000,
+            8000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416424649,
+      "folder": "matched/38416424649",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:38Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416424649",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            500,
+            1000,
+            2000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416428166,
+      "folder": "matched/38416428166",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:40Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416428166",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            500,
+            1000,
+            2000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416431454,
+      "folder": "matched/38416431454",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:41Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416431454",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            1000,
+            3000,
+            5000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416435674,
+      "folder": "matched/38416435674",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:43Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416435674",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            10000
+          ],
+          "etcd": [
+            2000,
+            5000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416439805,
+      "folder": "matched/38416439805",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:45Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416439805",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            50,
+            100,
+            200
+          ],
+          "etcd": [
+            50,
+            100,
+            200
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38416443586,
+      "folder": "matched/38416443586",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:47:46Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38416443586",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            600
+          ],
+          "etcd": [
+            100,
+            300,
+            600
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38417472751,
+      "folder": "extended/38417472751",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:54:53Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38417472751",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100000,
+            110000,
+            125000
+          ],
+          "etcd": [
+            8000,
+            9000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38417476888,
+      "folder": "extended/38417476888",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:54:55Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38417476888",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            125000,
+            150000,
+            175000,
+            200000
+          ],
+          "etcd": [
+            11000,
+            12000,
+            13000,
+            14000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38417480966,
+      "folder": "extended/38417480966",
+      "role": "superseded-arrival-bug",
+      "commit": "99cd39439b62ccfb80792f36f51d4a5e98c23797",
+      "created_at": "2026-10-13T14:54:56Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38417480966",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            200000,
+            250000,
+            300000,
+            350000
+          ],
+          "etcd": [
+            16000,
+            20000,
+            25000,
+            30000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38418280627,
+      "folder": "caps/38418280627",
+      "role": "closed-control",
+      "commit": "b2994a4b68efde0f4f20d9e4bfe9796d42e1db1a",
+      "created_at": "2026-10-13T15:00:21Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38418280627",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c1024",
+          "put-1k-leader-c4096",
+          "put-1k-balanced-c4096",
+          "put-10k-leader-c256"
+        ],
+        "targets": [
+          "tigerstore",
+          "cap1m",
+          "cap256k",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38421648705,
+      "folder": "static-caps",
+      "role": "closed-control",
+      "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+      "created_at": "2026-10-13T15:23:30Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38421648705",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c4096"
+        ],
+        "targets": [
+          "tigerstore-static",
+          "cap1m-static",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 16
+      }
+    },
+    {
+      "id": 38421653015,
+      "folder": "inflight",
+      "role": "closed-control",
+      "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+      "created_at": "2026-10-13T15:23:32Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38421653015",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-c1024",
+          "put-1k-balanced-c4096"
+        ],
+        "targets": [
+          "tigerstore",
+          "inflight1024",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38421656211,
+      "folder": "cap-open",
+      "role": "superseded-arrival-bug",
+      "commit": "4ee913fbb7f799070c36af37de7e9aafbd696d49",
+      "created_at": "2026-10-13T15:23:33Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38421656211",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "cap1m",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            95000,
+            110000,
+            125000
+          ],
+          "cap1m": [
+            95000,
+            110000,
+            125000
+          ],
+          "etcd": [
+            7000,
+            8000,
+            9000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38424937611,
+      "folder": "observation-controls/38424937611",
+      "role": "observation-control",
+      "commit": "a0d88e2e69593332ee64ac10f3d553dccdcdec4e",
+      "created_at": "2026-10-13T15:46:34Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38424937611",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-c256",
+          "put-1k-leader-c4096",
+          "put-10k-leader-c256",
+          "range-1k-leader-c1024"
+        ],
+        "targets": [
+          "pristine",
+          "tigerstore-off",
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38424941260,
+      "folder": "observation-controls/38424941260",
+      "role": "observation-control",
+      "commit": "a0d88e2e69593332ee64ac10f3d553dccdcdec4e",
+      "created_at": "2026-10-13T15:46:36Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38424941260",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-c64",
+          "list-1k-balanced-c64"
+        ],
+        "targets": [
+          "pristine",
+          "tigerstore-off",
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {},
+        "reps": 5,
+        "duration": "6s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427522584,
+      "folder": "open-fixed/38427522584",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:48Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427522584",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            1000,
+            2500,
+            4000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427526749,
+      "folder": "open-fixed/38427526749",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:50Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427526749",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            65000,
+            80000,
+            95000
+          ],
+          "etcd": [
+            5000,
+            6000,
+            7500
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427530070,
+      "folder": "open-fixed/38427530070",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:51Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427530070",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            2000,
+            4000,
+            6000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427533507,
+      "folder": "open-fixed/38427533507",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:53Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427533507",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            70000,
+            90000,
+            110000
+          ],
+          "etcd": [
+            8000,
+            10000,
+            12000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427537478,
+      "folder": "open-fixed/38427537478",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:54Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427537478",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427541788,
+      "folder": "open-fixed/38427541788",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:56Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427541788",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            12000,
+            15000
+          ],
+          "etcd": [
+            3000,
+            4000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427545756,
+      "folder": "open-fixed/38427545756",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:04:58Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427545756",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427549648,
+      "folder": "open-fixed/38427549648",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:00Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427549648",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            12000,
+            15000
+          ],
+          "etcd": [
+            3000,
+            4000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427553648,
+      "folder": "open-fixed/38427553648",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:01Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427553648",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            50000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427557495,
+      "folder": "open-fixed/38427557495",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:03Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427557495",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            65000,
+            80000,
+            100000
+          ],
+          "etcd": [
+            6500,
+            8000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427562207,
+      "folder": "open-fixed/38427562207",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:05Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427562207",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            10000,
+            30000,
+            60000
+          ],
+          "etcd": [
+            2000,
+            4000,
+            6000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427565773,
+      "folder": "open-fixed/38427565773",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:06Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427565773",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            90000,
+            120000,
+            150000
+          ],
+          "etcd": [
+            8000,
+            10000,
+            14000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427570180,
+      "folder": "open-fixed/38427570180",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:08Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427570180",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            500
+          ],
+          "etcd": [
+            50,
+            100,
+            200
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427573816,
+      "folder": "open-fixed/38427573816",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:10Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427573816",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            700,
+            900,
+            1100
+          ],
+          "etcd": [
+            300,
+            400,
+            500
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427577543,
+      "folder": "open-fixed/38427577543",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:11Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427577543",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            600
+          ],
+          "etcd": [
+            100,
+            200,
+            400
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427581660,
+      "folder": "open-fixed/38427581660",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:13Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427581660",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            900,
+            1200,
+            1500
+          ],
+          "etcd": [
+            600,
+            800,
+            1000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427584978,
+      "folder": "matched-fixed/38427584978",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:14Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427584978",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            1000,
+            3000,
+            5000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427587809,
+      "folder": "matched-fixed/38427587809",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:16Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427587809",
+      "inputs": {
+        "cases": [
+          "put-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            8000
+          ],
+          "etcd": [
+            2000,
+            5000,
+            8000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427592060,
+      "folder": "matched-fixed/38427592060",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:17Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427592060",
+      "inputs": {
+        "cases": [
+          "put-10k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            500,
+            1000,
+            2000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427595362,
+      "folder": "matched-fixed/38427595362",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:19Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427595362",
+      "inputs": {
+        "cases": [
+          "put-10k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            500,
+            1000,
+            2000
+          ],
+          "etcd": [
+            500,
+            1000,
+            2000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427598354,
+      "folder": "matched-fixed/38427598354",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:20Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427598354",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            1000,
+            3000,
+            5000
+          ],
+          "etcd": [
+            1000,
+            3000,
+            5000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427601551,
+      "folder": "matched-fixed/38427601551",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:22Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427601551",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            2000,
+            5000,
+            10000
+          ],
+          "etcd": [
+            2000,
+            5000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427606497,
+      "folder": "matched-fixed/38427606497",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:24Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427606497",
+      "inputs": {
+        "cases": [
+          "list-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            50,
+            100,
+            200
+          ],
+          "etcd": [
+            50,
+            100,
+            200
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427610056,
+      "folder": "matched-fixed/38427610056",
+      "role": "matched-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:25Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427610056",
+      "inputs": {
+        "cases": [
+          "list-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100,
+            300,
+            600
+          ],
+          "etcd": [
+            100,
+            300,
+            600
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427613398,
+      "folder": "extended-fixed/38427613398",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:27Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427613398",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            100000,
+            110000,
+            125000
+          ],
+          "etcd": [
+            8000,
+            9000,
+            10000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427617541,
+      "folder": "extended-fixed/38427617541",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:28Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427617541",
+      "inputs": {
+        "cases": [
+          "range-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            125000,
+            150000,
+            175000,
+            200000
+          ],
+          "etcd": [
+            11000,
+            12000,
+            13000,
+            14000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427620569,
+      "folder": "extended-fixed/38427620569",
+      "role": "primary-open",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:30Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427620569",
+      "inputs": {
+        "cases": [
+          "range-1k-balanced-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            200000,
+            250000,
+            300000,
+            350000
+          ],
+          "etcd": [
+            16000,
+            20000,
+            25000,
+            30000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    },
+    {
+      "id": 38427624163,
+      "folder": "cap-open-fixed",
+      "role": "open-control",
+      "commit": "223f8f6aad7923ff186ac77a2c9fc29b9f140c86",
+      "created_at": "2026-10-13T16:05:31Z",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/djosh34/tigerstore/actions/runs/38427624163",
+      "inputs": {
+        "cases": [
+          "put-1k-leader-open"
+        ],
+        "targets": [
+          "tigerstore",
+          "cap1m",
+          "etcd"
+        ],
+        "rates": {
+          "tigerstore": [
+            95000,
+            110000,
+            125000
+          ],
+          "cap1m": [
+            95000,
+            110000,
+            125000
+          ],
+          "etcd": [
+            7000,
+            8000,
+            9000
+          ]
+        },
+        "reps": 5,
+        "duration": "3s",
+        "warmup": "1s",
+        "profile": "none",
+        "conns": 18
+      }
+    }
+  ],
+  "excluded_pilots": [
+    {
+      "id": 38410853336,
+      "reason": "canceled after metric parser defect"
+    },
+    {
+      "id": 38411023412,
+      "reason": "pilot before owner persistence-job fence"
+    }
+  ]
+}
