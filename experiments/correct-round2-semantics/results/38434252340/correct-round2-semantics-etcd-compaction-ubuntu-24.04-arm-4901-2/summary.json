@@ -1,0 +1,44 @@
+{
+  "artifact": "correct-round2-semantics-etcd-compaction-ubuntu-24.04-arm-4901-2",
+  "attempt": {
+    "target": "etcd",
+    "scenario": "compaction",
+    "runner": "ubuntu-24.04-arm",
+    "seed": 4901,
+    "rep": 2,
+    "watchers": 12
+  },
+  "reached_controller": true,
+  "recorded_history": true,
+  "controller_pass": true,
+  "passed": true,
+  "offline_pass": true,
+  "oracle_sets": 4,
+  "checker_verdicts": 16,
+  "checker_passes": 16,
+  "operations": 110,
+  "target": 61,
+  "watches": 21,
+  "faults": {
+    "peer-blackhole": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "stop-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ],
+    "kill-leader": [
+      "exercised",
+      "healed",
+      "installed",
+      "requested"
+    ]
+  },
+  "failures": [],
+  "checker_failures": []
+}

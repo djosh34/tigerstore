@@ -1,0 +1,15 @@
+{
+  "attempts": 56,
+  "reached_controller": 56,
+  "passed": 28,
+  "failed": 28,
+  "setup_failures": 0,
+  "histories": 140,
+  "verdicts": 560,
+  "verdict_passes": 464,
+  "verdict_failures": 96,
+  "linearizable_timeouts": 3,
+  "max_checker_seconds": 30.011447712,
+  "operations": 5809,
+  "verified_manifest_entries": 2408
+}
