@@ -89,3 +89,71 @@ func TestHeaderDecodeAllocs(t *testing.T) {
 		t.Fatalf("%v allocations per header block", n)
 	}
 }
+
+// TestHeaderBlockRules feeds header blocks through headerFragment: a
+// block that breaks a rule resets its stream and leaves the HPACK state in
+// step for the next block, which reuses the dynamic table; a block that
+// goes on after breaking a rule, or could decode past the limit, ends the
+// connection.
+func TestHeaderBlockRules(t *testing.T) {
+	c := testConn()
+	c.hdec = hpack.NewDecoder(4096, c.onField)
+	c.hdec.SetMaxStringLength(maxHeaderList)
+	var buf bytes.Buffer
+	enc := hpack.NewEncoder(&buf)
+	block := func(fields ...hpack.HeaderField) []byte {
+		buf.Reset()
+		for _, f := range fields {
+			if err := enc.WriteField(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return bytes.Clone(buf.Bytes())
+	}
+	put := []hpack.HeaderField{
+		{Name: ":method", Value: "POST"},
+		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
+		{Name: "content-type", Value: "application/grpc"},
+	}
+	send := func(id uint32, b []byte, last bool) error {
+		if c.hdr.id != id {
+			c.hdr = reqHeaders{id: id}
+		}
+		return c.headerFragment(b, last)
+	}
+	// Stream 1 has an uppercase name; its fields still go into the table.
+	if err := send(1, block(append(put, hpack.HeaderField{Name: "X-Upper", Value: "v"})...), true); err != nil {
+		t.Fatal(err)
+	}
+	if c.streams[1] != nil {
+		t.Fatal("a bad block opened a stream")
+	}
+	// Stream 3 reuses the table entries that stream 1 added.
+	if err := send(3, block(put...), true); err != nil {
+		t.Fatal(err)
+	}
+	if st := c.streams[3]; st == nil || st.rpc != methods["/etcdserverpb.KV/Put"] {
+		t.Fatalf("stream 3 after a bad block: %+v", st)
+	}
+	// A second :path breaks the block.
+	if err := send(5, block(append(put, hpack.HeaderField{Name: ":path", Value: "/x"})...), true); err != nil || c.streams[5] != nil {
+		t.Fatalf("a block with two paths: %v, stream %v", err, c.streams[5])
+	}
+	// A bad block on an even stream ends the connection, as a good one
+	// would.
+	if err := send(6, block(append(put, hpack.HeaderField{Name: "X-Upper", Value: "v"})...), true); err == nil {
+		t.Fatal("a bad block on an even stream was taken")
+	}
+	// A block that goes on after breaking a rule ends the connection.
+	if err := send(7, block(hpack.HeaderField{Name: "X-Upper", Value: "v"}), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := send(7, block(put...), true); err == nil {
+		t.Fatal("a continuation after a bad field was decoded")
+	}
+	// So does a fragment that could decode past the limit.
+	c.hdr = reqHeaders{id: 9}
+	if err := c.headerFragment(make([]byte, 2*maxHeaderList+1), false); err == nil {
+		t.Fatal("an oversized fragment was decoded")
+	}
+}

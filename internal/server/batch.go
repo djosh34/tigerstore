@@ -245,17 +245,18 @@ func (c *conn) complete(batches [][]node.Completion) {
 		n += len(cs)
 	}
 	out := make([]finished, 0, n)
-	// Put replies share one buffer; each is a clipped slice of it.
-	replies := make([]byte, 0, n*(5+putResponseSize))
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
 			switch {
 			case f.err != nil:
 			case f.st.rpc.wirePut:
-				start := len(replies)
-				replies, f.err = c.appendPutReply(replies, &cp.Reply)
-				f.msg = replies[start:len(replies):len(replies)]
+				// One buffer per reply: a slow stream keeps only its own
+				// reply alive, which its reply charge counts.
+				msg, err := c.appendPutReply(make([]byte, 0, 5+putResponseSize), &cp.Reply)
+				if f.err = err; err == nil {
+					f.msg = msg
+				}
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}

@@ -127,6 +127,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 	}
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
+	c.hdec.SetMaxStringLength(maxHeaderList)
 	c.ctrl = append(c.ctrl,
 		ctrlFrame{kind: ctrlSettings},
 		ctrlFrame{kind: ctrlWindowUpdate, val: connWindow - 65535})
@@ -259,8 +260,17 @@ func (c *conn) readLoop() error {
 				return err
 			}
 		}
-		f, err := c.fr.ReadFrame()
+		fh, err := c.fr.ReadFrameHeader()
 		if err != nil {
+			return err
+		}
+		f, err := c.fr.ReadFrameForHeader(fh)
+		if err != nil {
+			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
+				// A header block that cannot be decoded leaves the HPACK
+				// state behind the client's (RFC 9113 6.2).
+				return http2.ConnectionError(http2.ErrCodeProtocol)
+			}
 			if se, ok := errors.AsType[http2.StreamError](err); ok {
 				c.resetStream(se.StreamID, se.Code)
 				continue
@@ -390,8 +400,9 @@ type reqHeaders struct {
 	timeout                   time.Duration
 	hasTimeout, needLeader    bool
 	size                      int
-	regular                   bool // a regular field came; pseudo-fields must come first
-	bad                       bool // a field broke HTTP/2's rules
+	regular                   bool  // a regular field came; pseudo-fields must come first
+	pseudo                    uint8 // bits of the pseudo-fields seen
+	bad                       bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -401,6 +412,13 @@ const maxHeaderList = 1 << 20
 // headerFragment decodes part of a header block. The Framer checks that
 // CONTINUATION frames follow their HEADERS frame.
 func (c *conn) headerFragment(b []byte, last bool) error {
+	h := &c.hdr
+	// As x/net does since CVE-2023-45288: a block that already broke the
+	// rules, or whose fragments could decode past the limit, ends the
+	// connection instead of being decoded on.
+	if h.bad || len(b) > 2*(maxHeaderList-h.size) {
+		return http2.ConnectionError(http2.ErrCodeProtocol)
+	}
 	if _, err := c.hdec.Write(b); err != nil {
 		return http2.ConnectionError(http2.ErrCodeCompression)
 	}
@@ -410,17 +428,19 @@ func (c *conn) headerFragment(b []byte, last bool) error {
 	if err := c.hdec.Close(); err != nil {
 		return http2.ConnectionError(http2.ErrCodeCompression)
 	}
-	h := &c.hdr
-	if h.bad {
-		if h.id > c.maxID && h.id%2 == 1 {
-			c.mu.Lock()
-			c.maxID = h.id
-			c.mu.Unlock()
-		}
-		c.resetStream(h.id, http2.ErrCodeProtocol)
-		return nil
+	if !h.bad {
+		return c.onHeaders(h)
 	}
-	return c.onHeaders(h)
+	// A malformed block on a new stream resets only that stream; the
+	// stream ID rules hold as for any other block.
+	if h.id%2 == 0 || h.id <= c.maxID {
+		return http2.ConnectionError(http2.ErrCodeProtocol)
+	}
+	c.mu.Lock()
+	c.maxID = h.id
+	c.mu.Unlock()
+	c.resetStream(h.id, http2.ErrCodeProtocol)
+	return nil
 }
 
 // onField takes one decoded header field. The hpack decoder state must
@@ -437,15 +457,24 @@ func (c *conn) onField(f hpack.HeaderField) {
 		if h.regular {
 			h.bad = true
 		}
+		var bit uint8
 		switch f.Name {
 		case ":method":
-			h.method = f.Value
+			bit, h.method = 1, f.Value
 		case ":path":
-			h.path = f.Value
-		case ":scheme", ":authority":
+			bit, h.path = 2, f.Value
+		case ":scheme":
+			bit = 4
+		case ":authority":
+			bit = 8
 		default:
 			h.bad = true
 		}
+		if h.pseudo&bit != 0 {
+			// Each pseudo-field comes at most once (RFC 9113 8.3).
+			h.bad = true
+		}
+		h.pseudo |= bit
 		return
 	}
 	h.regular = true
@@ -520,14 +549,13 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 }
 
 func (c *conn) newStream(h *reqHeaders) *stream {
-	id, timeout, hasTimeout := h.id, h.timeout, h.hasTimeout
-	method, path, contentType, needLeader := h.method, h.path, h.contentType, h.needLeader
-	st := &stream{c: c, id: id, needLeader: needLeader}
-	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
+	id := h.id
+	st := &stream{c: c, id: id, needLeader: h.needLeader}
+	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
-		st.rpc = methods[path]
+		st.rpc = methods[h.path]
 	} else {
-		st.httpMethod, st.httpPath = method, path
+		st.httpMethod, st.httpPath = h.method, h.path
 		if st.httpPath == "" {
 			st.httpPath = "/"
 		}
@@ -551,14 +579,14 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		return st
 	}
 	c.streams[id] = st
-	if grpc && hasTimeout {
+	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.
-		st.deadline = time.AfterFunc(timeout, st.expire)
+		st.deadline = time.AfterFunc(h.timeout, st.expire)
 	}
 	c.mu.Unlock()
 	if grpc && st.rpc == nil {
-		st.finish(unknownMethod(path))
+		st.finish(unknownMethod(h.path))
 	}
 	return st
 }
