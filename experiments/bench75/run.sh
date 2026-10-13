@@ -2,17 +2,23 @@
 set -euo pipefail
 check_time() { [[ $(date -u +%s) -lt $(date -ud 2026-10-13T22:00:00Z +%s) ]]; }
 check_time
-BASELINE=$(git rev-parse "${BASELINE_REF:?}^{commit}")
-CANDIDATE=$(git rev-parse "${CANDIDATE_REF:?}^{commit}")
+resolve_commit() {
+ if ! git rev-parse --verify "$1^{commit}" >/dev/null 2>&1; then
+  git fetch --no-tags origin "$1" >/dev/null || return
+ fi
+ git rev-parse --verify "$1^{commit}"
+}
+BASELINE=$(resolve_commit "${BASELINE_REF:?}")
+CANDIDATE=$(resolve_commit "${CANDIDATE_REF:?}")
 SECOND=${SECOND_CANDIDATE_REF:-}
 SOURCES=(baseline candidate)
 if [[ -n "$SECOND" ]]; then
- SECOND=$(git rev-parse "$SECOND^{commit}")
+ SECOND=$(resolve_commit "$SECOND")
  SOURCES+=(second)
 fi
 THIRD=${THIRD_CANDIDATE_REF:-}
 if [[ -n "$THIRD" ]]; then
- THIRD=$(git rev-parse "$THIRD^{commit}")
+ THIRD=$(resolve_commit "$THIRD")
  SOURCES+=(third)
 fi
 export PROFILE_STORE=${SOURCES[-1]}

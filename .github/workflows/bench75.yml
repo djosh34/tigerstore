@@ -4,7 +4,7 @@ on:
     inputs:
       candidate_ref:
         description: First candidate branch, tag or commit
-        default: work/50-wire
+        default: refs/pull/77/head
         type: string
         required: true
       second_candidate_ref:
@@ -43,7 +43,7 @@ jobs:
       - id: refs
         env:
           BASELINE_REF: ${{ inputs.baseline_ref || 'main' }}
-          CANDIDATE_REF: ${{ inputs.candidate_ref || 'work/50-wire' }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/pull/77/head' }}
           SECOND_REF: ${{ inputs.second_candidate_ref }}
           THIRD_REF: ${{ inputs.third_candidate_ref }}
         run: |
@@ -51,17 +51,24 @@ jobs:
           resolve() {
             if git show-ref --verify --quiet "refs/remotes/origin/$1"; then
               git rev-parse "refs/remotes/origin/$1^{commit}"
-            else
+            elif git rev-parse --verify "$1^{commit}" >/dev/null 2>&1; then
               git rev-parse --verify "$1^{commit}"
+            else
+              git fetch --no-tags origin "$1" >/dev/null || return
+              git rev-parse --verify 'FETCH_HEAD^{commit}'
             fi
           }
-          echo "baseline=$(resolve "$BASELINE_REF")" >> "$GITHUB_OUTPUT"
-          echo "candidate=$(resolve "$CANDIDATE_REF")" >> "$GITHUB_OUTPUT"
+          baseline=$(resolve "$BASELINE_REF")
+          candidate=$(resolve "$CANDIDATE_REF")
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
           if [ -n "$SECOND_REF" ]; then
-            echo "second=$(resolve "$SECOND_REF")" >> "$GITHUB_OUTPUT"
+            second=$(resolve "$SECOND_REF")
+            echo "second=$second" >> "$GITHUB_OUTPUT"
           fi
           if [ -n "$THIRD_REF" ]; then
-            echo "third=$(resolve "$THIRD_REF")" >> "$GITHUB_OUTPUT"
+            third=$(resolve "$THIRD_REF")
+            echo "third=$third" >> "$GITHUB_OUTPUT"
           fi
           date -u +%FT%TZ
           grep -E '^(baseline|candidate|second|third)=' "$GITHUB_OUTPUT"
