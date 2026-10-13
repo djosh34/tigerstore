@@ -65,13 +65,16 @@ func TestSeeds(t *testing.T) {
 			}
 			st := a.Stats
 			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.DiskFaults == 0 ||
-				st.Pauses == 0 || st.LinkStalls == 0 || st.ClockJumps == 0 || st.HalfOpens == 0 || st.OK < 200 || len(a.Log) < 50 {
+				st.Pauses == 0 || st.LinkStalls == 0 || st.ClockJumps == 0 || st.HalfOpens == 0 ||
+				st.GrayNodes == 0 || st.GrayStreams == 0 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
 			ran++
 			total.Fenced += st.Fenced
 			total.StalledStops += st.StalledStops
 			total.Asymmetric += st.Asymmetric
+			total.CommitStops += st.CommitStops
+			total.RecoveryCrashes += st.RecoveryCrashes
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -84,9 +87,10 @@ func TestSeeds(t *testing.T) {
 	// Corruption, a leader stalled long enough to stop and a link 10 times
 	// slower than its other direction are rare in one run, but a set of
 	// seeds must see each.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links; each must happen",
-			ran, total.Fenced, total.StalledStops, total.Asymmetric)
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0 ||
+		total.CommitStops == 0 || total.RecoveryCrashes == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
+			ran, total.Fenced, total.StalledStops, total.Asymmetric, total.CommitStops, total.RecoveryCrashes)
 	}
 }
 
@@ -218,11 +222,12 @@ func TestSwitchingLinks(t *testing.T) {
 	}
 }
 
-// TestEachNetFaultTakesEffect runs each network and process fault alone
+// TestEachFaultTakesEffect runs each network, process, gray and recovery
+// fault alone
 // for 5 virtual seconds and requires that it happened. The simulator
 // itself fails a run in which a message overtakes an earlier one on its
 // link or a paused node does any work.
-func TestEachNetFaultTakesEffect(t *testing.T) {
+func TestEachFaultTakesEffect(t *testing.T) {
 	cases := []struct {
 		name   string
 		faults Faults
@@ -233,6 +238,9 @@ func TestEachNetFaultTakesEffect(t *testing.T) {
 		{"clock jump", Faults{ClockJumpEvery: Second}, func(st Stats) int { return st.ClockJumps }},
 		{"half-open link", Faults{HalfOpenEvery: Second}, func(st Stats) int { return st.HalfOpens }},
 		{"link delays", Faults{SwitchEvery: 200 * Millisecond, MaxDelay: 5 * Millisecond}, func(st Stats) int { return st.Asymmetric }},
+		{"gray node", Faults{GrayEvery: Second}, func(st Stats) int { return st.GrayNodes }},
+		{"gray client", Faults{GrayClient: true}, func(st Stats) int { return st.GrayStreams }},
+		{"crash in recovery", Faults{CrashEvery: 500 * Millisecond, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -281,6 +289,46 @@ func TestHalfOpenLink(t *testing.T) {
 		}
 		if healthy < 20 {
 			t.Fatalf("seed %d: only %d calls to the healthy pair during the half-open link", seed, healthy)
+		}
+	}
+}
+
+// TestGrayLeaderIsReplaced makes the leader gray at 5 s until healing,
+// with no other fault: its heartbeats get through, its appends do not, so
+// Raft's quorum check keeps it leader while nothing commits. It must stop
+// within core.CommitStallTicks election timeouts plus two ticks, and every
+// call to another node that starts 3 election timeouts after that must
+// succeed in under a second.
+func TestGrayLeaderIsReplaced(t *testing.T) {
+	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(5000 + seed)
+		cfg.Faults = Faults{}
+		cfg.GrayLeaderAt = 5 * Second
+		cfg.Duration = 20 * Second
+		res := run(t, cfg)
+		if len(res.CommitStops) == 0 {
+			t.Fatalf("seed %d: the gray leader never stopped", seed)
+		}
+		stop := res.CommitStops[0]
+		if limit := cfg.GrayLeaderAt + core.CommitStallTicks*election + 2*TickTime; stop > limit {
+			t.Fatalf("seed %d: the gray leader stopped at %d ms, after %d ms", seed, stop/Millisecond, limit/Millisecond)
+		}
+		ok := 0
+		for _, r := range res.History {
+			if r.Call < stop+3*election || r.Call >= cfg.Duration || r.Node == res.grayNode {
+				continue
+			}
+			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
+				t.Fatalf("seed %d: call to node %d at %d ms failed: %v", seed, r.Node+1, r.Call/Millisecond, r.Err)
+			}
+			if r.Return-r.Call >= Second {
+				t.Fatalf("seed %d: call to node %d at %d ms took %d ms", seed, r.Node+1, r.Call/Millisecond, (r.Return-r.Call)/Millisecond)
+			}
+			ok++
+		}
+		if ok < 20 {
+			t.Fatalf("seed %d: only %d calls to the healthy pair", seed, ok)
 		}
 	}
 }

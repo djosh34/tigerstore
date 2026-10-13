@@ -52,6 +52,9 @@ type Config struct {
 	Clients int
 	// ClientTimeout is when a client gives up on a call.
 	ClientTimeout int64
+	// GrayLeaderAt, if set, makes whichever node leads then gray until
+	// healing: its heartbeats get through, its appends do not.
+	GrayLeaderAt int64
 	// HalfOpenAt, if set, makes the link from whichever node leads then
 	// to a follower half-open for the peer write timeout.
 	HalfOpenAt int64
@@ -110,6 +113,17 @@ type Faults struct {
 	// timeout, and then the sender's connection fails and Raft hears the
 	// peer is unreachable.
 	HalfOpenEvery int64
+	// GrayEvery is the mean time between gray periods of 2 to 6 s, in
+	// which one node at a time is gray: Raft heartbeats and votes get
+	// through, but appends to and from it do not, and in half of them its
+	// fsyncs take 0.5 to 3 s. The gray node can change every 1 to 3 s.
+	GrayEvery int64
+	// GrayClient adds a client that opens a stream with 10 watches, never
+	// reads it, and reconnects every 50 to 300 ms until healing.
+	GrayClient bool
+	// RecoveryCrash crashes one restart in three again at its first to
+	// fourth writing disk operation inside recovery.
+	RecoveryCrash bool
 	// SwitchEvery is the mean time between switches to a random link
 	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
@@ -147,6 +161,9 @@ func DefaultConfig(seed uint64) Config {
 			DriftPerMille:  50,
 			ClockJumpEvery: 6 * Second,
 			HalfOpenEvery:  8 * Second,
+			GrayEvery:      8 * Second,
+			GrayClient:     true,
+			RecoveryCrash:  true,
 		},
 	}
 }
@@ -179,6 +196,12 @@ const (
 	evSwitch
 	evHoldMask
 	evStreamClose
+	evGray
+	evGrayOnce
+	evGraySwitch
+	evGrayLeader
+	evGrayConnect
+	evGrayCreate
 	evRestart
 	evLinks
 	evHeal
@@ -282,6 +305,10 @@ type node struct {
 	// handled the close of; what it sends on them goes nowhere.
 	closing map[uint64]bool
 
+	// graySync makes its fsyncs slow while it is gray.
+	graySync bool
+	// grayStreams are the open streams of the gray client on this node.
+	grayStreams map[uint64]bool
 	// tickEvery is this node's tick interval, off by up to the clock drift;
 	// pausedUntil holds the whole process back, and held keeps its events
 	// in order until it resumes.
@@ -340,11 +367,17 @@ type Sim struct {
 	checkpoints  []*checkpoint
 	halfOpens    []halfOpenLink
 	// applied is the highest index any node has applied.
-	applied    uint64
-	stallStops []int64
-	history    []*Record
-	stats      Stats
-	err        error
+	applied     uint64
+	stallStops  []int64
+	commitStops []int64
+	// gray is the gray node, or nil, and grayEnd when its gray period ends.
+	gray     *node
+	grayEnd  int64
+	grayCl   *grayClient
+	lastGray int
+	history  []*Record
+	stats    Stats
+	err      error
 }
 
 // Stats counts what happened in a run.
@@ -366,6 +399,10 @@ type Stats struct {
 	// clock jumps, HalfOpens half-open links, and Asymmetric the links
 	// that drew a delay at least 10 times that of the other direction.
 	Pauses, LinkStalls, ClockJumps, HalfOpens, Asymmetric int
+	// GrayNodes counts nodes made gray, CommitStops leaders that stopped
+	// because their entries stopped committing, GrayStreams the streams
+	// gray clients opened, and RecoveryCrashes crashes inside recovery.
+	GrayNodes, CommitStops, GrayStreams, RecoveryCrashes int
 }
 
 // Result is the outcome of a run.
@@ -377,9 +414,12 @@ type Result struct {
 	Log     []proto.Message
 	Watches []WatchResult
 	Stats   Stats
-	// StallStops are the times leaders stopped on a stalled disk.
-	StallStops []int64
-	halfOpens  []halfOpenLink
+	// StallStops are the times leaders stopped on a stalled disk, and
+	// CommitStops the times leaders stopped because nothing committed.
+	StallStops, CommitStops []int64
+	// grayNode is the index of the last gray node, for tests.
+	grayNode  int
+	halfOpens []halfOpenLink
 	// FinalRev is the revision of the converged cluster at the end.
 	FinalRev int64
 	// Clients is the number of request clients.
@@ -414,6 +454,7 @@ func Run(cfg Config) (*Result, error) {
 	}
 	s.scheduleDiskFaults()
 	s.scheduleNetFaults()
+	s.scheduleGrayFaults()
 	if cfg.HalfOpenAt > 0 {
 		s.push(&event{at: cfg.HalfOpenAt, kind: evHalfOpenAt})
 	}
@@ -424,7 +465,7 @@ func Run(cfg Config) (*Result, error) {
 	if err := s.loop(); err != nil {
 		return nil, err
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, halfOpens: s.halfOpens, Clients: cfg.Clients}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, CommitStops: s.commitStops, grayNode: s.lastGray, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
@@ -454,7 +495,7 @@ func newSim(cfg Config) *Sim {
 }
 
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
-	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}, closing: map[uint64]bool{}})
+	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}, closing: map[uint64]bool{}, grayStreams: map[uint64]bool{}})
 }
 
 // loop runs events until the end.
@@ -580,6 +621,19 @@ func (s *Sim) handle(e *event) {
 			s.stats.LinkChanges++
 			s.setLinks(s.cfg.Faults.HoldMask)
 		}
+	case evGray:
+		s.startGray()
+		s.again(e, s.cfg.Faults.GrayEvery)
+	case evGrayOnce:
+		s.retry(e, s.startGray())
+	case evGraySwitch:
+		s.switchGray()
+	case evGrayLeader:
+		s.grayLeader()
+	case evGrayConnect:
+		s.grayConnect()
+	case evGrayCreate:
+		s.grayCreate(e)
 	case evStreamClose:
 		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
 			delete(n.closing, e.stream)
@@ -629,7 +683,19 @@ func (s *Sim) start(n *node) error {
 	if n.fenced {
 		return nil
 	}
+	armed := s.armRecoveryCrash(n)
 	w, rec, err := wal.Open(n.disk)
+	if armed {
+		n.disk.Fault = nil
+	}
+	if errors.Is(err, errRecoveryCrash) {
+		// Crashed again while recovering; it starts over from its disk.
+		s.stats.RecoveryCrashes++
+		n.disk.Crash(s.rng)
+		s.mix(0xcc, uint64(n.idx))
+		s.push(&event{at: s.now + 1 + s.rng.Int64N(Second), kind: evRestart, node: n.idx, gen: n.gen})
+		return nil
+	}
 	if errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace) {
 		// An injected fault hit recovery, which can write: a failed boot.
 		// The node tries again later from what its disk holds.
@@ -711,6 +777,12 @@ func (s *Sim) process(n *node) {
 		s.stopNode(n)
 		return
 	}
+	if errors.Is(err, core.ErrCommitStalled) {
+		s.stats.CommitStops++
+		s.commitStops = append(s.commitStops, s.now)
+		s.stopNode(n)
+		return
+	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)
 		return
@@ -738,6 +810,9 @@ func (s *Sim) startDisk(n *node) {
 	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
 	if s.cfg.Faults.SlowDisk > 0 && !s.healed && s.rng.IntN(100) < s.cfg.Faults.SlowDisk {
 		lat = 20*Millisecond + s.rng.Int64N(80*Millisecond)
+	}
+	if s.gray == n && n.graySync {
+		lat = max(lat, 500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
 	lat = max(lat, n.stallUntil-s.now)
 	leader := n.core.Leader() == n.id
@@ -791,6 +866,11 @@ func (s *Sim) send(from *node, m *raftpb.Message) {
 	b, err := marshal.Marshal(m)
 	if err != nil {
 		s.fail("marshal message: %w", err)
+		return
+	}
+	if s.gray != nil && (s.gray == from || s.gray.idx == to) && (m.GetType() == raftpb.MessageType_MsgApp || m.GetType() == raftpb.MessageType_MsgSnap) {
+		// A gray node: heartbeats get through, appends do not.
+		s.stats.Dropped++
 		return
 	}
 	if l.halfOpenUntil > s.now {
@@ -904,6 +984,7 @@ func (s *Sim) crash(n *node) {
 	}
 	n.streams = map[uint64]*watchClient{}
 	n.closing = map[uint64]bool{}
+	n.grayStreams = map[uint64]bool{}
 }
 
 func (s *Sim) changeLinks() {
@@ -956,6 +1037,10 @@ func (s *Sim) setLinks(mask uint64) {
 }
 
 func (s *Sim) heal() {
+	s.gray = nil
+	if s.grayCl != nil {
+		s.grayConnect()
+	}
 	s.healed = true
 	s.setLinks(1<<6 - 1)
 	// Link stalls and pauses end on their own, within 2 s, before the

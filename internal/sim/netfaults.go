@@ -42,7 +42,7 @@ func (s *Sim) retry(e *event, done bool) {
 
 // target is the node an event happens on, or nil.
 func (s *Sim) target(e *event) *node {
-	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd}, e.kind) {
+	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd, evGrayCreate}, e.kind) {
 		return s.nodes[e.node]
 	}
 	return nil
