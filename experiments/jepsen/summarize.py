@@ -44,8 +44,11 @@ def summarize(root):
     checks = read_edn(latest / 'results.edn')
     result['valid'] = plain(checks[K('valid?')])
     result['stats'] = plain(checks[K('stats')])
-    history = [edn_format.loads(s) for s in (latest / 'history.edn').read_text().splitlines() if s.strip()]
-    nemeses = [e for e in history if e.get(K('process')) == K('nemesis')]
+    # The verdict and operation counts come from the unchanged upstream checker.
+    # Only parse fault records here. Some client error keywords use apostrophes,
+    # which are valid Clojure but unsupported by edn_format's keyword lexer.
+    with (latest / 'history.edn').open() as stream:
+        nemeses = [edn_format.loads(s) for s in stream if ':process :nemesis,' in s]
     result['nemesis_counts'] = dict(collections.Counter(str(e[K('f')]) for e in nemeses))
     # Invoke/completion records both use :info. Count only actual nonempty results.
     def applied(name):
