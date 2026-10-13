@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -37,6 +38,8 @@ type cluster struct {
 	via map[[2]uint64]string
 	// tick is the Raft tick, 10 ms unless setup changes it.
 	tick time.Duration
+	// stallElections, if set, is the nodes' CommitStallElections.
+	stallElections int
 	// peerLns are the peer listeners of nodes not started yet, held open
 	// from the start so that no other process takes their ports.
 	peerLns map[uint64]net.Listener
@@ -105,7 +108,10 @@ func (c *cluster) start(id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := node.New(node.Config{Core: core.DefaultConfig(id, []uint64{1, 2, 3}), DataDir: c.dirs[id], Tick: c.tick, Logf: t.Logf})
+	logf := func(format string, args ...any) { t.Logf("node %d: %s", id, fmt.Sprintf(format, args...)) }
+	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
+	cfg.CommitStallElections = c.stallElections
+	n, err := node.New(node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +130,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable})
+	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,11 +382,11 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	}
 
 	stream, err := pb.NewKVClient(conn).RangeStream(context.Background(), &pb.RangeRequest{Key: []byte("a")})
-	if err == nil {
-		_, err = stream.Recv()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("RangeStream: %v, want Unimplemented", err)
+	if r, err := stream.Recv(); err != nil || len(r.RangeResponse.Kvs) != 1 || string(r.RangeResponse.Kvs[0].Value) != "1" {
+		t.Fatalf("RangeStream: %v, %v", r, err)
 	}
 
 	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{

@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/protobuf/proto"
 )
 
 var recordFlag = flag.Bool("record", false, "write etcd's answers to "+goldenFile+", or tigerstore's answers to its expected failures to "+knownFile+", instead of comparing")
@@ -36,6 +38,7 @@ var cases = []struct {
 	{"error-codes", errorCodes},
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
+	{"range-stream", rangeStream},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
@@ -409,50 +412,55 @@ func leases(r *run) {
 	r.revoke("revoke lease 0", 0)
 }
 
-// maxRequestSize finds the largest value a put and a txn put accept for one
-// key, and records the requests one byte below, at and above it.
+// maxRequestSize finds the largest value a put and a put inside a
+// transaction accept, for keys of several lengths, and records the requests
+// one byte below, at and above it. etcd limits the marshaled request with
+// its header, so the key's length and the client's certificate identity
+// (#99) both count.
 func maxRequestSize(r *run) {
-	key := r.key("big")
-	accepts := func(n int, txn bool) bool {
-		value := bytes.Repeat([]byte("x"), n)
-		var err error
-		if txn {
-			_, err = r.c.kv.Txn(r.ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}}})
-		} else {
-			_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: key, Value: value})
-		}
-		if err != nil && !strings.Contains(err.Error(), "too large") && !strings.Contains(err.Error(), "larger than max") {
-			r.t.Fatalf("put of %d bytes: %v", n, err)
-		}
-		return err == nil
-	}
-	largest := func(txn bool) int {
-		lo, hi := 0, 4<<20
-		if !accepts(lo, txn) || accepts(hi, txn) {
-			r.t.Fatalf("the limit is not between %d and %d bytes", lo, hi)
-		}
-		for hi-lo > 1 {
-			mid := (lo + hi) / 2
-			if accepts(mid, txn) {
-				lo = mid
+	for _, name := range []string{"b", "big", strings.Repeat("k", 100), strings.Repeat("k", 3000)} {
+		key := r.key(name)
+		accepts := func(n int, txn bool) bool {
+			value := bytes.Repeat([]byte("x"), n)
+			var err error
+			if txn {
+				_, err = r.c.kv.Txn(r.ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: value}}}}})
 			} else {
-				hi = mid
+				_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: key, Value: value})
 			}
+			if err != nil && !strings.Contains(err.Error(), "too large") && !strings.Contains(err.Error(), "larger than max") {
+				r.t.Fatalf("put of %d bytes: %v", n, err)
+			}
+			return err == nil
 		}
-		return lo
-	}
-	n := largest(false)
-	// The probes wrote revisions; count from here.
-	r.rebase()
-	r.record(fmt.Sprintf("largest put value for a key of %d bytes", len(key)), n, nil)
-	for _, size := range []int{n - 1, n, n + 1} {
-		r.put(fmt.Sprintf("put %s of the largest size", relSize(size-n)), &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)})
-	}
-	t := largest(true)
-	r.rebase()
-	r.record(fmt.Sprintf("largest txn put value for a key of %d bytes", len(key)), t, nil)
-	for _, size := range []int{t - 1, t, t + 1} {
-		r.txn(fmt.Sprintf("txn put %s of the largest size", relSize(size-t)), &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)}}}}})
+		largest := func(txn bool) int {
+			lo, hi := 0, 4<<20
+			if !accepts(lo, txn) || accepts(hi, txn) {
+				r.t.Fatalf("the limit is not between %d and %d bytes", lo, hi)
+			}
+			for hi-lo > 1 {
+				mid := (lo + hi) / 2
+				if accepts(mid, txn) {
+					lo = mid
+				} else {
+					hi = mid
+				}
+			}
+			return lo
+		}
+		n := largest(false)
+		// The probes wrote revisions; count from here.
+		r.rebase()
+		r.record(fmt.Sprintf("largest put value for a key of %d bytes", len(key)), n, nil)
+		for _, size := range []int{n - 1, n, n + 1} {
+			r.put(fmt.Sprintf("put %s of the largest size, key of %d bytes", relSize(size-n), len(key)), &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)})
+		}
+		t := largest(true)
+		r.rebase()
+		r.record(fmt.Sprintf("largest txn put value for a key of %d bytes", len(key)), t, nil)
+		for _, size := range []int{t - 1, t, t + 1} {
+			r.txn(fmt.Sprintf("txn put %s of the largest size, key of %d bytes", relSize(size-t), len(key)), &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: key, Value: bytes.Repeat([]byte("x"), size)}}}}})
+		}
 	}
 }
 
@@ -464,4 +472,87 @@ func relSize(d int) string {
 		return "one byte above"
 	}
 	return "exactly"
+}
+
+// rangeStream checks KV.RangeStream's chunks against etcd: their sizes
+// for small values, for 400 KiB values, and with the first chunk just
+// below and at half of the 1.5 MiB target, where etcd doubles the next
+// limit or keeps it; the header, count and more of the last chunk with a
+// limit, at a past revision, count only and empty; and the errors.
+func rangeStream(r *run) {
+	r.rebase()
+	for i := range 25 {
+		r.put(fmt.Sprintf("put small key %d", i), &pb.PutRequest{Key: r.key(fmt.Sprintf("s/%02d", i)), Value: []byte("v")})
+	}
+	small := func(req *pb.RangeRequest) *pb.RangeRequest {
+		req.Key, req.RangeEnd = r.key("s/"), r.key("s0")
+		return req
+	}
+	r.rangeStream("stream 25 small keys", small(&pb.RangeRequest{}))
+	r.rangeStream("stream with limit 12", small(&pb.RangeRequest{Limit: 12}))
+	r.rangeStream("stream at a past revision", small(&pb.RangeRequest{Revision: r.abs(20)}))
+	r.rangeStream("stream count only", small(&pb.RangeRequest{CountOnly: true}))
+	r.rangeStream("stream serializable", small(&pb.RangeRequest{Serializable: true}))
+	r.rangeStream("stream an empty range", &pb.RangeRequest{Key: r.key("x/"), RangeEnd: r.key("x0")})
+	r.rangeStream("stream keys only", small(&pb.RangeRequest{KeysOnly: true}))
+
+	big := bytes.Repeat([]byte("b"), 400<<10)
+	for i := range 25 {
+		r.put(fmt.Sprintf("put 400 KiB key %d", i), &pb.PutRequest{Key: r.key(fmt.Sprintf("b/%02d", i)), Value: big})
+	}
+	r.rangeStream("stream 25 values of 400 KiB", &pb.RangeRequest{Key: r.key("b/"), RangeEnd: r.key("b0")})
+
+	// The next limit doubles when a chunk, as etcd sizes it inside the
+	// server, is under half of 1.5 MiB (786,432 bytes).
+	for _, target := range []int{786431, 786432} {
+		prefix := fmt.Sprintf("t%d/", target)
+		r.rebase()
+		first := r.base + 1
+		sizes := boundarySizes(r, prefix, first, target)
+		for i, n := range sizes {
+			r.put(fmt.Sprintf("put boundary key %d for %d bytes", i, target), &pb.PutRequest{Key: r.key(fmt.Sprintf("%s%02d", prefix, i)), Value: bytes.Repeat([]byte("v"), n)})
+		}
+		r.rangeStream(fmt.Sprintf("stream with a first chunk of %d bytes", target), &pb.RangeRequest{Key: r.key(prefix), RangeEnd: prefixEnd(r.key(prefix))})
+	}
+
+	r.rangeStream("stream sorted by key descending", small(&pb.RangeRequest{SortTarget: pb.RangeRequest_KEY, SortOrder: pb.RangeRequest_DESCEND}))
+	r.rangeStream("stream sorted by value", small(&pb.RangeRequest{SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND}))
+	r.rangeStream("stream with a revision filter", small(&pb.RangeRequest{MinModRevision: 2}))
+	r.rangeStream("stream with an empty key", &pb.RangeRequest{})
+	r.rangeStream("stream at a future revision", small(&pb.RangeRequest{Revision: r.abs(1 << 20)}))
+	r.rebase()
+	r.compact("compact for streams", r.abs(0), false)
+	r.rangeStream("stream below the compaction", small(&pb.RangeRequest{Revision: r.abs(-1)}))
+	r.rangeStream("stream at the compaction", small(&pb.RangeRequest{Revision: r.abs(0)}))
+}
+
+// boundarySizes returns the value lengths of 30 keys under prefix, written
+// from revision first on, so that the first chunk of a stream over them,
+// as etcd's range answers it inside the server (the store revision as its
+// only header field, 10 keys, more, and a count of the 11 keys it saw),
+// has exactly target bytes.
+func boundarySizes(r *run, prefix string, first int64, target int) []int {
+	sizes := make([]int, 30)
+	for i := range sizes {
+		sizes[i] = target / 10
+	}
+	chunk := func() int {
+		resp := &pb.RangeResponse{Header: &pb.ResponseHeader{Revision: first + 29}, More: true, Count: 11}
+		for i := range 10 {
+			resp.Kvs = append(resp.Kvs, &mvccpb.KeyValue{
+				Key: r.key(fmt.Sprintf("%s%02d", prefix, i)), Value: make([]byte, sizes[i]),
+				CreateRevision: first + int64(i), ModRevision: first + int64(i), Version: 1,
+			})
+		}
+		return proto.Size(resp)
+	}
+	for range 10 {
+		d := target - chunk()
+		if d == 0 {
+			return sizes
+		}
+		sizes[9] += d
+	}
+	r.t.Fatalf("no value sizes give a first chunk of %d bytes", target)
+	return nil
 }

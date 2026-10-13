@@ -2,6 +2,8 @@ package core
 
 import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
+	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
 // The versions tigerstore reports, as etcd v3.7.2 does in Maintenance.Status
@@ -41,4 +43,27 @@ func (n *Node) Status() *pb.StatusResponse {
 		resp.Errors = append(resp.Errors, "etcdserver: no leader")
 	}
 	return resp
+}
+
+// Metrics are the counters and gauges /metrics reports, under etcd's
+// names.
+type Metrics struct {
+	HasLeader     bool
+	LeaderChanges int64
+	// Committed and Applied are the Raft log indexes, which etcd reports
+	// as etcd_server_proposals_committed_total and _applied_total.
+	Committed, Applied uint64
+	mvcc.Counts
+}
+
+// Metrics returns the node's metrics.
+func (n *Node) Metrics() Metrics {
+	st := n.rn.BasicStatus()
+	return Metrics{
+		HasLeader:     st.Lead != 0,
+		LeaderChanges: n.leaderChanges,
+		Committed:     st.GetCommit(),
+		Applied:       n.applied,
+		Counts:        n.kv.Counts(),
+	}
 }

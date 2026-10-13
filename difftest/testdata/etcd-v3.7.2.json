@@ -2060,36 +2060,36 @@
   ],
   "max-request-size": [
     {
-      "do": "largest put value for a key of 39 bytes",
+      "do": "largest put value for a key of 37 bytes",
       "code": "OK",
-      "result": 1572801
+      "result": 1572793
     },
     {
-      "do": "put one byte below of the largest size",
+      "do": "put one byte below of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 1
       }
     },
     {
-      "do": "put exactly of the largest size",
+      "do": "put exactly of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 2
       }
     },
     {
-      "do": "put one byte above of the largest size",
+      "do": "put one byte above of the largest size, key of 37 bytes",
       "code": "InvalidArgument",
       "message": "etcdserver: request is too large"
     },
     {
-      "do": "largest txn put value for a key of 39 bytes",
+      "do": "largest txn put value for a key of 37 bytes",
       "code": "OK",
-      "result": 1572793
+      "result": 1572785
     },
     {
-      "do": "txn put one byte below of the largest size",
+      "do": "txn put one byte below of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 1,
@@ -2103,7 +2103,7 @@
       }
     },
     {
-      "do": "txn put exactly of the largest size",
+      "do": "txn put exactly of the largest size, key of 37 bytes",
       "code": "OK",
       "result": {
         "revision": 2,
@@ -2117,9 +2117,1138 @@
       }
     },
     {
-      "do": "txn put one byte above of the largest size",
+      "do": "txn put one byte above of the largest size, key of 37 bytes",
       "code": "InvalidArgument",
       "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572791
+    },
+    {
+      "do": "put one byte below of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 39 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 39 bytes",
+      "code": "OK",
+      "result": 1572783
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 39 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 39 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 136 bytes",
+      "code": "OK",
+      "result": 1572693
+    },
+    {
+      "do": "put one byte below of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 136 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 136 bytes",
+      "code": "OK",
+      "result": 1572685
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 136 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 136 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest put value for a key of 3036 bytes",
+      "code": "OK",
+      "result": 1569793
+    },
+    {
+      "do": "put one byte below of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put exactly of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put one byte above of the largest size, key of 3036 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    },
+    {
+      "do": "largest txn put value for a key of 3036 bytes",
+      "code": "OK",
+      "result": 1569785
+    },
+    {
+      "do": "txn put one byte below of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put exactly of the largest size, key of 3036 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 2,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn put one byte above of the largest size, key of 3036 bytes",
+      "code": "InvalidArgument",
+      "message": "etcdserver: request is too large"
+    }
+  ],
+  "range-stream": [
+    {
+      "do": "put small key 0",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put small key 1",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put small key 2",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put small key 3",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "put small key 4",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "put small key 5",
+      "code": "OK",
+      "result": {
+        "revision": 6
+      }
+    },
+    {
+      "do": "put small key 6",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "put small key 7",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "put small key 8",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "put small key 9",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "put small key 10",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
+    },
+    {
+      "do": "put small key 11",
+      "code": "OK",
+      "result": {
+        "revision": 12
+      }
+    },
+    {
+      "do": "put small key 12",
+      "code": "OK",
+      "result": {
+        "revision": 13
+      }
+    },
+    {
+      "do": "put small key 13",
+      "code": "OK",
+      "result": {
+        "revision": 14
+      }
+    },
+    {
+      "do": "put small key 14",
+      "code": "OK",
+      "result": {
+        "revision": 15
+      }
+    },
+    {
+      "do": "put small key 15",
+      "code": "OK",
+      "result": {
+        "revision": 16
+      }
+    },
+    {
+      "do": "put small key 16",
+      "code": "OK",
+      "result": {
+        "revision": 17
+      }
+    },
+    {
+      "do": "put small key 17",
+      "code": "OK",
+      "result": {
+        "revision": 18
+      }
+    },
+    {
+      "do": "put small key 18",
+      "code": "OK",
+      "result": {
+        "revision": 19
+      }
+    },
+    {
+      "do": "put small key 19",
+      "code": "OK",
+      "result": {
+        "revision": 20
+      }
+    },
+    {
+      "do": "put small key 20",
+      "code": "OK",
+      "result": {
+        "revision": 21
+      }
+    },
+    {
+      "do": "put small key 21",
+      "code": "OK",
+      "result": {
+        "revision": 22
+      }
+    },
+    {
+      "do": "put small key 22",
+      "code": "OK",
+      "result": {
+        "revision": 23
+      }
+    },
+    {
+      "do": "put small key 23",
+      "code": "OK",
+      "result": {
+        "revision": 24
+      }
+    },
+    {
+      "do": "put small key 24",
+      "code": "OK",
+      "result": {
+        "revision": 25
+      }
+    },
+    {
+      "do": "stream 25 small keys",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          15
+        ],
+        "revision": 25,
+        "count": 25
+      }
+    },
+    {
+      "do": "stream with limit 12",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          2
+        ],
+        "revision": 25,
+        "count": 25,
+        "more": true
+      }
+    },
+    {
+      "do": "stream at a past revision",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          10
+        ],
+        "revision": 25,
+        "count": 20
+      }
+    },
+    {
+      "do": "stream count only",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          0
+        ],
+        "revision": 25,
+        "count": 25
+      }
+    },
+    {
+      "do": "stream serializable",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          15
+        ],
+        "revision": 25,
+        "count": 25
+      }
+    },
+    {
+      "do": "stream an empty range",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          0
+        ],
+        "revision": 25,
+        "count": 0
+      }
+    },
+    {
+      "do": "stream keys only",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          15
+        ],
+        "revision": 25,
+        "count": 25
+      }
+    },
+    {
+      "do": "put 400 KiB key 0",
+      "code": "OK",
+      "result": {
+        "revision": 26
+      }
+    },
+    {
+      "do": "put 400 KiB key 1",
+      "code": "OK",
+      "result": {
+        "revision": 27
+      }
+    },
+    {
+      "do": "put 400 KiB key 2",
+      "code": "OK",
+      "result": {
+        "revision": 28
+      }
+    },
+    {
+      "do": "put 400 KiB key 3",
+      "code": "OK",
+      "result": {
+        "revision": 29
+      }
+    },
+    {
+      "do": "put 400 KiB key 4",
+      "code": "OK",
+      "result": {
+        "revision": 30
+      }
+    },
+    {
+      "do": "put 400 KiB key 5",
+      "code": "OK",
+      "result": {
+        "revision": 31
+      }
+    },
+    {
+      "do": "put 400 KiB key 6",
+      "code": "OK",
+      "result": {
+        "revision": 32
+      }
+    },
+    {
+      "do": "put 400 KiB key 7",
+      "code": "OK",
+      "result": {
+        "revision": 33
+      }
+    },
+    {
+      "do": "put 400 KiB key 8",
+      "code": "OK",
+      "result": {
+        "revision": 34
+      }
+    },
+    {
+      "do": "put 400 KiB key 9",
+      "code": "OK",
+      "result": {
+        "revision": 35
+      }
+    },
+    {
+      "do": "put 400 KiB key 10",
+      "code": "OK",
+      "result": {
+        "revision": 36
+      }
+    },
+    {
+      "do": "put 400 KiB key 11",
+      "code": "OK",
+      "result": {
+        "revision": 37
+      }
+    },
+    {
+      "do": "put 400 KiB key 12",
+      "code": "OK",
+      "result": {
+        "revision": 38
+      }
+    },
+    {
+      "do": "put 400 KiB key 13",
+      "code": "OK",
+      "result": {
+        "revision": 39
+      }
+    },
+    {
+      "do": "put 400 KiB key 14",
+      "code": "OK",
+      "result": {
+        "revision": 40
+      }
+    },
+    {
+      "do": "put 400 KiB key 15",
+      "code": "OK",
+      "result": {
+        "revision": 41
+      }
+    },
+    {
+      "do": "put 400 KiB key 16",
+      "code": "OK",
+      "result": {
+        "revision": 42
+      }
+    },
+    {
+      "do": "put 400 KiB key 17",
+      "code": "OK",
+      "result": {
+        "revision": 43
+      }
+    },
+    {
+      "do": "put 400 KiB key 18",
+      "code": "OK",
+      "result": {
+        "revision": 44
+      }
+    },
+    {
+      "do": "put 400 KiB key 19",
+      "code": "OK",
+      "result": {
+        "revision": 45
+      }
+    },
+    {
+      "do": "put 400 KiB key 20",
+      "code": "OK",
+      "result": {
+        "revision": 46
+      }
+    },
+    {
+      "do": "put 400 KiB key 21",
+      "code": "OK",
+      "result": {
+        "revision": 47
+      }
+    },
+    {
+      "do": "put 400 KiB key 22",
+      "code": "OK",
+      "result": {
+        "revision": 48
+      }
+    },
+    {
+      "do": "put 400 KiB key 23",
+      "code": "OK",
+      "result": {
+        "revision": 49
+      }
+    },
+    {
+      "do": "put 400 KiB key 24",
+      "code": "OK",
+      "result": {
+        "revision": 50
+      }
+    },
+    {
+      "do": "stream 25 values of 400 KiB",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          5,
+          5,
+          5
+        ],
+        "revision": 50,
+        "count": 25
+      }
+    },
+    {
+      "do": "put boundary key 0 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put boundary key 1 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put boundary key 2 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put boundary key 3 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "put boundary key 4 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "put boundary key 5 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 6
+      }
+    },
+    {
+      "do": "put boundary key 6 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "put boundary key 7 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "put boundary key 8 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "put boundary key 9 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "put boundary key 10 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
+    },
+    {
+      "do": "put boundary key 11 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 12
+      }
+    },
+    {
+      "do": "put boundary key 12 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 13
+      }
+    },
+    {
+      "do": "put boundary key 13 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 14
+      }
+    },
+    {
+      "do": "put boundary key 14 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 15
+      }
+    },
+    {
+      "do": "put boundary key 15 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 16
+      }
+    },
+    {
+      "do": "put boundary key 16 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 17
+      }
+    },
+    {
+      "do": "put boundary key 17 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 18
+      }
+    },
+    {
+      "do": "put boundary key 18 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 19
+      }
+    },
+    {
+      "do": "put boundary key 19 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 20
+      }
+    },
+    {
+      "do": "put boundary key 20 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 21
+      }
+    },
+    {
+      "do": "put boundary key 21 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 22
+      }
+    },
+    {
+      "do": "put boundary key 22 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 23
+      }
+    },
+    {
+      "do": "put boundary key 23 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 24
+      }
+    },
+    {
+      "do": "put boundary key 24 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 25
+      }
+    },
+    {
+      "do": "put boundary key 25 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 26
+      }
+    },
+    {
+      "do": "put boundary key 26 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 27
+      }
+    },
+    {
+      "do": "put boundary key 27 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 28
+      }
+    },
+    {
+      "do": "put boundary key 28 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 29
+      }
+    },
+    {
+      "do": "put boundary key 29 for 786431 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 30
+      }
+    },
+    {
+      "do": "stream with a first chunk of 786431 bytes",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          20
+        ],
+        "revision": 30,
+        "count": 30
+      }
+    },
+    {
+      "do": "put boundary key 0 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put boundary key 1 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put boundary key 2 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put boundary key 3 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "put boundary key 4 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "put boundary key 5 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 6
+      }
+    },
+    {
+      "do": "put boundary key 6 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "put boundary key 7 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "put boundary key 8 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "put boundary key 9 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "put boundary key 10 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
+    },
+    {
+      "do": "put boundary key 11 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 12
+      }
+    },
+    {
+      "do": "put boundary key 12 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 13
+      }
+    },
+    {
+      "do": "put boundary key 13 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 14
+      }
+    },
+    {
+      "do": "put boundary key 14 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 15
+      }
+    },
+    {
+      "do": "put boundary key 15 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 16
+      }
+    },
+    {
+      "do": "put boundary key 16 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 17
+      }
+    },
+    {
+      "do": "put boundary key 17 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 18
+      }
+    },
+    {
+      "do": "put boundary key 18 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 19
+      }
+    },
+    {
+      "do": "put boundary key 19 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 20
+      }
+    },
+    {
+      "do": "put boundary key 20 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 21
+      }
+    },
+    {
+      "do": "put boundary key 21 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 22
+      }
+    },
+    {
+      "do": "put boundary key 22 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 23
+      }
+    },
+    {
+      "do": "put boundary key 23 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 24
+      }
+    },
+    {
+      "do": "put boundary key 24 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 25
+      }
+    },
+    {
+      "do": "put boundary key 25 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 26
+      }
+    },
+    {
+      "do": "put boundary key 26 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 27
+      }
+    },
+    {
+      "do": "put boundary key 27 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 28
+      }
+    },
+    {
+      "do": "put boundary key 28 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 29
+      }
+    },
+    {
+      "do": "put boundary key 29 for 786432 bytes",
+      "code": "OK",
+      "result": {
+        "revision": 30
+      }
+    },
+    {
+      "do": "stream with a first chunk of 786432 bytes",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          10,
+          10
+        ],
+        "revision": 30,
+        "count": 30
+      }
+    },
+    {
+      "do": "stream sorted by key descending",
+      "code": "Unimplemented",
+      "message": "RangeStream does not support custom sort orders"
+    },
+    {
+      "do": "stream sorted by value",
+      "code": "Unimplemented",
+      "message": "RangeStream does not support custom sort orders"
+    },
+    {
+      "do": "stream with a revision filter",
+      "code": "Unimplemented",
+      "message": "RangeStream does not support revision filters"
+    },
+    {
+      "do": "stream with an empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "stream at a future revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "compact for streams",
+      "code": "OK",
+      "result": {
+        "revision": 0
+      }
+    },
+    {
+      "do": "stream below the compaction",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "stream at the compaction",
+      "code": "OK",
+      "result": {
+        "chunks": [
+          10,
+          15
+        ],
+        "revision": 0,
+        "count": 25
+      }
     }
   ]
 }

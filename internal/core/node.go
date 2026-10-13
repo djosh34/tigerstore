@@ -10,6 +10,7 @@
 package core
 
 import (
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,6 +77,10 @@ type Config struct {
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
+	// CommitStallElections is how many election timeouts a leader's entry
+	// may wait to commit before the leader stops; 0 means
+	// CommitStallTicks. Tests set it lower to catch shorter stalls.
+	CommitStallElections int
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -109,6 +114,32 @@ type Request struct {
 	// Compact asks for a range's answer as Reply.Range, which the driver
 	// encodes itself, instead of a RangeResponse message.
 	Compact bool
+	// Chunk asks for a range as one chunk of a RangeStream
+	// (mvcc.Store.RangeChunk): no count beyond the limit.
+	Chunk bool
+	// Caller is the client as etcd's size limit for writes sees it.
+	Caller Caller
+}
+
+// Caller is a client as etcd v3.7.2's size limit for writes sees it. With
+// client certificate authentication (--client-cert-auth), etcd takes the
+// client's identity from its certificate even with auth disabled
+// (EtcdServer.AuthInfoFromCtx), and every write's request header then holds
+// the certificate's common name and the auth revision, which is 1 on a
+// store that never changed auth. The zero Caller has no identity.
+type Caller struct {
+	// extra is the bytes the identity adds to the marshaled request.
+	extra int
+}
+
+// authRevision is etcd's auth revision on a store whose auth never changed;
+// tigerstore has no auth requests that would change it.
+const authRevision = 1
+
+// NewCaller returns the caller whose certificate has this common name.
+func NewCaller(commonName string) Caller {
+	with := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID, Username: commonName, AuthRevision: authRevision}})
+	return Caller{extra: with - proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})}
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -181,7 +212,10 @@ type Node struct {
 	term     uint64
 	leader   uint64
 	isLeader bool
-	leaseSeq uint64
+	// leaderChanges counts the leaders this node has seen, as etcd's
+	// etcd_server_leader_changes_seen_total does.
+	leaderChanges int64
+	leaseSeq      uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -391,7 +425,7 @@ func (n *Node) submit(r Request, p *pending) {
 		return
 	}
 	if r.Op == nil {
-		if err := checkPut(&r.Put); err != nil {
+		if err := checkPut(&r.Put, r.Caller); err != nil {
 			n.reply(r.ID, nil, err)
 			return
 		}
@@ -400,7 +434,7 @@ func (n *Node) submit(r Request, p *pending) {
 		n.timeouts = append(n.timeouts, p)
 		return
 	}
-	if err := check(r.Op); err != nil {
+	if err := check(r.Op, r.Caller); err != nil {
 		n.reply(r.ID, nil, err)
 		return
 	}
@@ -450,7 +484,7 @@ const sizeRequestID = 1 << 63
 // check validates a request like etcd's gRPC layer, then limits the size of
 // a write like etcd's server does. Reads do not go through Raft and have
 // only gRPC's limit.
-func check(op proto.Message) error {
+func check(op proto.Message, c Caller) error {
 	var err error
 	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
@@ -479,7 +513,7 @@ func check(op proto.Message) error {
 	if err != nil {
 		return err
 	}
-	if proto.Size(r) > MaxRequestBytes {
+	if proto.Size(r)+c.extra > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
@@ -492,11 +526,11 @@ var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHead
 // checkPut checks a put in wire form as check does a decoded one. Like
 // etcd, it limits the size of the request as protobuf marshals it again,
 // not of the client's encoding.
-func checkPut(p *Put) error {
+func checkPut(p *Put, c Caller) error {
 	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
 		return err
 	}
-	if putRequestBytes+protowire.SizeBytes(p.size()) > MaxRequestBytes {
+	if putRequestBytes+c.extra+protowire.SizeBytes(p.size()) > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
@@ -717,6 +751,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			// A term change clears Raft's pending read requests, so ask the
 			// new leader at once instead of waiting for the retry.
 			n.retryReads(true)
+			n.leaderChanges++
 		}
 		n.leader = rd.Lead
 	}
@@ -834,7 +869,11 @@ func (n *Node) serveRead(p *pending) {
 			return
 		}
 		var r *pb.RangeResponse
-		r, err = n.kv.Range(op)
+		if p.req.Chunk {
+			r, err = n.kv.RangeChunk(op)
+		} else {
+			r, err = n.kv.Range(op)
+		}
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
@@ -988,7 +1027,7 @@ type proposedAt struct {
 }
 
 // commitStalled drops the leader's appends that have committed and reports
-// whether the oldest one left has waited CommitStallTicks election
+// whether the oldest one left has waited CommitStallElections election
 // timeouts.
 func (n *Node) commitStalled() bool {
 	commit := n.rn.BasicStatus().GetCommit()
@@ -997,7 +1036,8 @@ func (n *Node) commitStalled() bool {
 		i++
 	}
 	n.uncommitted = n.uncommitted[i:]
-	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= CommitStallTicks*int64(n.cfg.ElectionTicks)
+	limit := int64(cmp.Or(n.cfg.CommitStallElections, CommitStallTicks)) * int64(n.cfg.ElectionTicks)
+	return len(n.uncommitted) > 0 && n.now-n.uncommitted[0].at >= limit
 }
 
 // maxHeld bounds the messages held while a term or vote change is not yet

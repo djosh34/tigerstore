@@ -1,0 +1,157 @@
+// Package testserver is tigerstore's replacement for the upstream test
+// server, which embeds etcd. It reaches a fresh external server through
+// etcd's client API only. Written by tigerstore's apiservertest/prepare.
+package testserver
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"go.etcd.io/etcd/client/pkg/v3/transport"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/kubernetes"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest"
+	storagetesting "k8s.io/apiserver/pkg/storage/testing"
+)
+
+// Config holds the one server setting the upstream tests change. The
+// factory passes it to the server.
+type Config struct{ WatchProgressNotifyInterval time.Duration }
+
+func NewTestConfig(t testing.TB) *Config {
+	t.Helper()
+	return &Config{}
+}
+
+// RunEtcd starts a fresh server with STORAGE_TEST_FACTORY and connects to
+// it. The factory prints the client endpoints as one comma-separated line
+// on stdout, stays up until SIGINT, keeps its data in
+// STORAGE_TEST_DATA_DIR, and gets the progress interval in
+// STORAGE_TEST_PROGRESS_INTERVAL. STORAGE_TEST_CA, STORAGE_TEST_CERT and
+// STORAGE_TEST_KEY give the client's TLS files.
+func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
+	t.Helper()
+	start := time.Now()
+	factory := os.Getenv("STORAGE_TEST_FACTORY")
+	if factory == "" {
+		t.Fatal("set STORAGE_TEST_FACTORY")
+	}
+	dir := t.TempDir()
+	interval := time.Duration(0)
+	if cfg != nil {
+		interval = cfg.WatchProgressNotifyInterval
+	}
+	log, err := os.Create(dir + "/server.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(factory)
+	cmd.Env = append(os.Environ(), "STORAGE_TEST_DATA_DIR="+dir+"/data", "STORAGE_TEST_PROGRESS_INTERVAL="+interval.String())
+	cmd.Stderr = log
+	// The factory stops its nodes on SIGTERM, also when the test binary
+	// dies without running its cleanups.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Close()
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			t.Errorf("server interrupt: %v", err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			var exit *exec.ExitError
+			switch {
+			case err == nil:
+			case errors.As(err, &exit):
+				if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGINT {
+					break
+				}
+				t.Errorf("server exit: %v", err)
+			default:
+				t.Errorf("server wait: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			_ = cmd.Process.Kill()
+			<-done
+			t.Error("server did not stop within 10s")
+		}
+		if err := log.Close(); err != nil {
+			t.Error(err)
+		}
+		if t.Failed() {
+			if b, err := os.ReadFile(dir + "/server.log"); err == nil {
+				t.Logf("server log:\n%s", b)
+			}
+		}
+	})
+	line := make(chan string, 1)
+	go func() {
+		r := bufio.NewReader(stdout)
+		s, _ := r.ReadString('\n')
+		line <- strings.TrimSpace(s)
+		_, _ = io.Copy(io.Discard, r)
+	}()
+	var endpoints string
+	select {
+	case endpoints = <-line:
+	case <-time.After(10 * time.Second):
+		t.Fatal("factory did not print endpoints within 10s")
+	}
+	if endpoints == "" {
+		t.Fatal("factory printed no endpoints")
+	}
+	tlsInfo := transport.TLSInfo{
+		TrustedCAFile: os.Getenv("STORAGE_TEST_CA"),
+		CertFile:      os.Getenv("STORAGE_TEST_CERT"),
+		KeyFile:       os.Getenv("STORAGE_TEST_KEY"),
+	}
+	tls, err := tlsInfo.ClientConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := kubernetes.New(clientv3.Config{
+		Endpoints: strings.Split(endpoints, ","), TLS: tls, DialTimeout: 10 * time.Second,
+		Logger: zaptest.NewLogger(t, zaptest.Level(zapcore.ErrorLevel)).Named("external-etcd-client"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	// A fresh server: the tests expect revision 1, and deleting keys
+	// would not reset history, compaction or leases.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := client.KV.Get(ctx, "\x00", clientv3.WithFromKey(), clientv3.WithCountOnly())
+	if err != nil {
+		t.Fatal(fmt.Errorf("server readiness: %w", err))
+	}
+	if resp.Header.Revision != 1 || resp.Count != 0 {
+		t.Fatalf("fresh server required: revision=%d count=%d", resp.Header.Revision, resp.Count)
+	}
+	t.Logf("server endpoints=%s ready after %v", endpoints, time.Since(start))
+	@@RECORDERS@@
+	return client
+}

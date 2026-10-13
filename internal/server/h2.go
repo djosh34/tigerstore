@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -50,12 +51,16 @@ const (
 // owns the Framer's write side. mu guards everything they share with each
 // other and with the handlers.
 type conn struct {
-	s   *Server
-	nc  net.Conn
-	raw net.Conn // nc without TLS, closed to abort a stuck write
-	fr  *http2.Framer
-	br  *bufio.Reader
-	bw  *bufio.Writer
+	s *Server
+	// metrics count this connection's calls for /metrics.
+	metrics *metrics
+	nc      net.Conn
+	raw     net.Conn // nc without TLS, closed to abort a stuck write
+	fr      *http2.Framer
+	br      *bufio.Reader
+	bw      *bufio.Writer
+	// caller sizes this client's writes as etcd would.
+	caller core.Caller
 	// cluster and member go in every response header.
 	cluster, member uint64
 
@@ -114,10 +119,26 @@ type ctrlFrame struct {
 	ping [8]byte
 }
 
+// caller is the client of a connection as etcd's size limit for writes
+// sees it: with client certificates required, as --client-cert-auth does,
+// the common name of the leaf of the first verified chain, as etcd's
+// AuthInfoFromTLS takes it.
+func caller(cfg *tls.Config, nc net.Conn) core.Caller {
+	tc, ok := nc.(*tls.Conn)
+	if !ok || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		return core.Caller{}
+	}
+	chains := tc.ConnectionState().VerifiedChains
+	if len(chains) == 0 {
+		return core.Caller{}
+	}
+	return core.NewCaller(chains[0][0].Subject.CommonName)
+}
+
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
@@ -128,6 +149,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
@@ -167,6 +189,7 @@ func (c *conn) close() {
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
+			st.countEnd(codes.Canceled)
 			st.reset = true
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -365,6 +388,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	st := c.streams[id]
 	if st != nil {
 		delete(c.streams, id)
+		st.countEnd(codes.Canceled)
 		st.reset = true
 		if st.deadline != nil {
 			st.deadline.Stop()
@@ -402,10 +426,13 @@ type reqHeaders struct {
 	method, path, contentType string
 	timeout                   time.Duration
 	hasTimeout, needLeader    bool
-	size                      int
-	regular                   bool  // a regular field came; pseudo-fields must come first
-	pseudo                    uint8 // bits of the pseudo-fields seen
-	bad                       bool  // a field broke HTTP/2's rules
+	// gateway: the call carries grpcgateway-accept metadata, for which
+	// etcd ignores the client certificate's identity.
+	gateway bool
+	size    int
+	regular bool  // a regular field came; pseudo-fields must come first
+	pseudo  uint8 // bits of the pseudo-fields seen
+	bad     bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -500,6 +527,8 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.timeout, h.hasTimeout = parseTimeout(f.Value)
 	case "hasleader":
 		h.needLeader = h.needLeader || f.Value == "true"
+	case "grpcgateway-accept":
+		h.gateway = true
 	}
 }
 
@@ -561,7 +590,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader}
+	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]
@@ -590,6 +619,10 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		return st
 	}
 	c.streams[id] = st
+	if st.rpc != nil {
+		st.calls = &c.metrics.calls[st.rpc.idx]
+		st.calls.started.add(1)
+	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
 		// complete or its handler started.
