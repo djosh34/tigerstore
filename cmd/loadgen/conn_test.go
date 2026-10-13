@@ -183,10 +183,14 @@ func TestFakeServerErrors(t *testing.T) {
 }
 
 // TestFakeServerPings sends so slowly that the server pings between
-// requests, and closes the connection if a ping goes unanswered for 50ms.
+// requests, and closes the connection if a ping goes unanswered.
 func TestFakeServerPings(t *testing.T) {
-	fs := startFake(t, 0, 50*time.Millisecond)
-	s := fakeRun(t, fs, "/ok", 1024, 10, time.Second)
+	// The server pings after 20 ms without frames and closes the
+	// connection when an ack takes 500 ms. A client that never answers
+	// fails within the 2 s run; 500 ms leaves room for a slow runner,
+	// where 50 ms did not (#102).
+	fs := startFake(t, 0, 500*time.Millisecond)
+	s := fakeRun(t, fs, "/ok", 1024, 10, 2*time.Second)
 	if len(s.errs) > 0 || s.ops < 3 {
 		t.Fatalf("ops %d, errors %v", s.ops, s.errs)
 	}
