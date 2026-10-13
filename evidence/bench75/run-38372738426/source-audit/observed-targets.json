@@ -1,0 +1,14 @@
+{
+  "main": {
+    "sha": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+    "source": "observed/main"
+  },
+  "batch": {
+    "sha": "0f56cf81226b1347c4ed00824461e138d5a16038",
+    "source": "observed/batch"
+  },
+  "wire": {
+    "sha": "0d406cb09aa99dea7ef1488476d6ebc6b032a6b8",
+    "source": "observed/wire"
+  }
+}

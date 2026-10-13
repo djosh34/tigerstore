@@ -1,0 +1,33 @@
+File: second
+Build ID: 7b21701fe7550f7366f61d2d19ce97d5219465f2
+Type: cpu
+Time: 2026-10-13 08:53:39 UTC
+Duration: 20s, Total samples = 17.25s (86.23%)
+Showing nodes accounting for 7.23s, 41.91% of 17.25s total
+Showing top 25 nodes out of 613
+      flat  flat%   sum%        cum   cum%
+     6.98s 40.46% 40.46%      6.98s 40.46%  internal/runtime/syscall/linux.Syscall6
+         0     0% 40.46%      6.93s 40.17%  sync.(*WaitGroup).Go.func1
+         0     0% 40.46%      6.50s 37.68%  syscall.Syscall
+         0     0% 40.46%      6.39s 37.04%  syscall.RawSyscall6
+         0     0% 40.46%      5.94s 34.43%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0% 40.46%      5.94s 34.43%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+     0.01s 0.058% 40.52%      5.94s 34.43%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0% 40.52%      5.94s 34.43%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0% 40.52%      5.52s 32.00%  internal/poll.ignoringEINTRIO (inline)
+     0.01s 0.058% 40.58%      3.98s 23.07%  golang.org/x/net/http2.(*Framer).ReadFrame
+     0.03s  0.17% 40.75%      3.35s 19.42%  io.ReadAtLeast
+         0     0% 40.75%      3.35s 19.42%  io.ReadFull (inline)
+     0.04s  0.23% 40.99%      3.32s 19.25%  bufio.(*Reader).Read
+     0.02s  0.12% 41.10%      3.23s 18.72%  crypto/tls.(*Conn).Read
+     0.01s 0.058% 41.16%      3.21s 18.61%  internal/poll.(*FD).Write
+         0     0% 41.16%      3.19s 18.49%  syscall.Write (inline)
+         0     0% 41.16%      3.19s 18.49%  syscall.write
+     0.02s  0.12% 41.28%      3.17s 18.38%  bufio.(*Writer).Flush
+         0     0% 41.28%      3.16s 18.32%  crypto/tls.(*Conn).readRecord (inline)
+     0.07s  0.41% 41.68%      3.16s 18.32%  crypto/tls.(*Conn).readRecordOrCCS
+         0     0% 41.68%      3.15s 18.26%  crypto/tls.(*Conn).Write
+     0.01s 0.058% 41.74%      3.14s 18.20%  crypto/tls.(*Conn).writeRecordLocked
+     0.03s  0.17% 41.91%      2.81s 16.29%  golang.org/x/net/http2.(*Framer).ReadFrameHeader
+         0     0% 41.91%      2.76s 16.00%  golang.org/x/net/http2.readFrameHeader
+         0     0% 41.91%      2.61s 15.13%  crypto/tls.(*Conn).write

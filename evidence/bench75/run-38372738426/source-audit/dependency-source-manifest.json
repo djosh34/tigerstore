@@ -1,0 +1,134 @@
+[
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/go.mod",
+    "evidence": "dependency-sources/raft-v3.7.0/go.mod",
+    "sha256": "1775c8fda51ca3bd28a5fdba571d841a2193a302a9bc809516fa1fdf9ff2c48d"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raft.go",
+    "evidence": "dependency-sources/raft-v3.7.0/raft.go",
+    "sha256": "d3d8fa573e1488e3aa35b9b997ba943454f3f357740a550d4bcc44d81975f07f"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/rawnode.go",
+    "evidence": "dependency-sources/raft-v3.7.0/rawnode.go",
+    "sha256": "531cac8b286fd6e0bcd430c12053590325b9b00d113a584b8d3e6d1314c50f05"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/storage.go",
+    "evidence": "dependency-sources/raft-v3.7.0/storage.go",
+    "sha256": "22020183114fe7555bc44ebda1b5b0d67de6534b0c8735c08c8667a0bd245403"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log.go",
+    "evidence": "dependency-sources/raft-v3.7.0/log.go",
+    "sha256": "58316f5ae5a7e02067f83b9715af04ad375e1ba3e96f89ccd166e5cf947544d2"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/log_unstable.go",
+    "evidence": "dependency-sources/raft-v3.7.0/log_unstable.go",
+    "sha256": "9cdbd352eefb755342819adb7503f99f41a82259181e0ab929c801947179f3d0"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raftpb/raft.pb.go",
+    "evidence": "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+    "sha256": "d94c220250d54147f849f7c416787be4971903b4c95d93570e7906041513ff99"
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/raft/v3@v3.7.0/raftpb/raft.proto",
+    "evidence": "dependency-sources/raft-v3.7.0/raftpb/raft.proto",
+    "sha256": "bd0fcbc7b76b85843c038af64bc6ea6ef0863d06335ecab79cb66144ad1aebd1"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/go.mod",
+    "evidence": "dependency-sources/protobuf-v1.36.11/go.mod",
+    "sha256": "a75c105a852fbd8da8d8cfac09c2eab9a206cfd27ed37c973737e23f632ca96e"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/proto/merge.go",
+    "evidence": "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+    "sha256": "f5c50384cb64947ee71b6e77633c4c88f277575b36121bd7c8ee9f38fb6a16b7"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/merge.go",
+    "evidence": "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+    "sha256": "5406a959d280825d0156c8e2e2857bd4e943a1aa0476a44717339ecb8d580628"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_gen.go",
+    "evidence": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+    "sha256": "4eed98966d930db1855cadf0972d255cd89733e29815ef4d3904e3fe0e473a25"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/internal/impl/codec_tables.go",
+    "evidence": "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+    "sha256": "8d4cdbd1367e0c089ecada4431bdb0b2f3198aa3907c25887131650adf78d29b"
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/protobuf@v1.36.11/encoding/protowire/wire.go",
+    "evidence": "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go",
+    "sha256": "109e891e95fb059a3622e2ad97bb06f6829da7d4ac7fc13c36deb508d6f9ef40"
+  },
+  {
+    "module": "go.etcd.io/etcd/api/v3@v3.7.2",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/etcd/api/v3@v3.7.2/go.mod",
+    "evidence": "dependency-sources/etcd-api-v3.7.2/go.mod",
+    "sha256": "4b14bdd0959f77a794382d7cfc6162cc1aa767f0b8b0d9f5d03f4409e1991013"
+  },
+  {
+    "module": "go.etcd.io/etcd/api/v3@v3.7.2",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/etcd/api/v3@v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "evidence": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+    "sha256": "daa7241561e7e626f7deb9bc92ade10c2bc09a7a83192a14fbabe9f6b88d1f60"
+  },
+  {
+    "module": "go.etcd.io/etcd/api/v3@v3.7.2",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/go.etcd.io/etcd/api/v3@v3.7.2/etcdserverpb/rpc.pb.go",
+    "evidence": "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go",
+    "sha256": "06269c48f068fbf6e7275760aa5865800afce354aef973e342a9c10131045401"
+  },
+  {
+    "module": "google.golang.org/grpc@v1.84.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/go.mod",
+    "evidence": "dependency-sources/grpc-v1.84.0/go.mod",
+    "sha256": "69aa2c57344f551512cc2e3d0d9eac8ca364334963f952ca4fb152e07239b1c4"
+  },
+  {
+    "module": "google.golang.org/grpc@v1.84.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/encoding/proto/proto.go",
+    "evidence": "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+    "sha256": "e49a349919237058e91aa19cf2128f78fdbdaae0f8ed169a600ffcc07ff566bd"
+  },
+  {
+    "module": "google.golang.org/grpc@v1.84.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/google.golang.org/grpc@v1.84.0/mem/buffer_slice.go",
+    "evidence": "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go",
+    "sha256": "eb963947548f5a64d07df1f79d06746adfdb597cef66e6b4207ff4389edd8340"
+  },
+  {
+    "module": "golang.org/x/net@v0.58.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/golang.org/x/net@v0.58.0/go.mod",
+    "evidence": "dependency-sources/x-net-v0.58.0/go.mod",
+    "sha256": "7527ef545bf4e1ec8e38b4afddcc46480d75d3c2ae38a80cff1831d3152fabfe"
+  },
+  {
+    "module": "golang.org/x/net@v0.58.0",
+    "cache_source": "/home/joshazimullah.linux/go/pkg/mod/golang.org/x/net@v0.58.0/http2/frame.go",
+    "evidence": "dependency-sources/x-net-v0.58.0/http2/frame.go",
+    "sha256": "7087a540c7d8c93b142d0b97b6f3a6b780be48863cbd0cf2187de845743857b7"
+  }
+]

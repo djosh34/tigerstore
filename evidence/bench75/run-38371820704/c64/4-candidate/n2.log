@@ -1,0 +1,2 @@
+tigerstore 2026/10/13 08:53:44.306058 node n2 (raft ID 3) serving clients on https://127.0.0.1:2579, peers on 127.0.0.1:2580
+tigerstore 2026/10/13 08:53:52.314399 error: core: the leader's disk stalled; stopping so that another node can lead

@@ -1,0 +1,23 @@
+{
+  "main": {
+    "sha": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+    "source": "sources/run38372738426/main",
+    "resolved_at": "2026-10-13T08:56:32Z",
+    "actions_run": "38372738426",
+    "confirmed_by": "requester"
+  },
+  "batch": {
+    "sha": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+    "source": "sources/run38372738426/batch",
+    "resolved_at": "2026-10-13T08:56:32Z",
+    "actions_run": "38372738426",
+    "confirmed_by": "requester"
+  },
+  "wire": {
+    "sha": "f2edb7b2b1e81f65d7ca7592638654f09217b933",
+    "source": "sources/run38372738426/wire",
+    "resolved_at": "2026-10-13T08:56:32Z",
+    "actions_run": "38372738426",
+    "confirmed_by": "requester"
+  }
+}

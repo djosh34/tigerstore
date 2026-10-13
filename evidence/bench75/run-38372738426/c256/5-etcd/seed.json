@@ -1,0 +1,151 @@
+{
+  "clock_hz": 100,
+  "conns": 16,
+  "cpu_after": [
+    {
+      "PID": 7040,
+      "Ticks": 107,
+      "Start": 73222
+    },
+    {
+      "PID": 7038,
+      "Ticks": 30,
+      "Start": 73221
+    },
+    {
+      "PID": 7039,
+      "Ticks": 29,
+      "Start": 73222
+    },
+    {
+      "PID": 7072,
+      "Ticks": 38,
+      "Start": 73477
+    }
+  ],
+  "cpu_before": [
+    {
+      "PID": 7040,
+      "Ticks": 6,
+      "Start": 73222
+    },
+    {
+      "PID": 7038,
+      "Ticks": 3,
+      "Start": 73221
+    },
+    {
+      "PID": 7039,
+      "Ticks": 3,
+      "Start": 73222
+    },
+    {
+      "PID": 7072,
+      "Ticks": 5,
+      "Start": 73477
+    }
+  ],
+  "cpu_us_op": [
+    246.58203125,
+    65.91796875,
+    63.4765625,
+    80.56640625
+  ],
+  "elapsed_s": 1.35614411,
+  "errors": {},
+  "keyspace": 4096,
+  "leader_heap": {
+    "after": {
+      "allocated_objects": 1211670,
+      "allocated_bytes": 145981512,
+      "heap_object_bytes": 30280328,
+      "gc_cpu_seconds": 0,
+      "runtime_nonidle_cpu_seconds": 0,
+      "has_gc_cpu": false,
+      "raw": {
+        "go_memstats_alloc_bytes": 30280328,
+        "go_memstats_alloc_bytes_total": 145981512,
+        "go_memstats_buck_hash_sys_bytes": 1487119,
+        "go_memstats_frees_total": 1041018,
+        "go_memstats_gc_sys_bytes": 4013824,
+        "go_memstats_heap_alloc_bytes": 30280328,
+        "go_memstats_heap_idle_bytes": 7036928,
+        "go_memstats_heap_inuse_bytes": 32907264,
+        "go_memstats_heap_objects": 170652,
+        "go_memstats_heap_released_bytes": 4718592,
+        "go_memstats_heap_sys_bytes": 39944192,
+        "go_memstats_last_gc_time_seconds": 1791882087.9266086,
+        "go_memstats_mallocs_total": 1211670,
+        "go_memstats_mcache_inuse_bytes": 2296,
+        "go_memstats_mcache_sys_bytes": 16072,
+        "go_memstats_mspan_inuse_bytes": 491520,
+        "go_memstats_mspan_sys_bytes": 538560,
+        "go_memstats_next_gc_bytes": 35867866,
+        "go_memstats_other_sys_bytes": 533121,
+        "go_memstats_stack_inuse_bytes": 1998848,
+        "go_memstats_stack_sys_bytes": 1998848,
+        "go_memstats_sys_bytes": 48531736
+      }
+    },
+    "before": {
+      "allocated_objects": 70560,
+      "allocated_bytes": 15374432,
+      "heap_object_bytes": 10786472,
+      "gc_cpu_seconds": 0,
+      "runtime_nonidle_cpu_seconds": 0,
+      "has_gc_cpu": false,
+      "raw": {
+        "go_memstats_alloc_bytes": 10786472,
+        "go_memstats_alloc_bytes_total": 15374432,
+        "go_memstats_buck_hash_sys_bytes": 1452399,
+        "go_memstats_frees_total": 25799,
+        "go_memstats_gc_sys_bytes": 3696880,
+        "go_memstats_heap_alloc_bytes": 10786472,
+        "go_memstats_heap_idle_bytes": 3538944,
+        "go_memstats_heap_inuse_bytes": 12156928,
+        "go_memstats_heap_objects": 44761,
+        "go_memstats_heap_released_bytes": 3538944,
+        "go_memstats_heap_sys_bytes": 15695872,
+        "go_memstats_last_gc_time_seconds": 1791882086.6290586,
+        "go_memstats_mallocs_total": 70560,
+        "go_memstats_mcache_inuse_bytes": 2296,
+        "go_memstats_mcache_sys_bytes": 16072,
+        "go_memstats_mspan_inuse_bytes": 106400,
+        "go_memstats_mspan_sys_bytes": 114240,
+        "go_memstats_next_gc_bytes": 18861338,
+        "go_memstats_other_sys_bytes": 584097,
+        "go_memstats_stack_inuse_bytes": 1081344,
+        "go_memstats_stack_sys_bytes": 1081344,
+        "go_memstats_sys_bytes": 22640904
+      }
+    },
+    "bytes_per_put": 31886.494140625,
+    "gc_cpu_share": null,
+    "heap_bytes_after": 30280328,
+    "objects_per_put": 278.59130859375
+  },
+  "max_ms": 38.060044,
+  "mean_ms": 21.122224260253905,
+  "occupied_cores": [
+    0.7447586082868435,
+    0.19909388538361164,
+    0.1917200377768112,
+    0.24333697102441423
+  ],
+  "op": "put",
+  "ops_s": 3020.3279797454566,
+  "p50_ms": 20.822979,
+  "p90_ms": 28.279346,
+  "p999_ms": 36.393915,
+  "p99_ms": 34.438874,
+  "revision_after": 4097,
+  "revision_before": 1,
+  "start_utc": "2026-10-13T09:01:26.705455597Z",
+  "successes": 4096,
+  "terms": {
+    "2": 4096
+  },
+  "valid": true,
+  "value_bytes": 1024,
+  "workers": 64
+}

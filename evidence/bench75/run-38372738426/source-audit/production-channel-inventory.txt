@@ -1,0 +1,251 @@
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:21:	recvErr := make(chan error, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:32:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:36:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:47:		case r := <-ws.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:55:		case <-ws.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:57:		case <-s.n.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:59:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/watch.go:61:		case err := <-recvErr:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:89:func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:104:	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:105:	case <-ws.n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:111:	ch := make(chan *pb.StatusResponse, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:116:	case st := <-ch:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:118:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:120:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:127:	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:136:	case n.inbox <- in:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:138:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:140:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:192:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:237:		inbox:     make(chan input, 8192),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:238:		persistQ:  make(chan []core.PersistJob, maxBacklog),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:239:		persisted: make(chan persistDone, 1),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:240:		done:      make(chan struct{}),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:260:func (n *Node) Done() <-chan struct{} { return n.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:266:	case n.inbox <- input{msg: m}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:267:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:274:	case n.inbox <- input{unreachable: id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:281:	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:286:	case rep := <-r.reply:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:288:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:290:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:308:	close(n.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:329:		var toDisk chan<- []core.PersistJob
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:335:		case in := <-inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:340:				case in := <-n.inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:346:		case done := <-n.persisted:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:353:		case toDisk <- next:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:357:		case <-ticker.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:359:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:377:				ws.C <- w.Resp
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:385:				case ws.C <- w.Resp:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:394:				close(ws.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:420:			w.reply <- r
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:450:		in.status <- n.core.Status()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:486:		case jobs = <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:487:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:493:			case js := <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:507:		case n.persisted <- done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/node/node.go:508:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:112:			ctrl: make(chan *raftpb.Message, controlQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:113:			data: make(chan *raftpb.Message, dataQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:297:	case q <- m:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:308:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:314:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:317:	case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:320:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:331:		case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:333:		case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:350:			case <-time.After(backoff):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/peer/peer.go:351:			case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/http.go:109:func (h *http1Conn) goAway() { h.close() }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/http.go:111:func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:75:func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:90:	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:91:	case <-ws.n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:97:	ch := make(chan *pb.StatusResponse, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:102:	case st := <-ch:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:104:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:106:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:113:	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:122:	case n.inbox <- in:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:124:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:126:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:171:		inbox:     make(chan input, 8192),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:172:		persistQ:  make(chan []core.PersistJob, maxBacklog),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:173:		persisted: make(chan persistDone, 1),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:174:		done:      make(chan struct{}),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:191:func (n *Node) Done() <-chan struct{} { return n.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:197:	case n.inbox <- input{msg: m}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:198:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:205:	case n.inbox <- input{unreachable: id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:212:	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:217:	case rep := <-r.reply:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:219:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:221:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:239:	close(n.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:258:		var toDisk chan<- []core.PersistJob
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:264:		case in := <-inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:269:				case in := <-n.inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:275:		case done := <-n.persisted:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:282:		case toDisk <- next:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:286:		case <-ticker.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:288:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:301:				ch <- r
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:311:				ws.C <- w.Resp
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:315:			case ws.C <- w.Resp:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:320:				close(ws.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:333:		in.status <- n.core.Status()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:369:		case jobs = <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:370:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:376:			case js := <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:390:		case n.persisted <- done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/node/node.go:391:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:51:	abort <-chan struct{}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:148:	case st.inSignal <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:182:		case <-st.inSignal:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:183:		case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:257:			case <-st.space:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:259:			case <-st.abort:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:261:			case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:363:		case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/stream.go:365:		case <-ticker.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:65:	close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:158:		c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:166:	c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:186:	done := make(chan struct{})
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:189:		close(done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:192:	case <-done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:193:	case <-time.After(stopGrace):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:196:			c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/server.go:199:		<-done
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:89:func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:104:	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:105:	case <-ws.n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:111:	ch := make(chan *pb.StatusResponse, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:116:	case st := <-ch:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:118:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:120:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:127:	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:136:	case n.inbox <- in:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:138:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:140:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:193:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:238:		inbox:     make(chan input, 8192),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:239:		persistQ:  make(chan []core.PersistJob, maxBacklog),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:240:		persisted: make(chan persistDone, 1),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:241:		done:      make(chan struct{}),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:258:func (n *Node) Done() <-chan struct{} { return n.done }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:264:	case n.inbox <- input{msg: m}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:265:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:272:	case n.inbox <- input{unreachable: id}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:279:	r := &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:284:	case rep := <-r.reply:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:286:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:288:	case <-n.done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:306:	close(n.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:327:		var toDisk chan<- []core.PersistJob
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:333:		case in := <-inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:338:				case in := <-n.inbox:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:344:		case done := <-n.persisted:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:351:		case toDisk <- next:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:355:		case <-ticker.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:357:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:375:				ws.C <- w.Resp
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:383:				case ws.C <- w.Resp:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:392:				close(ws.done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:418:			w.reply <- r
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:447:		in.status <- n.core.Status()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:483:		case jobs = <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:484:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:490:			case js := <-n.persistQ:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:504:		case n.persisted <- done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/node/node.go:505:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:111:		wake:     make(chan struct{}, 1),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:130:		defer c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:141:		case <-c.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:142:		case <-time.After(time.Second):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:145:	c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:151:func (c *conn) close() {
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:190:	case c.wake <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:213:		go c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:449:		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/h2.go:514:	case st.inSignal <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/write.go:54:			case <-c.wake:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/write.go:56:			case <-nodeDone:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/write.go:60:			case <-c.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/wire/internal/server/write.go:132:			case st.space <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:21:	recvErr := make(chan error, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:32:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:36:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:47:		case r := <-ws.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:55:		case <-ws.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:57:		case <-s.n.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:59:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/watch.go:61:		case err := <-recvErr:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:112:			ctrl: make(chan *raftpb.Message, controlQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:113:			data: make(chan *raftpb.Message, dataQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:294:	case q <- m:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:305:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:311:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:314:	case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:317:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:328:		case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:330:		case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:347:			case <-time.After(backoff):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/peer/peer.go:348:			case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:65:	close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:158:		c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:166:	c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:186:	done := make(chan struct{})
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:189:		close(done)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:192:	case <-done:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:193:	case <-time.After(stopGrace):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:196:			c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/server.go:199:		<-done
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/write.go:54:			case <-c.wake:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/write.go:56:			case <-nodeDone:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/write.go:60:			case <-c.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/write.go:132:			case st.space <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/http.go:109:func (h *http1Conn) goAway() { h.close() }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/http.go:111:func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:111:		wake:     make(chan struct{}, 1),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:130:		defer c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:141:		case <-c.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:142:		case <-time.After(time.Second):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:145:	c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:151:func (c *conn) close() {
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:190:	case c.wake <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:213:		go c.close()
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:449:		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/h2.go:514:	case st.inSignal <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:51:	abort <-chan struct{}
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:148:	case st.inSignal <- struct{}{}:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:182:		case <-st.inSignal:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:183:		case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:257:			case <-st.space:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:259:			case <-st.abort:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:261:			case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:363:		case <-st.ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/batch/internal/server/stream.go:365:		case <-ticker.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:112:			ctrl: make(chan *raftpb.Message, controlQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:113:			data: make(chan *raftpb.Message, dataQueue),
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:294:	case q <- m:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:305:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:311:	case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:314:	case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:317:	case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:328:		case m := <-s.ctrl:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:330:		case m := <-s.data:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:347:			case <-time.After(backoff):
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/peer/peer.go:348:			case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:50:	recvErr := make(chan error, 1)
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:60:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:64:				recvErr <- err
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:75:		case r := <-ws.C:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:79:		case <-ws.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:81:		case <-s.n.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:83:		case <-ctx.Done():
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:85:		case err := <-recvErr:
+/home/joshazimullah.linux/work_mounts/scratch/bench77-source-audit/sources/run38372738426/main/internal/server/watch.go:91:		case <-ticker.C:

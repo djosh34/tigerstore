@@ -1,0 +1,84 @@
+[
+  {
+    "module": "go.etcd.io/etcd/api/v3@v3.7.2",
+    "module_zip": "/home/joshazimullah.linux/go/pkg/mod/cache/download/go.etcd.io/etcd/api/v3/@v/v3.7.2.zip",
+    "computed_h1": "h1:xgt/6el1LsPWWYNLkhMAK4tZm6dF+1sCqDecpE5gdbk=",
+    "go_sum_pins": {
+      "main": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+      "batch": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+      "wire": "f2edb7b2b1e81f65d7ca7592638654f09217b933"
+    },
+    "verified_evidence": [
+      "dependency-sources/etcd-api-v3.7.2/go.mod",
+      "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc_grpc.pb.go",
+      "dependency-sources/etcd-api-v3.7.2/etcdserverpb/rpc.pb.go"
+    ]
+  },
+  {
+    "module": "go.etcd.io/raft/v3@v3.7.0",
+    "module_zip": "/home/joshazimullah.linux/go/pkg/mod/cache/download/go.etcd.io/raft/v3/@v/v3.7.0.zip",
+    "computed_h1": "h1:BGzlwx07bLv8PW6OU5HObuz1y4hlPZUXA07pM1mPUh4=",
+    "go_sum_pins": {
+      "main": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+      "batch": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+      "wire": "f2edb7b2b1e81f65d7ca7592638654f09217b933"
+    },
+    "verified_evidence": [
+      "dependency-sources/raft-v3.7.0/go.mod",
+      "dependency-sources/raft-v3.7.0/raft.go",
+      "dependency-sources/raft-v3.7.0/rawnode.go",
+      "dependency-sources/raft-v3.7.0/storage.go",
+      "dependency-sources/raft-v3.7.0/log.go",
+      "dependency-sources/raft-v3.7.0/log_unstable.go",
+      "dependency-sources/raft-v3.7.0/raftpb/raft.pb.go",
+      "dependency-sources/raft-v3.7.0/raftpb/raft.proto"
+    ]
+  },
+  {
+    "module": "golang.org/x/net@v0.58.0",
+    "module_zip": "/home/joshazimullah.linux/go/pkg/mod/cache/download/golang.org/x/net/@v/v0.58.0.zip",
+    "computed_h1": "h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=",
+    "go_sum_pins": {
+      "main": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+      "batch": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+      "wire": "f2edb7b2b1e81f65d7ca7592638654f09217b933"
+    },
+    "verified_evidence": [
+      "dependency-sources/x-net-v0.58.0/go.mod",
+      "dependency-sources/x-net-v0.58.0/http2/frame.go"
+    ]
+  },
+  {
+    "module": "google.golang.org/grpc@v1.84.0",
+    "module_zip": "/home/joshazimullah.linux/go/pkg/mod/cache/download/google.golang.org/grpc/@v/v1.84.0.zip",
+    "computed_h1": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+    "go_sum_pins": {
+      "main": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+      "batch": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+      "wire": "f2edb7b2b1e81f65d7ca7592638654f09217b933"
+    },
+    "verified_evidence": [
+      "dependency-sources/grpc-v1.84.0/go.mod",
+      "dependency-sources/grpc-v1.84.0/encoding/proto/proto.go",
+      "dependency-sources/grpc-v1.84.0/mem/buffer_slice.go"
+    ]
+  },
+  {
+    "module": "google.golang.org/protobuf@v1.36.11",
+    "module_zip": "/home/joshazimullah.linux/go/pkg/mod/cache/download/google.golang.org/protobuf/@v/v1.36.11.zip",
+    "computed_h1": "h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=",
+    "go_sum_pins": {
+      "main": "e1fd889c345bc3c06d8100eb6d635c88ad6967cd",
+      "batch": "29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f",
+      "wire": "f2edb7b2b1e81f65d7ca7592638654f09217b933"
+    },
+    "verified_evidence": [
+      "dependency-sources/protobuf-v1.36.11/go.mod",
+      "dependency-sources/protobuf-v1.36.11/proto/merge.go",
+      "dependency-sources/protobuf-v1.36.11/internal/impl/merge.go",
+      "dependency-sources/protobuf-v1.36.11/internal/impl/codec_gen.go",
+      "dependency-sources/protobuf-v1.36.11/internal/impl/codec_tables.go",
+      "dependency-sources/protobuf-v1.36.11/encoding/protowire/wire.go"
+    ]
+  }
+]

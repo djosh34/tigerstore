@@ -1,0 +1,12 @@
+{
+  "cpu": {
+    "request_start_utc": "2026-10-13T09:02:01.809186+00:00",
+    "request_end_observed_utc": "2026-10-13T09:02:21.866141+00:00",
+    "requested_seconds": 20
+  },
+  "allocs": {
+    "request_start_utc": "2026-10-13T09:02:01.810006+00:00",
+    "request_end_observed_utc": "2026-10-13T09:02:21.866183+00:00",
+    "requested_seconds": 20
+  }
+}

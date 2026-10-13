@@ -1,0 +1,107 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"strings"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+)
+
+// method serves one gRPC method. A request the node runs (op) is decoded
+// by the connection reader and handed to the node in a batch. Other unary
+// calls (unary) and bidirectional streams (stream) run in a goroutine.
+type method struct {
+	op     func() proto.Message
+	unary  func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
+	stream func(s *Server, st *stream) error
+}
+
+// methods are the etcd methods that are served. Every other method of
+// etcd's services answers Unimplemented, as grpc-go's generated
+// Unimplemented servers do; Kubernetes 1.37 falls back from RangeStream on
+// exactly that code.
+var methods = map[string]*method{
+	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest]},
+	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest]},
+	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
+	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},
+	"/etcdserverpb.KV/Compact":            {op: newOp[pb.CompactionRequest]},
+	"/etcdserverpb.Lease/LeaseGrant":      {op: newOp[pb.LeaseGrantRequest]},
+	"/etcdserverpb.Lease/LeaseRevoke":     {op: newOp[pb.LeaseRevokeRequest]},
+	"/etcdserverpb.Lease/LeaseTimeToLive": {op: newOp[pb.LeaseTimeToLiveRequest]},
+	"/etcdserverpb.Lease/LeaseLeases":     {op: newOp[pb.LeaseLeasesRequest]},
+	"/etcdserverpb.Lease/LeaseKeepAlive":  {stream: (*Server).keepAlive},
+	"/etcdserverpb.Watch/Watch":           {stream: (*Server).watch},
+	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
+	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
+}
+
+// services are etcd's gRPC services; their other methods are not
+// implemented.
+var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth"}
+
+// unknownMethod is grpc-go's answer for a method that is not served.
+func unknownMethod(path string) error {
+	service, name, ok := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	if !ok {
+		return status.Errorf(codes.Unimplemented, "malformed method name: %q", path)
+	}
+	if slices.Contains(services, service) {
+		return status.Errorf(codes.Unimplemented, "method %s not implemented", name)
+	}
+	return status.Errorf(codes.Unimplemented, "unknown service %v", service)
+}
+
+// unmarshal decodes a request message as grpc-go does, with its error.
+func unmarshal(b []byte, m proto.Message) error {
+	if err := proto.Unmarshal(b, m); err != nil {
+		return status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err)
+	}
+	return nil
+}
+
+// newOp returns a new request of type T.
+func newOp[T any, P interface {
+	*T
+	proto.Message
+}]() proto.Message {
+	return P(new(T))
+}
+
+func memberList(_ context.Context, s *Server, b []byte) (proto.Message, error) {
+	if err := unmarshal(b, &pb.MemberListRequest{}); err != nil {
+		return nil, err
+	}
+	return s.memberList(), nil
+}
+
+func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+	if err := unmarshal(b, &pb.StatusRequest{}); err != nil {
+		return nil, err
+	}
+	st, err := s.n.Status(ctx)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return st, nil
+}
+
+// toStatus turns context errors into the status etcd returns for them.
+// Errors from the core are already etcd's gRPC errors.
+func toStatus(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	}
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	return status.Error(codes.Unknown, err.Error())
+}

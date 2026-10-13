@@ -1,0 +1,33 @@
+File: second
+Build ID: 7b21701fe7550f7366f61d2d19ce97d5219465f2
+Type: cpu
+Time: 2026-10-13 08:53:39 UTC
+Duration: 20s, Total samples = 17.25s (86.23%)
+Showing nodes accounting for 11.58s, 67.13% of 17.25s total
+Showing top 25 nodes out of 613
+      flat  flat%   sum%        cum   cum%
+     6.98s 40.46% 40.46%      6.98s 40.46%  internal/runtime/syscall/linux.Syscall6
+     0.88s  5.10% 45.57%      0.88s  5.10%  runtime.memmove
+     0.42s  2.43% 48.00%      0.42s  2.43%  crypto/internal/fips140/aes/gcm.gcmAesEnc
+     0.33s  1.91% 49.91%      0.33s  1.91%  crypto/internal/fips140/aes/gcm.gcmAesDec
+     0.32s  1.86% 51.77%      0.32s  1.86%  cmpbody
+     0.27s  1.57% 53.33%      0.27s  1.57%  runtime.memclrNoHeapPointers
+     0.23s  1.33% 54.67%      0.23s  1.33%  runtime.futex
+     0.20s  1.16% 55.83%      0.21s  1.22%  runtime.lock2
+     0.20s  1.16% 56.99%      0.54s  3.13%  runtime.selectgo
+     0.15s  0.87% 57.86%      0.48s  2.78%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.14s  0.81% 58.67%      0.52s  3.01%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+     0.14s  0.81% 59.48%      0.14s  0.81%  runtime.nextFreeFast (inline)
+     0.13s  0.75% 60.23%      0.14s  0.81%  runtime.(*mspan).writeHeapBitsSmall
+     0.12s   0.7% 60.93%      0.13s  0.75%  runtime.findObject
+     0.12s   0.7% 61.62%      0.16s  0.93%  runtime.unlock2
+     0.11s  0.64% 62.26%      0.71s  4.12%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+     0.11s  0.64% 62.90%      0.95s  5.51%  runtime.growslice
+     0.11s  0.64% 63.54%      0.20s  1.16%  runtime.mallocgcSmallScanNoHeaderSC5
+     0.09s  0.52% 64.06%      0.09s  0.52%  golang.org/x/net/http/httpguts.isCTL (inline)
+     0.09s  0.52% 64.58%      0.09s  0.52%  internal/runtime/atomic.(*Uint32).Add (inline)
+     0.09s  0.52% 65.10%      0.09s  0.52%  internal/runtime/maps.ctrlGroupMatchH2
+     0.09s  0.52% 65.62%      0.09s  0.52%  runtime.(*fixalloc).alloc
+     0.09s  0.52% 66.14%      0.12s   0.7%  runtime.(*spanSet).push
+     0.09s  0.52% 66.67%      0.82s  4.75%  runtime.mallocgcSmallScanNoHeader
+     0.08s  0.46% 67.13%      0.68s  3.94%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest

@@ -1,0 +1,33 @@
+File: second
+Build ID: 7b21701fe7550f7366f61d2d19ce97d5219465f2
+Type: alloc_objects
+Time: 2026-10-13 08:53:59 UTC
+Duration: 20s, Total samples = 19772093 
+Showing nodes accounting for 10013173, 50.64% of 19772093 total
+Showing top 25 nodes out of 121
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%   12401748 62.72%  github.com/djosh34/tigerstore/internal/server.(*Server).Serve.func1
+         0     0%     0%   12401748 62.72%  github.com/djosh34/tigerstore/internal/server.(*Server).serveConn
+         0     0%     0%   12401748 62.72%  github.com/djosh34/tigerstore/internal/server.(*conn).readLoop
+         0     0%     0%   12401748 62.72%  github.com/djosh34/tigerstore/internal/server.(*conn).serve
+         0     0%     0%    7414360 37.50%  golang.org/x/net/http2.(*Framer).ReadFrame
+         0     0%     0%    7414360 37.50%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader
+   2842720 14.38% 14.38%    5841427 29.54%  golang.org/x/net/http2.(*Framer).readMetaFrame
+         0     0% 14.38%    4272992 21.61%  github.com/djosh34/tigerstore/internal/server.(*conn).onFrame
+         0     0% 14.38%    3720616 18.82%  sync.(*WaitGroup).Go.func1
+         0     0% 14.38%    3649726 18.46%  github.com/djosh34/tigerstore/internal/node.(*Node).Run
+         0     0% 14.38%    3649726 18.46%  github.com/djosh34/tigerstore/internal/node.(*Node).commit
+         0     0% 14.38%    3649726 18.46%  main.main
+         0     0% 14.38%    3649726 18.46%  main.run
+         0     0% 14.38%    3649726 18.46%  runtime.main
+    284447  1.44% 15.82%    3375278 17.07%  github.com/djosh34/tigerstore/internal/server.(*conn).complete
+         0     0% 15.82%    3375278 17.07%  github.com/djosh34/tigerstore/internal/server.(*conn).serve.func1
+         0     0% 15.82%    3375278 17.07%  github.com/djosh34/tigerstore/internal/server.(*conn).writeLoop
+   2998707 15.17% 30.98%    2998707 15.17%  golang.org/x/net/http2.(*Framer).readMetaFrame.func1
+         0     0% 30.98%    2998707 15.17%  golang.org/x/net/http2/hpack.(*Decoder).Write
+         0     0% 30.98%    2998707 15.17%  golang.org/x/net/http2/hpack.(*Decoder).callEmit
+         0     0% 30.98%    2998707 15.17%  golang.org/x/net/http2/hpack.(*Decoder).parseFieldIndexed
+         0     0% 30.98%    2998707 15.17%  golang.org/x/net/http2/hpack.(*Decoder).parseHeaderFieldRepr
+   1574755  7.96% 38.95%    2319136 11.73%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+         0     0% 38.95%    2319136 11.73%  github.com/djosh34/tigerstore/internal/server.(*conn).onHeaders
+   2312544 11.70% 50.64%    2312544 11.70%  github.com/djosh34/tigerstore/internal/server.(*stream).pushLocked

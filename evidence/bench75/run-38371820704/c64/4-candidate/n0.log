@@ -1,0 +1,3 @@
+tigerstore 2026/10/13 08:53:44.309143 node n0 (raft ID 1) serving clients on https://127.0.0.1:2379, peers on 127.0.0.1:2380
+tigerstore 2026/10/13 08:53:52.314353 peer: receive from 127.0.0.1:51906: EOF
+tigerstore 2026/10/13 08:53:52.604734 peer: close: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 127.0.0.1:55062->127.0.0.1:2580: write: broken pipe

@@ -1,0 +1,1077 @@
+diff --git a/internal/node/node.go b/internal/node/node.go
+index a2e0afb..d15b821 100644
+--- a/internal/node/node.go
++++ b/internal/node/node.go
+@@ -172,8 +172,17 @@ type waiter struct {
+ // reply channel per request. tags[i] comes back with the reply to ops[i]
+ // through to.Complete. It waits while the inbox is full, which slows down
+ // the client connection; it fails only if ctx ends or the node stopped,
+-// and then none of the requests was taken.
++// and then none of the requests was taken. A batch handed over as the
++// node stops may never be answered: the caller fails such requests once
++// Done is closed.
+ func (n *Node) SubmitBatch(ctx context.Context, ops []proto.Message, tags []any, to Completer) error {
++	select {
++	case <-n.done:
++		// put could still win the race for a free inbox, and nobody reads
++		// it any more.
++		return rpctypes.ErrGRPCStopped
++	default:
++	}
+ 	k := uint64(len(ops))
+ 	b := &batch{first: n.nextID.Add(k) - k + 1, ops: ops, tags: tags, to: to}
+ 	return n.put(ctx, input{batch: b})
+diff --git a/internal/server/batch.go b/internal/server/batch.go
+index 7abc9e8..fc803f0 100644
+--- a/internal/server/batch.go
++++ b/internal/server/batch.go
+@@ -2,6 +2,7 @@ package server
+ 
+ import (
+ 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
++	"golang.org/x/net/http2"
+ 	"google.golang.org/grpc/codes"
+ 	"google.golang.org/grpc/status"
+ 	"google.golang.org/protobuf/proto"
+@@ -15,9 +16,15 @@ const (
+ 	// out of buffered frames.
+ 	maxBatchOps   = 256
+ 	maxBatchBytes = 4 << 20
+-	// maxInflight bounds the request bytes of one connection that the node
+-	// has not answered yet. Above it, the reader stops reading.
+-	maxInflight = 64 << 20
++	// maxHeld bounds the bytes that the calls of one connection hold:
++	// requests the node has not answered and replies not yet sent. Above
++	// it, the connection's receive window is not credited back, so the
++	// client stops sending until replies go out. The reader keeps reading
++	// pings, resets and window updates.
++	maxHeld = 64 << 20
++	// callCost is what a call holds besides its request and reply bytes,
++	// so that empty requests count too.
++	callCost = 512
+ )
+ 
+ // opBatch is the requests the reader decoded since it last handed a batch
+@@ -44,20 +51,18 @@ func (c *conn) admit(st *stream) {
+ 		st.finish(err)
+ 		return
+ 	}
+-	size := len(st.body)
++	st.reqSize = len(st.body)
+ 	st.body = nil
+-	c.mu.Lock()
+-	st.inflight = size
+-	c.inflight += size
+-	c.mu.Unlock()
+ 	c.batch.ops = append(c.batch.ops, op)
+ 	c.batch.tags = append(c.batch.tags, st)
+-	c.batch.bytes += size
++	c.batch.bytes += st.reqSize
+ }
+ 
+ // batchDue reports whether the reader should hand its batch to the node
+-// now: it is full, or the next frame is not buffered yet, so reading it
+-// could wait for the client. There is no timer.
++// before it reads the next frame: the batch is full, or reading the next
++// frame could wait for the client, because it is not buffered whole or
++// starts a header block that continues in later frames. There is no
++// timer.
+ func (c *conn) batchDue() bool {
+ 	b := &c.batch
+ 	if len(b.ops) == 0 {
+@@ -66,75 +71,88 @@ func (c *conn) batchDue() bool {
+ 	if len(b.ops) >= maxBatchOps || b.bytes >= maxBatchBytes || c.br.Buffered() < frameHeaderLen {
+ 		return true
+ 	}
+-	h, err := c.br.Peek(frameHeaderLen)
+-	if err != nil {
++	// Peek cannot fail: the header is buffered.
++	h, _ := c.br.Peek(frameHeaderLen)
++	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
++	if http2.FrameType(h[3]) == http2.FrameHeaders && http2.Flags(h[4])&http2.FlagHeadersEndHeaders == 0 {
+ 		return true
+ 	}
+-	n := int(h[0])<<16 | int(h[1])<<8 | int(h[2])
+ 	return c.br.Buffered() < frameHeaderLen+n
+ }
+ 
+-// flush hands the batch to the node, then waits while too many request
+-// bytes of this connection are unanswered. It fails only when the
+-// connection closed.
++// flush hands the batch to the node. It never waits for the node's
++// replies; the held bytes bound a connection through flow control.
+ func (c *conn) flush() error {
+ 	b := c.batch
+ 	c.batch = opBatch{}
+-	if err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c); err != nil {
+-		if c.ctx.Err() != nil {
+-			return err
+-		}
+-		for _, tag := range b.tags {
+-			c.release(tag.(*stream))
+-			tag.(*stream).finish(toStatus(err))
+-		}
++	c.mu.Lock()
++	for _, tag := range b.tags {
++		st := tag.(*stream)
++		st.atNode = true
++		c.holdLocked(st, st.reqSize+callCost)
++	}
++	c.mu.Unlock()
++	err := c.s.n.SubmitBatch(c.ctx, b.ops, b.tags, c)
++	if err == nil {
+ 		return nil
+ 	}
+-	for {
+-		c.mu.Lock()
+-		over := c.inflight > maxInflight
+-		c.mu.Unlock()
+-		if !over {
+-			return nil
+-		}
+-		select {
+-		case <-c.room:
+-		case <-c.ctx.Done():
+-			return c.ctx.Err()
+-		}
++	if c.ctx.Err() != nil {
++		return err
+ 	}
+-}
+-
+-// release ends the node's hold on a stream's request bytes.
+-func (c *conn) release(st *stream) {
++	// The node stopped; it takes no more requests.
+ 	c.mu.Lock()
+-	c.releaseLocked(st)
++	for _, tag := range b.tags {
++		tag.(*stream).atNode = false
++	}
+ 	c.mu.Unlock()
++	for _, tag := range b.tags {
++		tag.(*stream).finish(toStatus(err))
++	}
++	return nil
+ }
+ 
++// holdLocked adds n bytes to what a call holds. c.mu is held.
++func (c *conn) holdLocked(st *stream, n int) {
++	st.held += n
++	c.held += n
++}
++
++// releaseLocked frees what a call held once it ended, and credits back
++// the connection's receive window if that waited for it. c.mu is held.
+ func (c *conn) releaseLocked(st *stream) {
+-	if st.inflight == 0 {
+-		return
+-	}
+-	c.inflight -= st.inflight
+-	st.inflight = 0
+-	select {
+-	case c.room <- struct{}{}:
+-	default:
++	c.held -= st.held
++	st.held = 0
++	c.creditLocked()
++}
++
++// creditLocked sends a connection window update once enough was received
++// and the connection's calls hold less than maxHeld. c.mu is held.
++func (c *conn) creditLocked() {
++	if c.recvCredit >= connWindow/4 && c.held <= maxHeld {
++		c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
++		c.recvCredit = 0
+ 	}
+ }
+ 
+-// Complete takes replies from the node's committer. It only queues them;
+-// the writer encodes them.
++// Complete takes replies from the node's committer. It only queues them,
++// under a lock of their own that nothing holds for long; the writer
++// encodes them.
+ func (c *conn) Complete(cs []node.Completion) {
+-	c.mu.Lock()
+-	if !c.closed {
+-		c.completions = append(c.completions, cs)
+-	}
+-	c.mu.Unlock()
++	c.compMu.Lock()
++	c.completions = append(c.completions, cs)
++	c.compMu.Unlock()
+ 	c.signal()
+ }
+ 
++// takeCompletions returns the replies the node queued.
++func (c *conn) takeCompletions() [][]node.Completion {
++	c.compMu.Lock()
++	defer c.compMu.Unlock()
++	cs := c.completions
++	c.completions = nil
++	return cs
++}
++
+ // finished is one encoded reply, or an error, for a stream.
+ type finished struct {
+ 	st  *stream
+@@ -157,10 +175,17 @@ func (c *conn) complete(batches [][]node.Completion) {
+ 	}
+ 	c.mu.Lock()
+ 	for _, f := range out {
+-		c.releaseLocked(f.st)
++		f.st.atNode = false
++		if f.st.reset {
++			// The client reset the call; its reply is dropped.
++			c.releaseLocked(f.st)
++			continue
++		}
+ 		if f.st.done.Swap(true) {
++			// Ended already, at its deadline; endStream releases it.
+ 			continue
+ 		}
++		c.holdLocked(f.st, len(f.msg))
+ 		var s *status.Status
+ 		if f.err != nil {
+ 			s = status.Convert(toStatus(f.err))
+@@ -170,14 +195,18 @@ func (c *conn) complete(batches [][]node.Completion) {
+ 	c.mu.Unlock()
+ }
+ 
+-// nodeStopped fails every call the node holds once it stopped; the node
+-// answers nothing after that.
++// nodeStopped fails every call the node still holds once it stopped. The
++// node's last replies came in Complete calls before it stopped, so they
++// are encoded first.
+ func (c *conn) nodeStopped() {
++	if cs := c.takeCompletions(); cs != nil {
++		c.complete(cs)
++	}
+ 	c.mu.Lock()
+ 	var held []*stream
+ 	for _, st := range c.streams {
+-		if st.inflight > 0 {
+-			c.releaseLocked(st)
++		if st.atNode {
++			st.atNode = false
+ 			held = append(held, st)
+ 		}
+ 	}
+diff --git a/internal/server/h2.go b/internal/server/h2.go
+index ee08caf..71ef1ab 100644
+--- a/internal/server/h2.go
++++ b/internal/server/h2.go
+@@ -62,9 +62,8 @@ type conn struct {
+ 	wake   chan struct{} // the writer has work; capacity 1
+ 
+ 	// Reader only.
+-	maxID      uint32 // highest client stream ID seen
+-	recvCredit int    // connection bytes received and not yet credited back
+-	batch      opBatch
++	maxID uint32 // highest client stream ID seen
++	batch opBatch
+ 
+ 	mu        sync.Mutex
+ 	streams   map[uint32]*stream
+@@ -75,12 +74,15 @@ type conn struct {
+ 	maxFrame  int         // the client's largest frame payload
+ 	closed    bool
+ 	goingAway bool
+-	// completions are replies from the node for the writer to encode.
++	// recvCredit is connection bytes received and not yet credited back.
++	recvCredit int
++	// held is the bytes the connection's calls hold; see maxHeld.
++	held int
++
++	// compMu guards completions, the replies from the node for the writer
++	// to encode. The node's committer takes it, so nothing holds it long.
++	compMu      sync.Mutex
+ 	completions [][]node.Completion
+-	// inflight is the request bytes the node holds; room is signaled when
+-	// it shrinks (capacity 1).
+-	inflight int
+-	room     chan struct{}
+ }
+ 
+ // ctrlKind is the kind of a frame other than HEADERS and DATA.
+@@ -109,7 +111,6 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
+ 		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel,
+ 		bw:       bufio.NewWriterSize(nc, ioBuffer),
+ 		wake:     make(chan struct{}, 1),
+-		room:     make(chan struct{}, 1),
+ 		br:       bufio.NewReaderSize(nc, ioBuffer),
+ 		streams:  map[uint32]*stream{},
+ 		sendWin:  65535,
+@@ -190,15 +191,30 @@ func (c *conn) signal() {
+ 	}
+ }
+ 
++// maxCtrl bounds the control frames waiting for the writer, as x/net's
++// server does; a client that floods pings and does not read is dropped.
++const maxCtrl = 10000
++
+ func (c *conn) queueCtrl(f ctrlFrame) {
+ 	c.mu.Lock()
+-	if !c.closed {
+-		c.ctrl = append(c.ctrl, f)
+-	}
++	c.addCtrl(f)
+ 	c.mu.Unlock()
+ 	c.signal()
+ }
+ 
++// addCtrl queues a control frame. c.mu is held.
++func (c *conn) addCtrl(f ctrlFrame) {
++	if c.closed {
++		return
++	}
++	if len(c.ctrl) >= maxCtrl {
++		// close takes c.mu, so it runs once the caller lets go.
++		go c.close()
++		return
++	}
++	c.ctrl = append(c.ctrl, f)
++}
++
+ func (c *conn) readLoop() error {
+ 	if err := c.nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+ 		return err
+@@ -225,6 +241,13 @@ func (c *conn) readLoop() error {
+ 		return err
+ 	}
+ 	for {
++		// Every path back here, stream errors included, hands over a due
++		// batch before a read that may wait.
++		if c.batchDue() {
++			if err := c.flush(); err != nil {
++				return err
++			}
++		}
+ 		f, err := c.fr.ReadFrame()
+ 		if err != nil {
+ 			if se, ok := errors.AsType[http2.StreamError](err); ok {
+@@ -236,11 +259,6 @@ func (c *conn) readLoop() error {
+ 		if err := c.onFrame(f); err != nil {
+ 			return err
+ 		}
+-		if c.batchDue() {
+-			if err := c.flush(); err != nil {
+-				return err
+-			}
+-		}
+ 	}
+ }
+ 
+@@ -290,8 +308,8 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
+ 		}
+ 		return nil
+ 	})
+-	if err == nil && !c.closed {
+-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlSettingsAck})
++	if err == nil {
++		c.addCtrl(ctrlFrame{kind: ctrlSettingsAck})
+ 	}
+ 	c.mu.Unlock()
+ 	c.signal()
+@@ -321,11 +339,19 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
+ 	if st != nil {
+ 		delete(c.streams, id)
+ 		st.reset = true
++		if st.deadline != nil {
++			st.deadline.Stop()
++		}
++		// A call the node still runs keeps its request bytes until its
++		// reply comes and is dropped.
++		if !st.atNode {
++			c.releaseLocked(st)
++		}
+ 		st.out = nil
+ 		st.queued = 0
+ 	}
+-	if code != 0 && !c.closed {
+-		c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
++	if code != 0 {
++		c.addCtrl(ctrlFrame{kind: ctrlRST, id: id, val: uint32(code)})
+ 	}
+ 	c.mu.Unlock()
+ 	if st != nil && st.cancel != nil {
+@@ -335,13 +361,13 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
+ }
+ 
+ // credit counts n received connection bytes and credits them back in
+-// batches.
++// batches, unless the connection's calls hold too much.
+ func (c *conn) credit(n int) {
++	c.mu.Lock()
+ 	c.recvCredit += n
+-	if c.recvCredit >= connWindow/4 {
+-		c.queueCtrl(ctrlFrame{kind: ctrlWindowUpdate, val: uint32(c.recvCredit)})
+-		c.recvCredit = 0
+-	}
++	c.creditLocked()
++	c.mu.Unlock()
++	c.signal()
+ }
+ 
+ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
+@@ -350,10 +376,14 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
+ 		c.mu.Lock()
+ 		st := c.streams[id]
+ 		c.mu.Unlock()
+-		if st != nil && f.StreamEnded() {
++		if st != nil && f.StreamEnded() && !st.inEOF {
+ 			// Trailers from the client end its side of the stream.
+ 			return c.onEnd(st)
+ 		}
++		if st != nil {
++			c.resetStream(id, http2.ErrCodeStreamClosed)
++			return nil
++		}
+ 		return http2.ConnectionError(http2.ErrCodeProtocol)
+ 	}
+ 	c.mu.Lock()
+@@ -383,6 +413,7 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
+ 
+ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
+ 	var timeout time.Duration
++	hasTimeout := false
+ 	var contentType, method, path string
+ 	needLeader := false
+ 	for _, h := range f.Fields {
+@@ -394,9 +425,7 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
+ 		case "content-type":
+ 			contentType = h.Value
+ 		case "grpc-timeout":
+-			if d, ok := parseTimeout(h.Value); ok {
+-				timeout = d
+-			}
++			timeout, hasTimeout = parseTimeout(h.Value)
+ 		case "hasleader":
+ 			needLeader = needLeader || h.Value == "true"
+ 		}
+@@ -412,25 +441,25 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
+ 		}
+ 	}
+ 	// A call that the node runs needs no context of its own: the node
+-	// answers it within its request timeout, a client enforces its own
+-	// deadline, and a reset drops the reply.
++	// answers it within its request timeout, the deadline timer below ends
++	// it early, and a reset drops the reply.
+ 	if !grpc || (st.rpc != nil && st.rpc.op == nil) {
+-		if timeout > 0 {
+-			st.ctx, st.cancel = context.WithTimeout(c.ctx, timeout)
+-		} else {
+-			st.ctx, st.cancel = context.WithCancel(c.ctx)
+-		}
++		st.ctx, st.cancel = context.WithCancel(c.ctx)
++	}
++	if st.rpc != nil && st.rpc.stream != nil {
++		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+ 	}
+ 	c.mu.Lock()
+ 	st.sendWin = c.initWin
+ 	c.streams[id] = st
++	if grpc && hasTimeout {
++		// The deadline ends the call whether or not its request is
++		// complete or its handler started.
++		st.deadline = time.AfterFunc(timeout, st.expire)
++	}
+ 	c.mu.Unlock()
+-	switch {
+-	case !grpc:
+-	case st.rpc == nil:
++	if grpc && st.rpc == nil {
+ 		st.finish(unknownMethod(path))
+-	case st.rpc.stream != nil:
+-		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+ 	}
+ 	return st
+ }
+@@ -439,10 +468,29 @@ func (c *conn) onData(f *http2.DataFrame) error {
+ 	c.credit(int(f.Length))
+ 	c.mu.Lock()
+ 	st := c.streams[f.StreamID]
++	var halfClosed, overflow bool
++	if st != nil {
++		halfClosed = st.inEOF
++		// The stream's window is credited back only as Recv takes
++		// messages; a client that sends past it breaks flow control.
++		// Padding is never stored, so it is credited back at once.
++		st.recvUsed += len(f.Data())
++		overflow = st.recvUsed > streamWindow
++		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
++			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
++		}
++	}
+ 	c.mu.Unlock()
+-	if st == nil {
++	switch {
++	case st == nil:
+ 		// A stream that is gone or reset; the data is dropped.
+ 		return nil
++	case halfClosed:
++		c.resetStream(f.StreamID, http2.ErrCodeStreamClosed)
++		return nil
++	case overflow:
++		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
++		return nil
+ 	}
+ 	if st.rpc != nil && !st.done.Load() {
+ 		if err := st.receive(f.Data()); err != nil {
+@@ -523,9 +571,13 @@ var (
+ 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
+ )
+ 
+-// headerBlock encodes fields as literals that are never indexed.
++// headerBlock encodes fields as literals that are never indexed. It
++// starts with a dynamic table size update to 0, so it is valid whatever
++// table size the client set: a decoder whose limit was lowered expects an
++// update in the next block.
+ func headerBlock(fields ...hpack.HeaderField) []byte {
+ 	var b strings.Builder
++	b.WriteByte(0x20)
+ 	e := hpack.NewEncoder(&b)
+ 	for _, f := range fields {
+ 		f.Sensitive = true
+diff --git a/internal/server/h2_test.go b/internal/server/h2_test.go
+index 44cfd28..a0a8d42 100644
+--- a/internal/server/h2_test.go
++++ b/internal/server/h2_test.go
+@@ -135,6 +135,12 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
+ 		t.Fatalf("MemberList: %v %v", ms, err)
+ 	}
+ 
++	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
++	ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(lctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++
+ 	// Without a quorum, a write waits until its deadline, and a call that
+ 	// requires a leader fails at once once the leader is gone.
+ 	c.running[2].stop()
+@@ -148,7 +154,6 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
+ 	if status.Code(err) != codes.DeadlineExceeded || time.Since(start) > 3*time.Second {
+ 		t.Fatalf("put without a quorum: %v after %v", err, time.Since(start))
+ 	}
+-	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
+ 	deadline := time.Now().Add(10 * time.Second)
+ 	for {
+ 		ctx, cancel := context.WithTimeout(lctx, time.Second)
+@@ -162,6 +167,11 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
+ 		}
+ 		time.Sleep(100 * time.Millisecond)
+ 	}
++	// The keepalive stream that requires a leader ends too, as etcd's
++	// stream interceptor ends it.
++	if _, err := ka.Recv(); !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
++		t.Fatalf("keepalive stream without a leader: %v", err)
++	}
+ }
+ 
+ // TestKeepAliveStream renews a lease over the bidirectional stream.
+@@ -271,20 +281,24 @@ func TestRawFrames(t *testing.T) {
+ 	must(fr.WritePing(false, [8]byte{1, 2, 3}))
+ 	var hb bytes.Buffer
+ 	enc := hpack.NewEncoder(&hb)
+-	call := func(id uint32, path string, req proto.Message) {
++	headers := func(id uint32, path string, extra ...hpack.HeaderField) {
+ 		t.Helper()
+ 		hb.Reset()
+-		for _, f := range []hpack.HeaderField{
++		for _, f := range append([]hpack.HeaderField{
+ 			{Name: ":method", Value: "POST"},
+ 			{Name: ":scheme", Value: "https"},
+ 			{Name: ":path", Value: path},
+ 			{Name: ":authority", Value: "localhost"},
+ 			{Name: "content-type", Value: "application/grpc"},
+ 			{Name: "te", Value: "trailers"},
+-		} {
++		}, extra...) {
+ 			must(enc.WriteField(f))
+ 		}
+ 		must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: id, BlockFragment: hb.Bytes(), EndHeaders: true}))
++	}
++	call := func(id uint32, path string, req proto.Message) {
++		t.Helper()
++		headers(id, path)
+ 		b, err := proto.Marshal(req)
+ 		must(err)
+ 		must(fr.WriteData(id, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
+@@ -293,10 +307,16 @@ func TestRawFrames(t *testing.T) {
+ 	must(fr.WriteRSTStream(1, http2.ErrCodeCancel))
+ 	call(3, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("2")})
+ 	call(5, "/etcdserverpb.KV/RangeStream", &pb.RangeRequest{Key: []byte("raw")})
++	// A second end of the same stream is a stream error, not a second put.
++	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
++	must(fr.WriteData(7, true, nil))
++	// A call whose request never completes still ends at its deadline.
++	headers(9, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "grpc-timeout", Value: "100m"})
+ 
+ 	var settings, pinged bool
+ 	statuses := map[uint32]string{}
+-	for len(statuses) < 2 || !settings || !pinged {
++	reset7 := false
++	for statuses[3] == "" || statuses[5] == "" || statuses[9] == "" || (statuses[7] == "" && !reset7) || !settings || !pinged {
+ 		f, err := fr.ReadFrame()
+ 		must(err)
+ 		switch f := f.(type) {
+@@ -307,6 +327,8 @@ func TestRawFrames(t *testing.T) {
+ 			}
+ 		case *http2.PingFrame:
+ 			pinged = f.IsAck() && f.Data == [8]byte{1, 2, 3}
++		case *http2.RSTStreamFrame:
++			reset7 = reset7 || f.StreamID == 7
+ 		case *http2.MetaHeadersFrame:
+ 			if v := f.PseudoValue("status"); v != "" && v != "200" {
+ 				t.Fatalf("stream %d: HTTP status %s", f.StreamID, v)
+@@ -318,9 +340,63 @@ func TestRawFrames(t *testing.T) {
+ 			}
+ 		}
+ 	}
+-	if statuses[3] != "0" || statuses[5] != "12" {
++	if statuses[3] != "0" || statuses[5] != "12" || statuses[9] != "4" {
+ 		t.Fatalf("grpc-status by stream: %v", statuses)
+ 	}
++	// The reset may have come before the put reached the node, so the
++	// put may or may not have happened, but never twice.
++	time.Sleep(200 * time.Millisecond)
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	r, err := kv.Range(ctx, &pb.RangeRequest{Key: []byte("once")})
++	if err != nil || len(r.Kvs) > 1 || (len(r.Kvs) == 1 && r.Kvs[0].Version != 1) {
++		t.Fatalf("key written by one put: %v %v", r, err)
++	}
++
++	// A finished put goes to the node even when the next frame is a bad
++	// header block or one that continues in a later frame.
++	waitStatus := func(id uint32) string {
++		t.Helper()
++		for {
++			f, err := fr.ReadFrame()
++			must(err)
++			if h, ok := f.(*http2.MetaHeadersFrame); ok && h.StreamID == id {
++				for _, hf := range h.RegularFields() {
++					if hf.Name == "grpc-status" {
++						return hf.Value
++					}
++				}
++			}
++		}
++	}
++	call(11, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("1")})
++	headers(13, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "X-Upper", Value: "bad"})
++	if got := waitStatus(11); got != "0" {
++		t.Fatalf("put before a bad header block: grpc-status %s", got)
++	}
++	call(15, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("2")})
++	hb.Reset()
++	must(enc.WriteField(hpack.HeaderField{Name: ":method", Value: "POST"}))
++	must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 17, BlockFragment: hb.Bytes()}))
++	if got := waitStatus(15); got != "0" {
++		t.Fatalf("put before a continued header block: grpc-status %s", got)
++	}
++	hb.Reset()
++	for _, f := range []hpack.HeaderField{
++		{Name: ":scheme", Value: "https"},
++		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
++		{Name: ":authority", Value: "localhost"},
++		{Name: "content-type", Value: "application/grpc"},
++	} {
++		must(enc.WriteField(f))
++	}
++	must(fr.WriteContinuation(17, true, hb.Bytes()))
++	b, err := proto.Marshal(&pb.PutRequest{Key: []byte("next"), Value: []byte("3")})
++	must(err)
++	must(fr.WriteData(17, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
++	if got := waitStatus(17); got != "0" {
++		t.Fatalf("put with a continued header block: grpc-status %s", got)
++	}
+ 
+ 	// Stopping the server sends GOAWAY before the connection closes.
+ 	go c.running[1].stop()
+@@ -331,7 +407,7 @@ func TestRawFrames(t *testing.T) {
+ 			t.Fatalf("connection closed without GOAWAY: %v", err)
+ 		}
+ 		if ga, ok := f.(*http2.GoAwayFrame); ok {
+-			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 5 {
++			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 17 {
+ 				t.Fatalf("GOAWAY %v", ga)
+ 			}
+ 			break
+@@ -340,7 +416,8 @@ func TestRawFrames(t *testing.T) {
+ }
+ 
+ // TestNodeStopsUnderLoad stops a node while a connection has calls
+-// waiting on it: every call gets an answer, none hangs.
++// waiting on it and keeps sending new ones as it stops: every call gets
++// an answer, none hangs.
+ func TestNodeStopsUnderLoad(t *testing.T) {
+ 	c := newCluster(t)
+ 	cert, _, _, err := c.ca.Issue("client", 89)
+@@ -359,23 +436,30 @@ func TestNodeStopsUnderLoad(t *testing.T) {
+ 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+ 	defer cancel()
+ 	var wg sync.WaitGroup
+-	errs := make(chan error, 50)
+ 	for range 50 {
+ 		wg.Go(func() {
+-			_, err := kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
+-			errs <- err
++			// Waiting calls first, then a stream of reads and writes
++			// that runs into the stop.
++			for i := 0; ; i++ {
++				var err error
++				if i%2 == 0 {
++					_, err = kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
++				} else {
++					_, err = kv.Range(ctx, &pb.RangeRequest{Key: []byte("a"), Serializable: true})
++				}
++				if err == nil {
++					continue
++				}
++				if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
++					t.Errorf("call while the node stopped: %v", err)
++				}
++				if errors.Is(err, rpctypes.ErrGRPCStopped) || ctx.Err() != nil {
++					return
++				}
++			}
+ 		})
+ 	}
+-	time.Sleep(200 * time.Millisecond)
++	time.Sleep(100 * time.Millisecond)
+ 	c.running[1].stopNode()
+ 	wg.Wait()
+-	close(errs)
+-	for err := range errs {
+-		if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+-			t.Fatalf("put while the node stopped: %v", err)
+-		}
+-	}
+-	if ctx.Err() != nil {
+-		t.Fatal("calls hung after the node stopped")
+-	}
+ }
+diff --git a/internal/server/server_test.go b/internal/server/server_test.go
+index 5cca535..6bdba64 100644
+--- a/internal/server/server_test.go
++++ b/internal/server/server_test.go
+@@ -380,6 +380,11 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
+ 	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
+ 		t.Fatalf("/health = %d %q", code, body)
+ 	}
++	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
++		t.Fatalf("HEAD /version over HTTP/2: %v %v", resp, err)
++	} else if err := resp.Body.Close(); err != nil {
++		t.Fatal(err)
++	}
+ 	// Without a quorum there is no leader for long, and /health says so.
+ 	c.running[2].stop()
+ 	c.running[3].stop()
+diff --git a/internal/server/stream.go b/internal/server/stream.go
+index 3839364..1d9e2f6 100644
+--- a/internal/server/stream.go
++++ b/internal/server/stream.go
+@@ -5,7 +5,10 @@ import (
+ 	"encoding/binary"
+ 	"errors"
+ 	"io"
++	"net/http"
++	"slices"
+ 	"sync/atomic"
++	"time"
+ 
+ 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+ 	"google.golang.org/grpc/codes"
+@@ -33,6 +36,8 @@ type stream struct {
+ 	// Reader only, until the unary handler starts: the request messages.
+ 	body []byte
+ 	msgs int
++	// reqSize is the size of a request the reader handed to the node.
++	reqSize int
+ 
+ 	// done is set once the server has queued the end of the stream; what
+ 	// the client still sends is dropped.
+@@ -42,17 +47,23 @@ type stream struct {
+ 	// arrived; the writer took queued output.
+ 	inSignal chan struct{}
+ 	space    chan struct{}
++	// abort, if set by the handler, ends a Send that waits for space.
++	abort <-chan struct{}
++	// deadline ends the call at its grpc-timeout; guarded by c.mu.
++	deadline *time.Timer
+ 
+ 	// Guarded by c.mu.
+ 	in            [][]byte // streaming calls: messages not yet taken by Recv
+ 	inEOF         bool     // the client ended its side
+ 	recvCredit    int      // stream bytes taken by Recv and not yet credited back
++	recvUsed      int      // stream bytes received and not credited back
+ 	sendWin       int64
+ 	out           []outItem
+ 	queued        int  // message bytes in out
+ 	listed        bool // in c.ready
+ 	headersQueued bool
+-	inflight      int  // request bytes the node holds; see conn.inflight
++	held          int  // bytes the call holds; see maxHeld
++	atNode        bool // the node has the request and has not answered
+ 	ended         bool // the writer took the end of the stream
+ 	reset         bool // the stream or connection is gone; output is dropped
+ }
+@@ -73,7 +84,18 @@ type outItem struct {
+ 	end  bool // for data: END_STREAM
+ }
+ 
+-var errStreamGone = errors.New("server: stream is gone")
++var (
++	errStreamGone = errors.New("server: stream is gone")
++	errAborted    = errors.New("server: send aborted")
++)
++
++// A stream that requires a leader checks for one every election timeout
++// (etcd's default 1 s) and ends after maxNoLeader checks in a row find
++// none, as etcd's monitorLeader does for every stream.
++const (
++	leaderCheck = time.Second
++	maxNoLeader = 3
++)
+ 
+ // receive takes the payload of a DATA frame. Framer storage is reused by
+ // the next frame, so each message is copied once, into a buffer of its
+@@ -137,8 +159,9 @@ func (st *stream) Recv(m proto.Message) error {
+ 			st.in[0] = nil
+ 			st.in = st.in[1:]
+ 			st.recvCredit += len(b) + 5
+-			if st.recvCredit >= streamWindow/4 && !c.closed {
+-				c.ctrl = append(c.ctrl, ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
++			if st.recvCredit >= streamWindow/4 {
++				c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
++				st.recvUsed -= st.recvCredit
+ 				st.recvCredit = 0
+ 			}
+ 			c.mu.Unlock()
+@@ -228,6 +251,8 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error
+ 			select {
+ 			case <-st.space:
+ 				continue
++			case <-st.abort:
++				return errAborted
+ 			case <-st.ctx.Done():
+ 				return st.ctx.Err()
+ 			}
+@@ -253,6 +278,12 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+ 		st.out = append(st.out, outItem{kind: outData, b: msg})
+ 		st.queued += len(msg)
+ 	}
++	if end && s != nil && st.rpc != nil && st.rpc.stream != nil {
++		// A stream that fails drops the replies its client has not taken
++		// yet, so the status goes out without waiting for them.
++		st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData })
++		st.queued = 0
++	}
+ 	if end {
+ 		var block []byte
+ 		switch {
+@@ -306,17 +337,57 @@ func (c *conn) runUnary(st *stream) {
+ // runStream runs a streaming call from its first headers.
+ func (c *conn) runStream(st *stream) {
+ 	defer st.cancel()
+-	if st.needLeader && c.s.n.Leader() == 0 {
+-		st.finish(rpctypes.ErrGRPCNoLeader)
+-		return
++	if st.needLeader {
++		if c.s.n.Leader() == 0 {
++			st.finish(rpctypes.ErrGRPCNoLeader)
++			return
++		}
++		go c.monitorLeader(st)
+ 	}
+ 	st.finish(st.rpc.stream(c.s, st))
+ }
+ 
++// monitorLeader ends a stream that requires a leader once maxNoLeader
++// checks in a row find none.
++func (c *conn) monitorLeader(st *stream) {
++	ticker := time.NewTicker(leaderCheck)
++	defer ticker.Stop()
++	noLeader := 0
++	for {
++		select {
++		case <-st.ctx.Done():
++			return
++		case <-ticker.C:
++		}
++		if c.s.n.Leader() != 0 {
++			noLeader = 0
++			continue
++		}
++		if noLeader++; noLeader >= maxNoLeader {
++			st.finish(rpctypes.ErrGRPCNoLeader)
++			st.cancel()
++			return
++		}
++	}
++}
++
++// expire ends a call whose grpc-timeout passed, whether or not its
++// request is complete or its handler started.
++func (st *stream) expire() {
++	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
++	if st.cancel != nil {
++		st.cancel()
++	}
++}
++
+ // runHTTP answers an HTTP request on an HTTP/2 stream.
+ func (c *conn) runHTTP(st *stream) {
+ 	defer st.cancel()
+ 	st.done.Store(true)
+ 	code, contentType, body := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
+-	st.pushHTTP(httpHeaders(code, contentType, len(body)), []byte(body))
++	headers := httpHeaders(code, contentType, len(body))
++	if st.httpMethod == http.MethodHead {
++		body = ""
++	}
++	st.pushHTTP(headers, []byte(body))
+ }
+diff --git a/internal/server/watch.go b/internal/server/watch.go
+index fbd1883..0649aab 100644
+--- a/internal/server/watch.go
++++ b/internal/server/watch.go
+@@ -3,20 +3,11 @@ package server
+ import (
+ 	"errors"
+ 	"io"
+-	"time"
+ 
+ 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+ 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+ )
+ 
+-// A stream that requires a leader checks for one every election timeout
+-// (etcd's default 1 s) and closes after maxNoLeader checks in a row find
+-// none, as etcd's monitorLeader does.
+-const (
+-	leaderCheck = time.Second
+-	maxNoLeader = 3
+-)
+-
+ // watch serves one Watch stream. A goroutine reads client requests into
+ // the node; this one sends the node's responses.
+ func (s *Server) watch(st *stream) error {
+@@ -48,13 +39,16 @@ func (s *Server) watch(st *stream) error {
+ 		}
+ 	}()
+ 
+-	ticker := time.NewTicker(leaderCheck)
+-	defer ticker.Stop()
+-	noLeader := 0
++	// The node drops a stream that falls too far behind; that must also
++	// end a Send that waits for the client.
++	st.abort = ws.Done()
+ 	for {
+ 		select {
+ 		case r := <-ws.C:
+ 			if err := st.Send(r); err != nil {
++				if errors.Is(err, errAborted) {
++					return ws.Err()
++				}
+ 				return err
+ 			}
+ 		case <-ws.Done():
+@@ -69,17 +63,6 @@ func (s *Server) watch(st *stream) error {
+ 				return rpctypes.ErrGRPCWatchCanceled
+ 			}
+ 			return toStatus(err)
+-		case <-ticker.C:
+-			if !st.needLeader {
+-				continue
+-			}
+-			if s.n.Leader() != 0 {
+-				noLeader = 0
+-				continue
+-			}
+-			if noLeader++; noLeader >= maxNoLeader {
+-				return rpctypes.ErrGRPCNoLeader
+-			}
+ 		}
+ 	}
+ }
+diff --git a/internal/server/write.go b/internal/server/write.go
+index 4d57cf7..5346996 100644
+--- a/internal/server/write.go
++++ b/internal/server/write.go
+@@ -36,11 +36,7 @@ func (c *conn) writeLoop() error {
+ 	var hdr []byte
+ 	nodeDone := c.s.n.Done()
+ 	for {
+-		c.mu.Lock()
+-		comps := c.completions
+-		c.completions = nil
+-		c.mu.Unlock()
+-		if comps != nil {
++		if comps := c.takeCompletions(); comps != nil {
+ 			c.complete(comps)
+ 		}
+ 		c.mu.Lock()
+@@ -95,22 +91,34 @@ func (c *conn) writeLoop() error {
+ 	}
+ }
+ 
+-// take moves the output that the windows allow into frames. c.mu is held.
++// take moves the output that the windows allow into frames. Each pass
++// gives every ready stream at most one frame of data, so one large reply
++// does not hold up the others. c.mu is held.
+ func (c *conn) take(frames []wframe) []wframe {
+ 	budget := maxTake
+-	kept := c.ready[:0]
+-	for _, st := range c.ready {
+-		if !st.reset {
+-			frames = c.takeStream(st, frames, &budget)
++	for budget > 0 && len(c.ready) > 0 {
++		before := len(frames)
++		kept := c.ready[:0]
++		for _, st := range c.ready {
++			if !st.reset {
++				quantum := min(budget, c.maxFrame)
++				left := quantum
++				frames = c.takeStream(st, frames, &left)
++				budget -= quantum - left
++			}
++			if !st.reset && len(st.out) > 0 {
++				kept = append(kept, st)
++			} else {
++				st.listed = false
++			}
+ 		}
+-		if !st.reset && len(st.out) > 0 {
+-			kept = append(kept, st)
+-		} else {
+-			st.listed = false
++		clear(c.ready[len(kept):])
++		c.ready = kept
++		if len(frames) == before {
++			// Every stream left waits for a window.
++			break
+ 		}
+ 	}
+-	clear(c.ready[len(kept):])
+-	c.ready = kept
+ 	return frames
+ }
+ 
+@@ -174,6 +182,15 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
+ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
+ 	st.ended = true
+ 	delete(c.streams, st.id)
++	if st.cancel != nil {
++		// Calls that ended without a handler, such as unknown methods,
++		// release their context here.
++		st.cancel()
++	}
++	if st.deadline != nil {
++		st.deadline.Stop()
++	}
++	c.releaseLocked(st)
+ 	if !st.inEOF {
+ 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
+ 	}

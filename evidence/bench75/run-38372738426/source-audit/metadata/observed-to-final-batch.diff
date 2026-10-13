@@ -1,0 +1,172 @@
+diff --git a/internal/node/node.go b/internal/node/node.go
+index d15b821..e7e9de8 100644
+--- a/internal/node/node.go
++++ b/internal/node/node.go
+@@ -37,6 +37,9 @@ type Config struct {
+ 	// WatchQueue is how many responses a watch stream may fall behind
+ 	// before it is closed; 0 means watchQueue.
+ 	WatchQueue int
++	// WatchBytes is how many bytes of responses a watch stream may fall
++	// behind before it is closed; 0 means watchBytes.
++	WatchBytes int64
+ 	Logf       func(format string, args ...any)
+ }
+ 
+@@ -53,6 +56,10 @@ type input struct {
+ 	status      chan *pb.StatusResponse
+ }
+ 
++// watchBytes is how many bytes of responses a watch stream may fall
++// behind before the node closes it, whatever their count.
++const watchBytes = 64 << 20
++
+ // watchQueue is how many responses a watch stream may fall behind before
+ // the node closes it. The client then reconnects and resumes.
+ const watchQueue = 4096
+@@ -66,12 +73,18 @@ var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream
+ type WatchStream struct {
+ 	n  *Node
+ 	id uint64
+-	// C carries the responses in order.
+-	C    chan *pb.WatchResponse
+-	done chan struct{}
+-	err  error
++	// C carries the responses in order. Whoever takes one calls Taken.
++	C chan *pb.WatchResponse
++	// queued is the size of the responses in C.
++	queued atomic.Int64
++	done   chan struct{}
++	err    error
+ }
+ 
++// Taken reports that a response from C was taken, so its bytes no longer
++// count against the stream's limit.
++func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.queued.Add(-int64(proto.Size(r))) }
++
+ // Done is closed when the node dropped the stream; Err then says why.
+ func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
+ 
+@@ -362,9 +375,17 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
+ 				ws.C <- w.Resp
+ 				continue
+ 			}
+-			select {
+-			case ws.C <- w.Resp:
+-			default:
++			// A stream falls too far behind by count or by bytes.
++			size := int64(proto.Size(w.Resp))
++			sent := false
++			if ws.queued.Add(size) <= cmp.Or(n.cfg.WatchBytes, watchBytes) {
++				select {
++				case ws.C <- w.Resp:
++					sent = true
++				default:
++				}
++			}
++			if !sent {
+ 				delete(streams, w.Stream)
+ 				n.core.CloseWatchStream(w.Stream)
+ 				ws.err = ErrWatchTooSlow
+diff --git a/internal/node/slow_test.go b/internal/node/slow_test.go
+index 4cdb6dc..18056f3 100644
+--- a/internal/node/slow_test.go
++++ b/internal/node/slow_test.go
+@@ -97,3 +97,56 @@ func TestSlowWatcherIsCut(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ }
++
++// TestWatchBytesBound closes a watch stream that is behind by more bytes
++// than its limit, although its count of responses is far below the queue.
++func TestWatchBytesBound(t *testing.T) {
++	cfg := core.DefaultConfig(1, []uint64{1})
++	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: 50 * time.Millisecond, WatchBytes: 8 << 10, Logf: t.Logf})
++	if err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	ran := make(chan error, 1)
++	go func() { ran <- n.Run(ctx, noPeers{}) }()
++	defer func() {
++		cancel()
++		if err := <-ran; err != nil {
++			t.Error(err)
++		}
++	}()
++	put := func(i int) error {
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		_, err := n.Do(ctx, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i), Value: make([]byte, 1024)})
++		return err
++	}
++	deadline := time.Now().Add(10 * time.Second)
++	for put(0) != nil {
++		if time.Now().After(deadline) {
++			t.Fatal("the node never took a write")
++		}
++	}
++	ws, err := n.OpenWatch(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
++		Key: []byte("k"), RangeEnd: []byte("l"),
++	}}}); err != nil {
++		t.Fatal(err)
++	}
++	for i := 1; i <= 20; i++ {
++		if err := put(i); err != nil {
++			t.Fatal(err)
++		}
++	}
++	select {
++	case <-ws.Done():
++		if !errors.Is(ws.Err(), ErrWatchTooSlow) {
++			t.Fatalf("the stream ended with %v", ws.Err())
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatalf("a stream behind by 20 KiB was not closed; %d responses queued", len(ws.C))
++	}
++}
+diff --git a/internal/server/h2.go b/internal/server/h2.go
+index 71ef1ab..e110db1 100644
+--- a/internal/server/h2.go
++++ b/internal/server/h2.go
+@@ -156,6 +156,9 @@ func (c *conn) close() {
+ 		c.closed = true
+ 		for _, st := range c.streams {
+ 			st.reset = true
++			if st.deadline != nil {
++				st.deadline.Stop()
++			}
+ 		}
+ 		c.ready = nil
+ 		c.mu.Unlock()
+diff --git a/internal/server/stream.go b/internal/server/stream.go
+index 1d9e2f6..4577c32 100644
+--- a/internal/server/stream.go
++++ b/internal/server/stream.go
+@@ -242,7 +242,10 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error
+ 	c := st.c
+ 	for {
+ 		c.mu.Lock()
+-		if st.reset || c.closed {
++		// After the end of the stream, which a deadline or a lost leader
++		// can queue while the handler still runs, only the end itself
++		// may be queued, never more messages.
++		if st.reset || c.closed || (!end && st.done.Load()) {
+ 			c.mu.Unlock()
+ 			return errStreamGone
+ 		}
+diff --git a/internal/server/watch.go b/internal/server/watch.go
+index 0649aab..8b0df82 100644
+--- a/internal/server/watch.go
++++ b/internal/server/watch.go
+@@ -45,6 +45,7 @@ func (s *Server) watch(st *stream) error {
+ 	for {
+ 		select {
+ 		case r := <-ws.C:
++			ws.Taken(r)
+ 			if err := st.Send(r); err != nil {
+ 				if errors.Is(err, errAborted) {
+ 					return ws.Err()

@@ -1,0 +1,211 @@
+﻿2026-10-13T08:56:28.8495059Z Current runner version: '2.337.0'
+2026-10-13T08:56:28.8524940Z ##[group]Runner Image Provisioner
+2026-10-13T08:56:28.8525855Z Hosted Compute Agent
+2026-10-13T08:56:28.8526615Z Version: 20261002.596
+2026-10-13T08:56:28.8527595Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-13T08:56:28.8528474Z Build Date: 2026-10-02T22:28:27Z
+2026-10-13T08:56:28.8529221Z Worker ID: {2d55b9da-3352-48fa-b93b-dc51af47d9ff}
+2026-10-13T08:56:28.8529936Z Region: westus3
+2026-10-13T08:56:28.8530556Z Cloud: Azure
+2026-10-13T08:56:28.8531081Z ##[endgroup]
+2026-10-13T08:56:28.8532941Z ##[group]Operating System
+2026-10-13T08:56:28.8533736Z Ubuntu
+2026-10-13T08:56:28.8534264Z 24.04.5
+2026-10-13T08:56:28.8534845Z LTS
+2026-10-13T08:56:28.8535388Z ##[endgroup]
+2026-10-13T08:56:28.8536017Z ##[group]Runner Image
+2026-10-13T08:56:28.8536728Z Image: ubuntu-24.04-arm
+2026-10-13T08:56:28.8537677Z Version: 20261004.142.1
+2026-10-13T08:56:28.8539130Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261004.142/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+2026-10-13T08:56:28.8540890Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261004.142
+2026-10-13T08:56:28.8541973Z ##[endgroup]
+2026-10-13T08:56:28.8543099Z ##[group]GITHUB_TOKEN Permissions
+2026-10-13T08:56:28.8545662Z Contents: read
+2026-10-13T08:56:28.8547217Z Metadata: read
+2026-10-13T08:56:28.8547815Z ##[endgroup]
+2026-10-13T08:56:28.8550409Z Secret source: Actions
+2026-10-13T08:56:28.8551649Z Cache mode: write
+2026-10-13T08:56:28.8552696Z Prepare workflow directory
+2026-10-13T08:56:28.8935859Z Prepare all required actions
+2026-10-13T08:56:28.8988932Z Getting action download info
+2026-10-13T08:56:29.2045335Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-13T08:56:29.4310890Z Complete job name: resolve
+2026-10-13T08:56:29.5118926Z ##[group]Run actions/checkout@v7
+2026-10-13T08:56:29.5120216Z with:
+2026-10-13T08:56:29.5120779Z   fetch-depth: 0
+2026-10-13T08:56:29.5121532Z   repository: djosh34/tigerstore
+2026-10-13T08:56:29.5125233Z   token: ***
+2026-10-13T08:56:29.5125844Z   ssh-strict: true
+2026-10-13T08:56:29.5126392Z   ssh-user: git
+2026-10-13T08:56:29.5127245Z   persist-credentials: true
+2026-10-13T08:56:29.5127970Z   clean: true
+2026-10-13T08:56:29.5128552Z   sparse-checkout-cone-mode: true
+2026-10-13T08:56:29.5129285Z   fetch-tags: false
+2026-10-13T08:56:29.5129839Z   show-progress: true
+2026-10-13T08:56:29.5130402Z   lfs: false
+2026-10-13T08:56:29.5131003Z   submodules: false
+2026-10-13T08:56:29.5131774Z   set-safe-directory: true
+2026-10-13T08:56:29.5132451Z   allow-unsafe-pr-checkout: false
+2026-10-13T08:56:29.5133631Z ##[endgroup]
+2026-10-13T08:56:29.5966223Z Syncing repository: djosh34/tigerstore
+2026-10-13T08:56:29.5969195Z ##[group]Getting Git version info
+2026-10-13T08:56:29.5970361Z Working directory is '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T08:56:29.5971673Z [command]/usr/bin/git version
+2026-10-13T08:56:29.6031423Z git version 2.55.0
+2026-10-13T08:56:29.6048932Z ##[endgroup]
+2026-10-13T08:56:29.6068036Z Temporarily overriding HOME='/home/runner/work/_temp/2ffb45eb-363f-44a8-b4e3-09eae484f727' before making global git config changes
+2026-10-13T08:56:29.6069971Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T08:56:29.6072216Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T08:56:29.6103026Z Deleting the contents of '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T08:56:29.6106781Z ##[group]Determining repository object format
+2026-10-13T08:56:29.6108458Z ##[endgroup]
+2026-10-13T08:56:29.6109551Z ##[group]Initializing the repository
+2026-10-13T08:56:29.6113123Z [command]/usr/bin/git init /home/runner/work/tigerstore/tigerstore
+2026-10-13T08:56:29.6195260Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-13T08:56:29.6197532Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-13T08:56:29.6199972Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-13T08:56:29.6201122Z hint: call:
+2026-10-13T08:56:29.6201716Z hint:
+2026-10-13T08:56:29.6202429Z hint: 	git config --global init.defaultBranch <name>
+2026-10-13T08:56:29.6203202Z hint:
+2026-10-13T08:56:29.6203919Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-13T08:56:29.6205023Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-13T08:56:29.6205860Z hint:
+2026-10-13T08:56:29.6206451Z hint: 	git branch -m <name>
+2026-10-13T08:56:29.6207483Z hint:
+2026-10-13T08:56:29.6208284Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-13T08:56:29.6209573Z Initialized empty Git repository in /home/runner/work/tigerstore/tigerstore/.git/
+2026-10-13T08:56:29.6211566Z [command]/usr/bin/git remote add origin https://github.com/djosh34/tigerstore
+2026-10-13T08:56:29.6252566Z ##[endgroup]
+2026-10-13T08:56:29.6253640Z ##[group]Disabling automatic garbage collection
+2026-10-13T08:56:29.6255107Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-13T08:56:29.6283529Z ##[endgroup]
+2026-10-13T08:56:29.6284469Z ##[group]Setting up auth
+2026-10-13T08:56:29.6285224Z Removing SSH command configuration
+2026-10-13T08:56:29.6288838Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T08:56:29.6318231Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T08:56:29.6575394Z Removing HTTP extra header
+2026-10-13T08:56:29.6581448Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T08:56:29.6612875Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T08:56:29.6799785Z Removing includeIf entries pointing to credentials config files
+2026-10-13T08:56:29.6804726Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T08:56:29.6834556Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T08:56:29.7024389Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-13T08:56:29.7062262Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path /home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:29.7091534Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:29.7120269Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:29.7148755Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:29.7175854Z ##[endgroup]
+2026-10-13T08:56:29.7176842Z ##[group]Fetching the repository
+2026-10-13T08:56:29.7181803Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-13T08:56:31.9643227Z From https://github.com/djosh34/tigerstore
+2026-10-13T08:56:31.9644713Z  * [new branch]      exp/49-real-process-chaos -> origin/exp/49-real-process-chaos
+2026-10-13T08:56:31.9646174Z  * [new branch]      exp/53-transport-loopback-20261012 -> origin/exp/53-transport-loopback-20261012
+2026-10-13T08:56:31.9648244Z  * [new branch]      exp/bench-68           -> origin/exp/bench-68
+2026-10-13T08:56:31.9649283Z  * [new branch]      exp/bench-75           -> origin/exp/bench-75
+2026-10-13T08:56:31.9650470Z  * [new branch]      exp/index-10m-20261012 -> origin/exp/index-10m-20261012
+2026-10-13T08:56:31.9651606Z  * [new branch]      exp/pre-47-batch256    -> origin/exp/pre-47-batch256
+2026-10-13T08:56:31.9652830Z  * [new branch]      exp/pre-47-groupcommit -> origin/exp/pre-47-groupcommit
+2026-10-13T08:56:31.9653988Z  * [new branch]      exp/pre-47-grpc        -> origin/exp/pre-47-grpc
+2026-10-13T08:56:31.9655070Z  * [new branch]      exp/pre-47-semantics   -> origin/exp/pre-47-semantics
+2026-10-13T08:56:31.9656292Z  * [new branch]      exp/pre-48-conformance -> origin/exp/pre-48-conformance
+2026-10-13T08:56:31.9657612Z  * [new branch]      exp/pre-48-k8s         -> origin/exp/pre-48-k8s
+2026-10-13T08:56:31.9658773Z  * [new branch]      exp/pre-48-storage     -> origin/exp/pre-48-storage
+2026-10-13T08:56:31.9659921Z  * [new branch]      exp/pre-50-bench       -> origin/exp/pre-50-bench
+2026-10-13T08:56:31.9661099Z  * [new branch]      exp/pre-50-compress    -> origin/exp/pre-50-compress
+2026-10-13T08:56:31.9662395Z  * [new branch]      exp/pre-50-frontend    -> origin/exp/pre-50-frontend
+2026-10-13T08:56:31.9663589Z  * [new branch]      exp/pre-50-frontend-native -> origin/exp/pre-50-frontend-native
+2026-10-13T08:56:31.9664815Z  * [new branch]      exp/pre-50-frontend-tuned -> origin/exp/pre-50-frontend-tuned
+2026-10-13T08:56:31.9666108Z  * [new branch]      exp/pre-50-profile     -> origin/exp/pre-50-profile
+2026-10-13T08:56:31.9667389Z  * [new branch]      exp/pre-50-wholebatch  -> origin/exp/pre-50-wholebatch
+2026-10-13T08:56:31.9669045Z  * [new branch]      exp/pre-50-wholebatch-allocator -> origin/exp/pre-50-wholebatch-allocator
+2026-10-13T08:56:31.9670400Z  * [new branch]      exp/pre-50-wholebatch-core -> origin/exp/pre-50-wholebatch-core
+2026-10-13T08:56:31.9671719Z  * [new branch]      exp/pre-50-wholebatch-frontend -> origin/exp/pre-50-wholebatch-frontend
+2026-10-13T08:56:31.9673215Z  * [new branch]      exp/pre-50-wholebatch-harness -> origin/exp/pre-50-wholebatch-harness
+2026-10-13T08:56:31.9674501Z  * [new branch]      exp/pre-50-wholebatch-http -> origin/exp/pre-50-wholebatch-http
+2026-10-13T08:56:31.9675791Z  * [new branch]      exp/pre50-primitives   -> origin/exp/pre50-primitives
+2026-10-13T08:56:31.9676881Z  * [new branch]      main                   -> origin/main
+2026-10-13T08:56:31.9678096Z  * [new branch]      work/50-batch          -> origin/work/50-batch
+2026-10-13T08:56:31.9679289Z  * [new branch]      work/50-cold-restart   -> origin/work/50-cold-restart
+2026-10-13T08:56:31.9680511Z  * [new branch]      work/50-frontend       -> origin/work/50-frontend
+2026-10-13T08:56:31.9681791Z  * [new branch]      work/50-hpack          -> origin/work/50-hpack
+2026-10-13T08:56:31.9682867Z  * [new branch]      work/50-wire           -> origin/work/50-wire
+2026-10-13T08:56:31.9685349Z [command]/usr/bin/git branch --list --remote origin/exp/bench-75
+2026-10-13T08:56:31.9686274Z   origin/exp/bench-75
+2026-10-13T08:56:31.9688392Z [command]/usr/bin/git rev-parse refs/remotes/origin/exp/bench-75
+2026-10-13T08:56:31.9707415Z 15aa787c0e7d868d9995b049c9e3d26b71bd6dd8
+2026-10-13T08:56:31.9710736Z ##[endgroup]
+2026-10-13T08:56:31.9712044Z ##[group]Determining the checkout info
+2026-10-13T08:56:31.9713260Z ##[endgroup]
+2026-10-13T08:56:31.9715210Z [command]/usr/bin/git sparse-checkout disable
+2026-10-13T08:56:31.9756378Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-13T08:56:31.9785514Z ##[group]Checking out the ref
+2026-10-13T08:56:31.9787762Z [command]/usr/bin/git checkout --progress --force -B exp/bench-75 refs/remotes/origin/exp/bench-75
+2026-10-13T08:56:32.0098516Z Switched to a new branch 'exp/bench-75'
+2026-10-13T08:56:32.0099883Z branch 'exp/bench-75' set up to track 'origin/exp/bench-75'.
+2026-10-13T08:56:32.0108717Z ##[endgroup]
+2026-10-13T08:56:32.0148503Z [command]/usr/bin/git log -1 --format=%H
+2026-10-13T08:56:32.0173114Z 15aa787c0e7d868d9995b049c9e3d26b71bd6dd8
+2026-10-13T08:56:32.0428148Z ##[group]Run test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+2026-10-13T08:56:32.0429730Z [36;1mtest "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"[0m
+2026-10-13T08:56:32.0430650Z [36;1mresolve() {[0m
+2026-10-13T08:56:32.0431518Z [36;1m  if git show-ref --verify --quiet "refs/remotes/origin/$1"; then[0m
+2026-10-13T08:56:32.0432729Z [36;1m    git rev-parse "refs/remotes/origin/$1^{commit}"[0m
+2026-10-13T08:56:32.0433577Z [36;1m  else[0m
+2026-10-13T08:56:32.0434376Z [36;1m    git rev-parse --verify "$1^{commit}"[0m
+2026-10-13T08:56:32.0435165Z [36;1m  fi[0m
+2026-10-13T08:56:32.0435769Z [36;1m}[0m
+2026-10-13T08:56:32.0436749Z [36;1mecho "baseline=$(resolve "$BASELINE_REF")" >> "$GITHUB_OUTPUT"[0m
+2026-10-13T08:56:32.0438235Z [36;1mecho "candidate=$(resolve "$CANDIDATE_REF")" >> "$GITHUB_OUTPUT"[0m
+2026-10-13T08:56:32.0439405Z [36;1mif [ -n "$SECOND_REF" ]; then[0m
+2026-10-13T08:56:32.0440546Z [36;1m  echo "second=$(resolve "$SECOND_REF")" >> "$GITHUB_OUTPUT"[0m
+2026-10-13T08:56:32.0441493Z [36;1mfi[0m
+2026-10-13T08:56:32.0442268Z [36;1mdate -u +%FT%TZ[0m
+2026-10-13T08:56:32.0443094Z [36;1mgrep -E '^(baseline|candidate|second)=' "$GITHUB_OUTPUT"[0m
+2026-10-13T08:56:32.0543426Z shell: /usr/bin/bash -e {0}
+2026-10-13T08:56:32.0544671Z env:
+2026-10-13T08:56:32.0545310Z   BASELINE_REF: main
+2026-10-13T08:56:32.0545974Z   CANDIDATE_REF: work/50-batch
+2026-10-13T08:56:32.0546754Z   SECOND_REF: work/50-wire
+2026-10-13T08:56:32.0547676Z ##[endgroup]
+2026-10-13T08:56:32.0780917Z 2026-10-13T08:56:32Z
+2026-10-13T08:56:32.0790192Z baseline=e1fd889c345bc3c06d8100eb6d635c88ad6967cd
+2026-10-13T08:56:32.0791467Z candidate=29c3f8f95e3c9bcecf5bb39aa1f3bca49fe99c1f
+2026-10-13T08:56:32.0793071Z second=f2edb7b2b1e81f65d7ca7592638654f09217b933
+2026-10-13T08:56:32.1018270Z Post job cleanup.
+2026-10-13T08:56:32.1708645Z [command]/usr/bin/git version
+2026-10-13T08:56:32.1768395Z git version 2.55.0
+2026-10-13T08:56:32.1773897Z Temporarily overriding HOME='/home/runner/work/_temp/d888bbe3-86ce-43ef-8bf0-c2b73e7c3b55' before making global git config changes
+2026-10-13T08:56:32.1775697Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T08:56:32.1808825Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T08:56:32.1815694Z Removing SSH command configuration
+2026-10-13T08:56:32.1821569Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T08:56:32.1858810Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T08:56:32.2083185Z Removing HTTP extra header
+2026-10-13T08:56:32.2084607Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T08:56:32.2117654Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T08:56:32.2304060Z Removing includeIf entries pointing to credentials config files
+2026-10-13T08:56:32.2309194Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T08:56:32.2332995Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T08:56:32.2334699Z includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T08:56:32.2336053Z includeif.gitdir:/github/workspace/.git.path
+2026-10-13T08:56:32.2337708Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T08:56:32.2341503Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path
+2026-10-13T08:56:32.2364248Z /home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:32.2374800Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-7adb1cb6\-7e31\-4b9e\-ba85\-0ae8025c48dd\.config
+2026-10-13T08:56:32.2406792Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path
+2026-10-13T08:56:32.2429030Z /home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:32.2437477Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-7adb1cb6\-7e31\-4b9e\-ba85\-0ae8025c48dd\.config
+2026-10-13T08:56:32.2471093Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-13T08:56:32.2497741Z /github/runner_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:32.2504373Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-7adb1cb6\-7e31\-4b9e\-ba85\-0ae8025c48dd\.config
+2026-10-13T08:56:32.2537512Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-13T08:56:32.2560487Z /github/runner_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config
+2026-10-13T08:56:32.2569196Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-7adb1cb6\-7e31\-4b9e\-ba85\-0ae8025c48dd\.config
+2026-10-13T08:56:32.2602568Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T08:56:32.2792197Z Removing credentials config '/home/runner/work/_temp/git-credentials-7adb1cb6-7e31-4b9e-ba85-0ae8025c48dd.config'
+2026-10-13T08:56:32.2935755Z Evaluate and set job outputs
+2026-10-13T08:56:32.2945385Z Set output 'baseline'
+2026-10-13T08:56:32.2948721Z Set output 'candidate'
+2026-10-13T08:56:32.2950395Z Set output 'second'
+2026-10-13T08:56:32.2952019Z Cleaning up orphan processes

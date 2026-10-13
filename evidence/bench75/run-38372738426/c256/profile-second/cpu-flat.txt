@@ -1,0 +1,33 @@
+File: second
+Build ID: 20d62c56c5ef7b16a45c9629dd891614f9a54be8
+Type: cpu
+Time: 2026-10-13 09:02:01 UTC
+Duration: 20s, Total samples = 17.23s (86.15%)
+Showing nodes accounting for 11.58s, 67.21% of 17.23s total
+Showing top 25 nodes out of 662
+      flat  flat%   sum%        cum   cum%
+     7.14s 41.44% 41.44%      7.14s 41.44%  internal/runtime/syscall/linux.Syscall6
+     0.83s  4.82% 46.26%      0.83s  4.82%  runtime.memmove
+     0.42s  2.44% 48.69%      0.42s  2.44%  cmpbody
+     0.37s  2.15% 50.84%      0.37s  2.15%  crypto/internal/fips140/aes/gcm.gcmAesEnc
+     0.28s  1.63% 52.47%      0.28s  1.63%  runtime.memclrNoHeapPointers
+     0.23s  1.33% 53.80%      0.23s  1.33%  crypto/internal/fips140/aes/gcm.gcmAesDec
+     0.20s  1.16% 54.96%      0.55s  3.19%  runtime.selectgo
+     0.19s  1.10% 56.07%      0.19s  1.10%  runtime.futex
+     0.17s  0.99% 57.05%      0.17s  0.99%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+     0.17s  0.99% 58.04%      0.17s  0.99%  runtime.nextFreeFast (inline)
+     0.16s  0.93% 58.97%      0.20s  1.16%  runtime.unlock2
+     0.15s  0.87% 59.84%      0.17s  0.99%  runtime.lock2
+     0.14s  0.81% 60.65%      0.16s  0.93%  runtime.findObject
+     0.12s   0.7% 61.35%      0.84s  4.88%  github.com/djosh34/tigerstore/internal/mvcc.(*writer).latest
+     0.12s   0.7% 62.04%      0.12s   0.7%  golang.org/x/net/http/httpguts.isCTL (inline)
+     0.11s  0.64% 62.68%      0.53s  3.08%  github.com/djosh34/tigerstore/internal/mvcc.New.func1
+     0.10s  0.58% 63.26%      1.06s  6.15%  golang.org/x/net/http2.(*Framer).ReadFrameForHeader
+     0.10s  0.58% 63.84%      0.28s  1.63%  runtime.scanObject
+     0.09s  0.52% 64.36%      0.09s  0.52%  internal/sync.(*Mutex).Unlock (inline)
+     0.09s  0.52% 64.89%      0.09s  0.52%  runtime.(*mspan).moveInlineMarks
+     0.08s  0.46% 65.35%      0.56s  3.25%  github.com/djosh34/tigerstore/internal/server.(*conn).newStream
+     0.08s  0.46% 65.82%      0.60s  3.48%  github.com/google/btree.items[go.shape.*uint8].find.func1 (inline)
+     0.08s  0.46% 66.28%      0.08s  0.46%  internal/sync.(*Mutex).Lock
+     0.08s  0.46% 66.74%      0.11s  0.64%  runtime.(*mspan).writeHeapBitsSmall
+     0.08s  0.46% 67.21%      0.90s  5.22%  runtime.growslice
