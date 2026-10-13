@@ -15,7 +15,7 @@ from history_io import sha256
 from projections import materialize
 
 BASE = Path(__file__).resolve().parent
-DEADLINE = dt.datetime.fromisoformat('2026-10-13T22:00:00+00:00').timestamp()
+DEADLINE = dt.datetime.fromisoformat('2026-10-13T21:48:00+00:00').timestamp()
 
 
 def before_deadline():

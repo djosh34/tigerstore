@@ -11,7 +11,7 @@ import time
 import z3
 from history_io import prepare, sha256, write_edn
 
-DEADLINE = dt.datetime.fromisoformat('2026-10-13T22:00:00+00:00').timestamp()
+DEADLINE = dt.datetime.fromisoformat('2026-10-13T21:48:00+00:00').timestamp()
 
 
 def allowed():
