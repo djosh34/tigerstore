@@ -279,9 +279,14 @@ func (p *Proxy) Close() error {
 }
 
 func (p *Proxy) hit(gen, conn uint64, d Dir, action Kind, n int, off uint64) {
-	p.hits.Add(1)
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// Only a hit of the current fault counts as its evidence: a relay
+	// that loaded the state before Set may report a hit of the old one
+	// after the reset. Set changes the state under p.mu too.
+	if gen == p.cur.Load().gen {
+		p.hits.Add(1)
+	}
 	if len(p.events) >= maxEvents {
 		p.dropped++
 		return
