@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         clients: [64, 256]
-        mode: [primary, profile]
+        mode: [primary]
     steps:
       - name: Deadline gate
         id: deadline
@@ -56,3 +56,42 @@ jobs:
         run: |
           report=evidence/pre50next/${{ matrix.mode }}/c${{ matrix.clients }}/summary.md
           if [[ -f $report ]]; then printf '%s\n' "$(<"$report")" >> "$GITHUB_STEP_SUMMARY"; fi
+  checks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    steps:
+      - name: Deadline gate
+        id: deadline
+        run: |
+          if [[ $(( $(date -u +%s) + 720 )) -ge $(date -ud 2026-10-13T22:00:00Z +%s) ]]; then
+            echo 'open=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'open=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          ref: d937be176f8712ec9c3209d6850955c3786a50a5
+      - uses: actions/setup-go@v7
+        if: steps.deadline.outputs.open == 'true'
+        with:
+          go-version-file: go.mod
+      - name: Focused race and persistence checks on both patches
+        if: steps.deadline.outputs.open == 'true'
+        env:
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: |
+          set -o pipefail
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p evidence/pre50next/checks
+          git rev-parse HEAD | tee evidence/pre50next/checks/source.txt
+          go version | tee evidence/pre50next/checks/go.txt
+          timeout --kill-after=5s 600s go test -race -short -parallel 2 -count=1 -timeout 8m \
+            ./internal/peer ./internal/server ./internal/node ./internal/core ./internal/wal ./internal/lint \
+            2>&1 | tee evidence/pre50next/checks/tests.txt
+      - uses: actions/upload-artifact@v6
+        if: always() && steps.deadline.outputs.open == 'true'
+        with:
+          name: pre50next-checks-${{ github.run_id }}
+          path: evidence/pre50next/checks

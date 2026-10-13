@@ -32,7 +32,7 @@ def summarize(root):
             key = 'etcd_disk_wal_fsync_duration_seconds_count' if variant.startswith('etcd') else 'syncs'
             syncs = b['disk'][key]-a['disk'][key]
             row[f'{role}_syncs'] = syncs
-            row[f'{role}_puts_sync'] = n/syncs if syncs else 0
+            row[f'{role}_puts_sync'] = n/syncs if syncs else ''
             row[f'{role}_retained_heap_bytes'] = retained['nodes'][i]['heap_alloc']
             row[f'{role}_retained_rss_bytes'] = retained['proc'][i]['rss_bytes']
             for key in ('syscr', 'syscw', 'read_bytes', 'write_bytes'):
@@ -41,6 +41,11 @@ def summarize(root):
         rows.append(row)
     if not rows:
         raise ValueError('no complete measurement windows')
+    schedule = json.loads((root / 'schedule.json').read_text())
+    expected = {(rep, label) for rep, cohort in schedule for _, label, _ in cohort}
+    observed = {(row['rep'], row['variant']) for row in rows}
+    if observed != expected or len(rows) != len(expected):
+        raise ValueError(f'incomplete or unexpected cohorts: expected={expected}, observed={observed}')
     def write_csv(path, data):
         with path.open('w') as f:
             w = csv.DictWriter(f, fieldnames=list(data[0]))

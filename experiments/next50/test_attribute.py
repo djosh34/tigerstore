@@ -15,6 +15,7 @@ samples/count cpu/nanoseconds
 Locations
      1: 0x10 M=1 internal/runtime/syscall/linux.Syscall6 /go/syscall.go:1:1 s=1
      2: 0x20 M=1 internal/poll.(*FD).Write /go/fd.go:2:1 s=1
+                net.(*netFD).Write /go/netfd.go:2:1 s=1
                 crypto/tls.(*Conn).writeRecordLocked /go/tls.go:3:1 s=1
      3: 0x30 M=1 github.com/djosh34/tigerstore/internal/peer.(*sender).write /peer.go:4:1 s=1
      4: 0x40 M=1 runtime.memmove /memmove.s:1:1 s=1
@@ -36,6 +37,11 @@ Mappings
         self.assertEqual(result["sampled_cpu_us_put"], 100)
         self.assertEqual(result["inclusive"]["file fsync"]["cpu_us_put"], 0)
         self.assertEqual(result["partition"]["runtime GC"]["cpu_us_put"], 100)
+
+    def test_file_syscall_not_socket(self):
+        result = attribute([(10_000_000, "internal/runtime/syscall/linux.Syscall6\ninternal/poll.(*FD).Write\nos.(*File).Write\ninternal/wal.(*WAL).Flush")], 100)
+        self.assertEqual(result["inclusive"]["socket syscall samples"]["cpu_us_put"], 0)
+        self.assertEqual(result["inclusive"]["file write under WAL"]["cpu_us_put"], 100)
 
     def test_empty_profile_rejected(self):
         with self.assertRaises(ValueError):

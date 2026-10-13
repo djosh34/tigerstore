@@ -11,9 +11,10 @@ MECHANISMS = {
     "TLS with socket descendants": r"crypto/tls\.",
     "TLS without socket syscall samples": r"crypto/tls\.",
     "crypto implementation": r"crypto/(internal|aes|cipher|sha|chacha|poly)",
-    "socket syscall samples": r"internal/poll\.\(\*FD\)\.(Read|Write|Writev)",
+    "socket syscall samples": r"net\.\(\*(netFD|conn)\)\.(Read|Write|Writev)",
     "all syscall samples": r"internal/runtime/syscall|syscall\.(Syscall|RawSyscall)",
-    "HTTP2 and HPACK": r"golang.org/x/net/http2|internal/server\.frameHeader",
+    "HTTP2 and HPACK inclusive": r"golang.org/x/net/http2|internal/server\.frameHeader",
+    "HTTP2 and HPACK excluding TLS descendants": r"golang.org/x/net/http2|internal/server\.frameHeader",
     "entry encode": r"internal/core\.encodeBatch",
     "entry walk and parse": r"internal/core\.(walkBatch|ParsePut|UnmarshalAlias)",
     "raft": r"go.etcd.io/raft/v3\.",
@@ -88,6 +89,8 @@ def attribute(samples, operations):
             if name == "socket syscall samples" and not socket_syscall:
                 continue
             if name == "TLS without socket syscall samples" and socket_syscall:
+                continue
+            if name == "HTTP2 and HPACK excluding TLS descendants" and "crypto/tls." in stack:
                 continue
             if name == "file write under WAL" and "internal/wal." not in stack:
                 continue

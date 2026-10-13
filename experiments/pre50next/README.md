@@ -2,7 +2,7 @@
 
 Throwaway experiment only. Nothing here is intended to merge. Parent owns patch selection, attribution and the final report.
 
-`refs.json` pins PR80 at `396bced923ee47540e89e1e2ca1053ecde5673ce`. It also records bench68 `32ceb80`, frontend `b66573f`, wholebatch `c7c39ac` and profile `1d90dce` provenance. The generator is copied unchanged from frontend. Replica application and etcd post-WAL.Save fences come from bench68/frontend. Warmup size, measured cohort and retained observations follow the latest wholebatch experiment.
+`refs.json` pins PR80 at `396bced923ee47540e89e1e2ca1053ecde5673ce`. It also records bench68 `32ceb80`, frontend `b66573f`, wholebatch `c7c39ac` and profile `1d90dce` provenance. The generator is copied unchanged from frontend `b66573f`, including its controller barriers. Replica application and etcd post-WAL.Save fences come from bench68/frontend. Warmup size, measured cohort and retained observations follow the latest wholebatch experiment.
 
 ## Runner launch after review
 
@@ -12,7 +12,7 @@ Primary jobs alternate baseline/stock etcd v3.7.2 order over five repetitions. F
 
 Profile jobs run five repetitions of baseline control, etcd control, and baseline profile on the same VM, reversing the order every second repetition. All use separate 12-second arrival workloads through drain. Each profiled baseline captures the leader and both followers concurrently for 15 seconds. No stock-etcd CPU profiles or candidate profiles in this first round. No mutex, block or allocation profiler runs alongside CPU capture. Normal runtime allocation sampling remains unchanged. Debug HTTP has a dedicated ServeMux and listener, so the new custom client frontend does not route profile requests.
 
-The profile denominator is completed Puts. The 15-second capture includes about 0.5 seconds of lead, drain, debug/fence requests and idle tail around the 12-second arrival window. `profile-window.json` records each node's HTTP bounds, the load bounds and operation count. Reject capture if drain exceeds a profile's response bound. These HTTP bounds approximate sampler bounds, not exact profiler start times.
+The profile denominator is completed Puts. The 15-second capture includes about 0.5 seconds of lead, drain, debug/fence requests and idle tail around the 12-second arrival window. `profile-window.json` records each node's HTTP bounds, the load bounds and operation count. Reject capture if drain exceeds a profile's response bound. These HTTP bounds approximate sampler bounds, not exact profiler start times. Before attribution, `experiments/next50/check_profiles.py` verifies that the actual pprof sampler timestamps enclose the generator window.
 
 ## Artifacts
 
@@ -26,7 +26,7 @@ Each artifact is named `pre50next-{primary|profile}-c{64|256}-<run-id>` and cont
 
 Profiles use `profile/c64/1-baseline-profile/n<node>-cpu.pb.gz`, with `n<node>-cpu-raw.txt`, `n<node>-cpu-top-flat.txt` and `n<node>-cpu-top-cumulative.txt`. Node IDs are zero-based. `placement.json` maps them to leader/follower roles. `profile-manifest.json` is a JSON list with clients, variant, rep, role, operations and raw path relative to that artifact root, for the parent's independent `experiments/next50/attribute.py`.
 
-CPU uses the generator's worker interval through drain. Allocation, disk and process-I/O snapshots bracket the wider all-replica-fenced interval, so they include fixed observation overhead and trailing follower work. Directory syncs are excluded. Tigerstore counts completed file Write/Sync calls. Etcd counts WAL sync observations, mostly fdatasync, and archives backend commits separately. `/proc/PID/io` syscr/syscw are syscall counts, not proof of physical I/O. Replicas share one disk and failure domain. Guest barriers do not prove physical power-loss protection.
+CPU uses the generator's worker interval through drain. Allocation, disk and process-I/O snapshots bracket the wider all-replica-fenced interval, so they include fixed observation overhead and trailing follower work. Tigerstore counts completed file Write/Sync calls and excludes directory syncs. Etcd counts WAL sync observations, mostly fdatasync, including rotation-related directory syncs. It archives backend commits separately. `/proc/PID/io` syscr/syscw are syscall counts, not proof of physical I/O. Replicas share one disk and failure domain. Guest barriers do not prove physical power-loss protection.
 
 Offline summaries need only Python:
 
