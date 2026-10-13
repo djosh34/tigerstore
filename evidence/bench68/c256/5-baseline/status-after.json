@@ -1,0 +1,17 @@
+[
+  {
+    "gomaxprocs": 1,
+    "id": 1,
+    "leader": 1
+  },
+  {
+    "gomaxprocs": 1,
+    "id": 2,
+    "leader": 1
+  },
+  {
+    "gomaxprocs": 1,
+    "id": 3,
+    "leader": 1
+  }
+]

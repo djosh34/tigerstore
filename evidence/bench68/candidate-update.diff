@@ -1,0 +1,809 @@
+diff --git a/cmd/tigerstore/main.go b/cmd/tigerstore/main.go
+index 6228ca7..cb44170 100644
+--- a/cmd/tigerstore/main.go
++++ b/cmd/tigerstore/main.go
+@@ -15,6 +15,7 @@ import (
+ 	"net/url"
+ 	"os"
+ 	"os/signal"
++	"runtime"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+@@ -34,7 +35,18 @@ type flags struct {
+ 	peerCertFile, peerKeyFile, peerCAFile     string
+ }
+ 
++// minProcs is the fewest Go processors tigerstore runs with, even on one
++// CPU or with GOMAXPROCS=1. An fsync blocks in a system call that keeps its
++// processor; with only one, the goroutines that take in requests, send to
++// peers and release replies all wait for the disk, and the leader writes
++// about one request per fsync. The batch256 pre-work on #47 measured 1.2
++// writes per fsync with one processor and 53 with two on the same CPU.
++const minProcs = 2
++
+ func main() {
++	if runtime.GOMAXPROCS(0) < minProcs {
++		runtime.GOMAXPROCS(minProcs)
++	}
+ 	logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
+ 	if err := run(os.Args[1:], logger); err != nil {
+ 		logger.Printf("error: %v", err)
+diff --git a/docs/design.md b/docs/design.md
+index 74b93ff..e92a6e0 100644
+--- a/docs/design.md
++++ b/docs/design.md
+@@ -37,7 +37,7 @@ While a batch is being replicated and synced, its responses and watch events are
+ 
+ ### Batching
+ 
+-Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The core does this itself: while the leader has an append with entries on its way to disk, `Process` holds new writes, and when that append is durable the next `Process` sends all of them as one entry. The byte cap (`MaxBatchBytes`, 4 MiB) sends a full entry early. Appends with only a hard state, such as a moved commit index, hold nothing, so a single client never waits for an extra fsync. Followers forward at once. Heartbeats, votes, ReadIndex, replies and watch events never wait. On the disk side, the driver writes every queued append job with one write and one fsync. The profiling pre-work on #50 found the leader at 1.8 writes per fsync before this, because each turn proposed what had arrived since the last turn, usually one write. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
++Batching is self-clocked: the committer proposes whatever arrived while the previous local append was in flight, capped by bytes, with no timer. The core does this itself: once the leader proposes a batch, new writes wait until the local append that carries that batch is durable, and the next `Process` then sends all of them as one entry. Appends of proposals that followers forwarded, and appends with only a hard state, such as a moved commit index, hold nothing, so forwarded traffic cannot starve local writes and a single client never waits for an extra fsync. Every write counts its size plus its framing in the entry toward the byte cap (`MaxBatchBytes`, 4 MiB), which sends a full entry early, so even empty requests cannot pile up without limit. A write that timed out while it waited is dropped, not proposed later. Followers forward at once. Heartbeats, votes, ReadIndex, replies and watch events never wait. On the disk side, the driver writes every queued append job with one write and one fsync, so the byte cap bounds one entry, not one disk group. The `tigerstore` process runs with at least two Go processors, even when pinned to one CPU or started with `GOMAXPROCS=1`: an fsync blocks in a system call that keeps its processor, and with only one, the goroutines that take in requests, send to peers and release replies all wait for the disk. The [batch256 pre-work](https://github.com/djosh34/tigerstore/issues/47#issuecomment-6137116710) measured 1.2 writes per leader fsync at 256 clients with one processor, and 53 with two on the same CPU (29,657 Put/s against 5,297). The committer is still one goroutine. The analysis below is the starting point. The benchmarks in outcome 4 replace its symbols with measured values.
+ 
+ Symbols:
+ 
+@@ -52,7 +52,7 @@ How batch size follows load:
+ - At low load this is one operation. No operation waits for a timer, so one client sees no added latency.
+ - As load rises, batches grow. The fixed cost per batch is shared, so the core time per operation falls to `c_op + c_b / (λ · t_a)`.
+ - When the core saturates, queues grow, batches grow, and the per-operation cost falls further. The system settles near `1 / c_op` operations per second instead of collapsing.
+-- The byte cap bounds the disk time of one batch, and so bounds the latency that one large batch adds to the next.
++- The byte cap bounds the size of one entry. Several entries can share one fsync, because the driver writes every queued append at once.
+ 
+ How batch size follows node-to-node latency:
+ 
+@@ -145,8 +145,9 @@ The WAL crash test runs 500 seeds of random appends, suffix replacements and cra
+ - **Grant.** A grant with ID 0 gets an ID from the node that takes the request, before it is proposed, so every replica applies the same one; it is positive and differs per node and boot. TTLs below 1.5 election timeouts, rounded up (2 s by default), become that; above 9,000,000,000 s is `too large lease TTL`; a taken ID is `lease already exists`; negative IDs are allowed. A grant does not move the revision.
+ - **Attach and detach.** After every write, the keys it changed leave the lease of their old version and join the lease of their new one, so a put without a lease or a delete detaches a key, and `ignore_lease` keeps it.
+ - **Revoke.** The lease's keys, in order, go in one transaction, so they share one new revision and watchers see all the deletes in it; a lease without keys moves no revision. A missing lease, lease 0 included, is `requested lease not found`.
+-- **Expiry.** Only the leader keeps expiry times, in ticks of its own clock. When a lease expires, the leader proposes its revoke like a write, again every 10 ticks until it applies, so every replica deletes the keys at the same revision. A node that becomes leader gives every lease its full TTL again; a leader change can make a lease live longer, never shorter.
+-- **Keepalive** is a Raft entry too: it is a write without a revision, and on the leader it renews the expiry when it applies. A missing lease answers TTL 0. **TimeToLive** and **Leases** are linearizable reads; TimeToLive reports the leader's remaining seconds, the granted TTL on other nodes, and TTL -1 for a missing lease.
++- **Expiry.** Only the leader keeps expiry times, in ticks of its own clock. When a lease expires, the leader proposes an expiry like a write, again every 10 ticks until it applies, so every replica deletes the keys at the same revision. The expiry carries the lease's stamp, in a `LeaseCheckpoint` (etcd's only message with a lease ID and a number), and applies only if the stamp is still current. Every grant and keepalive takes a new stamp from one counter. So a keepalive that commits before the expiry keeps the lease, one that commits after it answers TTL 0, and a later grant of the same ID is a new lease that the old expiry cannot touch, the same on every replica. The leader arms a lease for its TTL plus one tick, since the current tick may be nearly over, so a lease never expires early. A node that becomes leader gives every lease its full TTL again; a leader change can make a lease live longer, never shorter.
++- **Keepalive** is a Raft entry too: it is a write without a revision, and on the leader it renews the expiry when it applies. A missing lease answers TTL 0. **TimeToLive** and **Leases** are linearizable reads; TimeToLive reports the leader's remaining whole seconds, rounded down as in etcd, the granted TTL on other nodes, and TTL -1 for a missing lease.
++- **Differences from etcd.** etcd renews a lease on the leader without Raft, so a keepalive here costs a WAL entry, in a log that nothing cleans yet. etcd forwards TimeToLive to the leader, so `etcdctl lease timetolive` counts down on any endpoint; here a follower reports the granted TTL. Kubernetes uses neither.
+ 
+ The gRPC Lease service serves all five, with KeepAlive as a stream of one request at a time.
+ 
+@@ -177,7 +178,7 @@ After a run, the simulator checks the following. Its own checks do not validate
+ - no call sees a revision older than one that another call returned before it started, every write gets a newer revision than that, and no two writes share a revision;
+ - every write is in the committed log at most once, every acknowledged write is in it, and no write that failed for certain is (each written value belongs to one call);
+ - every logical watch delivered exactly the history of its range from its start revision, to the final revision for the current one and up to its last event for one that a compaction canceled (the client then starts a new logical watch from now, as Kubernetes does), in order, without duplicates, with previous values where asked, and no event above its response's header revision;
+-- every lease still granted at the end was granted or kept alive within the last 8 s, the largest TTL plus a leader change, so leases do expire;
++- every lease still granted at the end was granted or kept alive within the last 8 s, the largest TTL plus a leader change, so leases do expire; and no lease expired, on any node, before its TTL ran out since its last successful grant or renewal;
+ - every call that starts 2 s or more after healing gets a definite answer (success, or an answer such as a compacted revision), and at least 50 do. Two seconds is two election timeouts, which a node restarted at healing may need.
+ 
+ These checks catch a stale read (linearizable reads served without `ReadIndex`), a WAL that skips fsync, a transaction compare that is off by one, a proposal applied twice, watch events without previous values, a watcher that skips history, a watcher that gets only the first change of a write, a watcher that starts one revision late, a matcher that ignores the range end, and a progress notification 5 revisions ahead; each was planted by hand and failed. `core/watch_test.go` covers create rules, filters, cancel, progress, and catch-up of 1,100 revisions of three keys, which fails if a response is cut by event count instead of by revision. The checkers of package `check` ([#56](https://github.com/djosh34/tigerstore/pull/56)) are the independent oracle. `Result.Checkable` converts a run into their `history.History`: every call, the committed log, the watches with every response, and the final revision as the watch target. `TestSeeds` runs the durability, revision and watch checkers on every seed. Porcupine gets its own short runs in `TestLinearizable` (5 virtual seconds of faults with 4 clients, then 5 s of healing, without leases), because it searches too long on full runs: one 7,263-call history of seed 9 timed out after a minute, and with 6 clients one 1,481-call history took 12 s. With 4 clients, 200 seeds each checked in under a second. Leases are left out of these runs: every granted lease becomes an ambiguous expiry op that may apply at any time, and with leases two of three short runs timed out. The full runs keep leases, and the durability, revision and watch checkers see them. In the history, every granted lease gets such an expiry op from its own client, called with the grant, and keepalives are left out, since the format has none and they change no key. A planted stale read fails both Porcupine and the revision checker on seeds 1 to 4 of the full runs and 1 to 3 of the short runs, with the simulator's own checks bypassed. The converter refuses anything the format cannot hold (a compare over a range, nested transactions, sort options, revision filters, `ignore_value`, `ignore_lease`, an unknown event type) instead of dropping it.
+diff --git a/internal/core/batch_test.go b/internal/core/batch_test.go
+index 37e6c01..e0cc228 100644
+--- a/internal/core/batch_test.go
++++ b/internal/core/batch_test.go
+@@ -2,9 +2,11 @@ package core
+ 
+ import (
+ 	"fmt"
++	"slices"
+ 	"testing"
+ 
+ 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
++	"go.etcd.io/raft/v3/raftpb"
+ 	"google.golang.org/protobuf/proto"
+ 
+ 	"github.com/djosh34/tigerstore/internal/simfs"
+@@ -90,3 +92,125 @@ func TestWritesWaitForTheLeadersAppend(t *testing.T) {
+ 		t.Fatalf("%d replies, want 51", replies)
+ 	}
+ }
++
++// persistAll makes jobs durable in order, as the driver does.
++func (s *single) persistAll(jobs []PersistJob) {
++	s.t.Helper()
++	for _, j := range jobs {
++		s.log.Append(j.HardState, j.Entries)
++	}
++	if err := s.log.Sync(); err != nil {
++		s.t.Fatal(err)
++	}
++	for _, j := range jobs {
++		s.n.Persisted(j)
++	}
++}
++
++// TestForwardedWritesDoNotHoldLocalOnes keeps forwarded proposals arriving
++// while each append is on its way: a local write must still go out after
++// the append of the batch it waited behind.
++func TestForwardedWritesDoNotHoldLocalOnes(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	forward := func(i uint64) {
++		data, err := encodeBatch(2, 9, []*pending{{req: Request{ID: i, Op: &pb.PutRequest{Key: []byte("f"), Value: []byte("x")}}}})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := s.n.Step(&raftpb.Message{
++			Type: raftpb.MsgProp.Enum(), From: new(uint64(1)), To: new(uint64(1)),
++			Entries: []*raftpb.Entry{{Data: data}},
++		}); err != nil {
++			t.Fatal(err)
++		}
++	}
++	s.n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}})
++	eff, err := s.n.Process()
++	if err != nil {
++		t.Fatal(err)
++	}
++	held := eff.Persist
++	s.n.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("2")}})
++	for round := range 5 {
++		// The forwarded proposal is processed at once, so its append goes
++		// out before the earlier append is durable, as in the driver.
++		forward(uint64(100 + round))
++		first, err := s.n.Process()
++		if err != nil {
++			t.Fatal(err)
++		}
++		s.persistAll(held)
++		second, err := s.n.Process()
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, r := range append(first.Replies, second.Replies...) {
++			if r.ID == 2 {
++				if r.Err != nil {
++					t.Fatalf("local write: %v", r.Err)
++				}
++				return
++			}
++		}
++		held = slices.Concat(first.Persist, second.Persist)
++		s.n.Tick()
++	}
++	t.Fatal("a local write never went out while forwarded proposals kept arriving")
++}
++
++// TestByteCapSendsAnEntryEarly fills the byte cap while the leader's
++// append is in flight: a full entry goes out at once.
++func TestByteCapSendsAnEntryEarly(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	s.n.cfg.MaxBatchBytes = 400
++	s.n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}})
++	if _, err := s.n.Process(); err != nil {
++		t.Fatal(err)
++	}
++	var sent []int
++	for i := range 20 {
++		s.n.Submit(Request{ID: uint64(i + 2), Op: &pb.LeaseKeepAliveRequest{}})
++		eff, err := s.n.Process()
++		if err != nil {
++			t.Fatal(err)
++		}
++		sent = append(sent, writesIn(t, eff.Persist)...)
++	}
++	if len(sent) == 0 {
++		t.Fatal("20 empty writes waited without limit behind one append")
++	}
++	for _, n := range sent {
++		if n*(batchFraming+2) > 400+batchFraming+2 {
++			t.Fatalf("an entry of %d writes went past the cap", n)
++		}
++	}
++}
++
++// TestHardStateAppendHoldsNothing checks that a write is not held behind an
++// append that only moves the commit index.
++func TestHardStateAppendHoldsNothing(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	s.n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}})
++	eff, err := s.n.Process()
++	if err != nil {
++		t.Fatal(err)
++	}
++	s.persistAll(eff.Persist)
++	eff, err = s.n.Process()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, j := range eff.Persist {
++		if len(j.Entries) > 0 {
++			t.Fatalf("expected only a hard state, got %d entries", len(j.Entries))
++		}
++	}
++	s.n.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("2")}})
++	eff, err = s.n.Process()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got := writesIn(t, eff.Persist); fmt.Sprint(got) != "[1]" {
++		t.Fatalf("write behind a hard-state append went out as %v, want at once", got)
++	}
++}
+diff --git a/internal/core/codec.go b/internal/core/codec.go
+index 90bd917..ba38fb6 100644
+--- a/internal/core/codec.go
++++ b/internal/core/codec.go
+@@ -26,6 +26,7 @@ const (
+ 	kindGrant   = 5
+ 	kindRevoke  = 6
+ 	kindRenew   = 7
++	kindExpiry  = 8
+ )
+ 
+ var errBadBatch = errors.New("core: malformed batch")
+@@ -49,6 +50,8 @@ func encodeBatch(origin, boot uint64, ps []*pending) ([]byte, error) {
+ 			kind = kindRevoke
+ 		case *pb.LeaseKeepAliveRequest:
+ 			kind = kindRenew
++		case *pb.LeaseCheckpoint:
++			kind = kindExpiry
+ 		default:
+ 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
+ 		}
+@@ -103,6 +106,8 @@ func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message)
+ 			op = &pb.LeaseRevokeRequest{}
+ 		case kindRenew:
+ 			op = &pb.LeaseKeepAliveRequest{}
++		case kindExpiry:
++			op = &pb.LeaseCheckpoint{}
+ 		default:
+ 			return errBadBatch
+ 		}
+diff --git a/internal/core/lease.go b/internal/core/lease.go
+index 978c3dc..737f205 100644
+--- a/internal/core/lease.go
++++ b/internal/core/lease.go
+@@ -6,18 +6,22 @@ import (
+ 
+ // Only the leader arms lease expiry, in ticks of its own clock, as etcd's
+ // primary lessor does. When a lease expires, the leader proposes its
+-// revoke like any write, so every replica deletes the keys at the same
+-// revision. A new leader gives every lease its full TTL again, so a leader
+-// change can make a lease live longer, never shorter.
++// expiry like any write, so every replica deletes the keys at the same
++// revision. The expiry applies only if the lease was not granted again or
++// kept alive after the leader decided (newExpiry). A new leader gives
++// every lease its full TTL again, so a leader change can make a lease live
++// longer, never shorter.
+ 
+ // leaseRetryTicks is how long the leader waits for an expiry revoke to
+ // apply before it proposes it again; Raft may drop a proposal.
+ const leaseRetryTicks = 10
+ 
+-// arm starts or renews a lease's expiry on the leader.
++// arm starts or renews a lease's expiry on the leader. The current tick
++// may be nearly over, so the lease gets one tick more than its TTL and
++// never expires early.
+ func (n *Node) arm(id int64) {
+ 	if l, ok := n.state.leases[id]; ok {
+-		l.expiry = n.now + l.ttl*int64(n.cfg.TicksPerSecond)
++		l.expiry = n.now + l.ttl*int64(n.cfg.TicksPerSecond) + 1
+ 		l.revokeAt = 0
+ 	}
+ }
+@@ -34,14 +38,15 @@ func (n *Node) leadershipChanged() {
+ }
+ 
+ // remaining is the leader's count of whole seconds left on a lease,
+-// rounded up, or -1 on other nodes, which report the granted TTL.
++// rounded down as in etcd, or -1 on other nodes, which report the granted
++// TTL.
+ func (n *Node) remaining(id int64) int64 {
+ 	l, ok := n.state.leases[id]
+ 	if !ok || !n.isLeader || l.expiry == 0 {
+ 		return -1
+ 	}
+ 	tps := int64(n.cfg.TicksPerSecond)
+-	return max(0, (l.expiry-n.now+tps-1)/tps)
++	return max(0, (l.expiry-n.now-1)/tps)
+ }
+ 
+ // expireLeases proposes the revoke of every expired lease, on the leader.
+@@ -57,13 +62,13 @@ func (n *Node) expireLeases() {
+ 			continue
+ 		}
+ 		l.revokeAt = n.now
+-		n.proposeInternal(&pb.LeaseRevokeRequest{ID: l.id})
++		n.proposeInternal(newExpiry(l.id, l.stamp))
+ 	}
+ }
+ 
+ // proposeInternal queues a write that no client waits for. It carries
+ // request ID 0, which no client request has.
+-func (n *Node) proposeInternal(op *pb.LeaseRevokeRequest) {
++func (n *Node) proposeInternal(op *pb.LeaseCheckpoint) {
+ 	n.proposals = append(n.proposals, &pending{req: Request{ID: 0, Op: op}})
+ }
+ 
+diff --git a/internal/core/lease_test.go b/internal/core/lease_test.go
+index 2bf2e4a..abdb5f8 100644
+--- a/internal/core/lease_test.go
++++ b/internal/core/lease_test.go
+@@ -113,3 +113,73 @@ func TestLeaseExpiry(t *testing.T) {
+ 		t.Fatalf("leases after expiry = %v", leases)
+ 	}
+ }
++
++// TestKeepAliveBeforeExpiryKeepsTheLease puts a keepalive and the leader's
++// expiry decision into one batch: the keepalive applies first, answers
++// with the full TTL, and the expiry then no longer applies.
++func TestKeepAliveBeforeExpiryKeepsTheLease(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	s.ok(1, &pb.LeaseGrantRequest{ID: 1, TTL: 2})
++	s.ok(2, &pb.PutRequest{Key: []byte("a"), Value: []byte("1"), Lease: 1})
++	for range 19 {
++		s.n.Tick()
++		s.run()
++	}
++	s.n.Submit(Request{ID: 3, Op: &pb.LeaseKeepAliveRequest{ID: 1}})
++	s.n.Tick()
++	var ka *pb.LeaseKeepAliveResponse
++	for _, r := range s.run() {
++		if r.ID == 3 {
++			ka, _ = r.Resp.(*pb.LeaseKeepAliveResponse)
++		}
++	}
++	if ka == nil || ka.TTL != 2 {
++		t.Fatalf("keepalive = %v", ka)
++	}
++	if s.keys() != "a " || len(s.n.Leases()) != 1 {
++		t.Fatalf("after a keepalive answered with TTL 2: keys %q, leases %v", s.keys(), s.n.Leases())
++	}
++}
++
++// TestStaleExpiryLeavesANewGrant revokes and grants an ID again while the
++// leader's expiry of the old lease is on its way: the new lease stays.
++func TestStaleExpiryLeavesANewGrant(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 2})
++	for range 20 {
++		s.n.Tick()
++		s.run()
++	}
++	s.n.Submit(Request{ID: 2, Op: &pb.LeaseRevokeRequest{ID: 7}})
++	s.n.Submit(Request{ID: 3, Op: &pb.LeaseGrantRequest{ID: 7, TTL: 60}})
++	s.n.Tick()
++	for _, r := range s.run() {
++		if r.Err != nil {
++			t.Fatalf("request %d: %v", r.ID, r.Err)
++		}
++	}
++	if leases := s.n.Leases(); len(leases) != 1 || leases[0] != 7 {
++		t.Fatalf("leases after revoke and grant again = %v, want [7]", leases)
++	}
++}
++
++// TestLeaseNeverExpiresEarly grants a 2 s lease part way into a tick: it
++// must outlive 20 more ticks, the whole TTL whatever the phase.
++func TestLeaseNeverExpiresEarly(t *testing.T) {
++	s := startSingle(t, simfs.New(), 1)
++	s.ok(1, &pb.LeaseGrantRequest{ID: 1, TTL: 2})
++	for range 20 {
++		s.n.Tick()
++		s.run()
++	}
++	if len(s.n.Leases()) != 1 {
++		t.Fatal("a 2 s lease expired after 20 ticks of 100 ms")
++	}
++	for range 3 {
++		s.n.Tick()
++		s.run()
++	}
++	if len(s.n.Leases()) != 0 {
++		t.Fatal("a 2 s lease lived 2.3 s")
++	}
++}
+diff --git a/internal/core/node.go b/internal/core/node.go
+index 5277743..8eced1a 100644
+--- a/internal/core/node.go
++++ b/internal/core/node.go
+@@ -10,11 +10,13 @@
+ package core
+ 
+ import (
++	"encoding/binary"
+ 	"errors"
+ 	"fmt"
+ 	"io"
+ 	"log"
+ 	"math"
++	"slices"
+ 
+ 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+ 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+@@ -105,6 +107,9 @@ type Effects struct {
+ 	Send    []*raftpb.Message
+ 	Replies []Reply
+ 	Watch   []WatchResponse
++	// Expired lists the leases that expired as this node applied the log.
++	// Drivers may log them; the simulator checks their timing.
++	Expired []int64
+ }
+ 
+ // pending is a request that waits for its entry to apply or for a read
+@@ -142,11 +147,15 @@ type Node struct {
+ 	leader   uint64
+ 	isLeader bool
+ 	leaseSeq uint64
+-	// appending counts the local appends with entries that are on their way
+-	// to disk. While the leader has one, it holds new proposals.
+-	appending int
+-	waiting   map[uint64]*pending // writes by request ID
+-	timeouts  []*pending          // every waiting request in deadline order
++	// ownIndex is the last index of the append that carries the leader's
++	// last batch of writes, and durable the last index on disk. While
++	// ownIndex is ahead, new writes wait. awaitOwn marks that the next
++	// append with entries carries a batch just proposed. Appends of
++	// forwarded proposals do not hold anything.
++	ownIndex, durable uint64
++	awaitOwn          bool
++	waiting           map[uint64]*pending // writes by request ID
++	timeouts          []*pending          // every waiting request in deadline order
+ 
+ 	proposals   []*pending
+ 	propBytes   int
+@@ -192,7 +201,7 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
+ 	for _, e := range rec.Entries {
+ 		logBytes += wal.EntryRecordBytes(e)
+ 	}
+-	state := NewState(minLeaseTTL(cfg))
++	state := NewState(MinLeaseTTL(cfg))
+ 	return &Node{
+ 		logBytes: logBytes,
+ 		cfg:      cfg,
+@@ -206,9 +215,9 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
+ 	}, nil
+ }
+ 
+-// minLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
++// MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
+ // up to whole seconds; 2 s with the default timeouts.
+-func minLeaseTTL(cfg Config) int64 {
++func MinLeaseTTL(cfg Config) int64 {
+ 	ticks := int64(3 * cfg.ElectionTicks / 2)
+ 	tps := int64(cfg.TicksPerSecond)
+ 	return (ticks + tps - 1) / tps
+@@ -395,10 +404,14 @@ func (n *Node) newLeaseID() int64 {
+ 	return id
+ }
+ 
++// batchFraming is the most a write adds to an entry besides its request:
++// origin, boot, request ID, kind and length.
++const batchFraming = 4*binary.MaxVarintLen64 + 1
++
+ // queueWrite adds a write to the next entry. A write that would take the
+ // entry past MaxBatchBytes first sends off the entry so far.
+ func (n *Node) queueWrite(p *pending) {
+-	size := proto.Size(p.req.Op)
++	size := proto.Size(p.req.Op) + batchFraming
+ 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
+ 		n.propose()
+ 	}
+@@ -442,22 +455,28 @@ func (n *Node) reply(id uint64, resp proto.Message, err error) {
+ 
+ // propose packs the queued writes into one Raft entry.
+ func (n *Node) propose() {
+-	if len(n.proposals) == 0 {
++	// A write that timed out while it waited never goes out; its client
++	// got an answer that allows both outcomes.
++	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
++	n.proposals, n.propBytes = nil, 0
++	if len(props) == 0 {
+ 		return
+ 	}
+-	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, n.proposals)
++	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props)
+ 	if err != nil {
+ 		n.fail(err)
+ 		return
+ 	}
+-	props := n.proposals
+-	n.proposals, n.propBytes = nil, 0
+ 	if err := n.rn.Propose(data); err != nil {
+ 		// Raft dropped the proposal, so none of these requests will apply.
+ 		for _, p := range props {
+ 			n.finish(p, nil, rpctypes.ErrGRPCNoLeader)
+ 		}
++		return
+ 	}
++	// The next local append with entries carries this batch; writes wait
++	// until it is durable (ownIndex).
++	n.awaitOwn = true
+ }
+ 
+ // requestReads asks Raft for one read index for all queued reads.
+@@ -486,7 +505,7 @@ func (n *Node) Persisted(job PersistJob) {
+ 		n.logBytes += wal.EntryRecordBytes(e)
+ 	}
+ 	if len(job.Entries) > 0 {
+-		n.appending--
++		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
+ 	}
+ 	n.deliver(job.msg.GetResponses())
+ }
+@@ -515,7 +534,7 @@ func (n *Node) Process() (Effects, error) {
+ 		// the append is durable. Nothing else waits, and with no append in
+ 		// flight a write goes out at once, so one client sees no delay.
+ 		// The byte cap still sends a full entry early (queueWrite).
+-		if !n.isLeader || n.appending == 0 {
++		if !n.isLeader || n.durable >= n.ownIndex {
+ 			n.propose()
+ 		}
+ 		n.requestReads()
+@@ -544,6 +563,9 @@ func (n *Node) handleReady(rd raft.Ready) {
+ 	if rd.SoftState != nil {
+ 		if leader := rd.RaftState == raft.StateLeader; leader != n.isLeader {
+ 			n.isLeader = leader
++			// A batch from an earlier leadership may have been replaced
++			// and never reach the disk; wait for nothing from it.
++			n.ownIndex, n.awaitOwn = 0, false
+ 			n.leadershipChanged()
+ 		}
+ 		if rd.Lead != n.leader && rd.Lead != raft.None {
+@@ -571,8 +593,9 @@ func (n *Node) handleReady(rd raft.Ready) {
+ 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
+ 			}
+ 			n.out.Persist = append(n.out.Persist, job)
+-			if len(job.Entries) > 0 {
+-				n.appending++
++			if len(job.Entries) > 0 && n.awaitOwn {
++				n.ownIndex = job.Entries[len(job.Entries)-1].GetIndex()
++				n.awaitOwn = false
+ 			}
+ 		case raft.LocalApplyThread:
+ 			if err := n.apply(m.Entries); err != nil {
+@@ -714,6 +737,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
+ 	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
+ 		n.fillHeader(h.GetHeader())
+ 	}
++	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
++		n.out.Expired = append(n.out.Expired, e.ID)
++	}
+ 	if n.isLeader {
+ 		switch op := op.(type) {
+ 		case *pb.LeaseGrantRequest:
+diff --git a/internal/core/state.go b/internal/core/state.go
+index 652bf16..c145ee4 100644
+--- a/internal/core/state.go
++++ b/internal/core/state.go
+@@ -19,22 +19,38 @@ import (
+ // maxLeaseTTL is etcd's largest lease TTL in seconds.
+ const maxLeaseTTL = 9_000_000_000
+ 
+-// lease is a granted lease and the keys attached to it. expiry and
+-// revokeAt are the leader's: the tick the lease expires at, 0 when not
+-// armed, and the tick it last proposed the expiry revoke.
++// lease is a granted lease, the keys attached to it, and its stamp: the
++// value of the state's stamp counter at its last grant or keepalive.
++// expiry and revokeAt are not replicated state: only the leader sets them,
++// to the tick the lease expires at (0 when not armed) and the tick it
++// last proposed the lease's expiry.
+ type lease struct {
+ 	id, ttl  int64
+ 	keys     map[string]struct{}
++	stamp    int64
+ 	expiry   int64
+ 	revokeAt int64
+ }
+ 
++// newExpiry is the leader's decision that a lease expired. It goes in the
++// log as a LeaseCheckpoint, etcd's only message with a lease ID and a
++// number: Remaining_TTL carries the lease's stamp when the leader decided.
++// The expiry applies only if the stamp is still current, so a keepalive
++// that commits first keeps the lease, and a later grant of the same ID is
++// a new lease that the old expiry cannot touch, on every replica.
++func newExpiry(id, stamp int64) *pb.LeaseCheckpoint {
++	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: stamp}
++}
++
+ // State is the replicated state machine: the key index and the leases.
+-// Every replica applies the same log to it and ends in the same state.
++// Every replica applies the same log to it and ends in the same state,
++// apart from the leader's lease expiry times, which are not replicated.
+ type State struct {
+ 	kv     *mvcc.Store
+ 	leases map[int64]*lease
+ 	minTTL int64
++	// stamps counts grants and keepalives, to stamp leases.
++	stamps int64
+ 	// changes are the key changes of the last applied write, none for a
+ 	// write that changed no key.
+ 	changes []mvcc.Change
+@@ -87,7 +103,8 @@ func (st *State) track() {
+ }
+ 
+ // Apply runs one committed write and returns its response with the header
+-// revision set. Errors from etcd's set of answers leave the state unchanged
++// revision set. An expiry that no longer applies returns nil and nil.
++// Errors from etcd's set of answers leave the state unchanged
+ // and are the same on every replica; any other error is a bug.
+ func (st *State) Apply(op proto.Message) (proto.Message, error) {
+ 	st.changes = nil
+@@ -128,8 +145,18 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
+ 		resp := &pb.LeaseKeepAliveResponse{Header: header(st.kv.Rev()), ID: op.ID}
+ 		if l, ok := st.leases[op.ID]; ok {
+ 			resp.TTL = l.ttl
++			st.stamps++
++			l.stamp = st.stamps
+ 		}
+ 		return resp, nil
++	case *pb.LeaseCheckpoint:
++		// An expiry. A nil response means it no longer applies: the lease
++		// is gone or was renewed after the leader decided.
++		l, ok := st.leases[op.ID]
++		if !ok || l.stamp != op.Remaining_TTL {
++			return nil, nil
++		}
++		return st.revoke(op.ID)
+ 	}
+ 	return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
+ }
+@@ -146,7 +173,8 @@ func (st *State) grant(r *pb.LeaseGrantRequest) (proto.Message, error) {
+ 	if _, ok := st.leases[r.ID]; ok {
+ 		return nil, rpctypes.ErrGRPCLeaseExist
+ 	}
+-	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}}
++	st.stamps++
++	l := &lease{id: r.ID, ttl: max(r.TTL, st.minTTL), keys: map[string]struct{}{}, stamp: st.stamps}
+ 	st.leases[r.ID] = l
+ 	return &pb.LeaseGrantResponse{Header: header(st.kv.Rev()), ID: l.id, TTL: l.ttl}, nil
+ }
+diff --git a/internal/sim/check.go b/internal/sim/check.go
+index 19be800..2891387 100644
+--- a/internal/sim/check.go
++++ b/internal/sim/check.go
+@@ -56,10 +56,11 @@ func (s *Sim) check(res *Result) error {
+ 	// The cluster compacts, so the checks read history from a model: the
+ 	// committed log replayed without compactions. It must end in the
+ 	// cluster's state.
+-	model, err := replay(res.Log)
++	model, log, err := replay(res.Log)
+ 	if err != nil {
+ 		return err
+ 	}
++	res.Log = log
+ 	if err := sameLatest(model, final); err != nil {
+ 		return err
+ 	}
+@@ -460,18 +461,31 @@ func isRejection(err error) bool {
+ }
+ 
+ // replay applies the committed log to a fresh state, without compactions,
+-// so every revision stays readable. Lease expiry is in the log as revokes.
+-func replay(log []proto.Message) (*mvcc.Store, error) {
+-	st := core.NewState(2)
++// so every revision stays readable. It returns the log as the checkers
++// read it: an expiry that applied becomes the LeaseRevoke it amounts to,
++// and one that no longer applied, because a keepalive came first, is left
++// out.
++func replay(log []proto.Message) (*mvcc.Store, []proto.Message, error) {
++	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)))
++	var out []proto.Message
+ 	for i, op := range log {
++		e, expiry := op.(*pb.LeaseCheckpoint)
+ 		if _, ok := op.(*pb.CompactionRequest); ok {
++			out = append(out, op)
+ 			continue
+ 		}
+-		if _, err := st.Apply(op); err != nil && !isRejection(err) {
+-			return nil, fmt.Errorf("replaying log write %d: %w", i, err)
++		resp, err := st.Apply(op)
++		if err != nil && !isRejection(err) {
++			return nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
++		}
++		switch {
++		case !expiry:
++			out = append(out, op)
++		case resp != nil:
++			out = append(out, &pb.LeaseRevokeRequest{ID: e.ID})
+ 		}
+ 	}
+-	return st.Store(), nil
++	return st.Store(), out, nil
+ }
+ 
+ // sameLatest checks that two stores are at the same revision with the same
+@@ -499,8 +513,30 @@ func sameLatest(a, b *mvcc.Store) error {
+ const leaseGrace = 8 * Second
+ 
+ // checkLeasesExpire requires every lease still granted at the end to have
+-// been granted or kept alive within leaseGrace, so leases do expire.
++// been granted or kept alive within leaseGrace, so leases do expire, and
++// no lease to expire before its TTL ran out since its last successful
++// grant or renewal.
+ func (s *Sim) checkLeasesExpire(res *Result) error {
++	renewed := map[int64]int64{}
++	ttl := map[int64]int64{}
++	for _, r := range res.History {
++		switch resp := r.Resp.(type) {
++		case *pb.LeaseGrantResponse:
++			renewed[resp.ID] = max(renewed[resp.ID], r.Call)
++			ttl[resp.ID] = resp.TTL
++		case *pb.LeaseKeepAliveResponse:
++			if resp.TTL > 0 {
++				renewed[resp.ID] = max(renewed[resp.ID], r.Call)
++			}
++		}
++	}
++	for _, id := range s.expiredOrder {
++		at := s.expiredAt[id]
++		if t, ok := renewed[id]; ok && at < t+ttl[id]*Second {
++			return fmt.Errorf("lease %d with TTL %d s expired at %d ms, but it was granted or renewed at %d ms",
++				id, ttl[id], at/Millisecond, t/Millisecond)
++		}
++	}
+ 	last := map[int64]int64{}
+ 	for _, r := range res.History {
+ 		switch req := r.req.(type) {
+diff --git a/internal/sim/sim.go b/internal/sim/sim.go
+index e2cade7..a17c716 100644
+--- a/internal/sim/sim.go
++++ b/internal/sim/sim.go
+@@ -224,9 +224,12 @@ type Sim struct {
+ 
+ 	clients  []*client
+ 	watchers []*watchClient
+-	history  []*Record
+-	stats    Stats
+-	err      error
++	// expiredAt is when a lease first expired on any node.
++	expiredAt    map[int64]int64
++	expiredOrder []int64
++	history      []*Record
++	stats        Stats
++	err          error
+ }
+ 
+ // Stats counts what happened in a run.
+@@ -260,11 +263,12 @@ type Result struct {
+ // rule.
+ func Run(cfg Config) (*Result, error) {
+ 	s := &Sim{
+-		cfg:    cfg,
+-		rng:    rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+-		trace:  fnv.New64a(),
+-		healAt: cfg.Duration,
+-		stopAt: cfg.Duration + cfg.Heal,
++		cfg:       cfg,
++		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
++		trace:     fnv.New64a(),
++		expiredAt: map[int64]int64{},
++		healAt:    cfg.Duration,
++		stopAt:    cfg.Duration + cfg.Heal,
+ 	}
+ 	// After the clients stop, give the cluster time to settle: leases
+ 	// still expire for up to leaseGrace, and the watch events of the last
+@@ -448,6 +452,12 @@ func (s *Sim) process(n *node) {
+ 	for _, r := range eff.Watch {
+ 		s.watchResponse(n, r)
+ 	}
++	for _, id := range eff.Expired {
++		if _, seen := s.expiredAt[id]; !seen {
++			s.expiredAt[id] = s.now
++			s.expiredOrder = append(s.expiredOrder, id)
++		}
++	}
+ 	if err != nil {
+ 		s.fail("node %d stopped: %w", n.id, err)
+ 		return
+diff --git a/internal/sim/watch.go b/internal/sim/watch.go
+index d2688db..3869e97 100644
+--- a/internal/sim/watch.go
++++ b/internal/sim/watch.go
+@@ -91,6 +91,10 @@ func (s *Sim) startWatchers() {
+ // resumes up to 2 s later, so the next stream catches up on history.
+ func (w *watchClient) drop() {
+ 	s := w.sim
++	if s.now >= s.stopAt {
++		// Watches stay open once the clients stop, so they reach the end.
++		return
++	}
+ 	if w.open {
+ 		n := s.nodes[w.node]
+ 		if n.up && n.gen == w.gen {
+@@ -101,9 +105,7 @@ func (w *watchClient) drop() {
+ 		w.open = false
+ 		s.push(&event{at: s.now + s.rng.Int64N(2*Second), kind: evWatchOpen, watch: w})
+ 	}
+-	if s.now < s.stopAt {
+-		s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
+-	}
++	s.push(&event{at: s.exp(3 * Second), kind: evWatchDrop, watch: w})
+ }
+ 
+ // openWatch picks a node and sends the create request.

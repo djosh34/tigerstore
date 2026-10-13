@@ -1,0 +1,106 @@
+﻿2026-10-13T03:03:42.4120316Z ##[group]Run actions/checkout@v7
+2026-10-13T03:03:42.4121858Z with:
+2026-10-13T03:03:42.4122807Z   fetch-depth: 0
+2026-10-13T03:03:42.4123495Z   repository: djosh34/tigerstore
+2026-10-13T03:03:42.4127731Z   token: ***
+2026-10-13T03:03:42.4128401Z   ssh-strict: true
+2026-10-13T03:03:42.4129140Z   ssh-user: git
+2026-10-13T03:03:42.4129828Z   persist-credentials: true
+2026-10-13T03:03:42.4130506Z   clean: true
+2026-10-13T03:03:42.4131300Z   sparse-checkout-cone-mode: true
+2026-10-13T03:03:42.4132027Z   fetch-tags: false
+2026-10-13T03:03:42.4132950Z   show-progress: true
+2026-10-13T03:03:42.4133634Z   lfs: false
+2026-10-13T03:03:42.4134299Z   submodules: false
+2026-10-13T03:03:42.4135120Z   set-safe-directory: true
+2026-10-13T03:03:42.4135862Z   allow-unsafe-pr-checkout: false
+2026-10-13T03:03:42.4137339Z ##[endgroup]
+2026-10-13T03:03:42.4964102Z Syncing repository: djosh34/tigerstore
+2026-10-13T03:03:42.4966875Z ##[group]Getting Git version info
+2026-10-13T03:03:42.4968124Z Working directory is '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T03:03:42.4969784Z [command]/usr/bin/git version
+2026-10-13T03:03:42.5008911Z git version 2.55.0
+2026-10-13T03:03:42.5026384Z ##[endgroup]
+2026-10-13T03:03:42.5034087Z Temporarily overriding HOME='/home/runner/work/_temp/73933344-a440-438c-a5b7-5bb8b7e458da' before making global git config changes
+2026-10-13T03:03:42.5036070Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-13T03:03:42.5037936Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/tigerstore/tigerstore
+2026-10-13T03:03:42.5066728Z Deleting the contents of '/home/runner/work/tigerstore/tigerstore'
+2026-10-13T03:03:42.5071969Z ##[group]Determining repository object format
+2026-10-13T03:03:42.5077036Z ##[endgroup]
+2026-10-13T03:03:42.5085575Z ##[group]Initializing the repository
+2026-10-13T03:03:42.5087123Z [command]/usr/bin/git init /home/runner/work/tigerstore/tigerstore
+2026-10-13T03:03:42.5158853Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-13T03:03:42.5160778Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-13T03:03:42.5162140Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-13T03:03:42.5163546Z hint: call:
+2026-10-13T03:03:42.5164229Z hint:
+2026-10-13T03:03:42.5165084Z hint: 	git config --global init.defaultBranch <name>
+2026-10-13T03:03:42.5165962Z hint:
+2026-10-13T03:03:42.5166772Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-13T03:03:42.5168006Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-13T03:03:42.5168969Z hint:
+2026-10-13T03:03:42.5169695Z hint: 	git branch -m <name>
+2026-10-13T03:03:42.5170425Z hint:
+2026-10-13T03:03:42.5171258Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-13T03:03:42.5173141Z Initialized empty Git repository in /home/runner/work/tigerstore/tigerstore/.git/
+2026-10-13T03:03:42.5175528Z [command]/usr/bin/git remote add origin https://github.com/djosh34/tigerstore
+2026-10-13T03:03:42.5221393Z ##[endgroup]
+2026-10-13T03:03:42.5223888Z ##[group]Disabling automatic garbage collection
+2026-10-13T03:03:42.5231941Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-13T03:03:42.5258680Z ##[endgroup]
+2026-10-13T03:03:42.5260075Z ##[group]Setting up auth
+2026-10-13T03:03:42.5260834Z Removing SSH command configuration
+2026-10-13T03:03:42.5261911Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-13T03:03:42.5283305Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-13T03:03:42.5597814Z Removing HTTP extra header
+2026-10-13T03:03:42.5602468Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-13T03:03:42.5631033Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-13T03:03:42.5819320Z Removing includeIf entries pointing to credentials config files
+2026-10-13T03:03:42.5821882Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-13T03:03:42.5853011Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-13T03:03:42.6043439Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-e18c556b-8181-46de-86ca-129b34c19e38.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-13T03:03:42.6078306Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git.path /home/runner/work/_temp/git-credentials-e18c556b-8181-46de-86ca-129b34c19e38.config
+2026-10-13T03:03:42.6106290Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/tigerstore/tigerstore/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-e18c556b-8181-46de-86ca-129b34c19e38.config
+2026-10-13T03:03:42.6137388Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-e18c556b-8181-46de-86ca-129b34c19e38.config
+2026-10-13T03:03:42.6166025Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-e18c556b-8181-46de-86ca-129b34c19e38.config
+2026-10-13T03:03:42.6193560Z ##[endgroup]
+2026-10-13T03:03:42.6194669Z ##[group]Fetching the repository
+2026-10-13T03:03:42.6199013Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-13T03:03:43.9689813Z From https://github.com/djosh34/tigerstore
+2026-10-13T03:03:43.9692434Z  * [new branch]      exp/49-real-process-chaos -> origin/exp/49-real-process-chaos
+2026-10-13T03:03:43.9694744Z  * [new branch]      exp/53-transport-loopback-20261012 -> origin/exp/53-transport-loopback-20261012
+2026-10-13T03:03:43.9696863Z  * [new branch]      exp/bench-68           -> origin/exp/bench-68
+2026-10-13T03:03:43.9698502Z  * [new branch]      exp/index-10m-20261012 -> origin/exp/index-10m-20261012
+2026-10-13T03:03:43.9700243Z  * [new branch]      exp/pre-47-batch256    -> origin/exp/pre-47-batch256
+2026-10-13T03:03:43.9701967Z  * [new branch]      exp/pre-47-groupcommit -> origin/exp/pre-47-groupcommit
+2026-10-13T03:03:43.9703772Z  * [new branch]      exp/pre-47-grpc        -> origin/exp/pre-47-grpc
+2026-10-13T03:03:43.9705537Z  * [new branch]      exp/pre-47-semantics   -> origin/exp/pre-47-semantics
+2026-10-13T03:03:43.9707278Z  * [new branch]      exp/pre-48-conformance -> origin/exp/pre-48-conformance
+2026-10-13T03:03:43.9709042Z  * [new branch]      exp/pre-48-k8s         -> origin/exp/pre-48-k8s
+2026-10-13T03:03:43.9710730Z  * [new branch]      exp/pre-48-storage     -> origin/exp/pre-48-storage
+2026-10-13T03:03:43.9712496Z  * [new branch]      exp/pre-50-bench       -> origin/exp/pre-50-bench
+2026-10-13T03:03:43.9714244Z  * [new branch]      exp/pre-50-compress    -> origin/exp/pre-50-compress
+2026-10-13T03:03:43.9715923Z  * [new branch]      exp/pre-50-profile     -> origin/exp/pre-50-profile
+2026-10-13T03:03:43.9717618Z  * [new branch]      exp/pre50-primitives   -> origin/exp/pre50-primitives
+2026-10-13T03:03:43.9719243Z  * [new branch]      main                   -> origin/main
+2026-10-13T03:03:43.9720666Z  * [new branch]      work/47-batch          -> origin/work/47-batch
+2026-10-13T03:03:43.9722382Z  * [new branch]      work/47-compact        -> origin/work/47-compact
+2026-10-13T03:03:43.9724024Z  * [new branch]      work/47-diskfaults     -> origin/work/47-diskfaults
+2026-10-13T03:03:43.9725624Z  * [new branch]      work/47-lease          -> origin/work/47-lease
+2026-10-13T03:03:43.9727322Z  * [new branch]      work/47-netfaults      -> origin/work/47-netfaults
+2026-10-13T03:03:43.9731161Z [command]/usr/bin/git branch --list --remote origin/exp/bench-68
+2026-10-13T03:03:43.9732725Z   origin/exp/bench-68
+2026-10-13T03:03:43.9737959Z [command]/usr/bin/git rev-parse refs/remotes/origin/exp/bench-68
+2026-10-13T03:03:43.9752759Z b51d0403a3223adfd1e124e381c4820abfb71b04
+2026-10-13T03:03:43.9756855Z ##[endgroup]
+2026-10-13T03:03:43.9758493Z ##[group]Determining the checkout info
+2026-10-13T03:03:43.9760214Z ##[endgroup]
+2026-10-13T03:03:43.9761288Z [command]/usr/bin/git sparse-checkout disable
+2026-10-13T03:03:43.9804370Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-13T03:03:43.9833547Z ##[group]Checking out the ref
+2026-10-13T03:03:43.9835355Z [command]/usr/bin/git checkout --progress --force -B exp/bench-68 refs/remotes/origin/exp/bench-68
+2026-10-13T03:03:44.0166376Z Switched to a new branch 'exp/bench-68'
+2026-10-13T03:03:44.0168161Z branch 'exp/bench-68' set up to track 'origin/exp/bench-68'.
+2026-10-13T03:03:44.0176407Z ##[endgroup]
+2026-10-13T03:03:44.0217380Z [command]/usr/bin/git log -1 --format=%H
+2026-10-13T03:03:44.0244219Z b51d0403a3223adfd1e124e381c4820abfb71b04
