@@ -318,6 +318,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	if st != nil {
 		delete(c.streams, id)
 		st.reset = true
+		if st.deadline != nil {
+			st.deadline.Stop()
+		}
 		st.out = nil
 		st.queued = 0
 	}
@@ -384,6 +387,7 @@ func (c *conn) onHeaders(f *http2.MetaHeadersFrame) error {
 
 func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 	var timeout time.Duration
+	hasTimeout := false
 	var contentType, method, path string
 	needLeader := false
 	for _, h := range f.Fields {
@@ -395,38 +399,36 @@ func (c *conn) newStream(id uint32, f *http2.MetaHeadersFrame) *stream {
 		case "content-type":
 			contentType = h.Value
 		case "grpc-timeout":
-			if d, ok := parseTimeout(h.Value); ok {
-				timeout = d
-			}
+			timeout, hasTimeout = parseTimeout(h.Value)
 		case "hasleader":
 			needLeader = needLeader || h.Value == "true"
 		}
 	}
 	st := &stream{c: c, id: id, needLeader: needLeader}
-	if timeout > 0 {
-		st.ctx, st.cancel = context.WithTimeout(c.ctx, timeout)
-	} else {
-		st.ctx, st.cancel = context.WithCancel(c.ctx)
-	}
-	c.mu.Lock()
-	st.sendWin = c.initWin
-	c.streams[id] = st
-	c.mu.Unlock()
-
+	st.ctx, st.cancel = context.WithCancel(c.ctx)
 	grpc := method == "POST" && strings.HasPrefix(contentType, "application/grpc")
-	if !grpc {
+	if grpc {
+		st.rpc = methods[path]
+	} else {
 		st.httpMethod, st.httpPath = method, path
 		if st.httpPath == "" {
 			st.httpPath = "/"
 		}
-		return st
 	}
-	st.rpc = methods[path]
-	switch {
-	case st.rpc == nil:
-		st.finish(unknownMethod(path))
-	case st.rpc.stream != nil:
+	if st.rpc != nil && st.rpc.stream != nil {
 		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
+	}
+	c.mu.Lock()
+	st.sendWin = c.initWin
+	c.streams[id] = st
+	if grpc && hasTimeout {
+		// The deadline ends the call whether or not its request is
+		// complete or its handler started.
+		st.deadline = time.AfterFunc(timeout, st.expire)
+	}
+	c.mu.Unlock()
+	if grpc && st.rpc == nil {
+		st.finish(unknownMethod(path))
 	}
 	return st
 }
@@ -440,8 +442,12 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		halfClosed = st.inEOF
 		// The stream's window is credited back only as Recv takes
 		// messages; a client that sends past it breaks flow control.
-		st.recvUsed += int(f.Length)
+		// Padding is never stored, so it is credited back at once.
+		st.recvUsed += len(f.Data())
 		overflow = st.recvUsed > streamWindow
+		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
+			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
+		}
 	}
 	c.mu.Unlock()
 	switch {
@@ -532,9 +538,13 @@ var (
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 
-// headerBlock encodes fields as literals that are never indexed.
+// headerBlock encodes fields as literals that are never indexed. It
+// starts with a dynamic table size update to 0, so it is valid whatever
+// table size the client set: a decoder whose limit was lowered expects an
+// update in the next block.
 func headerBlock(fields ...hpack.HeaderField) []byte {
 	var b strings.Builder
+	b.WriteByte(0x20)
 	e := hpack.NewEncoder(&b)
 	for _, f := range fields {
 		f.Sensitive = true

@@ -135,6 +135,12 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 		t.Fatalf("MemberList: %v %v", ms, err)
 	}
 
+	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
+	ka, err := pb.NewLeaseClient(conn).LeaseKeepAlive(lctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Without a quorum, a write waits until its deadline, and a call that
 	// requires a leader fails at once once the leader is gone.
 	c.running[2].stop()
@@ -148,7 +154,6 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 	if status.Code(err) != codes.DeadlineExceeded || time.Since(start) > 3*time.Second {
 		t.Fatalf("put without a quorum: %v after %v", err, time.Since(start))
 	}
-	lctx := metadata.AppendToOutgoingContext(context.Background(), rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		ctx, cancel := context.WithTimeout(lctx, time.Second)
@@ -161,6 +166,11 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 			t.Fatalf("range that requires a leader without one: %v", err)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	// The keepalive stream that requires a leader ends too, as etcd's
+	// stream interceptor ends it.
+	if _, err := ka.Recv(); !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+		t.Fatalf("keepalive stream without a leader: %v", err)
 	}
 }
 
@@ -271,20 +281,24 @@ func TestRawFrames(t *testing.T) {
 	must(fr.WritePing(false, [8]byte{1, 2, 3}))
 	var hb bytes.Buffer
 	enc := hpack.NewEncoder(&hb)
-	call := func(id uint32, path string, req proto.Message) {
+	headers := func(id uint32, path string, extra ...hpack.HeaderField) {
 		t.Helper()
 		hb.Reset()
-		for _, f := range []hpack.HeaderField{
+		for _, f := range append([]hpack.HeaderField{
 			{Name: ":method", Value: "POST"},
 			{Name: ":scheme", Value: "https"},
 			{Name: ":path", Value: path},
 			{Name: ":authority", Value: "localhost"},
 			{Name: "content-type", Value: "application/grpc"},
 			{Name: "te", Value: "trailers"},
-		} {
+		}, extra...) {
 			must(enc.WriteField(f))
 		}
 		must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: id, BlockFragment: hb.Bytes(), EndHeaders: true}))
+	}
+	call := func(id uint32, path string, req proto.Message) {
+		t.Helper()
+		headers(id, path)
 		b, err := proto.Marshal(req)
 		must(err)
 		must(fr.WriteData(id, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
@@ -296,11 +310,13 @@ func TestRawFrames(t *testing.T) {
 	// A second end of the same stream is a stream error, not a second put.
 	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
 	must(fr.WriteData(7, true, nil))
+	// A call whose request never completes still ends at its deadline.
+	headers(9, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "grpc-timeout", Value: "100m"})
 
 	var settings, pinged bool
 	statuses := map[uint32]string{}
 	reset7 := false
-	for statuses[3] == "" || statuses[5] == "" || (statuses[7] == "" && !reset7) || !settings || !pinged {
+	for statuses[3] == "" || statuses[5] == "" || statuses[9] == "" || (statuses[7] == "" && !reset7) || !settings || !pinged {
 		f, err := fr.ReadFrame()
 		must(err)
 		switch f := f.(type) {
@@ -324,7 +340,7 @@ func TestRawFrames(t *testing.T) {
 			}
 		}
 	}
-	if statuses[3] != "0" || statuses[5] != "12" {
+	if statuses[3] != "0" || statuses[5] != "12" || statuses[9] != "4" {
 		t.Fatalf("grpc-status by stream: %v", statuses)
 	}
 	// The reset may have come before the put reached the node, so the

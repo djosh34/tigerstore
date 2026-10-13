@@ -179,6 +179,9 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 		// release their context here.
 		st.cancel()
 	}
+	if st.deadline != nil {
+		st.deadline.Stop()
+	}
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sync/atomic"
+	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc/codes"
@@ -41,6 +43,10 @@ type stream struct {
 	// arrived; the writer took queued output.
 	inSignal chan struct{}
 	space    chan struct{}
+	// abort, if set by the handler, ends a Send that waits for space.
+	abort <-chan struct{}
+	// deadline ends the call at its grpc-timeout; guarded by c.mu.
+	deadline *time.Timer
 
 	// Guarded by c.mu.
 	in            [][]byte // streaming calls: messages not yet taken by Recv
@@ -72,7 +78,18 @@ type outItem struct {
 	end  bool // for data: END_STREAM
 }
 
-var errStreamGone = errors.New("server: stream is gone")
+var (
+	errStreamGone = errors.New("server: stream is gone")
+	errAborted    = errors.New("server: send aborted")
+)
+
+// A stream that requires a leader checks for one every election timeout
+// (etcd's default 1 s) and ends after maxNoLeader checks in a row find
+// none, as etcd's monitorLeader does for every stream.
+const (
+	leaderCheck = time.Second
+	maxNoLeader = 3
+)
 
 // receive takes the payload of a DATA frame. Framer storage is reused by
 // the next frame, so each message is copied once, into a buffer of its
@@ -228,6 +245,8 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 			select {
 			case <-st.space:
 				continue
+			case <-st.abort:
+				return errAborted
 			case <-st.ctx.Done():
 				return st.ctx.Err()
 			}
@@ -239,6 +258,12 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 			}
 			st.out = append(st.out, outItem{kind: outData, b: msg})
 			st.queued += len(msg)
+		}
+		if end && s != nil && st.rpc != nil && st.rpc.stream != nil {
+			// A stream that fails drops the replies its client has not
+			// taken yet, so the status goes out without waiting for them.
+			st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData })
+			st.queued = 0
 		}
 		if end {
 			var block []byte
@@ -296,11 +321,47 @@ func (c *conn) runUnary(st *stream) {
 // runStream runs a streaming call from its first headers.
 func (c *conn) runStream(st *stream) {
 	defer st.cancel()
-	if st.needLeader && c.s.n.Leader() == 0 {
-		st.finish(rpctypes.ErrGRPCNoLeader)
-		return
+	if st.needLeader {
+		if c.s.n.Leader() == 0 {
+			st.finish(rpctypes.ErrGRPCNoLeader)
+			return
+		}
+		go c.monitorLeader(st)
 	}
 	st.finish(st.rpc.stream(c.s, st))
+}
+
+// monitorLeader ends a stream that requires a leader once maxNoLeader
+// checks in a row find none.
+func (c *conn) monitorLeader(st *stream) {
+	ticker := time.NewTicker(leaderCheck)
+	defer ticker.Stop()
+	noLeader := 0
+	for {
+		select {
+		case <-st.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if c.s.n.Leader() != 0 {
+			noLeader = 0
+			continue
+		}
+		if noLeader++; noLeader >= maxNoLeader {
+			st.finish(rpctypes.ErrGRPCNoLeader)
+			st.cancel()
+			return
+		}
+	}
+}
+
+// expire ends a call whose grpc-timeout passed, whether or not its
+// request is complete or its handler started.
+func (st *stream) expire() {
+	st.finish(status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error()))
+	if st.cancel != nil {
+		st.cancel()
+	}
 }
 
 // runHTTP answers an HTTP request on an HTTP/2 stream.
