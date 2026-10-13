@@ -31,7 +31,7 @@ func TestReport(t *testing.T) {
 	if err := report(&b, dir); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), "| put-1k | main | 1,000") {
+	if !strings.Contains(b.String(), "| put-1k | main | max | 1,000") {
 		t.Fatalf("report:\n%s", b.String())
 	}
 }
@@ -47,13 +47,29 @@ func TestReportSpreads(t *testing.T) {
 	if err := report(&b, dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"10 / 20 / 30", "10.0 / 20.0 / 30.0", "10.00 / 20.00 / 30.00", "| rate |", "3 + 3"} {
+	for _, want := range []string{"10 / 20 / 30", "10.0 / 20.0 / 30.0", "10.00 / 20.00 / 30.00", "| rate |", "| 3 |"} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("missing %s in report:\n%s", want, b.String())
 		}
 	}
 	if got := num(runs{{Throughput: 10}, {Throughput: 30}}, func(r result) float64 { return r.Throughput }, "%.0f"); got != "10 / 20 / 30" {
 		t.Fatal(got)
+	}
+}
+
+func TestReportWatchSpreads(t *testing.T) {
+	dir := t.TempDir()
+	for i, n := range []int{30, 10, 20} {
+		write(t, dir, fmt.Sprintf("etcd-rate-%d.json", i+1), fmt.Sprintf(`{"valid":true,"watch":{"events_per_s":%d,"server_cpu_us_per_event":%d,"latency_us":{"p99":%d,"p999":%d}}}`, n, n, n*1000, n*1000))
+	}
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"| Watch benchmark |", "10 / 20 / 30", "10.00 / 20.00 / 30.00", "10.0 / 20.0 / 30.0"} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %s in watch report:\n%s", want, b.String())
+		}
 	}
 }
 

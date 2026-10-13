@@ -115,104 +115,63 @@ func report(w io.Writer, dir string) error {
 	})
 
 	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-	p("| Benchmark | Store | Max ops/s | p50 / p99 / p99.9 ms closed loop at max | Server CPU us/op at max | Open-loop ops/s | p50 / p99 / p99.9 ms open loop | Server CPU us/op open loop | Runs |\n")
-	p("|---|---|---|---|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		for _, target := range targets {
-			mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-			if len(mx) == 0 && len(rt) == 0 {
-				continue
-			}
-			p("| %s | %s | %s | %s / %s / %s | %s | %s | %s / %s / %s | %s | %d + %d |\n",
-				bench, target,
-				spread(mx, func(r result) float64 { return r.Throughput }),
-				ms(mx, func(r result) float64 { return r.Latency.P50 }),
-				ms(mx, func(r result) float64 { return r.Latency.P99 }),
-				ms(mx, func(r result) float64 { return r.Latency.P999 }),
-				num(mx, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
-				spread(rt, func(r result) float64 { return r.Throughput }),
-				ms(rt, func(r result) float64 { return r.Latency.P50 }),
-				ms(rt, func(r result) float64 { return r.Latency.P99 }),
-				ms(rt, func(r result) float64 { return r.Latency.P999 }),
-				num(rt, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
-				len(mx), len(rt))
-		}
-	}
-	p("\nEvery cell is min / median / max over the repetitions, not pooled percentiles. At max every stream is busy. Open loop uses half of etcd's median max rate, or a fixed rate for rate-only mixed-k8s. Latency starts at the scheduled arrival time. Runs are max + rate.\n")
-
-	var watches []string
-	for _, bench := range benches {
-		for _, target := range targets {
-			for _, mode := range []string{"max", "rate"} {
-				rs := all[key{bench, target, mode}]
-				if len(rs) > 0 && rs[0].Watch != nil && !slices.Contains(watches, bench) {
-					watches = append(watches, bench)
-				}
-			}
-		}
-	}
-	if len(watches) > 0 {
-		p("\n| Watch benchmark | Store | Events/s at max | Event p50 / p99 ms at max | Events/s open loop | Event p50 / p99 ms open loop |\n")
-		p("|---|---|---|---|---|---|\n")
-		for _, bench := range slices.Compact(watches) {
-			for _, target := range targets {
-				mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-				if len(mx) == 0 && len(rt) == 0 {
-					continue
-				}
-				p("| %s | %s | %s | %s / %s | %s | %s / %s |\n", bench, target,
-					spread(mx, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
-					ms(mx, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
-					ms(mx, watchField(func(r result) float64 { return r.Watch.Latency.P99 })),
-					spread(rt, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
-					ms(rt, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
-					ms(rt, watchField(func(r result) float64 { return r.Watch.Latency.P99 })))
-			}
-		}
-		p("\n| Watch benchmark | Store | Mode | Mean / p90 / p99.9 / max event ms | Server CPU us/event | Runs |\n")
-		p("|---|---|---|---|---|---|\n")
-		for _, bench := range slices.Compact(watches) {
+	each := func(f func(bench, target, mode string, rs runs)) {
+		for _, bench := range benches {
 			for _, target := range targets {
 				for _, mode := range []string{"max", "rate"} {
 					rs := all[key{bench, target, mode}]
-					if len(rs) == 0 {
-						continue
+					if len(rs) > 0 {
+						f(bench, target, mode, rs)
 					}
-					p("| %s | %s | %s | %s / %s / %s / %s | %s | %d |\n", bench, target, mode,
-						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Mean })),
-						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P90 })),
-						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P999 })),
-						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Max })),
-						num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f"), len(rs))
 				}
 			}
 		}
+	}
+	p("| Benchmark | Store | Mode | Ops/s | p50 ms | p90 ms | p99 ms | p99.9 ms | Mean ms | Max ms | Server CPU us/op | Generator CPU us/op | Runs |\n")
+	p("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	each(func(bench, target, mode string, rs runs) {
+		p("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode,
+			spread(rs, func(r result) float64 { return r.Throughput }),
+			ms(rs, func(r result) float64 { return r.Latency.P50 }),
+			ms(rs, func(r result) float64 { return r.Latency.P90 }),
+			ms(rs, func(r result) float64 { return r.Latency.P99 }),
+			ms(rs, func(r result) float64 { return r.Latency.P999 }),
+			ms(rs, func(r result) float64 { return r.Latency.Mean }),
+			ms(rs, func(r result) float64 { return r.Latency.Max }),
+			num(rs, func(r result) float64 { return r.ServerCPUUsPerOp }, "%.1f"),
+			num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"), len(rs))
+	})
+	p("\nStatistics are min / median / max over the repetitions, not pooled percentiles. Runs is the repetition count. At max every stream is busy. Open loop uses half of etcd's median max rate, or a fixed rate for rate-only mixed-k8s. Latency starts at the scheduled arrival time.\n")
+
+	hasWatches := false
+	each(func(_, _, _ string, rs runs) { hasWatches = hasWatches || rs[0].Watch != nil })
+	if hasWatches {
+		p("\n| Watch benchmark | Store | Mode | Events/s | p50 ms | p90 ms | p99 ms | p99.9 ms | Mean ms | Max ms | Server CPU us/event | Runs |\n")
+		p("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+		each(func(bench, target, mode string, rs runs) {
+			if rs[0].Watch == nil {
+				return
+			}
+			p("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode,
+				spread(rs, watchField(func(r result) float64 { return r.Watch.EventsPerS })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P50 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P90 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P99 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P999 })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Mean })),
+				ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Max })),
+				num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f"), len(rs))
+		})
 		p("\nEvent latency runs from the mutation's scheduled send time to the event's arrival at the watcher.\n")
 	}
 
-	p("\n| Benchmark | Store | Mode | Server cores per node | Generator CPU us/op | Offered ops/s | Unsent | Mean / p90 / max latency ms | Runs |\n")
-	p("|---|---|---|---|---|---|---|---|---|\n")
-	for _, bench := range benches {
-		for _, target := range targets {
-			mx, rt := all[key{bench, target, "max"}], all[key{bench, target, "rate"}]
-			if len(mx) == 0 && len(rt) == 0 {
-				continue
-			}
-			for _, mode := range []string{"max", "rate"} {
-				rs := all[key{bench, target, mode}]
-				if len(rs) == 0 {
-					continue
-				}
-				p("| %s | %s | %s | %s | %s | %s | %s | %s / %s / %s | %d |\n", bench, target, mode, cores(rs),
-					num(rs, func(r result) float64 { return r.ClientCPUUsPerOp }, "%.1f"),
-					spread(rs, func(r result) float64 { return r.OfferedRate }),
-					num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"),
-					ms(rs, func(r result) float64 { return r.Latency.Mean }),
-					ms(rs, func(r result) float64 { return r.Latency.P90 }),
-					ms(rs, func(r result) float64 { return r.Latency.Max }), len(rs))
-			}
-		}
-	}
+	p("\n| Benchmark | Store | Mode | Server cores per node | Offered ops/s | Unsent | Runs |\n")
+	p("|---|---|---|---|---|---|---|\n")
+	each(func(bench, target, mode string, rs runs) {
+		p("| %s | %s | %s | %s | %s | %s | %d |\n", bench, target, mode, cores(rs),
+			spread(rs, func(r result) float64 { return r.OfferedRate }),
+			num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"), len(rs))
+	})
 	return nil
 }
 
@@ -294,7 +253,7 @@ func cores(rs runs) string {
 			return 0
 		}, "%.2f"))
 	}
-	return strings.Join(s, " / ")
+	return strings.Join(s, "; ")
 }
 
 // thousands formats v rounded to an integer with comma separators.
