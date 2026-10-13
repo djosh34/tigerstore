@@ -7,12 +7,13 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net"
+	"net/http"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -38,31 +39,83 @@ type Config struct {
 	TLS *tls.Config
 }
 
+// maxStreams is the limit of concurrent streams per client connection.
+const maxStreams = 1 << 20
+
 // grpcOverhead is the room etcd leaves above --max-request-bytes for gRPC
 // framing.
 const grpcOverhead = 512 * 1024
 
-// New builds the gRPC server for a node.
-func New(n *node.Node, cfg Config) *grpc.Server {
-	opts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(core.MaxRequestBytes + grpcOverhead),
-		grpc.MaxSendMsgSize(1<<31 - 1),
-		grpc.MaxConcurrentStreams(1 << 20),
+// Server serves one node's client port.
+type Server struct {
+	n    *node.Node
+	cfg  Config
+	g    *grpc.Server
+	http *http.Server
+}
+
+// New builds the server for a node.
+func New(n *node.Node, cfg Config) *Server {
+	// MaxConcurrentStreams and the keepalive options only apply to gRPC's
+	// own transport, which the plaintext test path uses. With TLS, the
+	// http.Server below carries gRPC and sets its own stream limit.
+	g := grpc.NewServer(
+		grpc.MaxRecvMsgSize(core.MaxRequestBytes+grpcOverhead),
+		grpc.MaxSendMsgSize(1<<31-1),
+		grpc.MaxConcurrentStreams(maxStreams),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Hour, Timeout: 20 * time.Second}),
-	}
-	if cfg.TLS != nil {
-		opts = append(opts, grpc.Creds(credentials.NewTLS(cfg.TLS)))
-	}
-	g := grpc.NewServer(opts...)
-	kv := &kvServer{n: n}
-	pb.RegisterKVServer(g, kv)
+	)
+	pb.RegisterKVServer(g, &kvServer{n: n})
 	pb.RegisterClusterServer(g, &clusterServer{n: n, cfg: cfg})
 	pb.RegisterWatchServer(g, &watchServer{n: n})
 	pb.RegisterLeaseServer(g, &pb.UnimplementedLeaseServer{})
-	pb.RegisterMaintenanceServer(g, &pb.UnimplementedMaintenanceServer{})
+	pb.RegisterMaintenanceServer(g, &maintenanceServer{n: n})
 	pb.RegisterAuthServer(g, &pb.UnimplementedAuthServer{})
-	return g
+	s := &Server{n: n, cfg: cfg, g: g}
+	s.http = &http.Server{
+		Handler:           s.handler(),
+		TLSConfig:         cfg.TLS,
+		ReadHeaderTimeout: 10 * time.Second,
+		// net/http allows 250 streams per connection by default; one
+		// kube-apiserver connection carries many more watches. etcd sets
+		// math.MaxUint32.
+		HTTP2: &http.HTTP2Config{MaxConcurrentStreams: maxStreams},
+	}
+	return s
+}
+
+// Serve accepts clients on ln until Stop. With TLS, gRPC, /health and
+// /version share the port over HTTP/2, as in etcd. Without TLS, only
+// gRPC is served; that is for tests.
+func (s *Server) Serve(ln net.Listener) error {
+	if s.cfg.TLS == nil {
+		return s.g.Serve(ln)
+	}
+	err := s.http.ServeTLS(ln, "", "")
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Stop closes the port and every client connection.
+func (s *Server) Stop() error {
+	s.g.Stop()
+	return s.http.Close()
+}
+
+type maintenanceServer struct {
+	pb.UnimplementedMaintenanceServer
+	n *node.Node
+}
+
+func (s *maintenanceServer) Status(ctx context.Context, _ *pb.StatusRequest) (*pb.StatusResponse, error) {
+	st, err := s.n.Status(ctx)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return st, nil
 }
 
 type kvServer struct {

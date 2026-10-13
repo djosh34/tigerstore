@@ -44,6 +44,7 @@ type input struct {
 	watchReq    *pb.WatchRequest
 	watchClose  bool
 	stream      uint64
+	status      chan *pb.StatusResponse
 }
 
 // watchQueue is how many responses a watch stream may fall behind before
@@ -83,6 +84,22 @@ func (ws *WatchStream) Close() {
 	select {
 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
 	case <-ws.n.done:
+	}
+}
+
+// Status returns the node's Maintenance.Status answer.
+func (n *Node) Status(ctx context.Context) (*pb.StatusResponse, error) {
+	ch := make(chan *pb.StatusResponse, 1)
+	if err := n.put(ctx, input{status: ch}); err != nil {
+		return nil, err
+	}
+	select {
+	case st := <-ch:
+		return st, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-n.done:
+		return nil, rpctypes.ErrGRPCStopped
 	}
 }
 
@@ -302,6 +319,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 
 func (n *Node) handle(in input, waiters map[uint64]chan core.Reply, streams map[uint64]*WatchStream) {
 	switch {
+	case in.status != nil:
+		in.status <- n.core.Status()
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:

@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -106,8 +108,8 @@ func (c *cluster) start(id uint64) {
 		if err := <-ran; err != nil {
 			t.Errorf("node %d: %v", id, err)
 		}
-		g.Stop()
-		if err := errors.Join(<-served, tr.Close()); err != nil {
+		stopErr := g.Stop()
+		if err := errors.Join(stopErr, <-served, tr.Close()); err != nil {
 			t.Errorf("node %d: %v", id, err)
 		}
 	}}
@@ -295,5 +297,115 @@ func TestWatchOverTLS(t *testing.T) {
 	}
 	if r.WatchId != -1 || r.Header.Revision < first.Header.Revision+2 || len(r.Events) != 0 {
 		t.Fatalf("progress response = %v", r)
+	}
+}
+
+func TestStatusHealthVersionRangeStream(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 97)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
+	})
+	conn, err := grpc.NewClient(c.running[1].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() //nolint:errcheck // closing a test client
+	st, err := pb.NewMaintenanceClient(conn).Status(context.Background(), &pb.StatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Version != "3.7.2" || st.StorageVersion != "3.7.0" || st.Leader == 0 || st.DbSize <= 0 ||
+		st.RaftTerm == 0 || st.RaftIndex == 0 || st.RaftAppliedIndex == 0 || st.Header.MemberId != 1 || st.Header.Revision < 2 {
+		t.Fatalf("status = %v", st)
+	}
+
+	stream, err := pb.NewKVClient(conn).RangeStream(context.Background(), &pb.RangeRequest{Key: []byte("a")})
+	if err == nil {
+		_, err = stream.Recv()
+	}
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("RangeStream: %v, want Unimplemented", err)
+	}
+
+	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	}, ForceAttemptHTTP2: true}}
+	get := func(path string) (int, string) {
+		resp, err := hc.Get("https://" + c.running[1].addr + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close() //nolint:errcheck // closing a test response
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode, string(b)
+	}
+	if code, body := get("/version"); code != 200 || body != `{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}` {
+		t.Fatalf("/version = %d %q", code, body)
+	}
+	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
+		t.Fatalf("/health = %d %q", code, body)
+	}
+	// Without a quorum there is no leader for long, and /health says so.
+	c.running[2].stop()
+	c.running[3].stop()
+	delete(c.running, 2)
+	delete(c.running, 3)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		code, body := get("/health")
+		if code == 503 && body == "{\"health\":\"false\",\"reason\":\"RAFT NO LEADER\"}\n" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("/health without a quorum = %d %q", code, body)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if code, _ := get("/version"); code != 200 {
+		t.Fatalf("/version without a quorum = %d", code)
+	}
+}
+
+// TestManyStreamsOnOneConnection opens more watch streams on one
+// connection than net/http's default HTTP/2 limit of 250; kube-apiserver
+// runs many watches over one connection.
+func TestManyStreamsOnOneConnection(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 96)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(c.running[1].addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() //nolint:errcheck // closing a test client
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	wc := pb.NewWatchClient(conn)
+	for i := range 300 {
+		ws, err := wc.Watch(ctx)
+		if err != nil {
+			t.Fatalf("stream %d: %v", i, err)
+		}
+		if err := ws.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("a")}}}); err != nil {
+			t.Fatalf("stream %d: %v", i, err)
+		}
+		r, err := ws.Recv()
+		if err != nil || !r.Created {
+			t.Fatalf("stream %d: %v %v", i, r, err)
+		}
 	}
 }
