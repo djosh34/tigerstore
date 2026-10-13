@@ -472,14 +472,16 @@ func TestNodeStopsUnderLoad(t *testing.T) {
 // TestRequestSizeLimitWithCertificate checks the largest put over TLS
 // with a client certificate: etcd v3.7.2 puts the certificate's common
 // name and the auth revision into the request's header and limits that
-// header too (#99), so a longer name leaves less room for the value.
+// header too (#99), so a longer name leaves less room for the value. A
+// request with grpcgateway-accept metadata has no identity in etcd.
 func TestRequestSizeLimitWithCertificate(t *testing.T) {
 	c := newCluster(t)
 	key := make([]byte, 39)
 	for _, tc := range []struct {
 		name    string
+		gateway bool
 		largest int
-	}{{"client", 1572791}, {"a-much-longer-client-name", 1572772}} {
+	}{{"client", false, 1572791}, {"a-much-longer-client-name", false, 1572772}, {"client", true, 1572801}} {
 		cert, _, _, err := c.ca.Issue(tc.name, 96)
 		if err != nil {
 			t.Fatal(err)
@@ -489,6 +491,9 @@ func TestRequestSizeLimitWithCertificate(t *testing.T) {
 			return kv.Put(ctx, &pb.PutRequest{Key: []byte("ready"), Value: []byte("1")})
 		})
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if tc.gateway {
+			ctx = metadata.AppendToOutgoingContext(ctx, "grpcgateway-accept", "application/json")
+		}
 		if _, err := kv.Put(ctx, &pb.PutRequest{Key: key, Value: make([]byte, tc.largest)}); err != nil {
 			t.Errorf("%s: put of %d bytes: %v", tc.name, tc.largest, err)
 		}

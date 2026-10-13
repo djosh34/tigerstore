@@ -118,42 +118,25 @@ type Request struct {
 	Caller Caller
 }
 
-// Caller is the request header etcd v3.7.2 would put around a client's
-// writes, for their size limit. With client certificate authentication
-// (--client-cert-auth), etcd takes the client's identity from its
-// certificate even with auth disabled (EtcdServer.AuthInfoFromCtx), and the
-// header then holds the certificate's common name and the auth revision,
-// which is 1 on a store that never changed auth. The zero Caller has no
-// identity.
+// Caller is a client as etcd v3.7.2's size limit for writes sees it. With
+// client certificate authentication (--client-cert-auth), etcd takes the
+// client's identity from its certificate even with auth disabled
+// (EtcdServer.AuthInfoFromCtx), and every write's request header then holds
+// the certificate's common name and the auth revision, which is 1 on a
+// store that never changed auth. The zero Caller has no identity.
 type Caller struct {
-	header *pb.RequestHeader
-	// size is the size of an InternalRaftRequest with only header and the
-	// tag of a put.
-	size int
+	// extra is the bytes the identity adds to the marshaled request.
+	extra int
 }
 
 // authRevision is etcd's auth revision on a store whose auth never changed;
 // tigerstore has no auth requests that would change it.
 const authRevision = 1
 
-// NewCaller returns the caller with this certificate identity: the common
-// name of a verified client certificate, when the server requires one.
+// NewCaller returns the caller whose certificate has this common name.
 func NewCaller(commonName string) Caller {
-	return newCaller(&pb.RequestHeader{ID: sizeRequestID, Username: commonName, AuthRevision: authRevision})
-}
-
-func newCaller(h *pb.RequestHeader) Caller {
-	return Caller{header: h, size: proto.Size(&pb.InternalRaftRequest{Header: h}) + protowire.SizeTag(4)}
-}
-
-// anonymous is the caller of a client without a certificate identity.
-var anonymous = newCaller(&pb.RequestHeader{ID: sizeRequestID})
-
-func (c Caller) or() Caller {
-	if c.header == nil {
-		return anonymous
-	}
-	return c
+	with := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID, Username: commonName, AuthRevision: authRevision}})
+	return Caller{extra: with - proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})}
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -497,7 +480,7 @@ const sizeRequestID = 1 << 63
 // only gRPC's limit.
 func check(op proto.Message, c Caller) error {
 	var err error
-	r := &pb.InternalRaftRequest{Header: c.or().header}
+	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
 	case *pb.RangeRequest:
 		return mvcc.CheckRange(op)
@@ -524,11 +507,15 @@ func check(op proto.Message, c Caller) error {
 	if err != nil {
 		return err
 	}
-	if proto.Size(r) > MaxRequestBytes {
+	if proto.Size(r)+c.extra > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
 }
+
+// putRequestBytes is the size of etcd's InternalRaftRequest around a put
+// without the put itself: the header with sizeRequestID, and the put's tag.
+var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
 
 // checkPut checks a put in wire form as check does a decoded one. Like
 // etcd, it limits the size of the request as protobuf marshals it again,
@@ -537,7 +524,7 @@ func checkPut(p *Put, c Caller) error {
 	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
 		return err
 	}
-	if c.or().size+protowire.SizeBytes(p.size()) > MaxRequestBytes {
+	if putRequestBytes+c.extra+protowire.SizeBytes(p.size()) > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil

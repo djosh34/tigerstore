@@ -119,18 +119,18 @@ type ctrlFrame struct {
 
 // caller is the client of a connection as etcd's size limit for writes
 // sees it: with client certificates required, as --client-cert-auth does,
-// the common name of the verified certificate, from the last verified
-// chain as etcd's AuthInfoFromTLS takes it.
+// the common name of the leaf of the first verified chain, as etcd's
+// AuthInfoFromTLS takes it.
 func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 	tc, ok := nc.(*tls.Conn)
-	if !ok || cfg == nil || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
+	if !ok || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
 		return core.Caller{}
 	}
 	chains := tc.ConnectionState().VerifiedChains
-	if len(chains) == 0 || len(chains[len(chains)-1]) == 0 {
+	if len(chains) == 0 {
 		return core.Caller{}
 	}
-	return core.NewCaller(chains[len(chains)-1][0].Subject.CommonName)
+	return core.NewCaller(chains[0][0].Subject.CommonName)
 }
 
 func newConn(s *Server, nc, raw net.Conn) *conn {
@@ -422,10 +422,13 @@ type reqHeaders struct {
 	method, path, contentType string
 	timeout                   time.Duration
 	hasTimeout, needLeader    bool
-	size                      int
-	regular                   bool  // a regular field came; pseudo-fields must come first
-	pseudo                    uint8 // bits of the pseudo-fields seen
-	bad                       bool  // a field broke HTTP/2's rules
+	// gateway: the call carries grpcgateway-accept metadata, for which
+	// etcd ignores the client certificate's identity.
+	gateway bool
+	size    int
+	regular bool  // a regular field came; pseudo-fields must come first
+	pseudo  uint8 // bits of the pseudo-fields seen
+	bad     bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -520,6 +523,8 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.timeout, h.hasTimeout = parseTimeout(f.Value)
 	case "hasleader":
 		h.needLeader = h.needLeader || f.Value == "true"
+	case "grpcgateway-accept":
+		h.gateway = true
 	}
 }
 
@@ -581,7 +586,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader}
+	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]
