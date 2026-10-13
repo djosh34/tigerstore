@@ -84,6 +84,7 @@ func TestEtcdWorkloads(t *testing.T) {
 		{"delete", 1024, 3000},
 		{"range", 1024, 0},
 		{"range", 10240, 300},
+		{"list", 1024, 0},
 		{"watch", 1024, 2000},
 	} {
 		cfg := config{
@@ -97,6 +98,7 @@ func TestEtcdWorkloads(t *testing.T) {
 			warmup:    200 * time.Millisecond,
 			duration:  500 * time.Millisecond,
 			watchers:  3,
+			page:      100,
 			pids:      []int{pid},
 			seed:      1,
 		}

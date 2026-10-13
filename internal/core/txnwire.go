@@ -71,13 +71,16 @@ func keepUnknown(m proto.Message, f *wireField) {
 }
 
 // DecodeAlias decodes m from b like UnmarshalAlias, with the written-out
-// decoders for transactions and deletes, the requests decoded most.
+// decoders for transactions, deletes and ranges, the requests decoded
+// most.
 func DecodeAlias(b []byte, m proto.Message) error {
 	switch m := m.(type) {
 	case *pb.TxnRequest:
 		return decodeTxnAlias(b, m)
 	case *pb.DeleteRangeRequest:
 		return decodeDelete(b, m)
+	case *pb.RangeRequest:
+		return decodeRange(b, m)
 	}
 	return UnmarshalAlias(b, m)
 }

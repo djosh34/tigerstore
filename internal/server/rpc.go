@@ -18,6 +18,9 @@ import (
 type method struct {
 	op      func() proto.Message
 	wirePut bool // op is a put that stays in its wire form
+	// compact: op is a range whose answer the writer encodes from the
+	// index's values, without building a RangeResponse.
+	compact bool
 	unary   func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
 	stream  func(s *Server, st *stream) error
 }
@@ -27,7 +30,7 @@ type method struct {
 // Unimplemented servers do; Kubernetes 1.37 falls back from RangeStream on
 // exactly that code.
 var methods = map[string]*method{
-	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest]},
+	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
 	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
 	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
 	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},

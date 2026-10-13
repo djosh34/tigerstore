@@ -47,23 +47,74 @@ func (w *writer) cur() int64 {
 
 func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r} }
 
+// KV is one key's version as a range returns it: the fields of an
+// mvccpb.KeyValue, as a value. Key and Value are the index's slices.
+type KV struct {
+	Key, Value                                  []byte
+	CreateRevision, ModRevision, Version, Lease int64
+}
+
+// RangeResult is a range's answer without its header: the store's
+// revision, for the header, the keys, their count and whether more were
+// left out.
+type RangeResult struct {
+	Rev   int64
+	KVs   []KV
+	Count int64
+	More  bool
+}
+
 // Range reads keys at the current or a past revision.
 func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	w := &writer{s: s, begin: s.rev}
 	return w.rangeKeys(r)
 }
 
+// RangeKVs is Range without building protobuf messages: one slice of
+// values instead of a message per key, for drivers that encode the
+// response themselves.
+func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
+	w := &writer{s: s, begin: s.rev}
+	return w.rangeResult(r)
+}
+
 func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	res, err := w.rangeResult(r)
+	if err != nil {
+		return nil, err
+	}
+	return res.Response(), nil
+}
+
+// Response is the range's answer as etcd's message, with the revision in
+// its header.
+func (res *RangeResult) Response() *pb.RangeResponse {
+	resp := &pb.RangeResponse{Header: header(res.Rev), Count: res.Count, More: res.More}
+	if len(res.KVs) > 0 {
+		kvs := make([]mvccpb.KeyValue, len(res.KVs))
+		resp.Kvs = make([]*mvccpb.KeyValue, len(res.KVs))
+		for i, kv := range res.KVs {
+			kvs[i] = mvccpb.KeyValue{
+				Key: kv.Key, Value: kv.Value, CreateRevision: kv.CreateRevision,
+				ModRevision: kv.ModRevision, Version: kv.Version, Lease: kv.Lease,
+			}
+			resp.Kvs[i] = &kvs[i]
+		}
+	}
+	return resp
+}
+
+func (w *writer) rangeResult(r *pb.RangeRequest) (RangeResult, error) {
 	cur := w.cur()
 	at := r.Revision
 	if at <= 0 {
 		at = cur
 	}
 	if at > cur {
-		return nil, rpctypes.ErrGRPCFutureRev
+		return RangeResult{}, rpctypes.ErrGRPCFutureRev
 	}
 	if at < w.s.compactRev {
-		return nil, rpctypes.ErrGRPCCompacted
+		return RangeResult{}, rpctypes.ErrGRPCCompacted
 	}
 
 	// etcd pushes limit+1 into the index only with the default order and no
@@ -73,7 +124,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	if r.Limit > 0 && r.Limit < math.MaxInt64 && IsDefaultOrdering(r.SortTarget, r.SortOrder) && !hasRevisionFilters(r) {
 		pushLimit = r.Limit + 1
 	}
-	var kvs []*mvccpb.KeyValue
+	var kvs []KV
 	count := int64(0)
 	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
 		v, ok := k.live(at)
@@ -82,7 +133,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 		}
 		count++
 		if !r.CountOnly && (pushLimit == 0 || int64(len(kvs)) < pushLimit) {
-			kvs = append(kvs, k.kv(v))
+			kvs = append(kvs, k.kvValue(v))
 		}
 		return true
 	})
@@ -90,24 +141,24 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	kvs = filterKVs(kvs, r)
 	sortKVs(kvs, r)
 
-	resp := &pb.RangeResponse{Header: header(cur), Count: count}
+	res := RangeResult{Rev: cur, Count: count}
 	if r.Limit > 0 && int64(len(kvs)) > r.Limit {
 		kvs = kvs[:r.Limit]
-		resp.More = true
+		res.More = true
 	}
 	if r.KeysOnly {
 		// Without a sort on values, etcd reads only the key index, which
 		// has no lease.
 		fast := r.SortTarget != pb.RangeRequest_VALUE
-		for _, kv := range kvs {
-			kv.Value = nil
+		for i := range kvs {
+			kvs[i].Value = nil
 			if fast {
-				kv.Lease = 0
+				kvs[i].Lease = 0
 			}
 		}
 	}
-	resp.Kvs = kvs
-	return resp, nil
+	res.KVs = kvs
+	return res, nil
 }
 
 // IsDefaultOrdering reports whether a range returns keys in the order the
@@ -121,7 +172,7 @@ func hasRevisionFilters(r *pb.RangeRequest) bool {
 		r.MinCreateRevision != 0 || r.MaxCreateRevision != 0
 }
 
-func filterKVs(kvs []*mvccpb.KeyValue, r *pb.RangeRequest) []*mvccpb.KeyValue {
+func filterKVs(kvs []KV, r *pb.RangeRequest) []KV {
 	if !hasRevisionFilters(r) {
 		return kvs
 	}
@@ -141,15 +192,15 @@ func filterKVs(kvs []*mvccpb.KeyValue, r *pb.RangeRequest) []*mvccpb.KeyValue {
 
 // kvSort sorts with sort.Sort like etcd, so that ties end in the same order.
 type kvSort struct {
-	kvs  []*mvccpb.KeyValue
-	less func(a, b *mvccpb.KeyValue) bool
+	kvs  []KV
+	less func(a, b *KV) bool
 }
 
 func (s kvSort) Len() int           { return len(s.kvs) }
 func (s kvSort) Swap(i, j int)      { s.kvs[i], s.kvs[j] = s.kvs[j], s.kvs[i] }
-func (s kvSort) Less(i, j int) bool { return s.less(s.kvs[i], s.kvs[j]) }
+func (s kvSort) Less(i, j int) bool { return s.less(&s.kvs[i], &s.kvs[j]) }
 
-func sortKVs(kvs []*mvccpb.KeyValue, r *pb.RangeRequest) {
+func sortKVs(kvs []KV, r *pb.RangeRequest) {
 	order := r.SortOrder
 	if r.SortTarget != pb.RangeRequest_KEY && order == pb.RangeRequest_NONE {
 		order = pb.RangeRequest_ASCEND
@@ -157,18 +208,18 @@ func sortKVs(kvs []*mvccpb.KeyValue, r *pb.RangeRequest) {
 	if IsDefaultOrdering(r.SortTarget, order) {
 		return
 	}
-	var less func(a, b *mvccpb.KeyValue) bool
+	var less func(a, b *KV) bool
 	switch r.SortTarget {
 	case pb.RangeRequest_KEY:
-		less = func(a, b *mvccpb.KeyValue) bool { return bytes.Compare(a.Key, b.Key) < 0 }
+		less = func(a, b *KV) bool { return bytes.Compare(a.Key, b.Key) < 0 }
 	case pb.RangeRequest_VERSION:
-		less = func(a, b *mvccpb.KeyValue) bool { return a.Version < b.Version }
+		less = func(a, b *KV) bool { return a.Version < b.Version }
 	case pb.RangeRequest_CREATE:
-		less = func(a, b *mvccpb.KeyValue) bool { return a.CreateRevision < b.CreateRevision }
+		less = func(a, b *KV) bool { return a.CreateRevision < b.CreateRevision }
 	case pb.RangeRequest_MOD:
-		less = func(a, b *mvccpb.KeyValue) bool { return a.ModRevision < b.ModRevision }
+		less = func(a, b *KV) bool { return a.ModRevision < b.ModRevision }
 	case pb.RangeRequest_VALUE:
-		less = func(a, b *mvccpb.KeyValue) bool { return bytes.Compare(a.Value, b.Value) < 0 }
+		less = func(a, b *KV) bool { return bytes.Compare(a.Value, b.Value) < 0 }
 	default:
 		return
 	}

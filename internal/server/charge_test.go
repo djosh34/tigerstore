@@ -7,6 +7,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
@@ -94,6 +95,21 @@ func TestCallCharges(t *testing.T) {
 			}
 			c.complete(cs, bytes)
 			drain(c)
+		},
+		"range answer waiting for the writer": func(c *conn, st *stream) {
+			charge(c, st)
+			res := mvcc.RangeResult{KVs: []mvcc.KV{{Key: []byte("k"), Value: make([]byte, 1<<20)}}}
+			c.Complete([]node.Completion{{Tag: st, Range: res}})
+			if c.waitingReplies.Load() < 1<<20 {
+				t.Errorf("a range answer of 1 MiB waiting for the writer counts %d bytes", c.waitingReplies.Load())
+			}
+			c.completeWaiting()
+			if st.replyHeld < 1<<20 {
+				t.Errorf("a queued range answer of 1 MiB holds %d bytes", st.replyHeld)
+			}
+			for range 1 << 8 {
+				drain(c)
+			}
 		},
 		"deadline before the batch goes out": func(c *conn, st *stream) {
 			st.expire()

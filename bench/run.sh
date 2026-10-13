@@ -4,8 +4,8 @@
 #
 #   bench/run.sh <benchmark> <out dir>
 #
-# <benchmark> is <workload>-<size>: workload put, txn, delete, range or
-# watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
+# <benchmark> is <workload>-<size>: workload put, txn, delete, range, list
+# or watch, size 1k or 10k. Each repetition starts a fresh 3-node cluster per
 # target and run, so no run sees another's data. Two kinds of run:
 #
 #   max   every stream busy (6 connections x 256 streams): throughput
@@ -63,6 +63,17 @@ fi
 # deletes/s. The 10 KiB run preloads fewer keys, to keep the disk it fills
 # small, so it is shorter still: 300,000 keys over 1 + 2 s.
 keys=10000 warmup=3s duration=10s
+# A LIST asks for the first page of one namespace of 100: 1,000 keys
+# each, pages of 500 (the loadgen default), so every answer holds a count
+# of 1,000, 500 keys and "more". It does not page further. With 10 KiB
+# values, 100 keys each keep the preload small.
+# Each answer is about half a megabyte, so at max only 2 connections × 16
+# streams are busy: with the default 1,536, etcd v3.7.2 lost its leader.
+concurrency=()
+if [ "$workload" = list ]; then
+	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
+	concurrency=(-conns 2 -streams 16)
+fi
 if [ "$workload" = delete ]; then
 	if [ "$size" = 1024 ]; then
 		keys=600000 warmup=1s duration=4s
@@ -125,7 +136,7 @@ mkdir -p "$out/$bench"
 if [[ " ${modes[*]} " == *" max "* ]]; then
 	for rep in $(seq "$reps"); do
 		for target in $(order "$rep"); do
-			once "$target" max "$rep" -keys "$keys"
+			once "$target" max "$rep" -keys "$keys" "${concurrency[@]}"
 		done
 	done
 fi
@@ -143,7 +154,7 @@ if [[ " ${modes[*]} " == *" rate "* ]]; then
 	fi
 	for rep in $(seq "$reps"); do
 		for target in $(order "$rep"); do
-			once "$target" rate "$rep" -keys "$keys" -rate "$rate"
+			once "$target" rate "$rep" -keys "$keys" -rate "$rate" "${concurrency[@]}"
 		done
 	done
 fi
