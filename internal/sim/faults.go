@@ -118,7 +118,14 @@ func (s *Sim) diskFailed(n *node, err error) {
 	}
 	s.stats.DiskFaults++
 	if s.healed {
+		// The guaranteed fault fired after healing. The liveness rule
+		// starts once the node is back (check.go); the clients keep going
+		// for 3 s more than that, so the rule has calls to check.
 		s.lateFaultAt = s.now
+		if live := s.liveFrom() + 3*Second; live > s.stopAt {
+			s.endAt += live - s.stopAt
+			s.stopAt = live
+		}
 	}
 	n.disk.Fault = nil
 	s.stopNode(n)

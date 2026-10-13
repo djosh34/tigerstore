@@ -284,3 +284,18 @@ func TestHalfOpenLink(t *testing.T) {
 		}
 	}
 }
+
+// TestDiskFaultAfterHealing cuts every link before the first election, so
+// no node appends during the faults: the guaranteed disk fault must fire
+// after healing, and the liveness rule must still hold.
+func TestDiskFaultAfterHealing(t *testing.T) {
+	cfg := DefaultConfig(6001)
+	cfg.Faults = Faults{DiskErrorEvery: 1000 * Second, HoldMask: 0, HoldMaskAt: 1}
+	cfg.Duration = 5 * Second
+	cfg.Heal = 5 * Second
+	res := run(t, cfg)
+	if res.Stats.DiskFaults != 1 {
+		t.Fatalf("%d disk faults, want the guaranteed one", res.Stats.DiskFaults)
+	}
+	checkers(t, res)
+}
