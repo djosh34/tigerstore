@@ -117,7 +117,9 @@ start() {
 				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth
 				--listen-metrics-urls "http://127.0.0.1:$((metrics_port + i))" --enable-pprof)
 		fi
-		GOMAXPROCS=2 SHAPE_DEBUG="127.0.0.1:$((metrics_port + i))" taskset -c "${cpus[i - 1]}" "$bin" \
+		shape_debug="127.0.0.1:$((metrics_port + i))"
+		if [ "${SHAPE_OBSERVE:-1}" = 0 ]; then shape_debug=""; fi
+		GOMAXPROCS=2 SHAPE_DEBUG="$shape_debug" taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
 			--data-dir "$dir/n$i" \
 			--listen-client-urls "$client" \

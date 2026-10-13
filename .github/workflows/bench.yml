@@ -62,6 +62,9 @@ jobs:
         env:
           TARGETS: ${{ inputs.targets }}
         run: bash experiments/shape/build-caps.sh
+      - name: Build pristine observation control
+        if: contains(inputs.targets, 'pristine')
+        run: bash experiments/shape/build-observation-control.sh
       - name: Measure
         env:
           CASE: ${{ matrix.case }}

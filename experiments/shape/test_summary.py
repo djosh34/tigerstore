@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from summarize import disk_node, hist_upper, prometheus, queues
+from summarize import disk_node, hist_upper, one, prometheus, queues
 
 
 class SummaryTests(unittest.TestCase):
@@ -38,6 +38,23 @@ class SummaryTests(unittest.TestCase):
         text='etcd_server_proposals_pending 20\netcd_server_proposals_committed_total 300\netcd_server_proposals_applied_total 250\n'
         q=queues([{'nodes':[text]}],'etcd',0)
         self.assertEqual(q['post_save_minus_applied']['max'],50)
+
+    def test_observation_control_has_cpu_but_no_disk_claims(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)/'case'/'pristine-1'
+            root.mkdir(parents=True)
+            (root/'load.json').write_text(json.dumps({'label':'pristine','valid':True,'cohort':100,
+                'latency_us':{},'service_latency_us':{}}))
+            (root/'audit.json').write_text(json.dumps({'valid':True,'observation_control':True,
+                'physical_counter_fence':False}))
+            for name,mono,utime in [('before',1,2),('after',2,5)]:
+                (root/f'{name}.json').write_text(json.dumps({'monotonic':mono,'nodes':[None],
+                    'proc':[{'starttime':10,'utime':utime,'stime':0}], 'diskstats':'not parsed'}))
+            (root/'samples.jsonl').write_text('')
+            row=one(root/'load.json')
+            self.assertEqual(row['n0_fenced_cpu_us_op'],300)
+            self.assertTrue(row['observation_control'])
+            self.assertFalse(any(k.startswith('disk_') or 'fsync' in k for k in row))
 
     def test_missing_windows_never_form_passing_group(self):
         with tempfile.TemporaryDirectory() as d:

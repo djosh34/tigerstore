@@ -20,6 +20,11 @@ REPS = int(os.environ.get('REPS', '5'))
 DURATION = os.environ.get('DURATION', '3s')
 WARMUP = os.environ.get('WARMUP', '1s')
 COMMANDS = []
+OBSERVATION_CONTROL = 'pristine' in os.environ.get('TARGETS', '').split()
+
+
+def unobserved(kind):
+    return kind in ('pristine', 'tigerstore-off')
 
 
 def check_deadline():
@@ -60,6 +65,19 @@ def fence(dirpath, kind, ports):
         committed = [value(x['Status'], 'raftIndex', 'raft_index') for x in st]
         revs = [x['Status']['header']['revision'] for x in st]
         if len(set(applied + committed)) == 1 and len(set(revs)) == 1:
+            if OBSERVATION_CONTROL and kind != 'etcd':
+                # Diagnostic only: all Tiger variants use the same native
+                # applied-status fence and cooldown. No physical-file claims.
+                # The cooldown is not a proof that all disk jobs completed.
+                time.sleep(.3)
+                again = status(dirpath)
+                ai = [value(x['Status'], 'raftAppliedIndex', 'raft_applied_index') for x in again]
+                ci = [value(x['Status'], 'raftIndex', 'raft_index') for x in again]
+                rr = [x['Status']['header']['revision'] for x in again]
+                if ai == applied and ci == committed and rr == revs:
+                    return again, {'native_applied_only': True, 'cooldown_s': .3,
+                                   'first_status': st, 'second_status': again}
+                continue
             if kind == 'etcd':
                 # This gauge advances after WAL.Save, unlike applied status alone.
                 saved = [float(re.search(r'^etcd_server_proposals_committed_total (\S+)',
@@ -113,10 +131,16 @@ def proc_snapshot(pids):
     return result
 
 
+def node_snapshots(kind, ports):
+    if unobserved(kind):
+        return []
+    return [json.loads(http(p, '/debug/shape')) if kind != 'etcd'
+            else http(p, '/metrics') for p in ports]
+
+
 def snapshot(kind, pids, ports):
     obj = {'wall_time': time.time(), 'monotonic': time.monotonic()}
-    obj['nodes'] = [json.loads(http(p, '/debug/shape')) if kind != 'etcd'
-                    else http(p, '/metrics') for p in ports]
+    obj['nodes'] = node_snapshots(kind, ports)
     obj['proc'] = proc_snapshot(pids)
     obj['diskstats'] = Path('/proc/diskstats').read_text()
     return obj
@@ -166,7 +190,8 @@ def once(kind, rep, rate=None):
     profile_futures = []
     try:
         (dst/'ports-before.txt').write_text(subprocess.run(['ss','-tanp'],text=True,capture_output=True,check=True).stdout)
-        command(['bash', 'bench/cluster.sh', 'start', 'etcd' if kind == 'etcd' else 'tigerstore',
+        command(['env', 'SHAPE_OBSERVE=' + ('0' if unobserved(kind) else '1'),
+                 'bash', 'bench/cluster.sh', 'start', 'etcd' if kind == 'etcd' else 'tigerstore',
                  ROOT/'bin'/kind, data, '0', '1', '2'], timeout=45)
         placement = json.loads((data/'placement.json').read_text())
         (dst/'placement.json').write_text(json.dumps(placement, indent=2))
@@ -215,8 +240,8 @@ def once(kind, rep, rate=None):
                         while not sampling_stop.is_set():
                             start = time.monotonic()
                             # Full node metrics and disk queues, without per-thread /proc reads.
-                            row = {'monotonic': start, 'wall_unix_ns':time.time_ns(), 'nodes': [json.loads(http(p, '/debug/shape'))
-                                   if kind != 'etcd' else http(p, '/metrics') for p in ports],
+                            row = {'monotonic': start, 'wall_unix_ns':time.time_ns(),
+                                   'nodes': node_snapshots(kind, ports),
                                    'diskstats': Path('/proc/diskstats').read_text()}
                             f.write(json.dumps(row)+'\n')
                             sampling_stop.wait(max(0, .1-(time.monotonic()-start)))
@@ -280,6 +305,8 @@ def once(kind, rep, rate=None):
                 if len(counts) != 3 or max(counts)-min(counts) > 1 or sum(counts) != load['cohort']:
                     invariant_errors.append('requests not equally balanced across all three endpoints')
             audit = {'revision_delta': revision_delta, 'expected': expected,
+                     'observation_control': OBSERVATION_CONTROL,
+                     'physical_counter_fence': not OBSERVATION_CONTROL or kind == 'etcd',
                      'sampling_errors': errors, 'invariant_errors': invariant_errors, 'returncode': process.returncode,
                      'valid': bool(load['valid']) and not errors and not invariant_errors and process.returncode == 0 and revision_delta == expected}
             (dst/'audit.json').write_text(json.dumps(audit, indent=2))
@@ -310,6 +337,10 @@ def once(kind, rep, rate=None):
 def main():
     OUT.mkdir(exist_ok=True)
     targets = os.environ.get('TARGETS', 'tigerstore etcd').split()
+    if any(unobserved(t) for t in targets) and not OBSERVATION_CONTROL:
+        raise ValueError('unobserved targets require the pristine observation-control campaign')
+    if OBSERVATION_CONTROL and os.environ.get('PROFILE', 'none') != 'none':
+        raise ValueError('observation controls must not run a profiler')
     if not re.fullmatch(r'(put-(1k|10k)|range-1k|list-1k)-(leader|balanced)-(c[1-9][0-9]*|open)', CASE):
         raise ValueError('invalid workload-size-ingress-mode case')
     if os.environ.get('PROFILE','none') not in ['none','cpu','trace']:
@@ -338,7 +369,8 @@ def main():
                 planned.append({'case':CASE,'kind':kind,'rep':rep,'rate':rate or 0,
                                 'path':f'{CASE}/{label}/load.json'})
     (OUT/'plan.json').write_text(json.dumps({'case':CASE,'reps':REPS,'targets':targets,'rates':rates,
-       'duration':DURATION,'warmup':WARMUP,'profile':os.environ.get('PROFILE','none'),'windows':planned},indent=2))
+       'duration':DURATION,'warmup':WARMUP,'profile':os.environ.get('PROFILE','none'),
+       'observation_control':OBSERVATION_CONTROL,'windows':planned},indent=2))
     failures = []
     for rep in range(1, REPS+1):
         order = targets if rep % 2 else targets[::-1]

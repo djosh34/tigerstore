@@ -61,6 +61,11 @@ def disk_node(before, after, kind, nops):
                  'write_bytes':after['files']['write']['bytes']-before['files']['write']['bytes'],
                  'write_wall_s':(after['files']['write']['wall_ns_sum']-before['files']['write']['wall_ns_sum'])/1e9,
                  'fsync_errors':b['errors']-a['errors']}
+        an, bn = before.get('node') or {}, after.get('node') or {}
+        if 'persist_jobs_issued' in an and 'persist_jobs_issued' in bn:
+            jobs = bn['persist_jobs_issued']-an['persist_jobs_issued']
+            other['persist_jobs'] = jobs
+            other['jobs_per_fsync'] = jobs/count if count else None
     return {'fsyncs':count, 'ops_per_fsync':nops/count if count else None,
             'fsync_mean_us':wall/count if count else None,
             'fsync_p50_upper_us':hist_upper(bounds,counts,.5),
@@ -140,7 +145,9 @@ def one(path):
     load = json.loads(path.read_text())
     audit = json.loads(path.with_name('audit.json').read_text()) if path.with_name('audit.json').exists() else {'valid':False}
     row = {'path':str(path.parent), 'case':path.parent.parent.name,
-           'kind':load['label'], 'valid':load['valid'] and audit['valid']}
+           'kind':load['label'], 'valid':load['valid'] and audit['valid'],
+           'observation_control':audit.get('observation_control',False),
+           'physical_counter_fence':audit.get('physical_counter_fence',True)}
     for k in ['ops','cohort','cohort_failed','unsent','throughput','offered_rate','client_cores','client_cpu_us_per_op']:
         row[k] = load.get(k)
     flatten('latency_',load['latency_us'],row)
@@ -165,13 +172,17 @@ def one(path):
         samples=[s for s in samples if shape['start_unix_ns'] <= s['wall_unix_ns'] <= shape['done_unix_ns']]
     row['samples'] = len(samples)
     row['fenced_wall_s'] = b['monotonic']-a['monotonic']
+    for i,(x,y) in enumerate(zip(a['proc'],b['proc'])):
+        assert x['starttime']==y['starttime']
+        row[f'n{i}_fenced_cpu_us_op'] = (y['utime']+y['stime']-x['utime']-x['stime'])*10000/load['cohort']
+    if row['observation_control']:
+        # Deliberately omit all disk/fsync/owner-queue claims from controls.
+        # Their common native-applied fence does not drain all disk jobs.
+        return row
     flatten('disk_', disk_window(a,b,samples),row)
     for i,(before,after) in enumerate(zip(a['nodes'],b['nodes'])):
         flatten(f'n{i}_', disk_node(before,after,load['label'],load['cohort']),row)
         flatten(f'n{i}_q_', queues(samples,load['label'],i),row)
-        x,y = a['proc'][i],b['proc'][i]
-        assert x['starttime']==y['starttime']
-        row[f'n{i}_fenced_cpu_us_op'] = (y['utime']+y['stime']-x['utime']-x['stime'])*10000/load['cohort']
     return row
 
 
@@ -218,7 +229,9 @@ def main():
         s={'case':case,'kind':kind,'rate':rate,'repetitions':len(values),'expected_repetitions':expected_count,
            'complete':expected_count>0 and len(values)==expected_count,
            'valid_windows':sum(1 for x in values if x.get('window_valid',x['valid'])),
-           'all_valid':all(x['valid'] for x in values) and expected_count>0 and len(values)==expected_count}
+           'all_valid':all(x['valid'] for x in values) and expected_count>0 and len(values)==expected_count,
+           'observation_control':any(x.get('observation_control',False) for x in values),
+           'physical_counter_fence':all(x.get('physical_counter_fence',False) for x in values)}
         for k in fields:
             v=[x[k] for x in values if k in x and isinstance(x[k],(float,int)) and not isinstance(x[k],bool)]
             if v:
