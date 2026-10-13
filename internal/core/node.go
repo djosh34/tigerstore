@@ -105,6 +105,9 @@ type Effects struct {
 	Send    []*raftpb.Message
 	Replies []Reply
 	Watch   []WatchResponse
+	// Expired lists the leases that expired as this node applied the log.
+	// Drivers may log them; the simulator checks their timing.
+	Expired []int64
 }
 
 // pending is a request that waits for its entry to apply or for a read
@@ -189,7 +192,7 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	for _, e := range rec.Entries {
 		logBytes += wal.EntryRecordBytes(e)
 	}
-	state := NewState(minLeaseTTL(cfg))
+	state := NewState(MinLeaseTTL(cfg))
 	return &Node{
 		logBytes: logBytes,
 		cfg:      cfg,
@@ -203,9 +206,9 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	}, nil
 }
 
-// minLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
+// MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
 // up to whole seconds; 2 s with the default timeouts.
-func minLeaseTTL(cfg Config) int64 {
+func MinLeaseTTL(cfg Config) int64 {
 	ticks := int64(3 * cfg.ElectionTicks / 2)
 	tps := int64(cfg.TicksPerSecond)
 	return (ticks + tps - 1) / tps
@@ -697,6 +700,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
 		n.fillHeader(h.GetHeader())
+	}
+	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
+		n.out.Expired = append(n.out.Expired, e.ID)
 	}
 	if n.isLeader {
 		switch op := op.(type) {

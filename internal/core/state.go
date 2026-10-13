@@ -19,18 +19,31 @@ import (
 // maxLeaseTTL is etcd's largest lease TTL in seconds.
 const maxLeaseTTL = 9_000_000_000
 
-// lease is a granted lease and the keys attached to it. expiry and
-// revokeAt are the leader's: the tick the lease expires at, 0 when not
-// armed, and the tick it last proposed the expiry revoke.
+// lease is a granted lease, the keys attached to it, and the number of
+// keepalives applied to it. expiry and revokeAt are not replicated state:
+// only the leader sets them, to the tick the lease expires at (0 when not
+// armed) and the tick it last proposed the lease's expiry.
 type lease struct {
 	id, ttl  int64
 	keys     map[string]struct{}
+	renewals int64
 	expiry   int64
 	revokeAt int64
 }
 
+// newExpiry is the leader's decision that a lease expired. It goes in the
+// log as a LeaseCheckpoint, etcd's only message with a lease ID and a
+// number: Remaining_TTL carries the count of keepalives the leader had
+// applied when it decided. The expiry applies only if that count is still
+// current, so a keepalive that commits first keeps the lease, on every
+// replica.
+func newExpiry(id, renewals int64) *pb.LeaseCheckpoint {
+	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: renewals}
+}
+
 // State is the replicated state machine: the key index and the leases.
-// Every replica applies the same log to it and ends in the same state.
+// Every replica applies the same log to it and ends in the same state,
+// apart from the leader's lease expiry times, which are not replicated.
 type State struct {
 	kv     *mvcc.Store
 	leases map[int64]*lease
@@ -87,7 +100,7 @@ func (st *State) track() {
 }
 
 // Apply runs one committed write and returns its response with the header
-// revision set. Errors from etcd's set of answers leave the state unchanged
+// revision set. An expiry that no longer applies returns nil and nil. Errors from etcd's set of answers leave the state unchanged
 // and are the same on every replica; any other error is a bug.
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	st.changes = nil
@@ -128,8 +141,17 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		resp := &pb.LeaseKeepAliveResponse{Header: header(st.kv.Rev()), ID: op.ID}
 		if l, ok := st.leases[op.ID]; ok {
 			resp.TTL = l.ttl
+			l.renewals++
 		}
 		return resp, nil
+	case *pb.LeaseCheckpoint:
+		// An expiry. A nil response means it no longer applies: the lease
+		// is gone or was renewed after the leader decided.
+		l, ok := st.leases[op.ID]
+		if !ok || l.renewals != op.Remaining_TTL {
+			return nil, nil
+		}
+		return st.revoke(op.ID)
 	}
 	return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
 }

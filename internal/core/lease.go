@@ -6,8 +6,9 @@ import (
 
 // Only the leader arms lease expiry, in ticks of its own clock, as etcd's
 // primary lessor does. When a lease expires, the leader proposes its
-// revoke like any write, so every replica deletes the keys at the same
-// revision. A new leader gives every lease its full TTL again, so a leader
+// expiry like any write, so every replica deletes the keys at the same
+// revision. The expiry applies only if no keepalive was applied to the
+// lease after the leader decided (newExpiry). A new leader gives every lease its full TTL again, so a leader
 // change can make a lease live longer, never shorter.
 
 // leaseRetryTicks is how long the leader waits for an expiry revoke to
@@ -57,13 +58,13 @@ func (n *Node) expireLeases() {
 			continue
 		}
 		l.revokeAt = n.now
-		n.proposeInternal(&pb.LeaseRevokeRequest{ID: l.id})
+		n.proposeInternal(newExpiry(l.id, l.renewals))
 	}
 }
 
 // proposeInternal queues a write that no client waits for. It carries
 // request ID 0, which no client request has.
-func (n *Node) proposeInternal(op *pb.LeaseRevokeRequest) {
+func (n *Node) proposeInternal(op *pb.LeaseCheckpoint) {
 	n.proposals = append(n.proposals, &pending{req: Request{ID: 0, Op: op}})
 }
 

@@ -113,3 +113,30 @@ func TestLeaseExpiry(t *testing.T) {
 		t.Fatalf("leases after expiry = %v", leases)
 	}
 }
+
+// TestKeepAliveBeforeExpiryKeepsTheLease puts a keepalive and the leader's
+// expiry decision into one batch: the keepalive applies first, answers
+// with the full TTL, and the expiry then no longer applies.
+func TestKeepAliveBeforeExpiryKeepsTheLease(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	s.ok(1, &pb.LeaseGrantRequest{ID: 1, TTL: 2})
+	s.ok(2, &pb.PutRequest{Key: []byte("a"), Value: []byte("1"), Lease: 1})
+	for range 19 {
+		s.n.Tick()
+		s.run()
+	}
+	s.n.Submit(Request{ID: 3, Op: &pb.LeaseKeepAliveRequest{ID: 1}})
+	s.n.Tick()
+	var ka *pb.LeaseKeepAliveResponse
+	for _, r := range s.run() {
+		if r.ID == 3 {
+			ka, _ = r.Resp.(*pb.LeaseKeepAliveResponse)
+		}
+	}
+	if ka == nil || ka.TTL != 2 {
+		t.Fatalf("keepalive = %v", ka)
+	}
+	if s.keys() != "a " || len(s.n.Leases()) != 1 {
+		t.Fatalf("after a keepalive answered with TTL 2: keys %q, leases %v", s.keys(), s.n.Leases())
+	}
+}
