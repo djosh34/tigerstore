@@ -376,6 +376,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 			}
+			if n.observation != nil {
+				n.observation.persistJobsCompleted += uint64(len(done.jobs))
+			}
 		case toDisk <- next:
 			backlog[0] = nil
 			backlog = backlog[1:]
@@ -388,6 +391,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, eff.Persist)
+			if n.observation != nil {
+				n.observation.persistJobsIssued += uint64(len(eff.Persist))
+			}
 		}
 		for _, m := range eff.Send {
 			t.Send(m)

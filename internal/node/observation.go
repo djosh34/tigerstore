@@ -16,6 +16,9 @@ type observationState struct {
 	request chan struct{}
 	node    atomic.Pointer[NodeObservation]
 	peers   atomic.Pointer[peerObservation]
+	// Only the committer reads or writes these. A job is issued when its
+	// effects enter the backlog and completed after its durable callback.
+	persistJobsIssued, persistJobsCompleted uint64
 }
 
 // NodeObservation is an immutable copy published by the committer between
@@ -28,6 +31,8 @@ type NodeObservation struct {
 	PersistQueueBatches   int    `json:"persist_queue_batches"`
 	PersistBacklogBatches int    `json:"persist_backlog_batches"`
 	PersistedGroups       int    `json:"persisted_groups"`
+	PersistJobsIssued     uint64 `json:"persist_jobs_issued"`
+	PersistJobsCompleted  uint64 `json:"persist_jobs_completed"`
 	core.Observation
 	sampledAt time.Time
 }
@@ -112,6 +117,7 @@ func (n *Node) publishObservation(backlog int) {
 		Sequence: sequence, SampledUnixNS: now.UnixNano(), sampledAt: now,
 		InboxEvents: len(n.inbox), PersistQueueBatches: len(n.persistQ),
 		PersistBacklogBatches: backlog, PersistedGroups: len(n.persisted),
+		PersistJobsIssued: n.observation.persistJobsIssued, PersistJobsCompleted: n.observation.persistJobsCompleted,
 		Observation: n.core.Observe(),
 	})
 }

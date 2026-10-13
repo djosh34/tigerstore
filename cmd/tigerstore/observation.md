@@ -34,7 +34,8 @@ files:
 node: null before the first owner snapshot, otherwise:
   sequence, sampled_unix_ns,
   inbox_events, persist_queue_batches, persist_backlog_batches,
-  persisted_groups, pending_proposals, queued_writes, queued_reads,
+  persisted_groups, persist_jobs_issued, persist_jobs_completed,
+  pending_proposals, queued_writes, queued_reads,
   read_index_reads, read_index_batches, leader, term, applied, revision,
   raft_progress: array sorted by tracked member Raft ID, each element:
     {id, match, next, state, recent_active, msg_app_flow_paused,
@@ -97,6 +98,35 @@ owner. These counts exclude jobs already drained into an active disk group.
 They are batch/group counts, not job, entry or byte totals. Channel lengths
 can change during a sample, so their sum is approximate.
 
+`persist_jobs_issued` and `persist_jobs_completed` are monotonic owner-only
+job counters, starting at zero when the node is constructed. Issued counts
+each job in Process effects when that effects batch enters the owner backlog.
+Completed counts each successfully synced job after the owner calls
+`core.Persisted` for its completion group. A failed WAL sync never counts as
+completed. These include hard-state-only jobs, not only entry appends.
+They exclude file operations during WAL recovery and do not count fsyncs.
+
+Their difference covers every issued job in the owner backlog, persist
+channel, active disk group or completion channel. The disk goroutine never
+updates these counters. A completion input and its following Process run in
+one normal owner turn. Any newly generated persist jobs enter the backlog
+and increment issued before another observation can be selected. Moving an
+existing batch to the disk channel changes neither counter. Sampling cannot
+see completed incremented without the corresponding follow-up Process and
+issued accounting. Equality in one fresh sample therefore means all jobs
+issued by that sample's owner boundary have had their durable callbacks.
+
+For an external fence, first obtain Maintenance.Status, then require a newer
+owner snapshot with the target applied index and revision, plus
+`persist_jobs_issued == persist_jobs_completed`. Require that condition in
+two distinct fresh owner samples, while the measured cohort is fully drained
+and no new client requests are admitted. Check process identity and liveness
+outside this endpoint. Do not substitute applied-equals-commit, empty channel
+lengths, the HTTP capture timestamp or an elapsed sleep for these checks.
+Equality describes that sampled boundary, not future Raft traffic or a
+cluster-wide durability proof. It does not fence peer buffers or filesystem
+operations outside the issued-job pipeline.
+
 `pending_proposals` counts the core's live waiting-write map, including
 writes not yet proposed and writes awaiting apply. It excludes forwarded
 writes originated on another node. `queued_writes` counts physical proposal
@@ -158,7 +188,9 @@ the original adapter methods. The peer send/write path is unchanged.
 Enabled file calls add two clock reads, a bounded bucket search, three atomic
 increments, and one more increment each for positive bytes and an error.
 The 100 ms sampler adds a goroutine, timer, nonblocking request and atomic
-publication. Each owner sample allocates an immutable object, copies lengths/gauges
+publication. Enabled job accounting adds one owner-local integer addition
+per emitted persist effects batch and per successful completion group. Off
+mode takes the nil branch and performs no counter additions. Each owner sample allocates an immutable object, copies lengths/gauges
 and walks the read-batch list once, not its requests or keys. The added
 Raft progress hook calls `RawNode.Status()`, which clones the entire Raft
 membership configuration and, on leaders, the whole progress map and each
