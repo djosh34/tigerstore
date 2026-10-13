@@ -38,7 +38,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	res.FinalRev = final.Rev()
-	ents, err := s.nodes[0].core.AppliedEntries()
+	ents, err := s.live()[0].core.AppliedEntries()
 	if err != nil {
 		return err
 	}
@@ -85,9 +85,24 @@ func (s *Sim) check(res *Result) error {
 	if err := s.checkLeasesExpire(res); err != nil {
 		return err
 	}
+	if err := s.checkColdRestarts(res); err != nil {
+		return err
+	}
 	live := 0
+	liveFrom := s.healAt + s.cfg.LiveAfter
+	if s.cfg.LiveFrom > 0 {
+		liveFrom = s.cfg.LiveFrom
+	}
 	for _, r := range res.History {
-		if r.Call < s.healAt+s.cfg.LiveAfter {
+		if r.Call < liveFrom {
+			continue
+		}
+		if s.nodes[r.Node].stalledAt(r.Call) {
+			continue
+		}
+		if s.nodes[r.Node].fenced && errors.Is(r.Err, errConnRefused) {
+			// The node was fenced for good; a real client moves on to
+			// another endpoint.
 			continue
 		}
 		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
@@ -102,20 +117,32 @@ func (s *Sim) check(res *Result) error {
 	return nil
 }
 
+// live returns the nodes that are not fenced. At most one is.
+func (s *Sim) live() []*node {
+	var out []*node
+	for _, n := range s.nodes {
+		if !n.fenced {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // converged checks that all nodes applied the same log to the same state
 // and returns that state.
 func (s *Sim) converged() (*mvcc.Store, error) {
-	first := s.nodes[0]
-	for _, n := range s.nodes {
+	live := s.live()
+	for _, n := range live {
 		if !n.up {
 			return nil, fmt.Errorf("node %d is down at the end", n.id)
 		}
 	}
+	first := live[0]
 	want, err := first.core.AppliedEntries()
 	if err != nil {
 		return nil, err
 	}
-	for _, n := range s.nodes[1:] {
+	for _, n := range live[1:] {
 		if n.core.Applied() != first.core.Applied() {
 			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, n.core.Applied(), first.id, first.core.Applied())
 		}
@@ -548,7 +575,7 @@ func (s *Sim) checkLeasesExpire(res *Result) error {
 			last[req.ID] = max(last[req.ID], r.Call)
 		}
 	}
-	for _, id := range s.nodes[0].core.Leases() {
+	for _, id := range s.live()[0].core.Leases() {
 		t, known := last[id]
 		// A lease from an ambiguous grant has an ID no client learned.
 		if known && t < s.endAt-leaseGrace {

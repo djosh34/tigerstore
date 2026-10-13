@@ -60,7 +60,7 @@ func TestSeeds(t *testing.T) {
 				t.Fatalf("seed %d is not deterministic: trace %016x, then %016x", seed, a.Trace, b.Trace)
 			}
 			st := a.Stats
-			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.OK < 200 || len(a.Log) < 50 {
+			if st.Crashes == 0 || st.LinkChanges == 0 || st.Compactions == 0 || st.Revokes == 0 || st.ColdRestarts < 2 || st.OK < 200 || len(a.Log) < 50 {
 				t.Fatalf("seed %d did too little to test anything: %+v, %d committed writes", seed, st, len(a.Log))
 			}
 			checkers(t, a)
@@ -129,5 +129,23 @@ func TestLinearizable(t *testing.T) {
 			}
 			t.Logf("%d ops checked in %v", len(h.Ops), time.Since(start))
 		})
+	}
+}
+
+// TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
+// with no other fault. The leader still heartbeats, so only its own
+// watchdog can make way: every call that starts 10 election timeouts after
+// the stall must succeed.
+func TestStalledLeaderIsReplaced(t *testing.T) {
+	for seed := uint64(1); seed <= 3; seed++ {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.StallLeaderAt = 5 * Second
+		cfg.LiveFrom = cfg.StallLeaderAt + 10*Second
+		cfg.Duration = 25 * Second
+		res := run(t, cfg)
+		if res.Stats.StalledStops == 0 {
+			t.Fatalf("seed %d: the stalled leader never stopped", seed)
+		}
 	}
 }

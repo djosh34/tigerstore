@@ -49,6 +49,9 @@ type Disk struct {
 	// Fault, if set, runs before every operation. A non-nil result fails
 	// the operation without changing anything.
 	Fault func(op Op, name string) error
+
+	// short, when set, makes the next write a short one.
+	short *rand.Rand
 }
 
 // New returns an empty disk.
@@ -80,6 +83,61 @@ func (d *Disk) Crash(rng *rand.Rand) {
 		f.cut = false
 		d.names[name] = f
 	}
+}
+
+// Durable returns a new disk that holds only this disk's durable state, as
+// a copy taken by pulling the power.
+func (d *Disk) Durable() *Disk {
+	c := New()
+	for _, name := range sortedNames(d.durable) {
+		f := d.durable[name]
+		g := &file{data: slices.Clone(f.durable), durable: slices.Clone(f.durable)}
+		c.names[name] = g
+		c.durable[name] = g
+	}
+	return c
+}
+
+// Corrupt overwrites a few synced bytes in a random file, like a write that
+// landed at the wrong place. It keeps away from the last tail bytes of each
+// file, where damage looks the same as a torn write. It reports whether it
+// found a place.
+func (d *Disk) Corrupt(rng *rand.Rand, tail int) bool {
+	var names []string
+	for _, name := range sortedNames(d.durable) {
+		if len(d.durable[name].durable) > tail+64 {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return false
+	}
+	f := d.durable[names[rng.IntN(len(names))]]
+	at := 32 + rng.IntN(len(f.durable)-tail-32)
+	for i := at; i < at+8 && i < len(f.durable); i++ {
+		f.durable[i] ^= byte(1 + rng.IntN(255))
+	}
+	f.data = slices.Clone(f.durable)
+	f.cut = false
+	return true
+}
+
+// ErrNoSpace is the error of a write that ran out of space.
+var ErrNoSpace = errors.New("simfs: no space left on device")
+
+// ErrIO is the error of a failed write or sync.
+var ErrIO = errors.New("simfs: input/output error")
+
+// ClearFaults removes the fault hook and a pending short write.
+func (d *Disk) ClearFaults() {
+	d.Fault = nil
+	d.short = nil
+}
+
+// ShortWrite makes the next write store only a prefix of its bytes and fail
+// with ErrNoSpace, as a full disk does.
+func (d *Disk) ShortWrite(rng *rand.Rand) {
+	d.short = rng
 }
 
 // Erase removes everything, as if the disk was replaced.
@@ -196,6 +254,12 @@ func (h *Handle) ReadAll() ([]byte, error) {
 func (h *Handle) Write(p []byte) (int, error) {
 	if err := h.check(OpWrite); err != nil {
 		return 0, err
+	}
+	if rng := h.d.short; rng != nil {
+		h.d.short = nil
+		n := rng.IntN(len(p) + 1)
+		h.f.data = append(h.f.data, p[:n]...)
+		return n, ErrNoSpace
 	}
 	h.f.data = append(h.f.data, p...)
 	return len(p), nil
