@@ -49,6 +49,9 @@ jobs:
               if [ "$store" = etcd ]; then etcd="$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd"; fi
               ETCD=$etcd apiservertest/run.sh "$VERSION" -v -run "$RUN" >"$RUNNER_TEMP/$store-$i.log" 2>&1 || true
               echo "$store round $i: $(grep -c -- '^--- PASS' "$RUNNER_TEMP/$store-$i.log") passed, $(grep -c -- '^--- FAIL' "$RUNNER_TEMP/$store-$i.log") failed"
+              # A round that ran no test at all, such as one whose servers
+              # did not start, must not vanish from the totals.
+              if ! grep -q -- '^--- \(PASS\|FAIL\)' "$RUNNER_TEMP/$store-$i.log"; then echo "$store round $i ran no test" >>"$RUNNER_TEMP/empty.txt"; fi
             done
           done | tee "$RUNNER_TEMP/rounds.txt"
           {
@@ -56,8 +59,10 @@ jobs:
             for store in tigerstore etcd; do
               echo "- $store: $(cat "$RUNNER_TEMP"/$store-*.log | grep -c -- '^--- PASS') passed, $(cat "$RUNNER_TEMP"/$store-*.log | grep -c -- '^--- FAIL') failed"
             done
+            if [ -s "$RUNNER_TEMP/empty.txt" ]; then echo "- rounds that ran no test:"; sed 's/^/  - /' "$RUNNER_TEMP/empty.txt"; fi
           } >>"$GITHUB_STEP_SUMMARY"
           mkdir -p logs && cp "$RUNNER_TEMP"/*.log "$RUNNER_TEMP/rounds.txt" logs/
+          if [ -s "$RUNNER_TEMP/empty.txt" ]; then cat "$RUNNER_TEMP/empty.txt"; exit 1; fi
       - uses: actions/upload-artifact@v6
         if: always()
         with:

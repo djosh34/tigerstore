@@ -49,4 +49,6 @@ B05 and B16 target code this design lacks (snapshots, segment cleaning), so, as 
 
 `apiservertest/prepare` replaces the module's `testserver/test_server.go`, which embeds etcd, with an adapter that keeps the version's own client recorders. It also changes the one `*embed.Config` in `store_test.go` to the adapter's `Config`. Every `RunEtcd` call starts a fresh 3-node tigerstore over TLS with client certificates through `apiservertest/factory`, because deleting keys would not reset revisions, history, compaction or leases. The factory passes the progress interval the watch tests ask for as `--watch-progress-notify-interval`. `run.sh` fails if the tests still import `go.etcd.io/etcd/server/v3`.
 
+To tell a slow runner from a slow store, the factory starts a 3-node etcd with the same certificates and layout when `ETCD` names its binary, and the `apiserver-compare` workflow (started by hand) runs chosen tests many times against tigerstore and etcd v3.7.2 in turn in one job. It fails if a round ran no test.
+
 No test is skipped. A test that cannot apply to a non-etcd server would be listed here with the reason; none is so far.

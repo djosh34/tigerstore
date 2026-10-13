@@ -28,9 +28,13 @@ import (
 	"time"
 )
 
-// stopTimeout is how long a node may take to stop after SIGINT: etcd can
-// take several seconds. The adapter waits 10 s for the factory.
-const stopTimeout = 8 * time.Second
+// stopTimeout is how long a tigerstore node may take to stop after
+// SIGINT. etcd gets etcdStopTimeout: it can take several seconds. The
+// adapter waits 10 s for the factory.
+const (
+	stopTimeout     = 4 * time.Second
+	etcdStopTimeout = 8 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -86,20 +90,20 @@ func run() error {
 		// A node must not outlive a factory that is killed.
 		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 		if err := cmd.Start(); err != nil {
-			return errors.Join(err, stop(nodes, exited, len(nodes)))
+			return errors.Join(err, stop(nodes, exited, len(nodes), etcd != ""))
 		}
 		nodes = append(nodes, cmd)
 		go func() { exited <- cmd.Wait() }()
 	}
 	if _, err := fmt.Fprintln(os.Stdout, strings.Join(endpoints, ",")); err != nil {
-		return errors.Join(err, stop(nodes, exited, len(nodes)))
+		return errors.Join(err, stop(nodes, exited, len(nodes), etcd != ""))
 	}
 	select {
 	case <-sigs:
-		return stop(nodes, exited, len(nodes))
+		return stop(nodes, exited, len(nodes), etcd != "")
 	case err := <-exited:
 		// A node that stops on its own fails the test that uses it.
-		return errors.Join(fmt.Errorf("a node stopped before the test ended: %w", err), stop(nodes, exited, len(nodes)-1))
+		return errors.Join(fmt.Errorf("a node stopped before the test ended: %w", err), stop(nodes, exited, len(nodes)-1, etcd != ""))
 	}
 }
 
@@ -125,36 +129,38 @@ func freePorts(n int) ([]int, error) {
 }
 
 // stop sends every node SIGINT and waits for the running ones to exit,
-// killing all of them if that takes longer than stopTimeout.
-func stop(nodes []*exec.Cmd, exited chan error, running int) error {
+// killing all of them if that takes longer than stopTimeout. tigerstore
+// must exit 0; etcd, which ends on SIGINT itself, may also exit by it.
+func stop(nodes []*exec.Cmd, exited chan error, running int, etcd bool) error {
+	limit := stopTimeout
+	if etcd {
+		limit = etcdStopTimeout
+	}
 	for _, cmd := range nodes {
 		_ = cmd.Process.Signal(os.Interrupt) // fails only for a node that already exited
 	}
 	var errs []error
-	timeout := time.After(stopTimeout)
+	timeout := time.After(limit)
 	for range running {
 		select {
 		case err := <-exited:
-			if !interrupted(err) {
+			if err != nil && (!etcd || !interrupted(err)) {
 				errs = append(errs, err)
 			}
 		case <-timeout:
 			for _, cmd := range nodes {
 				_ = cmd.Process.Kill()
 			}
-			return errors.Join(append(errs, fmt.Errorf("a node did not stop within %v", stopTimeout))...)
+			return errors.Join(append(errs, fmt.Errorf("a node did not stop within %v", limit))...)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// interrupted reports whether a node exited cleanly or was ended by the
-// SIGINT it was sent, as etcd is.
+// interrupted reports whether a node was ended by the SIGINT it was sent,
+// as etcd is.
 func interrupted(err error) bool {
 	var exit *exec.ExitError
-	if err == nil {
-		return true
-	}
 	if !errors.As(err, &exit) {
 		return false
 	}
