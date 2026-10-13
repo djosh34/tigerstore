@@ -140,6 +140,16 @@ once() {
 		# did not change during the run.
 		"$here/cluster.sh" check "$dir" || status=$?
 	fi
+	# Keep logs and a post-run memory/disk sample outside the CPU window.
+	for node in 1 2 3; do
+		cp "$dir/n$node.log" "$out/$bench/$target-$mode-$rep-n$node.log" || status=1
+	done
+	{
+		echo "target=$target mode=$mode rep=$rep"
+		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz
+		free -b
+		du -sb "$dir"
+	} >"$out/$bench/$target-$mode-$rep.resources" || status=1
 	"$here/cluster.sh" stop "$dir"
 	return "$status"
 }

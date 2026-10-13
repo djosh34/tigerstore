@@ -26,7 +26,6 @@ type config struct {
 	endpoints []string
 	workload  string
 	mix       string
-	owner     int // mixed namespace owner, internal only
 	valueSize int
 	keys      int
 	conns     int

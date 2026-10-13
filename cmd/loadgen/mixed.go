@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -45,11 +46,12 @@ type mixedKey struct {
 	create, mod, version int64
 	busy                 bool
 	group                int
+	liveIndex            int // index in the owner's live-key slice
 }
 
 type mixedGroup struct {
 	prefix  []byte
-	keys    []*mixedKey // sorted by key, including tombstones
+	keys    []*mixedKey // insertion order, including tombstones
 	active  int
 	listing bool
 }
@@ -60,10 +62,13 @@ type mixedCall struct {
 	group *mixedGroup
 	value []byte
 	batch []*mixedKey
+	floor int64 // latest acknowledged cluster revision when this call started
 }
 
 type mixedLoad struct {
 	wk           *worker
+	ownerID      int
+	resources    []string
 	cfg          config
 	writes       *revisionSet
 	ledger       *mixedLedger
@@ -92,7 +97,7 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 	if err != nil {
 		return nil, err
 	}
-	w := &mixedLoad{wk: wk, cfg: cfg, writes: writes, ledger: ledger, pool: *makeValues(33365, cfg.seed+uint64(owner)), calls: make(map[uint32]mixedCall), mix: mix}
+	w := &mixedLoad{wk: wk, ownerID: owner, resources: k8sResources(), cfg: cfg, writes: writes, ledger: ledger, pool: *makeValues(33365, cfg.seed+uint64(owner)), calls: make(map[uint32]mixedCall), mix: mix}
 	resources := k8sResources()
 	// About 1,024 namespaces across the connections. A common resource has
 	// more than a 500-key page at 1M, so LIST tests count and more too.
@@ -103,7 +108,9 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 		}
 	}
 	for id := owner; id < cfg.keys; id += cfg.conns {
-		w.live = append(w.live, w.newKey(owner, namespaces))
+		k := w.newKey(owner, namespaces)
+		k.liveIndex = len(w.live)
+		w.live = append(w.live, k)
 	}
 	w.preload = len(w.live)
 	return w, nil
@@ -112,7 +119,7 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 func (w *mixedLoad) newKey(owner, namespaces int) *mixedKey {
 	bin := drawBin(w.wk.rng, "")
 	resource := k8sSizes[bin].resource
-	resources := k8sResources()
+	resources := w.resources
 	ns := w.next % namespaces
 	group := slices.Index(resources, resource)*namespaces + ns
 	k := &mixedKey{key: mixedName(resource, owner, ns, w.next), bin: bin, group: group}
@@ -199,7 +206,7 @@ func (w *mixedLoad) choose() *mixedCall {
 	return call
 }
 
-func (w *mixedLoad) owner() int { return w.cfg.owner }
+func (w *mixedLoad) owner() int { return w.ownerID }
 
 func (w *mixedLoad) start(c *conn, st *stream) bool {
 	if w.pending == nil {
@@ -234,6 +241,7 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 	if !c.canStart(tpl, w.cfg.streams) {
 		return false
 	}
+	call.floor = w.ledger.revision.Load()
 	c.startStream(st, tpl)
 	w.calls[st.id] = *call
 	call.key.busy = true
@@ -314,10 +322,11 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	if err != nil {
 		return err
 	}
-	if rev < k.mod {
+	if rev < k.mod || rev < call.floor {
 		return errors.New("mixed response revision went backwards")
 	}
 	if call.op == 0 {
+		w.ledger.revisionMax(rev)
 		return checkMixedRange(m, []*mixedKey{k}, 1)
 	}
 	if call.op == 1 {
@@ -327,6 +336,12 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 				live = append(live, k)
 			}
 		}
+		for _, k := range live {
+			if k.mod > rev {
+				return errors.New("LIST returned a key above its header revision")
+			}
+		}
+		w.ledger.revisionMax(rev)
 		slices.SortFunc(live, func(a, b *mixedKey) int { return bytes.Compare(a.key, b.key) })
 		return checkMixedRange(m, live, 500)
 	}
@@ -371,12 +386,13 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 	if responses != 1 {
 		return errors.New("mixed txn did not return one operation")
 	}
-	if rev <= k.mod {
+	if rev <= k.mod || rev <= call.floor {
 		return errors.New("mixed write did not advance revision")
 	}
 	if err := w.writes.add(rev); err != nil {
 		return err
 	}
+	w.ledger.revisionMax(rev)
 	prev := *k
 	if call.op == 4 {
 		k.value = nil
@@ -393,17 +409,16 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 		k.value = call.value
 	}
 	w.ledger.expect(rev, k, &prev, call.op == 4, st.intended)
-	if call.op == 4 {
-		for i, live := range w.live {
-			if live == k {
-				w.live[i] = w.live[len(w.live)-1]
-				w.live = w.live[:len(w.live)-1]
-				break
-			}
-		}
+	switch call.op {
+	case 4:
+		last := w.live[len(w.live)-1]
+		w.live[k.liveIndex] = last
+		last.liveIndex = k.liveIndex
+		w.live = w.live[:len(w.live)-1]
 		k.mod = 0
 		w.absent = append(w.absent, k)
-	} else if call.op == 3 {
+	case 3:
+		k.liveIndex = len(w.live)
 		w.live = append(w.live, k)
 	}
 	return nil
@@ -528,6 +543,7 @@ type (
 	}
 	mixedLedger struct {
 		mu                 sync.Mutex
+		revision           atomic.Int64
 		expected, observed map[int64]mixedEvent
 		errs               []error
 		events             int64
@@ -562,6 +578,14 @@ func eventDigest(k, prev *mixedKey, deleted bool) [32]byte {
 		m.sub(3, mixedKV(prev))
 	}
 	return sha256.Sum256(m.b)
+}
+
+func (l *mixedLedger) revisionMax(rev int64) {
+	for old := l.revision.Load(); old < rev; old = l.revision.Load() {
+		if l.revision.CompareAndSwap(old, rev) {
+			return
+		}
+	}
 }
 
 func (l *mixedLedger) pair(rev int64, e mixedEvent, expected bool) {
@@ -716,9 +740,7 @@ func runMixed(cfg config) (*result, error) {
 		}
 		wk := newWorker(c, cfg.seed+uint64(i))
 		workers = append(workers, wk)
-		local := cfg
-		local.owner = i
-		w, err := newMixedLoad(wk, local, i, writes, ledger)
+		w, err := newMixedLoad(wk, cfg, i, writes, ledger)
 		if err != nil {
 			return nil, err
 		}
@@ -756,6 +778,7 @@ func runMixed(cfg config) (*result, error) {
 			revision = max(revision, k.mod)
 		}
 	}
+	ledger.revision.Store(revision)
 	for i, r := range k8sResources() {
 		c, err := dial(cfg.endpoints[i%len(cfg.endpoints)])
 		if err != nil {

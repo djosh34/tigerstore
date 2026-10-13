@@ -169,7 +169,25 @@ func report(w io.Writer, dir string) error {
 					ms(rt, watchField(func(r result) float64 { return r.Watch.Latency.P99 })))
 			}
 		}
-		p("\nEvent latency runs from the put's scheduled send time to the event's arrival at the watcher.\n")
+		p("\n| Watch benchmark | Store | Mode | Mean / p90 / p99.9 / max event ms | Server CPU us/event | Runs |\n")
+		p("|---|---|---|---|---|---|\n")
+		for _, bench := range slices.Compact(watches) {
+			for _, target := range targets {
+				for _, mode := range []string{"max", "rate"} {
+					rs := all[key{bench, target, mode}]
+					if len(rs) == 0 {
+						continue
+					}
+					p("| %s | %s | %s | %s / %s / %s / %s | %s | %d |\n", bench, target, mode,
+						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Mean })),
+						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P90 })),
+						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.P999 })),
+						ms(rs, watchField(func(r result) float64 { return r.Watch.Latency.Max })),
+						num(rs, watchField(func(r result) float64 { return r.Watch.ServerCPUUsPerEvent }), "%.1f"), len(rs))
+				}
+			}
+		}
+		p("\nEvent latency runs from the mutation's scheduled send time to the event's arrival at the watcher.\n")
 	}
 
 	p("\n| Benchmark | Store | Mode | Server cores per node | Generator CPU us/op | Offered ops/s | Unsent | Mean / p90 / max latency ms | Runs |\n")
