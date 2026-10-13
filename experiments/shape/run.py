@@ -62,7 +62,7 @@ def fence(dirpath, kind, ports):
         if len(set(applied + committed)) == 1 and len(set(revs)) == 1:
             if kind == 'etcd':
                 # This gauge advances after WAL.Save, unlike applied status alone.
-                saved = [float(re.search(r'^etcd_server_proposals_committed_total ([^\\n]+)',
+                saved = [float(re.search(r'^etcd_server_proposals_committed_total (\S+)',
                          http(p, '/metrics'), re.M).group(1)) for p in ports]
                 if not all(x >= max(committed) for x in saved):
                     time.sleep(.1)
