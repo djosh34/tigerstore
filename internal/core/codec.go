@@ -31,8 +31,8 @@ const (
 
 var errBadBatch = errors.New("core: malformed batch")
 
-// encodeBatch packs writes into the data of one Raft entry. A Put in wire
-// form goes in as the client sent it; other writes are marshaled.
+// encodeBatch packs writes into the data of one Raft entry. A write in
+// wire form goes in as the client sent it; other writes are marshaled.
 func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 	buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))
 	for _, p := range ps {
@@ -66,6 +66,11 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 		if p.req.Op == nil {
 			buf = binary.AppendUvarint(buf, uint64(len(p.req.Put.Wire)))
 			buf = append(buf, p.req.Put.Wire...)
+			continue
+		}
+		if p.req.Wire != nil {
+			buf = binary.AppendUvarint(buf, uint64(len(p.req.Wire)))
+			buf = append(buf, p.req.Wire...)
 			continue
 		}
 		buf = binary.AppendUvarint(buf, uint64(proto.Size(p.req.Op)))
