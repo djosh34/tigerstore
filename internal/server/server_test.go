@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +40,8 @@ type cluster struct {
 type running struct {
 	addr string
 	stop func()
+	// stopNode stops the node but leaves its client port open.
+	stopNode func()
 }
 
 func freeAddr(t *testing.T) string {
@@ -114,11 +117,17 @@ func (c *cluster) start(id uint64) {
 	served := make(chan error, 1)
 	go func() { ran <- n.Run(ctx, tr) }()
 	go func() { served <- g.Serve(ln) }()
-	c.running[id] = &running{addr: ln.Addr().String(), stop: func() {
-		cancel()
-		if err := <-ran; err != nil {
-			t.Errorf("node %d: %v", id, err)
-		}
+	var once sync.Once
+	stopNode := func() {
+		once.Do(func() {
+			cancel()
+			if err := <-ran; err != nil {
+				t.Errorf("node %d: %v", id, err)
+			}
+		})
+	}
+	c.running[id] = &running{addr: ln.Addr().String(), stopNode: stopNode, stop: func() {
+		stopNode()
 		stopErr := g.Stop()
 		if err := errors.Join(stopErr, <-served, tr.Close()); err != nil {
 			t.Errorf("node %d: %v", id, err)

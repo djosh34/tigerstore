@@ -12,8 +12,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// method serves one gRPC method: a unary call or a bidirectional stream.
+// method serves one gRPC method. A request the node runs (op) is decoded
+// by the connection reader and handed to the node in a batch. Other unary
+// calls (unary) and bidirectional streams (stream) run in a goroutine.
 type method struct {
+	op     func() proto.Message
 	unary  func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
 	stream func(s *Server, st *stream) error
 }
@@ -23,15 +26,15 @@ type method struct {
 // Unimplemented servers do; Kubernetes 1.37 falls back from RangeStream on
 // exactly that code.
 var methods = map[string]*method{
-	"/etcdserverpb.KV/Range":              {unary: nodeCall[pb.RangeRequest]},
-	"/etcdserverpb.KV/Put":                {unary: nodeCall[pb.PutRequest]},
-	"/etcdserverpb.KV/DeleteRange":        {unary: nodeCall[pb.DeleteRangeRequest]},
-	"/etcdserverpb.KV/Txn":                {unary: nodeCall[pb.TxnRequest]},
-	"/etcdserverpb.KV/Compact":            {unary: nodeCall[pb.CompactionRequest]},
-	"/etcdserverpb.Lease/LeaseGrant":      {unary: nodeCall[pb.LeaseGrantRequest]},
-	"/etcdserverpb.Lease/LeaseRevoke":     {unary: nodeCall[pb.LeaseRevokeRequest]},
-	"/etcdserverpb.Lease/LeaseTimeToLive": {unary: nodeCall[pb.LeaseTimeToLiveRequest]},
-	"/etcdserverpb.Lease/LeaseLeases":     {unary: nodeCall[pb.LeaseLeasesRequest]},
+	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest]},
+	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest]},
+	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
+	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},
+	"/etcdserverpb.KV/Compact":            {op: newOp[pb.CompactionRequest]},
+	"/etcdserverpb.Lease/LeaseGrant":      {op: newOp[pb.LeaseGrantRequest]},
+	"/etcdserverpb.Lease/LeaseRevoke":     {op: newOp[pb.LeaseRevokeRequest]},
+	"/etcdserverpb.Lease/LeaseTimeToLive": {op: newOp[pb.LeaseTimeToLiveRequest]},
+	"/etcdserverpb.Lease/LeaseLeases":     {op: newOp[pb.LeaseLeasesRequest]},
 	"/etcdserverpb.Lease/LeaseKeepAlive":  {stream: (*Server).keepAlive},
 	"/etcdserverpb.Watch/Watch":           {stream: (*Server).watch},
 	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
@@ -62,20 +65,12 @@ func unmarshal(b []byte, m proto.Message) error {
 	return nil
 }
 
-// nodeCall decodes a request of type T and runs it on the node.
-func nodeCall[T any, P interface {
+// newOp returns a new request of type T.
+func newOp[T any, P interface {
 	*T
 	proto.Message
-}](ctx context.Context, s *Server, b []byte) (proto.Message, error) {
-	req := P(new(T))
-	if err := unmarshal(b, req); err != nil {
-		return nil, err
-	}
-	resp, err := s.n.Do(ctx, req)
-	if err != nil {
-		return nil, toStatus(err)
-	}
-	return resp, nil
+}]() proto.Message {
+	return P(new(T))
 }
 
 func memberList(_ context.Context, s *Server, b []byte) (proto.Message, error) {

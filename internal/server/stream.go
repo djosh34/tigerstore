@@ -18,9 +18,11 @@ import (
 
 // stream is one HTTP/2 stream: a gRPC call or an HTTP request.
 type stream struct {
-	c          *conn
-	id         uint32
-	ctx        context.Context // ends with the call: done, reset, timed out or connection closed
+	c  *conn
+	id uint32
+	// ctx ends with the call: done, reset, timed out or connection
+	// closed. Calls that the node runs have none.
+	ctx        context.Context
 	cancel     context.CancelFunc
 	rpc        *method // nil for HTTP requests
 	needLeader bool    // etcd's "hasleader" metadata
@@ -34,6 +36,8 @@ type stream struct {
 	// Reader only, until the unary handler starts: the request messages.
 	body []byte
 	msgs int
+	// reqSize is the size of a request the reader handed to the node.
+	reqSize int
 
 	// done is set once the server has queued the end of the stream; what
 	// the client still sends is dropped.
@@ -58,8 +62,12 @@ type stream struct {
 	queued        int  // message bytes in out
 	listed        bool // in c.ready
 	headersQueued bool
-	ended         bool // the writer took the end of the stream
-	reset         bool // the stream or connection is gone; output is dropped
+	// reqHeld and replyHeld are the call's charges; see chargeLocked.
+	// reqHeld is above 0 while the node has the request and has not
+	// answered.
+	reqHeld, replyHeld int
+	ended              bool // the writer took the end of the stream
+	reset              bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte
@@ -127,7 +135,7 @@ func (st *stream) receive(d []byte) error {
 }
 
 func (st *stream) deliver(m []byte) {
-	if st.rpc.unary != nil {
+	if st.rpc.stream == nil {
 		st.body = m
 		st.msgs++
 		return
@@ -254,38 +262,47 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 				return st.ctx.Err()
 			}
 		}
-		if msg != nil {
-			if !st.headersQueued {
-				st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
-				st.headersQueued = true
-			}
-			st.out = append(st.out, outItem{kind: outData, b: msg})
-			st.queued += len(msg)
-		}
-		if end && s != nil && st.rpc != nil && st.rpc.stream != nil {
-			// A stream that fails drops the replies its client has not
-			// taken yet, so the status goes out without waiting for them.
-			st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData })
-			st.queued = 0
-		}
-		if end {
-			var block []byte
-			switch {
-			case !st.headersQueued:
-				block = statusBlock(s, true)
-			case s == nil:
-				block = okTrailers
-			default:
-				block = statusBlock(s, false)
-			}
-			st.headersQueued = true
-			st.out = append(st.out, outItem{kind: outTrailers, b: block})
-		}
-		c.list(st)
+		st.pushLocked(msg, end, s)
 		c.mu.Unlock()
 		c.signal()
 		return nil
 	}
+}
+
+// pushLocked queues output as push does. c.mu is held and the caller
+// signals the writer.
+func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+	if st.reset || st.c.closed {
+		return
+	}
+	if msg != nil {
+		if !st.headersQueued {
+			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
+			st.headersQueued = true
+		}
+		st.out = append(st.out, outItem{kind: outData, b: msg})
+		st.queued += len(msg)
+	}
+	if end && s != nil && st.rpc != nil && st.rpc.stream != nil {
+		// A stream that fails drops the replies its client has not taken
+		// yet, so the status goes out without waiting for them.
+		st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData })
+		st.queued = 0
+	}
+	if end {
+		var block []byte
+		switch {
+		case !st.headersQueued:
+			block = statusBlock(s, true)
+		case s == nil:
+			block = okTrailers
+		default:
+			block = statusBlock(s, false)
+		}
+		st.headersQueued = true
+		st.out = append(st.out, outItem{kind: outTrailers, b: block})
+	}
+	st.c.list(st)
 }
 
 // pushHTTP queues a whole HTTP response.
@@ -314,6 +331,7 @@ func (c *conn) runUnary(st *stream) {
 		return
 	}
 	resp, err := st.rpc.unary(st.ctx, c.s, st.body)
+	st.body = nil
 	if err != nil {
 		st.finish(err)
 		return

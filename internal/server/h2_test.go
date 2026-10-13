@@ -353,6 +353,51 @@ func TestRawFrames(t *testing.T) {
 		t.Fatalf("key written by one put: %v %v", r, err)
 	}
 
+	// A finished put goes to the node even when the next frame is a bad
+	// header block or one that continues in a later frame.
+	waitStatus := func(id uint32) string {
+		t.Helper()
+		for {
+			f, err := fr.ReadFrame()
+			must(err)
+			if h, ok := f.(*http2.MetaHeadersFrame); ok && h.StreamID == id {
+				for _, hf := range h.RegularFields() {
+					if hf.Name == "grpc-status" {
+						return hf.Value
+					}
+				}
+			}
+		}
+	}
+	call(11, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("1")})
+	headers(13, "/etcdserverpb.KV/Put", hpack.HeaderField{Name: "X-Upper", Value: "bad"})
+	if got := waitStatus(11); got != "0" {
+		t.Fatalf("put before a bad header block: grpc-status %s", got)
+	}
+	call(15, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("next"), Value: []byte("2")})
+	hb.Reset()
+	must(enc.WriteField(hpack.HeaderField{Name: ":method", Value: "POST"}))
+	must(fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 17, BlockFragment: hb.Bytes()}))
+	if got := waitStatus(15); got != "0" {
+		t.Fatalf("put before a continued header block: grpc-status %s", got)
+	}
+	hb.Reset()
+	for _, f := range []hpack.HeaderField{
+		{Name: ":scheme", Value: "https"},
+		{Name: ":path", Value: "/etcdserverpb.KV/Put"},
+		{Name: ":authority", Value: "localhost"},
+		{Name: "content-type", Value: "application/grpc"},
+	} {
+		must(enc.WriteField(f))
+	}
+	must(fr.WriteContinuation(17, true, hb.Bytes()))
+	b, err := proto.Marshal(&pb.PutRequest{Key: []byte("next"), Value: []byte("3")})
+	must(err)
+	must(fr.WriteData(17, true, append([]byte{0, 0, 0, 0, byte(len(b))}, b...)))
+	if got := waitStatus(17); got != "0" {
+		t.Fatalf("put with a continued header block: grpc-status %s", got)
+	}
+
 	// Stopping the server sends GOAWAY before the connection closes.
 	go c.running[1].stop()
 	delete(c.running, 1)
@@ -362,10 +407,59 @@ func TestRawFrames(t *testing.T) {
 			t.Fatalf("connection closed without GOAWAY: %v", err)
 		}
 		if ga, ok := f.(*http2.GoAwayFrame); ok {
-			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 5 {
+			if ga.ErrCode != http2.ErrCodeNo || ga.LastStreamID < 17 {
 				t.Fatalf("GOAWAY %v", ga)
 			}
 			break
 		}
 	}
+}
+
+// TestNodeStopsUnderLoad stops a node while a connection has calls
+// waiting on it and keeps sending new ones as it stops: every call gets
+// an answer, none hangs.
+func TestNodeStopsUnderLoad(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 89)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
+	})
+	// Without the other two, writes wait for a quorum that never comes.
+	c.running[2].stop()
+	c.running[3].stop()
+	delete(c.running, 2)
+	delete(c.running, 3)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Go(func() {
+			// Waiting calls first, then a stream of reads and writes
+			// that runs into the stop.
+			for i := 0; ; i++ {
+				var err error
+				if i%2 == 0 {
+					_, err = kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("2")})
+				} else {
+					_, err = kv.Range(ctx, &pb.RangeRequest{Key: []byte("a"), Serializable: true})
+				}
+				if err == nil {
+					continue
+				}
+				if !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, rpctypes.ErrGRPCNoLeader) {
+					t.Errorf("call while the node stopped: %v", err)
+				}
+				if errors.Is(err, rpctypes.ErrGRPCStopped) || ctx.Err() != nil {
+					return
+				}
+			}
+		})
+	}
+	time.Sleep(100 * time.Millisecond)
+	c.running[1].stopNode()
+	wg.Wait()
 }

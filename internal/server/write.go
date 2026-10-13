@@ -34,7 +34,9 @@ func (c *conn) writeLoop() error {
 	var frames []wframe
 	var ctrl []ctrlFrame
 	var hdr []byte
+	nodeDone := c.s.n.Done()
 	for {
+		c.completeWaiting()
 		c.mu.Lock()
 		ctrl = append(ctrl[:0], c.ctrl...)
 		clear(c.ctrl)
@@ -48,6 +50,10 @@ func (c *conn) writeLoop() error {
 			}
 			select {
 			case <-c.wake:
+				continue
+			case <-nodeDone:
+				nodeDone = nil
+				c.nodeStopped()
 				continue
 			case <-c.ctx.Done():
 				return nil
@@ -182,6 +188,7 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 	if st.deadline != nil {
 		st.deadline.Stop()
 	}
+	c.releaseLocked(&st.replyHeld)
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}
