@@ -25,6 +25,7 @@ type config struct {
 	burstArm, burstRelease, burstReady, burstHealed                                   string
 	interval                                                                          time.Duration
 	burstWrites                                                                       int
+	readArm, readRelease, readReady, triggerFile                                      string
 }
 
 func main() {
@@ -71,6 +72,10 @@ func runCLI() error {
 	f.IntVar(&c.burstWrites, "burst-writes", 0, "unpaced sequential puts per client in the bounded burst, 0..16")
 	f.StringVar(&c.burstHealed, "burst-healed-file", "", "after burst, read only until controller heals the disk")
 	f.DurationVar(&c.interval, "interval", 0, "paced per-client interval; zero uses rate")
+	f.StringVar(&c.readArm, "read-arm-file", "", "controller arms a synchronized read burst")
+	f.StringVar(&c.readRelease, "read-release-file", "", "controller releases the read burst under ENOSPC")
+	f.StringVar(&c.readReady, "read-ready-file", "", "all read workers ready marker")
+	f.StringVar(&c.triggerFile, "trigger-file", "", "JSON endpoint for exactly one separately recorded trigger Put")
 	f.IntVar(&c.rate, "rate", 5, "maximum operations per second per client")
 	f.IntVar(&c.keys, "keys", 6, "hot keys, 2 to 8")
 	f.IntVar(&c.valueSize, "value-size", 1024, "mutation value bytes")

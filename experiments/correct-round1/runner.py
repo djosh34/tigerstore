@@ -469,6 +469,7 @@ class Controller:
         del self.nodes[i]
         self.phase(name, 'exercised', waitpid=exit_proof, server_log=str(node['log']),
                    server_log_tail=log[-6000:])
+        self.disk_exercised()
         filler.unlink()
         probe.unlink(missing_ok=True)
         free_attempts = self.verify_freed_disk()
@@ -477,6 +478,9 @@ class Controller:
         self.phase(name, 'healed', available_bytes=os.statvfs(self.disk_mount).f_bavail * space.f_frsize,
                    free_attempts=free_attempts, new_pid=self.nodes[i]['p'].pid,
                    write_fsync=True, status=status)
+
+    def disk_exercised(self):
+        pass
 
     def disk_installed(self):
         pass
@@ -717,7 +721,7 @@ class Controller:
             version = self.cmd([self.a.server, '--version']).stdout
             require('etcd Version: 3.7.2' in version, f'etcd is not stock 3.7.2: {version}')
         self.certs()
-        if self.a.scenario in ('disk', 'mixed', 'heavy-disk'):
+        if self.a.scenario in ('disk', 'mixed', 'heavy-disk', 'heavy-read-disk'):
             self.setup_disk()
         for i in range(1, 4):
             self.start_node(i)
@@ -813,7 +817,7 @@ class Controller:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', choices=['tigerstore', 'etcd'], required=True)
-    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed', 'partition-kill', 'election-pause', 'heavy-disk', 'one-way', 'flapping'], required=True)
+    parser.add_argument('--scenario', choices=['signals', 'netem', 'disk', 'mixed', 'partition-kill', 'election-pause', 'heavy-disk', 'heavy-read-disk', 'one-way', 'flapping'], required=True)
     parser.add_argument('--server', required=True)
     parser.add_argument('--client', required=True)
     parser.add_argument('--out', required=True)

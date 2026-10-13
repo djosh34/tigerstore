@@ -191,6 +191,7 @@ type recorder struct {
 	diagnostics []watchDiagnostic
 	inFlight    int
 	peakFlight  int
+	readBurst   []history.Op
 }
 
 func (r *recorder) now() int64 { return time.Since(r.origin).Nanoseconds() }
@@ -306,13 +307,18 @@ func workload(c config) (err error) {
 	if c.burstWrites < 0 || c.burstWrites > 16 || (c.burstWrites > 0 && (c.burstArm == "" || c.burstRelease == "" || c.burstReady == "")) {
 		return errors.New("burst requires 0..16 puts per client and arm/release/ready paths")
 	}
+	if c.readArm != "" && (c.readRelease == "" || c.readReady == "" || c.triggerFile == "") {
+		return errors.New("read burst requires arm/release/ready and trigger paths")
+	}
 	cs, err := clients(c)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, closeClients(cs)) }()
 	r := &recorder{origin: time.Now()}
-	gate := &burstGate{}
+	gate, readGate := &burstGate{}, &burstGate{}
+	readConfig := c
+	readConfig.burstReady, readConfig.burstRelease, readConfig.burstWrites = c.readReady, c.readRelease, 0
 	rc := receipt{Seed: c.seed, Endpoints: csv(c.endpoints), History: filepath.Join(c.out, "history.json")}
 	// Save evidence on every normal error path, including terminal/watch failure.
 	defer func() {
@@ -320,7 +326,7 @@ func workload(c config) (err error) {
 		if err != nil {
 			rc.Failure = err.Error()
 		}
-		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics), save(filepath.Join(c.out, "traffic.json"), map[string]any{"utc_origin_ns": r.origin.UnixNano(), "clients": c.clients, "per_client_rate": float64(time.Second) / float64(c.interval), "interval_ns": int64(c.interval), "peak_in_flight": r.peakFlight, "burst_writes_per_client": c.burstWrites, "burst_clients_ready": gate.ready, "burst_clients_complete": gate.complete}))
+		err = errors.Join(err, save(rc.History, &r.h), save(filepath.Join(c.out, "receipt.json"), rc), save(filepath.Join(c.out, "watch-responses.json"), r.diagnostics), save(filepath.Join(c.out, "read-burst.json"), r.readBurst), save(filepath.Join(c.out, "traffic.json"), map[string]any{"utc_origin_ns": r.origin.UnixNano(), "clients": c.clients, "per_client_rate": float64(time.Second) / float64(c.interval), "interval_ns": int64(c.interval), "peak_in_flight": r.peakFlight, "burst_writes_per_client": c.burstWrites, "burst_clients_ready": gate.ready, "burst_clients_complete": gate.complete, "burst_failed_calls": gate.failed, "read_clients_ready": readGate.ready, "read_clients_complete": readGate.complete}))
 	}()
 	members := map[uint64]bool{}
 	for _, cl := range cs {
@@ -351,6 +357,17 @@ func workload(c config) (err error) {
 	}
 	stopCtx, stop := context.WithTimeout(context.Background(), c.duration)
 	defer stop()
+	var triggerWG sync.WaitGroup
+	if c.triggerFile != "" {
+		triggerWG.Go(func() {
+			e := r.trigger(stopCtx, cs, c, prefix)
+			if e != nil {
+				r.mu.Lock()
+				r.errs = append(r.errs, e)
+				r.mu.Unlock()
+			}
+		})
+	}
 	var workers sync.WaitGroup
 	for i := range c.clients {
 		cl := cs[i%len(cs)]
@@ -363,7 +380,7 @@ func workload(c config) (err error) {
 			mods := map[string]int64{}
 			versions := map[string]int64{}
 			seq := 0
-			burstDone := false
+			burstDone, readDone := false, false
 			firstCall := true
 			for {
 				if !firstCall {
@@ -389,16 +406,42 @@ func workload(c config) (err error) {
 					if e == nil && armed {
 						e = gate.wait(stopCtx, c)
 						if e == nil {
+							failures := 0
 							for j := range c.burstWrites {
 								key := fmt.Sprintf("%sk%d", prefix, rng.IntN(c.keys))
 								identity := fmt.Sprintf("s%d-c%d-burst%d:", c.seed, i, j)
 								value := identity + strings.Repeat("x", max(0, c.valueSize-len(identity)))
-								r.call(cl, i, history.Request{Put: &history.PutRequest{Key: key, Value: value, PrevKV: true}}, c.requestTimeout)
+								op := r.call(cl, i, history.Request{Put: &history.PutRequest{Key: key, Value: value, PrevKV: true}}, c.requestTimeout)
+								if op.Err != nil {
+									failures++
+								}
 							}
-							gate.mu.Lock()
-							gate.complete++
-							gate.mu.Unlock()
+							e = gate.finish(c, failures)
 							burstDone = true
+						}
+					}
+					if e != nil {
+						r.mu.Lock()
+						r.errs = append(r.errs, e)
+						r.mu.Unlock()
+						return
+					}
+				}
+				if c.readArm != "" && burstDone && !readDone {
+					armed, e := fileExists(c.readArm)
+					if e == nil && armed {
+						e = readGate.wait(stopCtx, readConfig)
+						if e == nil {
+							op := r.call(cl, i, history.Request{Range: &history.RangeRequest{Key: prefix, End: end}}, c.requestTimeout)
+							r.mu.Lock()
+							r.readBurst = append(r.readBurst, op)
+							r.mu.Unlock()
+							failed := 0
+							if op.Err != nil {
+								failed = 1
+							}
+							e = readGate.finish(readConfig, failed)
+							readDone = true
 						}
 					}
 					if e != nil {
@@ -493,6 +536,10 @@ func workload(c config) (err error) {
 		}(i, cl)
 	}
 	workers.Wait()
+	triggerWG.Wait()
+	if c.readArm != "" && readGate.complete != c.clients {
+		err = errors.Join(err, fmt.Errorf("read burst completed on %d of %d clients", readGate.complete, c.clients))
+	}
 	if c.burstWrites > 0 && gate.complete != c.clients {
 		err = errors.Join(err, fmt.Errorf("burst completed on %d of %d clients", gate.complete, c.clients))
 	}

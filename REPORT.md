@@ -13,7 +13,19 @@ The disk pilot proved 256 clients ready and complete at the marker barrier and m
 
 All eight attempts reached the controller. None passed the full job. Across the pilots, four raw operation histories and 13 genuine variants were recorded. All four repository checkers ran on every variant, including the failed election run. Total verdicts including missing-history and diagnostic inputs are 120, with 40 passed and 80 failed. No product correctness failure is confirmed and no bug issue is filed.
 
-## Next batch
+## Full matrix
+
+[Full run 38433467628](https://github.com/djosh34/tigerstore/actions/runs/38433467628), tooling `32a2bd45ad0e05a18cb7d973c30dcdc54331e14a`, completed all 40 cases. All 40 controllers passed their fault-hit and cold-recovery requirements. There are 30,271 operations, 40 raw operation histories and 160 original/cold variants. All 640 repository checker verdicts ran. Of those, 608 passed and 32 timed out.
+
+The 32 normal-load cases passed fully. Simultaneous old-leader partition/new-leader kill, held-election pause, asymmetric outgoing packet cuts and flapping each passed twice on both products and architectures. The eight under-fault 256-writer ENOSPC cases remain FAILED because Linearizable timed out at 30 seconds on all four variants per case. Both products had the same checker limitation. Watches, Durable and Revisions passed on every variant. Every disk case proved 256 clients ready and complete, measured 256 in flight, hit the leader's own ENOSPC error and recovered each cold surviving pair. No invalid-history verdict occurred in this matrix. This does not validate the timed-out histories' full linearizability.
+
+Across both pilots and this matrix, 48 attempts are retained, 32 passed and 16 failed. All 48 reached the controller. There are 44 raw operation histories and 173 genuine variants. Total verdicts including missing-history and diagnostic inputs are 760, with 648 passed, 112 failed and 40 Linearizable timeout verdicts. There is no confirmed product failure and no bug issue. The independent parent audit copy verifies these totals and all archive hashes in `experiments/correct-round2/pre-read-audit.json`.
+
+## Supplementary read-under-fault batch
+
+Eight additional `heavy-read-disk` cases will run after the full matrix, not replace it. They use two repetitions on each product/architecture. A 256-Put barrier burst must complete successfully before disk filling. All 256 clients then park at a read barrier. After genuine ENOSPC installation, the controller releases 256 reads plus one separately recorded 1-MiB trigger Put to the leader. It requires the server's own ENOSPC exit and keeps the filler for one more second before freeing space. Every read-burst call and the trigger must start within that installed-fault window. Every writer stays in the raw whole history. The checker deadline stays 30 seconds.
+
+A pass here would cover pre-fault heavy writes and under-fault concurrent reads. It would not close the full-history checker gap for the under-fault 256-writer cases above.
 
 The full 40-case matrix keeps all five schedules, two architectures, two products and two repetitions. Normal schedules now use three clients to bound ambiguous-operation search. Disk schedules keep 256 clients and a synchronized single-Put burst, then read only until the actual server ENOSPC fault heals. Paced traffic uses a three-second client interval, about 85 offered operations/second. Every writer and ambiguous outcome stays in the unmodified whole history. Checker timeouts remain failures.
 
