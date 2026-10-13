@@ -1,0 +1,76 @@
+name: Saved register long WGL
+on:
+  push:
+    branches: [exp/jepsen2-recheck-long]
+  workflow_dispatch:
+jobs:
+  wgl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: 0
+            key: 3
+          - case: 1
+            key: 4
+          - case: 1
+            key: 5
+          - case: 6
+            key: 3
+    steps:
+      - name: Check deadline
+        run: test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            experiments/jepsen/evidence
+            experiments/jepsen2-recheck
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Install Leiningen
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p "$HOME/bin"
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/technomancy/leiningen/2.12.0/bin/lein -o "$HOME/bin/lein"
+          chmod +x "$HOME/bin/lein"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Prepare and record inputs
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p long-results
+          python3 experiments/jepsen2-recheck/prepare.py experiments/jepsen/evidence saved
+          cp saved/manifest.json long-results/manifest.json
+          python3 - '${{ matrix.case }}' <<'PY'
+          import json,sys,pathlib
+          root=pathlib.Path('saved'); m=json.loads((root/'manifest.json').read_text())[int(sys.argv[1])]
+          pathlib.Path('long-results/input.json').write_text(json.dumps(m,indent=2)+'\n')
+          pathlib.Path('long-results/source.txt').write_text(str((root/m['directory']).resolve())+'\n')
+          PY
+          { java -version; free -h; uname -a; git rev-parse HEAD; } > long-results/runtime.txt 2>&1
+          test "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -gt 12582912
+      - name: Long WGL on the exact original key
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          (cd experiments/jepsen2-recheck/offline; lein classpath) > long-results/classpath.txt
+          cp=$(<long-results/classpath.txt)
+          src=$(<long-results/source.txt)
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          set +e
+          timeout --signal=TERM --kill-after=10s 1800s java -Xmx10g -Djava.awt.headless=true -cp "$cp" \
+            clojure.main -m offline.recheck check "$src/history.edn" \
+            "$src/independent/${{ matrix.key }}/history.edn" '${{ matrix.key }}' wgl \
+            long-results/wgl.edn > long-results/wgl.log 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > long-results/exit.txt
+          exit "$rc"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-wgl-case${{ matrix.case }}-key${{ matrix.key }}
+          path: long-results
+          retention-days: 14

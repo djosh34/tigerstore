@@ -1,0 +1,678 @@
+{
+  "completed_history_jobs": 7,
+  "histories": [
+    {
+      "original_run": "38428716698",
+      "case": "jepsen-tigerstore-register-kill-1",
+      "valid": "unknown",
+      "expected_keys": 9,
+      "true_keys": 8,
+      "unresolved": [
+        {
+          "key": 3,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-0/case/summary.json"
+    },
+    {
+      "original_run": "38428716698",
+      "case": "jepsen-tigerstore-register-partition-1",
+      "valid": "unknown",
+      "expected_keys": 12,
+      "true_keys": 10,
+      "unresolved": [
+        {
+          "key": 4,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            }
+          ]
+        },
+        {
+          "key": 5,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "5/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "5/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-1/case/summary.json"
+    },
+    {
+      "original_run": "38430056885",
+      "case": "jepsen-tigerstore-register-kill-rep2-1",
+      "valid": "unknown",
+      "expected_keys": 10,
+      "true_keys": 7,
+      "unresolved": [
+        {
+          "key": 4,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "4/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "4/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 5,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "5/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "5/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 7,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "7/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "7/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-2/case/summary.json"
+    },
+    {
+      "original_run": "38430056885",
+      "case": "jepsen-tigerstore-register-kill-rep3-1",
+      "valid": "unknown",
+      "expected_keys": 9,
+      "true_keys": 7,
+      "unresolved": [
+        {
+          "key": 3,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 6,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "6/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "6/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-3/case/summary.json"
+    },
+    {
+      "original_run": "38430056885",
+      "case": "jepsen-tigerstore-register-partition-rep2-1",
+      "valid": "unknown",
+      "expected_keys": 11,
+      "true_keys": 7,
+      "unresolved": [
+        {
+          "key": 0,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "0/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "0/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 2,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "2/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "2/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 7,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "7/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "7/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 8,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-4/case/summary.json"
+    },
+    {
+      "original_run": "38432262482",
+      "case": "jepsen-tigerstore-register-kill-rep1-1",
+      "valid": "unknown",
+      "expected_keys": 34,
+      "true_keys": 33,
+      "unresolved": [
+        {
+          "key": 3,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "3/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-6/case/summary.json"
+    },
+    {
+      "original_run": "38432262482",
+      "case": "jepsen-tigerstore-register-partition-rep1-1",
+      "valid": "unknown",
+      "expected_keys": 47,
+      "true_keys": 45,
+      "unresolved": [
+        {
+          "key": 25,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "25/linear.edn",
+              "cause": "out-of-memory"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "25/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        },
+        {
+          "key": 30,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "linear",
+              "exit": "124",
+              "verdict": ":unknown",
+              "result": null,
+              "cause": "external-timeout"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "result": "30/competition.edn",
+              "cause": "out-of-memory"
+            }
+          ]
+        }
+      ],
+      "summary": "retained-main-artifacts/register-offline-7/case/summary.json"
+    },
+    {
+      "original_run": "38430056885",
+      "case": "jepsen-tigerstore-register-partition-rep3-1",
+      "valid": "unknown",
+      "expected_keys": 11,
+      "true_keys": 2,
+      "execution": "cancelled",
+      "summary_origin": "post-cancellation inventory, not an original job summary",
+      "unresolved": [
+        {
+          "key": 0,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "0/linear.edn"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "0/competition.edn"
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 1,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "1/linear.edn"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "1/competition.edn"
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 2,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "2/linear.edn"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "2/competition.edn"
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 3,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "competition",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 4,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "4/linear.edn"
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "4/competition.edn"
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 5,
+          "valid": "unknown",
+          "attempts": [
+            {
+              "algorithm": "wgl",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "linear",
+              "exit": "124",
+              "verdict": ":unknown",
+              "cause": "external-timeout",
+              "result": null
+            },
+            {
+              "algorithm": "competition",
+              "exit": "2",
+              "verdict": ":unknown",
+              "cause": "out-of-memory",
+              "result": "5/competition.edn"
+            }
+          ],
+          "execution": "completed-unknown"
+        },
+        {
+          "key": 8,
+          "valid": "unknown",
+          "attempts": [],
+          "execution": "cancelled-in-progress"
+        },
+        {
+          "key": 9,
+          "valid": "unknown",
+          "attempts": [],
+          "execution": "not-started"
+        },
+        {
+          "key": 10,
+          "valid": "unknown",
+          "attempts": [],
+          "execution": "not-started"
+        }
+      ]
+    }
+  ],
+  "cancelled_history_jobs": 1
+}

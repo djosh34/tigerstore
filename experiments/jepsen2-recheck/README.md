@@ -2,12 +2,20 @@
 
 Throwaway reliability tooling only. No product changes. Do not start work after 2026-10-13T22:00:00Z. No JVM or build ran on the agent host.
 
+See [RESULTS.md](RESULTS.md) for the retained 10g recheck failures and four long-WGL OOM results. Parent's separate replay-validated witness solver resolved all eight original histories. The Knossos run itself did not pass; its unfinished last job was cancelled as superseded.
+
+Verify the retained compressed evidence from the checkout:
+
+```sh
+(cd experiments/jepsen2-recheck/evidence && sha256sum -c SHA256SUMS)
+```
+
 ## Fresh workload patch
 
 Apply the existing DB adapter first, then:
 
 ```sh
-python3 checker/patch-checker.py .jepsen/etcd
+python3 experiments/jepsen2-recheck/patch-checker.py .jepsen/etcd
 ```
 
 This replaces the project's heap option with `-Xmx10g`. It places a single shared `checker/concurrency-limit 1` inside `independent/checker`, around the per-key composition, and selects `:algorithm :wgl`. Clients, errors, generators, the versioned register model, CAS, and the number of operations per key do not change. Wrapping the outer independent checker would not serialize its per-key searches.

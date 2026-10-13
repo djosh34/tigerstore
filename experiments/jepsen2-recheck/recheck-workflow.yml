@@ -1,0 +1,54 @@
+name: Saved register offline recheck
+on:
+  push:
+    branches: [exp/jepsen2-recheck]
+  workflow_dispatch:
+jobs:
+  recheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Check deadline
+        run: test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            experiments/jepsen/evidence
+            experiments/jepsen2-recheck
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Record runtime and memory
+        run: |
+          mkdir -p recheck-results
+          { date -u; java -version; free -h; uname -a; git rev-parse HEAD; } > recheck-results/runtime.txt 2>&1
+          test "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -gt 12582912
+      - name: Install Leiningen launcher
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          mkdir -p "$HOME/bin"
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/technomancy/leiningen/2.12.0/bin/lein -o "$HOME/bin/lein"
+          chmod +x "$HOME/bin/lein"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Extract authenticated original evidence
+        run: |
+          test "$(date -u +%s)" -lt "$(date -ud 2026-10-13T22:00:00Z +%s)"
+          python3 experiments/jepsen2-recheck/prepare.py experiments/jepsen/evidence saved
+          cp saved/manifest.json recheck-results/manifest.json
+      - name: Recheck every key
+        env:
+          WGL_SECONDS: '120'
+          ALTERNATE_SECONDS: '180'
+        run: bash experiments/jepsen2-recheck/run-offline.sh saved '${{ matrix.case }}' recheck-results/case
+      - name: Retain results even for unknowns or timeouts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: register-offline-${{ matrix.case }}
+          path: recheck-results
+          retention-days: 14

@@ -1,0 +1,203 @@
+[
+  {
+    "case_id": 0,
+    "run": "38428716698",
+    "case": "jepsen-tigerstore-register-kill-1",
+    "original_unknown_keys": [
+      {
+        "key": 3,
+        "unknown_mutations": 51,
+        "history": "saved/38428716698-jepsen-tigerstore-register-kill-1/independent/3/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 1,
+    "run": "38428716698",
+    "case": "jepsen-tigerstore-register-partition-1",
+    "original_unknown_keys": [
+      {
+        "key": 4,
+        "unknown_mutations": 80,
+        "history": "saved/38428716698-jepsen-tigerstore-register-partition-1/independent/4/history.edn"
+      },
+      {
+        "key": 5,
+        "unknown_mutations": 180,
+        "history": "saved/38428716698-jepsen-tigerstore-register-partition-1/independent/5/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 2,
+    "run": "38430056885",
+    "case": "jepsen-tigerstore-register-kill-rep2-1",
+    "original_unknown_keys": [
+      {
+        "key": 3,
+        "unknown_mutations": 18,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep2-1/independent/3/history.edn"
+      },
+      {
+        "key": 4,
+        "unknown_mutations": 24,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep2-1/independent/4/history.edn"
+      },
+      {
+        "key": 5,
+        "unknown_mutations": 22,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep2-1/independent/5/history.edn"
+      },
+      {
+        "key": 7,
+        "unknown_mutations": 31,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep2-1/independent/7/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 3,
+    "run": "38430056885",
+    "case": "jepsen-tigerstore-register-kill-rep3-1",
+    "original_unknown_keys": [
+      {
+        "key": 3,
+        "unknown_mutations": 61,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep3-1/independent/3/history.edn"
+      },
+      {
+        "key": 6,
+        "unknown_mutations": 31,
+        "history": "saved/38430056885-jepsen-tigerstore-register-kill-rep3-1/independent/6/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 4,
+    "run": "38430056885",
+    "case": "jepsen-tigerstore-register-partition-rep2-1",
+    "original_unknown_keys": [
+      {
+        "key": 0,
+        "unknown_mutations": 57,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep2-1/independent/0/history.edn"
+      },
+      {
+        "key": 1,
+        "unknown_mutations": 184,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep2-1/independent/1/history.edn"
+      },
+      {
+        "key": 2,
+        "unknown_mutations": 143,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep2-1/independent/2/history.edn"
+      },
+      {
+        "key": 7,
+        "unknown_mutations": 74,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep2-1/independent/7/history.edn"
+      },
+      {
+        "key": 8,
+        "unknown_mutations": 26,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep2-1/independent/8/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 5,
+    "run": "38430056885",
+    "case": "jepsen-tigerstore-register-partition-rep3-1",
+    "original_unknown_keys": [
+      {
+        "key": 0,
+        "unknown_mutations": 38,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/0/history.edn"
+      },
+      {
+        "key": 1,
+        "unknown_mutations": 99,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/1/history.edn"
+      },
+      {
+        "key": 2,
+        "unknown_mutations": 83,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/2/history.edn"
+      },
+      {
+        "key": 3,
+        "unknown_mutations": 50,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/3/history.edn"
+      },
+      {
+        "key": 4,
+        "unknown_mutations": 157,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/4/history.edn"
+      },
+      {
+        "key": 5,
+        "unknown_mutations": 49,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/5/history.edn"
+      },
+      {
+        "key": 8,
+        "unknown_mutations": 94,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/8/history.edn"
+      },
+      {
+        "key": 9,
+        "unknown_mutations": 113,
+        "history": "saved/38430056885-jepsen-tigerstore-register-partition-rep3-1/independent/9/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 6,
+    "run": "38432262482",
+    "case": "jepsen-tigerstore-register-kill-rep1-1",
+    "original_unknown_keys": [
+      {
+        "key": 3,
+        "unknown_mutations": 29,
+        "history": "saved/38432262482-jepsen-tigerstore-register-kill-rep1-1/independent/3/history.edn"
+      },
+      {
+        "key": 14,
+        "unknown_mutations": 18,
+        "history": "saved/38432262482-jepsen-tigerstore-register-kill-rep1-1/independent/14/history.edn"
+      }
+    ]
+  },
+  {
+    "case_id": 7,
+    "run": "38432262482",
+    "case": "jepsen-tigerstore-register-partition-rep1-1",
+    "original_unknown_keys": [
+      {
+        "key": 14,
+        "unknown_mutations": 19,
+        "history": "saved/38432262482-jepsen-tigerstore-register-partition-rep1-1/independent/14/history.edn"
+      },
+      {
+        "key": 21,
+        "unknown_mutations": 23,
+        "history": "saved/38432262482-jepsen-tigerstore-register-partition-rep1-1/independent/21/history.edn"
+      },
+      {
+        "key": 23,
+        "unknown_mutations": 20,
+        "history": "saved/38432262482-jepsen-tigerstore-register-partition-rep1-1/independent/23/history.edn"
+      },
+      {
+        "key": 25,
+        "unknown_mutations": 35,
+        "history": "saved/38432262482-jepsen-tigerstore-register-partition-rep1-1/independent/25/history.edn"
+      },
+      {
+        "key": 30,
+        "unknown_mutations": 48,
+        "history": "saved/38432262482-jepsen-tigerstore-register-partition-rep1-1/independent/30/history.edn"
+      }
+    ]
+  }
+]
