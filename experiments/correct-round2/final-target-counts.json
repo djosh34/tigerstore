@@ -1,0 +1,24 @@
+{
+  "etcd": {
+    "operations": 28147,
+    "checker_verdicts": 420,
+    "checker_passes": 368,
+    "checker_timeout_verdicts": 32,
+    "attempts": 26,
+    "passed": 16,
+    "controller_pass": 25,
+    "raw_histories": 25,
+    "variants": 100
+  },
+  "tigerstore": {
+    "operations": 37910,
+    "checker_verdicts": 468,
+    "checker_passes": 376,
+    "checker_timeout_verdicts": 40,
+    "attempts": 30,
+    "passed": 16,
+    "controller_pass": 26,
+    "raw_histories": 27,
+    "variants": 105
+  }
+}

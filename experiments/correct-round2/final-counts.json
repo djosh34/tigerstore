@@ -1,0 +1,21 @@
+{
+  "attempts": 56,
+  "reached_controller": 56,
+  "passed": 32,
+  "controller_pass": 51,
+  "recorded_client_histories": 52,
+  "history_variants": 205,
+  "checker_verdicts": 888,
+  "checker_passes": 744,
+  "checker_timeout_verdicts": 72,
+  "operations": 66057,
+  "successful_operations": 62914,
+  "ambiguous_operations": 3143,
+  "diagnostic_checker_invocations": 13,
+  "tested_commit": "5d964228952d6983ba273bc2e6813770aad796c6",
+  "cases_failed": 24,
+  "checker_failures": 144,
+  "confirmed_product_failures": 0,
+  "bug_issues_filed": 0,
+  "all_fault_runs_on_github": true
+}

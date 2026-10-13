@@ -1,34 +1,77 @@
-# Round 2 faults, interim report
+# Round 2 fault results
 
-Tested product main `5d964228952d6983ba273bc2e6813770aad796c6`. Product code is unchanged. The independent workflow uses both free runner architectures and stock etcd v3.7.2. No PR and no summary comment on #49.
+Tested main `5d964228952d6983ba273bc2e6813770aad796c6`, newest at the start. Later main `b5f2e28` is not covered by this evidence. Product code is unchanged. Tests ran on free `ubuntu-24.04-arm` and `ubuntu-24.04` runners against tigerstore and stock etcd v3.7.2. No PR was opened and no summary was posted on #49.
 
-## Attempts retained so far
+## Exact totals
 
-- [Permission pilot, 38431592382](https://github.com/djosh34/tigerstore/actions/runs/38431592382), tooling `6f71eae947b62d11faf54b2cae9bac409337aba9`: four failed controller attempts, zero recorded operation histories, 16 failed checker verdicts from four unreadable/missing-history inputs. Distinct node UIDs could not traverse private runner directories. Both products failed before traffic. This is a proven setup defect. All four attempts are archived under `experiments/correct-round2/results/run-38431592382`.
-- [Fault pilot, 38431990591](https://github.com/djosh34/tigerstore/actions/runs/38431990591), tooling `bda8ac37aa26b40e74afc9e473c042b0705f741c`: four failed cases with four recorded operation histories. Three controllers completed their faults and cold recovery; election-pause failed its actual-hit requirement. The election's leaderless interval was too short to observe, so no pause was claimed. Whole-history Linearizable timed out at 30 seconds for the 623-op, 16-client partition/kill history and the 9,631-op, 256-client ENOSPC history. Each timed out on all four original/cold variants. The other three checkers passed on all variants of those two histories. The etcd one-way history passed all four checkers on all variants. The failed election history ran all four checkers on its one saved original variant and failed its missing terminal target.
+| Measurement | Count |
+| --- | ---: |
+| Attempts retained | 56 |
+| Attempts that reached the controller | 56 |
+| Full-case passes / failures | 32 / 24 |
+| Controllers that completed their fault and recovery checks | 51 |
+| Recorded raw operation histories | 52 |
+| Original/cold history variants | 205 |
+| Recorded operations | 66,057 |
+| Successful operations / ambiguous failures | 62,914 / 3,143 |
+| Checker verdicts, including explicit failed missing-history and diagnostic inputs | 888 |
+| Passed / failed verdicts | 744 / 144 |
+| Linearizable timeout verdicts | 72 |
+| Confirmed product failures / bug issues filed | 0 / 0 |
 
-The second pilot also checked converter node-metadata arrays as if they were operation histories. Those 13 extra invocations generated 52 failed verdicts and remain in the archive. This is a proven tool defect, now covered by an offline regression. The second pilot has 13 genuine history variants and 104 total verdicts, 40 passed and 64 failed. Eight verdicts are Linearizable timeouts. Diagnostic arrays are counted as extra checker inputs, not as operation histories.
+All four repository checkers ran on every one of the 205 history variants, 820 verdicts. Four missing-history inputs and 13 mistakenly selected diagnostic arrays produced another 68 failed verdicts. These are counted separately, not called operation histories. The other four non-timeout failures belong to the incomplete election-pause history's missing terminal target. No checker returned an illegal-history verdict in the completed matrix or supplementary cases.
 
-The disk pilot proved 256 clients ready and complete at the marker barrier and measured 256 simultaneous unary calls. It retained all 2,048 burst Puts. Its failed full-history checks do not establish 256-client correctness.
+There are 209 archived disk-set records, including four setup cases with no usable WAL or operation history. All files passed the independent archive SHA-256/byte-count audit. No required checker is absent. `experiments/correct-round2/final-audit.json`, `final-counts.json` and `final-target-counts.json` contain the audit and machine-readable totals.
 
-All eight attempts reached the controller. None passed the full job. Across the pilots, four raw operation histories and 13 genuine variants were recorded. All four repository checkers ran on every variant, including the failed election run. Total verdicts including missing-history and diagnostic inputs are 120, with 40 passed and 80 failed. No product correctness failure is confirmed and no bug issue is filed.
+| Product | Attempts | Full passes | Operations | Verdicts | Passed verdicts | Timeout verdicts |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| tigerstore | 30 | 16 | 37,910 | 468 | 376 | 40 |
+| etcd v3.7.2 | 26 | 16 | 28,147 | 420 | 368 | 32 |
 
-## Full matrix
+The first controller started at 16:35:11Z on 2026-10-13. The last workflow finished at 17:24:22Z. Aggregate controller runtime was 44m45s. Testing stopped before the deadline. No further campaign is planned.
 
-[Full run 38433467628](https://github.com/djosh34/tigerstore/actions/runs/38433467628), tooling `32a2bd45ad0e05a18cb7d973c30dcdc54331e14a`, completed all 40 cases. All 40 controllers passed their fault-hit and cold-recovery requirements. There are 30,271 operations, 40 raw operation histories and 160 original/cold variants. All 640 repository checker verdicts ran. Of those, 608 passed and 32 timed out.
+## Runs and outcomes
 
-The 32 normal-load cases passed fully. Simultaneous old-leader partition/new-leader kill, held-election pause, asymmetric outgoing packet cuts and flapping each passed twice on both products and architectures. The eight under-fault 256-writer ENOSPC cases remain FAILED because Linearizable timed out at 30 seconds on all four variants per case. Both products had the same checker limitation. Watches, Durable and Revisions passed on every variant. Every disk case proved 256 clients ready and complete, measured 256 in flight, hit the leader's own ENOSPC error and recovered each cold surviving pair. No invalid-history verdict occurred in this matrix. This does not validate the timed-out histories' full linearizability.
+| Run | Tooling commit | Cases | Passed | Failed | Verdicts | Passed verdicts | Timeout verdicts |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| [Permission pilot, 38431592382](https://github.com/djosh34/tigerstore/actions/runs/38431592382) | `6f71eae947b62d11faf54b2cae9bac409337aba9` | 4 | 0 | 4 | 16 | 0 | 0 |
+| [Fault pilot, 38431990591](https://github.com/djosh34/tigerstore/actions/runs/38431990591) | `bda8ac37aa26b40e74afc9e473c042b0705f741c` | 4 | 0 | 4 | 104 | 40 | 8 |
+| [Full paired matrix, 38433467628](https://github.com/djosh34/tigerstore/actions/runs/38433467628) | `32a2bd45ad0e05a18cb7d973c30dcdc54331e14a` | 40 | 32 | 8 | 640 | 608 | 32 |
+| [Supplementary heavy reads, 38437268687](https://github.com/djosh34/tigerstore/actions/runs/38437268687) | `550f754240b4872ec47883e6f6122ade1ab205f7` | 8 | 0 | 8 | 128 | 96 | 32 |
 
-Across both pilots and this matrix, 48 attempts are retained, 32 passed and 16 failed. All 48 reached the controller. There are 44 raw operation histories and 173 genuine variants. Total verdicts including missing-history and diagnostic inputs are 760, with 648 passed, 112 failed and 40 Linearizable timeout verdicts. There is no confirmed product failure and no bug issue. The independent parent audit copy verifies these totals and all archive hashes in `experiments/correct-round2/pre-read-audit.json`.
+Permanent compact evidence is in `experiments/correct-round2/results/run-<id>`. Full server disks remain in the linked Actions artifacts. Only compact archives were downloaded for the full matrices. The local evidence directory is about 44 MiB.
 
-## Supplementary read-under-fault batch
+## What passed
 
-Eight additional `heavy-read-disk` cases will run after the full matrix, not replace it. They use two repetitions on each product/architecture. A 256-Put barrier burst must complete successfully before disk filling. All 256 clients then park at a read barrier. After genuine ENOSPC installation, the controller releases 256 reads plus one separately recorded 1-MiB trigger Put to the leader. It requires the server's own ENOSPC exit and keeps the filler for one more second before freeing space. Every read-burst call and the trigger must start within that installed-fault window. Every writer stays in the raw whole history. The checker deadline stays 30 seconds.
+The full matrix ran two repetitions of each schedule on each product and architecture. All 32 normal-load cases passed every checker and cold surviving-pair recovery test. They used three member-pinned logical clients, six keys, two offered operations per client per second and 40 seconds of traffic.
 
-A pass here would cover pre-fault heavy writes and under-fault concurrent reads. It would not close the full-history checker gap for the under-fault 256-writer cases above.
+- Partition the old leader's outgoing peer packets, observe a newly elected leader on the surviving pair, then kill that leader while the partition remains installed. Require SIGKILL waitpid evidence, restart and heal.
+- Hold a survivor's outgoing peer packets to keep an election open, kill the old leader, observe both survivors reporting leader ID zero, then pause the cut survivor for three seconds. Require stopped task states and unchanged CPU ticks, then resume and heal. This proves a leaderless election interval, not a specific Raft vote instruction boundary.
+- Cut one node's outgoing peer TCP packets for five seconds. Reverse packets and client/watch/control ports do not match the rule. Missing TCP ACKs can later stall reverse byte streams, so this is asymmetric packet loss, not a promise of an unaffected reverse TLS stream.
+- Flap those outgoing links six times, alternating 0.4-second and 1.2-second cuts with 0.3-second healed intervals. Require actual peer TCP drops on every installation.
 
-The full 40-case matrix keeps all five schedules, two architectures, two products and two repetitions. Normal schedules now use three clients to bound ambiguous-operation search. Disk schedules keep 256 clients and a synchronized single-Put burst, then read only until the actual server ENOSPC fault heals. Paced traffic uses a three-second client interval, about 85 offered operations/second. Every writer and ambiguous outcome stays in the unmodified whole history. Checker timeouts remain failures.
+All three member-pinned watches requested `prev_kv`. Watch coverage required updates, deletes, previous values and progress through the terminal revision. Every client had to progress after healing plus a ten-second allowance, with two-second request deadlines. The full matrix completed 104 required fault instances with requested, installed, exercised and healed evidence.
 
-The election schedule now cuts a survivor's outgoing peer packets before killing the old leader. This keeps the election open long enough to prove the leaderless interval before SIGSTOP. Every extra cut requires installed, exercised and healed evidence. The new batch also requires progress from every client and no failed unary calls after healing plus a ten-second grace period, under two-second request deadlines.
+## Heavy-load results remain failed
 
-Compact archives are generated on the runners. Only those archives are downloaded to this host. Full server disks remain in Actions artifacts. Each permanent file has the base-format path/SHA-256/byte-count manifest. Runner step outcomes remain in `attempt.json`, including build/setup failures. Local offline tests passed; an initial self-test expected Linearizable at the old report index and failed after checker order changed. The test now checks the new index. An initial local archiver parsed coverage dictionaries as verdict arrays; that tool error was fixed before the second runner pilot. Neither was a product execution.
+The initial heavy-write pilot released eight unpaced Puts per client after ENOSPC installation, 2,048 burst writes, plus paced traffic. It recorded 9,631 operations, proved 256 clients ready and complete, and measured 256 in flight. Linearizable timed out on all four variants. This failed attempt remains archived.
+
+The full matrix reduced that burst to one Put per client and paced traffic to one operation per client every three seconds, about 85 offered operations per second. After the burst, clients issued only reads until the disk healed. All eight cases proved 256 clients ready and complete, measured 256 in flight, hit the elected leader's own ENOSPC error and recovered each cold pair. Watches, Durable and Revisions passed on all 32 variants. Linearizable timed out after 30 seconds on all 32. Both products and architectures had this failure. These eight cases are FAILED.
+
+The supplementary schedule acknowledged 256 barrier-synchronized Puts before filling the disk. It then parked 256 read clients, verified filesystem ENOSPC, and released 256 Range calls plus one separately recorded 1-MiB trigger Put to the leader. The trigger is client 40000 in the same raw history. All 256 read calls and the trigger started while the filler remained installed. The server itself exited with ENOSPC, the controller held the filler for one more second, then freed space and restarted. All eight controllers passed. Peak total concurrency was 256 or 257, including the extra trigger.
+
+These eight supplementary cases also remain FAILED. Watches, Durable and Revisions passed on all 32 variants, but full-history Linearizable timed out on every variant. Both ARM etcd supplementary histories had zero ambiguous mutations and still timed out. The exact cause of the search cost is not proven. The attempted reduction did not establish full 256-client linearizability or close the earlier under-fault writer gap. No timeout was raised, no writer was omitted, and no ambiguous mutation was rewritten from WAL evidence.
+
+## Failed tools and limits
+
+The first four cases failed before traffic because distinct packet-origin UIDs could not access private runner ancestor/certificate directories. Both products' logs prove the permission error. Runner-only permissions were corrected. These cases have zero operation histories and four failed missing-history checker inputs.
+
+The next election-pause pilot missed its millisecond leaderless window. The controller failed the actual-hit requirement instead of claiming a pause. The later held-election schedule fixed the timing and passed twice on both products and architectures. The failed pilot's history still ran all four checkers.
+
+That pilot's checker driver also mistook converter `.oracle.json` node metadata for histories. Its 13 extra invocations and 52 failed verdicts remain archived. A regression now excludes these metadata files. An initial local archiver also tried to parse coverage dictionaries as verdict arrays; the fix preceded runner-side compact archiving. A local offline self-test initially expected Linearizable at the old report index after checker order changed. It was corrected. None of these is a product failure.
+
+The 72 whole-history timeouts remain failed evidence, not skips. The full and supplementary disk comparisons reproduced them on both products. They do not prove an invalid tigerstore history. No distinct product failure was confirmed, so no bug or sub-issue was created. Existing issues were checked and saved before the campaign.
+
+SIGKILL is not power loss. Cold-pair receipts check loss of one member, but tigerstore's physical WAL converter shares its WAL reader with the product. These runs do not close #49. Evidence applies only to the pinned commit.
+
+Scripts are in `experiments/correct-round2` and reuse `experiments/correct-round1`. The independent workflow is `.github/workflows/correct-round2-faults.yml`, with `max-parallel: 4`. The archive audit was copied without edits from parent branch commit `6442e73cab7568fb07996765aeb86311ff266c78`; its provenance is committed. Local Go checks used `GOFLAGS=-p=2 GOMEMLIMIT=2GiB` and `-parallel 2`, one run at a time. All faults ran on GitHub runners.
