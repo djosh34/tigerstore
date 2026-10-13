@@ -31,8 +31,15 @@ class Controller(base.Controller):
         # 127.0.0.1. Ports keep client, status and watch traffic outside the cut.
         self.data[i].mkdir(parents=True, exist_ok=True)
         self.cmd(['chown', '-R', str(41000 + i), self.data[i]])
-        for key in self.cert.glob('*-key.pem'):
-            key.chmod(0o644)
+        # Actions has private ancestor directories and sudo may keep umask 077.
+        # osfs syncs every ancestor, which needs read as well as search access.
+        for parent in [self.data[i].parent, *self.data[i].parent.parents, self.cert]:
+            parent.chmod((parent.stat().st_mode & 0o7777) | 0o555)
+        for pem in self.cert.glob('*.pem'):
+            pem.chmod(0o644)
+        self.event('node-permissions', node=i, uid=41000+i,
+                   data_mode=oct(self.data[i].stat().st_mode & 0o777),
+                   cert_mode=oct(self.cert.stat().st_mode & 0o777))
         original = self.server_args
         self.server_args = lambda n: ['setpriv', '--reuid', str(41000 + n),
                                       '--regid', '0', '--clear-groups', *original(n)]

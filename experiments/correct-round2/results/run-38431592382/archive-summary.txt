@@ -1,0 +1,334 @@
+[
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-etcd-one-way-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "etcd",
+        "scenario": "one-way",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431592382",
+      "run_attempt": "1",
+      "tooling": "6f71eae947b62d11faf54b2cae9bac409337aba9"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "recorded_client_histories": 0,
+    "history_variants": 0,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 0,
+    "successful_operations": 0,
+    "ambiguous_operations": 0,
+    "target": 0,
+    "watches": 0,
+    "controller_seconds": 4.200005174,
+    "faults": {},
+    "missing_fault_phases": [
+      "one-way-partition/requested",
+      "one-way-partition/installed",
+      "one-way-partition/exercised",
+      "one-way-partition/healed"
+    ],
+    "failures": [
+      "unexpected node exit: {'pid': 8282, 'raw_status': 256, 'returncode': 1, 'termsig': None, 'monotonic_ns': 4184797599, 'classification': 'unexpected-server-exit', 'matched_fences': [], 'log': '/home/runner/work/tigerstore/tigerstore/evidence/run/n1-1.log', 'log_tail': '{\"level\":\"warn\",\"ts\":\"2026-10-13T16:35:30.605252Z\",\"caller\":\"embed/config.go:956\",\"msg\":\"Running http and grpc server on single port. This is not recommended for production.\"}\\n{\"level\":\"info\",\"ts\":\"2026-10-13T16:35:30.605329Z\",\"caller\":\"etcdmain/etcd.go:63\",\"msg\":\"Running: \",\"args\":[\"/home/runner/work/tigerstore/tigerstore/bin/etcd\",\"--name\",\"n1\",\"--data-dir\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/data/n1\",\"--initial-cluster\",\"n1=https://127.77.0.1:2380,n2=https://127.77.0.2:2380,n3=https://127.77.0.3:2380\",\"--initial-cluster-token\",\"correct-round1-149-1\",\"--listen-peer-urls\",\"https://127.77.0.1:2380\",\"--listen-client-urls\",\"https://127.78.0.1:2379\",\"--advertise-client-urls\",\"https://127.78.0.1:2379\",\"--cert-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1.pem\",\"--key-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1-key.pem\",\"--trusted-ca-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/ca.pem\",\"--client-cert-auth\",\"--peer-cert-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1.pem\",\"--peer-key-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1-key.pem\",\"--peer-trusted-ca-file\",\"/home/runner/work/tigerstore/tigerstore/evidence/run/certs/ca.pem\",\"--initial-advertise-peer-urls\",\"https://127.77.0.1:2380\",\"--peer-client-cert-auth\",\"--snapshot-count\",\"1000000\"]}\\n{\"level\":\"info\",\"ts\":\"2026-10-13T16:35:30.605365Z\",\"caller\":\"etcdmain/etcd.go:89\",\"msg\":\"failed to detect default host\",\"error\":\"could not find default route\"}\\n{\"level\":\"fatal\",\"ts\":\"2026-10-13T16:35:30.605378Z\",\"caller\":\"etcdmain/etcd.go:201\",\"msg\":\"failed to list data directory\",\"dir\":\"/home/runner/work/tigerstore/tigerstore/evidence/run/data/n1\",\"error\":\"open /home/runner/work/tigerstore/tigerstore/evidence/run/data/n1: permission denied\",\"stacktrace\":\"go.etcd.io/etcd/server/v3/etcdmain.identifyDataDirOrDie\\\\n\\\\tgo.etcd.io/etcd/server/v3/etcdmain/etcd.go:201\\\\ngo.etcd.io/etcd/server/v3/etcdmain.startEtcdOrProxyV2\\\\n\\\\tgo.etcd.io/etcd/server/v3/etcdmain/etcd.go:103\\\\ngo.etcd.io/etcd/server/v3/etcdmain.Main\\\\n\\\\tgo.etcd.io/etcd/server/v3/etcdmain/main.go:40\\\\nmain.main\\\\n\\\\tgo.etcd.io/etcd/server/v3/main.go:31\\\\nruntime.main\\\\n\\\\truntime/proc.go:290\"}\\n'}"
+    ],
+    "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-arm-tigerstore-partition-kill-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04-arm",
+        "target": "tigerstore",
+        "scenario": "partition-kill",
+        "seed": 149,
+        "rep": 1,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431592382",
+      "run_attempt": "1",
+      "tooling": "6f71eae947b62d11faf54b2cae9bac409337aba9"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "recorded_client_histories": 0,
+    "history_variants": 0,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 0,
+    "successful_operations": 0,
+    "ambiguous_operations": 0,
+    "target": 0,
+    "watches": 0,
+    "controller_seconds": 4.206306756,
+    "faults": {},
+    "missing_fault_phases": [
+      "partition-old-leader/requested",
+      "partition-old-leader/installed",
+      "partition-old-leader/exercised",
+      "partition-old-leader/healed",
+      "kill-new-leader/requested",
+      "kill-new-leader/installed",
+      "kill-new-leader/exercised",
+      "kill-new-leader/healed"
+    ],
+    "failures": [
+      "unexpected node exit: {'pid': 8243, 'raw_status': 256, 'returncode': 1, 'termsig': None, 'monotonic_ns': 4196755443, 'classification': 'unexpected-server-exit', 'matched_fences': [], 'log': '/home/runner/work/tigerstore/tigerstore/evidence/run/n1-1.log', 'log_tail': 'tigerstore 2026/10/13 16:35:15.301402 error: peer certificate (node-to-node traffic is always encrypted): open /home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1.pem: permission denied\\n'}"
+    ],
+    "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-election-pause-149-2",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "election-pause",
+        "seed": 149,
+        "rep": 2,
+        "duration": 40,
+        "clients": 16,
+        "rate": 1,
+        "keys": 6,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431592382",
+      "run_attempt": "1",
+      "tooling": "6f71eae947b62d11faf54b2cae9bac409337aba9"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "recorded_client_histories": 0,
+    "history_variants": 0,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 0,
+    "successful_operations": 0,
+    "ambiguous_operations": 0,
+    "target": 0,
+    "watches": 0,
+    "controller_seconds": 4.282785509,
+    "faults": {},
+    "missing_fault_phases": [
+      "kill-old-leader/requested",
+      "kill-old-leader/installed",
+      "kill-old-leader/exercised",
+      "kill-old-leader/healed",
+      "pause-election/requested",
+      "pause-election/installed",
+      "pause-election/exercised",
+      "pause-election/healed"
+    ],
+    "failures": [
+      "unexpected node exit: {'pid': 7063, 'raw_status': 256, 'returncode': 1, 'termsig': None, 'monotonic_ns': 4172803535, 'classification': 'unexpected-server-exit', 'matched_fences': [], 'log': '/home/runner/work/tigerstore/tigerstore/evidence/run/n1-1.log', 'log_tail': 'tigerstore 2026/10/13 16:35:11.790680 error: peer certificate (node-to-node traffic is always encrypted): open /home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1.pem: permission denied\\n'}"
+    ],
+    "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
+  },
+  {
+    "artifact": "correct-round2-faults-ubuntu-24.04-tigerstore-heavy-disk-149-1",
+    "attempt": {
+      "case": {
+        "runner": "ubuntu-24.04",
+        "target": "tigerstore",
+        "scenario": "heavy-disk",
+        "seed": 149,
+        "rep": 1,
+        "duration": 30,
+        "clients": 256,
+        "rate": 1,
+        "keys": 2,
+        "disk_mib": 256,
+        "value_size": 1024
+      },
+      "steps": {
+        "ledger": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "build": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "etcd": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "setup": {
+          "outputs": {},
+          "outcome": "success",
+          "conclusion": "success"
+        },
+        "faults": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        },
+        "checks": {
+          "outputs": {},
+          "outcome": "failure",
+          "conclusion": "failure"
+        }
+      },
+      "job_status": "failure",
+      "run_id": "38431592382",
+      "run_attempt": "1",
+      "tooling": "6f71eae947b62d11faf54b2cae9bac409337aba9"
+    },
+    "reached_controller": true,
+    "passed": false,
+    "controller_pass": false,
+    "offline_pass": false,
+    "oracle_sets": 1,
+    "recorded_client_histories": 0,
+    "history_variants": 0,
+    "checker_verdicts": 4,
+    "checker_passes": 0,
+    "checker_timeout_verdicts": 0,
+    "operations": 0,
+    "successful_operations": 0,
+    "ambiguous_operations": 0,
+    "target": 0,
+    "watches": 0,
+    "controller_seconds": 4.305899851,
+    "faults": {},
+    "missing_fault_phases": [
+      "disk-enospc/requested",
+      "disk-enospc/installed",
+      "disk-enospc/exercised",
+      "disk-enospc/healed"
+    ],
+    "failures": [
+      "unexpected node exit: {'pid': 7178, 'raw_status': 256, 'returncode': 1, 'termsig': None, 'monotonic_ns': 4274074129, 'classification': 'unexpected-server-exit', 'matched_fences': [], 'log': '/home/runner/work/tigerstore/tigerstore/evidence/run/n1-1.log', 'log_tail': 'tigerstore 2026/10/13 16:35:14.175797 error: peer certificate (node-to-node traffic is always encrypted): open /home/runner/work/tigerstore/tigerstore/evidence/run/certs/n1.pem: permission denied\\n'}"
+    ],
+    "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
+  }
+]

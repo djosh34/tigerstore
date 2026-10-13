@@ -1,6 +1,6 @@
 ...
 ----------------------------------------------------------------------
-Ran 3 tests in 0.005s
+Ran 3 tests in 0.009s
 
 OK
 [
@@ -31,8 +31,3 @@ OK
     "no_history_reason": "No operations recorded. Count separately as setup/controller failure, never a passing checker case."
   }
 ]
-..............
-----------------------------------------------------------------------
-Ran 14 tests in 0.109s
-
-OK

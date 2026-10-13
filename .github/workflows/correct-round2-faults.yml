@@ -149,6 +149,21 @@ jobs:
           sudo chmod -R a+rX evidence
           if test -f evidence/commits.txt; then cat evidence/commits.txt >> "$GITHUB_STEP_SUMMARY"; fi
           if test -f evidence/checks.log; then tail -100 evidence/checks.log >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Archive compact permanent evidence
+        if: always()
+        shell: bash
+        env:
+          CASE_NAME: correct-round2-faults-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.seed }}-${{ matrix.rep }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/compact-source"
+          ln -s "$PWD/evidence" "$RUNNER_TEMP/compact-source/$CASE_NAME"
+          python3 experiments/correct-round2/archive-results.py "$RUNNER_TEMP/compact-source" "$PWD/compact-evidence" > evidence/archive.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: compact-round2-faults-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.scenario }}-${{ matrix.seed }}-${{ matrix.rep }}
+          path: compact-evidence
+          retention-days: 30
       - uses: actions/upload-artifact@v6
         if: always()
         with:

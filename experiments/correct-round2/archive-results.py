@@ -45,7 +45,8 @@ def main():
         history = load(run / 'workload/history.json', {})
         offline = load(run / 'offline-results.json', [])
         attempt = load(artifact / 'attempt.json', {})
-        verdicts = [row for path in sorted(run.glob('check-*.json')) for row in load(path, [])]
+        verdicts = [row for path in sorted(run.glob('check-*.json'))
+                    if not path.name.endswith('.coverage.json') for row in load(path, [])]
         events = fault.get('events', [])
         ops = history.get('ops', []) or []
         missing = [f'{name}/{phase}' for name in fault.get('required', []) for phase in
