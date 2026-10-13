@@ -1,0 +1,471 @@
+{
+  "candidate_pin": "499a4c6759d0c1276aa4257af462295216f8ab21",
+  "cases": [
+    {
+      "case": "jepsen3-tigerstore-append-rep1",
+      "store": "tigerstore",
+      "workload": "append",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 995,
+      "counts": {
+        ":ok": 743,
+        ":fail": 182,
+        ":info": 70
+      },
+      "fault_evidence": {
+        "kills": 3,
+        "restarts": 5,
+        "replacement_pid": true,
+        "pauses": 4,
+        "resumes": 4,
+        "stopped_process": true,
+        "partitions": 7,
+        "partition_heals": 9,
+        "max_drop_packets": 26
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468196852",
+      "history_sha256": "9d513d2b8606e8ada958ee76062b116bfb9b347152bdd7dcf6f15f95a0264f98",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-tigerstore-append-rep2",
+      "store": "tigerstore",
+      "workload": "append",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1063,
+      "counts": {
+        ":ok": 788,
+        ":fail": 203,
+        ":info": 72
+      },
+      "fault_evidence": {
+        "kills": 3,
+        "restarts": 3,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 6,
+        "stopped_process": true,
+        "partitions": 7,
+        "partition_heals": 9,
+        "max_drop_packets": 20
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468196852",
+      "history_sha256": "82cde7064d07389b002a65635aeabdb58079efe13acca453ec0da01a98b657c2",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-tigerstore-register-rep1",
+      "store": "tigerstore",
+      "workload": "register",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1325,
+      "counts": {
+        ":fail": 248,
+        ":ok": 629,
+        ":info": 448
+      },
+      "fault_evidence": {
+        "kills": 5,
+        "restarts": 7,
+        "replacement_pid": true,
+        "pauses": 3,
+        "resumes": 3,
+        "stopped_process": true,
+        "partitions": 7,
+        "partition_heals": 9,
+        "max_drop_packets": 24
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": "missing",
+      "original_non_workload_verdicts": {},
+      "workload_run": "38468196852",
+      "history_sha256": "2b16b2bc4b22b07a4186c63dcb22b37f2216a618e212993a9a313cf1f5e49bc6",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "certificate_run": "38469322232",
+      "certificate_keys": 27,
+      "certificate_included_infos": 5,
+      "original_attempt_failed": true,
+      "original_attempt_reason": "300-second online command timeout, rc=124. Full traffic history retained; no final aggregate result."
+    },
+    {
+      "case": "jepsen3-tigerstore-register-rep2",
+      "store": "tigerstore",
+      "workload": "register",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1098,
+      "counts": {
+        ":ok": 669,
+        ":fail": 224,
+        ":info": 205
+      },
+      "fault_evidence": {
+        "kills": 3,
+        "restarts": 4,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 5,
+        "stopped_process": true,
+        "partitions": 8,
+        "partition_heals": 10,
+        "max_drop_packets": 19
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": "missing",
+      "original_non_workload_verdicts": {},
+      "workload_run": "38468196852",
+      "history_sha256": "2b6ee428f35d8c98f112e5ca638e239801b3cfe8c86e18b530836c8b4b674b77",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "certificate_run": "38469322232",
+      "certificate_keys": 22,
+      "certificate_included_infos": 2,
+      "original_attempt_failed": true,
+      "original_attempt_reason": "300-second online command timeout, rc=124. Full traffic history retained; no final aggregate result."
+    },
+    {
+      "case": "jepsen3-tigerstore-set-rep1",
+      "store": "tigerstore",
+      "workload": "set",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1202,
+      "counts": {
+        ":ok": 1141,
+        ":fail": 52,
+        ":info": 9
+      },
+      "fault_evidence": {
+        "kills": 4,
+        "restarts": 7,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 3,
+        "stopped_process": true,
+        "partitions": 10,
+        "partition_heals": 12,
+        "max_drop_packets": 34
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468196852",
+      "history_sha256": "3db4428f5050e1df146804e5e5e37953d2a08df08688b1b8332159fee3319a24",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-tigerstore-set-rep2",
+      "store": "tigerstore",
+      "workload": "set",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1161,
+      "counts": {
+        ":ok": 1103,
+        ":fail": 49,
+        ":info": 9
+      },
+      "fault_evidence": {
+        "kills": 5,
+        "restarts": 5,
+        "replacement_pid": true,
+        "pauses": 3,
+        "resumes": 4,
+        "stopped_process": true,
+        "partitions": 7,
+        "partition_heals": 8,
+        "max_drop_packets": 24
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468196852",
+      "history_sha256": "bd6905d161c816d9f20da420ff2818e67b2e70ff2a1ccc32cd0a50a2e2d834d2",
+      "final_workload_valid": true,
+      "product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-append-rep1",
+      "store": "etcd",
+      "workload": "append",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1176,
+      "counts": {
+        ":ok": 864,
+        ":fail": 240,
+        ":info": 72
+      },
+      "fault_evidence": {
+        "kills": 6,
+        "restarts": 7,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 4,
+        "stopped_process": true,
+        "partitions": 8,
+        "partition_heals": 9,
+        "max_drop_packets": 84
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "b28c50256e09ef9ba34f2baa175f995bd75884ba21b72ff24000fa5763b7387b",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-append-rep2",
+      "store": "etcd",
+      "workload": "append",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 772,
+      "counts": {
+        ":ok": 554,
+        ":fail": 131,
+        ":info": 87
+      },
+      "fault_evidence": {
+        "kills": 3,
+        "restarts": 3,
+        "replacement_pid": true,
+        "pauses": 4,
+        "resumes": 5,
+        "stopped_process": true,
+        "partitions": 6,
+        "partition_heals": 10,
+        "max_drop_packets": 125
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "7b2396992ff44d8c31cf8bf9f1bfc25466872dbbda78a2909106a7c4147525f2",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-register-rep1",
+      "store": "etcd",
+      "workload": "register",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 825,
+      "counts": {
+        ":ok": 577,
+        ":fail": 206,
+        ":info": 42
+      },
+      "fault_evidence": {
+        "kills": 4,
+        "restarts": 4,
+        "replacement_pid": true,
+        "pauses": 3,
+        "resumes": 5,
+        "stopped_process": true,
+        "partitions": 9,
+        "partition_heals": 10,
+        "max_drop_packets": 168
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "757a43a692c61b9069584f5b19da9744b5acd665fc130d289b0a42cfcf057dd7",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "certificate_run": "38469359753",
+      "certificate_keys": 17,
+      "certificate_included_infos": 6,
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-register-rep2",
+      "store": "etcd",
+      "workload": "register",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1349,
+      "counts": {
+        ":ok": 1063,
+        ":fail": 253,
+        ":info": 33
+      },
+      "fault_evidence": {
+        "kills": 4,
+        "restarts": 5,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 5,
+        "stopped_process": true,
+        "partitions": 7,
+        "partition_heals": 9,
+        "max_drop_packets": 84
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "fdf02280973344b7fc2c33d41eed8ab719e3905d2ba00db6227743c2649ba0fc",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "certificate_run": "38469359753",
+      "certificate_keys": 27,
+      "certificate_included_infos": 5,
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-set-rep1",
+      "store": "etcd",
+      "workload": "set",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1371,
+      "counts": {
+        ":ok": 1316,
+        ":fail": 45,
+        ":info": 10
+      },
+      "fault_evidence": {
+        "kills": 3,
+        "restarts": 5,
+        "replacement_pid": true,
+        "pauses": 4,
+        "resumes": 4,
+        "stopped_process": true,
+        "partitions": 12,
+        "partition_heals": 12,
+        "max_drop_packets": 64
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "fdf97101c990d809b587bbe4a73cd176494a2758866a8b45c5765b8440870c5f",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "original_attempt_failed": false
+    },
+    {
+      "case": "jepsen3-etcd-set-rep2",
+      "store": "etcd",
+      "workload": "set",
+      "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+      "operations": 1401,
+      "counts": {
+        ":ok": 1349,
+        ":fail": 44,
+        ":info": 8
+      },
+      "fault_evidence": {
+        "kills": 4,
+        "restarts": 6,
+        "replacement_pid": true,
+        "pauses": 2,
+        "resumes": 3,
+        "stopped_process": true,
+        "partitions": 6,
+        "partition_heals": 6,
+        "max_drop_packets": 99
+      },
+      "fault_errors": [],
+      "faults_valid": true,
+      "original_jepsen_verdict": true,
+      "original_non_workload_verdicts": {
+        ":perf": true,
+        ":clock": true,
+        ":stats": true,
+        ":exceptions": true,
+        ":crash": true
+      },
+      "workload_run": "38468255858",
+      "history_sha256": "f0300fbce3f6c6440c7b2385a1033e234f703554f014486978192af1deab3113",
+      "final_workload_valid": true,
+      "product_commit": "68c065e562994b89e333e77b039ad066f933c586",
+      "original_attempt_failed": false
+    }
+  ],
+  "histories": 12,
+  "operations": 13738,
+  "all_final_workload_verdicts_valid": true,
+  "all_requested_fault_classes_observed": true,
+  "original_failed_attempts": 2,
+  "confirmed_product_failures": 0,
+  "testing_stopped_by": "2026-10-13T21:20:16Z",
+  "qualification": "Final register workload certificates do not change the two original online timeout attempts or supply missing aggregate non-workload checker results. Ops-per-key is ignored by pinned upstream set and append."
+}

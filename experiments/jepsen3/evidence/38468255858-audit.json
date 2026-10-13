@@ -1,0 +1,5955 @@
+[
+  {
+    "case": "jepsen3-etcd-append-rep1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "append",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 1176,
+    "counts": {
+      ":ok": 864,
+      ":fail": 240,
+      ":info": 72
+    },
+    "by_f": {
+      ":txn": {
+        ":ok": 864,
+        ":fail": 240,
+        ":info": 72
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 864,
+        "min_ms": 0.88154,
+        "mean_ms": 49.901697,
+        "p50_ms": 2.77618,
+        "p95_ms": 82.525314,
+        "p99_ms": 1998.104777,
+        "max_ms": 4800.760388
+      },
+      ":fail": {
+        "n": 240,
+        "min_ms": 1.480515,
+        "mean_ms": 25.625161,
+        "p50_ms": 2.671491,
+        "p95_ms": 113.729626,
+        "p99_ms": 438.841541,
+        "max_ms": 1057.868635
+      },
+      ":info": {
+        "n": 72,
+        "min_ms": 32.127921,
+        "mean_ms": 4730.026338,
+        "p50_ms": 5002.883574,
+        "p95_ms": 5006.16829,
+        "p99_ms": 5022.441267,
+        "max_ms": 5022.441267
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 6,
+      "restarts": 7,
+      "replacement_pid": true,
+      "pauses": 2,
+      "resumes": 4,
+      "stopped_process": true,
+      "partitions": 8,
+      "partition_heals": 9,
+      "max_drop_packets": 84
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 282,
+        "time_ns": 8372432678,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 291,
+        "time_ns": 10445799091,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 292,
+        "time_ns": 10445896298,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 293,
+        "time_ns": 10501927915,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 297,
+        "time_ns": 13452455343,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 5,
+        "open_by_f": {
+          ":txn": 5
+        }
+      },
+      {
+        "index": 301,
+        "time_ns": 13534840949,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 302,
+        "time_ns": 13535082246,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 309,
+        "time_ns": 15650097185,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 310,
+        "time_ns": 15744393366,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 311,
+        "time_ns": 15821716866,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 324,
+        "time_ns": 19342544767,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 337,
+        "time_ns": 24360051425,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [],
+            "n1": [],
+            "n3": []
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 338,
+        "time_ns": 24360113701,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 339,
+        "time_ns": 24441673404,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 423,
+        "time_ns": 25887847688,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 1,
+        "open_by_f": {
+          ":txn": 1
+        }
+      },
+      {
+        "index": 428,
+        "time_ns": 25963812310,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 1,
+        "open_by_f": {
+          ":txn": 1
+        }
+      },
+      {
+        "index": 744,
+        "time_ns": 31074242786,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 753,
+        "time_ns": 33149738603,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 754,
+        "time_ns": 33149799506,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 755,
+        "time_ns": 33204496071,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 756,
+        "time_ns": 35859608363,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 757,
+        "time_ns": 35934817108,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 770,
+        "time_ns": 37422374730,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 771,
+        "time_ns": 37437679549,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 772,
+        "time_ns": 37982400036,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 773,
+        "time_ns": 38005102835,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 774,
+        "time_ns": 39195088248,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 775,
+        "time_ns": 39274702827,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 776,
+        "time_ns": 39531257630,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 777,
+        "time_ns": 39549029310,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 778,
+        "time_ns": 39726883665,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 779,
+        "time_ns": 39820740052,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 780,
+        "time_ns": 39833528446,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 793,
+        "time_ns": 41934779287,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 794,
+        "time_ns": 41934828561,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 795,
+        "time_ns": 42056783304,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 796,
+        "time_ns": 42863337686,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 797,
+        "time_ns": 42887259188,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1118,
+        "time_ns": 48803102158,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 1405,
+        "time_ns": 55879445244,
+        "f": ":kill",
+        "value": {
+          "n2": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1406,
+        "time_ns": 55879506125,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1407,
+        "time_ns": 55994749131,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1408,
+        "time_ns": 55994798045,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1409,
+        "time_ns": 56004263703,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1688,
+        "time_ns": 60611763047,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 1690,
+        "time_ns": 60657819415,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 3,
+        "open_by_f": {
+          ":txn": 3
+        }
+      },
+      {
+        "index": 1868,
+        "time_ns": 63568026001,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 2173,
+        "time_ns": 68591100962,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2",
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 2174,
+        "time_ns": 68591155855,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 2176,
+        "time_ns": 68654222498,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 3,
+        "open_by_f": {
+          ":txn": 3
+        }
+      },
+      {
+        "index": 2184,
+        "time_ns": 71197213099,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2185,
+        "time_ns": 71279689447,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2198,
+        "time_ns": 76951271787,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2199,
+        "time_ns": 76966614479,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2200,
+        "time_ns": 77058459033,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2201,
+        "time_ns": 77129080853,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":started",
+          "n3": ":already-running"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2202,
+        "time_ns": 78587791240,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2215,
+        "time_ns": 80656892093,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2216,
+        "time_ns": 82135474185,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2217,
+        "time_ns": 82206936606,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2230,
+        "time_ns": 84013611419,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2231,
+        "time_ns": 84088743872,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2388,
+        "time_ns": 86411286188,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2391,
+        "time_ns": 86427393237,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2398,
+        "time_ns": 90385680392,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2399,
+        "time_ns": 90410017763,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2400,
+        "time_ns": 91261690278,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2401,
+        "time_ns": 91341825036,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2414,
+        "time_ns": 91827664030,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2415,
+        "time_ns": 91842541230,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 2422,
+        "time_ns": 96560497236,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2423,
+        "time_ns": 96638679876,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2424,
+        "time_ns": 96638748109,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2425,
+        "time_ns": 96702796611,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2426,
+        "time_ns": 96702952726,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2427,
+        "time_ns": 96832302535,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  },
+  {
+    "case": "jepsen3-etcd-append-rep2",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload append --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "append",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 772,
+    "counts": {
+      ":ok": 554,
+      ":fail": 131,
+      ":info": 87
+    },
+    "by_f": {
+      ":txn": {
+        ":ok": 554,
+        ":fail": 131,
+        ":info": 87
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 554,
+        "min_ms": 1.388402,
+        "mean_ms": 42.768644,
+        "p50_ms": 4.249409,
+        "p95_ms": 11.841492,
+        "p99_ms": 1292.084645,
+        "max_ms": 3850.485008
+      },
+      ":fail": {
+        "n": 131,
+        "min_ms": 2.451467,
+        "mean_ms": 57.293899,
+        "p50_ms": 4.161421,
+        "p95_ms": 20.772016,
+        "p99_ms": 1173.668065,
+        "max_ms": 3887.182676
+      },
+      ":info": {
+        "n": 87,
+        "min_ms": 40.839308,
+        "mean_ms": 4541.166954,
+        "p50_ms": 5003.92116,
+        "p95_ms": 5007.761192,
+        "p99_ms": 5012.331178,
+        "max_ms": 5012.331178
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 3,
+      "restarts": 3,
+      "replacement_pid": true,
+      "pauses": 4,
+      "resumes": 5,
+      "stopped_process": true,
+      "partitions": 6,
+      "partition_heals": 10,
+      "max_drop_packets": 125
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 310,
+        "time_ns": 8629152961,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 311,
+        "time_ns": 8653390584,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 312,
+        "time_ns": 8653469200,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 321,
+        "time_ns": 10769559953,
+        "f": ":kill",
+        "value": {
+          "n2": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 334,
+        "time_ns": 17615286156,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 335,
+        "time_ns": 17702107281,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 336,
+        "time_ns": 18596069644,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 337,
+        "time_ns": 18631117277,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 350,
+        "time_ns": 19197332674,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 351,
+        "time_ns": 19223663375,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 352,
+        "time_ns": 21935398797,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 353,
+        "time_ns": 22016469107,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":started",
+          "n3": ":already-running"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 370,
+        "time_ns": 28851488307,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 373,
+        "time_ns": 28891356475,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 380,
+        "time_ns": 29042944459,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 381,
+        "time_ns": 29127769374,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 680,
+        "time_ns": 34781845646,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 685,
+        "time_ns": 34821967898,
+        "f": ":pause",
+        "value": {
+          "n2": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 692,
+        "time_ns": 35747900195,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1005,
+        "time_ns": 40779587589,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1",
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 1006,
+        "time_ns": 40779632764,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 1013,
+        "time_ns": 42892233611,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1014,
+        "time_ns": 42892329139,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1015,
+        "time_ns": 43016845610,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1028,
+        "time_ns": 46024244785,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1029,
+        "time_ns": 46045050787,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1030,
+        "time_ns": 47374135580,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1031,
+        "time_ns": 47402170426,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1032,
+        "time_ns": 49655451930,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1033,
+        "time_ns": 49736753498,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1046,
+        "time_ns": 53517683582,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1059,
+        "time_ns": 58525424838,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [],
+            "n1": [],
+            "n3": []
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1060,
+        "time_ns": 58525474811,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1073,
+        "time_ns": 63538008348,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1074,
+        "time_ns": 63538076415,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1075,
+        "time_ns": 63618605350,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1076,
+        "time_ns": 64139175544,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1077,
+        "time_ns": 64168434035,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1090,
+        "time_ns": 66068678387,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1103,
+        "time_ns": 71085343065,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [],
+            "n1": [],
+            "n3": []
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1104,
+        "time_ns": 71085427122,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1105,
+        "time_ns": 71163985895,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1106,
+        "time_ns": 71164049724,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1107,
+        "time_ns": 71230111746,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1108,
+        "time_ns": 71720871761,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1121,
+        "time_ns": 76728356953,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [],
+            "n1": [],
+            "n3": []
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1122,
+        "time_ns": 76728413288,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1123,
+        "time_ns": 76812340858,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1124,
+        "time_ns": 76812438550,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1125,
+        "time_ns": 76964586978,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1464,
+        "time_ns": 83072059130,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1470,
+        "time_ns": 83101679176,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 1,
+        "open_by_f": {
+          ":txn": 1
+        }
+      },
+      {
+        "index": 1471,
+        "time_ns": 83101731563,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 1,
+        "open_by_f": {
+          ":txn": 1
+        }
+      },
+      {
+        "index": 1473,
+        "time_ns": 83177838827,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 2,
+        "open_by_f": {
+          ":txn": 2
+        }
+      },
+      {
+        "index": 1478,
+        "time_ns": 86084464061,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1479,
+        "time_ns": 86168310026,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1574,
+        "time_ns": 88571917548,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1577,
+        "time_ns": 88605265900,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1584,
+        "time_ns": 89994275368,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1597,
+        "time_ns": 92074199843,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1598,
+        "time_ns": 92074284841,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1599,
+        "time_ns": 92130759079,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1600,
+        "time_ns": 93386023330,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1601,
+        "time_ns": 93476793444,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":txn": 6
+        }
+      },
+      {
+        "index": 1608,
+        "time_ns": 95146013769,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1609,
+        "time_ns": 95220687234,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1610,
+        "time_ns": 95220718903,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1611,
+        "time_ns": 95287553028,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1612,
+        "time_ns": 95287584215,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1613,
+        "time_ns": 95405044111,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  },
+  {
+    "case": "jepsen3-etcd-register-rep1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "register",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 825,
+    "counts": {
+      ":ok": 577,
+      ":fail": 206,
+      ":info": 42
+    },
+    "by_f": {
+      ":cas": {
+        ":fail": 164,
+        ":ok": 55,
+        ":info": 19
+      },
+      ":read": {
+        ":ok": 334,
+        ":fail": 42
+      },
+      ":write": {
+        ":ok": 188,
+        ":info": 23
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 577,
+        "min_ms": 1.659209,
+        "mean_ms": 63.286466,
+        "p50_ms": 3.129503,
+        "p95_ms": 7.390329,
+        "p99_ms": 3206.352237,
+        "max_ms": 3811.220659
+      },
+      ":fail": {
+        "n": 206,
+        "min_ms": 1.71994,
+        "mean_ms": 1078.550586,
+        "p50_ms": 3.673052,
+        "p95_ms": 5001.092124,
+        "p99_ms": 5002.065609,
+        "max_ms": 5002.2671
+      },
+      ":info": {
+        "n": 42,
+        "min_ms": 489.91476,
+        "mean_ms": 4555.398535,
+        "p50_ms": 5004.000373,
+        "p95_ms": 5008.091657,
+        "p99_ms": 5012.999469,
+        "max_ms": 5012.999469
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 4,
+      "restarts": 4,
+      "replacement_pid": true,
+      "pauses": 3,
+      "resumes": 5,
+      "stopped_process": true,
+      "partitions": 9,
+      "partition_heals": 10,
+      "max_drop_packets": 168
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 298,
+        "time_ns": 8814743611,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 299,
+        "time_ns": 8836869341,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 300,
+        "time_ns": 8836951084,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 304,
+        "time_ns": 8903274356,
+        "f": ":pause",
+        "value": {
+          "n2": ""
+        },
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 308,
+        "time_ns": 10780606962,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 309,
+        "time_ns": 10832969775,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 626,
+        "time_ns": 16322660016,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 630,
+        "time_ns": 16409126911,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 740,
+        "time_ns": 18228435106,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 741,
+        "time_ns": 18251945590,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 795,
+        "time_ns": 19214684240,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 1,
+        "open_by_f": {
+          ":write": 1
+        }
+      },
+      {
+        "index": 797,
+        "time_ns": 19246240956,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 2,
+        "open_by_f": {
+          ":write": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 798,
+        "time_ns": 19300713095,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":write": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 803,
+        "time_ns": 19387026639,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 3,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 806,
+        "time_ns": 20936758500,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 807,
+        "time_ns": 20959093639,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 808,
+        "time_ns": 22861370100,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 809,
+        "time_ns": 22948140048,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 810,
+        "time_ns": 23264376444,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 821,
+        "time_ns": 25344115042,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":cas": 1,
+          ":read": 3
+        }
+      },
+      {
+        "index": 834,
+        "time_ns": 30314067899,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 2,
+          ":write": 1,
+          ":read": 3
+        }
+      },
+      {
+        "index": 835,
+        "time_ns": 30339083600,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 2,
+          ":write": 1,
+          ":read": 3
+        }
+      },
+      {
+        "index": 838,
+        "time_ns": 31822793631,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":write": 2,
+          ":read": 3
+        }
+      },
+      {
+        "index": 839,
+        "time_ns": 31909048521,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":write": 2,
+          ":read": 3
+        }
+      },
+      {
+        "index": 840,
+        "time_ns": 33133288041,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":write": 2,
+          ":read": 3
+        }
+      },
+      {
+        "index": 841,
+        "time_ns": 33217715445,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":write": 2,
+          ":read": 3
+        }
+      },
+      {
+        "index": 1206,
+        "time_ns": 39315010528,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 1209,
+        "time_ns": 39336559830,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 1218,
+        "time_ns": 39935751366,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 1,
+          ":cas": 2
+        }
+      },
+      {
+        "index": 1225,
+        "time_ns": 42013162115,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1226,
+        "time_ns": 42745389977,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1227,
+        "time_ns": 42838456433,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1240,
+        "time_ns": 46487772737,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1241,
+        "time_ns": 46519993509,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1242,
+        "time_ns": 47334797805,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1250,
+        "time_ns": 47460105861,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 1372,
+        "time_ns": 49560494552,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1374,
+        "time_ns": 49581386671,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 1,
+        "open_by_f": {
+          ":write": 1
+        }
+      },
+      {
+        "index": 1392,
+        "time_ns": 55034728080,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 3,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1393,
+        "time_ns": 55048965792,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 3,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1394,
+        "time_ns": 56136340969,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 3,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1395,
+        "time_ns": 56223339459,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 3,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1598,
+        "time_ns": 61345337219,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":write": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1605,
+        "time_ns": 63427248259,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1606,
+        "time_ns": 63427295832,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1607,
+        "time_ns": 63497064894,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1608,
+        "time_ns": 64028119695,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1609,
+        "time_ns": 64048417786,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1622,
+        "time_ns": 67369793479,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1623,
+        "time_ns": 67459985694,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1624,
+        "time_ns": 68452213537,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1625,
+        "time_ns": 68475493297,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1638,
+        "time_ns": 73083355604,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1639,
+        "time_ns": 73164377709,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1640,
+        "time_ns": 74978553437,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1644,
+        "time_ns": 75092241725,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 5,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1655,
+        "time_ns": 75181668283,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 1665,
+        "time_ns": 77267929178,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1674,
+        "time_ns": 81325171274,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1675,
+        "time_ns": 81354299385,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1680,
+        "time_ns": 84276269832,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1681,
+        "time_ns": 84295979685,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1694,
+        "time_ns": 87164406182,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1695,
+        "time_ns": 87248553318,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1696,
+        "time_ns": 87537822696,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1697,
+        "time_ns": 87575447414,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1706,
+        "time_ns": 90688510818,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1715,
+        "time_ns": 95695449925,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 1718,
+        "time_ns": 96515670077,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1719,
+        "time_ns": 96602206962,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1720,
+        "time_ns": 96602270077,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1721,
+        "time_ns": 96685743266,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1722,
+        "time_ns": 96685778959,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1723,
+        "time_ns": 96815762179,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  },
+  {
+    "case": "jepsen3-etcd-register-rep2",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload register --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "register",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 1349,
+    "counts": {
+      ":ok": 1063,
+      ":fail": 253,
+      ":info": 33
+    },
+    "by_f": {
+      ":cas": {
+        ":fail": 229,
+        ":ok": 57,
+        ":info": 14
+      },
+      ":read": {
+        ":ok": 767,
+        ":fail": 24
+      },
+      ":write": {
+        ":ok": 239,
+        ":info": 19
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 1063,
+        "min_ms": 0.918199,
+        "mean_ms": 82.618627,
+        "p50_ms": 2.305983,
+        "p95_ms": 125.715389,
+        "p99_ms": 3045.463117,
+        "max_ms": 4848.950772
+      },
+      ":fail": {
+        "n": 253,
+        "min_ms": 1.381845,
+        "mean_ms": 573.826633,
+        "p50_ms": 3.570465,
+        "p95_ms": 5000.921951,
+        "p99_ms": 5001.221942,
+        "max_ms": 5019.790464
+      },
+      ":info": {
+        "n": 33,
+        "min_ms": 6.605442,
+        "mean_ms": 4700.410274,
+        "p50_ms": 5001.754107,
+        "p95_ms": 5005.11743,
+        "p99_ms": 5006.607781,
+        "max_ms": 5006.607781
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 4,
+      "restarts": 5,
+      "replacement_pid": true,
+      "pauses": 2,
+      "resumes": 5,
+      "stopped_process": true,
+      "partitions": 7,
+      "partition_heals": 9,
+      "max_drop_packets": 84
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 309,
+        "time_ns": 8377067781,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 1,
+        "open_by_f": {
+          ":write": 1
+        }
+      },
+      {
+        "index": 313,
+        "time_ns": 8399401566,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 1,
+          ":read": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 314,
+        "time_ns": 8399467925,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 1,
+          ":read": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 323,
+        "time_ns": 10717930168,
+        "f": ":kill",
+        "value": {
+          "n1": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 324,
+        "time_ns": 11775947004,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 325,
+        "time_ns": 11791397503,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 326,
+        "time_ns": 12009711043,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 327,
+        "time_ns": 12086018199,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 410,
+        "time_ns": 14191026113,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 2,
+          ":cas": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 414,
+        "time_ns": 14215812924,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 1,
+          ":cas": 2
+        }
+      },
+      {
+        "index": 588,
+        "time_ns": 17059225962,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 591,
+        "time_ns": 17131780473,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 682,
+        "time_ns": 18544739422,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 691,
+        "time_ns": 20620920850,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 692,
+        "time_ns": 20620994960,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 693,
+        "time_ns": 20737366909,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 694,
+        "time_ns": 21358826235,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 695,
+        "time_ns": 21384644633,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 696,
+        "time_ns": 22404821090,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 697,
+        "time_ns": 22482474332,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 698,
+        "time_ns": 22482831201,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 699,
+        "time_ns": 22571268804,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 712,
+        "time_ns": 24383614075,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 713,
+        "time_ns": 24399851718,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2",
+              "n1"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 714,
+        "time_ns": 26004378546,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 715,
+        "time_ns": 26086904980,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":write": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 728,
+        "time_ns": 32404160794,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 729,
+        "time_ns": 32443464150,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 876,
+        "time_ns": 35482413298,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 878,
+        "time_ns": 35499918566,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 884,
+        "time_ns": 39719632080,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 885,
+        "time_ns": 39801227982,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 1,
+          ":write": 2
+        }
+      },
+      {
+        "index": 898,
+        "time_ns": 40982717587,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 3
+        }
+      },
+      {
+        "index": 899,
+        "time_ns": 40995251839,
+        "f": ":kill",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 3
+        }
+      },
+      {
+        "index": 1064,
+        "time_ns": 45417812021,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1065,
+        "time_ns": 45436453641,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1072,
+        "time_ns": 46677157434,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1073,
+        "time_ns": 46750699606,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1382,
+        "time_ns": 52089863827,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1389,
+        "time_ns": 52177053940,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 2,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1404,
+        "time_ns": 52365314970,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1405,
+        "time_ns": 52376753169,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [],
+            "n1": [],
+            "n3": []
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1444,
+        "time_ns": 53051698508,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 4,
+        "open_by_f": {
+          ":cas": 2,
+          ":read": 2
+        }
+      },
+      {
+        "index": 1449,
+        "time_ns": 53123626527,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 2,
+          ":read": 3,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1554,
+        "time_ns": 54811236444,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 4,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1555,
+        "time_ns": 54823424653,
+        "f": ":pause",
+        "value": {},
+        "open_calls": 4,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 2,
+          ":write": 1
+        }
+      },
+      {
+        "index": 1808,
+        "time_ns": 59069125894,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1829,
+        "time_ns": 61149875323,
+        "f": ":kill",
+        "value": {
+          "n3": null
+        },
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1925,
+        "time_ns": 62756032231,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 5,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1929,
+        "time_ns": 62773165464,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 1940,
+        "time_ns": 67675232133,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 3
+        }
+      },
+      {
+        "index": 1941,
+        "time_ns": 67700505199,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":cas": 3
+        }
+      },
+      {
+        "index": 1946,
+        "time_ns": 68819134206,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 1947,
+        "time_ns": 68907367253,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 3,
+          ":read": 3
+        }
+      },
+      {
+        "index": 2131,
+        "time_ns": 73351264053,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2135,
+        "time_ns": 73433089376,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 1,
+          ":cas": 2
+        }
+      },
+      {
+        "index": 2281,
+        "time_ns": 76052462943,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 2313,
+        "time_ns": 78134411253,
+        "f": ":kill",
+        "value": {
+          "n1": null
+        },
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2314,
+        "time_ns": 78134459975,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 4,
+        "open_by_f": {
+          ":write": 2,
+          ":read": 1,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2619,
+        "time_ns": 83155574273,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1",
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 2620,
+        "time_ns": 83155617738,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":write": 1
+        }
+      },
+      {
+        "index": 2631,
+        "time_ns": 88181245459,
+        "f": ":pause",
+        "value": {
+          "n2": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 3,
+          ":write": 2
+        }
+      },
+      {
+        "index": 2632,
+        "time_ns": 88181300520,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":cas": 1,
+          ":read": 3,
+          ":write": 2
+        }
+      },
+      {
+        "index": 2639,
+        "time_ns": 88299921179,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2640,
+        "time_ns": 88299944814,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2641,
+        "time_ns": 88359508880,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 3,
+          ":write": 2,
+          ":cas": 1
+        }
+      },
+      {
+        "index": 2764,
+        "time_ns": 96235994150,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2765,
+        "time_ns": 96303537061,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2766,
+        "time_ns": 96303568928,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2767,
+        "time_ns": 96364794484,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2768,
+        "time_ns": 96364822766,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2769,
+        "time_ns": 96474205066,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  },
+  {
+    "case": "jepsen3-etcd-set-rep1",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "set",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 1371,
+    "counts": {
+      ":ok": 1316,
+      ":fail": 45,
+      ":info": 10
+    },
+    "by_f": {
+      ":add": {
+        ":ok": 162,
+        ":info": 10
+      },
+      ":read": {
+        ":ok": 1154,
+        ":fail": 45
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 1316,
+        "min_ms": 0.809358,
+        "mean_ms": 63.211138,
+        "p50_ms": 2.307616,
+        "p95_ms": 112.000687,
+        "p99_ms": 1685.129892,
+        "max_ms": 4986.162256
+      },
+      ":fail": {
+        "n": 45,
+        "min_ms": 5000.334414,
+        "mean_ms": 5000.9181,
+        "p50_ms": 5000.750837,
+        "p95_ms": 5001.825429,
+        "p99_ms": 5005.155844,
+        "max_ms": 5005.155844
+      },
+      ":info": {
+        "n": 10,
+        "min_ms": 5000.751956,
+        "mean_ms": 5003.329456,
+        "p50_ms": 5003.639434,
+        "p95_ms": 5006.294209,
+        "p99_ms": 5006.294209,
+        "max_ms": 5006.294209
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 3,
+      "restarts": 5,
+      "replacement_pid": true,
+      "pauses": 4,
+      "resumes": 4,
+      "stopped_process": true,
+      "partitions": 12,
+      "partition_heals": 12,
+      "max_drop_packets": 64
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 312,
+        "time_ns": 8237560294,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 314,
+        "time_ns": 8257782040,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 1,
+        "open_by_f": {
+          ":add": 1
+        }
+      },
+      {
+        "index": 315,
+        "time_ns": 8257805435,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 1,
+        "open_by_f": {
+          ":add": 1
+        }
+      },
+      {
+        "index": 323,
+        "time_ns": 10375360624,
+        "f": ":kill",
+        "value": {
+          "n2": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 324,
+        "time_ns": 11199219144,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 325,
+        "time_ns": 11273777382,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":started",
+          "n3": ":already-running"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 484,
+        "time_ns": 14767416860,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 485,
+        "time_ns": 14779061289,
+        "f": ":kill",
+        "value": {},
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 536,
+        "time_ns": 15707424693,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 541,
+        "time_ns": 15792737011,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 574,
+        "time_ns": 16383924125,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 579,
+        "time_ns": 16420537753,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2",
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 584,
+        "time_ns": 17335381197,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 585,
+        "time_ns": 17425484918,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 970,
+        "time_ns": 23941684705,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 975,
+        "time_ns": 24026635332,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1016,
+        "time_ns": 24798203550,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1021,
+        "time_ns": 24840725250,
+        "f": ":pause",
+        "value": {
+          "n1": ""
+        },
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1022,
+        "time_ns": 24840778499,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1031,
+        "time_ns": 29861927596,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2",
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1040,
+        "time_ns": 30804433061,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 1041,
+        "time_ns": 30886809002,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 1222,
+        "time_ns": 34291501547,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1227,
+        "time_ns": 36374924783,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1228,
+        "time_ns": 36374972263,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1229,
+        "time_ns": 36431642494,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2",
+              "n1"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1230,
+        "time_ns": 37377542501,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1231,
+        "time_ns": 37461600307,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1280,
+        "time_ns": 39842138618,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 3,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1283,
+        "time_ns": 39872328678,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 3,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1508,
+        "time_ns": 43480298692,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1517,
+        "time_ns": 45549121528,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1518,
+        "time_ns": 45874372667,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1519,
+        "time_ns": 45953086412,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1520,
+        "time_ns": 48112740213,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1521,
+        "time_ns": 48127884489,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1534,
+        "time_ns": 49691979008,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1535,
+        "time_ns": 49715624491,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1536,
+        "time_ns": 53458141050,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1539,
+        "time_ns": 53533972394,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1546,
+        "time_ns": 53829387092,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1547,
+        "time_ns": 53845485547,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2",
+              "n3"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1552,
+        "time_ns": 55528482725,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1553,
+        "time_ns": 55605527661,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1554,
+        "time_ns": 56549834725,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1555,
+        "time_ns": 56626225777,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1670,
+        "time_ns": 60401790765,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 3,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1673,
+        "time_ns": 60418179232,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 3,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1676,
+        "time_ns": 63298070943,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1677,
+        "time_ns": 63375748387,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1776,
+        "time_ns": 66360467679,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1777,
+        "time_ns": 66384400511,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1990,
+        "time_ns": 70043288597,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1993,
+        "time_ns": 70078633914,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1",
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1996,
+        "time_ns": 70187506365,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 2001,
+        "time_ns": 70322177650,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2018,
+        "time_ns": 70488834271,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2021,
+        "time_ns": 70514813639,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1",
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2149,
+        "time_ns": 73325596938,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 2161,
+        "time_ns": 73415737642,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 2278,
+        "time_ns": 75399860091,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2280,
+        "time_ns": 75433447537,
+        "f": ":pause",
+        "value": {
+          "n1": ""
+        },
+        "open_calls": 1,
+        "open_by_f": {
+          ":add": 1
+        }
+      },
+      {
+        "index": 2302,
+        "time_ns": 76571386410,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 4,
+        "open_by_f": {
+          ":read": 4
+        }
+      },
+      {
+        "index": 2304,
+        "time_ns": 76588215031,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 5,
+        "open_by_f": {
+          ":read": 5
+        }
+      },
+      {
+        "index": 2306,
+        "time_ns": 79346045745,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2307,
+        "time_ns": 79420884014,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2308,
+        "time_ns": 80078019890,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2309,
+        "time_ns": 80103168535,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2590,
+        "time_ns": 85995643148,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2595,
+        "time_ns": 86012354456,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2598,
+        "time_ns": 86137676358,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 2
+        }
+      },
+      {
+        "index": 2600,
+        "time_ns": 86211702309,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 2798,
+        "time_ns": 89427362582,
+        "f": ":pause",
+        "value": ":primaries",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2803,
+        "time_ns": 89459181472,
+        "f": ":pause",
+        "value": {
+          "n2": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2807,
+        "time_ns": 89578535603,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 2808,
+        "time_ns": 89593777942,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 2818,
+        "time_ns": 94643796006,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2819,
+        "time_ns": 94723946537,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2820,
+        "time_ns": 94724035308,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2821,
+        "time_ns": 94799971078,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2822,
+        "time_ns": 94800075503,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2823,
+        "time_ns": 94904815379,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  },
+  {
+    "case": "jepsen3-etcd-set-rep2",
+    "command": "lein run test --nodes n1,n2,n3 --username root --ssh-private-key /root/.ssh/id_rsa --version 3.7.2 --workload set --nemesis kill,partition,pause --concurrency 2n --rate 30 --time-limit 90 --nemesis-interval 5 --ops-per-key 50",
+    "store": "etcd",
+    "workload": "set",
+    "nemesis": "kill,partition,pause",
+    "ops_per_key": 50,
+    "operations": 1401,
+    "counts": {
+      ":ok": 1349,
+      ":fail": 44,
+      ":info": 8
+    },
+    "by_f": {
+      ":add": {
+        ":ok": 169,
+        ":info": 8
+      },
+      ":read": {
+        ":ok": 1180,
+        ":fail": 44
+      }
+    },
+    "latency_by_outcome": {
+      ":ok": {
+        "n": 1349,
+        "min_ms": 0.615387,
+        "mean_ms": 52.096611,
+        "p50_ms": 1.193008,
+        "p95_ms": 4.92107,
+        "p99_ms": 2804.098551,
+        "max_ms": 4920.208696
+      },
+      ":fail": {
+        "n": 44,
+        "min_ms": 5000.212696,
+        "mean_ms": 5000.649233,
+        "p50_ms": 5000.568892,
+        "p95_ms": 5001.202244,
+        "p99_ms": 5002.571445,
+        "max_ms": 5002.571445
+      },
+      ":info": {
+        "n": 8,
+        "min_ms": 5000.300175,
+        "mean_ms": 5002.490637,
+        "p50_ms": 5001.056925,
+        "p95_ms": 5007.797725,
+        "p99_ms": 5007.797725,
+        "max_ms": 5007.797725
+      }
+    },
+    "original_jepsen_verdict": true,
+    "original_non_workload_verdicts": {
+      ":perf": true,
+      ":clock": true,
+      ":stats": true,
+      ":exceptions": true,
+      ":crash": true
+    },
+    "fault_evidence": {
+      "kills": 4,
+      "restarts": 6,
+      "replacement_pid": true,
+      "pauses": 2,
+      "resumes": 3,
+      "stopped_process": true,
+      "partitions": 6,
+      "partition_heals": 6,
+      "max_drop_packets": 99
+    },
+    "fault_errors": [],
+    "faults_valid": true,
+    "fault_edges": [
+      {
+        "index": 292,
+        "time_ns": 8076312618,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 296,
+        "time_ns": 8106852068,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 297,
+        "time_ns": 8106883345,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 298,
+        "time_ns": 8157949749,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n2"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 316,
+        "time_ns": 14192910684,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 329,
+        "time_ns": 19204533486,
+        "f": ":kill",
+        "value": {},
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 330,
+        "time_ns": 19204595400,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 331,
+        "time_ns": 19281931163,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 332,
+        "time_ns": 22242868935,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 336,
+        "time_ns": 22273264012,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 5,
+        "open_by_f": {
+          ":read": 4,
+          ":add": 1
+        }
+      },
+      {
+        "index": 400,
+        "time_ns": 23251249516,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 412,
+        "time_ns": 23321013400,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 1,
+        "open_by_f": {
+          ":read": 1
+        }
+      },
+      {
+        "index": 636,
+        "time_ns": 27082272070,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 637,
+        "time_ns": 27096252397,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n3": [
+              "n2",
+              "n1"
+            ],
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 970,
+        "time_ns": 32736227258,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 2,
+        "open_by_f": {
+          ":read": 1,
+          ":add": 1
+        }
+      },
+      {
+        "index": 977,
+        "time_ns": 34811916275,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 978,
+        "time_ns": 34811962395,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 979,
+        "time_ns": 34921386404,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 980,
+        "time_ns": 35115183663,
+        "f": ":pause",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 981,
+        "time_ns": 35135806026,
+        "f": ":pause",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 994,
+        "time_ns": 39616238525,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 995,
+        "time_ns": 39685961430,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1051,
+        "time_ns": 41264643196,
+        "f": ":start-partition",
+        "value": ":primaries",
+        "open_calls": 5,
+        "open_by_f": {
+          ":read": 5
+        }
+      },
+      {
+        "index": 1055,
+        "time_ns": 41298439447,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2",
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 1280,
+        "time_ns": 45853936050,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1283,
+        "time_ns": 45927311104,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1296,
+        "time_ns": 46162601617,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1297,
+        "time_ns": 46172565014,
+        "f": ":kill",
+        "value": {},
+        "open_calls": 2,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 1
+        }
+      },
+      {
+        "index": 1810,
+        "time_ns": 54883904377,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1815,
+        "time_ns": 54949421908,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":already-running"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1844,
+        "time_ns": 55470211510,
+        "f": ":start-partition",
+        "value": ":majority",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 1845,
+        "time_ns": 55485601684,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n1",
+              "n3"
+            ],
+            "n1": [
+              "n2"
+            ],
+            "n3": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2101,
+        "time_ns": 60977565001,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 3,
+        "open_by_f": {
+          ":read": 3
+        }
+      },
+      {
+        "index": 2109,
+        "time_ns": 63044438617,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2110,
+        "time_ns": 63044483094,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2111,
+        "time_ns": 63153221580,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2112,
+        "time_ns": 63800492544,
+        "f": ":kill",
+        "value": ":primaries",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2389,
+        "time_ns": 70871968582,
+        "f": ":kill",
+        "value": {
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2390,
+        "time_ns": 70872030024,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2393,
+        "time_ns": 70989581602,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 2394,
+        "time_ns": 70989625168,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 2395,
+        "time_ns": 71044982943,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 2411,
+        "time_ns": 71347999596,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 3,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 2
+        }
+      },
+      {
+        "index": 2412,
+        "time_ns": 71370334662,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n1": [
+              "n3"
+            ],
+            "n3": [
+              "n2"
+            ],
+            "n2": [
+              "n1"
+            ]
+          }
+        ],
+        "open_calls": 3,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 2
+        }
+      },
+      {
+        "index": 2422,
+        "time_ns": 75585247949,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2423,
+        "time_ns": 75651496641,
+        "f": ":start",
+        "value": {
+          "n1": ":already-running",
+          "n2": ":already-running",
+          "n3": ":started"
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2430,
+        "time_ns": 77395000652,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 2431,
+        "time_ns": 77472390060,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 6,
+        "open_by_f": {
+          ":add": 1,
+          ":read": 5
+        }
+      },
+      {
+        "index": 2826,
+        "time_ns": 85263136153,
+        "f": ":kill",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2833,
+        "time_ns": 87329883491,
+        "f": ":kill",
+        "value": {
+          "n1": null,
+          "n2": null,
+          "n3": null
+        },
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2834,
+        "time_ns": 87329915109,
+        "f": ":start-partition",
+        "value": ":majorities-ring",
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2835,
+        "time_ns": 87385480287,
+        "f": ":start-partition",
+        "value": [
+          ":isolated",
+          {
+            "n2": [
+              "n3"
+            ],
+            "n3": [
+              "n1"
+            ],
+            "n1": [
+              "n2"
+            ]
+          }
+        ],
+        "open_calls": 6,
+        "open_by_f": {
+          ":read": 5,
+          ":add": 1
+        }
+      },
+      {
+        "index": 2854,
+        "time_ns": 95455374324,
+        "f": ":stop-partition",
+        "value": null,
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2855,
+        "time_ns": 95532305745,
+        "f": ":stop-partition",
+        "value": ":network-healed",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2856,
+        "time_ns": 95532933181,
+        "f": ":resume",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2857,
+        "time_ns": 95591523631,
+        "f": ":resume",
+        "value": {
+          "n1": "",
+          "n2": "",
+          "n3": ""
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2858,
+        "time_ns": 95591601308,
+        "f": ":start",
+        "value": ":all",
+        "open_calls": 0,
+        "open_by_f": {}
+      },
+      {
+        "index": 2859,
+        "time_ns": 95698850392,
+        "f": ":start",
+        "value": {
+          "n1": ":started",
+          "n2": ":started",
+          "n3": ":started"
+        },
+        "open_calls": 0,
+        "open_by_f": {}
+      }
+    ]
+  }
+]

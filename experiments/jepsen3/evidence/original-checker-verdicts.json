@@ -1,0 +1,471 @@
+[
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-append-rep1/store/latest/results.edn",
+    "sha256": "8a7fb4da5db867842294c6454bf49eaf4a8082d9a62dd38bc64c4d061c6319f6",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-append-rep2/store/latest/results.edn",
+    "sha256": "16a241dca151413f3e05d5f7cf4ee78760f888e83f86ab6be957051cefde4cbe",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep1/store/latest/independent/0/results.edn",
+    "sha256": "c96ed88b0ff8c77d8b975fc4057a918c1c46f4d48a4b3b174d18ba17111e353a",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep1/store/latest/independent/1/results.edn",
+    "sha256": "d40cc784bf35edc22ea89384d79498d89c8cead111ee339b0629292b8a29c989",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep1/store/latest/independent/20/results.edn",
+    "sha256": "5170c5b58527b58e9d960c5264a0a5ab11d03f191674e89d9dda7c54440e3d43",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep1/store/latest/independent/24/results.edn",
+    "sha256": "ed03014eaa41a8588c0b297ef0dfc5b5b5b8bd64c4e4625f8e6747aa7b6a9ca2",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep1/store/latest/independent/7/results.edn",
+    "sha256": "d8d4e23318390625d9f8a20a2778533689235328cdb4bd62a773d4a4f042aeee",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/0/results.edn",
+    "sha256": "dd51a786bca0ea14aae3a8313b1212f7339499e3a1de0aabbb7221dcab3e2c77",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/1/results.edn",
+    "sha256": "bae64b03f3c29c8fb960c5929d08144e5b66fe15147f604a8df795fdb51abe1d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/13/results.edn",
+    "sha256": "4a6fce70de42582b67f5292c78a92d84dd5fa86e458db2569cf75d23829fc062",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/15/results.edn",
+    "sha256": "42572cb6becf701222ba2b44cf65325f17871c1179b30b3f4c964e3c7ba09fa8",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/20/results.edn",
+    "sha256": "ceed4ac5ebb9466e9a88c1a234ea1bb049c0888d1641c30942c9076ca9573c7e",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/21/results.edn",
+    "sha256": "056a45afad45205a0c6840cf1b95ee3ff2ad638863e190aea6af01d74324650d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/4/results.edn",
+    "sha256": "beea69ed8354891047bb4c619d5a723e65a719d5ec9858996947b957ef55079d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-register-rep2/store/latest/independent/7/results.edn",
+    "sha256": "f14fba1f1d25f0bf8195c0b673104d5274cf2d5c9505e722e5720c4ae1f7181e",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-set-rep1/store/latest/results.edn",
+    "sha256": "cc82eafc4ca57f2a068e15611c799d940ab5e84264553744074fa720ccdbd3b9",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468196852",
+    "path": "jepsen3-tigerstore-set-rep2/store/latest/results.edn",
+    "sha256": "eea4d2bc2176a35e3b72c0b6e289c651a22a84775274062d8972b0cca7a77d84",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-append-rep1/store/latest/results.edn",
+    "sha256": "1c4197057a2f45028dcb95a74c8e4ae732eac6b6c125b5e68dd4c51dac2ca96e",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-append-rep2/store/latest/results.edn",
+    "sha256": "b2b70871d397a155cc6ec53fb86cff27d291188c4c1c6eb6790ab6b0981e7c96",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/0/results.edn",
+    "sha256": "42572cb6becf701222ba2b44cf65325f17871c1179b30b3f4c964e3c7ba09fa8",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/1/results.edn",
+    "sha256": "b4d7704bc242b56f5428e9ebf6722a514572241cedf96d499a902e9edc5c48c6",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/10/results.edn",
+    "sha256": "823e5320172a9a1196ff35af29b899fe52bba9c39dc473397699af3c21eb167f",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/11/results.edn",
+    "sha256": "adc3757cf92cf349ff6f5e82ba139a29f5ecf4975a6b21571eaadfe32ac4280f",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/12/results.edn",
+    "sha256": "2d2f5f878bdbb6a109b6e05e731a835e04df1c24ab996b3015914d673d3b9f3f",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/13/results.edn",
+    "sha256": "36ed0419b7676be26f5ebdc6938c508b669b26e493070623a5817c6532798e07",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/14/results.edn",
+    "sha256": "d5accb4676c6621ad813f01fbbb2e143297a9e8e4efb0cc12026b58dbf730c84",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/15/results.edn",
+    "sha256": "2578b7ae4780bafd55155c549358cbdd865cad78f81f3c676fc5b834ed834060",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/16/results.edn",
+    "sha256": "bae64b03f3c29c8fb960c5929d08144e5b66fe15147f604a8df795fdb51abe1d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/2/results.edn",
+    "sha256": "b00d5541d5b5b1d703dbe72e840e16fda273c349854510f7d3d8bc7963742ded",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/3/results.edn",
+    "sha256": "715fa3d552b53dd6c7b3ca99f7493d4ba9313c63a23b779225d30b45bf4ddf79",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/4/results.edn",
+    "sha256": "819180d1748f3093d7c4451a6f0b47928a8ce85aa9e3c9e0f50bcf7f4ffbb39a",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/5/results.edn",
+    "sha256": "675ac77b243db02b4021aba004b6b54a6999d40502ab7e11f62e52079eb33be9",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/6/results.edn",
+    "sha256": "d5accb4676c6621ad813f01fbbb2e143297a9e8e4efb0cc12026b58dbf730c84",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/7/results.edn",
+    "sha256": "ed03014eaa41a8588c0b297ef0dfc5b5b5b8bd64c4e4625f8e6747aa7b6a9ca2",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/8/results.edn",
+    "sha256": "27606b8595145ec606e8299284accfe89e2f309e65293d00759c29c83f488cbd",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/independent/9/results.edn",
+    "sha256": "c7ec50fa0c42423975777ee47274988fe4b9542758112bcd722a2dd79fcc9a91",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep1/store/latest/results.edn",
+    "sha256": "ea3abf0c2e324bca12a420e600542d62160c366caff83b9557641680b7b57471",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/0/results.edn",
+    "sha256": "42572cb6becf701222ba2b44cf65325f17871c1179b30b3f4c964e3c7ba09fa8",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/1/results.edn",
+    "sha256": "7f0e44c637dde361e4b43f02a022bdd39f2a4ab4f73ba0deb76cdfd72486f6e2",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/10/results.edn",
+    "sha256": "84ebb5552b28f7cf4fb58201e7ac43bc9beb31e64a35c4cb72f71424e4daa04f",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/11/results.edn",
+    "sha256": "4a6fce70de42582b67f5292c78a92d84dd5fa86e458db2569cf75d23829fc062",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/12/results.edn",
+    "sha256": "baa8e1708e8c4cfa692ee2488a0354a05d5e3b5ba28690047452cda1afffb17d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/13/results.edn",
+    "sha256": "ed03014eaa41a8588c0b297ef0dfc5b5b5b8bd64c4e4625f8e6747aa7b6a9ca2",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/14/results.edn",
+    "sha256": "5bbe755757d6c6de2147a4d91ac4378ecf4af5e6378b8f678b79a57154ebfe50",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/15/results.edn",
+    "sha256": "1edb60498832410daecb53144890ef477d8ce26f96d28c74fd17b407d0b40695",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/16/results.edn",
+    "sha256": "131476b232490efb7a28e65b1969afd4784ca09cfddb7f36f9032eccdcffb08b",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/17/results.edn",
+    "sha256": "d5accb4676c6621ad813f01fbbb2e143297a9e8e4efb0cc12026b58dbf730c84",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/18/results.edn",
+    "sha256": "4a6fce70de42582b67f5292c78a92d84dd5fa86e458db2569cf75d23829fc062",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/19/results.edn",
+    "sha256": "2578b7ae4780bafd55155c549358cbdd865cad78f81f3c676fc5b834ed834060",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/2/results.edn",
+    "sha256": "1466314f44966919942ea73a66a8bd44b118b1f43c4663b5e1744330512fdc40",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/20/results.edn",
+    "sha256": "8a4431120ec27ef7011bb8388cefcb23d85392cfacf5caa3e95d2c8581ae2643",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/21/results.edn",
+    "sha256": "9ffa84d79620052bdea41137b8af081e94b951ca69191b5d3a6daed4e07cd68d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/22/results.edn",
+    "sha256": "7813a4c68fbb1dc7a49d27926638cd6f66a5d38b82e66f94bab32575f07fbec1",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/23/results.edn",
+    "sha256": "4a6fce70de42582b67f5292c78a92d84dd5fa86e458db2569cf75d23829fc062",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/24/results.edn",
+    "sha256": "bcd355fa82347405635b2798e5c46d4d57742aed3dda5b05125b3abf7135a1d8",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/25/results.edn",
+    "sha256": "009508c0a5883123a9a41f735ab08fef5427fb4dd76ce66cf7bd8e94a9752923",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/26/results.edn",
+    "sha256": "36ed0419b7676be26f5ebdc6938c508b669b26e493070623a5817c6532798e07",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/3/results.edn",
+    "sha256": "1598a4de123fae0dd0e719f09503c0b354efe8aa86775b281a61cf869654cde9",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/4/results.edn",
+    "sha256": "9ffa84d79620052bdea41137b8af081e94b951ca69191b5d3a6daed4e07cd68d",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/5/results.edn",
+    "sha256": "efcb0024f2f912cf1a973034bd4ae757fb540bb535eee2c9094ec4cddf8af95b",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/6/results.edn",
+    "sha256": "2c4a0782c9991933db68dfea1c0e7a4f94deb595784153199d887bc06de57e4c",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/7/results.edn",
+    "sha256": "bcd355fa82347405635b2798e5c46d4d57742aed3dda5b05125b3abf7135a1d8",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/8/results.edn",
+    "sha256": "60a8d53018bc12ec097f89c7296d9a9a819425469cced513d3d658ec83cdf523",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/independent/9/results.edn",
+    "sha256": "1466314f44966919942ea73a66a8bd44b118b1f43c4663b5e1744330512fdc40",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-register-rep2/store/latest/results.edn",
+    "sha256": "d1e6d743ca5c3b2dd345cc27567e8747e260f94dcb3d7aa5ff0ab00e5bd2f148",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-set-rep1/store/latest/results.edn",
+    "sha256": "d8eb586dfb0c68b309d8c09ed725a6602ca4949b0c396b1ed20809cd4bcce94c",
+    "valid": true,
+    "cause": null
+  },
+  {
+    "workload_run": "38468255858",
+    "path": "jepsen3-etcd-set-rep2/store/latest/results.edn",
+    "sha256": "238c383ab5aa611c0842954a4cc1beec547803128e5381118f589b4c61225893",
+    "valid": true,
+    "cause": null
+  }
+]

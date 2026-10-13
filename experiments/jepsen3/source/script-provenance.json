@@ -1,0 +1,37 @@
+{
+  "reused_source_branches": {
+    "origin/exp/jepsen": "ea8b9a0f363cd890bcda1126ea6f7eda2222ddd7",
+    "origin/exp/jepsen2": "a0e3500db2679c4006501922e2a74a570ed33d4d",
+    "origin/exp/jepsen2-solver": "fb1cd3648d7e7d9a354a19568697b4e8b805ffaf"
+  },
+  "executed_product_commit": "499a4c6759d0c1276aa4257af462295216f8ab21",
+  "workload_commit": "7c018c61",
+  "certificate_commit": "d948a5c7",
+  "script_sha256": {
+    "experiments/jepsen/summarize.py": "ca118293ff545fdb06e0c9fb04b9c0f37ad01e461c41f19b4103ccd6d7c6f555",
+    "experiments/jepsen/run.sh": "cccf03e3abf8ca844a7b9e5cf8870ff92c9bf1c3f2731d4eadd1b92aad2cea00",
+    "experiments/jepsen/pack-evidence.py": "7e07e53f381b4b07a48faefac4599fb9ae53091f19999796a56a6d4a8fb5b96c",
+    "experiments/jepsen/patch-db.py": "c1486caa917a6ff46178d42c110af8dcd8099e361d7e5303279c140211180003",
+    "experiments/jepsen2/run.sh": "a06dbf2548a9d00ee441deefd9581c7a0b92c3692a25eddfacb7119fb917491c",
+    "experiments/jepsen2/summarize-fresh.py": "2b636e1f70374e4328e51694a93436cbb8a04131cd8f415fd505e193d3286fe2",
+    "experiments/jepsen2/certify-summary.py": "dd6176a445668e80281ce15e93c4f6f424a8249cef2712fd1bfa21527eac021e",
+    "experiments/jepsen2/patch-db.py": "0e0f4ca89083c8f3e9bf3495f0da653b39df70baf3dc0ada05ae0c174da43685",
+    "experiments/jepsen2/analysis/analyze.py": "7985943a5394f048af7aab79b9fddf854fdfeab8119afd0539b59ddf9441f33e",
+    "experiments/jepsen2-solver/run-case.py": "16f5c01682927836cf77f5035aa43048a404a65448ebb075d1067f64af2b76b9",
+    "experiments/jepsen2-solver/selftest.py": "017fed854d94039abd070c6112ef291893141d0867352e6f3d6e9771665772ab",
+    "experiments/jepsen2-solver/history_io.py": "836e09a4b31577d26196d8113215354b39818cc7a152dee9cf1ddd6b4c491bab",
+    "experiments/jepsen2-solver/solve.py": "90a51b2e95eb34124195e7ffccea8b3a17fa72da604408c1f475f8c5003a4eb4",
+    "experiments/jepsen2-solver/verify.py": "c3f253344e01e86b47d47396c8d492a270a752eaa4cd02cc581658ccb9963740",
+    "experiments/jepsen2-solver/projections.py": "7595f9cdf7eb2b894be29872c4130d951c581401d139e328ae2c9f8571d5a1d5",
+    "experiments/jepsen2-solver/sources/pinned_register.clj": "02d9feff2d36ab137887d760184db6375cf83d5520158b0a322418af3aa58c92",
+    "experiments/jepsen2-solver/sources/register.clj": "72a57a361462b3ef2095e79b112c98b5aa75695ef6f1d152fcd000a7e60b4668",
+    "experiments/jepsen2-solver/sources/knossos_history.clj": "2ff845e401e1bc42d3455482ed9e7367b716a0eb33aa7bbf0b1c6eecfaea7780",
+    "experiments/jepsen2-solver/offline/project.clj": "67c5e3565c3b9db3d1d8f696fcf82cc23a4b9bfe3116409cfdc6effbc61003b3",
+    "experiments/jepsen2-solver/offline/src/offline/verify.clj": "48aa4adf16d4e200b37b4236d522416ea7d8cbe868d55978cebe29cc76edad2d",
+    "experiments/jepsen2-solver/offline/src/offline/versioned_register.clj": "dd15acc854ed10d274c5501b13dad173a591629c96d34b390d561e91440083fa",
+    "experiments/jepsen3/audit-history.py": "217c28fb7076469c85802f3973bf01daa0bd491d8484be4241901fdb0b9c4f4a",
+    "experiments/jepsen3/check-solver.py": "71c1a99876bf16126edc90c4e80401ed9c892018edeb64aa8e957f0b5bd47bee",
+    "experiments/jepsen3/run.sh": "1fee40c61e5dbd71e642bb1694aa7cfbc5861f93e5006f1359262bec760a945d",
+    "experiments/jepsen3/audit-certificates.py": "fce64370be2850976125fda15ba16173e3a43d6d3b15fb045300aa36bf0c9bdc"
+  }
+}

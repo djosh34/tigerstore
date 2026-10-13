@@ -1,0 +1,707 @@
+{
+  "all_register_valid": true,
+  "cases": [
+    {
+      "case": "jepsen3-tigerstore-register-rep1",
+      "store": "tigerstore",
+      "workload_run": "38468196852",
+      "register_valid": true,
+      "history_sha256": "2b16b2bc4b22b07a4186c63dcb22b37f2216a618e212993a9a313cf1f5e49bc6",
+      "key_count": 27,
+      "operations": 1325,
+      "included_infos": 5,
+      "keys": [
+        {
+          "key": 0,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 1,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 2,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 3,
+          "operations": 50,
+          "included_infos": 2,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 4,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 5,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 6,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 7,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 8,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 9,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 10,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 11,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 12,
+          "operations": 50,
+          "included_infos": 3,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 13,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 14,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 15,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 16,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 17,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 18,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 19,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 20,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 21,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 22,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 23,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 24,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 25,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 26,
+          "operations": 25,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        }
+      ]
+    },
+    {
+      "case": "jepsen3-tigerstore-register-rep2",
+      "store": "tigerstore",
+      "workload_run": "38468196852",
+      "register_valid": true,
+      "history_sha256": "2b6ee428f35d8c98f112e5ca638e239801b3cfe8c86e18b530836c8b4b674b77",
+      "key_count": 22,
+      "operations": 1098,
+      "included_infos": 2,
+      "keys": [
+        {
+          "key": 0,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 1,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 2,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 3,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 4,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 5,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 6,
+          "operations": 50,
+          "included_infos": 2,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 7,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 8,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 9,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 10,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 11,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 12,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 13,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 14,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 15,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 16,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 17,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 18,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 19,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 20,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 21,
+          "operations": 48,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        }
+      ]
+    },
+    {
+      "case": "jepsen3-etcd-register-rep1",
+      "store": "etcd",
+      "workload_run": "38468255858",
+      "register_valid": true,
+      "history_sha256": "757a43a692c61b9069584f5b19da9744b5acd665fc130d289b0a42cfcf057dd7",
+      "key_count": 17,
+      "operations": 825,
+      "included_infos": 6,
+      "keys": [
+        {
+          "key": 0,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 1,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 2,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 3,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 4,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 5,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 6,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 7,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 8,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 9,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 10,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 11,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 12,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 13,
+          "operations": 50,
+          "included_infos": 2,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 14,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 15,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 16,
+          "operations": 25,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        }
+      ]
+    },
+    {
+      "case": "jepsen3-etcd-register-rep2",
+      "store": "etcd",
+      "workload_run": "38468255858",
+      "register_valid": true,
+      "history_sha256": "fdf02280973344b7fc2c33d41eed8ab719e3905d2ba00db6227743c2649ba0fc",
+      "key_count": 27,
+      "operations": 1349,
+      "included_infos": 5,
+      "keys": [
+        {
+          "key": 0,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 1,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 2,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 3,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 4,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 5,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 6,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 7,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 8,
+          "operations": 50,
+          "included_infos": 2,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 9,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 10,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 11,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 12,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 13,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 14,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 15,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 16,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 17,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 18,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 19,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 20,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 21,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 22,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 23,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 24,
+          "operations": 50,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 25,
+          "operations": 50,
+          "included_infos": 1,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        },
+        {
+          "key": 26,
+          "operations": 49,
+          "included_infos": 0,
+          "python_valid": true,
+          "exact_clojure_model_valid": true
+        }
+      ]
+    }
+  ],
+  "histories": 4,
+  "keys": 93,
+  "operations": 4597
+}
