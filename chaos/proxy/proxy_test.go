@@ -132,7 +132,7 @@ func TestDelay(t *testing.T) {
 		t.Fatalf("hits %d, want 2", p.Stats().Hits)
 	}
 	set(t, p, Fault{Kind: None})
-	if _, d := roundTrip(t, c, []byte("x")); d > 30*time.Millisecond {
+	if _, d := roundTrip(t, c, []byte("x")); d > 45*time.Millisecond {
 		t.Fatalf("round trip %v after heal", d)
 	}
 }

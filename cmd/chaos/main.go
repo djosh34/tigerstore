@@ -172,10 +172,10 @@ func run(c config, dir string) (err error) {
 	fail("schedule", schedErr)
 	fail("save faults", save(filepath.Join(dir, "faults.json"), records))
 	fail("heal", r.healAll())
-	logf("schedule done, waiting for convergence")
-	fail("convergence", cl.converged(ctx, 30*time.Second))
+	// Stop the random calls first, so the nodes' revisions can settle.
 	t.stopClients()
-	logf("clients stopped, finishing")
+	logf("schedule done, clients stopped, waiting for convergence")
+	fail("convergence", cl.converged(ctx, 30*time.Second))
 	fail("finish", t.finish())
 	fail("close clients", closeClients(cs))
 	fail("stop", cl.stop())
