@@ -266,8 +266,10 @@ func Run(cfg Config) (*Result, error) {
 		healAt: cfg.Duration,
 		stopAt: cfg.Duration + cfg.Heal,
 	}
-	// After the clients stop, give the cluster time to settle.
-	s.endAt = s.stopAt + 3*Second
+	// After the clients stop, give the cluster time to settle: leases
+	// still expire for up to leaseGrace, and the watch events of the last
+	// expiry need time to arrive.
+	s.endAt = s.stopAt + leaseGrace + 2*Second
 	ids := []uint64{1, 2, 3}
 	s.links = make([][]link, len(ids))
 	for i, id := range ids {
