@@ -133,6 +133,9 @@ def cluster(store, label):
                             raise RuntimeError(f'WAL.Save fence failed: {target}, {committed}')
                         time.sleep(.02)
                     (dest/f'n{i}-{phase}-wal-fence.json').write_text(json.dumps({'target_raft_index':target,'post_save_commit_gauge':committed}))
+                    # Prometheus collectors are not one atomic snapshot. Start
+                    # a new scrape after the post-Save gauge fence succeeds.
+                    text = http(6060+i, '/metrics').decode()
                     (dest/f'n{i}-{phase}.prom').write_text(text)
                     metrics = dict(re.findall(r'^(etcd_disk_(?:wal_fsync_duration_seconds|backend_commit_duration_seconds)_(?:count|sum)) ([^\n]+)$', text, re.M))
                     result.append({k:float(v) for k,v in metrics.items()})
