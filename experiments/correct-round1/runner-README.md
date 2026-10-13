@@ -30,7 +30,7 @@ After the workload ends, each original endpoint must match its terminal receipt.
 
 Retain the entire output directory even if the controller fails. It includes commands, fault evidence, process logs, raw client history, terminal receipt, original data directories, independent recovery directories, certificates, and the loop image for disk runs. Any missing fault or checker is a failed run. Do not report a tooling failure as a product bug.
 
-The normal-run alarm reserves 30 seconds for cleanup. A separate hard deadline kills managed process sessions and terminates the controller at the earlier of 540 seconds or 2026-10-13T22:00:00Z. New commands, fault scenarios and cold cases check the UTC deadline before starting. Cleanup alone may run after it.
+Failure cleanup gives the workload 40 seconds to save its history. The normal-run alarm reserves 90 seconds for workload finalization, process reaping and mount cleanup. A separate hard deadline kills managed process sessions and terminates the controller at the earlier of 540 seconds or 2026-10-13T22:00:00Z. New commands, fault scenarios and cold cases check the UTC deadline before starting. Cleanup alone may run after it.
 
 This experiment does not prove power-loss durability. SIGKILL leaves the kernel page cache intact. It also does not cover byte-proxy faults, CPU quotas, named recovery crash boundaries, snapshots or all of #49's acceptance criteria. Scoped netem and UDP-canary logic was adapted from the #49 prework `experiments/chaos49/network.py` on branch `exp/49-real-process-chaos`. These canaries are chaos verification, not a calibrated physical-network throughput model.
 

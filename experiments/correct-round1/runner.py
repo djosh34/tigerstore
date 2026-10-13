@@ -660,7 +660,7 @@ class Controller:
         if self.workload is not None and self.workload.poll() is None:
             (self.out / 'workload.stop').write_text('controller cleanup\n')
             try:
-                self.workload.wait(timeout=15)
+                self.workload.wait(timeout=40)
             except subprocess.TimeoutExpired:
                 os.killpg(self.workload.pid, signal.SIGKILL)
                 self.workload.wait(timeout=5)
@@ -748,7 +748,7 @@ def main():
                 pass
         os._exit(124)
     threading.Thread(target=hard_timeout, daemon=True).start()
-    signal.setitimer(signal.ITIMER_REAL, min(510, max(.01, deadline_seconds() - 30)))
+    signal.setitimer(signal.ITIMER_REAL, min(450, max(.01, deadline_seconds() - 90)))
     code = 1
     try:
         controller.run()
