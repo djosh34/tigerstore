@@ -58,12 +58,18 @@ kubectl version -o json > "$OUT/kubernetes-version.json"
   printf '\n'
   kubectl -n kube-system exec etcd-compression-control-plane -- etcd --version
 } >> "$OUT/environment.txt"
+# Install through docker exec so the running node's mount namespace owns the file.
+docker exec -i compression-control-plane bash -c \
+  'umask 077; cat > /usr/local/bin/size-export; chmod 700 /usr/local/bin/size-export' < "$PRIVATE/size-export"
+printf '%s' '{"count":1,"kvs":[{"key":"L3JlZ2lzdHJ5L3BvZHMvbi9w","value":"YWJj"}]}' \
+  | docker exec -i compression-control-plane /usr/local/bin/size-export > "$PRIVATE/export-check.csv"
+printf 'resource,value_bytes\npods,3\n' > "$PRIVATE/expected.csv"
+cmp "$PRIVATE/export-check.csv" "$PRIVATE/expected.csv"
 docker exec compression-control-plane crictl pull registry.k8s.io/pause:3.10.1
 before_deadline
 # The exact compression pre-work workload. Stdout contains counters only.
 python3 ../compress50/workload.py | tee "$OUT/workload.jsonl"
 before_deadline
-docker cp "$PRIVATE/size-export" compression-control-plane:/tmp/size-export
 ETCD_ID=$(docker exec compression-control-plane crictl ps --name etcd -q)
 [[ "$ETCD_ID" =~ ^[a-f0-9]+$ ]]
 # Raw JSON stays in a pipe and process memory INSIDE the disposable kind node.
@@ -76,7 +82,7 @@ docker exec compression-control-plane bash -o pipefail -c '
     --cacert=/etc/kubernetes/pki/etcd/ca.crt \
     --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
     --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
-    get "" --prefix --write-out=json | /tmp/size-export
+    get "" --prefix --write-out=json | /usr/local/bin/size-export
 ' -- "$ETCD_ID" > "$PRIVATE/lengths.csv"
 python3 histogram.py "$PRIVATE/lengths.csv" "$OUT/histogram.csv"
 date -u +%FT%TZ >> "$OUT/environment.txt"
