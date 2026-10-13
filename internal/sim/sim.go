@@ -300,8 +300,13 @@ type node struct {
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
-	// inflight are the jobs of the disk write under way.
-	inflight []core.PersistJob
+	// inflight are the jobs of the disk write under way. replaceFrom is the
+	// lowest index at which they replace entries already reported durable,
+	// or 0: Raft may replace acknowledged entries that never committed.
+	inflight    []core.PersistJob
+	replaceFrom uint64
+	// recoverFloor is how far recovery must reach after the last crash.
+	recoverFloor uint64
 }
 
 type link struct {
@@ -669,9 +674,8 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	if last := lastIndex(rec); last < n.durableLast {
-		// A replaced suffix moves durableLast down, so this is a loss.
-		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.durableLast)
+	if last := lastIndex(rec); last < n.recoverFloor {
+		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.recoverFloor)
 	}
 	// Small segments, so that most of the log is in sealed ones, where
 	// any damage is detectable.
@@ -741,7 +745,12 @@ func (s *Sim) process(n *node) {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
-	n.inflight = jobs
+	n.inflight, n.replaceFrom = jobs, 0
+	for _, j := range jobs {
+		if len(j.Entries) > 0 && j.Entries[0].GetIndex() <= n.durableLast && (n.replaceFrom == 0 || j.Entries[0].GetIndex() < n.replaceFrom) {
+			n.replaceFrom = j.Entries[0].GetIndex()
+		}
+	}
 	if s.diskFaultDue && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return len(j.Entries) > 0 }) {
 		// Only an append with entries surely writes, and a write fault
 		// fires in the Flush below; a sync can stall until healing. It
@@ -791,6 +800,7 @@ func (s *Sim) diskDone(e *event) {
 		return
 	}
 	n.diskBusy = false
+	n.inflight, n.replaceFrom = nil, 0
 	for _, j := range e.jobs {
 		s.persisted(n, j)
 	}
@@ -904,6 +914,12 @@ func (s *Sim) crashRandom() {
 }
 
 func (s *Sim) crash(n *node) {
+	// The crash may keep part of an unsynced write that replaces entries
+	// reported durable; recovery may then end below them.
+	n.recoverFloor = n.durableLast
+	if n.inflight != nil && n.replaceFrom > 0 {
+		n.recoverFloor = min(n.recoverFloor, n.replaceFrom-1)
+	}
 	s.stats.Crashes++
 	n.up = false
 	if n.pausedUntil > s.now {
