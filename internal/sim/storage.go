@@ -345,8 +345,9 @@ func newestSegment(d *simfs.Disk) string {
 }
 
 // rot flips a bit of the newest value of a key on a node's disk while it
-// runs, a value that is only on disk, once per run. The node must never return it:
-// it stops when it reads it, and refuses its log on the next start.
+// runs, a value that is only on disk, once per run. The node must never
+// return it: it stops when it reads it, and refuses its log on the next
+// start.
 func (s *Sim) rot() bool {
 	if s.healed {
 		return false
@@ -365,7 +366,8 @@ func (s *Sim) rot() bool {
 		if len(refs) == 0 {
 			continue
 		}
-		// The newest version is the one clients read.
+		// Clients read the newest value most, unless the key was deleted
+		// since; the restart check catches the damage either way.
 		r := refs[len(refs)-1]
 		if r.Index >= n.core.FirstIndex() {
 			continue

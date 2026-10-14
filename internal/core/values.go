@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -67,9 +68,9 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Read returns the bytes of a value from its entry. A value read from
-// memory is a slice of the entry, which a response holds until it is
-// sent; one read from disk is a copy.
+// Read returns a copy of a value, from its entry in memory or from the
+// log. Responses and watch events keep what it returns, maybe for long
+// behind a slow client, and must not keep the entry with it.
 func (v *values) Read(r mvcc.Ref) ([]byte, error) {
 	data, ok := v.storage.entryData(r.Index)
 	if !ok {
@@ -78,5 +79,5 @@ func (v *values) Read(r mvcc.Ref) ([]byte, error) {
 	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
 		return nil, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 	}
-	return data[r.Off : r.Off+r.Len], nil
+	return bytes.Clone(data[r.Off : r.Off+r.Len]), nil
 }

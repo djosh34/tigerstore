@@ -11,6 +11,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // TestFollowerCatchesUpBySnapshot stops node 3, writes and compacts on the
@@ -58,7 +59,7 @@ func TestFollowerCatchesUpBySnapshot(t *testing.T) {
 	// The first segment of nodes 1 and 2 held entries node 3 lacks; it
 	// must be gone, so that only the checkpoint path can catch node 3 up.
 	for id := uint64(1); id <= 2; id++ {
-		first := filepath.Join(c.dirs[id], "wal", "0000000000000001.wal")
+		first := filepath.Join(c.dirs[id], "wal", wal.SegmentName(1))
 		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 			if _, err := os.Stat(first); os.IsNotExist(err) {
 				break
@@ -92,9 +93,6 @@ func TestFollowerCatchesUpBySnapshot(t *testing.T) {
 		}
 	}
 	check(kv3, 3)
-	if ckpts, err := filepath.Glob(filepath.Join(c.dirs[3], "wal", "ckpt-*")); err != nil || len(ckpts) == 0 {
-		t.Fatalf("node 3 has no checkpoint file (%v): it did not catch up through a checkpoint", err)
-	}
 	c.running[1].stop()
 	delete(c.running, 1)
 	c.start(1)

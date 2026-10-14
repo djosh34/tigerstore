@@ -40,7 +40,8 @@ type Values interface {
 	// writes, without its Sum. value is not empty. Place may keep it as
 	// it is.
 	Place(value []byte) (Ref, error)
-	// Read returns the bytes r names. The caller must not change them.
+	// Read returns the bytes r names. The caller may keep them, as a
+	// response or a watch event does, but must not change them.
 	Read(r Ref) ([]byte, error)
 }
 
@@ -238,9 +239,7 @@ func (c Change) PrevLease() int64 {
 }
 
 // Event builds the watch event of the change. The previous value is set
-// when withPrev is true and the key existed before. Its values are copies:
-// a watcher can hold an event long after the entries that wrote them left
-// memory.
+// when withPrev is true and the key existed before.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
 	v := &c.k.vers[c.i]
@@ -250,7 +249,6 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		if err != nil {
 			return nil, err
 		}
-		kv.Value = bytes.Clone(kv.Value)
 		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
 	if withPrev && c.i > 0 && c.k.vers[c.i-1].ver != 0 {
@@ -258,7 +256,6 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		if err != nil {
 			return nil, err
 		}
-		prev.Value = bytes.Clone(prev.Value)
 		ev.PrevKv = prev
 	}
 	return ev, nil

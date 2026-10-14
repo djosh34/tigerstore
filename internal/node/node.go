@@ -255,8 +255,6 @@ type Node struct {
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
-	// ckpt is the newest durable checkpoint, for the snapshot server.
-	ckpt atomic.Pointer[wal.Root]
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -272,6 +270,11 @@ type diskLog struct {
 	// mappings of sealed segments by sequence number.
 	sealed uint64
 	maps   map[uint64][]byte
+	// ckpt is the newest durable checkpoint, which the persist goroutine
+	// sets before it removes older files, and serving counts the snapshot
+	// fetches under way, during which nothing is removed.
+	ckpt    wal.Root
+	serving int
 }
 
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
@@ -391,7 +394,7 @@ func New(cfg Config) (*Node, error) {
 		ckptQ:     make(chan core.CheckpointChunk, 64),
 		done:      make(chan struct{}),
 	}
-	n.ckpt.Store(new(c.DurableCheckpoint()))
+	log.ckpt = c.DurableCheckpoint()
 	return n, nil
 }
 
@@ -557,9 +560,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			backlog = append(backlog, eff.Persist)
 		}
 		chunks = append(chunks, eff.Checkpoint...)
-		if c := n.core.DurableCheckpoint(); c != *n.ckpt.Load() {
-			n.ckpt.Store(&c)
-		}
 		for _, id := range eff.Closed {
 			if ws, ok := streams[id]; ok {
 				delete(streams, id)
@@ -746,11 +746,22 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		for _, j := range jobs {
-			if done.err != nil || j.Root == nil || j.RemoveBelow == 0 {
-				continue
+			if done.err != nil {
+				break
 			}
 			n.log.mu.Lock()
-			err := errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
+			if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
+				n.log.ckpt = in.Checkpoint
+			}
+			var err error
+			if j.Root != nil {
+				n.log.ckpt = *j.Root
+				// A fetch under way may read what the removal would take;
+				// the next root removes it.
+				if j.RemoveBelow > 0 && n.log.serving == 0 {
+					err = errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
+				}
+			}
 			n.log.mu.Unlock()
 			if err != nil {
 				done = persistDone{err: err}
@@ -929,7 +940,14 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 // it.
 func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.tell(input{snapshot: id, fetching: true})
-	err := core.ServeSnapshot(n.log, *n.ckpt.Load(), first, last, w)
+	n.log.mu.Lock()
+	n.log.serving++
+	ckpt := n.log.ckpt
+	n.log.mu.Unlock()
+	err := core.ServeSnapshot(n.log, ckpt, first, last, w)
+	n.log.mu.Lock()
+	n.log.serving--
+	n.log.mu.Unlock()
 	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
 	return err
 }

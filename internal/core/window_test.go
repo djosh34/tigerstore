@@ -445,3 +445,45 @@ func TestInstallKeepsHeldEntries(t *testing.T) {
 		}
 	}
 }
+
+// TestRepliesCopyValues checks that the values a reply carries, current
+// and previous, are not slices of their Raft entries, which are still in
+// memory: a reply can wait behind a slow client long after its entry left
+// the window.
+func TestRepliesCopyValues(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, nil)
+	put := func(id uint64, value string) (Reply, []byte) {
+		r := s.do(id, &pb.PutRequest{Key: []byte("k"), Value: []byte(value), PrevKv: true})
+		if r.Err != nil {
+			t.Fatal(r.Err)
+		}
+		data, ok := s.n.storage.entryData(s.n.Applied())
+		if !ok {
+			t.Fatal("the entry left memory")
+		}
+		return r, data
+	}
+	// shared reports whether value changes with the entry's bytes.
+	shared := func(value, entry []byte) bool {
+		i := bytes.Index(entry, value)
+		if i < 0 {
+			t.Fatalf("value %q is not in its entry", value)
+		}
+		entry[i] ^= 0xff
+		changed := value[0] != entry[i]^0xff
+		entry[i] ^= 0xff
+		return changed
+	}
+	_, first := put(1, "first value")
+	r, second := put(2, "second value")
+	if prev := r.Resp.(*pb.PutResponse).GetPrevKv().GetValue(); shared(prev, first) {
+		t.Fatal("the previous value of a put is a slice of its entry")
+	}
+	r = s.do(3, &pb.RangeRequest{Key: []byte("k"), Serializable: true})
+	if r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	if v := r.Resp.(*pb.RangeResponse).Kvs[0].Value; shared(v, second) {
+		t.Fatal("a range's value is a slice of its entry")
+	}
+}
