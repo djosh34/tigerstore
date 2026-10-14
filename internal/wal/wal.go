@@ -528,7 +528,8 @@ func (w *WAL) placeValue(index uint64, off, n, at uint32) {
 	cur.top = max(cur.top, index)
 }
 
-// setRoot makes r the newest root. A reset drops the entries after Keep.
+// setRoot makes r the newest root. A reset drops the entries after Keep;
+// the root kept, and copied into new segments, is then a plain one.
 func (w *WAL) setRoot(r Root) {
 	if r.Reset {
 		for _, s := range w.runs {
@@ -536,7 +537,7 @@ func (w *WAL) setRoot(r Root) {
 		}
 		w.last = r.Index
 	}
-	w.root = r
+	w.root = Root{Index: r.Index, Term: r.Term}
 }
 
 // newSegment starts the next segment. It syncs the header before the

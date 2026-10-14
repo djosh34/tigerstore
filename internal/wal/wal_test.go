@@ -639,3 +639,22 @@ func TestResetRootLowersCommit(t *testing.T) {
 		t.Fatalf("recovered %+v", rec)
 	}
 }
+
+// TestResetRootCopiedPlain installs a snapshot, appends entries after it
+// until a new segment starts, and recovers: the new segment's copy of the
+// root does not reset the log again.
+func TestResetRootCopiedPlain(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 5)
+	w.AppendRoot(wal.Root{Index: 8, Term: 2, Reset: true, Keep: 5})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	w.SetSegmentBytes(1)
+	fill(t, w, 9, 12)
+	w, rec := open(t, d)
+	if got := describe(read(t, w, rec)); got != "9/1:v9 10/1:v10 11/1:v11 12/1:v12 " || rec.Root != (wal.Root{Index: 8, Term: 2}) {
+		t.Fatalf("recovered %+v with entries %s", rec, got)
+	}
+}
