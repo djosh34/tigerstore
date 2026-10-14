@@ -37,8 +37,9 @@ var (
 	// times the last checkpoint's size.
 	CkptMin = envInt("TS_E_CKPT_MIN", 256<<20)
 	CkptK   = envInt("TS_E_CKPT_K", 16)
-	// CkptKeys is how many keys the committer copies per turn.
-	CkptKeys = int(envInt("TS_E_CKPT_KEYS", 4096))
+	// CkptBytes is about how much of the index the committer copies per
+	// turn.
+	CkptBytes = int(envInt("TS_E_CKPT_BYTES", 128<<10))
 )
 
 // DiskValues reads values that left the RAM window.
@@ -198,7 +199,7 @@ func (n *Node) CheckpointStep(lastSize int64) []CkptChunk {
 		n.ckptActive, n.sinceCkpt = true, 0
 		out = append(out, CkptChunk{Header: &CkptHeader{Index: n.applied, Term: term, Rev: rev, CompactRev: crev, Leases: n.state.encodeLeases()}})
 	}
-	data, done := n.kv.CheckpointChunk(nil, CkptKeys)
+	data, done := n.kv.CheckpointChunk(make([]byte, 0, CkptBytes+4096), CkptBytes)
 	out = append(out, CkptChunk{Data: data, Done: done})
 	if done {
 		n.ckptActive = false

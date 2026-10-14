@@ -16,13 +16,13 @@ func (s *Store) BeginCheckpoint() (rev, compactRev int64) {
 	return s.rev, s.compactRev
 }
 
-// CheckpointChunk appends up to max keys of the frozen view to b. done is
-// true once every key is out; physical compaction then catches up.
-func (s *Store) CheckpointChunk(b []byte, max int) (_ []byte, done bool) {
-	n := 0
+// CheckpointChunk appends keys of the frozen view to b until it holds
+// maxBytes. done is true once every key is out; physical compaction then
+// catches up.
+func (s *Store) CheckpointChunk(b []byte, maxBytes int) (_ []byte, done bool) {
 	var next []byte
 	fn := func(k *keyIndex) bool {
-		if n == max {
+		if len(b) >= maxBytes {
 			next = k.key
 			return false
 		}
@@ -35,7 +35,6 @@ func (s *Store) CheckpointChunk(b []byte, max int) (_ []byte, done bool) {
 		if nv == 0 {
 			return true
 		}
-		n++
 		b = binary.AppendUvarint(b, uint64(len(k.key)))
 		b = append(b, k.key...)
 		b = binary.AppendUvarint(b, uint64(nv))

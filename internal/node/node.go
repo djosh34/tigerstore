@@ -354,6 +354,7 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	go n.e.serveSnapshots(n.logf)
 	go n.statsLoop(ctx.Done())
 	err := n.commit(ctx, t)
+	n.logStats()
 	close(n.done)
 	cancel()
 	wg.Wait()
