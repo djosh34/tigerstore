@@ -1,0 +1,105 @@
+# Throwaway for #134, only on branch exp/134-disk. Measures the runner disk
+# (diskbench, fio) on arm and x64, and runs main's put-1k and txn-1k bench
+# on arm while sampling the disk.
+name: exp-134-disk
+
+on:
+  push:
+    branches: [exp/134-disk]
+
+permissions:
+  contents: read
+
+jobs:
+  disk:
+    if: github.ref == 'refs/heads/exp/134-disk'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Barriers on, record the disk
+        run: |
+          sudo mount -o remount,barrier=1 /
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          sudo apt-get install -y fio >/dev/null
+          src=$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)
+          dev=$(lsblk -no pkname "$src")
+          echo "DEV=$dev" >> "$GITHUB_ENV"
+          mkdir -p out
+          {
+            uname -a; lscpu | grep -E 'Model name|^CPU\(s\)'; free -b | head -2
+            findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+            lsblk -b -o NAME,SIZE,TYPE,ROTA,MODEL,MOUNTPOINTS
+            df -B1 "$RUNNER_TEMP"
+            for q in write_cache fua rotational nr_requests max_sectors_kb max_hw_sectors_kb scheduler logical_block_size physical_block_size; do echo "$q: $(cat /sys/block/$dev/queue/$q)"; done
+            sysctl vm.dirty_ratio vm.dirty_background_ratio vm.dirty_bytes vm.dirty_background_bytes vm.dirty_expire_centisecs
+            curl -s -H Metadata:true --max-time 3 "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01" | jq '{vmSize, location, storageProfile: .storageProfile.osDisk}' || true
+            echo "commit $GITHUB_SHA"
+          } | tee out/runner.txt
+      - name: fio
+        run: |
+          mkdir -p "$RUNNER_TEMP/fio"
+          bash exp/134/fio.sh "$RUNNER_TEMP/fio" out/fio
+      - name: diskbench, 3 repetitions
+        run: |
+          mkdir -p "$RUNNER_TEMP/db"
+          go run ./exp/134/diskbench -dir "$RUNNER_TEMP/db" -dev "$DEV" -reps 3 -out out/cells.jsonl | tee out/cells.txt
+          rm -rf "$RUNNER_TEMP/db"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: disk-${{ matrix.os }}
+          path: out
+
+  bench:
+    if: github.ref == 'refs/heads/exp/134-disk'
+    strategy:
+      fail-fast: false
+      matrix:
+        wl: [put, txn]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build main, main with persister timing, loadgen, walstat, etcdctl
+        run: |
+          mkdir -p bin
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+          git diff --quiet 76952348 HEAD -- internal cmd go.mod go.sum
+          go build -o bin/main ./cmd/tigerstore
+          go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/walstat ./exp/134/walstat
+          git apply exp/134/persist-timing.patch
+          go build -o bin/instr ./cmd/tigerstore
+          git checkout internal/node/node.go
+          scripts/dev-certs.sh certs
+      - name: Barriers on, record the runner
+        run: |
+          sudo mount -o remount,barrier=1 /
+          if findmnt -T "$RUNNER_TEMP" -n -o OPTIONS | grep -Eq 'nobarrier|barrier=0'; then exit 1; fi
+          src=$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)
+          echo "DEV=$(lsblk -no pkname "$src")" >> "$GITHUB_ENV"
+          mkdir -p out
+          { uname -a; lscpu | grep -E 'Model name|^CPU\(s\)'; free -b | head -2; findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS; df -B1 /dev/shm; echo "commit $GITHUB_SHA"; } | tee out/runner.txt
+      - name: Bench ${{ matrix.wl }}-1k with disk sampling
+        run: CERTS=$PWD/certs BINS=$PWD/bin DISKDIR=$RUNNER_TEMP/bench bash exp/134/benchdisk.sh ${{ matrix.wl }} out/${{ matrix.wl }}
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench-${{ matrix.wl }}
+          path: out

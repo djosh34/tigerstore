@@ -1,0 +1,66 @@
+diff --git a/internal/node/node.go b/internal/node/node.go
+index a072b9bb..238fa0e9 100644
+--- a/internal/node/node.go
++++ b/internal/node/node.go
+@@ -8,6 +8,8 @@ import (
+ 	"cmp"
+ 	"context"
+ 	"errors"
++	"fmt"
++	"os"
+ 	"math/rand/v2"
+ 	"path/filepath"
+ 	"sync"
+@@ -518,8 +520,13 @@ type persistDone struct {
+ // on their own channel, so it never waits for the committer's inbox. A
+ // failed write or sync stops the node; it is never retried.
+ func (n *Node) persist(ctx context.Context) {
++	var pst struct {
++		groups, jobs, entries, bytes, waitNs, appendNs, writeNs, syncNs, reportNs int64
++		last                                                                     time.Time
++	}
+ 	for {
+ 		var jobs []core.PersistJob
++		w0 := time.Now()
+ 		select {
+ 		case jobs = <-n.persistQ:
+ 		case <-ctx.Done():
+@@ -543,10 +550,16 @@ func (n *Node) persist(ctx context.Context) {
+ 				bytes += len(e.Data)
+ 			}
+ 		}
++		a := time.Now()
+ 		done := persistDone{jobs: jobs}
+-		if err := n.wal.Sync(); err != nil {
++		ferr := n.wal.Flush()
++		b := time.Now()
++		if ferr != nil {
++			done = persistDone{err: ferr}
++		} else if err := n.wal.Sync(); err != nil {
+ 			done = persistDone{err: err}
+ 		}
++		c := time.Now()
+ 		if d := time.Since(start); d > n.cfg.Tick {
+ 			n.logf("slow write to the log: %d entries, %d bytes in %v", entries, bytes, d)
+ 		}
+@@ -555,6 +568,20 @@ func (n *Node) persist(ctx context.Context) {
+ 		case <-ctx.Done():
+ 			return
+ 		}
++		d := time.Now()
++		pst.groups++
++		pst.jobs += int64(len(jobs))
++		pst.entries += int64(entries)
++		pst.bytes += int64(bytes)
++		pst.waitNs += start.Sub(w0).Nanoseconds()
++		pst.appendNs += a.Sub(start).Nanoseconds()
++		pst.writeNs += b.Sub(a).Nanoseconds()
++		pst.syncNs += c.Sub(b).Nanoseconds()
++		pst.reportNs += d.Sub(c).Nanoseconds()
++		if d.Sub(pst.last) >= 250*time.Millisecond {
++			pst.last = d
++			fmt.Fprintf(os.Stderr, "PST %d %d %d %d %d %d %d %d %d %d\n", d.UnixNano(), pst.groups, pst.jobs, pst.entries, pst.bytes, pst.waitNs, pst.appendNs, pst.writeNs, pst.syncNs, pst.reportNs)
++		}
+ 		if done.err != nil {
+ 			return
+ 		}
