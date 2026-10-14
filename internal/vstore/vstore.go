@@ -198,6 +198,35 @@ func (s *Store) Where(r mvcc.Ref) (seq uint64, packed *Packed) {
 	return 0, nil
 }
 
+// Account adds the live bytes of refs to the file that holds each, under
+// one lock.
+func (s *Store) Account(refs []mvcc.Ref, seg map[uint64]int64, pk map[*Packed]int64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, r := range refs {
+		if r.Idx >= s.base && r.Idx < s.base+uint64(len(s.locs)) {
+			l := s.locs[r.Idx-s.base]
+			if sg := s.segs[uint64(l.seq)]; l.seq != 0 && sg != nil && !sg.removed {
+				seg[uint64(l.seq)] += int64(r.N)
+				continue
+			}
+		}
+		for i := len(s.packed) - 1; i >= 0; i-- {
+			p := s.packed[i]
+			j := sort.Search(len(p.tab), func(j int) bool {
+				e := &p.tab[j]
+				return e.Idx > r.Idx || (e.Idx == r.Idx && e.Off >= r.Off)
+			})
+			if j < len(p.tab) && p.tab[j].Idx == r.Idx && p.tab[j].Off == r.Off {
+				if _, ok := pk[p]; ok {
+					pk[p] += int64(r.N)
+				}
+				break
+			}
+		}
+	}
+}
+
 // Locs returns every known entry position below or at upto, for the
 // checkpoint's per-node part.
 func (s *Store) Locs(upto uint64, fn func(idx, seq uint64, pos int64)) {

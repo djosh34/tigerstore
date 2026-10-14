@@ -372,6 +372,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var backlog [][]core.PersistJob
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
+	var lastCkpt time.Time
 	for {
 		inbox := n.inbox
 		if len(backlog) >= maxBacklog {
@@ -382,7 +383,13 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if len(backlog) > 0 {
 			toDisk, next = n.persistQ, backlog[0]
 		}
+		// An idle committer still copies a checkpoint chunk per ckptPace.
+		var ckTick <-chan time.Time
+		if n.core.CheckpointActive() {
+			ckTick = time.After(ckptPace)
+		}
 		select {
+		case <-ckTick:
 		case in := <-inbox:
 			n.handle(in, waiters, streams)
 		drain:
@@ -417,8 +424,13 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return nil
 		}
 		eff, err := n.core.Process()
-		if cs := n.core.CheckpointStep(n.e.lastSize.Load()); len(cs) > 0 {
-			n.e.ckptQ <- cs
+		// The checkpoint copy is paced: one chunk per ckptPace at most, so
+		// a checkpoint spreads over many turns instead of a burst.
+		if now := time.Now(); now.Sub(lastCkpt) >= ckptPace {
+			if cs := n.core.CheckpointStep(n.e.lastSize.Load()); len(cs) > 0 {
+				n.e.ckptQ <- cs
+				lastCkpt = now
+			}
 		}
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, eff.Persist)

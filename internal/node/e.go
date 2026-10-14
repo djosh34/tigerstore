@@ -44,6 +44,10 @@ var EBytes struct {
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
+// ckptPace is the least time between two checkpoint chunks on the
+// committer; with core.CkptBytes per chunk it bounds the copy rate.
+var ckptPace = time.Duration(envI("TS_E_CKPT_PACE_US", 1000)) * time.Microsecond
+
 const ckptMagic = "tsckptE1"
 
 // ckptInfo is the newest durable checkpoint, for the cleaner and the
@@ -281,6 +285,8 @@ func (e *eState) ckptWriter(logf func(string, ...any)) {
 	var start time.Time
 	liveSeg := map[uint64]int64{}
 	livePk := map[*vstore.Packed]int64{}
+	var refs []mvcc.Ref
+	var synced int64
 	write := func(b []byte) {
 		crc = crc32.Update(crc, castagnoli, b)
 		bw.Write(b)
@@ -306,7 +312,7 @@ func (e *eState) ckptWriter(logf func(string, ...any)) {
 					panic(err)
 				}
 				bw = bufio.NewWriterSize(f, 1<<20)
-				crc, size = 0, 0
+				crc, size, synced = 0, 0, 0
 				clear(liveSeg)
 				write([]byte(ckptMagic))
 				frame(hdr.Encode())
@@ -314,19 +320,20 @@ func (e *eState) ckptWriter(logf func(string, ...any)) {
 			}
 			if len(c.Data) > 0 {
 				frame(c.Data)
+				refs = refs[:0]
 				mvcc.WalkCheckpoint(c.Data, nil, func(_, _, _, _, _ int64, r mvcc.Ref) {
-					if r.N == 0 {
-						return
-					}
-					seq, p := e.vs.Where(r)
-					if p != nil {
-						if _, ok := livePk[p]; ok {
-							livePk[p] += int64(r.N)
-						}
-					} else {
-						liveSeg[seq] += int64(r.N)
+					if r.N > 0 {
+						refs = append(refs, r)
 					}
 				})
+				e.vs.Account(refs, liveSeg, livePk)
+				if size-synced >= 2<<20 {
+					// Sync as it goes, so the last sync is small and the
+					// WAL's fsyncs on the same disk do not queue behind it.
+					bw.Flush()
+					f.Sync()
+					synced = size
+				}
 			}
 			if !c.Done {
 				continue

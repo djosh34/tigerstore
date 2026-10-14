@@ -39,7 +39,7 @@ var (
 	CkptK   = envInt("TS_E_CKPT_K", 16)
 	// CkptBytes is about how much of the index the committer copies per
 	// turn.
-	CkptBytes = int(envInt("TS_E_CKPT_BYTES", 128<<10))
+	CkptBytes = int(envInt("TS_E_CKPT_BYTES", 32<<10))
 )
 
 // DiskValues reads values that left the RAM window.
@@ -315,6 +315,9 @@ func (n *Node) ApplyFetched(ents []*raftpb.Entry) {
 		}
 	}
 }
+
+// CheckpointActive reports whether a checkpoint copy is under way.
+func (n *Node) CheckpointActive() bool { return n.ckptActive }
 
 // Installing reports whether a snapshot install is running.
 func (n *Node) Installing() bool { return n.installing }
