@@ -1,5 +1,7 @@
-// Package wal stores the Raft log and hard state of one node. The log is
-// the value store: every write's key and value live only here and in memory.
+// Package wal stores what one node keeps on disk: the Raft log with its
+// hard state, the roots that name checkpoints, and the checkpoint files.
+// The log is the value store: every write's key and value live in the
+// entry that carried it, and the index names a value by its place there.
 //
 // The log is a sequence of segment files. Each segment starts with a header
 // and holds records. A record is
@@ -8,13 +10,21 @@
 //
 // The crc covers type and payload and starts from the crc of the record
 // before it, so a stale or misplaced record does not verify. The header
-// carries the crc that the segment's first record starts from.
+// carries the format version and the crc that the segment's first record
+// starts from.
 //
 // An entry record replaces every entry at or after its index, so a
-// truncated Raft suffix and its replacement are synced together.
+// truncated Raft suffix and its replacement are synced together. A root
+// record names the checkpoint that recovery starts from. A value record
+// holds a value of an entry this node does not have, which a snapshot
+// brought. Every segment starts with a copy of the newest hard state and
+// root, so removing older segments never loses them.
 //
 // The package does no I/O of its own. It reads and writes through FS, so
-// the simulator runs it on a simulated disk.
+// the simulator runs it on a simulated disk. It takes no locks: a driver
+// that reads from other goroutines than the one that appends must hold
+// one lock around Append, AppendRoot, AppendValue, RemoveBelow and every
+// read, but need not hold it around Flush and Sync.
 package wal
 
 import (
@@ -45,10 +55,12 @@ type FS interface {
 	SyncDir() error
 }
 
-// File is one segment file.
+// File is one segment or checkpoint file.
 type File interface {
 	// ReadAll returns the whole content.
 	ReadAll() ([]byte, error)
+	// ReadAt reads len(p) bytes at offset off, as io.ReaderAt does.
+	ReadAt(p []byte, off int64) (int, error)
 	// Write appends p.
 	Write(p []byte) (int, error)
 	// Truncate cuts the file to size bytes.
@@ -62,13 +74,28 @@ type File interface {
 // cause. The node must not take part in the cluster with it.
 var ErrCorrupt = errors.New("wal: corrupt log")
 
+// ErrNotOnDisk means that an entry or value is not in the log any more, or
+// never was.
+var ErrNotOnDisk = errors.New("wal: not on disk")
+
+// Version is the format version of segments and checkpoint files.
+const Version = 1
+
 const (
 	magic      = "tigerwal"
-	headerSize = len(magic) + 8 + 4
+	headerSize = len(magic) + 4 + 8 + 4
 	recHdrSize = 9
+	// entryHdrSize is an entry record's payload before its data: term,
+	// index and entry type.
+	entryHdrSize = 17
+	// valueHdrSize is a value record's payload before the value: entry
+	// index and offset.
+	valueHdrSize = 12
 
 	recEntry     = 1
 	recHardState = 2
+	recRoot      = 3
+	recValue     = 4
 
 	// SegmentBytes is the size after which the log starts a new segment.
 	SegmentBytes = 64 << 20
@@ -78,7 +105,74 @@ var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
 
-// WAL appends to the newest segment.
+// CheckpointName is the file name of the checkpoint at a Raft index.
+func CheckpointName(index uint64) string { return fmt.Sprintf("ckpt-%016x", index) }
+
+// HardState is the Raft hard state.
+type HardState struct {
+	Term, Vote, Commit uint64
+}
+
+// Root names the checkpoint that recovery starts from: the Raft index it
+// was cut at and that entry's term. A checkpoint counts only once a synced
+// root names it.
+//
+// A root with Reset set came with a snapshot: the log continues after
+// Index, and of the entries this node held before, only those up to Keep,
+// its applied index then, are still its log.
+type Root struct {
+	Index, Term uint64
+	Reset       bool
+	Keep        uint64
+}
+
+// Recovered is what Open read from disk.
+type Recovered struct {
+	HardState HardState
+	// Root is the newest root, zero if there is none.
+	Root Root
+	// Last is the index of the last entry, or the root's index if no entry
+	// follows it. Every entry after the root's index up to Last is on
+	// disk; WAL.Entry reads them.
+	Last uint64
+}
+
+// run is where a run of consecutive entries is in segment seq. offs[i] is
+// the file offset of the record of entry first+i, and seeds[i] the crc
+// that record chains from, so that a read can check it. Every segment has
+// a run, maybe empty, and several when a snapshot moved the log on.
+type run struct {
+	seq   uint64
+	first uint64
+	offs  []uint32
+	seeds []uint32
+	// top is the highest index of an entry or value the run ever held.
+	top uint64
+}
+
+func (s *run) end() uint64 { return s.first + uint64(len(s.offs)) }
+
+// cut drops the entries at or after index.
+func (s *run) cut(index uint64) {
+	if s.end() <= index {
+		return
+	}
+	k := uint64(0)
+	if index > s.first {
+		k = index - s.first
+	}
+	s.offs, s.seeds = s.offs[:k], s.seeds[:k]
+}
+
+// valueRec is a value record: the file offset of its value and the place
+// of the value in its entry.
+type valueRec struct {
+	seq      uint64
+	at       uint32
+	off, len uint32
+}
+
+// WAL appends to the newest segment and reads from all of them.
 type WAL struct {
 	fs      FS
 	seg     File
@@ -89,36 +183,40 @@ type WAL struct {
 	buf     []byte
 	dirty   bool
 	maxSize int64
-}
+	// hs and root are the newest hard state and root, copied into every
+	// new segment; copied marks that the current segment has them.
+	hs     HardState
+	root   Root
+	copied bool
 
-// HardState is the Raft hard state.
-type HardState struct {
-	Term, Vote, Commit uint64
-}
-
-// Recovered is what Open read from disk.
-type Recovered struct {
-	HardState HardState
-	Entries   []*raftpb.Entry
+	runs    []*run
+	vals    map[uint64][]valueRec
+	readers map[uint64]File
 }
 
 // Open reads the log in fs, cuts a torn tail off the newest segment, and
-// returns the log ready for appends. A damaged record anywhere else, a gap
-// in the entries, or a commit index past the last entry is ErrCorrupt.
+// returns the log ready for appends. It holds one segment in memory at a
+// time and keeps only where each entry is. A damaged record anywhere else,
+// a gap in the entries, or a commit index past the last entry is
+// ErrCorrupt. It removes the checkpoint files that the newest root does
+// not name.
 func Open(fs FS) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
 		return nil, nil, err
 	}
-	var segs []string
+	var segs, ckpts []string
 	for _, n := range names {
-		if strings.HasSuffix(n, ".wal") {
+		switch {
+		case strings.HasSuffix(n, ".wal"):
 			segs = append(segs, n)
+		case strings.HasPrefix(n, "ckpt-"):
+			ckpts = append(ckpts, n)
 		}
 	}
-	slices.Sort(segs)
 	// Segment names must be consecutive: a gap is a lost segment, even
-	// when the newest segment is empty.
+	// when the newest segment is empty. Old segments go only from the
+	// front.
 	for i := 1; i < len(segs); i++ {
 		var prev, cur uint64
 		if _, err := fmt.Sscanf(segs[i-1], "%016x.wal", &prev); err != nil {
@@ -132,8 +230,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 
-	w := &WAL{fs: fs, maxSize: SegmentBytes}
+	w := &WAL{fs: fs, maxSize: SegmentBytes, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}}
 	rec := &Recovered{}
+	// first is the index of the first entry the scan found, 0 for none.
+	var first uint64
 	for i, name := range segs {
 		last := i == len(segs)-1
 		f, err := fs.Open(name)
@@ -144,10 +244,11 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		if err != nil {
 			return nil, nil, errors.Join(err, f.Close())
 		}
-		seq, crc, ok := parseHeader(data)
+		version, seq, crc, ok := parseHeader(data)
 		ok = ok && name == segmentName(seq)
 		// The first segment may start anywhere once old segments are
-		// cleaned; every later one continues the sequence and the crc chain.
+		// removed; every later one continues the sequence and the crc
+		// chain.
 		if ok && i > 0 {
 			ok = seq == w.seq+1 && crc == w.crc
 		}
@@ -164,8 +265,12 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			break
 		}
+		if version != Version {
+			return nil, nil, errors.Join(fmt.Errorf("wal: segment %s has format version %d; this build reads version %d", name, version, Version), f.Close())
+		}
 		w.seq, w.crc = seq, crc
-		good, lastStart, err := w.replay(data, rec)
+		w.current()
+		good, lastStart, err := w.replay(data, rec, &first)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
 		}
@@ -193,10 +298,18 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			continue
 		}
-		w.seg, w.size = f, good
+		w.seg, w.size, w.copied = f, good, true
 	}
+	if err := w.check(first); err != nil {
+		return nil, nil, err
+	}
+	w.last = max(w.last, w.root.Index)
+	rec.Root, rec.Last = w.root, w.last
 	if rec.HardState.Commit > w.last {
 		return nil, nil, fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last)
+	}
+	if err := w.removeCheckpoints(ckpts, CheckpointName(w.root.Index)); err != nil {
+		return nil, nil, err
 	}
 	if w.seg == nil {
 		if err := w.newSegment(); err != nil {
@@ -206,21 +319,64 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	return w, rec, nil
 }
 
-func parseHeader(data []byte) (seq uint64, crc uint32, ok bool) {
-	if len(data) < headerSize || string(data[:len(magic)]) != magic {
-		return 0, 0, false
+// check requires the entries after the root to be on disk without a gap,
+// and a log without a root to start at index 1.
+func (w *WAL) check(first uint64) error {
+	if first == 0 {
+		return nil
 	}
-	seq = binary.LittleEndian.Uint64(data[len(magic):])
-	crc = binary.LittleEndian.Uint32(data[len(magic)+8:])
-	return seq, crc, true
+	if w.root.Index == 0 && first != 1 {
+		return fmt.Errorf("%w: the log starts at entry %d and no root names a checkpoint", ErrCorrupt, first)
+	}
+	next := w.root.Index + 1
+	for _, s := range w.runs {
+		if len(s.offs) == 0 || s.end() <= next {
+			continue
+		}
+		if s.first > next {
+			return fmt.Errorf("%w: entries %d to %d are missing", ErrCorrupt, next, s.first-1)
+		}
+		next = s.end()
+	}
+	if next <= w.last {
+		return fmt.Errorf("%w: entries %d to %d are missing", ErrCorrupt, next, w.last)
+	}
+	return nil
 }
 
-// replay applies the records of one segment to rec and returns the length
-// of the valid prefix. A record that does not verify ends the prefix. A
-// record that verifies but does not fit the log is an error.
+// removeCheckpoints removes every checkpoint file in names but keep.
+func (w *WAL) removeCheckpoints(names []string, keep string) error {
+	removed := false
+	for _, n := range names {
+		if n == keep {
+			continue
+		}
+		if err := w.fs.Remove(n); err != nil {
+			return err
+		}
+		removed = true
+	}
+	if removed {
+		return w.fs.SyncDir()
+	}
+	return nil
+}
+
+func parseHeader(data []byte) (version uint32, seq uint64, crc uint32, ok bool) {
+	if len(data) < headerSize || string(data[:len(magic)]) != magic {
+		return 0, 0, 0, false
+	}
+	version = binary.LittleEndian.Uint32(data[len(magic):])
+	seq = binary.LittleEndian.Uint64(data[len(magic)+4:])
+	crc = binary.LittleEndian.Uint32(data[len(magic)+12:])
+	return version, seq, crc, true
+}
+
 // replay applies the records of one segment and returns where its valid
-// records end and where the last of them starts.
-func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err error) {
+// records end and where the last of them starts. A record that does not
+// verify ends the prefix. A record that verifies but does not fit the log
+// is an error.
+func (w *WAL) replay(data []byte, rec *Recovered, first *uint64) (good, lastStart int64, err error) {
 	off := headerSize
 	for off < len(data) {
 		if len(data)-off < recHdrSize {
@@ -244,7 +400,7 @@ func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err er
 			}
 			return int64(off), lastStart, nil
 		}
-		if err := w.apply(body[0], body[1:], rec); err != nil {
+		if err := w.apply(body[0], body[1:], uint32(off), rec, first); err != nil {
 			return int64(off), lastStart, err
 		}
 		lastStart = int64(off)
@@ -272,28 +428,24 @@ func verifiesAfter(data []byte, off int, crc uint32) bool {
 	return crc32.Update(crc, castagnoli, data[off+8:end]) == binary.LittleEndian.Uint32(data[off+4:])
 }
 
-func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
+// apply takes one verified record of the current segment, which starts at
+// file offset at.
+func (w *WAL) apply(typ byte, p []byte, at uint32, rec *Recovered, first *uint64) error {
 	switch typ {
 	case recEntry:
-		if len(p) < 17 {
+		if len(p) < entryHdrSize {
 			return fmt.Errorf("%w: short entry record", ErrCorrupt)
 		}
-		term := binary.LittleEndian.Uint64(p)
 		index := binary.LittleEndian.Uint64(p[8:])
-		etype := raftpb.EntryType(p[16])
+		if *first == 0 && index > 0 {
+			// The first entry found; older ones may have been removed,
+			// which check allows only below the root.
+			*first, w.last = index, max(w.last, index-1)
+		}
 		if index == 0 || index > w.last+1 {
 			return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
 		}
-		first := uint64(1)
-		if len(rec.Entries) > 0 {
-			first = rec.Entries[0].GetIndex()
-		}
-		if index < first {
-			return fmt.Errorf("%w: entry %d is before the first entry %d", ErrCorrupt, index, first)
-		}
-		rec.Entries = rec.Entries[:index-first]
-		rec.Entries = append(rec.Entries, &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: p[17:]})
-		w.last = index
+		w.placeEntry(index, at, w.crc)
 	case recHardState:
 		if len(p) != 24 {
 			return fmt.Errorf("%w: hard state record of %d bytes", ErrCorrupt, len(p))
@@ -303,15 +455,85 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 			Vote:   binary.LittleEndian.Uint64(p[8:]),
 			Commit: binary.LittleEndian.Uint64(p[16:]),
 		}
+		w.hs = rec.HardState
+	case recRoot:
+		if len(p) != 25 {
+			return fmt.Errorf("%w: root record of %d bytes", ErrCorrupt, len(p))
+		}
+		r := Root{
+			Index: binary.LittleEndian.Uint64(p),
+			Term:  binary.LittleEndian.Uint64(p[8:]),
+			Reset: p[16] != 0,
+			Keep:  binary.LittleEndian.Uint64(p[17:]),
+		}
+		if r.Index < w.root.Index {
+			return fmt.Errorf("%w: root at %d after root at %d", ErrCorrupt, r.Index, w.root.Index)
+		}
+		w.setRoot(r)
+	case recValue:
+		if len(p) < valueHdrSize {
+			return fmt.Errorf("%w: short value record", ErrCorrupt)
+		}
+		w.placeValue(binary.LittleEndian.Uint64(p), binary.LittleEndian.Uint32(p[8:]), uint32(len(p)-valueHdrSize), at+recHdrSize+valueHdrSize)
 	default:
 		return fmt.Errorf("%w: unknown record type %d", ErrCorrupt, typ)
 	}
 	return nil
 }
 
+// current is the run of the current segment that appends go to.
+func (w *WAL) current() *run {
+	if len(w.runs) == 0 || w.runs[len(w.runs)-1].seq != w.seq {
+		w.runs = append(w.runs, &run{seq: w.seq})
+	}
+	return w.runs[len(w.runs)-1]
+}
+
+// placeEntry notes that entry index has its record at file offset at of
+// the current segment, chained from crc seed. It replaces every entry at
+// or after index.
+func (w *WAL) placeEntry(index uint64, at, seed uint32) {
+	for _, s := range w.runs {
+		s.cut(index)
+	}
+	cur := w.current()
+	if len(cur.offs) > 0 && cur.end() != index {
+		// The log moved on past a snapshot.
+		cur = &run{seq: w.seq}
+		w.runs = append(w.runs, cur)
+	}
+	if len(cur.offs) == 0 {
+		cur.first = index
+	}
+	cur.offs = append(cur.offs, at)
+	cur.seeds = append(cur.seeds, seed)
+	cur.top = max(cur.top, index)
+	w.last = index
+}
+
+// placeValue notes a value record of the current segment whose value is
+// at file offset at.
+func (w *WAL) placeValue(index uint64, off, n, at uint32) {
+	cur := w.current()
+	w.vals[index] = append(w.vals[index], valueRec{seq: cur.seq, at: at, off: off, len: n})
+	cur.top = max(cur.top, index)
+}
+
+// setRoot makes r the newest root. A reset drops the entries after Keep.
+func (w *WAL) setRoot(r Root) {
+	if r.Reset {
+		for _, s := range w.runs {
+			s.cut(r.Keep + 1)
+		}
+		w.last = r.Index
+	}
+	w.root = r
+}
+
 // newSegment starts the next segment. It syncs the header before the
 // directory entry, so a segment that survives a crash always has its
-// header.
+// header. The copies of the hard state and the root go in with the next
+// write.
 func (w *WAL) newSegment() error {
 	seq := w.seq + 1
 	f, err := w.fs.Create(segmentName(seq))
@@ -320,6 +542,7 @@ func (w *WAL) newSegment() error {
 	}
 	hdr := make([]byte, 0, headerSize)
 	hdr = append(hdr, magic...)
+	hdr = binary.LittleEndian.AppendUint32(hdr, Version)
 	hdr = binary.LittleEndian.AppendUint64(hdr, seq)
 	hdr = binary.LittleEndian.AppendUint32(hdr, w.crc)
 	if _, err := f.Write(hdr); err != nil {
@@ -335,7 +558,7 @@ func (w *WAL) newSegment() error {
 			return errors.Join(err, f.Close())
 		}
 	}
-	w.seq, w.seg, w.size = seq, f, int64(headerSize)
+	w.seq, w.seg, w.size, w.copied = seq, f, int64(headerSize), false
 	return nil
 }
 
@@ -354,27 +577,84 @@ func (w *WAL) record(typ byte, payload ...[]byte) {
 	binary.LittleEndian.PutUint32(w.buf[start+4:], w.crc)
 }
 
+// copyState starts a new segment with copies of the newest hard state and
+// root, before its first record.
+func (w *WAL) copyState() {
+	// Every segment has a run, so that RemoveBelow sees it.
+	w.current()
+	if w.copied {
+		return
+	}
+	w.copied = true
+	if w.hs != (HardState{}) {
+		w.hardState(w.hs)
+	}
+	if w.root != (Root{}) {
+		w.rootRecord(w.root)
+	}
+}
+
+func (w *WAL) hardState(hs HardState) {
+	var h [24]byte
+	binary.LittleEndian.PutUint64(h[:], hs.Term)
+	binary.LittleEndian.PutUint64(h[8:], hs.Vote)
+	binary.LittleEndian.PutUint64(h[16:], hs.Commit)
+	w.record(recHardState, h[:])
+	w.hs = hs
+}
+
+func (w *WAL) rootRecord(r Root) {
+	var h [25]byte
+	binary.LittleEndian.PutUint64(h[:], r.Index)
+	binary.LittleEndian.PutUint64(h[8:], r.Term)
+	if r.Reset {
+		h[16] = 1
+	}
+	binary.LittleEndian.PutUint64(h[17:], r.Keep)
+	w.record(recRoot, h[:])
+}
+
 // EntryRecordBytes is the size of the record that stores e.
-func EntryRecordBytes(e *raftpb.Entry) int64 { return recHdrSize + 17 + int64(len(e.GetData())) }
+func EntryRecordBytes(e *raftpb.Entry) int64 {
+	return recHdrSize + entryHdrSize + int64(len(e.GetData()))
+}
 
 // Append buffers entries and a hard state. Nothing is durable before Sync.
 // A nil hard state leaves the stored one unchanged.
 func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
+	w.copyState()
 	for _, e := range ents {
-		var h [17]byte
+		var h [entryHdrSize]byte
 		binary.LittleEndian.PutUint64(h[:], e.GetTerm())
 		binary.LittleEndian.PutUint64(h[8:], e.GetIndex())
 		h[16] = byte(e.GetType())
+		at, seed := uint32(w.size)+uint32(len(w.buf)), w.crc
 		w.record(recEntry, h[:], e.GetData())
-		w.last = e.GetIndex()
+		w.placeEntry(e.GetIndex(), at, seed)
 	}
 	if hs != nil {
-		var h [24]byte
-		binary.LittleEndian.PutUint64(h[:], hs.Term)
-		binary.LittleEndian.PutUint64(h[8:], hs.Vote)
-		binary.LittleEndian.PutUint64(h[16:], hs.Commit)
-		w.record(recHardState, h[:])
+		w.hardState(*hs)
 	}
+}
+
+// AppendRoot buffers a root. The checkpoint it names counts once it is
+// synced. A root with Reset moves the log to after the root's index.
+func (w *WAL) AppendRoot(r Root) {
+	w.copyState()
+	w.rootRecord(r)
+	w.setRoot(r)
+}
+
+// AppendValue buffers a value that starts at offset off of the data of
+// entry index, an entry this node does not hold.
+func (w *WAL) AppendValue(index uint64, off uint32, value []byte) {
+	w.copyState()
+	var h [valueHdrSize]byte
+	binary.LittleEndian.PutUint64(h[:], index)
+	binary.LittleEndian.PutUint32(h[8:], off)
+	at := uint32(w.size) + uint32(len(w.buf)) + recHdrSize + valueHdrSize
+	w.record(recValue, h[:], value)
+	w.placeValue(index, off, uint32(len(value)), at)
 }
 
 // Flush writes what Append buffered without syncing it. The simulator
@@ -430,8 +710,179 @@ func (w *WAL) Sync() error {
 // and the simulator use small segments to exercise rotation.
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
-// Close closes the newest segment without syncing.
-func (w *WAL) Close() error { return w.seg.Close() }
+// Close closes the newest segment without syncing, and every file opened
+// for reading.
+func (w *WAL) Close() error {
+	err := w.seg.Close()
+	for seq, f := range w.readers {
+		err = errors.Join(err, f.Close())
+		delete(w.readers, seq)
+	}
+	return err
+}
+
+// locate returns the run that holds entry index and the entry's position
+// in it, or nil.
+func (w *WAL) locate(index uint64) (*run, int) {
+	for i := len(w.runs) - 1; i >= 0; i-- {
+		s := w.runs[i]
+		if index >= s.first && index < s.end() {
+			return s, int(index - s.first)
+		}
+	}
+	return nil, 0
+}
+
+// readAt reads len(p) bytes at offset off of segment seq.
+func (w *WAL) readAt(seq uint64, p []byte, off int64) error {
+	f, ok := w.readers[seq]
+	if !ok {
+		var err error
+		if f, err = w.fs.Open(segmentName(seq)); err != nil {
+			return err
+		}
+		w.readers[seq] = f
+	}
+	n, err := f.ReadAt(p, off)
+	if n == len(p) {
+		return nil
+	}
+	return fmt.Errorf("wal: read %d of %d bytes at %d of segment %d: %w", n, len(p), off, seq, err)
+}
+
+// Entry reads entry index from disk and checks its record.
+func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
+	s, i := w.locate(index)
+	if s == nil {
+		return nil, fmt.Errorf("%w: entry %d", ErrNotOnDisk, index)
+	}
+	at := int64(s.offs[i])
+	var hdr [recHdrSize]byte
+	if err := w.readAt(s.seq, hdr[:], at); err != nil {
+		return nil, err
+	}
+	n := binary.LittleEndian.Uint32(hdr[:])
+	if n < entryHdrSize || n > MaxEntryBytes {
+		return nil, fmt.Errorf("%w: the record of entry %d in segment %d has %d bytes", ErrCorrupt, index, s.seq, n)
+	}
+	body := make([]byte, 1+n)
+	if err := w.readAt(s.seq, body, at+8); err != nil {
+		return nil, err
+	}
+	if crc32.Update(s.seeds[i], castagnoli, body) != binary.LittleEndian.Uint32(hdr[4:]) || body[0] != recEntry ||
+		binary.LittleEndian.Uint64(body[9:]) != index {
+		return nil, fmt.Errorf("%w: the record of entry %d in segment %d does not verify", ErrCorrupt, index, s.seq)
+	}
+	p := body[1:]
+	term := binary.LittleEndian.Uint64(p)
+	etype := raftpb.EntryType(p[16])
+	return &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: p[entryHdrSize:]}, nil
+}
+
+// MaxEntryBytes bounds the record of one entry that Entry reads.
+const MaxEntryBytes = 64 << 20
+
+// Value reads n bytes at offset off of the data of entry index, from the
+// entry's record or from a value record. The caller checks them against
+// the value's checksum.
+func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
+	b := make([]byte, n)
+	if s, i := w.locate(index); s != nil {
+		return b, w.readAt(s.seq, b, int64(s.offs[i])+recHdrSize+entryHdrSize+int64(off))
+	}
+	for _, v := range w.vals[index] {
+		if v.off <= off && uint64(off)+uint64(n) <= uint64(v.off)+uint64(v.len) {
+			return b, w.readAt(v.seq, b, int64(v.at)+int64(off-v.off))
+		}
+	}
+	return nil, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+}
+
+// RemoveBelow removes the oldest segments whose every entry and value is
+// below index mark, then syncs the directory. It keeps the current
+// segment and the one before it, which hold the newest hard state and
+// root until the current one has them too.
+func (w *WAL) RemoveBelow(mark uint64) error {
+	// The runs of the segments to remove, which must all be below mark.
+	n := 0
+	for n < len(w.runs) && w.runs[n].seq+1 < w.seq {
+		end := n
+		for end < len(w.runs) && w.runs[end].seq == w.runs[n].seq {
+			end++
+		}
+		below := true
+		for _, s := range w.runs[n:end] {
+			below = below && s.top < mark
+		}
+		if !below && !planted.On("B19") {
+			break
+		}
+		n = end
+		if !below {
+			// Planted: this segment goes too, though it holds entries
+			// that recovery from the checkpoint still needs.
+			break
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	for i, s := range w.runs[:n] {
+		if i > 0 && w.runs[i-1].seq == s.seq {
+			continue
+		}
+		if f, ok := w.readers[s.seq]; ok {
+			delete(w.readers, s.seq)
+			if err := f.Close(); err != nil {
+				return err
+			}
+		}
+		if err := w.fs.Remove(segmentName(s.seq)); err != nil {
+			return err
+		}
+		for index, vs := range w.vals {
+			vs = slices.DeleteFunc(vs, func(v valueRec) bool { return v.seq == s.seq })
+			if len(vs) == 0 {
+				delete(w.vals, index)
+			} else {
+				w.vals[index] = vs
+			}
+		}
+	}
+	w.runs = slices.Delete(w.runs, 0, n)
+	return w.fs.SyncDir()
+}
+
+// CreateCheckpoint creates the file of the checkpoint at index. It counts
+// only once it is synced, the directory is synced, and a synced root
+// names it.
+func (w *WAL) CreateCheckpoint(index uint64) (File, error) {
+	return w.fs.Create(CheckpointName(index))
+}
+
+// OpenCheckpoint opens the file of the checkpoint at index.
+func (w *WAL) OpenCheckpoint(index uint64) (File, error) {
+	return w.fs.Open(CheckpointName(index))
+}
+
+// SyncDir makes the creation of a checkpoint file durable.
+func (w *WAL) SyncDir() error { return w.fs.SyncDir() }
+
+// RemoveCheckpoints removes every checkpoint file but the one at index
+// keep.
+func (w *WAL) RemoveCheckpoints(keep uint64) error {
+	names, err := w.fs.List()
+	if err != nil {
+		return err
+	}
+	var ckpts []string
+	for _, n := range names {
+		if strings.HasPrefix(n, "ckpt-") {
+			ckpts = append(ckpts, n)
+		}
+	}
+	return w.removeCheckpoints(ckpts, CheckpointName(keep))
+}
 
 // decodes reports whether a record body looks like the next record: an
 // entry that follows the last one, or a hard state. Only the planted bug
@@ -440,7 +891,7 @@ func (w *WAL) decodes(body []byte) bool {
 	switch {
 	case len(body) == 1+24 && body[0] == recHardState:
 		return true
-	case len(body) >= 1+17 && body[0] == recEntry:
+	case len(body) >= 1+entryHdrSize && body[0] == recEntry:
 		index := binary.LittleEndian.Uint64(body[9:])
 		return index >= 1 && index <= w.last+1
 	}

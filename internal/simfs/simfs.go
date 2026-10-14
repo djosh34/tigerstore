@@ -9,6 +9,7 @@ package simfs
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/fs"
 	"maps"
 	"math/rand/v2"
@@ -261,6 +262,21 @@ func (h *Handle) ReadAll() ([]byte, error) {
 		return nil, err
 	}
 	return slices.Clone(h.f.data), nil
+}
+
+// ReadAt reads len(p) bytes at offset off.
+func (h *Handle) ReadAt(p []byte, off int64) (int, error) {
+	if err := h.check(OpRead); err != nil {
+		return 0, err
+	}
+	if off < 0 || off > int64(len(h.f.data)) {
+		return 0, io.EOF
+	}
+	n := copy(p, h.f.data[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
 }
 
 // Write appends a copy of p.
