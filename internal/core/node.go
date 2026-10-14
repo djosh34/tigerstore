@@ -345,8 +345,9 @@ type Node struct {
 	copy      *copying
 	last      lastCkpt
 	sinceCkpt int64
-	// unpersisted is the entry bytes on their way to the disk.
-	unpersisted int64
+	// unpersisted is the entry bytes on their way to the disk, and
+	// unready those proposed since the last Ready.
+	unpersisted, unready int64
 	// snapWait holds, on the leader, when each follower that needs a
 	// snapshot started to wait for it, or 0 while its fetch runs.
 	snapWait map[uint64]int64
@@ -859,6 +860,7 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 		n.fail(err)
 		return
 	}
+	n.unready += int64(len(data))
 	if err := n.rn.Propose(data); err != nil {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
@@ -992,6 +994,8 @@ func (n *Node) stop() {
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
+	// What was proposed is in this Ready's append, or went to the leader.
+	n.unready = 0
 	if rd.SoftState != nil {
 		if leader := rd.RaftState == raft.StateLeader; leader != n.isLeader {
 			n.isLeader = leader

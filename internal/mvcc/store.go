@@ -137,7 +137,7 @@ func (s *Store) value(key []byte, r Ref) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
 	}
-	if uint32(len(b)) != r.Len || crc32.Checksum(b, castagnoli) != r.Sum {
+	if uint32(len(b)) != r.Len || (crc32.Checksum(b, castagnoli) != r.Sum && !planted.On("B25")) {
 		return nil, fmt.Errorf("%w: key %q, entry %d, offset %d", ErrBadValue, key, r.Index, r.Off)
 	}
 	return b, nil
@@ -268,14 +268,20 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 // is reused by the next write.
 func (s *Store) Changes() []Change { return s.changes }
 
-// Ref returns the position of the value of a key's newest version, if
-// the key exists. The simulator uses it to damage a value on disk.
-func (s *Store) Ref(key []byte) (Ref, bool) {
+// Refs returns the positions of the values of every version of a key.
+// The simulator uses them to damage a value on disk.
+func (s *Store) Refs(key []byte) []Ref {
 	k, ok := s.keys.Get(&keyIndex{key: key})
-	if !ok || k.vers[len(k.vers)-1].ver == 0 {
-		return Ref{}, false
+	if !ok {
+		return nil
 	}
-	return k.vers[len(k.vers)-1].value, true
+	var out []Ref
+	for _, v := range k.vers {
+		if v.value.Len > 0 {
+			out = append(out, v.value)
+		}
+	}
+	return out
 }
 
 // Hash returns a hash of every version of every key, with the Ref of its

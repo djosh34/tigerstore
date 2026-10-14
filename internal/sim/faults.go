@@ -34,7 +34,7 @@ func (s *Sim) scheduleDiskFaults() {
 		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*3/4), kind: evRot})
 	}
 	if f.HoldDown {
-		s.cfg.DownFor = 3*Second + s.rng.Int64N(2*Second)
+		s.cfg.DownFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
 		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration-s.cfg.DownFor), kind: evDownFollower})
 	}
 }
@@ -123,6 +123,8 @@ func (s *Sim) downFollower() {
 			return
 		}
 	}
+	// No follower yet; try again soon.
+	s.push(&event{at: s.now + 200*Millisecond, kind: evDownFollower})
 }
 
 func (s *Sim) stall(n *node, until int64) {

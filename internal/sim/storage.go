@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.etcd.io/raft/v3/raftpb"
 
@@ -187,8 +188,8 @@ func (s *Sim) removed(n *node, j core.PersistJob) bool {
 var errFetch = errors.New("sim: the snapshot's source cannot be reached")
 
 // install fetches a snapshot for n from the node that sent it, as a
-// separate connection, and writes it to n's log. Now and then the stream
-// arrives damaged.
+// separate connection, and writes it to n's log. The first stream of a
+// run, and one in four after it, arrives damaged.
 func (s *Sim) install(n *node, in *core.Install) error {
 	if in.From == 0 || in.From > uint64(len(s.nodes)) {
 		return errFetch
@@ -206,7 +207,7 @@ func (s *Sim) install(n *node, in *core.Install) error {
 	}
 	data := buf.Bytes()
 	s.stats.Snapshots++
-	if s.cfg.Faults.FlipSnapshot && !s.healed && len(data) > 0 && s.rng.IntN(4) == 0 {
+	if s.cfg.Faults.FlipSnapshot && !s.healed && len(data) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
 		data[s.rng.IntN(len(data))] ^= byte(1 + s.rng.IntN(255))
 		s.stats.SnapshotFlips++
 	}
@@ -310,6 +311,17 @@ func (s *Sim) installFailed(n *node, err error) {
 	s.stopNode(n)
 }
 
+// newestSegment is the name of the newest WAL segment on a disk.
+func newestSegment(d *simfs.Disk) string {
+	var newest string
+	for _, name := range d.DurableNames() {
+		if strings.HasSuffix(name, ".wal") {
+			newest = name
+		}
+	}
+	return newest
+}
+
 // rot flips a bit of a value on a node's disk while it runs, a value of a
 // key that is only on disk, once per run. The node must never return it:
 // it stops when it reads it, and refuses its log on the next start.
@@ -327,12 +339,17 @@ func (s *Sim) rot() bool {
 		return false
 	}
 	for range numKeys {
-		r, ok := n.core.Store().Ref(key(s.rng.IntN(numKeys)))
-		if !ok || r.Len == 0 || r.Index >= n.core.FirstIndex() {
+		refs := n.core.Store().Refs(key(s.rng.IntN(numKeys)))
+		if len(refs) == 0 {
+			continue
+		}
+		r := refs[s.rng.IntN(len(refs))]
+		if r.Index >= n.core.FirstIndex() {
 			continue
 		}
 		name, at, ok := n.log.ValuePlace(r.Index, r.Off)
-		if !ok {
+		if !ok || name == newestSegment(n.disk) {
+			// Damage in the newest segment looks like a torn write.
 			continue
 		}
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))

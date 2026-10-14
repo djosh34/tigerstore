@@ -42,7 +42,12 @@ type Install struct {
 
 // install brings the state to the snapshot: it loads the checkpoint that
 // came with it, if any, and applies the entries after that from the log.
+// Memory is emptied first: the entries it held after the applied index
+// can be ones the snapshot replaced, and values must come from the log.
 func (n *Node) install(in *Install) error {
+	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.conf}}); err != nil {
+		return err
+	}
 	if c := in.Checkpoint; c.Index > 0 {
 		if n.copy != nil {
 			// The checkpoint under way is of the state being replaced;
@@ -80,7 +85,7 @@ func (n *Node) install(in *Install) error {
 		return fmt.Errorf("core: the snapshot at %d term %d left the state at %d term %d", in.Index, in.Term, n.applied, term)
 	}
 	n.applied = in.Index
-	return n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.conf}})
+	return nil
 }
 
 // record notes, with Config.Record, that the state at index came from a
@@ -106,7 +111,7 @@ func (n *Node) closeWatchStreams() {
 
 // unapplied is the entry bytes in memory that are not applied yet.
 func (n *Node) unapplied() int64 {
-	return n.storage.total() - n.storage.bytes(n.applied) + n.unpersisted
+	return n.storage.total() - n.storage.bytes(n.applied) + n.unpersisted + n.unready
 }
 
 // trimWindow lets applied entries leave memory once they pass the window,

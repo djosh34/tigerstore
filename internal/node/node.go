@@ -42,6 +42,10 @@ type Config struct {
 	// WatchBytes is how many bytes of responses a watch stream may fall
 	// behind before it is closed; 0 means watchBytes.
 	WatchBytes int64
+	// SegmentBytes is the size after which the log starts a new segment;
+	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
+	// go.
+	SegmentBytes int64
 	Logf       func(format string, args ...any)
 }
 
@@ -293,6 +297,9 @@ func New(cfg Config) (*Node, error) {
 	w, rec, err := wal.Open(dir)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.SegmentBytes > 0 {
+		w.SetSegmentBytes(cfg.SegmentBytes)
 	}
 	log := &diskLog{w: w}
 	cfg.Core.Boot = rand.Uint64()

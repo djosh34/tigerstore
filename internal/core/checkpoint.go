@@ -74,7 +74,8 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		return nil, fmt.Errorf("%w: no magic", errBadCheckpoint)
 	}
 	if v := binary.LittleEndian.Uint32(fixed[len(ckptMagic):]); v != wal.Version {
-		return nil, fmt.Errorf("core: checkpoint has format version %d; this build reads version %d", v, wal.Version)
+		// A root of this node names it, so it is damage or a newer build's.
+		return nil, fmt.Errorf("%w: format version %d; this build reads version %d", errBadCheckpoint, v, wal.Version)
 	}
 	h := &ckptHeader{
 		index: binary.LittleEndian.Uint64(fixed[len(ckptMagic)+4:]),
@@ -145,7 +146,7 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.last.size) {
 		return
 	}
-	if planted.On("B21") {
+	if planted.On("B21") && n.rn != nil {
 		// Planted: the checkpoint names the committed index, not the
 		// applied one.
 		index = max(index, n.rn.BasicStatus().GetCommit())

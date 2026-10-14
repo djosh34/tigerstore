@@ -64,7 +64,7 @@ var plantedCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
-	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState},
+	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing`},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
@@ -89,7 +89,13 @@ var plantedCases = map[string]plantedCase{
 		return nil
 	}},
 	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
+	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk`},
+	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
+	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists`},
+	"B22": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|cannot start|` + refused},
+	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
+	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each

@@ -31,5 +31,11 @@ var Bugs = map[string]string{
 	"B16":  "WAL rotation moves to a new segment without the old one's last sync",
 	"B17":  "the leader's stalled-disk watchdog never fires",
 	"B18":  "closing a watch stream leaves its watchers in place",
+	"B19":  "removing old segments drops one that recovery from the durable checkpoint still needs",
+	"B20":  "entries leave memory above the applied index",
+	"B21":  "a checkpoint names the committed index instead of the applied one",
+	"B22":  "a follower installs a snapshot without checking it",
+	"B23":  "a snapshot install stops one entry short of Raft's snapshot",
 	"B24":  "the index names a value one byte after where it is in its Raft entry",
+	"B25":  "value reads skip the checksum",
 }

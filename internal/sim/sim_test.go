@@ -252,6 +252,10 @@ func TestEachFaultTakesEffect(t *testing.T) {
 		{"gray node", Faults{GrayEvery: Second}, func(st Stats) int { return st.GrayNodes }},
 		{"gray client", Faults{GrayClient: true}, func(st Stats) int { return st.GrayStreams }},
 		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
+		{"follower held down", Faults{HoldDown: true}, func(st Stats) int { return st.Snapshots }},
+		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, func(st Stats) int { return st.SnapshotFlips }},
+		{"crash at a checkpoint step", Faults{StepCrash: true}, func(st Stats) int { return st.StepCrashes }},
+		{"rotten value", Faults{Rot: true}, func(st Stats) int { return st.Rots }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -135,7 +135,8 @@ type Faults struct {
 	// part is written, after the file's sync, after the directory's sync,
 	// after the root) or of a removal, or inside a snapshot install.
 	StepCrash bool
-	// FlipSnapshot damages one snapshot stream in four on its way.
+	// FlipSnapshot damages the first snapshot stream, and one in four
+	// after it, on its way.
 	FlipSnapshot bool
 	// Rot flips a bit of a value on a running node's disk, once per run,
 	// as the run's corruption if it has none yet.
