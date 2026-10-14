@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/aplus"
@@ -662,7 +664,7 @@ func (n *Node) dispatchAplus() {
 // openAplus opens the log from the newest checkpoint if there is one.
 func openAplus(cfg Config, dir wal.FS) (*wal.WAL, *core.Node, *ckptr, error) {
 	ck := &ckptr{live: map[uint64]int64{}, size: map[uint64]int64{}, move: map[uint64]bool{}, peers: cfg.Core.Peers}
-	start := time.Now()
+	t0 := time.Now()
 	sp, kv, err := ck.load()
 	if err != nil {
 		return nil, nil, nil, err
@@ -679,23 +681,34 @@ func openAplus(cfg Config, dir wal.FS) (*wal.WAL, *core.Node, *ckptr, error) {
 			}
 		}
 	}
-	var seq uint64
+	var seq, start, startTerm uint64
+	var ck2 *core.Ckpt
+	hs := wal.HardState{}
 	if sp != nil {
-		seq = sp.replaySeq
-	}
-	w, rec, err := wal.OpenFrom(dir, seq)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	var c *core.Node
-	if sp != nil {
-		ck2 := &core.Ckpt{Index: sp.index, Term: sp.term, ReplaySeq: sp.replaySeq, Refs: map[uint64]bool{}}
+		seq, start, startTerm = sp.replaySeq, sp.index, sp.term
+		ck2 = &core.Ckpt{Index: sp.index, Term: sp.term, ReplaySeq: sp.replaySeq, Refs: map[uint64]bool{}}
 		for f, l := range kv.LiveBytes() {
 			if l > 0 {
 				ck2.Refs[f] = true
 			}
 		}
-		c, err = core.NewFrom(cfg.Core, rec, ck2, kv, wal.HardState{Term: sp.hsTerm, Vote: sp.hsVote, Commit: sp.index})
+		hs = wal.HardState{Term: sp.hsTerm, Vote: sp.hsVote, Commit: sp.index}
+	} else {
+		kv = mvcc.New()
+	}
+	// Apply what is committed segment by segment; keep only the rest.
+	rp := core.NewReplayer(cfg.Core, kv, start)
+	rp.Term = startTerm
+	w, rec, err := wal.OpenFrom(dir, seq, rp.Segment)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var c *core.Node
+	if rp.Index > 0 {
+		if hs.Commit < rp.Index {
+			hs.Commit = rp.Index
+		}
+		c, err = core.NewFrom(cfg.Core, rec, &core.Ckpt{Index: rp.Index, Term: rp.Term}, kv, hs)
 		if err == nil {
 			c.SetDurable(ck2)
 		}
@@ -723,7 +736,70 @@ func openAplus(cfg Config, dir wal.FS) (*wal.WAL, *core.Node, *ckptr, error) {
 		ents = len(rec.Entries)
 	}
 	if cfg.Logf != nil {
-		cfg.Logf("aplus-open checkpoint=%v index=%d replayed_entries=%d took=%v", sp != nil, ck.index, ents, time.Since(start))
+		cfg.Logf("aplus-open checkpoint=%v index=%d applied_at_open=%d kept_entries=%d took=%v", sp != nil, ck.index, rp.Index, ents, time.Since(t0))
 	}
 	return w, c, ck, nil
+}
+
+// The reader pool (crude): values that are slices of mapped files are
+// read by these goroutines before the connection writer copies them, so
+// page faults on cold values run in parallel and never in the committer
+// or the writer.
+const readers = 64
+
+type faultTask struct {
+	v  []byte
+	wg *sync.WaitGroup
+}
+
+var (
+	faultQ    = make(chan faultTask, 4096)
+	faultSink atomic.Uint64
+)
+
+func init() {
+	for range readers {
+		go func() {
+			for t := range faultQ {
+				var x byte
+				for i := 0; i < len(t.v); i += 4096 {
+					x += t.v[i]
+				}
+				x += t.v[len(t.v)-1]
+				faultSink.Add(uint64(x))
+				t.wg.Done()
+			}
+		}()
+	}
+}
+
+// faultIn reads every value on the reader pool and waits.
+func faultIn(vs [][]byte) {
+	var wg sync.WaitGroup
+	wg.Add(len(vs))
+	for _, v := range vs {
+		faultQ <- faultTask{v, &wg}
+	}
+	wg.Wait()
+}
+
+// replyValues appends the mapped values a reply carries.
+func replyValues(r core.Reply, vs [][]byte) [][]byte {
+	add := func(v []byte) {
+		if _, _, ok := aplus.Locate(v); ok {
+			vs = append(vs, v)
+		}
+	}
+	for _, kv := range r.Range.KVs {
+		add(kv.Value)
+	}
+	if rr, ok := r.Resp.(*pb.RangeResponse); ok {
+		for _, kv := range rr.Kvs {
+			add(kv.Value)
+		}
+	}
+	if r.PrevKv != nil {
+		add(r.PrevKv.Value)
+	}
+	return vs
 }

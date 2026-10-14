@@ -126,6 +126,10 @@ func (n *Node) applyAt(e *raftpb.Entry) {
 // afterApply trims the Raft window and cuts a checkpoint when due.
 func (n *Node) afterApply() {
 	n.kv.ClearEntry()
+	if n.storage == nil {
+		// Replaying before the node starts.
+		return
+	}
 	// Window: keep Window bytes of applied entries. A restart replays
 	// from the log on disk, so the window does not depend on the
 	// checkpoint. While a snapshot is out, keep the entries after it, so
@@ -194,6 +198,9 @@ func (n *Node) CkptDone(r CkptResult) {
 // SetDurable sets the checkpoint a restart loaded.
 func (n *Node) SetDurable(c *Ckpt) {
 	n.ap.durable = c
+	if c == nil {
+		n.ap.durable = nil
+	}
 	for f := range n.kv.LiveBytes() {
 		if f >= aplus.ValueFileBase {
 			n.knowValueFile(f)
@@ -342,4 +349,48 @@ func (n *Node) installSnapshot(snap *raftpb.Snapshot, kv *mvcc.Store) {
 			delete(n.ap.locs, i)
 		}
 	}
+}
+
+// Replayer applies committed log entries to a store rebuilt from a
+// checkpoint before the node starts, so a restart holds one segment of
+// entries at a time instead of the whole log since the checkpoint.
+type Replayer struct {
+	n           *Node
+	Index, Term uint64
+}
+
+// NewReplayer applies to kv, which is the state after entry index.
+func NewReplayer(cfg Config, kv *mvcc.Store, index uint64) *Replayer {
+	n := &Node{cfg: cfg, kv: kv, state: newStateFrom(kv, MinLeaseTTL(cfg)), waiting: map[uint64]*pending{}, streams: map[uint64]*watchStream{}}
+	n.ap.locs = map[uint64]wal.Loc{}
+	n.applied = index
+	return &Replayer{n: n, Index: index}
+}
+
+// Segment applies the committed entries at the front of rec.Entries and
+// removes them.
+func (r *Replayer) Segment(rec *wal.Recovered) {
+	i := 0
+	for i < len(rec.Entries) && rec.Entries[i].GetIndex() <= rec.HardState.Commit {
+		i++
+	}
+	var ents []*raftpb.Entry
+	for _, e := range rec.Entries[:i] {
+		if e.GetIndex() <= r.Index {
+			continue
+		}
+		ents = append(ents, e)
+		r.n.ap.locs[e.GetIndex()] = rec.Locs[e.GetIndex()]
+	}
+	if len(ents) > 0 {
+		if err := r.n.apply(ents); err != nil {
+			panic(err)
+		}
+		last := ents[len(ents)-1]
+		r.Index, r.Term = last.GetIndex(), last.GetTerm()
+	}
+	for _, e := range rec.Entries[:i] {
+		delete(rec.Locs, e.GetIndex())
+	}
+	rec.Entries = rec.Entries[i:]
 }

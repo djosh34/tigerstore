@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/metrics"
 	"slices"
 	"strconv"
 	"sync"
@@ -231,10 +232,13 @@ func Remove(fid uint64) {
 	})
 }
 
+var heapSample = []metrics.Sample{{Name: "/gc/heap/live:bytes"}, {Name: "/memory/classes/total:bytes"}}
+
 // Stats is one line of counters for the node log.
 func Stats() string {
-	return fmt.Sprintf("aplus-stats log=%d logdata=%d logvalue=%d ckpt_leaf=%d ckpt_leaf_hist=%d ckpt_leaf_other=%d ckpt_interior=%d ckpt_root=%d ckpt_metamove=%d clean=%d snapsent=%d snaps=%d snapbuilt=%d ckpts=%d cleanings=%d deleted=%d capture_ns=%d capture_max_ns=%d clean_pause_ns=%d clean_pause_max_ns=%d puts=%d",
-		LogBytes.Load(), LogEntryData.Load(), LogValueBytes.Load(), CkptLeaf.Load(), CkptLeafHist.Load(), CkptLeafOther.Load(), CkptInterior.Load(), CkptRoot.Load(), CkptMetaMove.Load(),
+	metrics.Read(heapSample)
+	return fmt.Sprintf("aplus-stats heap_live=%d go_total=%d log=%d logdata=%d logvalue=%d ckpt_leaf=%d ckpt_leaf_hist=%d ckpt_leaf_other=%d ckpt_interior=%d ckpt_root=%d ckpt_metamove=%d clean=%d snapsent=%d snaps=%d snapbuilt=%d ckpts=%d cleanings=%d deleted=%d capture_ns=%d capture_max_ns=%d clean_pause_ns=%d clean_pause_max_ns=%d puts=%d",
+		heapSample[0].Value.Uint64(), heapSample[1].Value.Uint64(), LogBytes.Load(), LogEntryData.Load(), LogValueBytes.Load(), CkptLeaf.Load(), CkptLeafHist.Load(), CkptLeafOther.Load(), CkptInterior.Load(), CkptRoot.Load(), CkptMetaMove.Load(),
 		CleanBytes.Load(), SnapSent.Load(), SnapsSent.Load(), SnapBuilt.Load(), Checkpoints.Load(), Cleanings.Load(), FilesDeleted.Load(),
 		PauseCaptureNs.Load(), PauseCaptureMax.Load(), PauseCleanNs.Load(), PauseCleanMax.Load(), Puts.Load())
 }

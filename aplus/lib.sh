@@ -56,6 +56,7 @@ restart() {
 	local dir=$1 i=$2 lim=${3:-}
 	local pid args
 	pid=$(pid_of "$dir" "$i")
+	if [ -z "$pid" ]; then echo "node $i is not running" >&2; return 1; fi
 	mapfile -d '' args <"/proc/$pid/cmdline"
 	local envs=()
 	mapfile -d '' envs <"/proc/$pid/environ"

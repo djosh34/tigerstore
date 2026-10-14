@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/rand/v2"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -466,6 +467,14 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 		}
 		delete(waiters, r.ID)
 		if w.reply != nil {
+			if vs := replyValues(r, nil); len(vs) > 0 {
+				// A+: read cold values on the reader pool first.
+				go func(r core.Reply, ch chan core.Reply) {
+					faultIn(vs)
+					ch <- r
+				}(r, w.reply)
+				continue
+			}
 			w.reply <- r
 			continue
 		}
@@ -478,7 +487,19 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
 	}
 	for _, g := range groups {
-		g.to.Complete(g.cs)
+		var vs [][]byte
+		for _, c := range g.cs {
+			vs = replyValues(c.Reply, vs)
+		}
+		if len(vs) == 0 {
+			g.to.Complete(g.cs)
+			continue
+		}
+		// A+: read cold values on the reader pool, then complete.
+		go func(to Completer, cs []Completion) {
+			faultIn(vs)
+			to.Complete(cs)
+		}(g.to, slices.Clone(g.cs))
 	}
 	clear(groupOf)
 	clear(groups)

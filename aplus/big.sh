@@ -21,6 +21,8 @@ drop='sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null'
 
 start() {
 	"$repo/bench/cluster.sh" stop "$data"
+	pkill -9 -f -- "--data-dir $data/n" || true
+	sleep 1
 	BENCH_GOMEMLIMIT=$gml "$repo/bench/cluster.sh" start tigerstore "$BINS/$target" "$data" 0 1 2
 	if [ "$lim" != 0 ]; then
 		for i in 1 2 3; do limit "$i" "$(pid_of "$data" "$i")" "$lim"; done

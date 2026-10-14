@@ -127,11 +127,14 @@ type Recovered struct {
 // Open reads the log in fs, cuts a torn tail off the newest segment, and
 // returns the log ready for appends. A damaged record anywhere else, a gap
 // in the entries, or a commit index past the last entry is ErrCorrupt.
-func Open(fs FS) (*WAL, *Recovered, error) { return OpenFrom(fs, 0) }
+func Open(fs FS) (*WAL, *Recovered, error) { return OpenFrom(fs, 0, nil) }
 
 // OpenFrom is Open that skips segments below startSeq: with A+ they hold
 // only values, which the checkpoint names (A+ prototype).
-func OpenFrom(fs FS, startSeq uint64) (*WAL, *Recovered, error) {
+//
+// After each segment, segDone (if not nil) may consume committed entries
+// from the front of rec.Entries, so replay holds one segment at a time.
+func OpenFrom(fs FS, startSeq uint64, segDone func(rec *Recovered)) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
 		return nil, nil, err
@@ -217,6 +220,9 @@ func OpenFrom(fs FS, startSeq uint64) (*WAL, *Recovered, error) {
 			if err := errors.Join(f.Truncate(good), f.Sync()); err != nil {
 				return nil, nil, errors.Join(err, f.Close())
 			}
+		}
+		if segDone != nil {
+			segDone(rec)
 		}
 		if !last {
 			if err := f.Close(); err != nil {

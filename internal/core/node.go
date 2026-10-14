@@ -976,10 +976,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			if errors.Is(err, errInternal) {
 				return err
 			}
-			if _, ok := op.(*pb.CompactionRequest); ok && err == nil {
-				// A+: compaction dirties many pages; checkpoint soon.
-				n.ap.forceCkpt = true
-			}
+
 			if err == nil {
 				n.matchWatches()
 			}
