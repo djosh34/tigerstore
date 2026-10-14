@@ -68,6 +68,8 @@ type aplusNode struct {
 	marks        []mark
 	compactedTo  uint64
 	ckptBusy     bool
+	pin          uint64
+	pinUntil     int64
 	forceCkpt    bool
 	ckptAt       int64
 	durable      *Ckpt
@@ -124,13 +126,15 @@ func (n *Node) applyAt(e *raftpb.Entry) {
 // afterApply trims the Raft window and cuts a checkpoint when due.
 func (n *Node) afterApply() {
 	n.kv.ClearEntry()
-	// Window: keep Window bytes of applied entries, and never drop an
-	// entry that the newest durable checkpoint does not cover.
-	if n.ap.durable != nil {
+	// Window: keep Window bytes of applied entries. A restart replays
+	// from the log on disk, so the window does not depend on the
+	// checkpoint. While a snapshot is out, keep the entries after it, so
+	// the follower can continue from it.
+	{
 		target := uint64(0)
 		cut := 0
 		for i, m := range n.ap.marks {
-			if n.ap.appliedBytes-m.bytes < aplus.Window || m.index > n.ap.durable.Index {
+			if n.ap.appliedBytes-m.bytes < aplus.Window || (n.now < n.ap.pinUntil && m.index > n.ap.pin) {
 				break
 			}
 			target, cut = m.index, i
@@ -144,6 +148,11 @@ func (n *Node) afterApply() {
 			}
 			n.ap.marks = n.ap.marks[cut:]
 		}
+	}
+	if n.ap.snap != nil && n.now >= n.ap.pinUntil {
+		// Drop the built snapshot once its pin ends (crude: it is one
+		// blob in RAM).
+		n.ap.snap = nil
 	}
 	every := max(aplus.CkptEvery, int64(aplus.CkptRatio*float64(n.ap.leafBytes)))
 	if !n.ap.ckptBusy && (n.ap.forceCkpt || n.logBytes-n.ap.ckptAt >= every) && n.applied > 0 {
@@ -272,6 +281,9 @@ func (n *Node) SnapBuilt(s *raftpb.Snapshot) {
 	n.ap.snapBusy = false
 	n.ap.wantSnap = false
 	n.ap.snap = s
+	// Keep the entries after it for 30 s (300 ticks), so a follower
+	// can catch up from it.
+	n.ap.pin, n.ap.pinUntil = s.GetMetadata().GetIndex(), n.now+300
 }
 
 // snapshotFor is the storage's Snapshot: the built snapshot if any, else
@@ -288,11 +300,24 @@ func (n *Node) snapshotFor() (*raftpb.Snapshot, error) {
 }
 
 func (n *Node) maybeBuildSnap() {
-	if n.ap.wantSnap && !n.ap.snapBusy && n.ap.durable != nil {
-		n.ap.wantSnap = false
-		n.ap.snapBusy = true
-		n.apOut.BuildSnap = n.ap.durable
+	if !n.ap.wantSnap || n.ap.snapBusy {
+		return
 	}
+	first, _ := n.storage.MemoryStorage.FirstIndex()
+	if n.ap.durable == nil || n.ap.durable.Index+1 < first {
+		// The newest checkpoint is older than the window: cut one now
+		// and build the snapshot from it.
+		if !n.ap.ckptBusy {
+			n.cutCheckpoint()
+		} else {
+			n.ap.forceCkpt = true
+		}
+		return
+	}
+	n.ap.wantSnap = false
+	n.ap.snapBusy = true
+	n.ap.pin, n.ap.pinUntil = n.ap.durable.Index, n.now+300
+	n.apOut.BuildSnap = n.ap.durable
 }
 
 // InstallSnapshot swaps in the store a snapshot built, at index i.
