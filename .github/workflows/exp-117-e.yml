@@ -118,7 +118,7 @@ jobs:
           TS_E_WINDOW_MAX: "67108864"
           CATCHUP_S: "10"
           CHURN_S: "180"
-          BUDGET: "3000000000"
+          TS_E_DISK_BUDGET: "3000000000"
         run: exp/scale.sh candidate 512M results/e-512M churn
       - name: E, no memory limit
         if: always()

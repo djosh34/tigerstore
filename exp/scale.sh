@@ -22,7 +22,7 @@ layout=(3 0 1 2)
 port=${BENCH_PORT:-40000}
 mkdir -p "$out"
 log() { echo "$(date +%T.%N | cut -c1-12) $*" | tee -a "$out/steps.log"; }
-ctl() { "$ETCDCTL" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" --command-timeout 3s "$@"; }
+ctl() { "$ETCDCTL" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" --dial-timeout 1s --command-timeout 1s "$@"; }
 ep() { echo "127.0.0.1:$((port + 10 * $1))"; }
 pidof_node() { pgrep -f -- "--name n$1 --data-dir $dir/n$1 " || true; }
 status() { ctl --endpoints "$(ep "$1")" endpoint status -w json 2>/dev/null | jq -r '.[0].Status | "\(.leader) \(.header.member_id // .header.memberId) \(.raftAppliedIndex // .raft_applied_index) \(.header.revision)"'; }
@@ -67,6 +67,14 @@ startnode() {
 	cg "$1" "$p"
 	echo "$p"
 }
+# killwait <i>: kill -9 node i and wait until it is gone.
+killwait() {
+	local p
+	p=$(pidof_node "$1")
+	[ -z "$p" ] && { log "n$1 was not running"; return; }
+	kill -9 "$p"
+	while kill -0 "$p" 2>/dev/null; do sleep 0.05; done
+}
 iowchar() { awk '/^wchar/{print $2}' /proc/"$1"/io; }
 lg() {
 	# lg <endpoint> <out name> <loadgen flags...>
@@ -74,30 +82,31 @@ lg() {
 	shift 2
 	local pids
 	pids=$(for i in 1 2 3; do pidof_node "$i"; done | paste -sd,)
-	taskset -c "${layout[0]}" "$bins/loadgen" -endpoints "$e" -cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
+	timeout 900 taskset -c "${layout[0]}" "$bins/loadgen" -endpoints "$e" -cacert "$certs/ca.pem" -cert "$certs/client.pem" -key "$certs/client-key.pem" \
 		-pids "$pids" -label "$target" -value-size "$vsize" -keys "$keys" -namespaces "$ns" -seed 1 -out "$out/$name.json" "$@" 2>&1 | tail -3 | tee -a "$out/steps.log"
 }
 waitcatch() {
 	# waitcatch <i> <t0>: waits until node i applied what the leader has.
-	local i=$1 t0=$2 l la a
-	for _ in $(seq 6000); do
+	local i=$1 t0=$2 l la a deadline=$((SECONDS + ${WAIT_S:-300}))
+	while [ $SECONDS -lt $deadline ]; do
 		l=$(leader_i)
 		if [ -n "$l" ] && [ "$l" != "$i" ]; then
 			la=$(applied "$l")
 			a=$(applied "$i")
-			if [ -n "$a" ] && [ -n "$la" ] && [ "$a" -ge "$la" ]; then
+			if [[ "$a" =~ ^[0-9]+$ ]] && [[ "$la" =~ ^[0-9]+$ ]] && [ "$a" -ge "$la" ]; then
 				log "n$i caught up to $a (leader n$l at $la) $(awk -v a="$(date +%s.%N)" -v b="$t0" 'BEGIN{printf "%.2f", a-b}') s after start"
 				return 0
 			fi
 		fi
 		sleep 0.1
 	done
-	log "n$i did not catch up"
+	log "n$i did not catch up in ${WAIT_S:-300} s: leader n$l at $la, n$i at $a"
+	memreport stuck
 	return 1
 }
 waitserve() {
-	local i=$1 t0=$2
-	for _ in $(seq 6000); do
+	local i=$1 t0=$2 deadline=$((SECONDS + ${WAIT_S:-300}))
+	while [ $SECONDS -lt $deadline ]; do
 		if [ -n "$(applied "$i")" ]; then
 			log "n$i serving $(awk -v a="$(date +%s.%N)" -v b="$t0" 'BEGIN{printf "%.2f", a-b}') s after start"
 			return 0
@@ -138,7 +147,7 @@ grep -h "E bytes" "$dir/n$L.log" | tail -1 | tee -a "$out/steps.log"
 # 3. Restart after kill -9: a follower, then the leader.
 F=$((L % 3 + 1))
 log "kill -9 follower n$F"
-kill -9 "$(pidof_node "$F")"
+killwait "$F"
 sleep 1
 t0=$(date +%s.%N)
 startnode "$F" "${layout[2]}" >/dev/null
@@ -147,7 +156,7 @@ waitcatch "$F" "$t0"
 grep -h "E recovery" "$dir/n$F.log" | tail -1 | tee -a "$out/steps.log"
 memreport after-follower-restart
 log "kill -9 leader n$L"
-kill -9 "$(pidof_node "$L")"
+killwait "$L"
 sleep 1
 t0=$(date +%s.%N)
 startnode "$L" "${layout[1]}" >/dev/null
@@ -168,7 +177,7 @@ done
 F=$((L % 3 + 1))
 log "catch-up: kill -9 follower n$F, then $((CATCHUP_S)) s of puts"
 fcpu=$(taskset -pc "$(pidof_node "$F")" | awk '{print $NF}')
-kill -9 "$(pidof_node "$F")"
+killwait "$F"
 lg "$(ep "$L")" catchup-load -workload put -warmup 0s -duration "${CATCHUP_S}s"
 sleep 2
 lp=$(pidof_node "$L")
@@ -185,23 +194,12 @@ grep -h "E bytes" "$dir/n$L.log" | tail -1 | tee -a "$out/steps.log"
 memreport after-catchup
 
 if [ "$churn" = churn ]; then
-	# 5. Cleaning under churn: restart every node with a disk budget, then
+	# 5. Cleaning under churn (the nodes run with TS_E_DISK_BUDGET):
 	# overwrite keys at random with a compaction every 5 s, as
 	# kube-apiserver does every 5 min, and take a follower down for a
 	# while in the middle.
-	log "churn: restart with budget $BUDGET"
-	for i in 1 2 3; do kill "$(pidof_node "$i")"; done
-	sleep 3
-	for i in 1 2 3; do
-		pgrep -f -- "--data-dir $dir/n$i " | xargs -r kill -9
-		TS_E_DISK_BUDGET=$BUDGET startnode "$i" "${layout[i]}" >/dev/null
-	done
-	sleep 5
+	log "churn: budget ${TS_E_DISK_BUDGET:-none} per node"
 	L=$(leader_i)
-	c=1
-	for i in 1 2 3; do
-		if [ "$i" = "$L" ]; then taskset -apc 0 "$(pidof_node "$i")" >/dev/null; else taskset -apc $c "$(pidof_node "$i")" >/dev/null; c=$((c + 1)); fi
-	done
 	log "churn leader n$L"
 	for i in 1 2 3; do grep -h "E bytes" "$dir/n$i.log" | tail -1 | sed "s/^/before churn n$i /" | tee -a "$out/steps.log"; done
 	(
@@ -219,12 +217,12 @@ if [ "$churn" = churn ]; then
 	(
 		sleep $((CHURN_S / 3))
 		log "churn: kill -9 follower n$F"
-		kill -9 "$(pidof_node "$F")"
+		killwait "$F"
 		sleep $((CHURN_S / 3))
 		t0=$(date +%s.%N)
 		lp=$(pidof_node "$L")
 		w0=$(iowchar "$lp")
-		TS_E_DISK_BUDGET=$BUDGET startnode "$F" "$fcpu" >/dev/null
+		startnode "$F" "$fcpu" >/dev/null
 		waitcatch "$F" "$t0"
 		log "churn catch-up: leader wrote $(($(iowchar "$lp") - w0)) bytes (wchar), with client load running"
 	) &

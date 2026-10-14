@@ -133,9 +133,13 @@ func recoverE(cfg Config, walFS wal.FS, logf func(string, ...any)) (*core.Node, 
 	if info != nil {
 		opt.SkipThrough, opt.Base = info.skip, info.index
 	}
-	replayed := 0
+	replayed, replayedBytes := 0, 0
 	apply := opt.Apply
-	opt.Apply = func(en *raftpb.Entry) error { replayed++; return apply(en) }
+	opt.Apply = func(en *raftpb.Entry) error {
+		replayed++
+		replayedBytes += len(en.GetData())
+		return apply(en)
+	}
 	w, rec, err := wal.OpenWith(walFS, opt)
 	if err != nil {
 		return nil, nil, nil, err
@@ -150,7 +154,7 @@ func recoverE(cfg Config, walFS wal.FS, logf func(string, ...any)) (*core.Node, 
 	if info != nil {
 		base = info.index
 	}
-	logf("E recovery: checkpoint at %d loaded in %v, %d log entries replayed, %d left to Raft, total %v", base, tCkpt, replayed, len(rec.Entries), time.Since(start))
+	logf("E recovery: checkpoint at %d loaded in %v, %d log entries (%d bytes) replayed, %d left to Raft, total %v", base, tCkpt, replayed, replayedBytes, len(rec.Entries), time.Since(start))
 	return c, w, e, nil
 }
 
