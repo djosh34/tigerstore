@@ -74,7 +74,8 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 func (st *State) Store() *mvcc.Store { return st.kv }
 
 // Hash is a hash of the whole replicated state: the index, the leases
-// with their keys, and the lease stamps.
+// with their key counts, and the lease stamps. The keys themselves follow
+// from the index.
 func (st *State) Hash() uint64 {
 	h := st.kv.Hash()
 	mix := func(x uint64) {

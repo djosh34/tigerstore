@@ -65,9 +65,6 @@ type Config struct {
 	// StallLeaderAt, if set, stalls the disk of whichever node leads at
 	// that time until healing.
 	StallLeaderAt int64
-	// DownFollowerAt, if set, crashes a follower at that time and keeps it
-	// down for DownFor, so that it falls behind the leader's window.
-	DownFollowerAt, DownFor int64
 	// LiveFrom, if set, is when the liveness rule starts instead of
 	// LiveAfter into healing.
 	LiveFrom int64
@@ -411,6 +408,8 @@ type Sim struct {
 
 	healAt, stopAt, endAt int64
 	healed                bool
+	// downFor is how long HoldDown keeps its follower down.
+	downFor int64
 
 	clients  []*client
 	watchers []*watchClient
@@ -555,9 +554,6 @@ func Run(cfg Config) (*Result, error) {
 	}
 	if cfg.StallLeaderAt > 0 {
 		s.push(&event{at: cfg.StallLeaderAt, kind: evStallLeader})
-	}
-	if cfg.DownFollowerAt > 0 {
-		s.push(&event{at: cfg.DownFollowerAt, kind: evDownFollower})
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 	if err := s.loop(); err != nil {
@@ -985,8 +981,8 @@ func (s *Sim) startDisk(n *node) {
 	}
 	for _, j := range jobs {
 		if j.Install != nil {
-			if j.Install.Applied+1 <= n.durableLast && (n.replaceFrom == 0 || j.Install.Applied+1 < n.replaceFrom) {
-				n.replaceFrom = j.Install.Applied + 1
+			if i := s.firstReplaced(n, j.Install); i <= n.durableLast && (n.replaceFrom == 0 || i < n.replaceFrom) {
+				n.replaceFrom = i
 			}
 			if err := s.install(n, j.Install); err != nil {
 				s.installFailed(n, err)

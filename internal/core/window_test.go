@@ -328,3 +328,120 @@ func TestSnapshotStream(t *testing.T) {
 		follower = disk
 	}
 }
+
+// keepSink is a walSink that notes the first entry it appends and checks,
+// at each root, that a crash then still leaves the entries up to held.
+type keepSink struct {
+	*walSink
+	t     *testing.T
+	disk  *simfs.Disk
+	held  uint64
+	first uint64
+	roots []wal.Root
+}
+
+func (k *keepSink) Entries(ents []*raftpb.Entry) error {
+	if len(ents) > 0 && k.first == 0 {
+		k.first = ents[0].GetIndex()
+	}
+	return k.walSink.Entries(ents)
+}
+
+func (k *keepSink) Root(r wal.Root) error {
+	k.roots = append(k.roots, r)
+	if err := k.walSink.Root(r); err != nil {
+		return err
+	}
+	if err := k.w.Sync(); err != nil {
+		return err
+	}
+	_, rec, err := wal.Open(k.disk.Durable())
+	if err != nil {
+		return err
+	}
+	if rec.Last < k.held {
+		k.t.Errorf("a crash after the root at %d keeps entries to %d, below the %d the follower held", r.Index, rec.Last, k.held)
+	}
+	return nil
+}
+
+// TestInstallKeepsHeldEntries installs snapshots on a follower that holds
+// entries past its applied index, as one whose commit index trails does.
+// It may have acknowledged them, so the install must keep them durable:
+// it skips them, the root keeps them, and the first entry it appends is
+// the first it lacked. Once by raw entries, once by a checkpoint.
+func TestInstallKeepsHeldEntries(t *testing.T) {
+	tiny := func(cfg *Config) {
+		cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024
+		cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
+	}
+	src := startSingleWith(t, simfs.New(), 1, tiny)
+	id := uint64(0)
+	write := func(rounds int, compact bool) {
+		for round := range rounds {
+			for k := range 10 {
+				id++
+				if r := src.do(id, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: fmt.Appendf(nil, "value %d of round %d", k, round)}); r.Err != nil {
+					t.Fatal(r.Err)
+				}
+			}
+			if compact {
+				id++
+				if r := src.do(id, &pb.CompactionRequest{Revision: src.n.kv.Rev()}); r.Err != nil {
+					t.Fatal(r.Err)
+				}
+			}
+		}
+	}
+	write(30, true)
+	ckpt := src.n.DurableCheckpoint()
+	held := src.n.Applied()
+	follower := src.disk.Durable()
+	write(1, false)
+	last := src.n.Applied()
+	term, err := src.n.termAt(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ckpt.Index == 0 || held <= ckpt.Index || src.n.DurableCheckpoint() != ckpt || src.log.Has(1) {
+		t.Fatalf("setup: checkpoint at %d then %d, held to %d, entry 1 on disk %v", ckpt.Index, src.n.DurableCheckpoint().Index, held, src.log.Has(1))
+	}
+	for _, applied := range []uint64{ckpt.Index, 0} {
+		var buf bytes.Buffer
+		if err := ServeSnapshot(src.log, ckpt, applied+1, last, &buf); err != nil {
+			t.Fatal(err)
+		}
+		disk := follower.Durable()
+		if applied == 0 {
+			// The follower's copy has the leader's checkpoint, which a
+			// follower that applied less never has.
+			if err := disk.Remove(wal.CheckpointName(ckpt.Index)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		w, _, err := wal.Open(disk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied == 0 && !w.Has(ckpt.Index) {
+			t.Fatalf("setup: the follower lacks the checkpoint's entry %d", ckpt.Index)
+		}
+		sink := &keepSink{walSink: &walSink{w: w}, t: t, disk: disk, held: held}
+		in := &Install{From: 1, Index: last, Term: term, Applied: applied}
+		if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), sink, w, []uint64{1}, in); err != nil {
+			t.Fatalf("from %d: %v", applied+1, err)
+		}
+		if sink.first != held+1 {
+			t.Errorf("from %d: the first entry appended is %d, the follower held to %d", applied+1, sink.first, held)
+		}
+		if applied == 0 && (len(sink.roots) != 1 || sink.roots[0].Keep != held) {
+			t.Errorf("from %d: roots %+v, want one that keeps entries to %d", applied+1, sink.roots, held)
+		}
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		if _, rec, err := wal.Open(disk.Durable()); err != nil || rec.Last != last {
+			t.Errorf("from %d: the log ends at %d, want %d (%v)", applied+1, rec.Last, last, err)
+		}
+	}
+}

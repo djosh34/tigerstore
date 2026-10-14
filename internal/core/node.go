@@ -212,9 +212,9 @@ type PersistJob struct {
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
 	// Root, if set, makes a checkpoint that the driver wrote count. The
-	// driver appends it after the rest, syncs, and only then removes the
-	// segments whose entries and values are all below RemoveBelow and the
-	// checkpoint files before this one.
+	// driver appends it after the rest, syncs, and only then, if
+	// RemoveBelow is set, removes the segments whose entries and values
+	// are all below RemoveBelow and the checkpoint files before this one.
 	Root        *wal.Root
 	RemoveBelow uint64
 	msg         *raftpb.Message
@@ -340,11 +340,13 @@ type Node struct {
 
 	// log reads what left memory.
 	log Log
-	// copy is the checkpoint being copied, last the newest one cut, and
-	// sinceCkpt the entry bytes applied since then.
+	// copy is the checkpoint being copied, last the newest one finished,
+	// sinceCkpt the entry bytes applied since the last cut, and base the
+	// size the next cut is measured against (maybeCheckpoint).
 	copy      *copying
 	last      lastCkpt
 	sinceCkpt int64
+	base      int64
 	// unpersisted is the entry bytes on their way to the disk, and
 	// unready those proposed since the last Ready.
 	unpersisted, unready int64
@@ -385,7 +387,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 			return nil, fmt.Errorf("core: load the checkpoint at %d: %w", root.Index, err)
 		}
 		n.setState(state)
-		n.applied, n.last, st.ckpt = root.Index, last, root
+		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
 		n.record(root.Index, root.Term)
 	}
 	// The commit index on disk can lag what was applied, which a

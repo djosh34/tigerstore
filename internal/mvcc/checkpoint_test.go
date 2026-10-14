@@ -63,7 +63,7 @@ func TestCheckpointCopyIsFrozen(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if live.Copying() {
+		if live.frozen != nil {
 			t.Fatal("the copy is still on")
 		}
 		loaded := New(&Heap{})

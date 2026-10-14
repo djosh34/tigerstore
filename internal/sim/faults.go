@@ -34,8 +34,8 @@ func (s *Sim) scheduleDiskFaults() {
 		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*3/4), kind: evRot})
 	}
 	if f.HoldDown {
-		s.cfg.DownFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration-s.cfg.DownFor), kind: evDownFollower})
+		s.downFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration-s.downFor), kind: evDownFollower})
 	}
 }
 
@@ -111,7 +111,7 @@ func (s *Sim) stallLeader() {
 	}
 }
 
-// downFollower crashes a follower and restarts it DownFor later.
+// downFollower crashes a follower and restarts it downFor later.
 func (s *Sim) downFollower() {
 	if s.healed {
 		return
@@ -119,7 +119,7 @@ func (s *Sim) downFollower() {
 	for _, n := range s.nodes {
 		if n.up && n.core.Leader() != 0 && n.core.Leader() != n.id {
 			s.crash(n)
-			s.push(&event{at: s.now + s.cfg.DownFor, kind: evRestart, node: n.idx, gen: n.gen})
+			s.push(&event{at: s.now + s.downFor, kind: evRestart, node: n.idx, gen: n.gen})
 			return
 		}
 	}

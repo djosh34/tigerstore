@@ -229,9 +229,6 @@ func (w *watchClient) receive(e *event) {
 	}
 }
 
-// broken is a stream that died with its node. The client may have left
-// that stream already and opened another, on the same node or another one
-// whose stream and generation numbers can be the same; that one stays.
 // streamClosed handles a watch stream that the node ended. Its client
 // watches again from where it was.
 func (s *Sim) streamClosed(n *node, id uint64) {
@@ -247,6 +244,9 @@ func (s *Sim) streamClosed(n *node, id uint64) {
 	s.push(&event{at: s.now + s.clientLatency(), kind: evWatchBroken, watch: w, node: n.idx, stream: id, gen: n.gen})
 }
 
+// broken is a stream that died with its node. The client may have left
+// that stream already and opened another, on the same node or another one
+// whose stream and generation numbers can be the same; that one stays.
 func (w *watchClient) broken(e *event) {
 	if !w.open || w.node != e.node || w.stream != e.stream || w.gen != e.gen {
 		return

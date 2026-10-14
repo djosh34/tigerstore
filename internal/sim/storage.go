@@ -168,6 +168,9 @@ func hashBytes(b []byte) uint64 {
 // removed carries out a synced root's removals.
 func (s *Sim) removed(n *node, j core.PersistJob) bool {
 	n.root = j.Root.Index
+	if j.RemoveBelow == 0 {
+		return true
+	}
 	if s.stepCrash(n) {
 		return false
 	}
@@ -183,6 +186,25 @@ func (s *Sim) removed(n *node, j core.PersistJob) bool {
 		return false
 	}
 	return true
+}
+
+// firstReplaced is the first entry an install may take from n's log: the
+// first after its applied index that is not the committed one. Those
+// before it the node may have acknowledged, and the install keeps them.
+func (s *Sim) firstReplaced(n *node, in *core.Install) uint64 {
+	for i := in.Applied + 1; i <= in.Index; i++ {
+		r, ok := s.log[i]
+		if i <= s.baseUpTo {
+			r, ok = s.base[i]
+		}
+		if !ok || !n.log.Has(i) {
+			return i
+		}
+		if e, err := n.log.Entry(i); err != nil || e.GetTerm() != r.term {
+			return i
+		}
+	}
+	return in.Index + 1
 }
 
 var errFetch = errors.New("sim: the snapshot's source cannot be reached")
@@ -322,8 +344,8 @@ func newestSegment(d *simfs.Disk) string {
 	return newest
 }
 
-// rot flips a bit of a value on a node's disk while it runs, a value of a
-// key that is only on disk, once per run. The node must never return it:
+// rot flips a bit of the newest value of a key on a node's disk while it
+// runs, a value that is only on disk, once per run. The node must never return it:
 // it stops when it reads it, and refuses its log on the next start.
 func (s *Sim) rot() bool {
 	if s.healed {
@@ -343,15 +365,23 @@ func (s *Sim) rot() bool {
 		if len(refs) == 0 {
 			continue
 		}
-		r := refs[s.rng.IntN(len(refs))]
+		// The newest version is the one clients read.
+		r := refs[len(refs)-1]
 		if r.Index >= n.core.FirstIndex() {
 			continue
 		}
 		seq, at, ok := n.log.ValuePlace(r.Index, r.Off, r.Len)
-		name := wal.SegmentName(seq)
-		if !ok || name == newestSegment(n.disk) {
-			// Damage in the newest segment looks like a torn write.
+		if !ok {
 			continue
+		}
+		name := wal.SegmentName(seq)
+		if name == newestSegment(n.disk) {
+			// Damage to the newest segment's last durable record looks
+			// like a torn write; a later entry must be durable after it.
+			next, end, ok := n.log.ValuePlace(r.Index+2, 0, 0)
+			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
+				continue
+			}
 		}
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
 		n.corrupted, n.rotted, n.rotFile = true, true, name

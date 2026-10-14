@@ -12,8 +12,8 @@ import (
 
 // TestGrayHealingSeed keeps a schedule of the shape from #81: healing is
 // at 20 s, but a gray fsync started before it ends at 22.29 s. The last
-// call without a definite answer starts at 22.39 s, after the election
-// that follows; from 22.4 s every call gets one, long before the
+// call without a definite answer starts at 22.407 s, after the election
+// that follows; from 22.41 s every call gets one, long before the
 // checker's recovery allowance ends at 26.29 s. Seed 745672193 had this
 // shape until writes waited for a leader (#106), and seed 384 until
 // design E changed the timing (#143).
@@ -30,7 +30,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	}
 	calls := 0
 	for _, r := range a.History {
-		if r.Call < cfg.Duration+2400*Millisecond {
+		if r.Call < cfg.Duration+2410*Millisecond {
 			continue
 		}
 		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
@@ -41,7 +41,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	if calls < 50 {
 		t.Fatalf("only %d calls after the final election", calls)
 	}
-	t.Logf("last gray fsync at %d ms; %d definite answers from 22400 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
+	t.Logf("last gray fsync at %d ms; %d definite answers from 22410 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
 }
 
 // TestGrayFsyncRecoveryBound checks the disk completion path, including a

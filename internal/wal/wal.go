@@ -119,8 +119,9 @@ type HardState struct {
 // root names it.
 //
 // A root with Reset set came with a snapshot: the log continues after
-// Index, and of the entries this node held before, only those up to Keep,
-// its applied index then, are still its log.
+// Index, or after Keep if that is higher, and of the entries this node
+// held before, only those up to Keep are still its log: its applied index
+// then, or the last entry it held that the snapshot's source has too.
 type Root struct {
 	Index, Term uint64
 	Reset       bool
@@ -217,6 +218,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			ckpts = append(ckpts, n)
 		}
 	}
+	slices.Sort(segs)
 	// Segment names must be consecutive: a gap is a lost segment, even
 	// when the newest segment is empty. Old segments go only from the
 	// front.
@@ -500,9 +502,16 @@ func (w *WAL) current() *run {
 
 // placeEntry notes that entry index has its record at file offset at of
 // the current segment, chained from crc seed. It replaces every entry at
-// or after index.
+// or after index. Non-empty runs are in index order, so the walk back
+// stops at the first that ends at or below index.
 func (w *WAL) placeEntry(index uint64, at, seed uint32) {
-	for _, s := range w.runs {
+	for _, s := range slices.Backward(w.runs) {
+		if len(s.offs) == 0 {
+			continue
+		}
+		if s.end() <= index {
+			break
+		}
 		s.cut(index)
 	}
 	cur := w.current()
@@ -535,7 +544,7 @@ func (w *WAL) setRoot(r Root) {
 		for _, s := range w.runs {
 			s.cut(r.Keep + 1)
 		}
-		w.last = r.Index
+		w.last = max(r.Index, r.Keep)
 	}
 	w.root = Root{Index: r.Index, Term: r.Term}
 }
@@ -901,15 +910,10 @@ func (w *WAL) CreateCheckpoint(index uint64) (File, error) {
 	return w.fs.Create(CheckpointName(index))
 }
 
-// OpenCheckpoint opens the file of the checkpoint at index.
-func (w *WAL) OpenCheckpoint(index uint64) (File, error) {
-	return w.fs.Open(CheckpointName(index))
-}
-
 // Checkpoint opens the checkpoint file at index for reading from the
 // start.
 func (w *WAL) Checkpoint(index uint64) (io.ReadCloser, error) {
-	f, err := w.OpenCheckpoint(index)
+	f, err := w.fs.Open(CheckpointName(index))
 	if err != nil {
 		return nil, err
 	}

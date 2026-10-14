@@ -25,8 +25,11 @@ import (
 //
 //	magic "tigerckp" | u32 format version | u64 index | u64 term |
 //	uvarint voter count | uvarint voters | varint revision |
-//	varint compaction revision | varint lease stamps |
+//	varint compaction revision | varint lease stamps | varint base |
 //	uvarint lease count | per lease: varint ID | varint TTL | varint stamp
+//
+// where base is the size of the newest checkpoint finished when this one
+// was cut, which the next cut is measured against.
 //
 // The leases' keys are not in it: they are the keys whose newest version
 // has the lease, rebuilt on load.
@@ -38,6 +41,7 @@ type ckptHeader struct {
 	index, term          uint64
 	voters               []uint64
 	rev, compact, stamps int64
+	base                 int64
 	leases               []*lease
 }
 
@@ -53,6 +57,7 @@ func (h *ckptHeader) encode() []byte {
 	b = binary.AppendVarint(b, h.rev)
 	b = binary.AppendVarint(b, h.compact)
 	b = binary.AppendVarint(b, h.stamps)
+	b = binary.AppendVarint(b, h.base)
 	b = binary.AppendUvarint(b, uint64(len(h.leases)))
 	for _, l := range h.leases {
 		b = binary.AppendVarint(b, l.id)
@@ -103,7 +108,7 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	for range n {
 		h.voters = append(h.voters, uv())
 	}
-	h.rev, h.compact, h.stamps = sv(), sv(), sv()
+	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
 		l := &lease{id: sv(), ttl: sv(), stamp: sv(), keys: map[string]struct{}{}}
@@ -123,38 +128,38 @@ type copying struct {
 	minRef      uint64
 }
 
-// lastCkpt is the newest checkpoint cut: its index, size and the lowest
-// entry a value of it is in, from which the next one is counted.
+// lastCkpt is the newest checkpoint finished: its index, size, the lowest
+// entry a value of it is in, and its header's base.
 type lastCkpt struct {
 	index  uint64
 	size   int64
 	minRef uint64
+	base   int64
 }
 
 // maybeCheckpoint cuts a checkpoint once the entries applied since the
-// last one pass CheckpointBytes and CheckpointRatio times its size. It
-// runs after each applied entry, so every node cuts at the same index. A
-// copy still under way then is finished at once, so that the size it
-// needs is known.
+// last one pass CheckpointBytes and CheckpointRatio times the base: the
+// size of the newest checkpoint finished when the last one was cut. Every
+// node knows that size, however far its copy got, so every node cuts at
+// the same index; it runs after each applied entry. A copy still under
+// way then is finished at once.
 func (n *Node) maybeCheckpoint(index, term uint64) {
-	if n.sinceCkpt < n.cfg.CheckpointBytes {
+	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) {
 		return
 	}
 	if n.copy != nil {
 		n.copyChunk(-1)
-	}
-	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.last.size) {
-		return
 	}
 	if planted.On("B21") && n.rn != nil {
 		// Planted: the checkpoint names the committed index, not the
 		// applied one.
 		index = max(index, n.rn.BasicStatus().GetCommit())
 	}
+	n.base = n.last.size
 	h := &ckptHeader{
 		index: index, term: term, voters: n.cfg.Peers,
 		rev: n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
-		leases: n.state.sortedLeases(),
+		base: n.base, leases: n.state.sortedLeases(),
 	}
 	data := h.encode()
 	n.copy = &copying{index: index, term: term, crc: crc32.Update(0, castagnoli, data), size: int64(len(data))}
@@ -226,6 +231,11 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 	if n.last.minRef != 0 {
 		mark = min(mark, n.last.minRef)
 	}
+	if len(n.snapWait) > 0 {
+		// A follower may be fetching a snapshot from what the removal
+		// would take; the next root removes it.
+		mark = 0
+	}
 	n.out.Persist = append(n.out.Persist, PersistJob{Root: &wal.Root{Index: index, Term: term}, RemoveBelow: mark})
 }
 
@@ -291,7 +301,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 			l.keys[string(key)] = struct{}{}
 		}
 	})
-	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef}, nil
+	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef, base: h.base}, nil
 }
 
 // trailerReader computes the CRC-32C of everything it reads but the last

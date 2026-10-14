@@ -39,9 +39,6 @@ type frozen struct {
 // Freeze starts a checkpoint copy of the index at the current revision.
 func (s *Store) Freeze() { s.frozen = &frozen{rev: s.rev} }
 
-// Copying reports whether a checkpoint copy is under way.
-func (s *Store) Copying() bool { return s.frozen != nil }
-
 // CopyFrozen appends the next keys of the frozen index to b until b holds
 // at least limit bytes, and the lowest entry index that a value among
 // them is in, 0 for none. done is true once every key is out; then the
@@ -216,21 +213,4 @@ func (s *Store) EachLeased(fn func(key []byte, lease int64)) {
 		}
 		return true
 	})
-}
-
-// EachRef calls fn for the value of every version whose value is in an
-// entry from index from on, in key order.
-func (s *Store) EachRef(from uint64, fn func(r Ref) error) error {
-	var err error
-	s.keys.Ascend(func(k *keyIndex) bool {
-		for i := range k.vers {
-			if r := k.vers[i].value; r.Len > 0 && r.Index >= from {
-				if err = fn(r); err != nil {
-					return false
-				}
-			}
-		}
-		return true
-	})
-	return err
 }

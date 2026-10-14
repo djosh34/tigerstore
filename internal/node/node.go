@@ -317,6 +317,13 @@ func (l *diskLog) mapping(seq uint64) ([]byte, error) {
 		return nil, errors.Join(err, f.Close())
 	}
 	m, err := syscall.Mmap(int(f.Fd()), 0, int(st.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err == nil {
+		// Read-around would fetch the pages around each value; #133
+		// measured it halving cold reads.
+		if err = syscall.Madvise(m, syscall.MADV_RANDOM); err != nil {
+			err = errors.Join(err, syscall.Munmap(m))
+		}
+	}
 	if err = errors.Join(err, f.Close()); err != nil {
 		return nil, err
 	}
@@ -482,7 +489,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
 	// chunks are checkpoint parts for the writer; pace wakes the committer
-	// to copy the next one while the index is quiet.
+	// to copy the next one once the writer took them all, so a slow disk
+	// slows the copy instead of piling parts up in memory.
 	var chunks []core.CheckpointChunk
 	var pace *time.Timer
 	streams := map[uint64]*WatchStream{}
@@ -503,7 +511,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			toWriter, chunk = n.ckptQ, chunks[0]
 		}
 		var paced <-chan time.Time
-		if n.core.Copying() {
+		if n.core.Copying() && len(chunks) == 0 {
 			if pace == nil {
 				pace = time.NewTimer(checkpointPace)
 			}
@@ -738,7 +746,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		for _, j := range jobs {
-			if done.err != nil || j.Root == nil {
+			if done.err != nil || j.Root == nil || j.RemoveBelow == 0 {
 				continue
 			}
 			n.log.mu.Lock()

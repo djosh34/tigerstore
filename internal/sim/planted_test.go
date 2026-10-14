@@ -92,7 +92,7 @@ var plantedCases = map[string]plantedCase{
 	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk`},
 	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
-	"B22": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|cannot start|` + refused},
+	"B22": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},

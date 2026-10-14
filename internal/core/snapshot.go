@@ -27,8 +27,9 @@ import (
 // The leader sends the raw entries the follower lacks, read from its
 // segments. When those are gone, it sends its checkpoint, the values of
 // the entries after the follower's applied index that the checkpoint
-// names, and the entries after the checkpoint. The installed state, the
-// root and Raft's snapshot then all describe the snapshot's index.
+// names, and the entries after the checkpoint. The root names the
+// checkpoint; the entries after it, in the log, bring the state to the
+// snapshot's index, where Raft's snapshot is.
 
 // Install is a snapshot that Raft hands a follower: the state at Index,
 // whose entry has Term. The driver brings its log there with
@@ -59,7 +60,7 @@ func (n *Node) install(in *Install) error {
 			return fmt.Errorf("core: load the snapshot's checkpoint at %d: %w", c.Index, err)
 		}
 		n.setState(st)
-		n.applied, n.last, n.sinceCkpt, n.storage.ckpt = c.Index, last, 0, c
+		n.applied, n.last, n.base, n.sinceCkpt, n.storage.ckpt = c.Index, last, last.base, 0, c
 		n.record(c.Index, c.Term)
 		// The state jumped; watchers would miss the changes in between.
 		// Their clients watch again from where they were.
@@ -255,9 +256,9 @@ func (s *snapWriter) entry(e *raftpb.Entry) error {
 	return s.item(snapEntry, h, e.GetData())
 }
 
-// ErrNoSnapshot means that a node cannot serve the snapshot asked for: its
+// errNoSnapshot means that a node cannot serve the snapshot asked for: its
 // log lacks the entries and it has no checkpoint that fits.
-var ErrNoSnapshot = errors.New("core: the log cannot serve this snapshot")
+var errNoSnapshot = errors.New("core: the log cannot serve this snapshot")
 
 // ServeSnapshot writes to w what a follower that applied up to from-1
 // needs to reach index to: the entries from..to from log, or, when some
@@ -271,7 +272,7 @@ func ServeSnapshot(disk Log, ckpt wal.Root, from, to uint64, w io.Writer) error 
 		raw = disk.Has(i)
 	}
 	if !raw && (ckpt.Index < from || ckpt.Index > to) {
-		return fmt.Errorf("%w: entries %d to %d, the checkpoint is at %d", ErrNoSnapshot, from, to, ckpt.Index)
+		return fmt.Errorf("%w: entries %d to %d, the checkpoint is at %d", errNoSnapshot, from, to, ckpt.Index)
 	}
 	var hdr []byte
 	hdr = binary.AppendUvarint(hdr, from)
@@ -419,6 +420,11 @@ var errBadSnapshot = errors.New("core: bad snapshot")
 // term, that each value matches its checksum, and the checkpoint's CRC
 // and header, and only then writes the root that makes the checkpoint
 // count. log reads the checkpoint back. It sets in.Checkpoint.
+//
+// The entries the follower already holds with the leader's term are the
+// leader's (Raft's log matching), and it may have acknowledged them: it
+// skips them, so that they stay durable through the install, and the
+// root keeps them. Only the first entry it lacks replaces those after it.
 func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, in *Install) error {
 	s := &snapReader{r: bufio.NewReaderSize(r, 256<<10)}
 	kind, p, err := s.next()
@@ -438,17 +444,27 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, i
 		return fmt.Errorf("%w: header for %d to %d with the checkpoint at %d, want %d to %d", errBadSnapshot, from, to, ckpt, in.Applied+1, in.Index)
 	}
 	next, term := from, uint64(0)
+	// root waits for the first entry the follower lacks.
+	var root *wal.Root
 	if ckpt != 0 {
 		next, term = ckpt+1, ckptTerm
-		if err := receiveCheckpoint(s, sink, disk, peers, from, wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}); err != nil {
+		if err := receiveCheckpoint(s, sink, disk, peers, from, ckpt, ckptTerm); err != nil {
 			return err
 		}
 		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
+		root = &wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}
+		if holds(disk, ckpt, ckptTerm) {
+			root.Keep = ckpt
+		}
 	}
+	// Past a checkpoint, the follower's entries are the leader's only if
+	// it holds the checkpoint's own entry.
+	held := root == nil || root.Keep == ckpt
 	var ents []*raftpb.Entry
+	size := 0
 	flush := func() error {
 		err := sink.Entries(ents)
-		ents = ents[:0]
+		ents, size = ents[:0], 0
 		return err
 	}
 	for {
@@ -470,8 +486,21 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, i
 			return fmt.Errorf("%w: entry %d term %d where entry %d after term %d was due", errBadSnapshot, e.GetIndex(), e.GetTerm(), next, term)
 		}
 		next, term = e.GetIndex()+1, e.GetTerm()
+		if held = held && holds(disk, e.GetIndex(), e.GetTerm()); held {
+			if root != nil {
+				root.Keep = e.GetIndex()
+			}
+			continue
+		}
+		if root != nil {
+			if err := sink.Root(*root); err != nil {
+				return err
+			}
+			root = nil
+		}
 		ents = append(ents, e)
-		if len(ents) == 64 {
+		// The batch stays small next to the entry budget.
+		if size += len(e.GetData()); size >= snapChunk {
 			if err := flush(); err != nil {
 				return err
 			}
@@ -480,7 +509,21 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, i
 	if check && (next != to+1 || term != in.Term) {
 		return fmt.Errorf("%w: it ends at entry %d term %d, Raft's snapshot is at %d term %d", errBadSnapshot, next-1, term, to, in.Term)
 	}
+	if root != nil {
+		if err := sink.Root(*root); err != nil {
+			return err
+		}
+	}
 	return flush()
+}
+
+// holds reports whether the log holds entry index with term.
+func holds(disk Log, index, term uint64) bool {
+	if !disk.Has(index) {
+		return false
+	}
+	e, err := disk.Entry(index)
+	return err == nil && e.GetTerm() == term
 }
 
 func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {
@@ -497,9 +540,10 @@ func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {
 	return &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: slices.Clone(p[k+1:])}, nil
 }
 
-// receiveCheckpoint writes the checkpoint file and the values, checks
-// them, and appends the root.
-func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint64, from uint64, root wal.Root) error {
+// receiveCheckpoint writes the checkpoint file and the values, and checks
+// them.
+func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint64, from, ckpt, ckptTerm uint64) error {
+	root := wal.Root{Index: ckpt, Term: ckptTerm}
 	check := !planted.On("B22")
 	tr := &trailerReader{}
 	for {
@@ -565,5 +609,5 @@ func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint6
 			return err
 		}
 	}
-	return sink.Root(root)
+	return nil
 }

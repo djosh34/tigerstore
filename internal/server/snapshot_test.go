@@ -3,7 +3,10 @@ package server_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
@@ -14,7 +17,8 @@ import (
 // others with a window of a few kilobytes and frequent checkpoints, so
 // that the leader drops the entries node 3 lacks from memory and the
 // segments that held them from disk. Node 3 then catches up through a
-// snapshot fetched over the peer transport, and serves every value. Node 1
+// snapshot with a checkpoint, fetched over the peer transport, and serves
+// every value. Node 1
 // then restarts from its checkpoint and the log after it.
 func TestFollowerCatchesUpBySnapshot(t *testing.T) {
 	c := newClusterWith(t, func(c *cluster) {
@@ -51,6 +55,19 @@ func TestFollowerCatchesUpBySnapshot(t *testing.T) {
 			return kv1.Compact(ctx, &pb.CompactionRequest{Revision: rev})
 		})
 	}
+	// The first segment of nodes 1 and 2 held entries node 3 lacks; it
+	// must be gone, so that only the checkpoint path can catch node 3 up.
+	for id := uint64(1); id <= 2; id++ {
+		first := filepath.Join(c.dirs[id], "wal", "0000000000000001.wal")
+		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			if _, err := os.Stat(first); os.IsNotExist(err) {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("node %d still has its first segment", id)
+			}
+		}
+	}
 	c.start(3)
 	kv3 := c.client(3, cert)
 	retry(t, func(ctx context.Context) (*pb.RangeResponse, error) {
@@ -75,6 +92,9 @@ func TestFollowerCatchesUpBySnapshot(t *testing.T) {
 		}
 	}
 	check(kv3, 3)
+	if ckpts, err := filepath.Glob(filepath.Join(c.dirs[3], "wal", "ckpt-*")); err != nil || len(ckpts) == 0 {
+		t.Fatalf("node 3 has no checkpoint file (%v): it did not catch up through a checkpoint", err)
+	}
 	c.running[1].stop()
 	delete(c.running, 1)
 	c.start(1)
