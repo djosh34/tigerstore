@@ -734,8 +734,7 @@ func (w *WAL) Close() error {
 // locate returns the run that holds entry index and the entry's position
 // in it, or nil.
 func (w *WAL) locate(index uint64) (*run, int) {
-	for i := len(w.runs) - 1; i >= 0; i-- {
-		s := w.runs[i]
+	for _, s := range slices.Backward(w.runs) {
 		if index >= s.first && index < s.end() {
 			return s, int(index - s.first)
 		}
