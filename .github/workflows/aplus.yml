@@ -112,7 +112,8 @@ jobs:
           - {target: candidate, rate: "10000", secs: "180"}
           - {target: candamp4, rate: "10000", secs: "180"}
           - {target: baseline, rate: "10000", secs: "180"}
-          - {target: candidate, rate: "0", secs: "60"}
+          - {target: candidate, rate: "0", secs: "30"}
+          - {target: baseline, rate: "0", secs: "30"}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     steps:
@@ -133,6 +134,6 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: churn-${{ matrix.target }}-${{ matrix.rate }}
+          name: churn-${{ matrix.target }}-${{ matrix.rate }}-${{ matrix.secs }}
           path: results
           retention-days: 30
