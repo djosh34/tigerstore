@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"

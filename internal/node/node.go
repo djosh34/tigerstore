@@ -64,9 +64,9 @@ type input struct {
 	writeErr error
 	// snapshot is a follower that started (fetching) or ended (served,
 	// served ok) a snapshot fetch from this node.
-	snapshot          uint64
-	fetching, served  bool
-	servedOK          bool
+	snapshot         uint64
+	fetching, served bool
+	servedOK         bool
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
