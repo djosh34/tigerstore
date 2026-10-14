@@ -90,8 +90,11 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	}
 	ckpt := n.log.ckpt
 	st, err := os.Stat(filepath.Join(dir, "wal", wal.CheckpointName(ckpt.Index)))
-	if err != nil || st.Size() < 512<<10 {
-		t.Fatalf("setup: checkpoint at %d: %v, %d bytes", ckpt.Index, err, st.Size())
+	if err != nil {
+		t.Fatalf("setup: checkpoint at %d: %v", ckpt.Index, err)
+	}
+	if st.Size() < 512<<10 {
+		t.Fatalf("setup: the checkpoint at %d has only %d bytes", ckpt.Index, st.Size())
 	}
 	if n.log.w.Has(1) {
 		t.Fatal("setup: entry 1 is still on disk")
