@@ -1,0 +1,24 @@
+name: Read trace (#136)
+on:
+  push:
+    branches: [exp/136-cache]
+    paths:
+      - 'experiments/cache136/**'
+      - '.github/workflows/exp-cache136.yml'
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cluster, workload, request trace
+        run: bash experiments/cache136/run.sh
+      - name: Upload keys and sizes only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache136-results
+          path: experiments/cache136/results/
+          retention-days: 14
