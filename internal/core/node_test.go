@@ -26,6 +26,22 @@ type single struct {
 	watch []WatchResponse
 }
 
+// newMember starts node 1 of peers on an empty simulated disk, without
+// ticking it.
+func newMember(t *testing.T, peers []uint64) *single {
+	t.Helper()
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(DefaultConfig(1, peers), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &single{t: t, disk: disk, log: w, n: n}
+}
+
 func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
 	t.Helper()
 	w, rec, err := wal.Open(disk)
@@ -144,16 +160,8 @@ func TestStatusOneTerm(t *testing.T) {
 // elected (#105). A write that finds no leader before its deadline gets
 // what etcd answers then: DeadlineExceeded, not the request timeout.
 func TestWriteWaitsForLeader(t *testing.T) {
-	disk := simfs.New()
-	w, rec, err := wal.Open(disk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err := New(DefaultConfig(1, []uint64{1}), rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &single{t: t, disk: disk, log: w, n: n}
+	s := newMember(t, []uint64{1})
+	n := s.n
 	if n.Leader() != 0 {
 		t.Fatal("the node has a leader before any tick")
 	}
@@ -175,16 +183,8 @@ func TestWriteWaitsForLeader(t *testing.T) {
 
 	// A member that knew a leader and lost it on its election timer, with
 	// no Ready since: the write still waits.
-	disk = simfs.New()
-	w, rec, err = wal.Open(disk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err = New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s = &single{t: t, disk: disk, log: w, n: n}
+	s = newMember(t, []uint64{1, 2, 3})
+	n = s.n
 	if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
 		t.Fatal(err)
 	}
@@ -206,16 +206,8 @@ func TestWriteWaitsForLeader(t *testing.T) {
 	}
 
 	// A three-node member alone never gets a leader: its write times out.
-	disk = simfs.New()
-	w, rec, err = wal.Open(disk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err = New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s = &single{t: t, disk: disk, log: w, n: n}
+	s = newMember(t, []uint64{1, 2, 3})
+	n = s.n
 	n.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
 	got = s.run()
 	for i := 0; len(got) == 0 && i < 2*n.cfg.RequestTicks; i++ {
@@ -231,16 +223,8 @@ func TestWriteWaitsForLeader(t *testing.T) {
 // never finds a leader. Each round's writes leave the queue when they
 // expire, so the queue does not grow with the rounds while clients retry.
 func TestExpiredWritesLeaveQueue(t *testing.T) {
-	disk := simfs.New()
-	w, rec, err := wal.Open(disk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &single{t: t, disk: disk, log: w, n: n}
+	s := newMember(t, []uint64{1, 2, 3})
+	n := s.n
 	value := make([]byte, 16<<10)
 	id := uint64(0)
 	for round := range 5 {
@@ -271,16 +255,8 @@ func TestExpiredWritesLeaveQueue(t *testing.T) {
 // follower forwards it to a leader that never answers. Its deadline then
 // gives etcd's request timeout, since it may still commit.
 func TestProposedWriteTimesOut(t *testing.T) {
-	disk := simfs.New()
-	w, rec, err := wal.Open(disk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &single{t: t, disk: disk, log: w, n: n}
+	s := newMember(t, []uint64{1, 2, 3})
+	n := s.n
 	heartbeat := func() {
 		if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
 			t.Fatal(err)

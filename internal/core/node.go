@@ -591,6 +591,7 @@ func (n *Node) expire() {
 		}
 		if p.queued {
 			dropped = true
+			n.propBytes -= writeSize(p)
 			n.finish(p, nil, errNotProposed)
 			continue
 		}
@@ -599,10 +600,6 @@ func (n *Node) expire() {
 	n.timeouts = n.timeouts[i:]
 	if dropped {
 		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
-		n.propBytes = 0
-		for _, p := range n.proposals {
-			n.propBytes += writeSize(p)
-		}
 	}
 }
 
