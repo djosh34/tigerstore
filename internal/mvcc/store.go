@@ -331,8 +331,11 @@ func versionHash(key []byte, v *version) uint64 {
 	for _, b := range key {
 		h = (h ^ uint64(b)) * fnvPrime
 	}
-	for _, x := range [...]uint64{uint64(len(key)), uint64(v.mod.main), uint64(v.mod.sub), uint64(v.create), uint64(v.ver),
-		uint64(v.lease), v.value.Index, uint64(v.value.Off)<<32 | uint64(v.value.Len), uint64(v.value.Sum)} {
+	fields := [...]uint64{
+		uint64(len(key)), uint64(v.mod.main), uint64(v.mod.sub), uint64(v.create), uint64(v.ver),
+		uint64(v.lease), v.value.Index, uint64(v.value.Off)<<32 | uint64(v.value.Len), uint64(v.value.Sum),
+	}
+	for _, x := range fields {
 		for range 8 {
 			h = (h ^ x&0xff) * fnvPrime
 			x >>= 8
