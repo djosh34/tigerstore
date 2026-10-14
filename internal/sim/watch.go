@@ -271,7 +271,11 @@ func (s *Sim) checkWatches(model *mvcc.Store, res *Result) error {
 				return fmt.Errorf("watch %d (part %d) on %q from %d got %d events, the history has %d", w.id, i, w.key, sg.start, len(sg.events), len(want))
 			}
 			for j, c := range want {
-				if ev := c.Event(w.prevKV); !proto.Equal(ev, sg.events[j]) {
+				ev, err := c.Event(w.prevKV)
+				if err != nil {
+					return err
+				}
+				if !proto.Equal(ev, sg.events[j]) {
 					return fmt.Errorf("watch %d (part %d) event %d is %v, the history has %v", w.id, i, j, sg.events[j], ev)
 				}
 			}

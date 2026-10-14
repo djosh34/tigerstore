@@ -154,6 +154,39 @@ func TestStatusOneTerm(t *testing.T) {
 	}
 }
 
+// TestNoPlaceOutlivesApply applies transactions with three, two and one
+// puts, then a delete: no place of a value, which points into its entry,
+// is left after apply.
+func TestNoPlaceOutlivesApply(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	put := func(k string) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(k), Value: []byte("v" + k)}}}
+	}
+	id := uint64(0)
+	for n := 3; n >= 1; n-- {
+		txn := &pb.TxnRequest{}
+		for i := range n {
+			txn.Success = append(txn.Success, put(fmt.Sprintf("k%d-%d", n, i)))
+		}
+		id++
+		if r := s.do(id, txn); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	if r := s.do(id+1, &pb.DeleteRangeRequest{Key: []byte("k1-0")}); r.Err != nil {
+		t.Fatal(r.Err)
+	}
+	pl := s.n.values.places
+	for i, p := range pl[:cap(pl)] {
+		if p.start != nil {
+			t.Fatalf("place %d of %d still points into an entry", i, cap(pl))
+		}
+	}
+	if cap(pl) < 3 {
+		t.Fatalf("the places held %d values at most, want 3", cap(pl))
+	}
+}
+
 // TestWriteWaitsForLeader submits a write before the node has a leader.
 // Like etcd, whose raft.Node takes no proposal without a leader, the write
 // waits instead of failing with "no leader", and commits once the node is

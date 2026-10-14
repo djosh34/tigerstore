@@ -61,10 +61,11 @@ type State struct {
 // reused by the next one.
 func (st *State) Changes() []mvcc.Change { return st.changes }
 
-// NewState returns an empty state. Leases get at least minTTL seconds, as
-// etcd clamps them to 1.5 election timeouts rounded up.
-func NewState(minTTL int64) *State {
-	st := &State{kv: mvcc.New(), leases: map[int64]*lease{}, minTTL: minTTL}
+// NewState returns an empty state that keeps its values in v. Leases get
+// at least minTTL seconds, as etcd clamps them to 1.5 election timeouts
+// rounded up.
+func NewState(minTTL int64, v mvcc.Values) *State {
+	st := &State{kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
 }

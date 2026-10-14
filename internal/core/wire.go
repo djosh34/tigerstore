@@ -18,6 +18,8 @@ type Put struct {
 	// unknown is the bytes of unknown and mistyped fields, which protobuf
 	// keeps and marshals again.
 	unknown int
+	// valueAt is where Value starts in Wire.
+	valueAt int
 }
 
 // size is the size of the PutRequest as protobuf marshals it after a
@@ -64,12 +66,12 @@ func ParsePut(b []byte) (Put, error) {
 			// Capped, so an append can never write into the bytes after
 			// it, which are the log's.
 			v = slices.Clip(v)
+			b = b[n:]
 			if num == 1 {
 				p.Key = v
 			} else {
-				p.Value = v
+				p.Value, p.valueAt = v, offsetIn(p.Wire, b, v)
 			}
-			b = b[n:]
 		case typ == protowire.VarintType && num >= 3 && num <= 6:
 			v, n := protowire.ConsumeVarint(b)
 			if n < 0 {

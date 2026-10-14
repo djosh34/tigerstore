@@ -2,6 +2,8 @@ package mvcc
 
 import (
 	"bytes"
+	"fmt"
+	"hash/crc32"
 	"math"
 	"sort"
 
@@ -48,10 +50,12 @@ func (w *writer) cur() int64 {
 func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r} }
 
 // KV is one key's version as a range returns it: the fields of an
-// mvccpb.KeyValue, as a value. Key and Value are the index's slices.
+// mvccpb.KeyValue, as a value. Key is the index's slice, Value the one
+// Values returned; neither may change.
 type KV struct {
 	Key, Value                                  []byte
 	CreateRevision, ModRevision, Version, Lease int64
+	ref                                         Ref
 }
 
 // RangeResult is a range's answer without its header: the store's
@@ -158,6 +162,12 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 	})
 
 	kvs = filterKVs(kvs, r)
+	byValue := r.SortTarget == pb.RangeRequest_VALUE
+	if byValue {
+		if err := w.s.readValues(kvs); err != nil {
+			return RangeResult{}, err
+		}
+	}
 	sortKVs(kvs, r)
 
 	res := RangeResult{Rev: cur, Count: count}
@@ -165,19 +175,36 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 		kvs = kvs[:r.Limit]
 		res.More = true
 	}
-	if r.KeysOnly {
+	switch {
+	case r.KeysOnly:
 		// Without a sort on values, etcd reads only the key index, which
 		// has no lease.
-		fast := r.SortTarget != pb.RangeRequest_VALUE
 		for i := range kvs {
 			kvs[i].Value = nil
-			if fast {
+			if !byValue {
 				kvs[i].Lease = 0
 			}
+		}
+	case !byValue:
+		if err := w.s.readValues(kvs); err != nil {
+			return RangeResult{}, err
 		}
 	}
 	res.KVs = kvs
 	return res, nil
+}
+
+// readValues reads the value of every KV.
+func (s *Store) readValues(kvs []KV) error {
+	for i := range kvs {
+		kv := &kvs[i]
+		b, err := s.value(kv.Key, kv.ref)
+		if err != nil {
+			return err
+		}
+		kv.Value = b
+	}
+	return nil
 }
 
 // IsDefaultOrdering reports whether a range returns keys in the order the
@@ -280,7 +307,10 @@ func (s *Store) PutKV(op *PutOp) (*mvccpb.KeyValue, error) {
 		w.countPrevRead(op)
 		return nil, err
 	}
-	prev := w.put(op)
+	prev, err := w.put(op)
+	if err != nil {
+		return nil, err
+	}
 	w.finish()
 	return prev, nil
 }
@@ -329,19 +359,31 @@ func (w *writer) add(k *keyIndex, v version) {
 	}
 	k.vers = append(k.vers, v)
 	w.changed = true
-	w.s.changes = append(w.s.changes, Change{k: k, i: len(k.vers) - 1})
+	w.s.changes = append(w.s.changes, Change{s: w.s, k: k, i: len(k.vers) - 1})
 }
 
 // put writes one key and returns its previous version if p asks for it.
-func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
+// An error is a failed value read or placement; the store is then
+// unchanged.
+func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 	w.s.counts.Puts++
 	w.countPrevRead(p)
 	var prevKV *mvccpb.KeyValue
 	k, prev := w.latest(p.Key)
-	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}
+	v := version{create: w.begin + 1, ver: 1, lease: p.Lease}
+	if !p.IgnoreValue || prev == nil {
+		ref, err := w.s.place(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		v.value = ref
+	}
 	if prev != nil {
 		if p.PrevKv {
-			prevKV = k.kv(prev)
+			var err error
+			if prevKV, err = w.s.kv(k, prev); err != nil {
+				return nil, err
+			}
 		}
 		if p.IgnoreValue {
 			v.value = prev.value
@@ -356,22 +398,39 @@ func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
 		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
-		k = &keyIndex{key: p.Key}
+		// A copy, so that the index keeps no Raft entry alive.
+		k = &keyIndex{key: bytes.Clone(p.Key)}
 		w.s.keys.ReplaceOrInsert(k)
 	}
 	w.add(k, v)
-	return prevKV
+	return prevKV, nil
+}
+
+// place names a value that the request being applied writes.
+func (s *Store) place(value []byte) (Ref, error) {
+	if len(value) == 0 {
+		return Ref{}, nil
+	}
+	r, err := s.values.Place(value)
+	if err != nil {
+		return Ref{}, fmt.Errorf("mvcc: place a value: %w", err)
+	}
+	r.Sum = crc32.Checksum(value, castagnoli)
+	return r, nil
 }
 
 // DeleteRange deletes keys.
 func (s *Store) DeleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse, error) {
 	w := s.start()
-	resp := w.deleteRange(d)
+	resp, err := w.deleteRange(d)
+	if err != nil {
+		return nil, err
+	}
 	w.finish()
 	return resp, nil
 }
 
-func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
+func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse, error) {
 	w.s.counts.Deletes++
 	if d.PrevKv {
 		// etcd reads the previous values with a range.
@@ -388,7 +447,11 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
 	if d.PrevKv {
 		resp.PrevKvs = make([]*mvccpb.KeyValue, len(del))
 		for i, k := range del {
-			resp.PrevKvs[i] = k.kv(&k.vers[len(k.vers)-1])
+			kv, err := w.s.kv(k, &k.vers[len(k.vers)-1])
+			if err != nil {
+				return nil, err
+			}
+			resp.PrevKvs[i] = kv
 		}
 	}
 	for _, k := range del {
@@ -396,7 +459,7 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
 	}
 	resp.Deleted = int64(len(del))
 	resp.Header = header(w.cur())
-	return resp
+	return resp, nil
 }
 
 // Txn runs a transaction. Compares and checks read the state before the
@@ -404,7 +467,10 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) *pb.DeleteRangeResponse {
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	w := s.start()
-	path := w.compareToPath(r)
+	path, err := w.compareToPath(r)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := w.checkTxn(r, path); err != nil {
 		return nil, err
 	}
@@ -417,58 +483,78 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	return resp, nil
 }
 
-func (w *writer) compareToPath(r *pb.TxnRequest) []bool {
-	path := []bool{w.applyCompares(r.Compare)}
+func (w *writer) compareToPath(r *pb.TxnRequest) ([]bool, error) {
+	ok, err := w.applyCompares(r.Compare)
+	if err != nil {
+		return nil, err
+	}
+	path := []bool{ok}
 	ops := r.Success
 	if !path[0] {
 		ops = r.Failure
 	}
 	for _, op := range ops {
 		if t := op.GetRequestTxn(); t != nil {
-			path = append(path, w.compareToPath(t)...)
+			sub, err := w.compareToPath(t)
+			if err != nil {
+				return nil, err
+			}
+			path = append(path, sub...)
 		}
 	}
-	return path
+	return path, nil
 }
 
-func (w *writer) applyCompares(cs []*pb.Compare) bool {
+func (w *writer) applyCompares(cs []*pb.Compare) (bool, error) {
 	for _, c := range cs {
-		if !w.applyCompare(c) {
-			return false
+		ok, err := w.applyCompare(c)
+		if !ok || err != nil {
+			return false, err
 		}
 	}
-	return true
+	return true, nil
 }
 
-func (w *writer) applyCompare(c *pb.Compare) bool {
+func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	// etcd reads each compare's keys with a range.
 	w.s.counts.Ranges++
 	end := c.RangeEnd
 	matched := false
 	ok := true
+	var err error
 	w.s.ascend(c.Key, end, func(k *keyIndex) bool {
 		v, live := k.live(w.cur())
 		if !live {
 			return true
 		}
 		matched = true
-		if !compareKV(c, k.kv(v)) {
+		kv := k.kvValue(v)
+		if c.Target == pb.Compare_VALUE {
+			// Only a compare on the value reads it.
+			if kv.Value, err = w.s.value(k.key, v.value); err != nil {
+				return false
+			}
+		}
+		if !compareKV(c, &kv) {
 			ok = false
 			return false
 		}
 		return true
 	})
+	if err != nil {
+		return false, err
+	}
 	if !matched {
 		// A missing key has no value to compare, so VALUE compares fail.
 		if c.Target == pb.Compare_VALUE {
-			return false
+			return false, nil
 		}
-		return compareKV(c, &mvccpb.KeyValue{})
+		return compareKV(c, &KV{}), nil
 	}
-	return ok
+	return ok, nil
 }
 
-func compareKV(c *pb.Compare, kv *mvccpb.KeyValue) bool {
+func compareKV(c *pb.Compare, kv *KV) bool {
 	var result int
 	switch c.Target {
 	case pb.Compare_VALUE:
@@ -574,9 +660,17 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			out.Response = &pb.ResponseOp_ResponseRange{ResponseRange: rr}
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
-			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: w.put(&op)}}
+			prev, err := w.put(&op)
+			if err != nil {
+				return nil, 0, err
+			}
+			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: prev}}
 		case *pb.RequestOp_RequestDeleteRange:
-			out.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: w.deleteRange(t.RequestDeleteRange)}
+			d, err := w.deleteRange(t.RequestDeleteRange)
+			if err != nil {
+				return nil, 0, err
+			}
+			out.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: d}
 		case *pb.RequestOp_RequestTxn:
 			sub, subN, err := w.executeTxn(t.RequestTxn, path[1:])
 			if err != nil {

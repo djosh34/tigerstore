@@ -2,14 +2,17 @@
 //
 // The committer owns a Store and is the only caller, so it takes no locks.
 // Every write request gets one main revision; each change inside it gets a
-// sub revision. Values are byte slices that the caller does not modify
-// afterwards, usually slices of the Raft entry that carried the write.
+// sub revision. The index holds no values: it names each value by a Ref,
+// its position in the Raft log, and reads the bytes through Values.
 package mvcc
 
 import (
 	"bytes"
 	"cmp"
+	"errors"
+	"fmt"
 	"hash"
+	"hash/crc32"
 	"hash/fnv"
 	"slices"
 
@@ -24,13 +27,56 @@ import (
 // of the change inside it.
 type rev struct{ main, sub int64 }
 
+// Ref names a value by where the Raft log holds it, the same on every
+// node: the index of the entry that wrote it, its offset and length in the
+// entry's data, and the CRC-32C of its bytes. An empty value has Len 0.
+type Ref struct {
+	Index    uint64
+	Off, Len uint32
+	Sum      uint32
+}
+
+// Values keeps the bytes of a store's values.
+type Values interface {
+	// Place returns the Ref of value, which the request being applied
+	// writes, without its Sum. value is not empty. Place may keep it as
+	// it is.
+	Place(value []byte) (Ref, error)
+	// Read returns the bytes r names. The caller must not change them.
+	Read(r Ref) ([]byte, error)
+}
+
+// ErrBadValue means that the bytes read for a value do not match its
+// checksum: the disk was damaged, or they were read from the wrong place.
+var ErrBadValue = errors.New("mvcc: a value does not match its checksum")
+
+var castagnoli = crc32.MakeTable(crc32.Castagnoli)
+
+// Heap keeps values in memory, for stores whose writes come from no Raft
+// entry, such as tests and the simulator's model of the log.
+type Heap struct{ vals [][]byte }
+
+// Place keeps value and names it by its number.
+func (h *Heap) Place(value []byte) (Ref, error) {
+	h.vals = append(h.vals, value)
+	return Ref{Index: uint64(len(h.vals)), Len: uint32(len(value))}, nil
+}
+
+// Read returns a value Place kept.
+func (h *Heap) Read(r Ref) ([]byte, error) {
+	if r.Index == 0 || r.Index > uint64(len(h.vals)) {
+		return nil, fmt.Errorf("mvcc: no value %d in memory", r.Index)
+	}
+	return h.vals[r.Index-1], nil
+}
+
 // version is one state of a key. ver is 0 for a tombstone.
 type version struct {
 	mod    rev
 	create int64
 	ver    int64
 	lease  int64
-	value  []byte
+	value  Ref
 }
 
 // keyIndex holds every version of one key, oldest first.
@@ -63,19 +109,40 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 	return &k.vers[i], true
 }
 
+// kvValue returns a version without its value, which readValues adds.
 func (k *keyIndex) kvValue(v *version) KV {
-	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, Value: v.value}
+	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value}
 }
 
-func (k *keyIndex) kv(v *version) *mvccpb.KeyValue {
+func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
+	val, err := s.value(k.key, v.value)
+	if err != nil {
+		return nil, err
+	}
 	return &mvccpb.KeyValue{
 		Key:            k.key,
 		CreateRevision: v.create,
 		ModRevision:    v.mod.main,
 		Version:        v.ver,
 		Lease:          v.lease,
-		Value:          v.value,
+		Value:          val,
+	}, nil
+}
+
+// value reads the bytes of a value of key k and checks them against the
+// checksum.
+func (s *Store) value(key []byte, r Ref) ([]byte, error) {
+	if r.Len == 0 {
+		return nil, nil
 	}
+	b, err := s.values.Read(r)
+	if err != nil {
+		return nil, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
+	}
+	if uint32(len(b)) != r.Len || crc32.Checksum(b, castagnoli) != r.Sum {
+		return nil, fmt.Errorf("%w: key %q, entry %d, offset %d", ErrBadValue, key, r.Index, r.Off)
+	}
+	return b, nil
 }
 
 // Store is the key index with every revision since the last compaction.
@@ -83,6 +150,7 @@ type Store struct {
 	keys       *btree.BTreeG[*keyIndex]
 	rev        int64
 	compactRev int64
+	values     Values
 
 	// LeaseExists reports whether a lease is granted. Nil means that no
 	// lease exists, so every Put with a lease fails.
@@ -102,11 +170,13 @@ type Store struct {
 // put with prev_kv, ignore_value or ignore_lease, two in a transaction.
 type Counts struct{ Puts, Deletes, Ranges int64 }
 
-// New returns an empty store at revision 1, the revision etcd starts at.
-func New() *Store {
+// New returns an empty store at revision 1, the revision etcd starts at,
+// that keeps its values in v.
+func New(v Values) *Store {
 	return &Store{
-		keys: btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
-		rev:  1,
+		keys:   btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
+		values: v,
+		rev:    1,
 		// etcd's compacted revision starts at -1, so a read at revision
 		// -1 inside a transaction is not "compacted".
 		compactRev: -1,
@@ -139,6 +209,7 @@ func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 
 // Change is one key change made by a write request.
 type Change struct {
+	s *Store
 	k *keyIndex
 	i int
 }
@@ -162,27 +233,39 @@ func (c Change) PrevLease() int64 {
 }
 
 // Event builds the watch event of the change. The previous value is set
-// when withPrev is true and the key existed before.
-func (c Change) Event(withPrev bool) *mvccpb.Event {
+// when withPrev is true and the key existed before. Its values are copies:
+// a watcher can hold an event long after the entries that wrote them left
+// memory.
+func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
+	s := c.s
 	v := &c.k.vers[c.i]
-	ev := &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: c.k.kv(v)}
-	if v.ver == 0 {
-		ev.Type = mvccpb.Event_DELETE
-		ev.Kv = &mvccpb.KeyValue{Key: c.k.key, ModRevision: v.mod.main}
+	ev := &mvccpb.Event{Type: mvccpb.Event_DELETE, Kv: &mvccpb.KeyValue{Key: c.k.key, ModRevision: v.mod.main}}
+	if v.ver != 0 {
+		kv, err := s.kv(c.k, v)
+		if err != nil {
+			return nil, err
+		}
+		kv.Value = bytes.Clone(kv.Value)
+		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
 	if withPrev && c.i > 0 && c.k.vers[c.i-1].ver != 0 {
-		ev.PrevKv = c.k.kv(&c.k.vers[c.i-1])
+		prev, err := s.kv(c.k, &c.k.vers[c.i-1])
+		if err != nil {
+			return nil, err
+		}
+		prev.Value = bytes.Clone(prev.Value)
+		ev.PrevKv = prev
 	}
-	return ev
+	return ev, nil
 }
 
 // Changes returns the changes of the last applied write request. The slice
 // is reused by the next write.
 func (s *Store) Changes() []Change { return s.changes }
 
-// Hash returns a hash of every version of every key, the current revision
-// and the compaction revision. Replicas that applied the same log have the
-// same hash.
+// Hash returns a hash of every version of every key, with the Ref of its
+// value, the current revision and the compaction revision. Replicas that
+// applied the same log have the same hash.
 func (s *Store) Hash() uint64 {
 	h := fnv.New64a()
 	writeInt(h, s.rev)
@@ -196,8 +279,9 @@ func (s *Store) Hash() uint64 {
 			writeInt(h, v.create)
 			writeInt(h, v.ver)
 			writeInt(h, v.lease)
-			writeInt(h, int64(len(v.value)))
-			h.Write(v.value)
+			writeInt(h, int64(v.value.Index))
+			writeInt(h, int64(v.value.Off)<<32|int64(v.value.Len))
+			writeInt(h, int64(v.value.Sum))
 		}
 		return true
 	})
@@ -220,7 +304,7 @@ func (s *Store) History(key, end []byte, from int64) []Change {
 	s.ascend(key, end, func(k *keyIndex) bool {
 		i := k.at(from - 1)
 		for i++; i < len(k.vers); i++ {
-			out = append(out, Change{k: k, i: i})
+			out = append(out, Change{s: s, k: k, i: i})
 		}
 		return true
 	})

@@ -87,13 +87,24 @@ func DecodeAlias(b []byte, m proto.Message) error {
 
 // decodeTxnAlias decodes a TxnRequest, as UnmarshalAlias does.
 func decodeTxnAlias(b []byte, m *pb.TxnRequest) error {
-	// The top message counts as one level, as in protobuf.
-	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1)
+	return decodeTxnPlaced(b, m, 0, nil)
 }
 
+// decodeTxnPlaced decodes a TxnRequest that starts at offset at of its Raft
+// entry, and records in pl where the values of its puts start.
+func decodeTxnPlaced(b []byte, m *pb.TxnRequest, at int, pl *placer) error {
+	// The top message counts as one level, as in protobuf.
+	return decodeTxn(b, m, protowire.DefaultRecursionLimit-1, at, pl)
+}
+
+// offsetIn returns where sub, the bytes of the field just read, starts in
+// whole, given rest, the bytes after that field.
+func offsetIn(whole, rest, sub []byte) int { return len(whole) - len(rest) - len(sub) }
+
 // decodeTxn decodes a TxnRequest; depth is how many more levels of nested
-// messages may follow.
-func decodeTxn(b []byte, m *pb.TxnRequest, depth int) error {
+// messages may follow. at and pl are as in decodeTxnPlaced; pl may be nil.
+func decodeTxn(b []byte, m *pb.TxnRequest, depth, at int, pl *placer) error {
+	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
 		if err != nil {
@@ -118,7 +129,7 @@ func decodeTxn(b []byte, m *pb.TxnRequest, depth int) error {
 			} else {
 				m.Failure = append(m.Failure, op)
 			}
-			err = decodeOp(f.b, op, depth-1)
+			err = decodeOp(f.b, op, depth-1, at+offsetIn(whole, b, f.b), pl)
 		default:
 			keepUnknown(m, &f)
 		}
@@ -165,7 +176,8 @@ func decodeCompare(b []byte, m *pb.Compare) error {
 // decodeOp decodes a RequestOp. A request that comes again merges into
 // the first if it is of the same kind, and replaces it if not, as in
 // protobuf.
-func decodeOp(b []byte, m *pb.RequestOp, depth int) error {
+func decodeOp(b []byte, m *pb.RequestOp, depth, at int, pl *placer) error {
+	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
 		if err != nil {
@@ -193,7 +205,7 @@ func decodeOp(b []byte, m *pb.RequestOp, depth int) error {
 				r = &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{}}
 				m.Request = r
 			}
-			err = decodePutRequest(f.b, r.RequestPut)
+			err = decodePutRequest(f.b, r.RequestPut, at+offsetIn(whole, b, f.b), pl)
 		case 3:
 			r, ok := m.Request.(*pb.RequestOp_RequestDeleteRange)
 			if !ok {
@@ -207,7 +219,7 @@ func decodeOp(b []byte, m *pb.RequestOp, depth int) error {
 				r = &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{}}
 				m.Request = r
 			}
-			err = decodeTxn(f.b, r.RequestTxn, depth-1)
+			err = decodeTxn(f.b, r.RequestTxn, depth-1, at+offsetIn(whole, b, f.b), pl)
 		}
 		if err != nil {
 			return err
@@ -257,7 +269,8 @@ func decodeRange(b []byte, m *pb.RangeRequest) error {
 	return nil
 }
 
-func decodePutRequest(b []byte, m *pb.PutRequest) error {
+func decodePutRequest(b []byte, m *pb.PutRequest, at int, pl *placer) error {
+	whole := b
 	for len(b) > 0 {
 		f, rest, err := nextField(b)
 		if err != nil {
@@ -269,6 +282,7 @@ func decodePutRequest(b []byte, m *pb.PutRequest) error {
 			m.Key = f.b
 		case f.bytesField(2):
 			m.Value = f.b
+			pl.add(f.b, at+offsetIn(whole, b, f.b))
 		case f.varintField(3):
 			m.Lease = int64(f.v)
 		case f.varintField(4):

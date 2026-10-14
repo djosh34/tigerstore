@@ -234,7 +234,11 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		var evs []*mvccpb.Event
 		revs, last := 0, int64(0)
 		for _, ch := range n.kv.History(w.key, w.end, w.start) {
-			ev := w.event(ch)
+			ev, err := w.event(ch)
+			if err != nil {
+				n.fail(err)
+				return
+			}
 			if ev == nil {
 				continue
 			}
@@ -256,37 +260,59 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 }
 
 // event returns the watch event of a change for this watcher, or nil if
-// the watcher filters it out.
-func (w *watcher) event(c mvcc.Change) *mvccpb.Event {
-	ev := c.Event(w.prevKV && !planted.On("B06c"))
-	if (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete) {
-		return nil
+// the watcher filters it out. An error is a value that could not be read,
+// which stops the node.
+func (w *watcher) event(c mvcc.Change) (*mvccpb.Event, error) {
+	ev, err := c.Event(w.withPrev())
+	if err != nil || w.filters(ev) {
+		return nil, err
 	}
-	return ev
+	return ev, nil
+}
+
+// withPrev reports whether the watcher's events carry previous values.
+func (w *watcher) withPrev() bool { return w.prevKV && !planted.On("B06c") }
+
+// filters reports whether the watcher leaves out an event.
+func (w *watcher) filters(ev *mvccpb.Event) bool {
+	return (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete)
 }
 
 // matchWatches queues the changes of the write just applied for every
-// watcher that covers them.
+// watcher that covers them. Each change's event is built once with and
+// once without the previous value, at most, and the watchers share it.
 func (n *Node) matchWatches() {
 	changes := n.state.Changes()
 	if len(changes) == 0 || len(n.watchers) == 0 {
 		return
 	}
-	for _, w := range n.watchers {
-		if w.dead {
+	for i, c := range changes {
+		if planted.On("B06a") && len(changes) > 1 && i == len(changes)-1 {
 			continue
 		}
-		for i, c := range changes {
-			if planted.On("B06a") && len(changes) > 1 && i == len(changes)-1 {
+		var built [2]*mvccpb.Event
+		for _, w := range n.watchers {
+			if w.dead || c.ModRev() < w.start || !mvcc.InRange(c.Key(), w.key, w.end) {
 				continue
 			}
-			if c.ModRev() >= w.start && mvcc.InRange(c.Key(), w.key, w.end) {
-				if ev := w.event(c); ev != nil {
-					w.pending = append(w.pending, ev)
-					if planted.On("B06b") && i == 0 {
-						w.pending = append(w.pending, ev)
-					}
+			k := 0
+			if w.withPrev() {
+				k = 1
+			}
+			if built[k] == nil {
+				ev, err := c.Event(k == 1)
+				if err != nil {
+					n.fail(err)
+					return
 				}
+				built[k] = ev
+			}
+			if w.filters(built[k]) {
+				continue
+			}
+			w.pending = append(w.pending, built[k])
+			if planted.On("B06b") && i == 0 {
+				w.pending = append(w.pending, built[k])
 			}
 		}
 	}

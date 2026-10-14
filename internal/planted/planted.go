@@ -31,4 +31,5 @@ var Bugs = map[string]string{
 	"B16":  "WAL rotation moves to a new segment without the old one's last sync",
 	"B17":  "the leader's stalled-disk watchdog never fires",
 	"B18":  "closing a watch stream leaves its watchers in place",
+	"B24":  "the index names a value one byte after where it is in its Raft entry",
 }
