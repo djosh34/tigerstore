@@ -22,6 +22,14 @@ type place struct {
 	off   uint32
 }
 
+// reset forgets every place. The places point into an entry, and none
+// may stay behind, not even past the length, or the core would keep that
+// entry alive.
+func (pl *placer) reset() {
+	clear(pl.places[:cap(pl.places)])
+	pl.places = pl.places[:0]
+}
+
 // add records that value starts at offset off of the entry. A nil placer
 // records nothing.
 func (pl *placer) add(value []byte, off int) {

@@ -39,7 +39,8 @@ type Ref struct {
 // Values keeps the bytes of a store's values.
 type Values interface {
 	// Place returns the Ref of value, which the request being applied
-	// writes, without its Sum. It may keep value as it is.
+	// writes, without its Sum. value is not empty. Place may keep it as
+	// it is.
 	Place(value []byte) (Ref, error)
 	// Read returns the bytes r names. The caller must not change them.
 	Read(r Ref) ([]byte, error)

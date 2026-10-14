@@ -263,43 +263,56 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 // the watcher filters it out. An error is a value that could not be read,
 // which stops the node.
 func (w *watcher) event(c mvcc.Change) (*mvccpb.Event, error) {
-	ev, err := c.Event(w.prevKV && !planted.On("B06c"))
-	if err != nil {
+	ev, err := c.Event(w.withPrev())
+	if err != nil || w.filters(ev) {
 		return nil, err
-	}
-	if (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete) {
-		return nil, nil
 	}
 	return ev, nil
 }
 
+// withPrev reports whether the watcher's events carry previous values.
+func (w *watcher) withPrev() bool { return w.prevKV && !planted.On("B06c") }
+
+// filters reports whether the watcher leaves out an event.
+func (w *watcher) filters(ev *mvccpb.Event) bool {
+	return (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete)
+}
+
 // matchWatches queues the changes of the write just applied for every
-// watcher that covers them.
+// watcher that covers them. Each change's event is built once with and
+// once without the previous value, at most, and the watchers share it.
 func (n *Node) matchWatches() {
 	changes := n.state.Changes()
 	if len(changes) == 0 || len(n.watchers) == 0 {
 		return
 	}
-	for _, w := range n.watchers {
-		if w.dead {
+	for i, c := range changes {
+		if planted.On("B06a") && len(changes) > 1 && i == len(changes)-1 {
 			continue
 		}
-		for i, c := range changes {
-			if planted.On("B06a") && len(changes) > 1 && i == len(changes)-1 {
+		var built [2]*mvccpb.Event
+		for _, w := range n.watchers {
+			if w.dead || c.ModRev() < w.start || !mvcc.InRange(c.Key(), w.key, w.end) {
 				continue
 			}
-			if c.ModRev() >= w.start && mvcc.InRange(c.Key(), w.key, w.end) {
-				ev, err := w.event(c)
+			k := 0
+			if w.withPrev() {
+				k = 1
+			}
+			if built[k] == nil {
+				ev, err := c.Event(k == 1)
 				if err != nil {
 					n.fail(err)
 					return
 				}
-				if ev != nil {
-					w.pending = append(w.pending, ev)
-					if planted.On("B06b") && i == 0 {
-						w.pending = append(w.pending, ev)
-					}
-				}
+				built[k] = ev
+			}
+			if w.filters(built[k]) {
+				continue
+			}
+			w.pending = append(w.pending, built[k])
+			if planted.On("B06b") && i == 0 {
+				w.pending = append(w.pending, built[k])
 			}
 		}
 	}

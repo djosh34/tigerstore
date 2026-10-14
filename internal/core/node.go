@@ -930,7 +930,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			if origin == n.cfg.ID && boot == n.cfg.Boot {
 				p = n.waiting[id]
 			}
-			n.values.places = n.values.places[:0]
+			n.values.reset()
 			if kind == kindPut {
 				return n.applyPut(b, at, p)
 			}
@@ -960,6 +960,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			}
 			return nil
 		})
+		n.values.reset()
 		if err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
 		}
