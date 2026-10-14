@@ -46,7 +46,7 @@ type Config struct {
 	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
 	// go.
 	SegmentBytes int64
-	Logf       func(format string, args ...any)
+	Logf         func(format string, args ...any)
 }
 
 // input is one event for the committer from a client, a peer or a helper
