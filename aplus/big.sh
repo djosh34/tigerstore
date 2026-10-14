@@ -34,14 +34,18 @@ run_load() { # <name> <workload> [env]
 	shift 2
 	local L
 	L=$(cat "$data/leader")
+	# LIST at the bench's LIST concurrency (2 x 16), point reads at 4 x 64.
+	local conc=(-conns 4 -streams 64)
+	if [ "$wl" = list ]; then conc=(-conns 2 -streams 16); fi
 	env "$@" LOADGEN_AFTER_PRELOAD="$drop" "$BINS/loadgen" -cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
 		-endpoints "$L" -pids "$(cat "$data/pids")" -label "$target" -workload "$wl" -value-size "$vsize" -keys "$keys" \
-		-warmup 2s -duration 10s -conns 4 -streams 64 -out "$out/$name.json" 2>&1 | tail -3 || echo "$name loadgen failed"
+		-warmup 2s -duration 10s "${conc[@]}" -out "$out/$name.json" 2>&1 | tail -3 || echo "$name loadgen failed"
 	jq -c '{valid, throughput, ops, latency_us, errors}' "$out/$name.json" || true
 }
 
 {
 	echo "## $target, limit $lim, keys $keys, value size $vsize, GOMEMLIMIT $gml"
+	if [ -z "${ONLY_LIST:-}" ]; then
 	start
 	t0=$(date +%s)
 	run_load range range
@@ -59,6 +63,7 @@ run_load() { # <name> <workload> [env]
 	cp "$data"/n*.log "$out/" 2>/dev/null || true
 	for i in 1 2 3; do mv "$out/n$i.log" "$out/range-n$i.log"; done
 	"$repo/bench/cluster.sh" stop "$data"
+	fi
 
 	start
 	run_load list list LOADGEN_NS=$((keys / 500))

@@ -235,6 +235,10 @@ func (n *Node) maintain() {
 	bestU := 2.0
 	var total, liveTotal int64
 	for f, size := range n.ap.sizes {
+		if live[f] <= 0 && f < aplus.MetaFileBase {
+			// Dead; it goes at the next checkpoint without copying.
+			continue
+		}
 		total += size
 		liveTotal += max(live[f], 0)
 	}
