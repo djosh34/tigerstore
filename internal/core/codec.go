@@ -84,8 +84,9 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 }
 
 // walkBatch calls fn for every write in the data of a Raft entry, with
-// the write's bytes in place.
-func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte) error) error {
+// the write's bytes in place and where they start in data.
+func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte, at int) error) error {
+	whole := data
 	n, data, ok := uvarint(data)
 	if !ok {
 		return errBadBatch
@@ -105,7 +106,7 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 		if size, data, ok = uvarint(data[1:]); !ok || size > uint64(len(data)) {
 			return errBadBatch
 		}
-		if err := fn(origin, boot, id, kind, data[:size:size]); err != nil {
+		if err := fn(origin, boot, id, kind, data[:size:size], len(whole)-len(data)); err != nil {
 			return err
 		}
 		data = data[size:]
@@ -142,7 +143,7 @@ func newOp(kind byte) (proto.Message, error) {
 // DecodeBatch calls fn for every write in the data of a Raft entry,
 // decoded. The checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
-	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte) error {
+	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
 		op, err := newOp(kind)
 		if err != nil {
 			return err

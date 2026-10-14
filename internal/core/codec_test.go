@@ -166,6 +166,64 @@ func TestParsePutMatchesProtobuf(t *testing.T) {
 			if got.size() != proto.Size(&want) {
 				t.Fatalf("case %d cut %d: size %d, protobuf marshals %d bytes", i, cut, got.size(), proto.Size(&want))
 			}
+			if len(got.Value) > 0 && &in[got.valueAt] != &got.Value[0] {
+				t.Fatalf("case %d cut %d: the value is not at %d", i, cut, got.valueAt)
+			}
 		}
+	}
+}
+
+// TestTxnValuesPlaced decodes a transaction that starts inside an entry,
+// with puts in both branches, nested, and repeated, and requires the place
+// of every put's value to be where its bytes are in the entry.
+func TestTxnValuesPlaced(t *testing.T) {
+	put := func(v string) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("k" + v), Value: []byte(v)}}}
+	}
+	nested := &pb.RequestOp{Request: &pb.RequestOp_RequestTxn{RequestTxn: &pb.TxnRequest{Success: []*pb.RequestOp{put("inner")}, Failure: []*pb.RequestOp{put("other")}}}}
+	b, err := proto.Marshal(&pb.TxnRequest{Success: []*pb.RequestOp{put("first"), nested}, Failure: []*pb.RequestOp{put("failure")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A put whose value comes twice: the last one wins.
+	twice := append([]byte{0x12, 4, 'o', 'n', 'c', 'e', 0x12, 5}, "twice"...)
+	op := protowire.AppendBytes(protowire.AppendTag(nil, 2, protowire.BytesType), twice)
+	b = protowire.AppendBytes(protowire.AppendTag(b, 2, protowire.BytesType), op)
+	entry := append([]byte("prefix"), b...)
+	var m pb.TxnRequest
+	var pl placer
+	if err := decodeTxnPlaced(entry[6:], &m, 6, &pl); err != nil {
+		t.Fatal(err)
+	}
+	var got [][]byte
+	var walk func(ops []*pb.RequestOp)
+	walk = func(ops []*pb.RequestOp) {
+		for _, op := range ops {
+			if p := op.GetRequestPut(); p != nil {
+				got = append(got, p.Value)
+			}
+			if sub := op.GetRequestTxn(); sub != nil {
+				walk(sub.Success)
+				walk(sub.Failure)
+			}
+		}
+	}
+	walk(m.Success)
+	walk(m.Failure)
+	if len(got) != 5 || string(got[3]) != "twice" {
+		t.Fatalf("decoded values %q", got)
+	}
+	vals := &values{placer: pl}
+	for _, v := range got {
+		r, err := vals.Place(v)
+		if err != nil {
+			t.Fatalf("value %q: %v", v, err)
+		}
+		if &entry[r.Off] != &v[0] || int(r.Len) != len(v) {
+			t.Fatalf("value %q placed at %d+%d", v, r.Off, r.Len)
+		}
+	}
+	if _, err := vals.Place([]byte("elsewhere")); err == nil {
+		t.Fatal("a value from no entry was placed")
 	}
 }

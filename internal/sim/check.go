@@ -493,7 +493,7 @@ func isRejection(err error) bool {
 // and one that no longer applied, because a keepalive came first, is left
 // out.
 func replay(log []proto.Message) (*mvcc.Store, []proto.Message, error) {
-	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)))
+	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)), &mvcc.Heap{})
 	var out []proto.Message
 	for i, op := range log {
 		e, expiry := op.(*pb.LeaseCheckpoint)

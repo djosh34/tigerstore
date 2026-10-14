@@ -30,6 +30,15 @@ func get(t *testing.T, s *Store, r *pb.RangeRequest) *pb.RangeResponse {
 	return resp
 }
 
+func event(t *testing.T, c Change, withPrev bool) *mvccpb.Event {
+	t.Helper()
+	ev, err := c.Event(withPrev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ev
+}
+
 func keys(kvs []*mvccpb.KeyValue) string {
 	var b strings.Builder
 	for _, kv := range kvs {
@@ -39,7 +48,7 @@ func keys(kvs []*mvccpb.KeyValue) string {
 }
 
 func TestPutVersionsAndRevisions(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	if got := put(t, s, "a", "1").Header.Revision; got != 2 {
 		t.Fatalf("first put revision = %d, want 2", got)
 	}
@@ -63,7 +72,7 @@ func TestPutVersionsAndRevisions(t *testing.T) {
 }
 
 func TestDeleteAndRecreate(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	put(t, s, "a", "1")
 	d, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("a"), PrevKv: true})
 	if err != nil {
@@ -91,7 +100,7 @@ func TestDeleteAndRecreate(t *testing.T) {
 }
 
 func TestRangeOptions(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	for _, k := range []string{"b", "a", "d", "c", "e"} {
 		put(t, s, k, "v"+k)
 	}
@@ -138,7 +147,7 @@ func cas(key string, mod int64, val string) *pb.TxnRequest {
 }
 
 func TestTxnCompareAndSwap(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	r, err := s.Txn(cas("k", 0, "1"))
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +176,7 @@ func TestTxnCompareAndSwap(t *testing.T) {
 }
 
 func TestTxnVersionCompareOnMissingKey(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	r, err := s.Txn(&pb.TxnRequest{Compare: []*pb.Compare{{
 		Key: []byte("x"), Target: pb.Compare_VERSION, Result: pb.Compare_EQUAL,
 		TargetUnion: &pb.Compare_Version{Version: 0},
@@ -191,7 +200,7 @@ func TestTxnVersionCompareOnMissingKey(t *testing.T) {
 }
 
 func TestTxnReadsOwnWrites(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	put(t, s, "a", "1")
 	r, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
 		{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: &pb.DeleteRangeRequest{Key: []byte("a")}}},
@@ -209,16 +218,19 @@ func TestTxnReadsOwnWrites(t *testing.T) {
 		t.Fatalf("txn revision = %d, store %d", r.Header.Revision, s.Rev())
 	}
 	ch := s.Changes()
-	if len(ch) != 2 || ch[0].Event(true).Type != mvccpb.Event_DELETE || string(ch[0].Event(true).PrevKv.Value) != "1" {
+	if len(ch) != 2 {
 		t.Fatalf("changes = %v", ch)
 	}
-	if ev := ch[1].Event(true); ev.Type != mvccpb.Event_PUT || ev.PrevKv != nil || ev.Kv.ModRevision != 3 {
+	if ev := event(t, ch[0], true); ev.Type != mvccpb.Event_DELETE || string(ev.PrevKv.Value) != "1" {
+		t.Fatalf("delete event = %v", ev)
+	}
+	if ev := event(t, ch[1], true); ev.Type != mvccpb.Event_PUT || ev.PrevKv != nil || ev.Kv.ModRevision != 3 {
 		t.Fatalf("create event = %v", ev)
 	}
 }
 
 func TestReadOnlyTxnKeepsRevision(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	put(t, s, "a", "1")
 	r, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
 		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}},
@@ -232,7 +244,7 @@ func TestReadOnlyTxnKeepsRevision(t *testing.T) {
 }
 
 func TestTxnChecksBeforeWriting(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	_, err := s.Txn(&pb.TxnRequest{Success: []*pb.RequestOp{
 		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}}},
 		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), IgnoreValue: true}}},
@@ -292,7 +304,7 @@ func TestCheckTxnTooManyOps(t *testing.T) {
 }
 
 func TestHashFollowsState(t *testing.T) {
-	a, b := New(), New()
+	a, b := New(&Heap{}), New(&Heap{})
 	put(t, a, "k", "1")
 	put(t, b, "k", "1")
 	if a.Hash() != b.Hash() {
@@ -305,7 +317,7 @@ func TestHashFollowsState(t *testing.T) {
 }
 
 func TestEtcdRangeEdges(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	s.LeaseExists = func(id int64) bool { return id == 7 }
 	if _, err := s.Put(&pb.PutRequest{Key: []byte("a"), Value: []byte("1"), Lease: 7}); err != nil {
 		t.Fatal(err)
@@ -334,7 +346,7 @@ func TestEtcdRangeEdges(t *testing.T) {
 }
 
 func TestHistory(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	put(t, s, "a", "1")                                                                                       // 2
 	put(t, s, "b", "1")                                                                                       // 3
 	put(t, s, "a", "2")                                                                                       // 4
@@ -344,7 +356,7 @@ func TestHistory(t *testing.T) {
 	put(t, s, "c", "1") // 6
 	var got []string
 	for _, c := range s.History([]byte("a"), []byte("c"), 3) {
-		ev := c.Event(true)
+		ev := event(t, c, true)
 		prev := ""
 		if ev.PrevKv != nil {
 			prev = string(ev.PrevKv.Value)
@@ -361,7 +373,7 @@ func TestHistory(t *testing.T) {
 }
 
 func TestCompact(t *testing.T) {
-	s := New()
+	s := New(&Heap{})
 	put(t, s, "a", "1")                                                                // 2
 	put(t, s, "a", "2")                                                                // 3
 	put(t, s, "b", "1")                                                                // 4
@@ -393,7 +405,7 @@ func TestCompact(t *testing.T) {
 	// b's old tombstone is gone with the key; c's tombstone at 7 stays for
 	// a watch from 7.
 	h := s.History([]byte("a"), []byte{0}, 0)
-	if len(h) != 2 || string(h[0].Key()) != "a" || string(h[1].Key()) != "c" || h[1].Event(false).Type != mvccpb.Event_DELETE {
+	if len(h) != 2 || string(h[0].Key()) != "a" || string(h[1].Key()) != "c" || event(t, h[1], false).Type != mvccpb.Event_DELETE {
 		t.Fatalf("history after compaction has %d changes", len(h))
 	}
 	if _, ok := s.keys.Get(&keyIndex{key: []byte("b")}); ok {
@@ -402,5 +414,67 @@ func TestCompact(t *testing.T) {
 	put(t, s, "a", "3")
 	if kv := get(t, s, &pb.RangeRequest{Key: []byte("a")}).Kvs[0]; kv.Version != 3 || kv.CreateRevision != 2 {
 		t.Fatalf("a after compaction and put = %v", kv)
+	}
+}
+
+// swapped reads the value of another Ref of the same length: what a
+// wrong position or a damaged disk gives.
+type swapped struct {
+	Heap
+	from, to uint64
+}
+
+func (s *swapped) Read(r Ref) ([]byte, error) {
+	if r.Index == s.from {
+		r.Index = s.to
+	}
+	return s.Heap.Read(r)
+}
+
+// TestValueChecksum reads a value from the wrong place, with the same
+// length: every read that would return it fails instead.
+func TestValueChecksum(t *testing.T) {
+	v := &swapped{}
+	s := New(v)
+	put(t, s, "a", "11")
+	put(t, s, "b", "22")
+	get(t, s, &pb.RangeRequest{Key: []byte("a")})
+	v.from, v.to = 1, 2
+	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a")}); !errors.Is(err, ErrBadValue) {
+		t.Fatalf("range of a misplaced value: %v", err)
+	}
+	if _, err := s.Range(&pb.RangeRequest{Key: []byte("a"), KeysOnly: true}); err != nil {
+		t.Fatalf("keys-only range reads no value: %v", err)
+	}
+	if _, err := s.Put(&pb.PutRequest{Key: []byte("a"), Value: []byte("3"), PrevKv: true}); !errors.Is(err, ErrBadValue) {
+		t.Fatalf("put with prev_kv of a misplaced value: %v", err)
+	}
+	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("a"), PrevKv: true}); !errors.Is(err, ErrBadValue) {
+		t.Fatalf("delete with prev_kv of a misplaced value: %v", err)
+	}
+	cmp := &pb.Compare{Key: []byte("a"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: []byte("11")}}
+	if _, err := s.Txn(&pb.TxnRequest{Compare: []*pb.Compare{cmp}}); !errors.Is(err, ErrBadValue) {
+		t.Fatalf("value compare of a misplaced value: %v", err)
+	}
+	mod := &pb.Compare{Key: []byte("a"), Target: pb.Compare_MOD, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_ModRevision{ModRevision: 2}}
+	if _, err := s.Txn(&pb.TxnRequest{Compare: []*pb.Compare{mod}}); err != nil {
+		t.Fatalf("a compare on the revision reads no value: %v", err)
+	}
+	if s.Rev() != 3 {
+		t.Fatalf("failed writes moved the revision to %d", s.Rev())
+	}
+}
+
+// TestKeyIsCopied changes the bytes a put's key came from: the index
+// keeps its own copy.
+func TestKeyIsCopied(t *testing.T) {
+	s := New(&Heap{})
+	key := []byte("a")
+	if _, err := s.Put(&pb.PutRequest{Key: key, Value: []byte("1")}); err != nil {
+		t.Fatal(err)
+	}
+	key[0] = 'z'
+	if r := get(t, s, &pb.RangeRequest{Key: []byte("a")}); keys(r.Kvs) != "a=1;" {
+		t.Fatalf("after the request's bytes changed: %s", keys(r.Kvs))
 	}
 }

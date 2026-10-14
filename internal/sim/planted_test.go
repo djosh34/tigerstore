@@ -54,6 +54,8 @@ const (
 	inventedState = `applied different entries|applied the same log to different states|differs from the final log|` + badState
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
+	// A node read a value that is not the one it wrote, and stopped.
+	badValue = `does not match its checksum|past the end of entry`
 )
 
 var plantedCases = map[string]plantedCase{
@@ -85,6 +87,7 @@ var plantedCases = map[string]plantedCase{
 		return nil
 	}},
 	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
+	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each

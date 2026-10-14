@@ -204,6 +204,7 @@ type Node struct {
 	cfg     Config
 	rn      *raft.RawNode
 	storage *storage
+	values  *values
 	state   *State
 	kv      *mvcc.Store
 
@@ -287,12 +288,14 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 	for _, e := range rec.Entries {
 		logBytes += wal.EntryRecordBytes(e)
 	}
-	state := NewState(MinLeaseTTL(cfg))
+	vals := &values{storage: st}
+	state := NewState(MinLeaseTTL(cfg), vals)
 	return &Node{
 		logBytes: logBytes,
 		cfg:      cfg,
 		rn:       rn,
 		storage:  st,
+		values:   vals,
 		state:    state,
 		kv:       state.Store(),
 		term:     rec.HardState.Term,
@@ -859,6 +862,10 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.RangeRequest:
 		if p.req.Compact {
 			res, err := n.kv.RangeKVs(op)
+			if err != nil && !isAnswer(err) {
+				n.fail(err)
+				return
+			}
 			if err != nil {
 				n.finish(p, nil, err)
 				return
@@ -894,6 +901,12 @@ func (n *Node) serveRead(p *pending) {
 		n.fillHeader(r.Header)
 		resp = r
 	}
+	if err != nil && !isAnswer(err) {
+		// A value that cannot be read, or does not match its checksum,
+		// never reaches a client: the node stops.
+		n.fail(err)
+		return
+	}
 	n.finish(p, resp, err)
 }
 
@@ -911,20 +924,28 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			n.applied = e.GetIndex()
 			continue
 		}
-		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {
+		n.values.index = e.GetIndex()
+		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
 			var p *pending
 			if origin == n.cfg.ID && boot == n.cfg.Boot {
 				p = n.waiting[id]
 			}
+			n.values.places = n.values.places[:0]
 			if kind == kindPut {
-				return n.applyPut(b, p)
+				return n.applyPut(b, at, p)
 			}
 			op, err := newOp(kind)
 			if err != nil {
 				return err
 			}
-			// The op's values are slices of the entry, the one copy.
-			if err := DecodeAlias(b, op); err != nil {
+			// The op's values are slices of the entry; the index names them
+			// by where they are in it.
+			if txn, ok := op.(*pb.TxnRequest); ok {
+				err = decodeTxnPlaced(b, txn, at, &n.values.placer)
+			} else {
+				err = DecodeAlias(b, op)
+			}
+			if err != nil {
 				return fmt.Errorf("%w: %w", errBadBatch, err)
 			}
 			resp, err := n.applyOp(op)
@@ -949,14 +970,15 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 
 var errInternal = errors.New("core: internal error")
 
-// applyPut runs a put in place: the index keeps the key and value as
-// slices of the entry, which is the one copy of them in memory. p is the
-// request waiting for it on this node, if any.
-func (n *Node) applyPut(b []byte, p *pending) error {
+// applyPut runs a put read in place from the bytes b, which start at
+// offset at of the entry. p is the request waiting for it on this node, if
+// any.
+func (n *Node) applyPut(b []byte, at int, p *pending) error {
 	put, err := ParsePut(b)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
+	n.values.add(put.Value, at+put.valueAt)
 	prev, err := n.state.ApplyPut(&put.PutOp)
 	if err != nil && !isAnswer(err) {
 		return fmt.Errorf("%w: %w", errInternal, err)

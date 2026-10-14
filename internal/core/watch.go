@@ -234,7 +234,11 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		var evs []*mvccpb.Event
 		revs, last := 0, int64(0)
 		for _, ch := range n.kv.History(w.key, w.end, w.start) {
-			ev := w.event(ch)
+			ev, err := w.event(ch)
+			if err != nil {
+				n.fail(err)
+				return
+			}
 			if ev == nil {
 				continue
 			}
@@ -256,13 +260,17 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 }
 
 // event returns the watch event of a change for this watcher, or nil if
-// the watcher filters it out.
-func (w *watcher) event(c mvcc.Change) *mvccpb.Event {
-	ev := c.Event(w.prevKV && !planted.On("B06c"))
-	if (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete) {
-		return nil
+// the watcher filters it out. An error is a value that could not be read,
+// which stops the node.
+func (w *watcher) event(c mvcc.Change) (*mvccpb.Event, error) {
+	ev, err := c.Event(w.prevKV && !planted.On("B06c"))
+	if err != nil {
+		return nil, err
 	}
-	return ev
+	if (ev.Type == mvccpb.Event_PUT && w.noPut) || (ev.Type == mvccpb.Event_DELETE && w.noDelete) {
+		return nil, nil
+	}
+	return ev, nil
 }
 
 // matchWatches queues the changes of the write just applied for every
@@ -281,7 +289,12 @@ func (n *Node) matchWatches() {
 				continue
 			}
 			if c.ModRev() >= w.start && mvcc.InRange(c.Key(), w.key, w.end) {
-				if ev := w.event(c); ev != nil {
+				ev, err := w.event(c)
+				if err != nil {
+					n.fail(err)
+					return
+				}
+				if ev != nil {
 					w.pending = append(w.pending, ev)
 					if planted.On("B06b") && i == 0 {
 						w.pending = append(w.pending, ev)
