@@ -623,7 +623,7 @@ func (s *Sim) liveFrom() int64 {
 	// A gray fsync in flight at healing finishes when it finishes, up to
 	// 3 s later. Until then its node's term and vote changes and the peer
 	// messages behind them are held, so a higher term can reach the new
-	// leader late and cost another election (seed 745672193). Recovery
+	// leader late and cost another election (seed 745672193 before #106). Recovery
 	// counts from the later of healing and the last such fsync.
 	t := max(s.healAt, s.grayHealedAt) + s.cfg.LiveAfter
 	if len(s.live()) < len(s.nodes) {

@@ -2,10 +2,13 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -21,6 +24,22 @@ type single struct {
 	log   *wal.WAL
 	n     *Node
 	watch []WatchResponse
+}
+
+// newMember starts node 1 of peers on an empty simulated disk, without
+// ticking it.
+func newMember(t *testing.T, peers []uint64) *single {
+	t.Helper()
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(DefaultConfig(1, peers), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &single{t: t, disk: disk, log: w, n: n}
 }
 
 func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
@@ -132,5 +151,127 @@ func TestStatusOneTerm(t *testing.T) {
 	}
 	if st.DowngradeInfo == nil {
 		t.Fatal("status has no downgrade info")
+	}
+}
+
+// TestWriteWaitsForLeader submits a write before the node has a leader.
+// Like etcd, whose raft.Node takes no proposal without a leader, the write
+// waits instead of failing with "no leader", and commits once the node is
+// elected (#105). A write that finds no leader before its deadline gets
+// what etcd answers then: DeadlineExceeded, not the request timeout.
+func TestWriteWaitsForLeader(t *testing.T) {
+	s := newMember(t, []uint64{1})
+	n := s.n
+	if n.Leader() != 0 {
+		t.Fatal("the node has a leader before any tick")
+	}
+	n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	if r := s.run(); len(r) != 0 {
+		t.Fatalf("a write without a leader was answered at once: %+v", r)
+	}
+	var got []Reply
+	for range 50 {
+		n.Tick()
+		got = append(got, s.run()...)
+		if len(got) > 0 {
+			break
+		}
+	}
+	if len(got) != 1 || got[0].ID != 1 || got[0].Err != nil {
+		t.Fatalf("the write after the election: %+v", got)
+	}
+
+	// A member that knew a leader and lost it on its election timer, with
+	// no Ready since: the write still waits.
+	s = newMember(t, []uint64{1, 2, 3})
+	n = s.n
+	if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
+		t.Fatal(err)
+	}
+	s.run()
+	if n.Leader() != 2 {
+		t.Fatalf("leader %d after a heartbeat from 2", n.Leader())
+	}
+	for i := 0; n.rn.BasicStatus().Lead != 0; i++ {
+		if i > 100 {
+			t.Fatal("the election timer never fired")
+		}
+		n.Tick()
+	}
+	n.Submit(Request{ID: 3, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	for _, r := range s.run() {
+		if r.ID == 3 {
+			t.Fatalf("a write after the leader was lost was answered at once: %+v", r)
+		}
+	}
+
+	// A three-node member alone never gets a leader: its write times out.
+	s = newMember(t, []uint64{1, 2, 3})
+	n = s.n
+	n.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	got = s.run()
+	for i := 0; len(got) == 0 && i < 2*n.cfg.RequestTicks; i++ {
+		n.Tick()
+		got = append(got, s.run()...)
+	}
+	if len(got) != 1 || status.Code(got[0].Err) != codes.DeadlineExceeded || status.Convert(got[0].Err).Message() != "context deadline exceeded" {
+		t.Fatalf("a write that never finds a leader: %+v", got)
+	}
+}
+
+// TestExpiredWritesLeaveQueue times out rounds of writes on a member that
+// never finds a leader. Each round's writes leave the queue when they
+// expire, so the queue does not grow with the rounds while clients retry.
+func TestExpiredWritesLeaveQueue(t *testing.T) {
+	s := newMember(t, []uint64{1, 2, 3})
+	n := s.n
+	value := make([]byte, 16<<10)
+	id := uint64(0)
+	for round := range 5 {
+		for range 100 {
+			id++
+			n.Submit(Request{ID: id, Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", id), Value: value}})
+		}
+		var got []Reply
+		for range n.cfg.RequestTicks {
+			n.Tick()
+			got = append(got, s.run()...)
+		}
+		if len(got) != 100 {
+			t.Fatalf("round %d: %d answers, want 100", round, len(got))
+		}
+		for _, r := range got {
+			if status.Code(r.Err) != codes.DeadlineExceeded {
+				t.Fatalf("round %d: write %d: %v", round, r.ID, r.Err)
+			}
+		}
+		if len(n.proposals) != 0 || n.propBytes != 0 {
+			t.Fatalf("round %d: %d writes and %d bytes still queued", round, len(n.proposals), n.propBytes)
+		}
+	}
+}
+
+// TestProposedWriteTimesOut keeps a proposed write from committing: a
+// follower forwards it to a leader that never answers. Its deadline then
+// gives etcd's request timeout, since it may still commit.
+func TestProposedWriteTimesOut(t *testing.T) {
+	s := newMember(t, []uint64{1, 2, 3})
+	n := s.n
+	heartbeat := func() {
+		if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	heartbeat()
+	s.run()
+	n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	got := s.run()
+	for i := 0; len(got) == 0 && i < 2*n.cfg.RequestTicks; i++ {
+		heartbeat()
+		n.Tick()
+		got = append(got, s.run()...)
+	}
+	if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCTimeout) {
+		t.Fatalf("a forwarded write that never commits: %+v", got)
 	}
 }

@@ -63,7 +63,9 @@ var plantedCases = map[string]plantedCase{
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
 	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState},
-	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend},
+	// B04b cuts the last synced record, which can be a vote: the node then
+	// votes twice in one term, and two leaders write different entries.
+	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
 	"B05":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B06a": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06b": {seeds: 32, cfg: DefaultConfig, want: badWatch},
