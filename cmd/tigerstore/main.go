@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -45,12 +46,24 @@ type flags struct {
 // writes per fsync with one processor and 53 with two on the same CPU.
 const minProcs = 2
 
+// gcPercent is the GOGC that tigerstore runs with unless GOGC is set.
+// Design E keeps values in the log on disk, so the heap is mostly the
+// index, whose pointers every collection scans. At Go's default of 100 a
+// node under load collects every few seconds, and on one CPU each
+// collection holds up requests: mixed-k8s p99 went from 5 to 17 ms
+// (#143). Before E, every Raft entry stayed in the heap, which kept the
+// next collection far off. GOMEMLIMIT still caps the heap.
+const gcPercent = 400
+
 // tick is a node's Raft tick.
 const tick = 100 * time.Millisecond
 
 func main() {
 	if runtime.GOMAXPROCS(0) < minProcs {
 		runtime.GOMAXPROCS(minProcs)
+	}
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(gcPercent)
 	}
 	logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
 	if err := run(os.Args[1:], logger); err != nil {
