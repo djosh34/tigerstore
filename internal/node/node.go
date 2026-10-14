@@ -471,6 +471,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			continue
 		case <-paced:
 			pace = nil
+			n.core.CopyCheckpoint()
 		case <-ticker.C:
 			n.core.Tick()
 		case <-ctx.Done():
@@ -780,8 +781,12 @@ func (s *logSink) close() error {
 }
 
 // checkpointPace is how often the committer copies the next part of a
-// checkpoint while nothing else wakes it.
+// checkpoint: with 32 KiB parts, about 32 MB/s.
 const checkpointPace = time.Millisecond
+
+// checkpointSyncBytes is how much of a checkpoint the writer writes
+// between syncs.
+const checkpointSyncBytes = 1 << 20
 
 // writeCheckpoints writes the checkpoint parts the committer hands over.
 // Once a checkpoint is whole, synced and its directory synced, it tells
@@ -796,9 +801,18 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 			return
 		}
 		f, err := n.log.w.CreateCheckpoint(c.Index)
+		unsynced := 0
 		for err == nil {
 			if _, err = f.Write(c.Data); err != nil || c.Done {
 				break
+			}
+			// Synced a little at a time, so that one large flush does not
+			// hold up the log's fsyncs on the same disk.
+			if unsynced += len(c.Data); unsynced >= checkpointSyncBytes {
+				if err = f.Sync(); err != nil {
+					break
+				}
+				unsynced = 0
 			}
 			select {
 			case next := <-n.ckptQ:

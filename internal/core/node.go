@@ -95,8 +95,8 @@ type Config struct {
 	// A checkpoint is cut once the entries applied since the last one
 	// pass CheckpointBytes and CheckpointRatio times the last one's size.
 	CheckpointBytes, CheckpointRatio int64
-	// CheckpointChunk is about how many bytes of the index each Process
-	// copies into a checkpoint under way.
+	// CheckpointChunk is about how many bytes of the index each
+	// CopyCheckpoint copies into a checkpoint under way.
 	CheckpointChunk int
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
@@ -970,9 +970,6 @@ func (n *Node) Process() (Effects, error) {
 			}
 		}
 		n.flushWatches()
-		if n.copy != nil && n.err == nil {
-			n.copyChunk(n.cfg.CheckpointChunk)
-		}
 		if n.err == nil {
 			n.trimWindow()
 		}

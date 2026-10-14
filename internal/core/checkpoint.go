@@ -191,9 +191,17 @@ func (n *Node) copyChunk(limit int) {
 	}
 }
 
-// Copying reports whether a checkpoint is being copied out of the index,
-// a part each Process.
+// Copying reports whether a checkpoint is being copied out of the index.
 func (n *Node) Copying() bool { return n.copy != nil }
+
+// CopyCheckpoint copies the next part of the checkpoint under way, about
+// CheckpointChunk bytes, for the next Effects. The driver paces it: the
+// copy runs on the committer and the parts go to the disk.
+func (n *Node) CopyCheckpoint() {
+	if n.err == nil && n.copy != nil {
+		n.copyChunk(n.cfg.CheckpointChunk)
+	}
+}
 
 // CheckpointWritten tells the node that the driver has written and synced
 // the checkpoint at index, and synced its directory, or failed to, which

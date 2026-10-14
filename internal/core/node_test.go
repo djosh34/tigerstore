@@ -36,7 +36,7 @@ func newMember(t *testing.T, peers []uint64) *single {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := New(DefaultConfig(1, peers), rec)
+	n, err := New(DefaultConfig(1, peers), rec, w)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +84,7 @@ func (s *single) run() []Reply {
 	s.t.Helper()
 	var out []Reply
 	for range 100 {
+		s.n.CopyCheckpoint()
 		eff, err := s.n.Process()
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)

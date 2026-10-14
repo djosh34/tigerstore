@@ -898,6 +898,7 @@ func (s *Sim) process(n *node) {
 	if n.pausedUntil > s.now {
 		s.fail("node %d works while paused, at %d ms", n.id, s.now/Millisecond)
 	}
+	n.core.CopyCheckpoint()
 	eff, err := n.core.Process()
 	for _, a := range eff.Applied {
 		s.record(n, a)
