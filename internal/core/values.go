@@ -3,7 +3,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -72,18 +71,10 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 // memory is a slice of the entry, which a response holds until it is
 // sent; one read from disk is a copy.
 func (v *values) Read(r mvcc.Ref) ([]byte, error) {
-	last, err := v.storage.LastIndex()
-	if err != nil {
-		return nil, err
-	}
-	if r.Index < v.storage.first || r.Index > last {
+	data, ok := v.storage.entryData(r.Index)
+	if !ok {
 		return v.log.Value(r.Index, r.Off, r.Len)
 	}
-	ents, err := v.storage.Entries(r.Index, r.Index+1, math.MaxUint64)
-	if err != nil {
-		return nil, fmt.Errorf("core: read entry %d: %w", r.Index, err)
-	}
-	data := ents[0].GetData()
 	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
 		return nil, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 	}

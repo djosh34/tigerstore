@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -192,5 +194,137 @@ func TestRestartFromCheckpoint(t *testing.T) {
 	}
 	if len(kvs) != 10 {
 		t.Fatalf("%d keys after the restart", len(kvs))
+	}
+}
+
+// walSink writes a received snapshot into a WAL, as the drivers do.
+type walSink struct {
+	w    *wal.WAL
+	ckpt wal.File
+}
+
+func (k *walSink) Entries(ents []*raftpb.Entry) error { k.w.Append(nil, ents); return nil }
+
+func (k *walSink) Value(index uint64, off uint32, value []byte) error {
+	k.w.AppendValue(index, off, value)
+	return nil
+}
+
+func (k *walSink) CheckpointChunk(index uint64, data []byte) error {
+	if k.ckpt == nil {
+		f, err := k.w.CreateCheckpoint(index)
+		if err != nil {
+			return err
+		}
+		k.ckpt = f
+	}
+	_, err := k.ckpt.Write(data)
+	return err
+}
+
+func (k *walSink) CheckpointDone(uint64) error {
+	err := errors.Join(k.ckpt.Sync(), k.ckpt.Close(), k.w.SyncDir())
+	k.ckpt = nil
+	return err
+}
+
+func (k *walSink) Root(r wal.Root) error { k.w.AppendRoot(r); return nil }
+
+// TestSnapshotStream serves two snapshots from a node whose old segments
+// are gone: from index 1, its checkpoint, the values it names and the
+// entries after it; then, after more writes, the raw entries the
+// follower lacks. The follower installs each into its log and reaches the
+// source's state. Every damaged byte of a stream, and a stream for
+// another index or term, is refused.
+func TestSnapshotStream(t *testing.T) {
+	tiny := func(cfg *Config) {
+		cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024
+		cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
+	}
+	src := startSingleWith(t, simfs.New(), 1, tiny)
+	id := uint64(0)
+	write := func(rounds int, compact bool) {
+		for round := range rounds {
+			for k := range 10 {
+				id++
+				if r := src.do(id, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: fmt.Appendf(nil, "value %d of round %d", k, round)}); r.Err != nil {
+					t.Fatal(r.Err)
+				}
+			}
+			if compact {
+				id++
+				if r := src.do(id, &pb.CompactionRequest{Revision: src.n.kv.Rev()}); r.Err != nil {
+					t.Fatal(r.Err)
+				}
+			}
+		}
+	}
+	// install receives a stream on a copy of disk and starts a node on it.
+	install := func(disk *simfs.Disk, data []byte, in *Install) (*Node, *simfs.Disk, error) {
+		disk = disk.Durable()
+		w, _, err := wal.Open(disk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ReceiveSnapshot(bytes.NewReader(data), &walSink{w: w}, w, []uint64{1}, in); err != nil {
+			return nil, nil, err
+		}
+		w.Append(&wal.HardState{Term: in.Term, Commit: in.Index}, nil)
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		w, rec, err := wal.Open(disk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := DefaultConfig(1, []uint64{1})
+		tiny(&cfg)
+		n, err := New(cfg, rec, w)
+		return n, disk, err
+	}
+	follower := simfs.New()
+	write(30, true)
+	if src.log.Has(1) {
+		t.Fatal("the source still has entry 1")
+	}
+	for phase, applied := range []uint64{0, 0} {
+		if phase == 1 {
+			applied = src.n.Applied()
+			write(5, false)
+		}
+		last := src.n.Applied()
+		term, err := src.n.termAt(last)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if err := ServeSnapshot(src.log, src.n.DurableCheckpoint(), applied+1, last, &buf); err != nil {
+			t.Fatal(err)
+		}
+		stream := buf.Bytes()
+		in := &Install{From: 1, Index: last, Term: term, Applied: applied}
+		n, disk, err := install(follower, stream, in)
+		if err != nil {
+			t.Fatalf("from %d: %v", applied+1, err)
+		}
+		if (phase == 0) != (in.Checkpoint.Index > 0) {
+			t.Fatalf("from %d: the stream carried the checkpoint %+v", applied+1, in.Checkpoint)
+		}
+		if n.Applied() != last || n.Hash() != src.n.Hash() {
+			t.Fatalf("from %d: the follower is at %d with another state", applied+1, n.Applied())
+		}
+		for _, bad := range []*Install{{Index: last + 1, Term: term, Applied: applied}, {Index: last, Term: term + 1, Applied: applied}} {
+			if _, _, err := install(follower, stream, bad); err == nil {
+				t.Fatalf("from %d: a stream for %d term %d installed as %d term %d", applied+1, last, term, bad.Index, bad.Term)
+			}
+		}
+		for at := 0; at < len(stream); at += 1 + len(stream)/200 {
+			bad := bytes.Clone(stream)
+			bad[at] ^= 0x10
+			if _, _, err := install(follower, bad, &Install{Index: last, Term: term, Applied: applied}); err == nil {
+				t.Fatalf("from %d: a stream damaged at byte %d of %d installed", applied+1, at, len(stream))
+			}
+		}
+		follower = disk
 	}
 }

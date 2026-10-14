@@ -622,3 +622,20 @@ func TestRemovalKeepsSegmentsConsecutive(t *testing.T) {
 		t.Fatalf("entries after the root: %s", got)
 	}
 }
+
+// TestResetRootLowersCommit crashes right after a snapshot's root, before
+// the entries after it: the commit index of the replaced log is past the
+// root, and recovery lowers it to the root instead of refusing the log.
+func TestResetRootLowersCommit(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 12)
+	w.AppendRoot(wal.Root{Index: 10, Term: 4, Reset: true, Keep: 8})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	_, rec := open(t, d)
+	if rec.HardState.Commit != 10 || rec.Last != 10 || rec.Root.Index != 10 {
+		t.Fatalf("recovered %+v", rec)
+	}
+}

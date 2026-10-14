@@ -17,9 +17,11 @@ import (
 type storage struct {
 	*raft.MemoryStorage
 	conf *raftpb.ConfState
-	// cum[i] is the data bytes of the entries in memory up to and
-	// including entry first+i, counted from base.
+	// data[i] is the data of entry first+i in memory, and cum[i] the
+	// data bytes of the entries up to and including it, counted from
+	// base.
 	first uint64
+	data  [][]byte
 	cum   []int64
 	base  int64
 	// ckpt is the newest durable checkpoint, which a snapshot names when
@@ -73,7 +75,7 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 		ents = ents[s.first-from:]
 		from = s.first
 	}
-	s.cum = s.cum[:from-s.first]
+	s.cum, s.data = s.cum[:from-s.first], s.data[:from-s.first]
 	total := s.base
 	if len(s.cum) > 0 {
 		total = s.cum[len(s.cum)-1]
@@ -81,8 +83,17 @@ func (s *storage) add(ents []*raftpb.Entry) error {
 	for _, e := range ents {
 		total += int64(len(e.GetData()))
 		s.cum = append(s.cum, total)
+		s.data = append(s.data, e.GetData())
 	}
 	return nil
+}
+
+// entryData returns the data of entry index if it is in memory.
+func (s *storage) entryData(index uint64) ([]byte, bool) {
+	if index < s.first || index-s.first >= uint64(len(s.data)) {
+		return nil, false
+	}
+	return s.data[index-s.first], true
 }
 
 // bytes returns the data bytes of the entries in memory up to index.
@@ -107,7 +118,7 @@ func (s *storage) trim(index uint64) error {
 	}
 	k := index - s.first + 1
 	s.base = s.cum[k-1]
-	s.cum = slices.Clone(s.cum[k:])
+	s.cum, s.data = slices.Clone(s.cum[k:]), slices.Clone(s.data[k:])
 	s.first = index + 1
 	return nil
 }
@@ -130,7 +141,7 @@ func (s *storage) reset(snap *raftpb.Snapshot) error {
 	if err := s.ApplySnapshot(snap); err != nil {
 		return err
 	}
-	s.first, s.cum, s.base = snap.GetMetadata().GetIndex()+1, nil, 0
+	s.first, s.cum, s.data, s.base = snap.GetMetadata().GetIndex()+1, nil, nil, 0
 	return nil
 }
 

@@ -474,6 +474,11 @@ func (w *WAL) apply(typ byte, p []byte, at uint32, rec *Recovered, first *uint64
 			return fmt.Errorf("%w: root at %d after root at %d", ErrCorrupt, r.Index, w.root.Index)
 		}
 		w.setRoot(r)
+		if r.Reset && rec.HardState.Commit > r.Index {
+			// The commit index was the replaced log's; the leader tells
+			// the node its commit again.
+			rec.HardState.Commit, w.hs.Commit = r.Index, r.Index
+		}
 	case recValue:
 		if len(p) < valueHdrSize {
 			return fmt.Errorf("%w: short value record", ErrCorrupt)

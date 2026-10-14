@@ -206,15 +206,15 @@ type Reply struct {
 // same order, once it is durable.
 type PersistJob struct {
 	// Install, if set, is a snapshot from Raft. The driver first brings
-	// its log to the snapshot's index (InstallSnapshot), then appends the
+	// its log to the snapshot's index (ReceiveSnapshot), then appends the
 	// rest of the job.
 	Install   *Install
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
 	// Root, if set, makes a checkpoint that the driver wrote count. The
 	// driver appends it after the rest, syncs, and only then removes the
-	// segments whose entries and values are all below RemoveBelow and
-	// every checkpoint file but this one.
+	// segments whose entries and values are all below RemoveBelow and the
+	// checkpoint files before this one.
 	Root        *wal.Root
 	RemoveBelow uint64
 	msg         *raftpb.Message
