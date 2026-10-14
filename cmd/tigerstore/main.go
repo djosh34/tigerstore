@@ -218,7 +218,7 @@ func run(args []string, logger *log.Logger) error {
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
 	}
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
+	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf, Peers: peers, PeerListen: listenPeer.Host})
 	if err != nil {
 		return err
 	}

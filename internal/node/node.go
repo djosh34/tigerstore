@@ -41,6 +41,10 @@ type Config struct {
 	// behind before it is closed; 0 means watchBytes.
 	WatchBytes int64
 	Logf       func(format string, args ...any)
+	// Prototype E: peer addresses by ID and this node's peer listen
+	// address; snapshot streams use port + 5.
+	Peers      map[uint64]string
+	PeerListen string
 }
 
 // input is one event for the committer from a client or a peer.
@@ -231,6 +235,8 @@ type Node struct {
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
+
+	e *eState
 }
 
 // New recovers the node's log from disk.
@@ -239,16 +245,24 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	w, rec, err := wal.Open(dir)
+	cfg.Core.Boot = rand.Uint64()
+	logf := cfg.Logf
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	c, w, e, err := recoverE(cfg, dir, logf)
 	if err != nil {
 		return nil, err
 	}
-	cfg.Core.Boot = rand.Uint64()
-	c, err := core.New(cfg.Core, rec)
-	if err != nil {
-		return nil, errors.Join(err, w.Close())
+	e.snapAddr = map[uint64]string{}
+	for id, a := range cfg.Peers {
+		e.snapAddr[id] = SnapAddr(a)
+	}
+	if cfg.PeerListen != "" {
+		e.listen = SnapAddr(cfg.PeerListen)
 	}
 	return &Node{
+		e:         e,
 		cfg:       cfg,
 		core:      c,
 		wal:       w,
@@ -335,6 +349,10 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx) })
+	go n.e.ckptWriter(n.logf)
+	go n.e.cleaner(ctx.Done(), n.logf)
+	go n.e.serveSnapshots(n.logf)
+	go n.statsLoop(ctx.Done())
 	err := n.commit(ctx, t)
 	close(n.done)
 	cancel()
@@ -388,10 +406,19 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			continue
 		case <-ticker.C:
 			n.core.Tick()
+		case fc := <-n.e.fetched:
+			if fc.state != nil {
+				n.core.InstallState(fc.state, fc.idx, fc.term)
+			}
+			n.core.ApplyFetched(fc.ents)
+			close(fc.done)
 		case <-ctx.Done():
 			return nil
 		}
 		eff, err := n.core.Process()
+		if cs := n.core.CheckpointStep(n.e.lastSize.Load()); len(cs) > 0 {
+			n.e.ckptQ <- cs
+		}
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, eff.Persist)
 		}
@@ -536,7 +563,13 @@ func (n *Node) persist(ctx context.Context) {
 		}
 		start := time.Now()
 		entries, bytes := 0, 0
+		var snapErr error
 		for _, j := range jobs {
+			if j.Snapshot != nil {
+				if err := n.fetchSnapshot(j); err != nil {
+					snapErr = err
+				}
+			}
 			n.wal.Append(j.HardState, j.Entries)
 			entries += len(j.Entries)
 			for _, e := range j.Entries {
@@ -544,7 +577,9 @@ func (n *Node) persist(ctx context.Context) {
 			}
 		}
 		done := persistDone{jobs: jobs}
-		if err := n.wal.Sync(); err != nil {
+		if snapErr != nil {
+			done = persistDone{err: snapErr}
+		} else if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
 		}
 		if d := time.Since(start); d > n.cfg.Tick {

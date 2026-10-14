@@ -327,7 +327,11 @@ func (w *rangeLoad) message(st *stream, m []byte) error {
 			if err != nil {
 				return err
 			}
-			if !bytes.Equal(val, w.want[st.slot]) {
+			if w.want == nil {
+				if len(val) != w.valueSize {
+					return fmt.Errorf("range returned a %d byte value, want %d", len(val), w.valueSize)
+				}
+			} else if !bytes.Equal(val, w.want[st.slot]) {
 				return fmt.Errorf("range returned a %d byte value that is not the one put", len(val))
 			}
 		default:

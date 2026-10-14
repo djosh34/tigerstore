@@ -162,7 +162,13 @@ type Reply struct {
 type PersistJob struct {
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
-	msg       *raftpb.Message
+	// Snapshot is a Raft snapshot to install first (prototype E): the
+	// driver fetches the raw entries in (SnapFrom, Snapshot index] from
+	// SnapLeader and hands them to ApplyFetched before it reports the job.
+	Snapshot   *raftpb.Snapshot
+	SnapFrom   uint64
+	SnapLeader uint64
+	msg        *raftpb.Message
 	// newVote is set when the job changes the term or the vote.
 	newVote bool
 }
@@ -255,17 +261,22 @@ type Node struct {
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
+	// Prototype E.
+	win         []winEnt
+	winBytes    int64
+	installing  bool
+	ckptActive  bool
+	sinceCkpt   int64
+	appliedTerm uint64
+	recovery    bool
+	WindowTrims int64
+
 	out Effects
 	err error
 }
 
-// New starts a node from what its log recovered.
-func New(cfg Config, rec *wal.Recovered) (*Node, error) {
-	st := newStorage(cfg.Peers)
-	if err := st.load(rec); err != nil {
-		return nil, err
-	}
-	rn, err := raft.NewRawNode(&raft.Config{
+func raftConfig(cfg Config, st *storage) *raft.Config {
+	return &raft.Config{
 		ID:                        cfg.ID,
 		ElectionTick:              cfg.ElectionTicks,
 		HeartbeatTick:             cfg.HeartbeatTicks,
@@ -279,7 +290,16 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 		PreVote:                   true,
 		ReadOnlyOption:            raft.ReadOnlySafe,
 		Logger:                    quietLogger(),
-	})
+	}
+}
+
+// New starts a node from what its log recovered.
+func New(cfg Config, rec *wal.Recovered) (*Node, error) {
+	st := newStorage(cfg.Peers)
+	if err := st.load(rec); err != nil {
+		return nil, err
+	}
+	rn, err := raft.NewRawNode(raftConfig(cfg, st))
 	if err != nil {
 		return nil, err
 	}
@@ -658,10 +678,19 @@ func (n *Node) Persisted(job PersistJob) {
 	if n.err != nil {
 		return
 	}
+	if job.Snapshot != nil {
+		if err := n.storage.ApplySnapshot(job.Snapshot); err != nil && !errors.Is(err, raft.ErrSnapOutOfDate) {
+			n.fail(err)
+			return
+		}
+		n.applied = max(n.applied, job.Snapshot.GetMetadata().GetIndex())
+		n.win, n.winBytes, n.installing = nil, 0, false
+	}
 	if err := n.storage.append(job); err != nil {
 		n.fail(err)
 		return
 	}
+	n.trackWindow(job.Entries)
 	for _, e := range job.Entries {
 		n.logBytes += wal.EntryRecordBytes(e)
 	}
@@ -774,11 +803,11 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
 		case raft.LocalAppendThread:
-			if m.Snapshot != nil {
-				n.fail(errors.New("core: snapshots are not supported yet"))
-				return
-			}
 			job := PersistJob{Entries: m.Entries, msg: m}
+			if m.Snapshot != nil {
+				job.Snapshot, job.SnapFrom, job.SnapLeader = m.Snapshot, n.applied, n.leader
+				n.installing = true
+			}
 			if m.Vote != nil {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
 				job.newVote = slices.Contains(newVotes, m)
@@ -800,6 +829,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 				return
 			}
 			n.deliver(m.GetResponses())
+			n.trimWindow()
 		default:
 			n.send(m)
 		}
@@ -907,10 +937,17 @@ func (n *Node) fillHeader(h *pb.ResponseHeader) {
 // that this run of the node is waiting for.
 func (n *Node) apply(ents []*raftpb.Entry) error {
 	for _, e := range ents {
+		if e.GetIndex() <= n.applied {
+			// Prototype E: a checkpoint install moved past it.
+			continue
+		}
+		n.appliedTerm = e.GetTerm()
 		if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 			n.applied = e.GetIndex()
 			continue
 		}
+		n.sinceCkpt += int64(len(e.GetData()))
+		n.kv.SetEntry(e.GetIndex(), e.GetData())
 		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {
 			var p *pending
 			if origin == n.cfg.ID && boot == n.cfg.Boot {

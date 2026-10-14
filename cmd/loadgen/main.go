@@ -42,6 +42,7 @@ type config struct {
 	seed        uint64
 	out         string
 	cacert      string
+	skipPreload bool
 	cert, key   string
 }
 
@@ -62,6 +63,8 @@ func parseFlags(args []string) (config, error) {
 	fs.DurationVar(&cfg.warmup, "warmup", 2*time.Second, "load before the measurement window")
 	fs.DurationVar(&cfg.duration, "duration", 10*time.Second, "measurement window")
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
+	fs.IntVar(&nsCount, "namespaces", 100, "list workload: namespaces the keys spread over")
+	fs.BoolVar(&cfg.skipPreload, "skip-preload", false, "range and list: the keys are already there; values are not checked")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
@@ -253,7 +256,7 @@ func run(cfg config) (*result, error) {
 
 	var revs []int64
 	var putVals [][]byte
-	if cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "list" || cfg.workload == "delete" {
+	if (cfg.workload == "txn" || cfg.workload == "range" || cfg.workload == "list" || cfg.workload == "delete") && !cfg.skipPreload {
 		revs = make([]int64, cfg.keys)
 		putVals = make([][]byte, cfg.keys)
 		loads := make([]load, len(workers))

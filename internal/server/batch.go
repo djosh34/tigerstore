@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"math"
 	"slices"
+	"sync"
+	"sync/atomic"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
@@ -229,6 +231,73 @@ func estimate(cp *node.Completion) int64 {
 // lock-free list, so the committer never waits, counts their size against
 // the connection's budget, and wakes the writer, which encodes them.
 func (c *conn) Complete(cs []node.Completion) {
+	// Prototype E: a range reply with values that left the RAM window
+	// goes to the reader pool; the writer gets it once the bytes are read.
+	anyCold := false
+	for i := range cs {
+		if cs[i].Err == nil && cs[i].Resp == nil && cs[i].Range.Cold() {
+			anyCold = true
+			break
+		}
+	}
+	if !anyCold {
+		c.complete1(cs)
+		return
+	}
+	hot := cs[:0:0]
+	for i := range cs {
+		if cs[i].Err == nil && cs[i].Resp == nil && cs[i].Range.Cold() {
+			cp := cs[i]
+			go func() {
+				coldSem <- struct{}{}
+				resolveParallel(&cp.Range)
+				<-coldSem
+				c.complete1([]node.Completion{cp})
+			}()
+			continue
+		}
+		hot = append(hot, cs[i])
+	}
+	if len(hot) == 0 {
+		return
+	}
+	c.complete1(hot)
+}
+
+// coldSem bounds the replies that read values from disk at once.
+var coldSem = make(chan struct{}, 64)
+
+// resolveParallel reads the cold values of a reply with up to 16 reads in
+// flight.
+func resolveParallel(res *mvcc.RangeResult) {
+	var cold []int
+	for i := range res.KVs {
+		if res.KVs[i].Value == nil && res.KVs[i].Ref.N > 0 {
+			cold = append(cold, i)
+		}
+	}
+	if len(cold) <= 2 {
+		res.Resolve()
+		return
+	}
+	var wg sync.WaitGroup
+	next := atomic.Int64{}
+	for range min(16, len(cold)) {
+		wg.Go(func() {
+			for {
+				j := next.Add(1) - 1
+				if j >= int64(len(cold)) {
+					return
+				}
+				kv := &res.KVs[cold[j]]
+				kv.Value = mvcc.Values.Read(kv.Ref)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func (c *conn) complete1(cs []node.Completion) {
 	n := &completed{cs: cs}
 	for i := range cs {
 		n.bytes += estimate(&cs[i])

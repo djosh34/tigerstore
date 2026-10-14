@@ -12,6 +12,7 @@ import (
 	"hash"
 	"hash/fnv"
 	"slices"
+	"unsafe"
 
 	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -24,13 +25,36 @@ import (
 // of the change inside it.
 type rev struct{ main, sub int64 }
 
+// Ref names a value by its Raft position: the entry index, the offset of
+// the value in the entry's data and its length. It is the same on every
+// node. Prototype E (#133).
+type Ref struct {
+	Idx    uint64
+	Off, N uint32
+}
+
+// Values resolves value references. The core sets it: Hot returns the
+// bytes if the entry is still in the RAM window, Read returns them from
+// anywhere, from disk if need be.
+var Values interface {
+	Hot(r Ref) ([]byte, bool)
+	Read(r Ref) []byte
+}
+
 // version is one state of a key. ver is 0 for a tombstone.
 type version struct {
 	mod    rev
 	create int64
 	ver    int64
 	lease  int64
-	value  []byte
+	value  Ref
+}
+
+func readValue(r Ref) []byte {
+	if r.N == 0 {
+		return nil
+	}
+	return Values.Read(r)
 }
 
 // keyIndex holds every version of one key, oldest first.
@@ -64,7 +88,13 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 }
 
 func (k *keyIndex) kvValue(v *version) KV {
-	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, Value: v.value}
+	kv := KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, Ref: v.value}
+	if v.value.N > 0 {
+		if b, ok := Values.Hot(v.value); ok {
+			kv.Value = b
+		}
+	}
+	return kv
 }
 
 func (k *keyIndex) kv(v *version) *mvccpb.KeyValue {
@@ -74,7 +104,7 @@ func (k *keyIndex) kv(v *version) *mvccpb.KeyValue {
 		ModRevision:    v.mod.main,
 		Version:        v.ver,
 		Lease:          v.lease,
-		Value:          v.value,
+		Value:          readValue(v.value),
 	}
 }
 
@@ -90,6 +120,19 @@ type Store struct {
 
 	// changes collects the changes of the request being applied.
 	changes []Change
+
+	// entIdx and ent are the Raft entry being applied: values are named
+	// by their position in it.
+	entIdx uint64
+	ent    []byte
+
+	// A checkpoint in progress: versions above freezeRev are left out,
+	// and physical compaction waits until it is done.
+	freezing       bool
+	freezeRev      int64
+	cursor         []byte
+	cursorStarted  bool
+	pendingCompact int64
 
 	counts Counts
 }
@@ -196,8 +239,8 @@ func (s *Store) Hash() uint64 {
 			writeInt(h, v.create)
 			writeInt(h, v.ver)
 			writeInt(h, v.lease)
-			writeInt(h, int64(len(v.value)))
-			h.Write(v.value)
+			writeInt(h, int64(v.value.Idx))
+			writeInt(h, int64(v.value.Off)<<32|int64(v.value.N))
 		}
 		return true
 	})
@@ -258,6 +301,17 @@ func (s *Store) Compact(rev int64) error {
 	case rev > s.rev:
 		return rpctypes.ErrGRPCFutureRev
 	}
+	if s.freezing {
+		s.pendingCompact = rev
+		s.compactRev = rev
+		return nil
+	}
+	s.physicalCompact(rev)
+	s.compactRev = rev
+	return nil
+}
+
+func (s *Store) physicalCompact(rev int64) {
 	s.changes = s.changes[:0]
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
@@ -276,6 +330,20 @@ func (s *Store) Compact(rev int64) error {
 	for _, k := range gone {
 		s.keys.Delete(k)
 	}
-	s.compactRev = rev
-	return nil
+}
+
+// SetEntry names the Raft entry the next writes come from.
+func (s *Store) SetEntry(idx uint64, data []byte) { s.entIdx, s.ent = idx, data }
+
+// refOf returns the Raft position of b, a slice of the current entry.
+func (s *Store) refOf(b []byte) Ref {
+	if len(b) == 0 {
+		return Ref{}
+	}
+	base := uintptr(unsafe.Pointer(unsafe.SliceData(s.ent)))
+	p := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	if p < base || p+uintptr(len(b)) > base+uintptr(len(s.ent)) {
+		panic("mvcc: value is not a slice of the entry being applied")
+	}
+	return Ref{Idx: s.entIdx, Off: uint32(p - base), N: uint32(len(b))}
 }

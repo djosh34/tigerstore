@@ -24,6 +24,7 @@ import (
 	"hash/crc32"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"go.etcd.io/raft/v3/raftpb"
 
@@ -78,8 +79,36 @@ var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
 
+// Hooks are prototype E's (#133) view of where entries are on disk.
+type Hooks struct {
+	// Entry reports the segment and the byte position of an entry record.
+	Entry func(idx, seq uint64, pos int64)
+	// Segment reports a segment that exists or was created.
+	Segment func(seq uint64)
+}
+
+// Bytes counts what the log wrote: entry data, and everything else
+// (record headers, hard states, segment headers).
+var Bytes struct {
+	Data, Framing, HardState atomic.Int64
+}
+
+// OpenOptions makes Open stream: segments up to SkipThrough are not
+// read, entries up to Base are already in a checkpoint, and committed
+// entries above Base go to Apply instead of into Recovered.
+type OpenOptions struct {
+	SkipThrough uint64
+	Base        uint64
+	Apply       func(e *raftpb.Entry) error
+	Hooks       Hooks
+}
+
 // WAL appends to the newest segment.
 type WAL struct {
+	hooks Hooks
+	opt   *OpenOptions
+	pend  []*raftpb.Entry
+
 	fs      FS
 	seg     File
 	seq     uint64
@@ -105,7 +134,10 @@ type Recovered struct {
 // Open reads the log in fs, cuts a torn tail off the newest segment, and
 // returns the log ready for appends. A damaged record anywhere else, a gap
 // in the entries, or a commit index past the last entry is ErrCorrupt.
-func Open(fs FS) (*WAL, *Recovered, error) {
+func Open(fs FS) (*WAL, *Recovered, error) { return OpenWith(fs, nil) }
+
+// OpenWith is Open with prototype E's options.
+func OpenWith(fs FS, opt *OpenOptions) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
 		return nil, nil, err
@@ -113,6 +145,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	var segs []string
 	for _, n := range names {
 		if strings.HasSuffix(n, ".wal") {
+			var seq uint64
+			if _, err := fmt.Sscanf(n, "%016x.wal", &seq); err == nil && opt != nil && seq <= opt.SkipThrough {
+				if opt.Hooks.Segment != nil {
+					opt.Hooks.Segment(seq)
+				}
+				continue
+			}
 			segs = append(segs, n)
 		}
 	}
@@ -132,7 +171,13 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 
-	w := &WAL{fs: fs, maxSize: SegmentBytes}
+	w := &WAL{fs: fs, maxSize: SegmentBytes, opt: opt}
+	if opt != nil {
+		w.hooks = opt.Hooks
+		if opt.SkipThrough > 0 {
+			w.seq = opt.SkipThrough
+		}
+	}
 	rec := &Recovered{}
 	for i, name := range segs {
 		last := i == len(segs)-1
@@ -165,6 +210,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			break
 		}
 		w.seq, w.crc = seq, crc
+		if w.hooks.Segment != nil {
+			w.hooks.Segment(seq)
+		}
 		good, lastStart, err := w.replay(data, rec)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
@@ -194,6 +242,10 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			continue
 		}
 		w.seg, w.size = f, good
+	}
+	if opt != nil && opt.Apply != nil {
+		rec.Entries = w.pend
+		w.pend = nil
 	}
 	if rec.HardState.Commit > w.last {
 		return nil, nil, fmt.Errorf("%w: commit index %d is past the last entry %d", ErrCorrupt, rec.HardState.Commit, w.last)
@@ -244,6 +296,9 @@ func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err er
 			}
 			return int64(off), lastStart, nil
 		}
+		if body[0] == recEntry && w.hooks.Entry != nil && len(body) >= 18 {
+			w.hooks.Entry(binary.LittleEndian.Uint64(body[9:]), w.seq, int64(off))
+		}
 		if err := w.apply(body[0], body[1:], rec); err != nil {
 			return int64(off), lastStart, err
 		}
@@ -281,6 +336,9 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 		term := binary.LittleEndian.Uint64(p)
 		index := binary.LittleEndian.Uint64(p[8:])
 		etype := raftpb.EntryType(p[16])
+		if w.opt != nil && w.opt.Apply != nil {
+			return w.applyStream(term, index, etype, p[17:])
+		}
 		if index == 0 || index > w.last+1 {
 			return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
 		}
@@ -303,9 +361,47 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 			Vote:   binary.LittleEndian.Uint64(p[8:]),
 			Commit: binary.LittleEndian.Uint64(p[16:]),
 		}
+		if w.opt != nil && w.opt.Apply != nil {
+			return w.flushCommitted(rec.HardState.Commit)
+		}
 	default:
 		return fmt.Errorf("%w: unknown record type %d", ErrCorrupt, typ)
 	}
+	return nil
+}
+
+// applyStream keeps uncommitted entries above the checkpoint in pend.
+func (w *WAL) applyStream(term, index uint64, etype raftpb.EntryType, data []byte) error {
+	if index == 0 || (w.last != 0 && index > w.last+1) {
+		return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
+	}
+	w.last = index
+	if index <= w.opt.Base {
+		w.pend = w.pend[:0]
+		return nil
+	}
+	if len(w.pend) > 0 {
+		first := w.pend[0].GetIndex()
+		if index < first {
+			w.pend = w.pend[:0]
+		} else {
+			w.pend = w.pend[:index-first]
+		}
+	}
+	w.pend = append(w.pend, &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: data})
+	return nil
+}
+
+// flushCommitted applies the pending entries up to commit.
+func (w *WAL) flushCommitted(commit uint64) error {
+	n := 0
+	for n < len(w.pend) && w.pend[n].GetIndex() <= commit {
+		if err := w.opt.Apply(w.pend[n]); err != nil {
+			return err
+		}
+		n++
+	}
+	w.pend = append(w.pend[:0], w.pend[n:]...)
 	return nil
 }
 
@@ -336,6 +432,10 @@ func (w *WAL) newSegment() error {
 		}
 	}
 	w.seq, w.seg, w.size = seq, f, int64(headerSize)
+	Bytes.Framing.Add(int64(headerSize))
+	if w.hooks.Segment != nil {
+		w.hooks.Segment(seq)
+	}
 	return nil
 }
 
@@ -365,6 +465,11 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		binary.LittleEndian.PutUint64(h[:], e.GetTerm())
 		binary.LittleEndian.PutUint64(h[8:], e.GetIndex())
 		h[16] = byte(e.GetType())
+		if w.hooks.Entry != nil {
+			w.hooks.Entry(e.GetIndex(), w.seq, w.size+int64(len(w.buf)))
+		}
+		Bytes.Data.Add(int64(len(e.GetData())))
+		Bytes.Framing.Add(recHdrSize + 17)
 		w.record(recEntry, h[:], e.GetData())
 		w.last = e.GetIndex()
 	}
@@ -373,6 +478,7 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		binary.LittleEndian.PutUint64(h[:], hs.Term)
 		binary.LittleEndian.PutUint64(h[8:], hs.Vote)
 		binary.LittleEndian.PutUint64(h[16:], hs.Commit)
+		Bytes.HardState.Add(recHdrSize + 24)
 		w.record(recHardState, h[:])
 	}
 }
@@ -424,6 +530,20 @@ func (w *WAL) Sync() error {
 		return err
 	}
 	return w.newSegment()
+}
+
+// Rotate syncs and starts a new segment, and returns the old one's
+// sequence number (prototype E: a follower that installs a checkpoint
+// skips its older segments on recovery).
+func (w *WAL) Rotate() (uint64, error) {
+	if err := w.Sync(); err != nil {
+		return 0, err
+	}
+	old := w.seq
+	if err := w.seg.Close(); err != nil {
+		return 0, err
+	}
+	return old, w.newSegment()
 }
 
 // SetSegmentBytes changes the size after which a new segment starts. Tests

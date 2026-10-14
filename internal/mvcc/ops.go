@@ -52,6 +52,28 @@ func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r}
 type KV struct {
 	Key, Value                                  []byte
 	CreateRevision, ModRevision, Version, Lease int64
+	// Ref names the value; Value is nil while the value is only on disk
+	// and the connection writer must read it.
+	Ref Ref
+}
+
+// Cold reports whether a value of the result is only on disk.
+func (res *RangeResult) Cold() bool {
+	for i := range res.KVs {
+		if res.KVs[i].Value == nil && res.KVs[i].Ref.N > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Resolve reads every value that is only on disk.
+func (res *RangeResult) Resolve() {
+	for i := range res.KVs {
+		if kv := &res.KVs[i]; kv.Value == nil && kv.Ref.N > 0 {
+			kv.Value = Values.Read(kv.Ref)
+		}
+	}
 }
 
 // RangeResult is a range's answer without its header: the store's
@@ -91,6 +113,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 func (res *RangeResult) Response() *pb.RangeResponse {
 	resp := &pb.RangeResponse{Header: header(res.Rev), Count: res.Count, More: res.More}
 	if len(res.KVs) > 0 {
+		res.Resolve()
 		kvs := make([]mvccpb.KeyValue, len(res.KVs))
 		resp.Kvs = make([]*mvccpb.KeyValue, len(res.KVs))
 		for i, kv := range res.KVs {
@@ -158,6 +181,13 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 	})
 
 	kvs = filterKVs(kvs, r)
+	if r.SortTarget == pb.RangeRequest_VALUE {
+		for i := range kvs {
+			if kvs[i].Value == nil && kvs[i].Ref.N > 0 {
+				kvs[i].Value = Values.Read(kvs[i].Ref)
+			}
+		}
+	}
 	sortKVs(kvs, r)
 
 	res := RangeResult{Rev: cur, Count: count}
@@ -171,6 +201,7 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 		fast := r.SortTarget != pb.RangeRequest_VALUE
 		for i := range kvs {
 			kvs[i].Value = nil
+			kvs[i].Ref = Ref{}
 			if fast {
 				kvs[i].Lease = 0
 			}
@@ -338,7 +369,7 @@ func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
 	w.countPrevRead(p)
 	var prevKV *mvccpb.KeyValue
 	k, prev := w.latest(p.Key)
-	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: p.Value}
+	v := version{create: w.begin + 1, ver: 1, lease: p.Lease, value: w.s.refOf(p.Value)}
 	if prev != nil {
 		if p.PrevKv {
 			prevKV = k.kv(prev)
@@ -356,7 +387,8 @@ func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
 		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
-		k = &keyIndex{key: p.Key}
+		// The key is copied: the index must not keep the entry alive.
+		k = &keyIndex{key: bytes.Clone(p.Key)}
 		w.s.keys.ReplaceOrInsert(k)
 	}
 	w.add(k, v)

@@ -24,12 +24,21 @@ type keys struct {
 
 // nsCount is the number of namespaces keys spread over: key i lives in
 // namespace i % nsCount.
-const nsCount = 100
+// A -namespaces flag changes it (prototype E, #133: a LIST over every
+// key, not the same first pages).
+var nsCount = 100
+
+func nsWidth() int {
+	if nsCount > 1000 {
+		return 4
+	}
+	return 3
+}
 
 // listPrefix is the prefix of namespace ns's keys, which a LIST ranges
 // over. Every prefix has the same length.
 func listPrefix(ns int) []byte {
-	return fmt.Appendf(nil, "%sbench-%03d/", keyPrefix, ns)
+	return fmt.Appendf(nil, "%sbench-%0*d/", keyPrefix, nsWidth(), ns)
 }
 
 func makeKeys(n int) keys {
@@ -41,7 +50,7 @@ func makeKeys(n int) keys {
 			name[j] = nameAlphabet[x%uint64(len(nameAlphabet))]
 			x /= uint64(len(nameAlphabet))
 		}
-		k := fmt.Sprintf("%sbench-%03d/web-%s-%s", keyPrefix, i%nsCount, name[:10], name[10:])
+		k := fmt.Sprintf("%sbench-%0*d/web-%s-%s", keyPrefix, nsWidth(), i%nsCount, name[:10], name[10:])
 		if ks.size == 0 {
 			ks.size = len(k)
 		}
