@@ -361,15 +361,15 @@ type Node struct {
 
 // New starts a node from what its log recovered: it loads the checkpoint
 // the root names, applies the committed entries after it, and hands Raft
-// the rest. It reads every entry from log, one at a time.
-func New(cfg Config, rec *wal.Recovered, log Log) (*Node, error) {
+// the rest. It reads every entry from disk, one at a time.
+func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	st := newStorage(cfg.Peers)
-	vals := &values{storage: st, log: log}
+	vals := &values{storage: st, log: disk}
 	n := &Node{
 		cfg:      cfg,
 		storage:  st,
 		values:   vals,
-		log:      log,
+		log:      disk,
 		term:     rec.HardState.Term,
 		voteTerm: rec.HardState.Term,
 		vote:     rec.HardState.Vote,
@@ -380,7 +380,7 @@ func New(cfg Config, rec *wal.Recovered, log Log) (*Node, error) {
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
 	if root := rec.Root; root.Index > 0 {
-		state, last, err := loadCheckpoint(cfg, log, root, vals)
+		state, last, err := loadCheckpoint(cfg, disk, root, vals)
 		if err != nil {
 			return nil, fmt.Errorf("core: load the checkpoint at %d: %w", root.Index, err)
 		}
@@ -403,7 +403,7 @@ func New(cfg Config, rec *wal.Recovered, log Log) (*Node, error) {
 		}
 	}
 	for i := hs.Commit + 1; i <= rec.Last; i++ {
-		e, err := log.Entry(i)
+		e, err := disk.Entry(i)
 		if err != nil {
 			return nil, fmt.Errorf("core: read entry %d: %w", i, err)
 		}

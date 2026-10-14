@@ -246,8 +246,8 @@ func (n *Node) termAt(index uint64) (uint64, error) {
 
 // loadCheckpoint reads the checkpoint at root into a new state and
 // checks it against its checksum and the root.
-func loadCheckpoint(cfg Config, log Log, root wal.Root, v mvcc.Values) (*State, lastCkpt, error) {
-	f, err := log.Checkpoint(root.Index)
+func loadCheckpoint(cfg Config, disk Log, root wal.Root, v mvcc.Values) (*State, lastCkpt, error) {
+	f, err := disk.Checkpoint(root.Index)
 	if err != nil {
 		return nil, lastCkpt{}, err
 	}

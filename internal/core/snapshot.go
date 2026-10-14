@@ -263,12 +263,12 @@ var ErrNoSnapshot = errors.New("core: the log cannot serve this snapshot")
 // needs to reach index to: the entries from..to from log, or, when some
 // are gone, the checkpoint ckpt, the values it names in entries from from
 // on, and the entries after it.
-func ServeSnapshot(log Log, ckpt wal.Root, from, to uint64, w io.Writer) error {
+func ServeSnapshot(disk Log, ckpt wal.Root, from, to uint64, w io.Writer) error {
 	s := &snapWriter{w: bufio.NewWriterSize(w, 256<<10)}
 	// Entries after the checkpoint are always on disk.
 	raw := true
 	for i := from; i <= min(to, ckpt.Index) && raw; i++ {
-		raw = log.Has(i)
+		raw = disk.Has(i)
 	}
 	if !raw && (ckpt.Index < from || ckpt.Index > to) {
 		return fmt.Errorf("%w: entries %d to %d, the checkpoint is at %d", ErrNoSnapshot, from, to, ckpt.Index)
@@ -289,12 +289,12 @@ func ServeSnapshot(log Log, ckpt wal.Root, from, to uint64, w io.Writer) error {
 		return err
 	}
 	if !raw {
-		if err := serveCheckpoint(s, log, ckpt, from); err != nil {
+		if err := serveCheckpoint(s, disk, ckpt, from); err != nil {
 			return err
 		}
 	}
 	for i := next; i <= to; i++ {
-		e, err := log.Entry(i)
+		e, err := disk.Entry(i)
 		if err != nil {
 			return err
 		}
@@ -310,8 +310,8 @@ func ServeSnapshot(log Log, ckpt wal.Root, from, to uint64, w io.Writer) error {
 
 // serveCheckpoint writes the checkpoint file, then every value it names
 // in entries from from on.
-func serveCheckpoint(s *snapWriter, log Log, ckpt wal.Root, from uint64) error {
-	f, err := log.Checkpoint(ckpt.Index)
+func serveCheckpoint(s *snapWriter, disk Log, ckpt wal.Root, from uint64) error {
+	f, err := disk.Checkpoint(ckpt.Index)
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func serveCheckpoint(s *snapWriter, log Log, ckpt wal.Root, from uint64) error {
 		return err
 	}
 	// A second pass, for the values; the file is read back, not held.
-	if f, err = log.Checkpoint(ckpt.Index); err != nil {
+	if f, err = disk.Checkpoint(ckpt.Index); err != nil {
 		return err
 	}
 	r := bufio.NewReaderSize(f, 64<<10)
@@ -346,7 +346,7 @@ func serveCheckpoint(s *snapWriter, log Log, ckpt wal.Root, from uint64) error {
 		if ref.Index < from {
 			return nil
 		}
-		v, err := log.Value(ref.Index, ref.Off, ref.Len)
+		v, err := disk.Value(ref.Index, ref.Off, ref.Len)
 		if err != nil {
 			return err
 		}
@@ -419,7 +419,7 @@ var errBadSnapshot = errors.New("core: bad snapshot")
 // term, that each value matches its checksum, and the checkpoint's CRC
 // and header, and only then writes the root that makes the checkpoint
 // count. log reads the checkpoint back. It sets in.Checkpoint.
-func ReceiveSnapshot(r io.Reader, sink SnapshotSink, log Log, peers []uint64, in *Install) error {
+func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, in *Install) error {
 	s := &snapReader{r: bufio.NewReaderSize(r, 256<<10)}
 	kind, p, err := s.next()
 	if err != nil {
@@ -440,7 +440,7 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, log Log, peers []uint64, in
 	next, term := from, uint64(0)
 	if ckpt != 0 {
 		next, term = ckpt+1, ckptTerm
-		if err := receiveCheckpoint(s, sink, log, peers, from, wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}); err != nil {
+		if err := receiveCheckpoint(s, sink, disk, peers, from, wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}); err != nil {
 			return err
 		}
 		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
@@ -499,7 +499,7 @@ func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {
 
 // receiveCheckpoint writes the checkpoint file and the values, checks
 // them, and appends the root.
-func receiveCheckpoint(s *snapReader, sink SnapshotSink, log Log, peers []uint64, from uint64, root wal.Root) error {
+func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint64, from uint64, root wal.Root) error {
 	check := !planted.On("B22")
 	tr := &trailerReader{}
 	for {
@@ -525,7 +525,7 @@ func receiveCheckpoint(s *snapReader, sink SnapshotSink, log Log, peers []uint64
 	if err := sink.CheckpointDone(root.Index); err != nil {
 		return err
 	}
-	f, err := log.Checkpoint(root.Index)
+	f, err := disk.Checkpoint(root.Index)
 	if err != nil {
 		return err
 	}
