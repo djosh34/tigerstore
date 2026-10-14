@@ -50,7 +50,7 @@ func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
 	}
 	cfg := DefaultConfig(1, []uint64{1})
 	cfg.Boot = boot
-	n, err := New(cfg, rec)
+	n, err := New(cfg, rec, w)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestRejectedTxnKeepsNodeRunning(t *testing.T) {
 // TestStatusOneTerm checks that Status reports the same term in its header
 // and body even before Process ran after a term change.
 func TestStatusOneTerm(t *testing.T) {
-	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{})
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -83,6 +82,28 @@ type Config struct {
 	// may wait to commit before the leader stops; 0 means
 	// CommitStallTicks. Tests set it lower to catch shorter stalls.
 	CommitStallElections int
+
+	// WindowBytes is how many bytes of applied entries stay in memory, and
+	// WindowMaxBytes how many while a follower still needs them. Older
+	// entries and their values are read from the log on disk.
+	WindowBytes, WindowMaxBytes int64
+	// UnappliedBytes bounds the entries in memory that are not applied
+	// yet, in flight to the disk included: writes wait while it is full,
+	// and Raft's limits on uncommitted entries and on bytes in flight to a
+	// follower come from it.
+	UnappliedBytes int64
+	// A checkpoint is cut once the entries applied since the last one
+	// pass CheckpointBytes and CheckpointRatio times the last one's size.
+	CheckpointBytes, CheckpointRatio int64
+	// CheckpointChunk is about how many bytes of the index each Process
+	// copies into a checkpoint under way.
+	CheckpointChunk int
+	// SnapshotTicks is how long a leader waits for a follower to fetch a
+	// snapshot before it sends another.
+	SnapshotTicks int
+	// Record makes Effects.Applied carry every applied entry with the
+	// state's hash after it, for the simulator's checks.
+	Record bool
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -97,7 +118,29 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		MaxBatchBytes:  4 << 20,
 		ProgressTicks:  6000, // etcd's 10 minutes
 		TicksPerSecond: 10,
+
+		WindowBytes:     64 << 20,
+		WindowMaxBytes:  128 << 20,
+		UnappliedBytes:  64 << 20,
+		CheckpointBytes: 256 << 20,
+		CheckpointRatio: 16,
+		CheckpointChunk: 32 << 10,
+		SnapshotTicks:   200,
 	}
+}
+
+// Log is the log on disk as the core reads it: the entries and values
+// that left memory, and checkpoints. The driver implements it over its
+// WAL.
+type Log interface {
+	// Entry reads an entry.
+	Entry(index uint64) (*raftpb.Entry, error)
+	// Has reports whether an entry is on disk.
+	Has(index uint64) bool
+	// Value reads n bytes at offset off of the data of entry index.
+	Value(index uint64, off, n uint32) ([]byte, error)
+	// Checkpoint opens the checkpoint file at a Raft index.
+	Checkpoint(index uint64) (io.ReadCloser, error)
 }
 
 // Request is a client request. Op is a *pb.RangeRequest, *pb.PutRequest,
@@ -162,11 +205,23 @@ type Reply struct {
 // sync. The driver runs jobs in order and calls Persisted for each, in the
 // same order, once it is durable.
 type PersistJob struct {
+	// Install, if set, is a snapshot from Raft. The driver first brings
+	// its log to the snapshot's index (InstallSnapshot), then appends the
+	// rest of the job.
+	Install   *Install
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
-	msg       *raftpb.Message
+	// Root, if set, makes a checkpoint that the driver wrote count. The
+	// driver appends it after the rest, syncs, and only then removes the
+	// segments whose entries and values are all below RemoveBelow and
+	// every checkpoint file but this one.
+	Root        *wal.Root
+	RemoveBelow uint64
+	msg         *raftpb.Message
 	// newVote is set when the job changes the term or the vote.
 	newVote bool
+	// bytes is the entry data of the job.
+	bytes int64
 }
 
 // Effects is what the core asks its driver to do.
@@ -175,9 +230,35 @@ type Effects struct {
 	Send    []*raftpb.Message
 	Replies []Reply
 	Watch   []WatchResponse
+	// Closed are watch streams that the node ended after a snapshot
+	// replaced its state; their clients watch again from where they were.
+	Closed []uint64
 	// Expired lists the leases that expired as this node applied the log.
 	// Drivers may log them; the simulator checks their timing.
 	Expired []int64
+	// Checkpoint is the next part of a checkpoint for the driver to write
+	// in order. When the part with Done is written and synced, and the
+	// directory synced, the driver calls CheckpointWritten.
+	Checkpoint []CheckpointChunk
+	// Applied is every entry applied, with Config.Record.
+	Applied []Applied
+}
+
+// CheckpointChunk is part of the checkpoint at Index.
+type CheckpointChunk struct {
+	Index uint64
+	Data  []byte
+	Done  bool
+}
+
+// Applied is an entry as the node applied it, and the hash of its state
+// after it. With Checkpoint set, the state at Index came from a
+// checkpoint instead, and Data is nil.
+type Applied struct {
+	Index, Term uint64
+	Data        []byte
+	Hash        uint64
+	Checkpoint  bool
 }
 
 // pending is a request that waits for its entry to apply or for a read
@@ -257,6 +338,19 @@ type Node struct {
 	// logBytes estimates the size of the durable log.
 	logBytes int64
 
+	// log reads what left memory.
+	log Log
+	// copy is the checkpoint being copied, last the newest one cut, and
+	// sinceCkpt the entry bytes applied since then.
+	copy      *copying
+	last      lastCkpt
+	sinceCkpt int64
+	// unpersisted is the entry bytes on their way to the disk.
+	unpersisted int64
+	// snapWait holds, on the leader, when each follower that needs a
+	// snapshot started to wait for it, or 0 while its fetch runs.
+	snapWait map[uint64]int64
+
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
@@ -264,50 +358,114 @@ type Node struct {
 	err error
 }
 
-// New starts a node from what its log recovered.
-func New(cfg Config, rec *wal.Recovered) (*Node, error) {
+// New starts a node from what its log recovered: it loads the checkpoint
+// the root names, applies the committed entries after it, and hands Raft
+// the rest. It reads every entry from log, one at a time.
+func New(cfg Config, rec *wal.Recovered, log Log) (*Node, error) {
 	st := newStorage(cfg.Peers)
-	if err := st.load(rec); err != nil {
-		return nil, err
-	}
-	rn, err := raft.NewRawNode(&raft.Config{
-		ID:                        cfg.ID,
-		ElectionTick:              cfg.ElectionTicks,
-		HeartbeatTick:             cfg.HeartbeatTicks,
-		Storage:                   st,
-		AsyncStorageWrites:        true,
-		MaxSizePerMsg:             4 << 20,
-		MaxInflightMsgs:           256,
-		MaxInflightBytes:          32 << 20,
-		MaxUncommittedEntriesSize: 1 << 30,
-		CheckQuorum:               true,
-		PreVote:                   true,
-		ReadOnlyOption:            raft.ReadOnlySafe,
-		Logger:                    quietLogger(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	var logBytes int64
-	for _, e := range rec.Entries {
-		logBytes += wal.EntryRecordBytes(e)
-	}
-	vals := &values{storage: st}
-	state := NewState(MinLeaseTTL(cfg), vals)
-	return &Node{
-		logBytes: logBytes,
+	vals := &values{storage: st, log: log}
+	n := &Node{
 		cfg:      cfg,
-		rn:       rn,
 		storage:  st,
 		values:   vals,
-		state:    state,
-		kv:       state.Store(),
+		log:      log,
 		term:     rec.HardState.Term,
 		voteTerm: rec.HardState.Term,
 		vote:     rec.HardState.Vote,
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
-	}, nil
+		snapWait: map[uint64]int64{},
+		logBytes: rec.Bytes,
+	}
+	n.setState(NewState(MinLeaseTTL(cfg), vals))
+	if root := rec.Root; root.Index > 0 {
+		state, last, err := loadCheckpoint(cfg, log, root, vals)
+		if err != nil {
+			return nil, fmt.Errorf("core: load the checkpoint at %d: %w", root.Index, err)
+		}
+		n.setState(state)
+		n.applied, n.last, st.ckpt = root.Index, last, root
+		n.record(root.Index, root.Term)
+	}
+	// The commit index on disk can lag what was applied, which a
+	// checkpoint shows.
+	hs := rec.HardState
+	hs.Commit = max(hs.Commit, n.applied)
+	term, err := n.replay(hs.Commit)
+	if err != nil {
+		return nil, err
+	}
+	if hs.Commit > 0 {
+		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.conf}}
+		if err := st.reset(snap); err != nil {
+			return nil, err
+		}
+	}
+	for i := hs.Commit + 1; i <= rec.Last; i++ {
+		e, err := log.Entry(i)
+		if err != nil {
+			return nil, fmt.Errorf("core: read entry %d: %w", i, err)
+		}
+		if err := st.add([]*raftpb.Entry{e}); err != nil {
+			return nil, err
+		}
+	}
+	if err := st.setHardState(hs); err != nil {
+		return nil, err
+	}
+	rn, err := raft.NewRawNode(raftConfig(cfg, st, hs.Commit))
+	if err != nil {
+		return nil, err
+	}
+	n.rn = rn
+	return n, nil
+}
+
+// replay applies the committed entries after the checkpoint, read from
+// the log, and returns the term of the entry at commit.
+func (n *Node) replay(commit uint64) (uint64, error) {
+	term := n.storage.ckpt.Term
+	for i := n.applied + 1; i <= commit; i++ {
+		e, err := n.log.Entry(i)
+		if err != nil {
+			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
+		}
+		if err := n.apply([]*raftpb.Entry{e}); err != nil {
+			return 0, err
+		}
+		term = e.GetTerm()
+	}
+	return term, nil
+}
+
+// raftConfig is the RawNode's configuration, with Raft's limits on
+// uncommitted entries and on bytes in flight from the budget for entries
+// that are not applied yet.
+func raftConfig(cfg Config, st *storage, applied uint64) *raft.Config {
+	return &raft.Config{
+		ID:                        cfg.ID,
+		ElectionTick:              cfg.ElectionTicks,
+		HeartbeatTick:             cfg.HeartbeatTicks,
+		Storage:                   st,
+		Applied:                   applied,
+		AsyncStorageWrites:        true,
+		MaxSizePerMsg:             uint64(min(4<<20, cfg.UnappliedBytes/4)),
+		MaxInflightMsgs:           256,
+		MaxInflightBytes:          uint64(cfg.UnappliedBytes / 2),
+		MaxUncommittedEntriesSize: uint64(cfg.UnappliedBytes + int64(cfg.MaxBatchBytes)),
+		CheckQuorum:               true,
+		PreVote:                   true,
+		ReadOnlyOption:            raft.ReadOnlySafe,
+		Logger:                    quietLogger(),
+	}
+}
+
+// setState makes st the replicated state.
+func (n *Node) setState(st *State) {
+	if n.cfg.Record {
+		st.kv.TrackHash()
+	}
+	n.state, n.kv = st, st.Store()
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -334,13 +492,15 @@ func (n *Node) Store() *mvcc.Store { return n.kv }
 // Applied is the index of the last applied entry.
 func (n *Node) Applied() uint64 { return n.applied }
 
-// AppliedEntries returns the log up to the applied index.
-func (n *Node) AppliedEntries() ([]*raftpb.Entry, error) {
-	if n.applied == 0 {
-		return nil, nil
-	}
-	return n.storage.Entries(1, n.applied+1, math.MaxUint64)
-}
+// Hash is the hash of the replicated state: the index and the leases.
+func (n *Node) Hash() uint64 { return n.state.Hash() }
+
+// EntryBytes is the data bytes of the Raft entries the node holds in
+// memory, those on their way to the disk included.
+func (n *Node) EntryBytes() int64 { return n.storage.total() + n.unpersisted }
+
+// FirstIndex is the first entry the node holds in memory.
+func (n *Node) FirstIndex() uint64 { return n.storage.first }
 
 // Leader is the leader this node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader }
@@ -377,6 +537,7 @@ func (n *Node) Tick() {
 		return
 	}
 	n.retryReads(false)
+	n.snapshotProgress()
 	n.expireLeases()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
 		n.progressNotify()
@@ -403,10 +564,16 @@ func (n *Node) Step(m *raftpb.Message) error {
 }
 
 // Unreachable reports that a message to a peer was dropped, so Raft
-// probes it instead of streaming to it.
+// probes it instead of streaming to it. A follower whose snapshot was not
+// fetched yet gets another one.
 func (n *Node) Unreachable(id uint64) {
-	if n.err == nil {
-		n.rn.ReportUnreachable(id)
+	if n.err != nil {
+		return
+	}
+	n.rn.ReportUnreachable(id)
+	if at, ok := n.snapWait[id]; ok && at != 0 {
+		delete(n.snapWait, id)
+		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}
 }
 
@@ -665,8 +832,23 @@ func (n *Node) propose() {
 			size += writeSize(props[end])
 			end++
 		}
+		// Writes wait while the entries not applied yet fill their
+		// budget, so that memory holds no more of them.
+		if unapplied := n.unapplied(); unapplied > 0 && unapplied+int64(size) > n.cfg.UnappliedBytes {
+			n.requeue(props)
+			return
+		}
 		n.proposeEntry(props[:end], size)
 		props = props[end:]
+	}
+}
+
+// requeue puts writes back in the queue, unproposed.
+func (n *Node) requeue(props []*pending) {
+	n.proposals = props
+	for _, p := range props {
+		p.queued = true
+		n.propBytes += writeSize(p)
 	}
 }
 
@@ -708,9 +890,25 @@ func (n *Node) Persisted(job PersistJob) {
 	if n.err != nil {
 		return
 	}
-	if err := n.storage.append(job); err != nil {
+	n.unpersisted -= job.bytes
+	if job.Install != nil {
+		if err := n.install(job.Install); err != nil {
+			n.fail(err)
+			return
+		}
+	}
+	if job.Root != nil {
+		n.storage.ckpt = *job.Root
+	}
+	if err := n.storage.add(job.Entries); err != nil {
 		n.fail(err)
 		return
+	}
+	if job.HardState != nil {
+		if err := n.storage.setHardState(*job.HardState); err != nil {
+			n.fail(err)
+			return
+		}
 	}
 	for _, e := range job.Entries {
 		n.logBytes += wal.EntryRecordBytes(e)
@@ -770,6 +968,12 @@ func (n *Node) Process() (Effects, error) {
 			}
 		}
 		n.flushWatches()
+		if n.copy != nil && n.err == nil {
+			n.copyChunk(n.cfg.CheckpointChunk)
+		}
+		if n.err == nil {
+			n.trimWindow()
+		}
 	}
 	if n.err != nil {
 		n.stop()
@@ -824,15 +1028,19 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
 		case raft.LocalAppendThread:
-			if m.Snapshot != nil {
-				n.fail(errors.New("core: snapshots are not supported yet"))
-				return
-			}
 			job := PersistJob{Entries: m.Entries, msg: m}
+			if m.Snapshot != nil {
+				meta := m.Snapshot.GetMetadata()
+				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
+			}
 			if m.Vote != nil {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
 				job.newVote = slices.Contains(newVotes, m)
 			}
+			for _, e := range job.Entries {
+				job.bytes += int64(len(e.GetData()))
+			}
+			n.unpersisted += job.bytes
 			n.out.Persist = append(n.out.Persist, job)
 			if len(job.Entries) > 0 {
 				n.appending = append(n.appending, n.now)
@@ -967,53 +1175,61 @@ func (n *Node) fillHeader(h *pb.ResponseHeader) {
 // that this run of the node is waiting for.
 func (n *Node) apply(ents []*raftpb.Entry) error {
 	for _, e := range ents {
-		if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
-			n.applied = e.GetIndex()
-			continue
-		}
-		n.values.index = e.GetIndex()
-		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
-			var p *pending
-			if origin == n.cfg.ID && boot == n.cfg.Boot {
-				p = n.waiting[id]
-			}
-			n.values.reset()
-			if kind == kindPut {
-				return n.applyPut(b, at, p)
-			}
-			op, err := newOp(kind)
-			if err != nil {
-				return err
-			}
-			// The op's values are slices of the entry; the index names them
-			// by where they are in it.
-			if txn, ok := op.(*pb.TxnRequest); ok {
-				err = decodeTxnPlaced(b, txn, at, &n.values.placer)
-			} else {
-				err = DecodeAlias(b, op)
-			}
-			if err != nil {
-				return fmt.Errorf("%w: %w", errBadBatch, err)
-			}
-			resp, err := n.applyOp(op)
-			if errors.Is(err, errInternal) {
-				return err
-			}
-			if err == nil {
-				n.matchWatches()
-			}
-			if p != nil {
-				n.finish(p, resp, err)
-			}
-			return nil
-		})
-		n.values.reset()
-		if err != nil {
+		if err := n.applyEntry(e); err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
 		}
 		n.applied = e.GetIndex()
+		n.sinceCkpt += int64(len(e.GetData()))
+		if n.cfg.Record {
+			n.out.Applied = append(n.out.Applied, Applied{Index: e.GetIndex(), Term: e.GetTerm(), Data: e.GetData(), Hash: n.state.Hash()})
+		}
+		n.maybeCheckpoint(e.GetIndex(), e.GetTerm())
 	}
 	return nil
+}
+
+// applyEntry runs the writes of one entry.
+func (n *Node) applyEntry(e *raftpb.Entry) error {
+	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
+		return nil
+	}
+	n.values.index = e.GetIndex()
+	defer n.values.reset()
+	return walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
+		var p *pending
+		if origin == n.cfg.ID && boot == n.cfg.Boot {
+			p = n.waiting[id]
+		}
+		n.values.reset()
+		if kind == kindPut {
+			return n.applyPut(b, at, p)
+		}
+		op, err := newOp(kind)
+		if err != nil {
+			return err
+		}
+		// The op's values are slices of the entry; the index names them
+		// by where they are in it.
+		if txn, ok := op.(*pb.TxnRequest); ok {
+			err = decodeTxnPlaced(b, txn, at, &n.values.placer)
+		} else {
+			err = DecodeAlias(b, op)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: %w", errBadBatch, err)
+		}
+		resp, err := n.applyOp(op)
+		if errors.Is(err, errInternal) {
+			return err
+		}
+		if err == nil {
+			n.matchWatches()
+		}
+		if p != nil {
+			n.finish(p, resp, err)
+		}
+		return nil
+	})
 }
 
 var errInternal = errors.New("core: internal error")

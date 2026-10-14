@@ -268,6 +268,16 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 // is reused by the next write.
 func (s *Store) Changes() []Change { return s.changes }
 
+// Ref returns the position of the value of a key's newest version, if
+// the key exists. The simulator uses it to damage a value on disk.
+func (s *Store) Ref(key []byte) (Ref, bool) {
+	k, ok := s.keys.Get(&keyIndex{key: key})
+	if !ok || k.vers[len(k.vers)-1].ver == 0 {
+		return Ref{}, false
+	}
+	return k.vers[len(k.vers)-1].value, true
+}
+
 // Hash returns a hash of every version of every key, with the Ref of its
 // value, the current revision and the compaction revision. Replicas that
 // applied the same log have the same hash. With TrackHash it costs

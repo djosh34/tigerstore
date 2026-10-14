@@ -73,6 +73,24 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 // Store is the key index.
 func (st *State) Store() *mvcc.Store { return st.kv }
 
+// Hash is a hash of the whole replicated state: the index, the leases
+// with their keys, and the lease stamps.
+func (st *State) Hash() uint64 {
+	h := st.kv.Hash()
+	mix := func(x uint64) {
+		h = (h ^ x) * 0x100000001b3
+		h ^= h >> 29
+	}
+	mix(uint64(st.stamps))
+	for _, l := range st.sortedLeases() {
+		mix(uint64(l.id))
+		mix(uint64(l.ttl))
+		mix(uint64(l.stamp))
+		mix(uint64(len(l.keys)))
+	}
+	return h
+}
+
 // sortedLeases returns the leases in ID order, so that the core walks them
 // the same way on every run.
 func (st *State) sortedLeases() []*lease {

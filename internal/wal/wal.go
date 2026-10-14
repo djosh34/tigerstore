@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"slices"
 	"strings"
 
@@ -135,6 +136,8 @@ type Recovered struct {
 	// follows it. Every entry after the root's index up to Last is on
 	// disk; WAL.Entry reads them.
 	Last uint64
+	// Bytes is the size of the segments.
+	Bytes int64
 }
 
 // run is where a run of consecutive entries is in segment seq. offs[i] is
@@ -270,6 +273,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 		w.seq, w.crc = seq, crc
 		w.current()
+		rec.Bytes += int64(len(data))
 		good, lastStart, err := w.replay(data, rec, &first)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
@@ -750,6 +754,12 @@ func (w *WAL) readAt(seq uint64, p []byte, off int64) error {
 	return fmt.Errorf("wal: read %d of %d bytes at %d of segment %d: %w", n, len(p), off, seq, err)
 }
 
+// Has reports whether entry index is on disk.
+func (w *WAL) Has(index uint64) bool {
+	s, _ := w.locate(index)
+	return s != nil
+}
+
 // Entry reads entry index from disk and checks its record.
 func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
 	s, i := w.locate(index)
@@ -796,6 +806,16 @@ func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
 		}
 	}
 	return nil, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+}
+
+// ValuePlace returns the file and the offset in it where the data of
+// entry index holds offset off, if the entry is on disk.
+func (w *WAL) ValuePlace(index uint64, off uint32) (string, int64, bool) {
+	s, i := w.locate(index)
+	if s == nil {
+		return "", 0, false
+	}
+	return segmentName(s.seq), int64(s.offs[i]) + recHdrSize + entryHdrSize + int64(off), true
 }
 
 // RemoveBelow removes the oldest segments whose every entry and value is
@@ -865,23 +885,50 @@ func (w *WAL) OpenCheckpoint(index uint64) (File, error) {
 	return w.fs.Open(CheckpointName(index))
 }
 
+// Checkpoint opens the checkpoint file at index for reading from the
+// start.
+func (w *WAL) Checkpoint(index uint64) (io.ReadCloser, error) {
+	f, err := w.OpenCheckpoint(index)
+	if err != nil {
+		return nil, err
+	}
+	return &fileReader{f: f}, nil
+}
+
+// fileReader reads a File from the start.
+type fileReader struct {
+	f   File
+	off int64
+}
+
+func (r *fileReader) Read(p []byte) (int, error) {
+	n, err := r.f.ReadAt(p, r.off)
+	r.off += int64(n)
+	if n > 0 && errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return n, err
+}
+
+func (r *fileReader) Close() error { return r.f.Close() }
+
 // SyncDir makes the creation of a checkpoint file durable.
 func (w *WAL) SyncDir() error { return w.fs.SyncDir() }
 
-// RemoveCheckpoints removes every checkpoint file but the one at index
-// keep.
+// RemoveCheckpoints removes the checkpoint files before index keep. Newer
+// ones may still be being written.
 func (w *WAL) RemoveCheckpoints(keep uint64) error {
 	names, err := w.fs.List()
 	if err != nil {
 		return err
 	}
-	var ckpts []string
+	var old []string
 	for _, n := range names {
-		if strings.HasPrefix(n, "ckpt-") {
-			ckpts = append(ckpts, n)
+		if strings.HasPrefix(n, "ckpt-") && n < CheckpointName(keep) {
+			old = append(old, n)
 		}
 	}
-	return w.removeCheckpoints(ckpts, CheckpointName(keep))
+	return w.removeCheckpoints(old, "")
 }
 
 // decodes reports whether a record body looks like the next record: an

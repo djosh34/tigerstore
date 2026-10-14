@@ -1,15 +1,14 @@
 package sim
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 
-	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 func (s *Sim) scheduleDiskFaults() {
@@ -28,6 +27,16 @@ func (s *Sim) scheduleDiskFaults() {
 	}
 	if f.Checkpoint {
 		s.push(&event{at: s.cfg.Duration/2 + s.rng.Int64N(s.cfg.Duration/2) + 1, kind: evCheckpoint})
+	}
+	if f.StepCrash {
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/2), kind: evStepCrashDue})
+	}
+	if f.Rot {
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*3/4), kind: evRot})
+	}
+	if f.HoldDown {
+		s.cfg.DownFor = 3*Second + s.rng.Int64N(2*Second)
+		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration-s.cfg.DownFor), kind: evDownFollower})
 	}
 }
 
@@ -103,6 +112,20 @@ func (s *Sim) stallLeader() {
 	}
 }
 
+// downFollower crashes a follower and restarts it DownFor later.
+func (s *Sim) downFollower() {
+	if s.healed {
+		return
+	}
+	for _, n := range s.nodes {
+		if n.up && n.core.Leader() != 0 && n.core.Leader() != n.id {
+			s.crash(n)
+			s.push(&event{at: s.now + s.cfg.DownFor, kind: evRestart, node: n.idx, gen: n.gen})
+			return
+		}
+	}
+}
+
 func (s *Sim) stall(n *node, until int64) {
 	n.stallUntil = until
 	n.stalls = append(n.stalls, [2]int64{s.now, until})
@@ -170,6 +193,12 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
+	// Half the time the damage is in the checkpoint a synced root names.
+	if n.root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(n.root)) {
+		n.corrupted = true
+		s.mix(0xc1, uint64(n.idx))
+		return
+	}
 	if n.disk.Corrupt(s.rng) {
 		n.corrupted = true
 		s.mix(0xc0, uint64(n.idx))
@@ -201,16 +230,12 @@ func (s *Sim) takeCheckpoint() {
 // checkColdRestarts erases each node's disk in turn at every checkpoint
 // and at the end, and cold-starts the other two alone. Every entry applied
 // anywhere by the checkpoint is committed, so the two must apply at least
-// as far, and every such entry must be the one in the final log. An
-// acknowledged write was applied before it was answered, so this covers
-// every acknowledged write, delete, lease change and its revision. That
-// is the guarantee that an acknowledged write survives the loss of one
-// node.
+// as far, and every entry and state they reach up to there must be the
+// one in the run's record. An acknowledged write was applied before it was
+// answered, so this covers every acknowledged write, delete, lease change
+// and its revision. That is the guarantee that an acknowledged write
+// survives the loss of one node.
 func (s *Sim) checkColdRestarts(res *Result) error {
-	final, err := s.live()[0].core.AppliedEntries()
-	if err != nil {
-		return err
-	}
 	for _, c := range append(slices.Clone(s.checkpoints), s.newCheckpoint()) {
 		for erased := range c.disks {
 			skip := false
@@ -221,11 +246,7 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 			if skip {
 				continue
 			}
-			ents, err := s.coldRestart(c, erased)
-			if err == nil {
-				err = sameCommitted(ents, final, c.applied)
-			}
-			if err != nil {
+			if err := s.coldRestart(c, erased); err != nil {
 				return fmt.Errorf("erasing node %d at %d ms: %w", erased+1, c.at/Millisecond, err)
 			}
 			res.Stats.ColdRestarts++
@@ -234,23 +255,8 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 	return nil
 }
 
-// sameCommitted checks that ents reach index applied and match the final
-// log up to it.
-func sameCommitted(ents, final []*raftpb.Entry, applied uint64) error {
-	if uint64(len(ents)) < applied {
-		return fmt.Errorf("the two left apply %d entries, but %d were applied before", len(ents), applied)
-	}
-	for i := range applied {
-		a, b := ents[i], final[i]
-		if a.GetIndex() != i+1 || a.GetTerm() != b.GetTerm() || !bytes.Equal(a.GetData(), b.GetData()) {
-			return fmt.Errorf("entry %d differs from the final log: term %d, want %d", i+1, a.GetTerm(), b.GetTerm())
-		}
-	}
-	return nil
-}
-
 // disagree returns two nodes that are not fenced and differ in their
-// applied entries or index, or nil.
+// applied index or state, or nil.
 func disagree(nodes []*node) (*node, *node) {
 	var first *node
 	for _, n := range nodes {
@@ -259,7 +265,7 @@ func disagree(nodes []*node) (*node, *node) {
 		}
 		if first == nil {
 			first = n
-		} else if n.core.Applied() != first.core.Applied() || n.core.Store().Hash() != first.core.Store().Hash() {
+		} else if n.core.Applied() != first.core.Applied() || n.core.Hash() != first.core.Hash() {
 			return first, n
 		}
 	}
@@ -267,12 +273,14 @@ func disagree(nodes []*node) (*node, *node) {
 }
 
 // coldRestart starts the two nodes whose disks were not erased, with no
-// clients and no faults, until they have applied everything they hold,
-// and returns their applied log.
-func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
+// clients and no faults, until they have applied everything they hold.
+// Every entry and state they reach up to the index applied at the
+// checkpoint is checked against the run's record as they go.
+func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0})
 	r.endAt = 6 * Second
 	r.healed = true
+	r.base, r.baseUpTo = s.log, c.applied
 	for i, d := range c.disks {
 		if i == erased {
 			d = simfs.New()
@@ -283,11 +291,11 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
 			continue
 		}
 		if err := r.start(r.nodes[i]); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if err := r.loop(); err != nil {
-		return nil, err
+		return err
 	}
 	// The leader may have proposed a lease expiry just before the end, so
 	// the follower has yet to learn that it committed (seed 736998125).
@@ -295,18 +303,18 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) ([]*raftpb.Entry, error) {
 	if a, _ := disagree(r.nodes); a != nil {
 		r.endAt += Second
 		if err := r.loop(); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
-		return nil, fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", a.core.Applied(), b.core.Applied())
+		return fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", a.core.Applied(), b.core.Applied())
 	}
 	for _, n := range r.nodes {
-		if !n.fenced {
-			return n.core.AppliedEntries()
+		if !n.fenced && n.core.Applied() < c.applied {
+			return fmt.Errorf("the two left apply %d entries, but %d were applied before", n.core.Applied(), c.applied)
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // stalledAt reports whether a node's disk was stalled at a time. A node

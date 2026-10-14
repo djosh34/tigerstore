@@ -110,54 +110,16 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 	s.rev, s.compactRev = rev, compactRev
 	var prev []byte
 	for {
-		n, err := binary.ReadUvarint(r)
-		if err != nil {
-			return 0, loadError(err)
-		}
-		if n == 0 {
-			return minRef, nil
-		}
-		if n > MaxKeyBytes {
-			return 0, fmt.Errorf("%w: key of %d bytes", errBadCheckpoint, n)
-		}
-		k := &keyIndex{key: make([]byte, n)}
-		if _, err := io.ReadFull(r, k.key); err != nil {
-			return 0, loadError(err)
+		k, err := readKey(r, rev)
+		if err != nil || k == nil {
+			return minRef, err
 		}
 		if prev != nil && string(prev) >= string(k.key) {
 			return 0, fmt.Errorf("%w: key %q after %q", errBadCheckpoint, k.key, prev)
 		}
 		prev = k.key
-		count, err := binary.ReadUvarint(r)
-		if err != nil {
-			return 0, loadError(err)
-		}
-		if count == 0 || count > uint64(rev) {
-			return 0, fmt.Errorf("%w: %d versions of key %q", errBadCheckpoint, count, k.key)
-		}
-		k.vers = make([]version, count)
 		for i := range k.vers {
 			v := &k.vers[i]
-			ints := [...]*int64{&v.mod.main, &v.mod.sub, &v.create, &v.ver, &v.lease}
-			for _, x := range ints {
-				if *x, err = binary.ReadVarint(r); err != nil {
-					return 0, loadError(err)
-				}
-			}
-			var off, length uint64
-			for _, x := range [...]*uint64{&v.value.Index, &off, &length} {
-				if *x, err = binary.ReadUvarint(r); err != nil {
-					return 0, loadError(err)
-				}
-			}
-			var sum [4]byte
-			if _, err := io.ReadFull(r, sum[:]); err != nil {
-				return 0, loadError(err)
-			}
-			if off > 1<<32-1 || length > 1<<32-1 {
-				return 0, fmt.Errorf("%w: value at %d+%d", errBadCheckpoint, off, length)
-			}
-			v.value.Off, v.value.Len, v.value.Sum = uint32(off), uint32(length), binary.LittleEndian.Uint32(sum[:])
 			if v.value.Len > 0 && (minRef == 0 || v.value.Index < minRef) {
 				minRef = v.value.Index
 			}
@@ -167,6 +129,75 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 		}
 		s.keys.ReplaceOrInsert(k)
 	}
+}
+
+// WalkRefs calls fn for the value of every version in the keys of a
+// checkpoint, without building an index.
+func WalkRefs(r *bufio.Reader, fn func(Ref) error) error {
+	for {
+		k, err := readKey(r, -1)
+		if err != nil || k == nil {
+			return err
+		}
+		for _, v := range k.vers {
+			if v.value.Len > 0 {
+				if err := fn(v.value); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
+
+// readKey reads one key of a checkpoint, or nil at the end mark. A key
+// has at most rev versions unless rev is negative.
+func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
+	n, err := binary.ReadUvarint(r)
+	if err != nil {
+		return nil, loadError(err)
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	if n > MaxKeyBytes {
+		return nil, fmt.Errorf("%w: key of %d bytes", errBadCheckpoint, n)
+	}
+	k := &keyIndex{key: make([]byte, n)}
+	if _, err := io.ReadFull(r, k.key); err != nil {
+		return nil, loadError(err)
+	}
+	count, err := binary.ReadUvarint(r)
+	if err != nil {
+		return nil, loadError(err)
+	}
+	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
+		return nil, fmt.Errorf("%w: %d versions of key %q", errBadCheckpoint, count, k.key)
+	}
+	k.vers = make([]version, 0, min(count, 1024))
+	for range count {
+		var v version
+		for _, x := range [...]*int64{&v.mod.main, &v.mod.sub, &v.create, &v.ver, &v.lease} {
+			if *x, err = binary.ReadVarint(r); err != nil {
+				return nil, loadError(err)
+			}
+		}
+		var off, length uint64
+		for _, x := range [...]*uint64{&v.value.Index, &off, &length} {
+			if *x, err = binary.ReadUvarint(r); err != nil {
+				return nil, loadError(err)
+			}
+		}
+		var sum [4]byte
+		if _, err := io.ReadFull(r, sum[:]); err != nil {
+			return nil, loadError(err)
+		}
+		if off > 1<<32-1 || length > 1<<32-1 {
+			return nil, fmt.Errorf("%w: value at %d+%d", errBadCheckpoint, off, length)
+		}
+		v.value.Off, v.value.Len, v.value.Sum = uint32(off), uint32(length), binary.LittleEndian.Uint32(sum[:])
+		k.vers = append(k.vers, v)
+	}
+	return k, nil
 }
 
 func loadError(err error) error {

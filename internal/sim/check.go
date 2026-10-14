@@ -38,7 +38,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	res.FinalRev = final.Rev()
-	ents, err := s.live()[0].core.AppliedEntries()
+	ents, err := s.committed(s.live()[0].core.Applied())
 	if err != nil {
 		return err
 	}
@@ -128,8 +128,9 @@ func (s *Sim) live() []*node {
 	return out
 }
 
-// converged checks that all nodes applied the same log to the same state
-// and returns that state.
+// converged checks that all nodes applied the same log to the same state,
+// the one the record of committed entries has, and returns that state,
+// from a node whose disk the run did not damage under it.
 func (s *Sim) converged() (*mvcc.Store, error) {
 	live := s.live()
 	for _, n := range live {
@@ -138,25 +139,20 @@ func (s *Sim) converged() (*mvcc.Store, error) {
 		}
 	}
 	first := live[0]
-	want, err := first.core.AppliedEntries()
-	if err != nil {
-		return nil, err
-	}
 	for _, n := range live[1:] {
 		if n.core.Applied() != first.core.Applied() {
 			return nil, fmt.Errorf("node %d applied %d entries, node %d applied %d", n.id, n.core.Applied(), first.id, first.core.Applied())
 		}
-		got, err := n.core.AppliedEntries()
-		if err != nil {
-			return nil, err
-		}
-		for i := range want {
-			if got[i].GetTerm() != want[i].GetTerm() || !bytes.Equal(got[i].GetData(), want[i].GetData()) {
-				return nil, fmt.Errorf("node %d and node %d applied different entries at index %d", n.id, first.id, want[i].GetIndex())
-			}
-		}
-		if n.core.Store().Hash() != first.core.Store().Hash() {
+		if n.core.Hash() != first.core.Hash() {
 			return nil, fmt.Errorf("node %d and node %d applied the same log to different states", n.id, first.id)
+		}
+	}
+	if r := s.log[first.core.Applied()]; r.hash != first.core.Hash() {
+		return nil, fmt.Errorf("node %d applied the same log to different states than node %d did", first.id, r.node)
+	}
+	for _, n := range live {
+		if !n.rotted {
+			return n.core.Store(), nil
 		}
 	}
 	return first.core.Store(), nil

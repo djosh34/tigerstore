@@ -14,6 +14,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"slices"
+	"strings"
 
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -101,17 +102,23 @@ func (d *Disk) Durable() *Disk {
 }
 
 // Corrupt copies 16 to 64 synced bytes from a random file and offset over
-// synced bytes of another place, like a write that landed at the wrong
-// offset. It leaves the last file by name alone: the WAL names segments in
+// synced bytes of a WAL segment, like a write that landed at the wrong
+// offset. It leaves the newest segment alone: the WAL names segments in
 // order, and damage in the newest one can look the same as a torn write,
 // which recovery cuts off. It reports whether it changed anything.
 func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	names := sortedNames(d.durable)
-	if len(names) < 2 {
+	var segs []string
+	for _, name := range names {
+		if strings.HasSuffix(name, ".wal") {
+			segs = append(segs, name)
+		}
+	}
+	if len(segs) < 2 {
 		return false
 	}
 	var targets []string
-	for _, name := range names[:len(names)-1] {
+	for _, name := range segs[:len(segs)-1] {
 		if len(d.durable[name].durable) >= 64 {
 			targets = append(targets, name)
 		}
@@ -131,6 +138,18 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 		return false
 	}
 	copy(f.durable[at:at+n], slices.Clone(src[from:from+n]))
+	f.data = slices.Clone(f.durable)
+	f.cut = false
+	return true
+}
+
+// CorruptFile flips one bit of a file's synced bytes, if it has any.
+func (d *Disk) CorruptFile(rng *rand.Rand, name string) bool {
+	f, ok := d.durable[name]
+	if !ok || len(f.durable) == 0 {
+		return false
+	}
+	f.durable[rng.IntN(len(f.durable))] ^= 1 << rng.IntN(8)
 	f.data = slices.Clone(f.durable)
 	f.cut = false
 	return true
@@ -347,6 +366,18 @@ func (d *Disk) DurableBytes(name string) []byte {
 		return slices.Clone(f.durable)
 	}
 	return nil
+}
+
+// Rot flips the lowest bit of one byte of a file, synced or not, while
+// the file is in use, like a bit that rots under a running node.
+func (d *Disk) Rot(name string, off int) {
+	f := d.names[name]
+	if off < len(f.durable) {
+		f.durable[off] ^= 1
+	}
+	if off < len(f.data) {
+		f.data[off] ^= 1
+	}
 }
 
 // FlipDurable flips the lowest bit of one synced byte, like a bit that

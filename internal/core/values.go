@@ -40,9 +40,11 @@ func (pl *placer) add(value []byte, off int) {
 }
 
 // values names every value by its Raft position and reads the bytes back
-// from the entries in the log.
+// from the entries in memory, or from the log on disk once its entry left
+// memory.
 type values struct {
 	storage *storage
+	log     Log
 	// index is the entry being applied; placer knows where the values of
 	// its current write start.
 	index uint64
@@ -66,14 +68,16 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Read returns the bytes of a value from its entry.
+// Read returns the bytes of a value from its entry. A value read from
+// memory is a slice of the entry, which a response holds until it is
+// sent; one read from disk is a copy.
 func (v *values) Read(r mvcc.Ref) ([]byte, error) {
 	last, err := v.storage.LastIndex()
 	if err != nil {
 		return nil, err
 	}
-	if r.Index > last {
-		return nil, fmt.Errorf("core: value in entry %d, past the last entry %d", r.Index, last)
+	if r.Index < v.storage.first || r.Index > last {
+		return v.log.Value(r.Index, r.Off, r.Len)
 	}
 	ents, err := v.storage.Entries(r.Index, r.Index+1, math.MaxUint64)
 	if err != nil {

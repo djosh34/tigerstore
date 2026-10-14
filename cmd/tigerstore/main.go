@@ -225,7 +225,7 @@ func run(args []string, logger *log.Logger) error {
 	t, err := peer.Start(peer.Config{
 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
 		Certificate: peerCert, CA: peerCA,
-		Deliver: n.Deliver, Unreachable: n.Unreachable, Logf: logger.Printf,
+		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logger.Printf,
 	})
 	if err != nil {
 		return err
