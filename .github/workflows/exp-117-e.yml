@@ -1,0 +1,154 @@
+# Throwaway (prototype E, #133). Runs on pushes to exp/117-e only.
+# bench: put-1k and txn-1k, main 76952348 against this branch, back to
+# back on one runner as bench.yml does. scale: data past RAM.
+name: exp-117-e
+
+on:
+  push:
+    branches: [exp/117-e]
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        bench: [put-1k, txn-1k]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcdctl v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          mkdir -p bin
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+      - name: Build
+        run: |
+          go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/benchreport ./cmd/benchreport
+          go build -o bin/candidate ./cmd/tigerstore
+          # E with rarer checkpoints: every 1 GiB of log and 64 times the
+          # last checkpoint's size.
+          printf '#!/bin/sh\nTS_E_CKPT_MIN=1073741824 TS_E_CKPT_K=64 exec "$(dirname "$0")/candidate" "$@"\n' > bin/candidate-rare
+          chmod +x bin/candidate-rare
+          git worktree add --detach "$RUNNER_TEMP/baseline" 769523480dad5d8e55f02e779a671b9b345955f4
+          (cd "$RUNNER_TEMP/baseline" && go build -o "$GITHUB_WORKSPACE/bin/baseline" ./cmd/tigerstore)
+          echo "baseline 769523480dad5d8e55f02e779a671b9b345955f4, candidate $GITHUB_SHA" | tee commits.txt
+      - run: scripts/dev-certs.sh certs
+      - name: Barriers on, runner
+        run: |
+          sudo mount -o remount,barrier=1 /
+          findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+          lscpu | grep -E 'Model name|^CPU\(s\)'
+          free -b | head -2
+          df -h "$RUNNER_TEMP"
+          uname -r
+      - name: Run
+        env:
+          TARGETS: baseline candidate candidate-rare
+          BINS: bin
+          CERTS: certs
+          LAYOUT: 3 0 1 2
+          MODES: max rate
+          REPS: "5"
+        run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+      - name: Report
+        if: always()
+        run: |
+          bin/benchreport results | tee -a "$GITHUB_STEP_SUMMARY"
+          for f in results/*/*.resources; do echo "== $f"; grep -E "revision=|io pid" "$f"; done
+          grep -h "E bytes" results/*/candidate-*-n*.log | tail -6
+          grep -h "E checkpoint" results/*/candidate-max-1-n*.log | head -6
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bench-${{ matrix.bench }}
+          path: results
+          retention-days: 30
+
+  scale:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcdctl v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          mkdir -p bin
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+      - name: Build
+        run: |
+          go build -o bin/loadgen ./cmd/loadgen
+          go build -o bin/candidate ./cmd/tigerstore
+          git fetch --depth=1 origin 769523480dad5d8e55f02e779a671b9b345955f4
+          git worktree add --detach "$RUNNER_TEMP/baseline" 769523480dad5d8e55f02e779a671b9b345955f4
+          (cd "$RUNNER_TEMP/baseline" && go build -o "$GITHUB_WORKSPACE/bin/baseline" ./cmd/tigerstore)
+      - run: scripts/dev-certs.sh certs
+      - name: Runner
+        run: |
+          sudo mount -o remount,barrier=1 /
+          findmnt -T "$RUNNER_TEMP" -o TARGET,SOURCE,FSTYPE,OPTIONS
+          lscpu | grep -E 'Model name|^CPU\(s\)'
+          free -b | head -2
+          swapon --show || true
+          df -h "$RUNNER_TEMP"
+          cat /sys/fs/cgroup/cgroup.subtree_control
+          uname -r
+      - name: E, 512 MiB per node, with churn
+        env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/scale
+          BENCH_GOMEMLIMIT: 420MiB
+          TS_E_WINDOW: "33554432"
+          TS_E_WINDOW_MAX: "67108864"
+          CATCHUP_S: "10"
+          CHURN_S: "180"
+          BUDGET: "3000000000"
+        run: exp/scale.sh candidate 512M results/e-512M churn
+      - name: E, no memory limit
+        if: always()
+        env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/scale
+          CATCHUP_S: "10"
+        run: exp/scale.sh candidate none results/e-none
+      - name: main, no memory limit
+        if: always()
+        env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/scale
+          CATCHUP_S: "10"
+        run: exp/scale.sh baseline none results/main-none
+      - name: main, 512 MiB per node
+        if: always()
+        env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/scale
+          BENCH_GOMEMLIMIT: 420MiB
+          CATCHUP_S: "10"
+        run: exp/scale.sh baseline 512M results/main-512M
+      - name: Report
+        if: always()
+        run: for f in results/*/steps.log; do echo "#### $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: scale
+          path: results
+          retention-days: 30

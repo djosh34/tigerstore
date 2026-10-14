@@ -150,6 +150,12 @@ once() {
 	done
 	{
 		echo "target=$target mode=$mode rep=$rep"
+		# Prototype E (#133): writes per node and the store revision, for
+		# bytes per Put.
+		echo "revision=$(ETCDCTL_API=3 "$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" endpoint status -w json | jq '.[0].Status.header.revision')"
+		for pid in $(tr ',' ' ' <"$dir/pids"); do
+			echo "io pid=$pid $(tr '\n' ' ' </proc/"$pid"/io)"
+		done
 		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz
 		free -b
 		du -sb "$dir"

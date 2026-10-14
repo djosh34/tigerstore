@@ -344,3 +344,47 @@ func (n *Node) InstallState(st *State, idx, term uint64) {
 	n.state, n.kv = st, st.Store()
 	n.applied, n.appliedTerm = idx, term
 }
+
+// snapshotProgress tells Raft, on the leader, that a follower finished
+// installing a snapshot (its match reached it) or gave up (no progress
+// for snapTicks), as etcd's leader does with ReportSnapshot. Without it a
+// follower whose install ended below the leader's moved window stays
+// paused.
+func (n *Node) snapshotProgress() {
+	if !n.isLeader {
+		n.snapWait = nil
+		return
+	}
+	if n.snapWait == nil {
+		n.snapWait = map[uint64]int64{}
+	}
+	type rep struct {
+		id     uint64
+		status raft.SnapshotStatus
+	}
+	var reps []rep
+	n.rn.WithProgress(func(id uint64, _ raft.ProgressType, pr tracker.Progress) {
+		if pr.State != tracker.StateSnapshot {
+			delete(n.snapWait, id)
+			return
+		}
+		switch {
+		case pr.Match >= pr.PendingSnapshot:
+			reps = append(reps, rep{id, raft.SnapshotFinish})
+			delete(n.snapWait, id)
+		case n.snapWait[id] == 0:
+			n.snapWait[id] = n.now
+		case n.now-n.snapWait[id] > snapTicks:
+			reps = append(reps, rep{id, raft.SnapshotFailure})
+			delete(n.snapWait, id)
+		}
+	})
+	for _, r := range reps {
+		n.rn.ReportSnapshot(r.id, r.status)
+	}
+}
+
+// snapTicks is how long a snapshot may take before the leader tries
+// again: 20 s at 100 ms ticks. A follower that was down when its
+// snapshot went out gets a new one this long after it is back.
+const snapTicks = 200

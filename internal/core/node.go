@@ -270,6 +270,7 @@ type Node struct {
 	appliedTerm uint64
 	recovery    bool
 	WindowTrims int64
+	snapWait    map[uint64]int64
 
 	out Effects
 	err error
@@ -375,6 +376,7 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
+	n.snapshotProgress()
 	if !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
 		// never elect a replacement. It stops instead; the healthy pair
