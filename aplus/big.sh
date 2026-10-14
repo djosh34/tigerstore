@@ -16,7 +16,7 @@ target=$1 lim=$2 keys=$3 vsize=$4 out=$5
 mkdir -p "$out"
 data=${DATA:-/tmp/aplus-big}
 gml=off
-if [ "$lim" != 0 ]; then gml=$((lim * 8 / 10)); fi
+if [ "$lim" != 0 ]; then gml=$((lim * 6 / 10)); fi
 drop='sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null'
 
 start() {

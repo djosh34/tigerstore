@@ -47,6 +47,9 @@ var (
 	// SpaceAmp: cleaning runs only while the log and value files hold more
 	// than this many times the live value bytes.
 	SpaceAmp = envFloat("APLUS_SPACE_AMP", 2)
+	// PaceMicros is the checkpoint writer's sleep per 256 KiB of page
+	// work and per 1 MiB written; 0 turns pacing off.
+	PaceMicros = envInt("APLUS_PACE_US", 1000)
 	// Off turns the whole prototype off, for a main-like control run.
 	Off = os.Getenv("APLUS_OFF") != ""
 )
@@ -149,6 +152,11 @@ func Map(fid uint64) []byte {
 	defer f.Close()
 	data, err := syscall.Mmap(int(f.Fd()), 0, mapBytes, syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
+		panic(err)
+	}
+	// A cold value read faults in its own pages only, no read-around:
+	// the design reads a value's exact range with pread.
+	if err := syscall.Madvise(data, syscall.MADV_RANDOM); err != nil {
 		panic(err)
 	}
 	var rs []region

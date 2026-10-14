@@ -25,7 +25,11 @@ cat >bin/candamp4 <<'W'
 #!/usr/bin/env bash
 APLUS_SPACE_AMP=4 exec "$(dirname "$0")/candidate" "$@"
 W
-chmod +x bin/candfixed bin/candamp4
+cat >bin/candnopace <<'W'
+#!/usr/bin/env bash
+APLUS_PACE_US=0 exec "$(dirname "$0")/candidate" "$@"
+W
+chmod +x bin/candfixed bin/candamp4 bin/candnopace
 {
 	echo "baseline $(git -C "$RUNNER_TEMP/baseline" rev-parse HEAD)"
 	echo "candidate $(git rev-parse HEAD)"

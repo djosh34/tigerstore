@@ -22,9 +22,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: aplus/setup.sh
-      - name: bench ${{ matrix.bench }}, main vs A+ (ratio checkpoints) vs A+ (64 MiB checkpoints)
+      - name: bench ${{ matrix.bench }}, main vs A+ vs A+ without checkpoint pacing
         env:
-          TARGETS: baseline candidate candfixed
+          TARGETS: baseline candidate candnopace
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2

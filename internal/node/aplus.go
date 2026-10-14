@@ -19,6 +19,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
+	"golang.org/x/sys/unix"
 
 	"github.com/djosh34/tigerstore/internal/aplus"
 	"github.com/djosh34/tigerstore/internal/core"
@@ -135,6 +136,21 @@ func sameRefs(a, b []ref) bool {
 
 const groupFanout = 64
 
+var paced int
+
+// pace sleeps after every 256 KiB of page work, so the checkpoint writer
+// leaves the leader's CPU to the committer.
+func pace(work int) {
+	if aplus.PaceMicros <= 0 {
+		return
+	}
+	paced += work
+	if paced >= 256<<10 {
+		paced = 0
+		time.Sleep(time.Duration(aplus.PaceMicros) * time.Microsecond)
+	}
+}
+
 // write writes one checkpoint: the dirty leaf pages, the group pages
 // whose leaves changed, the root, then the superblock.
 func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
@@ -229,6 +245,7 @@ func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
 			}
 			page, size, changed, other = nil, 8, 0, 0
 		}
+		pace(len(merged) * 64)
 		for _, e := range merged {
 			if size >= mvcc.PageBytes {
 				flush()
@@ -273,8 +290,17 @@ func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
 	rb := encodeRefs(groupRef)
 	root := add(rb)
 	aplus.CkptRoot.Add(root.n + 4096)
-	if _, err := c.meta.Write(buf); err != nil {
-		return res, err
+	// Paced: 1 MiB writes with writeback started after each, so the
+	// final fsync is short and the log's fsyncs do not queue behind it.
+	for off := 0; off < len(buf); off += 1 << 20 {
+		chunk := buf[off:min(off+1<<20, len(buf))]
+		if _, err := c.meta.Write(chunk); err != nil {
+			return res, err
+		}
+		if aplus.PaceMicros > 0 {
+			unix.SyncFileRange(int(c.meta.Fd()), c.metaSize+int64(off), int64(len(chunk)), unix.SYNC_FILE_RANGE_WRITE)
+			time.Sleep(time.Duration(aplus.PaceMicros) * time.Microsecond)
+		}
 	}
 	if err := c.meta.Sync(); err != nil {
 		return res, err
