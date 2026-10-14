@@ -7,6 +7,7 @@
 # compactor keeps the newest <keep revs> revisions. Samples disk use and
 # the A+ counters every 10 s.
 source "$(dirname "$0")/lib.sh"
+set +e
 target=$1 keys=$2 rate=$3 secs=$4 every=$5 keep=$6 out=$7
 mkdir -p "$out"
 data=${DATA:-/tmp/aplus-churn}

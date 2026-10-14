@@ -2,7 +2,7 @@ package core
 
 // A+ prototype (#133): the committer's side. It names each applied value
 // by its place in the mapped log, keeps a bounded window of Raft entries,
-// cuts checkpoints from dirty pages, picks files to clean and swaps the
+// captures the keys changed since the last checkpoint, picks files to clean and swaps the
 // references the cleaner moved. All I/O is in the driver (internal/node).
 
 import (
@@ -30,16 +30,23 @@ type CkptJob struct {
 
 // CkptResult is a written checkpoint.
 type CkptResult struct {
-	Job     *CkptJob
-	Written map[int][]mvcc.NewPage
-	// Move lists metadata files whose pages the next checkpoint rewrites.
-	Move []uint64
+	Job *CkptJob
+	// LeafBytes is the size of all leaf pages of the checkpoint.
+	LeafBytes int64
 }
 
 // CleanJob asks the driver to copy live values out of a file.
 type CleanJob struct {
-	Fid    uint64
-	Relocs []mvcc.Reloc
+	Fid uint64
+}
+
+// CleanResult is part of a finished cleaning: the moved values, and Last
+// on the final part.
+type CleanResult struct {
+	Fid, NewFid uint64
+	Relocs      []mvcc.Reloc
+	News        [][]byte
+	Last        bool
 }
 
 // Ckpt is a durable checkpoint as the committer knows it.
@@ -64,7 +71,7 @@ type aplusNode struct {
 	forceCkpt    bool
 	ckptAt       int64
 	durable      *Ckpt
-	move         map[uint64]bool
+	leafBytes    int64
 	cleanBusy    bool
 	snapBusy     bool
 	snap         *raftpb.Snapshot
@@ -138,7 +145,8 @@ func (n *Node) afterApply() {
 			n.ap.marks = n.ap.marks[cut:]
 		}
 	}
-	if !n.ap.ckptBusy && (n.ap.forceCkpt || n.logBytes-n.ap.ckptAt >= aplus.CkptEvery) && n.applied > 0 {
+	every := max(aplus.CkptEvery, int64(aplus.CkptRatio*float64(n.ap.leafBytes)))
+	if !n.ap.ckptBusy && (n.ap.forceCkpt || n.logBytes-n.ap.ckptAt >= every) && n.applied > 0 {
 		n.ap.forceCkpt = false
 		n.cutCheckpoint()
 	}
@@ -155,8 +163,7 @@ func (n *Node) cutCheckpoint() {
 			refs[f] = true
 		}
 	}
-	c := n.kv.Capture(n.ap.move)
-	n.ap.move = nil
+	c := n.kv.Capture()
 	n.ap.ckptBusy = true
 	n.ap.ckptAt = n.logBytes
 	n.apOut.Ckpt = &CkptJob{Capture: c, Index: n.applied, Term: term, Vote: n.vote, HSTerm: n.voteTerm, ReplaySeq: n.ap.lastSeg, Refs: refs}
@@ -164,15 +171,9 @@ func (n *Node) cutCheckpoint() {
 
 // CkptDone reports a durable checkpoint.
 func (n *Node) CkptDone(r CkptResult) {
-	n.kv.CheckpointDone(r.Job.Capture, r.Written)
 	n.ap.ckptBusy = false
+	n.ap.leafBytes = r.LeafBytes
 	n.ap.durable = &Ckpt{Index: r.Job.Index, Term: r.Job.Term, ReplaySeq: r.Job.ReplaySeq, Refs: r.Job.Refs}
-	if len(r.Move) > 0 {
-		n.ap.move = map[uint64]bool{}
-		for _, f := range r.Move {
-			n.ap.move[f] = true
-		}
-	}
 	aplus.Checkpoints.Add(1)
 	if n.ap.forceCkpt {
 		n.ap.forceCkpt = false
@@ -216,6 +217,14 @@ func (n *Node) maintain() {
 	}
 	var best uint64
 	bestU := 2.0
+	var total, liveTotal int64
+	for f, size := range n.ap.sizes {
+		total += size
+		liveTotal += max(live[f], 0)
+	}
+	// Clean only while the files take more than SpaceAmp times the live
+	// values: the longer a file waits, the less of it is still live.
+	needSpace := float64(total) > aplus.SpaceAmp*float64(liveTotal)
 	for f, size := range n.ap.sizes {
 		if !sealed(f) || size == 0 {
 			continue
@@ -231,23 +240,24 @@ func (n *Node) maintain() {
 			best, bestU = f, u
 		}
 	}
-	if best != 0 && !n.ap.cleanBusy {
-		start := time.Now()
-		rs := n.kv.FindValues(best)
-		aplus.MaxPause(&aplus.PauseCleanNs, &aplus.PauseCleanMax, time.Since(start))
+	if best != 0 && needSpace && !n.ap.cleanBusy {
 		n.ap.cleanBusy = true
-		n.apOut.Clean = &CleanJob{Fid: best, Relocs: rs}
+		n.apOut.Clean = &CleanJob{Fid: best}
 	}
 }
 
 // CleanDone swaps in the values the cleaner copied.
-func (n *Node) CleanDone(j *CleanJob, news [][]byte, newFid uint64) {
-	n.knowValueFile(newFid)
+func (n *Node) CleanDone(r *CleanResult) {
+	if r.NewFid != 0 {
+		n.knowValueFile(r.NewFid)
+	}
 	start := time.Now()
-	n.kv.Swap(j.Relocs, news)
+	n.kv.Swap(r.Relocs, r.News)
 	aplus.MaxPause(&aplus.PauseCleanNs, &aplus.PauseCleanMax, time.Since(start))
-	n.ap.cleanBusy = false
-	aplus.Cleanings.Add(1)
+	if r.Last {
+		n.ap.cleanBusy = false
+		aplus.Cleanings.Add(1)
+	}
 }
 
 func (n *Node) knowValueFile(f uint64) {

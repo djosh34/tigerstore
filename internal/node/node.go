@@ -58,7 +58,7 @@ type input struct {
 	metrics     chan core.Metrics
 
 	apCkpt  *core.CkptResult
-	apClean *cleanDone
+	apClean *core.CleanResult
 	apSizes map[uint64]int64
 	apSnap  *raftpb.Snapshot
 }
@@ -520,7 +520,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 	case in.apCkpt != nil:
 		n.core.CkptDone(*in.apCkpt)
 	case in.apClean != nil:
-		n.core.CleanDone(in.apClean.job, in.apClean.news, in.apClean.fid)
+		n.core.CleanDone(in.apClean)
 	case in.apSizes != nil:
 		n.core.FileSizes(in.apSizes)
 	case in.apSnap != nil:
@@ -567,6 +567,7 @@ func (n *Node) persist(ctx context.Context) {
 					snapErr = err
 				}
 				jobs[i].SnapStore = kv
+				n.ckptQ <- ckptReset{}
 				n.wal.SetLast(s.GetMetadata().GetIndex())
 				n.logf("aplus-install snapshot index=%d bytes=%d took=%v", s.GetMetadata().GetIndex(), len(s.GetData()), time.Since(start))
 			}

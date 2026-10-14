@@ -11,6 +11,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,9 @@ type ckptr struct {
 	metaSize int64
 	live     map[uint64]int64
 	size     map[uint64]int64
+	// move are metadata files whose pages the next checkpoint rewrites,
+	// so the files can go.
+	move     map[uint64]bool
 	leaves   []ref
 	groups   [][]ref
 	groupRef []ref
@@ -145,25 +149,101 @@ func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
 			c.live[r.fid] -= r.n
 		}
 	}
-	res := core.CkptResult{Job: j, Written: map[int][]mvcc.NewPage{}}
+	res := core.CkptResult{Job: j}
+	// The changed keys in key order; of two entries for one key (gone,
+	// then created again) the later wins.
+	keys := j.Capture.Keys
+	sort.SliceStable(keys, func(a, b int) bool { return bytes.Compare(keys[a].Key, keys[b].Key) < 0 })
+	old := c.leaves
+	if len(old) == 0 {
+		old = []ref{{lo: []byte{}}}
+	}
 	var leaves []ref
-	for i, fp := range j.Capture.Pages {
-		if !fp.Dirty {
-			leaves = append(leaves, ref{fp.Lo, fp.Fid, fp.Off, fp.N})
+	di := 0
+	for li, l := range old {
+		var hi []byte
+		if li+1 < len(old) {
+			hi = old[li+1].lo
+		}
+		from := di
+		for di < len(keys) && (hi == nil || bytes.Compare(keys[di].Key, hi) < 0) {
+			di++
+		}
+		dk := keys[from:di]
+		if len(dk) == 0 && !c.move[l.fid] {
+			leaves = append(leaves, l)
 			continue
 		}
-		drop(ref{fid: fp.Fid, n: fp.N})
-		mvcc.EncodePage(fp, func(lo, b []byte) {
-			r := add(b)
-			r.lo = bytes.Clone(lo)
+		// Copy on write: read the old page, merge the changed keys,
+		// write the result as new pages.
+		type entry struct {
+			key, raw []byte
+			changed  bool
+		}
+		var ents []entry
+		if l.n > 0 {
+			err := mvcc.ScanPage(pageBytes(l), func(key, raw []byte, _ []mvcc.Desc) error {
+				ents = append(ents, entry{key: key, raw: raw})
+				return nil
+			})
+			if err != nil {
+				return res, err
+			}
+			drop(l)
+		}
+		var merged []entry
+		i := 0
+		for k := 0; k < len(dk); k++ {
+			if k+1 < len(dk) && bytes.Equal(dk[k].Key, dk[k+1].Key) {
+				continue
+			}
+			for i < len(ents) && bytes.Compare(ents[i].key, dk[k].Key) < 0 {
+				merged = append(merged, ents[i])
+				i++
+			}
+			if i < len(ents) && bytes.Equal(ents[i].key, dk[k].Key) {
+				i++
+			}
+			if !dk[k].Gone() {
+				merged = append(merged, entry{key: dk[k].Key, raw: mvcc.AppendKey(nil, dk[k]), changed: true})
+			}
+		}
+		merged = append(merged, ents[i:]...)
+		if len(merged) == 0 && li > 0 {
+			continue
+		}
+		var page [][]byte
+		var pageLo []byte = l.lo
+		size, changed, other := 8, 0, 0
+		flush := func() {
+			r := add(mvcc.EncodePage(page))
+			r.lo = bytes.Clone(pageLo)
 			leaves = append(leaves, r)
-			res.Written[i] = append(res.Written[i], mvcc.NewPage{Lo: r.lo, Fid: r.fid, Off: r.off, N: r.n})
-			if fp.ForMetaMov {
+			if changed == 0 && c.move[l.fid] {
 				aplus.CkptMetaMove.Add(r.n)
 			} else {
 				aplus.CkptLeaf.Add(r.n)
+				aplus.CkptLeafOther.Add(int64(other))
 			}
-		})
+			page, size, changed, other = nil, 8, 0, 0
+		}
+		for _, e := range merged {
+			if size >= mvcc.PageBytes {
+				flush()
+				pageLo = e.key
+			}
+			page = append(page, e.raw)
+			size += len(e.raw)
+			if e.changed {
+				changed++
+			} else {
+				other += len(e.raw)
+			}
+		}
+		flush()
+	}
+	for _, l := range leaves {
+		res.LeafBytes += l.n
 	}
 	var groups [][]ref
 	var groupRef []ref
@@ -204,6 +284,7 @@ func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
 	if err := c.writeSuper(j); err != nil {
 		return res, err
 	}
+	clear(c.move)
 	for f, l := range c.live {
 		if f == c.metaFid {
 			continue
@@ -213,7 +294,7 @@ func (c *ckptr) write(j *core.CkptJob) (core.CkptResult, error) {
 			delete(c.live, f)
 			delete(c.size, f)
 		} else if float64(l) < 0.5*float64(c.size[f]) {
-			res.Move = append(res.Move, f)
+			c.move[f] = true
 		}
 	}
 	if c.metaSize >= 64<<20 {
@@ -301,7 +382,7 @@ func (c *ckptr) load() (*super, *mvcc.Store, error) {
 		c.groups = append(c.groups, leaves)
 		for _, l := range leaves {
 			c.live[l.fid] += l.n
-			if err := kv.LoadPage(l.lo, l.fid, l.off, l.n, pageBytes(l), value); err != nil {
+			if err := kv.LoadPage(pageBytes(l), value, false); err != nil {
 				return nil, nil, fmt.Errorf("aplus: leaf page at %d:%d: %w", l.fid, l.off, err)
 			}
 			c.leaves = append(c.leaves, l)
@@ -316,6 +397,21 @@ func (c *ckptr) load() (*super, *mvcc.Store, error) {
 	}
 	c.index, c.term, c.rev, c.compRev = sp.index, sp.term, sp.rev, sp.compRev
 	return sp, kv, nil
+}
+
+type ckptReset struct{}
+
+// reset forgets the page tree after a snapshot install replaced the
+// store; its pages become garbage and the next checkpoint writes every key.
+func (c *ckptr) reset() {
+	for _, l := range c.leaves {
+		c.live[l.fid] -= l.n
+	}
+	for _, g := range c.groupRef {
+		c.live[g.fid] -= g.n
+	}
+	c.live[c.root.fid] -= c.root.n
+	c.leaves, c.groups, c.groupRef, c.root = nil, nil, nil, ref{}
 }
 
 // buildSnap packs the newest written checkpoint and every value it
@@ -389,7 +485,8 @@ func installSnap(s *raftpb.Snapshot) (*mvcc.Store, error) {
 		pages = pages[k:]
 		pg := pages[:n]
 		pages = pages[n:]
-		if err := kv.LoadPage(lo, 0, 0, 0, pg, func(_ uint64, off, n int64) []byte { return m[off : off+n : off+n] }); err != nil {
+		_ = lo
+		if err := kv.LoadPage(pg, func(_ uint64, off, n int64) []byte { return m[off : off+n : off+n] }, true); err != nil {
 			return nil, err
 		}
 	}
@@ -397,32 +494,59 @@ func installSnap(s *raftpb.Snapshot) (*mvcc.Store, error) {
 	return kv, nil
 }
 
-// clean copies the live values of one file into a new value file.
-func clean(j *core.CleanJob) ([][]byte, uint64, error) {
+// clean finds the values in one file from the newest checkpoint's pages
+// (the file is below its replay start, so every value in it is there),
+// copies them into a new value file, and returns the moves in parts.
+func (c *ckptr) clean(j *core.CleanJob) ([]*core.CleanResult, error) {
+	m := aplus.Get(j.Fid)
+	var rs []mvcc.Reloc
+	for _, l := range c.leaves {
+		if l.n == 0 {
+			continue
+		}
+		err := mvcc.ScanPage(pageBytes(l), func(key, _ []byte, descs []mvcc.Desc) error {
+			for _, d := range descs {
+				if d.Fid == j.Fid && d.N > 0 {
+					rs = append(rs, mvcc.Reloc{Key: bytes.Clone(key), Main: d.Main, Sub: d.Sub, Old: m[d.Off : d.Off+d.N : d.Off+d.N]})
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 	var buf []byte
-	offs := make([]int, len(j.Relocs))
-	for i, r := range j.Relocs {
+	offs := make([]int, len(rs))
+	for i, r := range rs {
 		offs[i] = len(buf)
 		buf = append(buf, r.Old...)
 	}
 	fid := aplus.ValueFileBase + nextFile.Add(1)
 	f, err := os.OpenFile(filepath.Join(aplus.Dir, aplus.FileName(fid)), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if _, err := f.Write(buf); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if err := errors.Join(f.Sync(), f.Close(), syncDir()); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	aplus.CleanBytes.Add(int64(len(buf)))
-	m := aplus.Map(fid)
-	news := make([][]byte, len(j.Relocs))
-	for i, r := range j.Relocs {
-		news[i] = m[offs[i] : offs[i]+len(r.Old) : offs[i]+len(r.Old)]
+	nm := aplus.Map(fid)
+	news := make([][]byte, len(rs))
+	for i, r := range rs {
+		news[i] = nm[offs[i] : offs[i]+len(r.Old) : offs[i]+len(r.Old)]
 	}
-	return news, fid, nil
+	// Parts of 4096, so the committer swaps in short turns.
+	var out []*core.CleanResult
+	for i := 0; i < len(rs) || i == 0; i += 4096 {
+		e := min(i+4096, len(rs))
+		out = append(out, &core.CleanResult{Fid: j.Fid, NewFid: fid, Relocs: rs[i:e], News: news[i:e]})
+	}
+	out[len(out)-1].Last = true
+	return out, nil
 }
 
 func fileSizes() map[uint64]int64 {
@@ -450,12 +574,6 @@ func fileSizes() map[uint64]int64 {
 	return out
 }
 
-type cleanDone struct {
-	job  *core.CleanJob
-	news [][]byte
-	fid  uint64
-}
-
 // runAplus starts the helpers. Results come back on the inbox.
 func (n *Node) runAplus(done <-chan struct{}) {
 	go func() {
@@ -472,6 +590,16 @@ func (n *Node) runAplus(done <-chan struct{}) {
 				case *core.Ckpt:
 					s := n.ck.buildSnap()
 					n.inbox <- input{apSnap: s}
+				case ckptReset:
+					n.ck.reset()
+				case *core.CleanJob:
+					parts, err := n.ck.clean(x)
+					if err != nil {
+						panic(err)
+					}
+					for _, p := range parts {
+						n.inbox <- input{apClean: p}
+					}
 				}
 			case <-done:
 				return
@@ -483,12 +611,6 @@ func (n *Node) runAplus(done <-chan struct{}) {
 			select {
 			case x := <-n.cleanQ:
 				switch x := x.(type) {
-				case *core.CleanJob:
-					news, fid, err := clean(x)
-					if err != nil {
-						panic(err)
-					}
-					n.inbox <- input{apClean: &cleanDone{x, news, fid}}
 				case []uint64:
 					for _, f := range x {
 						aplus.Remove(f)
@@ -530,7 +652,7 @@ func (n *Node) dispatchAplus() {
 		go func() { n.ckptQ <- e.BuildSnap }()
 	}
 	if e.Clean != nil {
-		go func() { n.cleanQ <- e.Clean }()
+		go func() { n.ckptQ <- e.Clean }()
 	}
 	if len(e.Delete) > 0 {
 		go func() { n.cleanQ <- e.Delete }()
@@ -539,7 +661,7 @@ func (n *Node) dispatchAplus() {
 
 // openAplus opens the log from the newest checkpoint if there is one.
 func openAplus(cfg Config, dir wal.FS) (*wal.WAL, *core.Node, *ckptr, error) {
-	ck := &ckptr{live: map[uint64]int64{}, size: map[uint64]int64{}, peers: cfg.Core.Peers}
+	ck := &ckptr{live: map[uint64]int64{}, size: map[uint64]int64{}, move: map[uint64]bool{}, peers: cfg.Core.Peers}
 	start := time.Now()
 	sp, kv, err := ck.load()
 	if err != nil {

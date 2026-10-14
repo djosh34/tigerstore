@@ -3,7 +3,7 @@
 # limit, resident memory, restart after kill -9, cold point Range and cold
 # 500-key LIST.
 #
-#   aplus/big.sh <target> <memory limit bytes, 0 for none> <keys> <out dir>
+#   aplus/big.sh <target> <memory limit bytes, 0 for none> <keys> <value size> <out dir>
 #
 # The limit is a cgroup per node (memory.max, page cache included, no
 # swap). Before each measured load the page cache is dropped, so reads start
@@ -11,11 +11,12 @@
 # whose namespaces hold 500 keys each, so each LIST returns 500 values
 # scattered over the log.
 source "$(dirname "$0")/lib.sh"
-target=$1 lim=$2 keys=$3 out=$4
+set +e
+target=$1 lim=$2 keys=$3 vsize=$4 out=$5
 mkdir -p "$out"
 data=${DATA:-/tmp/aplus-big}
 gml=off
-if [ "$lim" != 0 ]; then gml=$((lim * 6 / 10)); fi
+if [ "$lim" != 0 ]; then gml=$((lim * 8 / 10)); fi
 drop='sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null'
 
 start() {
@@ -32,13 +33,13 @@ run_load() { # <name> <workload> [env]
 	local L
 	L=$(cat "$data/leader")
 	env "$@" LOADGEN_AFTER_PRELOAD="$drop" "$BINS/loadgen" -cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
-		-endpoints "$L" -pids "$(cat "$data/pids")" -label "$target" -workload "$wl" -value-size 1024 -keys "$keys" \
+		-endpoints "$L" -pids "$(cat "$data/pids")" -label "$target" -workload "$wl" -value-size "$vsize" -keys "$keys" \
 		-warmup 2s -duration 10s -conns 4 -streams 64 -out "$out/$name.json" 2>&1 | tail -3 || echo "$name loadgen failed"
 	jq -c '{valid, throughput, ops, latency_us, errors}' "$out/$name.json" || true
 }
 
 {
-	echo "## $target, limit $lim, keys $keys, GOMEMLIMIT $gml"
+	echo "## $target, limit $lim, keys $keys, value size $vsize, GOMEMLIMIT $gml"
 	start
 	t0=$(date +%s)
 	run_load range range
@@ -59,6 +60,7 @@ run_load() { # <name> <workload> [env]
 
 	start
 	run_load list list LOADGEN_NS=$((keys / 500))
+	echo list-done
 	for i in 1 2 3; do mem "$data" "$i"; done
 	stats "$data"
 	cp "$data"/n1.log "$out/list-n1.log"

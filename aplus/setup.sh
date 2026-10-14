@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Runner setup for the A+ prototype jobs (#133): etcd v3.7.2 for etcdctl,
 # the generator, main at 76952348 as "baseline", this branch as
-# "candidate", and "cand256" (this branch with a checkpoint every 256 MiB
-# of log), certificates, and disk write barriers on.
+# "candidate" and two variants, certificates, and disk write barriers on.
 set -euo pipefail
 BASELINE=76952348
 curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
@@ -15,11 +14,18 @@ go build -o bin/benchreport ./cmd/benchreport
 go build -o bin/candidate ./cmd/tigerstore
 git worktree add --detach "$RUNNER_TEMP/baseline" "$BASELINE"
 (cd "$RUNNER_TEMP/baseline" && go build -o "$GITHUB_WORKSPACE/bin/baseline" ./cmd/tigerstore)
-cat >bin/cand256 <<'W'
+# candidate cuts a checkpoint once the log since the last one is 32 times
+# the leaf pages (at least 64 MiB); candfixed every 64 MiB of log;
+# candamp4 cleans only past 4 times the live value bytes on disk.
+cat >bin/candfixed <<'W'
 #!/usr/bin/env bash
-APLUS_CKPT_EVERY=268435456 exec "$(dirname "$0")/candidate" "$@"
+APLUS_CKPT_RATIO=0 exec "$(dirname "$0")/candidate" "$@"
 W
-chmod +x bin/cand256
+cat >bin/candamp4 <<'W'
+#!/usr/bin/env bash
+APLUS_SPACE_AMP=4 exec "$(dirname "$0")/candidate" "$@"
+W
+chmod +x bin/candfixed bin/candamp4
 {
 	echo "baseline $(git -C "$RUNNER_TEMP/baseline" rev-parse HEAD)"
 	echo "candidate $(git rev-parse HEAD)"

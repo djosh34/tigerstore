@@ -22,9 +22,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: aplus/setup.sh
-      - name: bench ${{ matrix.bench }}, main vs A+ vs A+ with 256 MiB checkpoints
+      - name: bench ${{ matrix.bench }}, main vs A+ (ratio checkpoints) vs A+ (64 MiB checkpoints)
         env:
-          TARGETS: baseline candidate cand256
+          TARGETS: baseline candidate candfixed
           BINS: bin
           CERTS: certs
           LAYOUT: 3 0 1 2
@@ -45,9 +45,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {target: candidate, limit: "536870912"}
-          - {target: baseline, limit: "0"}
-          - {target: baseline, limit: "536870912"}
+          - {target: candidate, limit: "536870912", keys: "1600000", vsize: "1024"}
+          - {target: candidate, limit: "536870912", keys: "800000", vsize: "2048"}
+          - {target: candidate, limit: "0", keys: "1600000", vsize: "1024"}
+          - {target: baseline, limit: "0", keys: "1600000", vsize: "1024"}
+          - {target: baseline, limit: "0", keys: "800000", vsize: "2048"}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
@@ -62,13 +64,13 @@ jobs:
           BINS: bin
           CERTS: certs
           DATA: ${{ runner.temp }}/big
-        run: aplus/big.sh ${{ matrix.target }} ${{ matrix.limit }} 1600000 results/big || true
+        run: aplus/big.sh ${{ matrix.target }} ${{ matrix.limit }} ${{ matrix.keys }} ${{ matrix.vsize }} results/big || true
       - if: always()
         run: grep -v '^raft' results/big/big.txt >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: big-${{ matrix.target }}-${{ matrix.limit }}
+          name: big-${{ matrix.target }}-${{ matrix.limit }}-${{ matrix.vsize }}
           path: results
           retention-days: 30
 
@@ -107,6 +109,7 @@ jobs:
       matrix:
         include:
           - {target: candidate, rate: "10000", secs: "180"}
+          - {target: candamp4, rate: "10000", secs: "180"}
           - {target: baseline, rate: "10000", secs: "180"}
           - {target: candidate, rate: "0", secs: "60"}
     runs-on: ubuntu-24.04-arm

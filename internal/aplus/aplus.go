@@ -38,8 +38,14 @@ var (
 	Window = envInt("APLUS_WINDOW", 64<<20)
 	// CkptEvery is the log bytes between checkpoints.
 	CkptEvery = envInt("APLUS_CKPT_EVERY", 64<<20)
+	// CkptRatio cuts a checkpoint once the log since the last one is this
+	// many times the size of all leaf pages; 0 turns it off.
+	CkptRatio = envFloat("APLUS_CKPT_RATIO", 32)
 	// CleanU is the live fraction at or below which a sealed file is cleaned.
 	CleanU = envFloat("APLUS_CLEAN_U", 0.5)
+	// SpaceAmp: cleaning runs only while the log and value files hold more
+	// than this many times the live value bytes.
+	SpaceAmp = envFloat("APLUS_SPACE_AMP", 2)
 	// Off turns the whole prototype off, for a main-like control run.
 	Off = os.Getenv("APLUS_OFF") != ""
 )
@@ -65,6 +71,7 @@ var (
 	LogEntryData    atomic.Int64 // entry payload bytes
 	CkptLeaf        atomic.Int64
 	CkptLeafHist    atomic.Int64 // of leaf bytes, the versions that are not a key's newest
+	CkptLeafOther   atomic.Int64 // of leaf bytes, unchanged keys that share a page with a changed one
 	CkptInterior    atomic.Int64
 	CkptRoot        atomic.Int64
 	CkptMetaMove    atomic.Int64 // leaf pages rewritten only to empty an old metadata file
@@ -226,8 +233,8 @@ func Remove(fid uint64) {
 
 // Stats is one line of counters for the node log.
 func Stats() string {
-	return fmt.Sprintf("aplus-stats log=%d logdata=%d logvalue=%d ckpt_leaf=%d ckpt_leaf_hist=%d ckpt_interior=%d ckpt_root=%d ckpt_metamove=%d clean=%d snapsent=%d snaps=%d snapbuilt=%d ckpts=%d cleanings=%d deleted=%d capture_ns=%d capture_max_ns=%d clean_pause_ns=%d clean_pause_max_ns=%d puts=%d",
-		LogBytes.Load(), LogEntryData.Load(), LogValueBytes.Load(), CkptLeaf.Load(), CkptLeafHist.Load(), CkptInterior.Load(), CkptRoot.Load(), CkptMetaMove.Load(),
+	return fmt.Sprintf("aplus-stats log=%d logdata=%d logvalue=%d ckpt_leaf=%d ckpt_leaf_hist=%d ckpt_leaf_other=%d ckpt_interior=%d ckpt_root=%d ckpt_metamove=%d clean=%d snapsent=%d snaps=%d snapbuilt=%d ckpts=%d cleanings=%d deleted=%d capture_ns=%d capture_max_ns=%d clean_pause_ns=%d clean_pause_max_ns=%d puts=%d",
+		LogBytes.Load(), LogEntryData.Load(), LogValueBytes.Load(), CkptLeaf.Load(), CkptLeafHist.Load(), CkptLeafOther.Load(), CkptInterior.Load(), CkptRoot.Load(), CkptMetaMove.Load(),
 		CleanBytes.Load(), SnapSent.Load(), SnapsSent.Load(), SnapBuilt.Load(), Checkpoints.Load(), Cleanings.Load(), FilesDeleted.Load(),
 		PauseCaptureNs.Load(), PauseCaptureMax.Load(), PauseCleanNs.Load(), PauseCleanMax.Load(), Puts.Load())
 }

@@ -10,6 +10,7 @@
 # on the leader; for main the missed entries are the growth of the
 # leader's log while the follower was down.
 source "$(dirname "$0")/lib.sh"
+set +e
 target=$1 keys=$2 down=$3 out=$4
 mkdir -p "$out"
 data=${DATA:-/tmp/aplus-catchup}
