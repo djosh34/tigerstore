@@ -24,6 +24,7 @@ type single struct {
 	log   *wal.WAL
 	n     *Node
 	watch []WatchResponse
+	ckpt  wal.File
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -35,7 +36,7 @@ func newMember(t *testing.T, peers []uint64) *single {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := New(DefaultConfig(1, peers), rec)
+	n, err := New(DefaultConfig(1, peers), rec, w)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,13 +45,24 @@ func newMember(t *testing.T, peers []uint64) *single {
 
 func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
 	t.Helper()
+	return startSingleWith(t, disk, boot, nil)
+}
+
+// startSingleWith starts the single node with change applied to its
+// configuration.
+func startSingleWith(t *testing.T, disk *simfs.Disk, boot uint64, change func(*Config)) *single {
+	t.Helper()
 	w, rec, err := wal.Open(disk)
 	if err != nil {
 		t.Fatal(err)
 	}
+	w.SetSegmentBytes(4 << 10)
 	cfg := DefaultConfig(1, []uint64{1})
 	cfg.Boot = boot
-	n, err := New(cfg, rec)
+	if change != nil {
+		change(&cfg)
+	}
+	n, err := New(cfg, rec, w)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,20 +84,33 @@ func (s *single) run() []Reply {
 	s.t.Helper()
 	var out []Reply
 	for range 100 {
+		s.n.CopyCheckpoint()
 		eff, err := s.n.Process()
 		if err != nil {
 			s.t.Fatalf("node stopped: %v", err)
 		}
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
-		if len(eff.Persist) == 0 {
+		s.writeCheckpoint(eff.Checkpoint)
+		if len(eff.Persist) == 0 && !s.n.Copying() && len(eff.Checkpoint) == 0 {
 			return out
 		}
 		for _, j := range eff.Persist {
 			s.log.Append(j.HardState, j.Entries)
+			if j.Root != nil {
+				s.log.AppendRoot(*j.Root)
+			}
 		}
 		if err := s.log.Sync(); err != nil {
 			s.t.Fatal(err)
+		}
+		for _, j := range eff.Persist {
+			if j.Root == nil {
+				continue
+			}
+			if err := errors.Join(s.log.RemoveBelow(j.RemoveBelow), s.log.RemoveCheckpoints(j.Root.Index)); err != nil {
+				s.t.Fatal(err)
+			}
 		}
 		for _, j := range eff.Persist {
 			s.n.Persisted(j)
@@ -93,6 +118,29 @@ func (s *single) run() []Reply {
 	}
 	s.t.Fatal("the node never became idle")
 	return nil
+}
+
+// writeCheckpoint writes checkpoint parts and reports each whole one.
+func (s *single) writeCheckpoint(chunks []CheckpointChunk) {
+	for _, c := range chunks {
+		if s.ckpt == nil {
+			f, err := s.log.CreateCheckpoint(c.Index)
+			if err != nil {
+				s.t.Fatal(err)
+			}
+			s.ckpt = f
+		}
+		if _, err := s.ckpt.Write(c.Data); err != nil {
+			s.t.Fatal(err)
+		}
+		if c.Done {
+			if err := errors.Join(s.ckpt.Sync(), s.ckpt.Close(), s.log.SyncDir()); err != nil {
+				s.t.Fatal(err)
+			}
+			s.ckpt = nil
+			s.n.CheckpointWritten(c.Index, nil)
+		}
+	}
 }
 
 func (s *single) do(id uint64, op proto.Message) Reply {
@@ -138,7 +186,7 @@ func TestRejectedTxnKeepsNodeRunning(t *testing.T) {
 // TestStatusOneTerm checks that Status reports the same term in its header
 // and body even before Process ran after a term change.
 func TestStatusOneTerm(t *testing.T) {
-	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{})
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

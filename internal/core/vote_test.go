@@ -14,7 +14,7 @@ import (
 // lose the term in a failed write, and win the same term again with a
 // different log.
 func TestVoteRequestsWaitForTheTerm(t *testing.T) {
-	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{})
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), &wal.Recovered{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

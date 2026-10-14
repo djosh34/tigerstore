@@ -5,13 +5,18 @@
 package node
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -40,10 +45,15 @@ type Config struct {
 	// WatchBytes is how many bytes of responses a watch stream may fall
 	// behind before it is closed; 0 means watchBytes.
 	WatchBytes int64
-	Logf       func(format string, args ...any)
+	// SegmentBytes is the size after which the log starts a new segment;
+	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
+	// go.
+	SegmentBytes int64
+	Logf         func(format string, args ...any)
 }
 
-// input is one event for the committer from a client or a peer.
+// input is one event for the committer from a client, a peer or a helper
+// goroutine.
 type input struct {
 	req         *request
 	batch       *batch
@@ -55,6 +65,15 @@ type input struct {
 	stream      uint64
 	status      chan *pb.StatusResponse
 	metrics     chan core.Metrics
+	// written is the index of a checkpoint the writer synced, or failed
+	// to write with writeErr.
+	written  uint64
+	writeErr error
+	// snapshot is a follower that started (fetching) or ended (served,
+	// served ok) a snapshot fetch from this node.
+	snapshot         uint64
+	fetching, served bool
+	servedOK         bool
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -69,6 +88,10 @@ const watchQueue = 4096
 // is Unavailable because clientv3 resumes watches after that code and
 // gives up after most others.
 var ErrWatchTooSlow = status.Error(codes.Unavailable, "tigerstore: watch stream fell too far behind")
+
+// ErrSnapshotInstalled closes the watch streams of a node whose state a
+// snapshot replaced. Clients resume from the revision they reached.
+var ErrSnapshotInstalled = status.Error(codes.Unavailable, "tigerstore: the node installed a snapshot; watch again")
 
 // WatchStream is one client watch stream on this node.
 type WatchStream struct {
@@ -222,10 +245,11 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 type Node struct {
 	cfg       Config
 	core      *core.Node
-	wal       *wal.WAL
+	log       *diskLog
 	inbox     chan input
 	persistQ  chan []core.PersistJob
 	persisted chan persistDone
+	ckptQ     chan core.CheckpointChunk
 	nextID    atomic.Uint64
 	done      chan struct{}
 
@@ -233,7 +257,114 @@ type Node struct {
 	leader atomic.Uint64
 }
 
-// New recovers the node's log from disk.
+// diskLog is the WAL as the committer, the snapshot server and the
+// persist goroutine share it. The lock covers the WAL's map of where
+// entries are: appends and reads take it, the fsync does not. Values in
+// segments that no longer change are read from a read-only mapping of the
+// file, a copy from the page cache instead of a read call.
+type diskLog struct {
+	mu  sync.Mutex
+	w   *wal.WAL
+	dir string
+	// sealed is the newest segment that no longer changes; maps holds the
+	// mappings of sealed segments by sequence number.
+	sealed uint64
+	maps   map[uint64][]byte
+	// ckpt is the newest durable checkpoint, which the persist goroutine
+	// sets before it removes older files, and serving counts the snapshot
+	// fetches under way, during which nothing is removed.
+	ckpt    wal.Root
+	serving int
+}
+
+func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Entry(index)
+}
+
+func (l *diskLog) Has(index uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Has(index)
+}
+
+func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	seq, at, ok := l.w.ValuePlace(index, off, n)
+	if !ok || seq > l.sealed {
+		return l.w.Value(index, off, n)
+	}
+	m, err := l.mapping(seq)
+	if err != nil {
+		return nil, err
+	}
+	if at+int64(n) > int64(len(m)) {
+		return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
+	}
+	return bytes.Clone(m[at : at+int64(n)]), nil
+}
+
+// mapping returns the mapping of sealed segment seq, mapping it first.
+func (l *diskLog) mapping(seq uint64) ([]byte, error) {
+	if m, ok := l.maps[seq]; ok {
+		return m, nil
+	}
+	f, err := os.Open(filepath.Join(l.dir, wal.SegmentName(seq)))
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		return nil, errors.Join(err, f.Close())
+	}
+	m, err := syscall.Mmap(int(f.Fd()), 0, int(st.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err == nil {
+		// Read-around would fetch the pages around each value; #133
+		// measured it halving cold reads.
+		if err = syscall.Madvise(m, syscall.MADV_RANDOM); err != nil {
+			err = errors.Join(err, syscall.Munmap(m))
+		}
+	}
+	if err = errors.Join(err, f.Close()); err != nil {
+		return nil, err
+	}
+	l.maps[seq] = m
+	return m, nil
+}
+
+// synced notes, with the lock held, the segments that no longer change
+// after a sync, and unmaps those that were removed.
+func (l *diskLog) synced() error {
+	l.sealed = l.w.Seq() - 1
+	var err error
+	for seq, m := range l.maps {
+		if seq < l.w.Oldest() {
+			err = errors.Join(err, syscall.Munmap(m))
+			delete(l.maps, seq)
+		}
+	}
+	return err
+}
+
+// close unmaps every segment and closes the WAL.
+func (l *diskLog) close() error {
+	err := l.w.Close()
+	for seq, m := range l.maps {
+		err = errors.Join(err, syscall.Munmap(m))
+		delete(l.maps, seq)
+	}
+	return err
+}
+
+func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Checkpoint(index)
+}
+
+// New recovers the node's state from its checkpoint and log on disk.
 func New(cfg Config) (*Node, error) {
 	dir, err := osfs.New(filepath.Join(cfg.DataDir, "wal"))
 	if err != nil {
@@ -243,20 +374,28 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.SegmentBytes > 0 {
+		w.SetSegmentBytes(cfg.SegmentBytes)
+	}
+	log := &diskLog{w: w, dir: filepath.Join(cfg.DataDir, "wal"), maps: map[uint64][]byte{}}
+	log.sealed = w.Seq() - 1
 	cfg.Core.Boot = rand.Uint64()
-	c, err := core.New(cfg.Core, rec)
+	c, err := core.New(cfg.Core, rec, log)
 	if err != nil {
 		return nil, errors.Join(err, w.Close())
 	}
-	return &Node{
+	n := &Node{
 		cfg:       cfg,
 		core:      c,
-		wal:       w,
+		log:       log,
 		inbox:     make(chan input, 8192),
 		persistQ:  make(chan []core.PersistJob, maxBacklog),
 		persisted: make(chan persistDone, 1),
+		ckptQ:     make(chan core.CheckpointChunk, 64),
 		done:      make(chan struct{}),
-	}, nil
+	}
+	log.ckpt = c.DurableCheckpoint()
+	return n, nil
 }
 
 func (n *Node) logf(format string, args ...any) {
@@ -334,12 +473,13 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
-	wg.Go(func() { n.persist(ctx) })
+	wg.Go(func() { n.persist(ctx, t) })
+	wg.Go(func() { n.writeCheckpoints(ctx) })
 	err := n.commit(ctx, t)
 	close(n.done)
 	cancel()
 	wg.Wait()
-	return errors.Join(err, n.wal.Close())
+	return errors.Join(err, n.log.close())
 }
 
 // commit is the committer loop. It is the only goroutine that touches the
@@ -351,6 +491,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	var groups []completions
 	groupOf := map[Completer]int{}
 	var backlog [][]core.PersistJob
+	// chunks are checkpoint parts for the writer; pace wakes the committer
+	// to copy the next one once the writer took them all, so a slow disk
+	// slows the copy instead of piling parts up in memory.
+	var chunks []core.CheckpointChunk
+	var pace *time.Timer
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
 	for {
@@ -362,6 +507,18 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		var next []core.PersistJob
 		if len(backlog) > 0 {
 			toDisk, next = n.persistQ, backlog[0]
+		}
+		var toWriter chan<- core.CheckpointChunk
+		var chunk core.CheckpointChunk
+		if len(chunks) > 0 {
+			toWriter, chunk = n.ckptQ, chunks[0]
+		}
+		var paced <-chan time.Time
+		if n.core.Copying() && len(chunks) == 0 {
+			if pace == nil {
+				pace = time.NewTimer(checkpointPace)
+			}
+			paced = pace.C
 		}
 		select {
 		case in := <-inbox:
@@ -386,6 +543,13 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			backlog[0] = nil
 			backlog = backlog[1:]
 			continue
+		case toWriter <- chunk:
+			chunks[0] = core.CheckpointChunk{}
+			chunks = chunks[1:]
+			continue
+		case <-paced:
+			pace = nil
+			n.core.CopyCheckpoint()
 		case <-ticker.C:
 			n.core.Tick()
 		case <-ctx.Done():
@@ -394,6 +558,14 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, eff.Persist)
+		}
+		chunks = append(chunks, eff.Checkpoint...)
+		for _, id := range eff.Closed {
+			if ws, ok := streams[id]; ok {
+				delete(streams, id)
+				ws.err = ErrSnapshotInstalled
+				close(ws.done)
+			}
 		}
 		for _, m := range eff.Send {
 			t.Send(m)
@@ -504,6 +676,12 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.written != 0:
+		n.core.CheckpointWritten(in.written, in.writeErr)
+	case in.fetching:
+		n.core.SnapshotStarted(in.snapshot)
+	case in.served:
+		n.core.SnapshotSent(in.snapshot, in.servedOK)
 	}
 }
 
@@ -516,8 +694,11 @@ type persistDone struct {
 
 // persist writes every queued job, syncs once, and reports the jobs back
 // on their own channel, so it never waits for the committer's inbox. A
-// failed write or sync stops the node; it is never retried.
-func (n *Node) persist(ctx context.Context) {
+// failed write or sync stops the node; it is never retried. A job with a
+// snapshot first fetches it from the leader into the log; a job with a
+// root removes what the root made obsolete once it is synced.
+func (n *Node) persist(ctx context.Context, t peer.Transport) {
+	w := n.log.w
 	for {
 		var jobs []core.PersistJob
 		select {
@@ -536,16 +717,55 @@ func (n *Node) persist(ctx context.Context) {
 		}
 		start := time.Now()
 		entries, bytes := 0, 0
+		done := persistDone{jobs: jobs}
 		for _, j := range jobs {
-			n.wal.Append(j.HardState, j.Entries)
+			if j.Install != nil {
+				if err := n.install(ctx, t, j.Install); err != nil {
+					done = persistDone{err: fmt.Errorf("install the snapshot at %d from %d: %w", j.Install.Index, j.Install.From, err)}
+					break
+				}
+			}
+			n.log.mu.Lock()
+			w.Append(j.HardState, j.Entries)
+			if j.Root != nil {
+				w.AppendRoot(*j.Root)
+			}
+			n.log.mu.Unlock()
 			entries += len(j.Entries)
 			for _, e := range j.Entries {
 				bytes += len(e.Data)
 			}
 		}
-		done := persistDone{jobs: jobs}
-		if err := n.wal.Sync(); err != nil {
-			done = persistDone{err: err}
+		if done.err == nil {
+			err := w.Sync()
+			n.log.mu.Lock()
+			err = errors.Join(err, n.log.synced())
+			n.log.mu.Unlock()
+			if err != nil {
+				done = persistDone{err: err}
+			}
+		}
+		for _, j := range jobs {
+			if done.err != nil {
+				break
+			}
+			n.log.mu.Lock()
+			if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
+				n.log.ckpt = in.Checkpoint
+			}
+			var err error
+			if j.Root != nil {
+				n.log.ckpt = *j.Root
+				// A fetch under way may read what the removal would take;
+				// the next root removes it.
+				if j.RemoveBelow > 0 && n.log.serving == 0 {
+					err = errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
+				}
+			}
+			n.log.mu.Unlock()
+			if err != nil {
+				done = persistDone{err: err}
+			}
 		}
 		if d := time.Since(start); d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", entries, bytes, d)
@@ -558,5 +778,184 @@ func (n *Node) persist(ctx context.Context) {
 		if done.err != nil {
 			return
 		}
+	}
+}
+
+// install fetches a snapshot from its leader and writes it to the log.
+// A failure stops the node; a restart then gets another snapshot.
+func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
+	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
+	if err != nil {
+		return err
+	}
+	sink := &logSink{n: n}
+	err = core.ReceiveSnapshot(r, sink, n.log, n.cfg.Core.Peers, in)
+	err = errors.Join(err, r.Close(), sink.close())
+	if err == nil {
+		n.logf("installed the snapshot at %d from %d, checkpoint %d", in.Index, in.From, in.Checkpoint.Index)
+	}
+	return err
+}
+
+// logSink writes a snapshot into the log, syncing every syncBytes.
+type logSink struct {
+	n       *Node
+	ckpt    wal.File
+	pending int
+}
+
+// syncBytes is how much of a snapshot the WAL buffers before a sync.
+const syncBytes = 16 << 20
+
+func (s *logSink) wrote(n int) error {
+	s.pending += n
+	if s.pending < syncBytes {
+		return nil
+	}
+	s.pending = 0
+	return s.n.log.w.Sync()
+}
+
+func (s *logSink) Entries(ents []*raftpb.Entry) error {
+	s.n.log.mu.Lock()
+	s.n.log.w.Append(nil, ents)
+	s.n.log.mu.Unlock()
+	size := 0
+	for _, e := range ents {
+		size += len(e.Data)
+	}
+	return s.wrote(size)
+}
+
+func (s *logSink) Value(index uint64, off uint32, value []byte) error {
+	s.n.log.mu.Lock()
+	s.n.log.w.AppendValue(index, off, value)
+	s.n.log.mu.Unlock()
+	return s.wrote(len(value))
+}
+
+func (s *logSink) CheckpointChunk(index uint64, data []byte) error {
+	if s.ckpt == nil {
+		f, err := s.n.log.w.CreateCheckpoint(index)
+		if err != nil {
+			return err
+		}
+		s.ckpt = f
+	}
+	_, err := s.ckpt.Write(data)
+	return err
+}
+
+func (s *logSink) CheckpointDone(uint64) error {
+	f := s.ckpt
+	s.ckpt = nil
+	if f == nil {
+		return errors.New("node: a snapshot's checkpoint has no data")
+	}
+	return errors.Join(f.Sync(), f.Close(), s.n.log.w.SyncDir())
+}
+
+func (s *logSink) Root(r wal.Root) error {
+	s.n.log.mu.Lock()
+	s.n.log.w.AppendRoot(r)
+	s.n.log.mu.Unlock()
+	return nil
+}
+
+// close closes a checkpoint file a failed fetch left open.
+func (s *logSink) close() error {
+	if s.ckpt == nil {
+		return nil
+	}
+	return s.ckpt.Close()
+}
+
+// checkpointPace is how often the committer copies the next part of a
+// checkpoint: with 32 KiB parts, about 32 MB/s.
+const checkpointPace = time.Millisecond
+
+// checkpointSyncBytes is how much of a checkpoint the writer writes
+// between syncs.
+const checkpointSyncBytes = 1 << 20
+
+// writeCheckpoints writes the checkpoint parts the committer hands over.
+// Once a checkpoint is whole, synced and its directory synced, it tells
+// the committer, which asks for the root that makes it count. A failed
+// write stops the node.
+func (n *Node) writeCheckpoints(ctx context.Context) {
+	for {
+		var c core.CheckpointChunk
+		select {
+		case c = <-n.ckptQ:
+		case <-ctx.Done():
+			return
+		}
+		f, err := n.log.w.CreateCheckpoint(c.Index)
+		unsynced := 0
+		for err == nil {
+			if _, err = f.Write(c.Data); err != nil || c.Done {
+				break
+			}
+			// Synced a little at a time, so that one large flush does not
+			// hold up the log's fsyncs on the same disk.
+			if unsynced += len(c.Data); unsynced >= checkpointSyncBytes {
+				if err = f.Sync(); err != nil {
+					break
+				}
+				unsynced = 0
+			}
+			select {
+			case next := <-n.ckptQ:
+				if next.Index != c.Index {
+					err = fmt.Errorf("the checkpoint at %d started before the one at %d was done", next.Index, c.Index)
+				}
+				c = next
+			case <-ctx.Done():
+				err = ctx.Err()
+			}
+		}
+		if f != nil {
+			if err == nil {
+				err = f.Sync()
+			}
+			err = errors.Join(err, f.Close())
+		}
+		if err == nil {
+			err = n.log.w.SyncDir()
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		select {
+		case n.inbox <- input{written: c.Index, writeErr: err}:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// Serve writes the snapshot stream a follower asked for: the entries
+// first to last, or this node's newest durable checkpoint, the values it
+// names from first on and the entries after it. The peer transport calls
+// it.
+func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
+	n.tell(input{snapshot: id, fetching: true})
+	n.log.mu.Lock()
+	n.log.serving++
+	ckpt := n.log.ckpt
+	n.log.mu.Unlock()
+	err := core.ServeSnapshot(n.log, ckpt, first, last, w)
+	n.log.mu.Lock()
+	n.log.serving--
+	n.log.mu.Unlock()
+	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
+	return err
+}
+
+// tell hands the committer an input from a helper goroutine.
+func (n *Node) tell(in input) {
+	select {
+	case n.inbox <- in:
+	case <-n.done:
 	}
 }

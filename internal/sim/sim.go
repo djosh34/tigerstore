@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -127,6 +128,19 @@ type Faults struct {
 	// RecoveryCrash crashes one restart in three again at its first to
 	// fourth writing disk operation inside recovery.
 	RecoveryCrash bool
+	// StepCrash crashes a node once at a step of a checkpoint (after a
+	// part is written, after the file's sync, after the directory's sync,
+	// after the root) or of a removal, or inside a snapshot install.
+	StepCrash bool
+	// FlipSnapshot damages the first snapshot stream, and one in four
+	// after it, on its way.
+	FlipSnapshot bool
+	// Rot flips a bit of a value on a running node's disk, once per run,
+	// as the run's corruption if it has none yet.
+	Rot bool
+	// HoldDown keeps a follower down for 3 to 5 s once per run, so that
+	// it falls behind the leader's window and needs a snapshot.
+	HoldDown bool
 	// SwitchEvery is the mean time between switches to a random link
 	// mask. It runs alongside LinkEvery; set only one for fast switching.
 	SwitchEvery int64
@@ -167,6 +181,10 @@ func DefaultConfig(seed uint64) Config {
 			GrayEvery:      8 * Second,
 			GrayClient:     true,
 			RecoveryCrash:  true,
+			StepCrash:      true,
+			FlipSnapshot:   true,
+			Rot:            true,
+			HoldDown:       true,
 		},
 	}
 }
@@ -184,6 +202,7 @@ const (
 	evDiskFaultOnce
 	evStall
 	evStallLeader
+	evDownFollower
 	evCheckpoint
 	evLinkStall
 	evLinkStallOnce
@@ -206,6 +225,10 @@ const (
 	evGrayConnect
 	evGrayCreate
 	evRecoveryDue
+	evStepCrashDue
+	evRot
+	evCheckpointSync
+	evSnapshotSent
 	evRestart
 	evLinks
 	evHeal
@@ -239,6 +262,8 @@ type event struct {
 	// grayDisk marks an fsync slowed by a gray fault. Its delay can
 	// outlast healing even after the gray network fault has ended.
 	grayDisk bool
+	// ckpt is the checkpoint file that an evCheckpointSync syncs.
+	ckpt wal.File
 }
 
 // queue is a binary min-heap of events by time, then sequence number.
@@ -341,6 +366,16 @@ type node struct {
 	replaceFrom uint64
 	// recoverFloor is how far recovery must reach after the last crash.
 	recoverFloor uint64
+	// ckptFile is the checkpoint being written, at ckptIndex; root is the
+	// index of the newest synced root.
+	ckptFile   wal.File
+	ckptIndex  uint64
+	ckptSyncAt int64
+	root       uint64
+	// rotted is set when the run flipped a bit of a value in segment
+	// rotFile on the disk of this running node.
+	rotted  bool
+	rotFile string
 }
 
 type link struct {
@@ -373,6 +408,8 @@ type Sim struct {
 
 	healAt, stopAt, endAt int64
 	healed                bool
+	// downFor is how long HoldDown keeps its follower down.
+	downFor int64
 
 	clients  []*client
 	watchers []*watchClient
@@ -401,6 +438,19 @@ type Sim struct {
 	// recoveryDue crashes the next node that writes entries before it
 	// syncs them, until a recovery crashed.
 	recoveryDue bool
+	// stepCrashDue crashes a node at its next checkpoint, removal or
+	// install step, until one did.
+	stepCrashDue bool
+	// log is every committed entry as the first node applied it, with the
+	// state's hash after it, up to index maxLogged; ckpts are the hashes
+	// of the checkpoint files, by index.
+	log       map[uint64]logRec
+	maxLogged uint64
+	ckpts     map[uint64]ckptRec
+	// base, in a cold restart, is the run's record, which holds up to
+	// baseUpTo.
+	base     map[uint64]logRec
+	baseUpTo uint64
 	// diskFaultDue arms a disk fault at the next append with entries,
 	// after healing too; lateStopAt is when a node last stopped after
 	// healing, which moves the start of the liveness rule.
@@ -437,6 +487,13 @@ type Stats struct {
 	GrayNodes, CommitStops, GrayStreams, RecoveryCrashes int
 	// GrayLeaderStops counts commit-watchdog stops of a gray leader.
 	GrayLeaderStops int
+	// Checkpoints counts checkpoints written, Snapshots snapshot streams
+	// sent, CheckpointSnapshots those that carried a checkpoint because
+	// the entries were gone, SnapshotFlips those damaged on the way,
+	// InstallFailures installs that failed, StepCrashes crashes at a
+	// checkpoint, removal or install step, and Rots values damaged under a
+	// running node.
+	Checkpoints, Snapshots, CheckpointSnapshots, SnapshotFlips, InstallFailures, StepCrashes, Rots int
 }
 
 // Result is the outcome of a run.
@@ -516,6 +573,8 @@ func newSim(cfg Config) *Sim {
 		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
 		trace:     fnv.New64a(),
 		expiredAt: map[int64]int64{},
+		log:       map[uint64]logRec{},
+		ckpts:     map[uint64]ckptRec{},
 		healAt:    cfg.Duration,
 		stopAt:    cfg.Duration + cfg.Heal,
 	}
@@ -626,6 +685,8 @@ func (s *Sim) handle(e *event) {
 		s.injectStall()
 	case evStallLeader:
 		s.stallLeader()
+	case evDownFollower:
+		s.downFollower()
 	case evCheckpoint:
 		s.takeCheckpoint()
 	case evLinkStall:
@@ -680,6 +741,22 @@ func (s *Sim) handle(e *event) {
 		s.grayConnect()
 	case evGrayCreate:
 		s.grayCreate(e)
+	case evStepCrashDue:
+		if s.stats.StepCrashes == 0 && !s.healed {
+			s.stepCrashDue = true
+			s.push(&event{at: s.now + 500*Millisecond, kind: evStepCrashDue})
+		}
+	case evRot:
+		if !s.rot() {
+			s.push(&event{at: s.now + 500*Millisecond, kind: evRot})
+		}
+	case evCheckpointSync:
+		s.checkpointSynced(e)
+	case evSnapshotSent:
+		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
+			n.core.SnapshotSent(uint64(e.from+1), e.err == nil)
+			s.process(n)
+		}
 	case evRecoveryDue:
 		// Until a recovery crashed: most crashes leave no torn tail, and
 		// a clean log needs no writes to recover.
@@ -736,6 +813,10 @@ func (s *Sim) start(n *node) error {
 	if n.fenced {
 		return nil
 	}
+	if n.rotted && !slices.Contains(n.disk.DurableNames(), n.rotFile) {
+		// The damaged value's segment was removed with its other values.
+		n.corrupted, n.rotted = false, false
+	}
 	armed := s.armRecoveryCrash(n)
 	w, rec, err := wal.Open(n.disk)
 	if armed {
@@ -759,6 +840,22 @@ func (s *Sim) start(n *node) error {
 		s.push(&event{at: s.now + 1 + s.rng.Int64N(Second), kind: evRestart, node: n.idx, gen: n.gen})
 		return nil
 	}
+	var c *core.Node
+	if err == nil {
+		if rec.Last < n.recoverFloor {
+			return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, rec.Last, n.recoverFloor)
+		}
+		// Small segments, so that most of the log is in sealed ones,
+		// where any damage is detectable.
+		w.SetSegmentBytes(8 << 10)
+		cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
+		cfg.Boot = s.rng.Uint64()
+		// Progress notifications every 2 s instead of 10 minutes, so runs
+		// see them.
+		cfg.ProgressTicks = 20
+		tinyLimits(&cfg)
+		c, err = core.New(cfg, rec, w)
+	}
 	if n.corrupted {
 		// The disk was damaged on purpose; the node must notice and stay
 		// down, as an operator would replace the disk.
@@ -776,24 +873,9 @@ func (s *Sim) start(n *node) error {
 	if err != nil {
 		return fmt.Errorf("node %d cannot recover its log: %w", n.id, err)
 	}
-	last := lastIndex(rec)
-	if last < n.recoverFloor {
-		return fmt.Errorf("node %d recovered entries to %d, but reported %d durable", n.id, last, n.recoverFloor)
-	}
 	// What recovery returned is now durable, and nothing is in flight.
-	n.durableLast, n.recoverFloor, n.inflight, n.replaceFrom = last, 0, nil, 0
-	// Small segments, so that most of the log is in sealed ones, where
-	// any damage is detectable.
-	w.SetSegmentBytes(8 << 10)
-	cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
-	cfg.Boot = s.rng.Uint64()
-	// Progress notifications every 2 s instead of 10 minutes, so runs see
-	// them.
-	cfg.ProgressTicks = 20
-	c, err := core.New(cfg, rec)
-	if err != nil {
-		return fmt.Errorf("node %d cannot start: %w", n.id, err)
-	}
+	n.durableLast, n.recoverFloor, n.inflight, n.replaceFrom = rec.Last, 0, nil, 0
+	n.root, n.ckptFile = rec.Root.Index, nil
 	n.gen++
 	n.log, n.core, n.up = w, c, true
 	n.tickEvery = TickTime
@@ -801,7 +883,7 @@ func (s *Sim) start(n *node) error {
 		n.tickEvery += TickTime * (s.rng.Int64N(2*d+1) - d) / 1000
 	}
 	n.diskQ, n.diskBusy, n.syncing = nil, false, nil
-	s.mix(0xb007, uint64(n.idx), uint64(len(rec.Entries)), rec.HardState.Commit)
+	s.mix(0xb007, uint64(n.idx), rec.Last, rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
 	s.process(n)
 	return nil
@@ -812,7 +894,21 @@ func (s *Sim) process(n *node) {
 	if n.pausedUntil > s.now {
 		s.fail("node %d works while paused, at %d ms", n.id, s.now/Millisecond)
 	}
+	n.core.CopyCheckpoint()
 	eff, err := n.core.Process()
+	for _, a := range eff.Applied {
+		s.record(n, a)
+	}
+	if n.rotted && errors.Is(err, mvcc.ErrBadValue) {
+		// It read the value the run damaged, and stopped instead of
+		// answering with it.
+		s.stopNode(n)
+		return
+	}
+	if err == nil && n.core.FirstIndex() > n.core.Applied()+1 {
+		s.fail("node %d holds entries from %d in memory, but applied only to %d", n.id, n.core.FirstIndex(), n.core.Applied())
+		return
+	}
 	n.diskQ = append(n.diskQ, eff.Persist...)
 	for _, m := range eff.Send {
 		s.send(n, m)
@@ -822,6 +918,15 @@ func (s *Sim) process(n *node) {
 	}
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
+	}
+	for _, id := range eff.Closed {
+		s.streamClosed(n, id)
+	}
+	if len(eff.Checkpoint) > 0 && err == nil {
+		s.writeCheckpoint(n, eff.Checkpoint)
+		if !n.up {
+			return
+		}
 	}
 	for _, id := range eff.Expired {
 		if _, seen := s.expiredAt[id]; !seen {
@@ -875,7 +980,19 @@ func (s *Sim) startDisk(n *node) {
 		s.armDiskFault(n, 1+s.rng.IntN(2))
 	}
 	for _, j := range jobs {
+		if j.Install != nil {
+			if i := s.firstReplaced(n, j.Install); i <= n.durableLast && (n.replaceFrom == 0 || i < n.replaceFrom) {
+				n.replaceFrom = i
+			}
+			if err := s.install(n, j.Install); err != nil {
+				s.installFailed(n, err)
+				return
+			}
+		}
 		n.log.Append(j.HardState, j.Entries)
+		if j.Root != nil {
+			n.log.AppendRoot(*j.Root)
+		}
 	}
 	if err := n.log.Flush(); err != nil {
 		s.diskFailed(n, err)
@@ -929,6 +1046,14 @@ func (s *Sim) diskDone(e *event) {
 		s.graySyncEnded()
 	}
 	n.inflight, n.replaceFrom = nil, 0
+	for _, j := range e.jobs {
+		if j.Install != nil && j.Install.Checkpoint.Index > 0 {
+			n.root = j.Install.Checkpoint.Index
+		}
+		if j.Root != nil && !s.removed(n, j) {
+			return
+		}
+	}
 	for _, j := range e.jobs {
 		s.persisted(n, j)
 	}
@@ -1237,15 +1362,11 @@ func (s *Sim) replied(n *node, r core.Reply) {
 // persisted tells a node's core that an append is durable, and remembers
 // how far its log then reached.
 func (s *Sim) persisted(n *node, j core.PersistJob) {
+	if j.Install != nil {
+		n.durableLast = j.Install.Index
+	}
 	if len(j.Entries) > 0 {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
 	}
 	n.core.Persisted(j)
-}
-
-func lastIndex(rec *wal.Recovered) uint64 {
-	if len(rec.Entries) == 0 {
-		return 0
-	}
-	return rec.Entries[len(rec.Entries)-1].GetIndex()
 }

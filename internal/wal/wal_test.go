@@ -28,6 +28,21 @@ func open(t *testing.T, d *simfs.Disk) (*wal.WAL, *wal.Recovered) {
 	return w, rec
 }
 
+// read returns the entries after the root up to the last one, read back
+// from disk.
+func read(t *testing.T, w *wal.WAL, rec *wal.Recovered) []*raftpb.Entry {
+	t.Helper()
+	var out []*raftpb.Entry
+	for i := rec.Root.Index + 1; i <= rec.Last; i++ {
+		e, err := w.Entry(i)
+		if err != nil {
+			t.Fatalf("read entry %d: %v", i, err)
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 func describe(ents []*raftpb.Entry) string {
 	var b strings.Builder
 	for _, e := range ents {
@@ -39,7 +54,7 @@ func describe(ents []*raftpb.Entry) string {
 func TestAppendAndRecover(t *testing.T) {
 	d := simfs.New()
 	w, rec := open(t, d)
-	if len(rec.Entries) != 0 || rec.HardState != (wal.HardState{}) {
+	if rec.Last != 0 || rec.HardState != (wal.HardState{}) {
 		t.Fatalf("fresh log recovered %v", rec)
 	}
 	w.Append(&wal.HardState{Term: 1, Vote: 1}, []*raftpb.Entry{entry(1, 1, "a"), entry(1, 2, "b")})
@@ -53,8 +68,8 @@ func TestAppendAndRecover(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, rec = open(t, d)
-	if got := describe(rec.Entries); got != "1/1:a 2/2:B 3/2:c " {
+	w, rec = open(t, d)
+	if got := describe(read(t, w, rec)); got != "1/1:a 2/2:B 3/2:c " {
 		t.Fatalf("entries = %s", got)
 	}
 	if rec.HardState != (wal.HardState{Term: 2, Vote: 3, Commit: 2}) {
@@ -71,8 +86,8 @@ func TestUnsyncedAppendIsLostOnCrash(t *testing.T) {
 	}
 	w.Append(nil, []*raftpb.Entry{entry(1, 2, "b")})
 	d.Crash(rand.New(rand.NewPCG(1, 2)))
-	_, rec := open(t, d)
-	if got := describe(rec.Entries); got != "1/1:a " {
+	w, rec := open(t, d)
+	if got := describe(read(t, w, rec)); got != "1/1:a " {
 		t.Fatalf("entries = %s", got)
 	}
 }
@@ -174,7 +189,7 @@ func wantCorrupt(t *testing.T, d *simfs.Disk) {
 		t.Fatal(err)
 	}
 	if _, rec, err := wal.Open(d); !errors.Is(err, wal.ErrCorrupt) {
-		t.Fatalf("open = %v with %d entries and %+v, want ErrCorrupt", err, len(rec.Entries), rec.HardState)
+		t.Fatalf("open = %v with entries to %d and %+v, want ErrCorrupt", err, rec.Last, rec.HardState)
 	}
 	after, err := d.List()
 	if err != nil {
@@ -238,7 +253,7 @@ func TestDamagedRecordBeforeValidOneIsCorrupt(t *testing.T) {
 	// The second record is the first hard state, right after the header
 	// and the first entry record of 9+17+5 bytes. Damage its body, its
 	// type and its stored crc in turn.
-	for _, at := range []int{20 + 31 + 9 + 3, 20 + 31 + 8, 20 + 31 + 5} {
+	for _, at := range []int{24 + 31 + 9 + 3, 24 + 31 + 8, 24 + 31 + 5} {
 		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
 		wantCorrupt(t, d)
 		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
@@ -309,8 +324,9 @@ func TestCrashKeepsSyncedEntries(t *testing.T) {
 				var rec *wal.Recovered
 				w, rec = open(t, d)
 				w.SetSegmentBytes(int64(64 + rng.IntN(512)))
-				got := make([]string, len(rec.Entries))
-				for i, e := range rec.Entries {
+				ents := read(t, w, rec)
+				got := make([]string, len(ents))
+				for i, e := range ents {
 					if e.GetIndex() != uint64(i+1) {
 						t.Fatalf("seed %d: entry %d at position %d", seed, e.GetIndex(), i)
 					}
@@ -369,15 +385,276 @@ func TestCrashWhileReplacingDamagedNewestHeader(t *testing.T) {
 		d.Fault = nil
 		d.Crash(rand.New(rand.NewPCG(uint64(k), 1)))
 		w, rec := open(t, d)
-		if len(rec.Entries) != 2 || rec.HardState.Commit != 2 {
-			t.Fatalf("k=%d: recovered %d entries and %+v", k, len(rec.Entries), rec.HardState)
+		if rec.Last != 2 || rec.HardState.Commit != 2 {
+			t.Fatalf("k=%d: recovered entries to %d and %+v", k, rec.Last, rec.HardState)
 		}
 		w.Append(nil, []*raftpb.Entry{entry(3, 3, "v")})
 		if err := w.Sync(); err != nil {
 			t.Fatalf("k=%d: %v", k, err)
 		}
-		if _, rec := open(t, d); len(rec.Entries) != 3 {
-			t.Fatalf("k=%d: after an append, recovered %d entries", k, len(rec.Entries))
+		if _, rec := open(t, d); rec.Last != 3 {
+			t.Fatalf("k=%d: after an append, recovered entries to %d", k, rec.Last)
 		}
+	}
+}
+
+// fill appends entries from..to, one synced batch each with its commit,
+// in segments of about one batch.
+func fill(t *testing.T, w *wal.WAL, from, to uint64) {
+	t.Helper()
+	for i := from; i <= to; i++ {
+		w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: i}, []*raftpb.Entry{entry(1, i, fmt.Sprintf("v%d", i))})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestRootAndRemoval names a checkpoint at 6, removes the segments below
+// it, and recovers the entries after it, the hard state and the root.
+func TestRootAndRemoval(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 8)
+	w.AppendRoot(wal.Root{Index: 6, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, 9, 10)
+	if err := w.RemoveBelow(7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Entry(3); !errors.Is(err, wal.ErrNotOnDisk) {
+		t.Fatalf("entry 3 after its segment went: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, rec := open(t, d)
+	if rec.Root != (wal.Root{Index: 6, Term: 1}) || rec.Last != 10 || rec.HardState != (wal.HardState{Term: 1, Vote: 2, Commit: 10}) {
+		t.Fatalf("recovered %+v", rec)
+	}
+	if got := describe(read(t, w, rec)); got != "7/1:v7 8/1:v8 9/1:v9 10/1:v10 " {
+		t.Fatalf("entries after the root: %s", got)
+	}
+	b, err := w.Value(9, 1, 1)
+	if err != nil || string(b) != "9" {
+		t.Fatalf("value of entry 9: %q, %v", b, err)
+	}
+
+	// Without the root, a log that starts above 1 is damage.
+	d2 := simfs.New()
+	w2, _ := open(t, d2)
+	w2.SetSegmentBytes(1)
+	fill(t, w2, 1, 6)
+	if err := w2.RemoveBelow(4); err != nil {
+		t.Fatal(err)
+	}
+	wantCorrupt(t, d2)
+}
+
+// TestHardStateSurvivesRemoval writes the only vote in the first segment,
+// then many entries without a hard state, and removes the old segments:
+// the vote is still there.
+func TestHardStateSurvivesRemoval(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	w.Append(&wal.HardState{Term: 7, Vote: 3, Commit: 0}, nil)
+	for i := uint64(1); i <= 6; i++ {
+		w.Append(nil, []*raftpb.Entry{entry(7, i, "v")})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.AppendRoot(wal.Root{Index: 5, Term: 7})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RemoveBelow(6); err != nil {
+		t.Fatal(err)
+	}
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) > 4 {
+		t.Fatalf("segments left: %v", names)
+	}
+	_, rec := open(t, d)
+	if rec.HardState.Term != 7 || rec.HardState.Vote != 3 || rec.Root.Index != 5 || rec.Last != 6 {
+		t.Fatalf("recovered %+v", rec)
+	}
+}
+
+// TestResetRootAndValues installs a snapshot at 20 on a log that held 1 to
+// 12 and had applied 10: the values of 11 to 20 come as value records,
+// the entries after 10 of the old log are gone, and the log goes on at 21.
+func TestResetRootAndValues(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 12)
+	w.AppendValue(15, 3, []byte("fifteen"))
+	w.AppendRoot(wal.Root{Index: 20, Term: 4, Reset: true, Keep: 10})
+	w.Append(&wal.HardState{Term: 4, Commit: 21}, []*raftpb.Entry{entry(4, 21, "x21")})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	check := func(w *wal.WAL) {
+		t.Helper()
+		if _, err := w.Entry(11); !errors.Is(err, wal.ErrNotOnDisk) {
+			t.Fatalf("entry 11 of the replaced log: %v", err)
+		}
+		if e, err := w.Entry(10); err != nil || string(e.GetData()) != "v10" {
+			t.Fatalf("entry 10: %v, %v", e, err)
+		}
+		if b, err := w.Value(15, 5, 3); err != nil || string(b) != "fte" {
+			t.Fatalf("value in entry 15: %q, %v", b, err)
+		}
+		if _, err := w.Value(15, 0, 3); !errors.Is(err, wal.ErrNotOnDisk) {
+			t.Fatalf("bytes of entry 15 that no record holds: %v", err)
+		}
+	}
+	check(w)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, rec := open(t, d)
+	if rec.Root.Index != 20 || rec.Last != 21 || rec.HardState.Commit != 21 {
+		t.Fatalf("recovered %+v", rec)
+	}
+	check(w)
+	if got := describe(read(t, w, rec)); got != "21/4:x21 " {
+		t.Fatalf("entries after the root: %s", got)
+	}
+}
+
+// TestEntryChecksRecord damages an entry record after Open: reading the
+// entry fails instead of returning wrong bytes.
+func TestEntryChecksRecord(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 3)
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := d.DurableBytes(names[0])
+	at := strings.Index(string(data), "v2")
+	d.FlipDurable(names[0], at+1)
+	if _, err := w.Entry(2); !errors.Is(err, wal.ErrCorrupt) {
+		t.Fatalf("damaged entry 2: %v", err)
+	}
+	if e, err := w.Entry(3); err != nil || string(e.GetData()) != "v3" {
+		t.Fatalf("entry 3: %v, %v", e, err)
+	}
+}
+
+// TestCheckpointFiles keeps only the checkpoint file that the root names.
+func TestCheckpointFiles(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 5)
+	for _, i := range []uint64{2, 4, 5} {
+		f, err := w.CreateCheckpoint(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write([]byte("ckpt")); err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(f.Sync(), f.Close()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.SyncDir(); err != nil {
+		t.Fatal(err)
+	}
+	w.AppendRoot(wal.Root{Index: 4, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	open(t, d)
+	var ckpts []string
+	for _, n := range d.DurableNames() {
+		if strings.HasPrefix(n, "ckpt-") {
+			ckpts = append(ckpts, n)
+		}
+	}
+	if fmt.Sprint(ckpts) != "["+wal.CheckpointName(4)+"]" {
+		t.Fatalf("checkpoint files after open: %v", ckpts)
+	}
+}
+
+// TestOtherFormatVersion refuses a segment of another format version.
+func TestOtherFormatVersion(t *testing.T) {
+	d := simfs.New()
+	names := segments(t, d, 2)
+	rewrite(t, d, names[0], func(b []byte) []byte { b[8] = 2; return b })
+	if _, _, err := wal.Open(d); err == nil || !strings.Contains(err.Error(), "format version 2") {
+		t.Fatalf("open of version 2: %v", err)
+	}
+}
+
+// TestRemovalKeepsSegmentsConsecutive removes segments in front of one
+// that holds only a hard state: segments go only from the front, so the
+// rest stay consecutive and the log opens.
+func TestRemovalKeepsSegmentsConsecutive(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 2)
+	w.Append(&wal.HardState{Term: 2, Vote: 1, Commit: 2}, nil)
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, 3, 6)
+	w.AppendRoot(wal.Root{Index: 5, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RemoveBelow(6); err != nil {
+		t.Fatal(err)
+	}
+	w, rec := open(t, d)
+	if got := describe(read(t, w, rec)); got != "6/1:v6 " {
+		t.Fatalf("entries after the root: %s", got)
+	}
+}
+
+// TestResetRootLowersCommit crashes right after a snapshot's root, before
+// the entries after it: the commit index of the replaced log is past the
+// root, and recovery lowers it to the root instead of refusing the log.
+func TestResetRootLowersCommit(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 12)
+	w.AppendRoot(wal.Root{Index: 10, Term: 4, Reset: true, Keep: 8})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	_, rec := open(t, d)
+	if rec.HardState.Commit != 10 || rec.Last != 10 || rec.Root.Index != 10 {
+		t.Fatalf("recovered %+v", rec)
+	}
+}
+
+// TestResetRootCopiedPlain installs a snapshot, appends entries after it
+// until a new segment starts, and recovers: the new segment's copy of the
+// root does not reset the log again.
+func TestResetRootCopiedPlain(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	fill(t, w, 1, 5)
+	w.AppendRoot(wal.Root{Index: 8, Term: 2, Reset: true, Keep: 5})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	w.SetSegmentBytes(1)
+	fill(t, w, 9, 12)
+	w, rec := open(t, d)
+	if got := describe(read(t, w, rec)); got != "9/1:v9 10/1:v10 11/1:v11 12/1:v12 " || rec.Root != (wal.Root{Index: 8, Term: 2}) {
+		t.Fatalf("recovered %+v with entries %s", rec, got)
 	}
 }

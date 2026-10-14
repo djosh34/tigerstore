@@ -11,9 +11,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"hash"
 	"hash/crc32"
-	"hash/fnv"
 	"slices"
 
 	"github.com/google/btree"
@@ -42,7 +40,8 @@ type Values interface {
 	// writes, without its Sum. value is not empty. Place may keep it as
 	// it is.
 	Place(value []byte) (Ref, error)
-	// Read returns the bytes r names. The caller must not change them.
+	// Read returns the bytes r names. The caller may keep them, as a
+	// response or a watch event does, but must not change them.
 	Read(r Ref) ([]byte, error)
 }
 
@@ -139,7 +138,7 @@ func (s *Store) value(key []byte, r Ref) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
 	}
-	if uint32(len(b)) != r.Len || crc32.Checksum(b, castagnoli) != r.Sum {
+	if uint32(len(b)) != r.Len || (crc32.Checksum(b, castagnoli) != r.Sum && !planted.On("B25")) {
 		return nil, fmt.Errorf("%w: key %q, entry %d, offset %d", ErrBadValue, key, r.Index, r.Off)
 	}
 	return b, nil
@@ -151,6 +150,13 @@ type Store struct {
 	rev        int64
 	compactRev int64
 	values     Values
+
+	// frozen is the checkpoint being copied, if any.
+	frozen *frozen
+	// sum is the XOR of the hashes of every version, kept only with
+	// track.
+	sum   uint64
+	track bool
 
 	// LeaseExists reports whether a lease is granted. Nil means that no
 	// lease exists, so every Put with a lease fails.
@@ -233,9 +239,7 @@ func (c Change) PrevLease() int64 {
 }
 
 // Event builds the watch event of the change. The previous value is set
-// when withPrev is true and the key existed before. Its values are copies:
-// a watcher can hold an event long after the entries that wrote them left
-// memory.
+// when withPrev is true and the key existed before.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
 	v := &c.k.vers[c.i]
@@ -245,7 +249,6 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		if err != nil {
 			return nil, err
 		}
-		kv.Value = bytes.Clone(kv.Value)
 		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
 	if withPrev && c.i > 0 && c.k.vers[c.i-1].ver != 0 {
@@ -253,7 +256,6 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		if err != nil {
 			return nil, err
 		}
-		prev.Value = bytes.Clone(prev.Value)
 		ev.PrevKv = prev
 	}
 	return ev, nil
@@ -263,37 +265,87 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 // is reused by the next write.
 func (s *Store) Changes() []Change { return s.changes }
 
+// Refs returns the positions of the values of every version of a key.
+// The simulator uses them to damage a value on disk.
+func (s *Store) Refs(key []byte) []Ref {
+	k, ok := s.keys.Get(&keyIndex{key: key})
+	if !ok {
+		return nil
+	}
+	var out []Ref
+	for _, v := range k.vers {
+		if v.value.Len > 0 {
+			out = append(out, v.value)
+		}
+	}
+	return out
+}
+
 // Hash returns a hash of every version of every key, with the Ref of its
 // value, the current revision and the compaction revision. Replicas that
-// applied the same log have the same hash.
+// applied the same log have the same hash. With TrackHash it costs
+// nothing; without, it walks every key.
 func (s *Store) Hash() uint64 {
-	h := fnv.New64a()
-	writeInt(h, s.rev)
-	writeInt(h, s.compactRev)
+	sum := s.sum
+	if !s.track {
+		sum = s.versionSum()
+	}
+	return mix(sum ^ mix(uint64(s.rev)) ^ mix(mix(uint64(s.compactRev))))
+}
+
+// versionSum is the XOR of the hashes of every version, leaving out those
+// that a compaction waiting for a checkpoint copy drops.
+func (s *Store) versionSum() uint64 {
+	var pending int64
+	if s.frozen != nil {
+		pending = s.frozen.compact
+	}
+	var sum uint64
 	s.keys.Ascend(func(k *keyIndex) bool {
-		writeInt(h, int64(len(k.key)))
-		h.Write(k.key)
-		for _, v := range k.vers {
-			writeInt(h, v.mod.main)
-			writeInt(h, v.mod.sub)
-			writeInt(h, v.create)
-			writeInt(h, v.ver)
-			writeInt(h, v.lease)
-			writeInt(h, int64(v.value.Index))
-			writeInt(h, int64(v.value.Off)<<32|int64(v.value.Len))
-			writeInt(h, int64(v.value.Sum))
+		for i := k.dropped(pending); i < len(k.vers); i++ {
+			sum ^= versionHash(k.key, &k.vers[i])
 		}
 		return true
 	})
-	return h.Sum64()
+	return sum
 }
 
-func writeInt(h hash.Hash64, v int64) {
-	var b [8]byte
-	for i := range b {
-		b[i] = byte(v >> (8 * i))
+// TrackHash keeps the hash up to date as versions come and go, so that
+// Hash takes no walk. The simulator checks it after every entry.
+func (s *Store) TrackHash() {
+	s.sum, s.track = s.versionSum(), true
+}
+
+const (
+	fnvOffset = 14695981039346656037
+	fnvPrime  = 1099511628211
+)
+
+// versionHash hashes one version of a key, FNV-1a over its fields and
+// then mixed, so that the XOR of many stays well spread.
+func versionHash(key []byte, v *version) uint64 {
+	h := uint64(fnvOffset)
+	for _, b := range key {
+		h = (h ^ uint64(b)) * fnvPrime
 	}
-	h.Write(b[:])
+	fields := [...]uint64{
+		uint64(len(key)), uint64(v.mod.main), uint64(v.mod.sub), uint64(v.create), uint64(v.ver),
+		uint64(v.lease), v.value.Index, uint64(v.value.Off)<<32 | uint64(v.value.Len), uint64(v.value.Sum),
+	}
+	for _, x := range fields {
+		for range 8 {
+			h = (h ^ x&0xff) * fnvPrime
+			x >>= 8
+		}
+	}
+	return mix(h)
+}
+
+// mix is the finalizer of splitmix64.
+func mix(x uint64) uint64 {
+	x = (x ^ x>>30) * 0xbf58476d1ce4e5b9
+	x = (x ^ x>>27) * 0x94d049bb133111eb
+	return x ^ x>>31
 }
 
 // History returns every change to keys in [key, end) at main revision
@@ -343,13 +395,46 @@ func (s *Store) Compact(rev int64) error {
 		return rpctypes.ErrGRPCFutureRev
 	}
 	s.changes = s.changes[:0]
+	if s.track {
+		var pending int64
+		if s.frozen != nil {
+			pending = s.frozen.compact
+		}
+		s.keys.Ascend(func(k *keyIndex) bool {
+			for i := k.dropped(pending); i < k.dropped(rev); i++ {
+				s.sum ^= versionHash(k.key, &k.vers[i])
+			}
+			return true
+		})
+	}
+	s.compactRev = rev
+	if s.frozen != nil {
+		// A checkpoint copy is under way and reads the versions in place;
+		// they go once it is done.
+		s.frozen.compact = rev
+		return nil
+	}
+	s.drop(rev)
+	return nil
+}
+
+// dropped returns how many of k's oldest versions a compaction at rev
+// drops: per key, the newest version at or below rev stays, unless it is
+// a tombstone from before rev.
+func (k *keyIndex) dropped(rev int64) int {
+	i := k.at(rev)
+	if i >= 0 && k.vers[i].ver == 0 && (k.vers[i].mod.main < rev || planted.On("B08")) {
+		i++
+	}
+	return max(i, 0)
+}
+
+// drop removes the versions that a compaction at rev drops, and the keys
+// left without any.
+func (s *Store) drop(rev int64) {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
-		i := k.at(rev)
-		if i >= 0 && k.vers[i].ver == 0 && (k.vers[i].mod.main < rev || planted.On("B08")) {
-			i++
-		}
-		if i > 0 {
+		if i := k.dropped(rev); i > 0 {
 			k.vers = slices.Delete(k.vers, 0, i)
 		}
 		if len(k.vers) == 0 {
@@ -360,6 +445,4 @@ func (s *Store) Compact(rev int64) error {
 	for _, k := range gone {
 		s.keys.Delete(k)
 	}
-	s.compactRev = rev
-	return nil
 }

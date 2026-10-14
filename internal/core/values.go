@@ -1,9 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -40,9 +40,11 @@ func (pl *placer) add(value []byte, off int) {
 }
 
 // values names every value by its Raft position and reads the bytes back
-// from the entries in the log.
+// from the entries in memory, or from the log on disk once its entry left
+// memory.
 type values struct {
 	storage *storage
+	log     Log
 	// index is the entry being applied; placer knows where the values of
 	// its current write start.
 	index uint64
@@ -66,22 +68,16 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Read returns the bytes of a value from its entry.
+// Read returns a copy of a value, from its entry in memory or from the
+// log. Responses and watch events keep what it returns, maybe for long
+// behind a slow client, and must not keep the entry with it.
 func (v *values) Read(r mvcc.Ref) ([]byte, error) {
-	last, err := v.storage.LastIndex()
-	if err != nil {
-		return nil, err
+	data, ok := v.storage.entryData(r.Index)
+	if !ok {
+		return v.log.Value(r.Index, r.Off, r.Len)
 	}
-	if r.Index > last {
-		return nil, fmt.Errorf("core: value in entry %d, past the last entry %d", r.Index, last)
-	}
-	ents, err := v.storage.Entries(r.Index, r.Index+1, math.MaxUint64)
-	if err != nil {
-		return nil, fmt.Errorf("core: read entry %d: %w", r.Index, err)
-	}
-	data := ents[0].GetData()
 	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
 		return nil, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 	}
-	return data[r.Off : r.Off+r.Len], nil
+	return bytes.Clone(data[r.Off : r.Off+r.Len]), nil
 }

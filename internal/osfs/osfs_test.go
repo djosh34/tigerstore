@@ -32,8 +32,8 @@ func TestWALOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.Entries) != 20 || rec.HardState.Commit != 20 {
-		t.Fatalf("recovered %d entries, commit %d", len(rec.Entries), rec.HardState.Commit)
+	if rec.Last != 20 || rec.HardState.Commit != 20 {
+		t.Fatalf("recovered entries to %d, commit %d", rec.Last, rec.HardState.Commit)
 	}
 	names, err := dir.List()
 	if err != nil {

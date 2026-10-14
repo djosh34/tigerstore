@@ -4,6 +4,11 @@
 // After the TLS handshake, the dialing node writes its Raft ID as 8 bytes.
 // Then each frame is a 4-byte length and a protobuf raftpb.Message. Both
 // ends verify the other's certificate against the peer CA.
+//
+// A follower fetches a snapshot on a connection of its own: it writes its
+// Raft ID with the top bit set, then the first and the last index it
+// needs, 8 bytes each, and reads the snapshot stream until the other end
+// closes.
 package peer
 
 import (
@@ -31,6 +36,9 @@ import (
 // peer is reported unreachable, and Raft sends again.
 type Transport interface {
 	Send(m *raftpb.Message)
+	// Fetch asks peer id for the snapshot stream of the entries first to
+	// last. The caller reads it to the end and closes it.
+	Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error)
 	Close() error
 }
 
@@ -55,6 +63,9 @@ type Config struct {
 	Deliver func(*raftpb.Message)
 	// Unreachable is called when a message to a peer was dropped.
 	Unreachable func(id uint64)
+	// Serve writes to w the snapshot stream that peer id asked for, the
+	// entries first to last.
+	Serve func(id, first, last uint64, w io.Writer) error
 	// Logf logs connection errors.
 	Logf func(format string, args ...any)
 }
@@ -204,7 +215,7 @@ func (t *TCP) accept() {
 		}
 		t.wg.Go(func() {
 			defer t.untrack(c)
-			if err := t.receive(c); t.ctx.Err() == nil {
+			if err := t.receive(c); err != nil && t.ctx.Err() == nil {
 				t.logf("peer: receive from %s: %v", c.RemoteAddr(), err)
 			}
 		})
@@ -212,7 +223,7 @@ func (t *TCP) accept() {
 }
 
 // receive reads frames from one inbound connection until it fails. It
-// always returns the error that ended it.
+// returns the error that ended it, nil after a snapshot was served.
 func (t *TCP) receive(c net.Conn) error {
 	if err := c.SetReadDeadline(time.Now().Add(dialTimeout)); err != nil {
 		return err
@@ -223,8 +234,13 @@ func (t *TCP) receive(c net.Conn) error {
 		return err
 	}
 	from := binary.BigEndian.Uint64(hdr[:])
+	fetch := from&fetchBit != 0
+	from &^= fetchBit
 	if _, ok := t.senders[from]; !ok {
 		return fmt.Errorf("unknown peer %d", from)
+	}
+	if fetch {
+		return t.serve(c, r, from)
 	}
 	if err := c.SetReadDeadline(time.Time{}); err != nil {
 		return err
@@ -257,6 +273,83 @@ func (t *TCP) receive(c net.Conn) error {
 		}
 		t.cfg.Deliver(m)
 	}
+}
+
+// fetchBit marks the dialer's ID on a connection that fetches a
+// snapshot.
+const fetchBit = 1 << 63
+
+// serve answers a snapshot fetch, then closes the connection.
+func (t *TCP) serve(c net.Conn, r io.Reader, from uint64) error {
+	var span [16]byte
+	if _, err := io.ReadFull(r, span[:]); err != nil {
+		return err
+	}
+	if err := c.SetReadDeadline(time.Time{}); err != nil {
+		return err
+	}
+	if t.cfg.Serve == nil {
+		return errors.New("this node serves no snapshots")
+	}
+	w := &deadlineWriter{c: c}
+	if err := t.cfg.Serve(from, binary.BigEndian.Uint64(span[:]), binary.BigEndian.Uint64(span[8:]), w); err != nil {
+		return fmt.Errorf("snapshot for %d: %w", from, err)
+	}
+	return nil
+}
+
+// deadlineWriter fails a write that has not finished within writeTimeout.
+type deadlineWriter struct{ c net.Conn }
+
+func (w *deadlineWriter) Write(p []byte) (int, error) {
+	if err := w.c.SetWriteDeadline(writeDeadline()); err != nil {
+		return 0, err
+	}
+	return w.c.Write(p)
+}
+
+// Fetch opens a connection to peer id that fetches a snapshot stream.
+func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error) {
+	s, ok := t.senders[id]
+	if !ok {
+		return nil, fmt.Errorf("peer: unknown peer %d", id)
+	}
+	c, err := s.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var hdr [24]byte
+	binary.BigEndian.PutUint64(hdr[:], t.cfg.ID|fetchBit)
+	binary.BigEndian.PutUint64(hdr[8:], first)
+	binary.BigEndian.PutUint64(hdr[16:], last)
+	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
+		t.untrack(c)
+		return nil, err
+	}
+	if _, err := c.Write(hdr[:]); err != nil {
+		t.untrack(c)
+		return nil, err
+	}
+	return &fetchConn{t: t, c: c}, nil
+}
+
+// fetchConn reads a snapshot stream; a read that waits longer than
+// writeTimeout fails, so a stalled peer does not hold the follower.
+type fetchConn struct {
+	t *TCP
+	c net.Conn
+}
+
+func (f *fetchConn) Read(p []byte) (int, error) {
+	if err := f.c.SetReadDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return 0, err
+	}
+	return f.c.Read(p)
+}
+
+func (f *fetchConn) Close() error {
+	f.t.untrack(f.c)
+	return nil
 }
 
 // sender owns the connection to one peer.

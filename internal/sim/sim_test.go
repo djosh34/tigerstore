@@ -252,6 +252,10 @@ func TestEachFaultTakesEffect(t *testing.T) {
 		{"gray node", Faults{GrayEvery: Second}, func(st Stats) int { return st.GrayNodes }},
 		{"gray client", Faults{GrayClient: true}, func(st Stats) int { return st.GrayStreams }},
 		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
+		{"follower held down", Faults{HoldDown: true}, func(st Stats) int { return st.Snapshots }},
+		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, func(st Stats) int { return st.SnapshotFlips }},
+		{"crash at a checkpoint step", Faults{StepCrash: true}, func(st Stats) int { return st.StepCrashes }},
+		{"rotten value", Faults{Rot: true}, func(st Stats) int { return st.Rots }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -277,6 +281,9 @@ func TestHalfOpenLink(t *testing.T) {
 	for seed := uint64(1); seed <= 3; seed++ {
 		cfg := DefaultConfig(4000 + seed)
 		cfg.Faults = Faults{}
+		// Calls to the cut-off follower wait up to the client timeout for a
+		// leader (#105), so more clients keep the healthy pair busy.
+		cfg.Clients = 12
 		cfg.HalfOpenAt = 5 * Second
 		cfg.LiveFrom = cfg.HalfOpenAt + halfOpenTimeout + 2*Second
 		cfg.Duration = 15 * Second
