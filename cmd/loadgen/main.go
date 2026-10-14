@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -275,6 +276,12 @@ func run(cfg config) (*result, error) {
 		}
 		if err := phaseErrors(workers); err != nil {
 			return nil, fmt.Errorf("preload: %w", err)
+		}
+		// A+ prototype (#133): run a command between preload and load,
+		// for example to drop the page cache.
+		if c := os.Getenv("LOADGEN_AFTER_PRELOAD"); c != "" {
+			out, err := exec.Command("sh", "-c", c).CombinedOutput()
+			fmt.Fprintf(os.Stderr, "after preload: %s %v\n", out, err)
 		}
 	}
 

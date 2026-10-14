@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"os"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -28,6 +29,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/aplus"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -162,6 +164,10 @@ type Reply struct {
 type PersistJob struct {
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
+	// Snapshot is a snapshot to install (A+ prototype); the driver sets
+	// SnapStore to the store it built from it.
+	Snapshot  *raftpb.Snapshot
+	SnapStore *mvcc.Store
 	msg       *raftpb.Message
 	// newVote is set when the job changes the term or the vote.
 	newVote bool
@@ -257,15 +263,31 @@ type Node struct {
 
 	out Effects
 	err error
+
+	ap    aplusNode
+	apOut AplusEffects
 }
 
 // New starts a node from what its log recovered.
 func New(cfg Config, rec *wal.Recovered) (*Node, error) {
+	return NewFrom(cfg, rec, nil, nil, wal.HardState{})
+}
+
+// NewFrom starts a node from a checkpoint (A+ prototype): kv is the store
+// at checkpoint c, and rec the log after it.
+func NewFrom(cfg Config, rec *wal.Recovered, c *Ckpt, kv *mvcc.Store, hs wal.HardState) (*Node, error) {
 	st := newStorage(cfg.Peers)
-	if err := st.load(rec); err != nil {
+	var applied uint64
+	if c != nil {
+		if err := st.loadFrom(rec, c.Index, c.Term, hs); err != nil {
+			return nil, err
+		}
+		applied = c.Index
+	} else if err := st.load(rec); err != nil {
 		return nil, err
 	}
 	rn, err := raft.NewRawNode(&raft.Config{
+		Applied:                   applied,
 		ID:                        cfg.ID,
 		ElectionTick:              cfg.ElectionTicks,
 		HeartbeatTick:             cfg.HeartbeatTicks,
@@ -288,19 +310,37 @@ func New(cfg Config, rec *wal.Recovered) (*Node, error) {
 		logBytes += wal.EntryRecordBytes(e)
 	}
 	state := NewState(MinLeaseTTL(cfg))
-	return &Node{
+	if kv != nil {
+		state = newStateFrom(kv, MinLeaseTTL(cfg))
+	}
+	hst, _, _ := st.InitialState()
+	n := &Node{
+		applied:  applied,
 		logBytes: logBytes,
 		cfg:      cfg,
 		rn:       rn,
 		storage:  st,
 		state:    state,
 		kv:       state.Store(),
-		term:     rec.HardState.Term,
-		voteTerm: rec.HardState.Term,
-		vote:     rec.HardState.Vote,
+		term:     hst.GetTerm(),
+		voteTerm: hst.GetTerm(),
+		vote:     hst.GetVote(),
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
-	}, nil
+	}
+	n.ap.locs = map[uint64]wal.Loc{}
+	n.AddLocs(locList(rec.Locs))
+	n.ap.durable = c
+	st.snap = n.snapshotFor
+	return n, nil
+}
+
+func locList(m map[uint64]wal.Loc) []wal.Loc {
+	out := make([]wal.Loc, 0, len(m))
+	for _, l := range m {
+		out = append(out, l)
+	}
+	return out
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -314,6 +354,9 @@ func MinLeaseTTL(cfg Config) int64 {
 // quietLogger drops raft's log lines. Its Panic methods still panic,
 // because raft relies on them for broken invariants.
 func quietLogger() raft.Logger {
+	if os.Getenv("APLUS_RAFTLOG") != "" {
+		return &raft.DefaultLogger{Logger: log.New(os.Stderr, "raft ", log.LstdFlags)}
+	}
 	return &raft.DefaultLogger{Logger: log.New(io.Discard, "", 0)}
 }
 
@@ -658,6 +701,9 @@ func (n *Node) Persisted(job PersistJob) {
 	if n.err != nil {
 		return
 	}
+	if job.Snapshot != nil {
+		n.installSnapshot(job.Snapshot, job.SnapStore)
+	}
 	if err := n.storage.append(job); err != nil {
 		n.fail(err)
 		return
@@ -710,6 +756,7 @@ func (n *Node) Process() (Effects, error) {
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
 		}
+		n.maybeBuildSnap()
 		if planted.On("B06d") {
 			// Planted: a progress notification at the current revision
 			// goes out ahead of the events it covers.
@@ -774,11 +821,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 	for _, m := range rd.Messages {
 		switch m.GetTo() {
 		case raft.LocalAppendThread:
-			if m.Snapshot != nil {
-				n.fail(errors.New("core: snapshots are not supported yet"))
-				return
-			}
-			job := PersistJob{Entries: m.Entries, msg: m}
+			job := PersistJob{Entries: m.Entries, msg: m, Snapshot: m.Snapshot}
 			if m.Vote != nil {
 				job.HardState = &wal.HardState{Term: m.GetTerm(), Vote: m.GetVote(), Commit: m.GetCommit()}
 				job.newVote = slices.Contains(newVotes, m)
@@ -909,8 +952,10 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 	for _, e := range ents {
 		if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 			n.applied = e.GetIndex()
+			delete(n.ap.locs, e.GetIndex())
 			continue
 		}
+		n.applyAt(e)
 		err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte) error {
 			var p *pending
 			if origin == n.cfg.ID && boot == n.cfg.Boot {
@@ -931,6 +976,10 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			if errors.Is(err, errInternal) {
 				return err
 			}
+			if _, ok := op.(*pb.CompactionRequest); ok && err == nil {
+				// A+: compaction dirties many pages; checkpoint soon.
+				n.ap.forceCkpt = true
+			}
 			if err == nil {
 				n.matchWatches()
 			}
@@ -944,6 +993,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		}
 		n.applied = e.GetIndex()
 	}
+	n.afterApply()
 	return nil
 }
 
@@ -1054,6 +1104,10 @@ func (n *Node) send(m *raftpb.Message) {
 			n.held = append(n.held, m)
 		}
 		return
+	}
+	if m.GetType() == raftpb.MessageType_MsgSnap {
+		aplus.SnapSent.Add(int64(len(m.GetSnapshot().GetData())))
+		aplus.SnapsSent.Add(1)
 	}
 	n.out.Send = append(n.out.Send, m)
 }

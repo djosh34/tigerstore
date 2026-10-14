@@ -327,7 +327,9 @@ func (w *writer) add(k *keyIndex, v version) {
 	if planted.On("B09a") {
 		v.mod = rev{main: w.begin + 1 + int64(len(w.s.changes))}
 	}
+	w.s.ap.durable(&v)
 	k.vers = append(k.vers, v)
+	w.s.touch(k)
 	w.changed = true
 	w.s.changes = append(w.s.changes, Change{k: k, i: len(k.vers) - 1})
 }
@@ -345,6 +347,7 @@ func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
 		}
 		if p.IgnoreValue {
 			v.value = prev.value
+			v.crc = prev.crc
 		}
 		if p.IgnoreLease {
 			v.lease = prev.lease
@@ -356,7 +359,8 @@ func (w *writer) put(p *PutOp) *mvccpb.KeyValue {
 		v.create, v.ver = old.create, old.ver+1
 	}
 	if k == nil {
-		k = &keyIndex{key: p.Key}
+		// A+: the key is copied out of the entry, which leaves RAM.
+		k = &keyIndex{key: bytes.Clone(p.Key)}
 		w.s.keys.ReplaceOrInsert(k)
 	}
 	w.add(k, v)

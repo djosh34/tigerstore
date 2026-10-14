@@ -62,9 +62,9 @@ type Config struct {
 const (
 	// maxFrame caps one received message. Raft messages are capped at 4
 	// MiB of entries, plus headers.
-	maxFrame = 64 << 20
+	maxFrame = 2 << 30 // A+ prototype: a snapshot is one message
 	// maxQueued caps the estimated bytes in each of a peer's two queues.
-	maxQueued = 64 << 20
+	maxQueued = 2 << 30 // A+ prototype
 	// controlQueue and dataQueue cap the queued messages per peer.
 	controlQueue = 4096
 	dataQueue    = 4096

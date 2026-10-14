@@ -31,12 +31,17 @@ type version struct {
 	ver    int64
 	lease  int64
 	value  []byte
+	// crc is the CRC32C of value (A+ prototype).
+	crc uint32
 }
 
 // keyIndex holds every version of one key, oldest first.
 type keyIndex struct {
 	key  []byte
 	vers []version
+	// epoch is the checkpoint epoch in which the key last marked its page
+	// dirty (A+ prototype).
+	epoch uint64
 }
 
 // at returns the position of the newest version with main revision <= r,
@@ -92,6 +97,8 @@ type Store struct {
 	changes []Change
 
 	counts Counts
+
+	ap aplusState
 }
 
 // Counts are the operations a store has seen, for etcd's metrics
@@ -104,6 +111,12 @@ type Counts struct{ Puts, Deletes, Ranges int64 }
 
 // New returns an empty store at revision 1, the revision etcd starts at.
 func New() *Store {
+	s := newStore()
+	s.ap.init()
+	return s
+}
+
+func newStore() *Store {
 	return &Store{
 		keys: btree.NewG(32, func(a, b *keyIndex) bool { return bytes.Compare(a.key, b.key) < 0 }),
 		rev:  1,
@@ -266,7 +279,13 @@ func (s *Store) Compact(rev int64) error {
 			i++
 		}
 		if i > 0 {
-			k.vers = slices.Delete(k.vers, 0, i)
+			// A+: a frozen checkpoint view may share the old slice, so
+			// build a new one instead of moving versions in place.
+			for _, v := range k.vers[:i] {
+				s.ap.unref(v.value)
+			}
+			k.vers = slices.Clone(k.vers[i:])
+			s.touch(k)
 		}
 		if len(k.vers) == 0 {
 			gone = append(gone, k)
@@ -274,6 +293,7 @@ func (s *Store) Compact(rev int64) error {
 		return true
 	})
 	for _, k := range gone {
+		s.touch(k)
 		s.keys.Delete(k)
 	}
 	s.compactRev = rev

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/aplus"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -55,6 +56,11 @@ type input struct {
 	stream      uint64
 	status      chan *pb.StatusResponse
 	metrics     chan core.Metrics
+
+	apCkpt  *core.CkptResult
+	apClean *cleanDone
+	apSizes map[uint64]int64
+	apSnap  *raftpb.Snapshot
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -231,6 +237,10 @@ type Node struct {
 
 	// leader is the leader the committer saw last, for readers outside it.
 	leader atomic.Uint64
+
+	ck     *ckptr
+	ckptQ  chan any
+	cleanQ chan any
 }
 
 // New recovers the node's log from disk.
@@ -239,16 +249,16 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	w, rec, err := wal.Open(dir)
+	aplus.Dir = filepath.Join(cfg.DataDir, "wal")
+	cfg.Core.Boot = rand.Uint64()
+	w, c, ck, err := openAplus(cfg, dir)
 	if err != nil {
 		return nil, err
 	}
-	cfg.Core.Boot = rand.Uint64()
-	c, err := core.New(cfg.Core, rec)
-	if err != nil {
-		return nil, errors.Join(err, w.Close())
-	}
 	return &Node{
+		ck:        ck,
+		ckptQ:     make(chan any),
+		cleanQ:    make(chan any),
 		cfg:       cfg,
 		core:      c,
 		wal:       w,
@@ -335,6 +345,7 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx) })
+	n.runAplus(ctx.Done())
 	err := n.commit(ctx, t)
 	close(n.done)
 	cancel()
@@ -379,6 +390,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			if done.err != nil {
 				return done.err
 			}
+			n.core.AddLocs(done.locs)
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 			}
@@ -392,6 +404,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return nil
 		}
 		eff, err := n.core.Process()
+		n.dispatchAplus()
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, eff.Persist)
 		}
@@ -504,6 +517,15 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.apCkpt != nil:
+		n.core.CkptDone(*in.apCkpt)
+	case in.apClean != nil:
+		n.core.CleanDone(in.apClean.job, in.apClean.news, in.apClean.fid)
+	case in.apSizes != nil:
+		n.core.FileSizes(in.apSizes)
+	case in.apSnap != nil:
+		n.logf("aplus-snap built index=%d bytes=%d", in.apSnap.GetMetadata().GetIndex(), len(in.apSnap.GetData()))
+		n.core.SnapBuilt(in.apSnap)
 	}
 }
 
@@ -511,6 +533,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 // the node.
 type persistDone struct {
 	jobs []core.PersistJob
+	locs []wal.Loc
 	err  error
 }
 
@@ -536,6 +559,18 @@ func (n *Node) persist(ctx context.Context) {
 		}
 		start := time.Now()
 		entries, bytes := 0, 0
+		var snapErr error
+		for i := range jobs {
+			if s := jobs[i].Snapshot; s != nil {
+				kv, err := installSnap(s)
+				if err != nil {
+					snapErr = err
+				}
+				jobs[i].SnapStore = kv
+				n.wal.SetLast(s.GetMetadata().GetIndex())
+				n.logf("aplus-install snapshot index=%d bytes=%d took=%v", s.GetMetadata().GetIndex(), len(s.GetData()), time.Since(start))
+			}
+		}
 		for _, j := range jobs {
 			n.wal.Append(j.HardState, j.Entries)
 			entries += len(j.Entries)
@@ -547,6 +582,10 @@ func (n *Node) persist(ctx context.Context) {
 		if err := n.wal.Sync(); err != nil {
 			done = persistDone{err: err}
 		}
+		if snapErr != nil {
+			done = persistDone{err: snapErr}
+		}
+		done.locs = n.wal.TakeLocs()
 		if d := time.Since(start); d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", entries, bytes, d)
 		}

@@ -27,8 +27,16 @@ import (
 
 	"go.etcd.io/raft/v3/raftpb"
 
+	"github.com/djosh34/tigerstore/internal/aplus"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
+
+// Loc is where an entry's data starts on disk (A+ prototype).
+type Loc struct {
+	Index uint64
+	Seg   uint64
+	Off   int64
+}
 
 // FS is the directory that holds the log.
 type FS interface {
@@ -89,6 +97,16 @@ type WAL struct {
 	buf     []byte
 	dirty   bool
 	maxSize int64
+	// Locs are the locations of the entries appended since the last
+	// TakeLocs (A+ prototype).
+	Locs []Loc
+}
+
+// TakeLocs returns and clears the entry locations.
+func (w *WAL) TakeLocs() []Loc {
+	l := w.Locs
+	w.Locs = nil
+	return l
 }
 
 // HardState is the Raft hard state.
@@ -100,12 +118,20 @@ type HardState struct {
 type Recovered struct {
 	HardState HardState
 	Entries   []*raftpb.Entry
+	// Locs maps entry index to where its data is on disk (A+ prototype).
+	Locs map[uint64]Loc
+	// HasHardState is set if a hard state record was read.
+	HasHardState bool
 }
 
 // Open reads the log in fs, cuts a torn tail off the newest segment, and
 // returns the log ready for appends. A damaged record anywhere else, a gap
 // in the entries, or a commit index past the last entry is ErrCorrupt.
-func Open(fs FS) (*WAL, *Recovered, error) {
+func Open(fs FS) (*WAL, *Recovered, error) { return OpenFrom(fs, 0) }
+
+// OpenFrom is Open that skips segments below startSeq: with A+ they hold
+// only values, which the checkpoint names (A+ prototype).
+func OpenFrom(fs FS, startSeq uint64) (*WAL, *Recovered, error) {
 	names, err := fs.List()
 	if err != nil {
 		return nil, nil, err
@@ -113,6 +139,11 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	var segs []string
 	for _, n := range names {
 		if strings.HasSuffix(n, ".wal") {
+			var seq uint64
+			fmt.Sscanf(n, "%016x.wal", &seq)
+			if seq < startSeq {
+				continue
+			}
 			segs = append(segs, n)
 		}
 	}
@@ -133,7 +164,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	}
 
 	w := &WAL{fs: fs, maxSize: SegmentBytes}
-	rec := &Recovered{}
+	rec := &Recovered{Locs: map[uint64]Loc{}}
 	for i, name := range segs {
 		last := i == len(segs)-1
 		f, err := fs.Open(name)
@@ -247,6 +278,10 @@ func (w *WAL) replay(data []byte, rec *Recovered) (good, lastStart int64, err er
 		if err := w.apply(body[0], body[1:], rec); err != nil {
 			return int64(off), lastStart, err
 		}
+		if body[0] == recEntry {
+			idx := binary.LittleEndian.Uint64(body[9:])
+			rec.Locs[idx] = Loc{Index: idx, Seg: w.seq, Off: int64(off + recHdrSize + 17)}
+		}
 		lastStart = int64(off)
 		w.crc = sum
 		off = end
@@ -281,10 +316,14 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 		term := binary.LittleEndian.Uint64(p)
 		index := binary.LittleEndian.Uint64(p[8:])
 		etype := raftpb.EntryType(p[16])
+		if w.last == 0 && len(rec.Entries) == 0 {
+			// A+: the first kept segment starts anywhere.
+			w.last = index - 1
+		}
 		if index == 0 || index > w.last+1 {
 			return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
 		}
-		first := uint64(1)
+		first := index
 		if len(rec.Entries) > 0 {
 			first = rec.Entries[0].GetIndex()
 		}
@@ -298,6 +337,7 @@ func (w *WAL) apply(typ byte, p []byte, rec *Recovered) error {
 		if len(p) != 24 {
 			return fmt.Errorf("%w: hard state record of %d bytes", ErrCorrupt, len(p))
 		}
+		rec.HasHardState = true
 		rec.HardState = HardState{
 			Term:   binary.LittleEndian.Uint64(p),
 			Vote:   binary.LittleEndian.Uint64(p[8:]),
@@ -336,6 +376,7 @@ func (w *WAL) newSegment() error {
 		}
 	}
 	w.seq, w.seg, w.size = seq, f, int64(headerSize)
+	aplus.LogBytes.Add(int64(headerSize))
 	return nil
 }
 
@@ -365,6 +406,8 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		binary.LittleEndian.PutUint64(h[:], e.GetTerm())
 		binary.LittleEndian.PutUint64(h[8:], e.GetIndex())
 		h[16] = byte(e.GetType())
+		w.Locs = append(w.Locs, Loc{Index: e.GetIndex(), Seg: w.seq, Off: w.size + int64(len(w.buf)) + recHdrSize + 17})
+		aplus.LogEntryData.Add(int64(len(e.GetData())))
 		w.record(recEntry, h[:], e.GetData())
 		w.last = e.GetIndex()
 	}
@@ -385,6 +428,7 @@ func (w *WAL) Flush() error {
 	}
 	n, err := w.seg.Write(w.buf)
 	w.size += int64(n)
+	aplus.LogBytes.Add(int64(n))
 	w.dirty = true
 	if err != nil {
 		if planted.On("B12") {
@@ -429,6 +473,12 @@ func (w *WAL) Sync() error {
 // SetSegmentBytes changes the size after which a new segment starts. Tests
 // and the simulator use small segments to exercise rotation.
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
+
+// SetLast sets the last index after a snapshot install (A+ prototype).
+func (w *WAL) SetLast(i uint64) { w.last = i }
+
+// Seq is the newest segment's number (A+ prototype).
+func (w *WAL) Seq() uint64 { return w.seq }
 
 // Close closes the newest segment without syncing.
 func (w *WAL) Close() error { return w.seg.Close() }

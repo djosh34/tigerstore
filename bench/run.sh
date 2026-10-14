@@ -150,6 +150,12 @@ once() {
 	done
 	{
 		echo "target=$target mode=$mode rep=$rep"
+		# A+ prototype (#133): bytes each node sent to storage, and the
+		# revision, which counts every write since the start.
+		for p in $(tr ',' ' ' <"$dir/pids"); do
+			echo "io $p $(awk '/^write_bytes/ {print $2}' "/proc/$p/io")"
+		done
+		echo "revision $("$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" get /bench/ready -w json | jq .header.revision)"
 		ps -p "$(cat "$dir/pids")" -o pid,comm,rss,vsz
 		free -b
 		du -sb "$dir"

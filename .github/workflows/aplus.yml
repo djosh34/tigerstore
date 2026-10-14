@@ -1,0 +1,134 @@
+# Throwaway: measures the A+ storage prototype for #133 against main
+# 76952348. Runs only on pushes to exp/117-aplus.
+name: aplus-133
+
+on:
+  push:
+    branches: [exp/117-aplus]
+
+jobs:
+  hot:
+    strategy:
+      fail-fast: false
+      matrix:
+        bench: [put-1k, txn-1k]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: aplus/setup.sh
+      - name: bench ${{ matrix.bench }}, main vs A+ vs A+ with 256 MiB checkpoints
+        env:
+          TARGETS: baseline candidate cand256
+          BINS: bin
+          CERTS: certs
+          LAYOUT: 3 0 1 2
+          MODES: max rate
+          REPS: "5"
+        run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+      - if: always()
+        run: bin/benchreport results >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: hot-${{ matrix.bench }}
+          path: results
+          retention-days: 30
+
+  big:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: candidate, limit: "536870912"}
+          - {target: baseline, limit: "0"}
+          - {target: baseline, limit: "536870912"}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: aplus/setup.sh
+      - env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/big
+        run: aplus/big.sh ${{ matrix.target }} ${{ matrix.limit }} 1600000 results/big || true
+      - if: always()
+        run: grep -v '^raft' results/big/big.txt >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: big-${{ matrix.target }}-${{ matrix.limit }}
+          path: results
+          retention-days: 30
+
+  catchup:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [candidate, baseline]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: aplus/setup.sh
+      - env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/catchup
+        run: aplus/catchup.sh ${{ matrix.target }} 300000 10 results/catchup || true
+      - if: always()
+        run: cat results/catchup/catchup.txt >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: catchup-${{ matrix.target }}
+          path: results
+          retention-days: 30
+
+  churn:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: candidate, rate: "10000", secs: "180"}
+          - {target: baseline, rate: "10000", secs: "180"}
+          - {target: candidate, rate: "0", secs: "60"}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: aplus/setup.sh
+      - env:
+          BINS: bin
+          CERTS: certs
+          DATA: ${{ runner.temp }}/churn
+        run: aplus/churn.sh ${{ matrix.target }} 200000 ${{ matrix.rate }} ${{ matrix.secs }} 10 100000 results/churn || true
+      - if: always()
+        run: cat results/churn/churn.txt >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: churn-${{ matrix.target }}-${{ matrix.rate }}
+          path: results
+          retention-days: 30

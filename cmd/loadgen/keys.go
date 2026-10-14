@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"os"
+	"strconv"
 )
 
 // keyPrefix is the resource prefix every generated key lives under, the way
@@ -24,12 +26,19 @@ type keys struct {
 
 // nsCount is the number of namespaces keys spread over: key i lives in
 // namespace i % nsCount.
-const nsCount = 100
+// A+ prototype (#133): LOADGEN_NS overrides it, so that a LIST of one
+// namespace returns all of its keys, scattered over the log.
+var nsCount = func() int {
+	if n, err := strconv.Atoi(os.Getenv("LOADGEN_NS")); err == nil && n > 0 {
+		return n
+	}
+	return 100
+}()
 
 // listPrefix is the prefix of namespace ns's keys, which a LIST ranges
 // over. Every prefix has the same length.
 func listPrefix(ns int) []byte {
-	return fmt.Appendf(nil, "%sbench-%03d/", keyPrefix, ns)
+	return fmt.Appendf(nil, "%sbench-%05d/", keyPrefix, ns)
 }
 
 func makeKeys(n int) keys {
@@ -41,7 +50,7 @@ func makeKeys(n int) keys {
 			name[j] = nameAlphabet[x%uint64(len(nameAlphabet))]
 			x /= uint64(len(nameAlphabet))
 		}
-		k := fmt.Sprintf("%sbench-%03d/web-%s-%s", keyPrefix, i%nsCount, name[:10], name[10:])
+		k := fmt.Sprintf("%sbench-%05d/web-%s-%s", keyPrefix, i%nsCount, name[:10], name[10:])
 		if ks.size == 0 {
 			ks.size = len(k)
 		}

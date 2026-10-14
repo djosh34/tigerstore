@@ -13,6 +13,16 @@ import (
 type storage struct {
 	*raft.MemoryStorage
 	conf *raftpb.ConfState
+	// snap is the A+ prototype's snapshot source.
+	snap func() (*raftpb.Snapshot, error)
+}
+
+// Snapshot returns the A+ snapshot, with the fixed membership.
+func (s *storage) Snapshot() (*raftpb.Snapshot, error) {
+	if s.snap == nil {
+		return nil, raft.ErrSnapshotTemporarilyUnavailable
+	}
+	return s.snap()
 }
 
 func newStorage(peers []uint64) *storage {
@@ -35,7 +45,40 @@ func (s *storage) load(rec *wal.Recovered) error {
 	return s.SetHardState(raftHardState(rec.HardState))
 }
 
+// loadFrom starts the log at a checkpoint at index, term and appends the
+// recovered entries after it (A+ prototype).
+func (s *storage) loadFrom(rec *wal.Recovered, index, term uint64, hs wal.HardState) error {
+	if err := s.ApplySnapshot(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(index), Term: new(term), ConfState: s.conf}}); err != nil {
+		return err
+	}
+	var ents []*raftpb.Entry
+	for _, e := range rec.Entries {
+		if e.GetIndex() > index {
+			ents = append(ents, e)
+		}
+	}
+	if err := s.Append(ents); err != nil {
+		return err
+	}
+	if rec.HasHardState {
+		hs = rec.HardState
+	}
+	if hs.Commit < index {
+		hs.Commit = index
+	}
+	return s.SetHardState(raftHardState(hs))
+}
+
 func (s *storage) append(job PersistJob) error {
+	if job.Snapshot != nil {
+		ents := job.Entries[:0:0]
+		for _, e := range job.Entries {
+			if e.GetIndex() > job.Snapshot.GetMetadata().GetIndex() {
+				ents = append(ents, e)
+			}
+		}
+		job.Entries = ents
+	}
 	if err := s.Append(job.Entries); err != nil {
 		return err
 	}

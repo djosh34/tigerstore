@@ -69,6 +69,14 @@ func NewState(minTTL int64) *State {
 	return st
 }
 
+// newStateFrom is a state around a store rebuilt from a checkpoint, with
+// no leases (A+ prototype: leases are not checkpointed).
+func newStateFrom(kv *mvcc.Store, minTTL int64) *State {
+	st := &State{kv: kv, leases: map[int64]*lease{}, minTTL: minTTL}
+	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
+	return st
+}
+
 // Store is the key index.
 func (st *State) Store() *mvcc.Store { return st.kv }
 
