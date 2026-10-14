@@ -281,6 +281,9 @@ func TestHalfOpenLink(t *testing.T) {
 	for seed := uint64(1); seed <= 3; seed++ {
 		cfg := DefaultConfig(4000 + seed)
 		cfg.Faults = Faults{}
+		// Calls to the cut-off follower wait up to the client timeout for a
+		// leader (#105), so more clients keep the healthy pair busy.
+		cfg.Clients = 12
 		cfg.HalfOpenAt = 5 * Second
 		cfg.LiveFrom = cfg.HalfOpenAt + halfOpenTimeout + 2*Second
 		cfg.Duration = 15 * Second
