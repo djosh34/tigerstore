@@ -11,25 +11,26 @@ import (
 )
 
 // TestGrayHealingSeed keeps a schedule of the shape from #81: healing is
-// at 20 s, but a gray fsync started before it ends at 22.07 s. The last
-// call without a definite answer starts at 23.03 s, after the election
-// that follows; from 23.1 s every call gets one, long before the
-// checker's recovery allowance ends at 26.07 s. Seed 745672193 had this
-// shape until writes waited for a leader (#106).
+// at 20 s, but a gray fsync started before it ends at 22.29 s. The last
+// call without a definite answer starts at 22.39 s, after the election
+// that follows; from 22.4 s every call gets one, long before the
+// checker's recovery allowance ends at 26.29 s. Seed 745672193 had this
+// shape until writes waited for a leader (#106), and seed 384 until
+// design E changed the timing (#143).
 func TestGrayHealingSeed(t *testing.T) {
-	cfg := DefaultConfig(384)
+	cfg := DefaultConfig(2507)
 	a := run(t, cfg)
 	b := run(t, cfg)
 	if a.Trace != b.Trace {
 		t.Fatalf("trace changed on replay: %016x, then %016x", a.Trace, b.Trace)
 	}
 	checkers(t, a)
-	if a.grayHealedAt < cfg.Duration+2065*Millisecond || a.grayHealedAt > cfg.Duration+2066*Millisecond {
-		t.Fatalf("last gray fsync at %d ms, want the fsync at 22065 ms", a.grayHealedAt/Millisecond)
+	if a.grayHealedAt < cfg.Duration+2285*Millisecond || a.grayHealedAt > cfg.Duration+2286*Millisecond {
+		t.Fatalf("last gray fsync at %d ms, want the fsync at 22285 ms", a.grayHealedAt/Millisecond)
 	}
 	calls := 0
 	for _, r := range a.History {
-		if r.Call < cfg.Duration+3100*Millisecond {
+		if r.Call < cfg.Duration+2400*Millisecond {
 			continue
 		}
 		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
@@ -40,7 +41,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	if calls < 50 {
 		t.Fatalf("only %d calls after the final election", calls)
 	}
-	t.Logf("last gray fsync at %d ms; %d definite answers from 23100 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
+	t.Logf("last gray fsync at %d ms; %d definite answers from 22400 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
 }
 
 // TestGrayFsyncRecoveryBound checks the disk completion path, including a
