@@ -2,10 +2,13 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -139,7 +142,7 @@ func TestStatusOneTerm(t *testing.T) {
 // Like etcd, whose raft.Node takes no proposal without a leader, the write
 // waits instead of failing with "no leader", and commits once the node is
 // elected (#105). A write that finds no leader before its deadline gets
-// etcd's timeout.
+// what etcd answers then: DeadlineExceeded, not the request timeout.
 func TestWriteWaitsForLeader(t *testing.T) {
 	disk := simfs.New()
 	w, rec, err := wal.Open(disk)
@@ -219,7 +222,80 @@ func TestWriteWaitsForLeader(t *testing.T) {
 		n.Tick()
 		got = append(got, s.run()...)
 	}
-	if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCTimeout) {
+	if len(got) != 1 || status.Code(got[0].Err) != codes.DeadlineExceeded || status.Convert(got[0].Err).Message() != "context deadline exceeded" {
 		t.Fatalf("a write that never finds a leader: %+v", got)
+	}
+}
+
+// TestExpiredWritesLeaveQueue times out rounds of writes on a member that
+// never finds a leader. Each round's writes leave the queue when they
+// expire, so the queue does not grow with the rounds while clients retry.
+func TestExpiredWritesLeaveQueue(t *testing.T) {
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &single{t: t, disk: disk, log: w, n: n}
+	value := make([]byte, 16<<10)
+	id := uint64(0)
+	for round := range 5 {
+		for range 100 {
+			id++
+			n.Submit(Request{ID: id, Op: &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", id), Value: value}})
+		}
+		var got []Reply
+		for range n.cfg.RequestTicks {
+			n.Tick()
+			got = append(got, s.run()...)
+		}
+		if len(got) != 100 {
+			t.Fatalf("round %d: %d answers, want 100", round, len(got))
+		}
+		for _, r := range got {
+			if status.Code(r.Err) != codes.DeadlineExceeded {
+				t.Fatalf("round %d: write %d: %v", round, r.ID, r.Err)
+			}
+		}
+		if len(n.proposals) != 0 || n.propBytes != 0 {
+			t.Fatalf("round %d: %d writes and %d bytes still queued", round, len(n.proposals), n.propBytes)
+		}
+	}
+}
+
+// TestProposedWriteTimesOut keeps a proposed write from committing: a
+// follower forwards it to a leader that never answers. Its deadline then
+// gives etcd's request timeout, since it may still commit.
+func TestProposedWriteTimesOut(t *testing.T) {
+	disk := simfs.New()
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(DefaultConfig(1, []uint64{1, 2, 3}), rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &single{t: t, disk: disk, log: w, n: n}
+	heartbeat := func() {
+		if err := n.Step(&raftpb.Message{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(1))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	heartbeat()
+	s.run()
+	n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	got := s.run()
+	for i := 0; len(got) == 0 && i < 2*n.cfg.RequestTicks; i++ {
+		heartbeat()
+		n.Tick()
+		got = append(got, s.run()...)
+	}
+	if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCTimeout) {
+		t.Fatalf("a forwarded write that never commits: %+v", got)
 	}
 }

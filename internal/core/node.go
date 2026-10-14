@@ -11,6 +11,7 @@ package core
 
 import (
 	"cmp"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -184,6 +186,8 @@ type pending struct {
 	req      Request
 	deadline int64
 	done     bool
+	// queued marks a write in proposals that was not proposed yet.
+	queued bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -561,13 +565,22 @@ func (n *Node) queueWrite(p *pending) {
 	if p.req.ID != 0 {
 		n.waiting[p.req.ID] = p
 	}
+	p.queued = true
 	n.proposals = append(n.proposals, p)
 	n.propBytes += size
 }
 
-// expire fails requests whose deadline passed.
+// errNotProposed answers a write whose deadline passed before it was
+// proposed, as etcd v3.7.2 answers a write whose context ends while its
+// raft.Node waits for a leader. clientv3 retries this code for writes,
+// unlike the request timeout of a write that was proposed.
+var errNotProposed = status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error())
+
+// expire fails requests whose deadline passed. Writes that expired before
+// they were proposed leave the queue at once, so a node without a leader
+// holds only writes that may still go out.
 func (n *Node) expire() {
-	i := 0
+	i, dropped := 0, false
 	for ; i < len(n.timeouts); i++ {
 		p := n.timeouts[i]
 		if p.done {
@@ -576,9 +589,21 @@ func (n *Node) expire() {
 		if p.deadline > n.now {
 			break
 		}
+		if p.queued {
+			dropped = true
+			n.finish(p, nil, errNotProposed)
+			continue
+		}
 		n.finish(p, nil, rpctypes.ErrGRPCTimeout)
 	}
 	n.timeouts = n.timeouts[i:]
+	if dropped {
+		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+		n.propBytes = 0
+		for _, p := range n.proposals {
+			n.propBytes += writeSize(p)
+		}
+	}
 }
 
 func (n *Node) finish(p *pending, resp proto.Message, err error) {
@@ -627,10 +652,13 @@ func (n *Node) propose() {
 	if n.rn.BasicStatus().Lead == raft.None {
 		return
 	}
-	// A write that timed out while it waited never goes out; its client
-	// got an answer that allows both outcomes.
-	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+	// A write that timed out while it waited already left the queue
+	// (expire), so it never goes out.
+	props := n.proposals
 	n.proposals, n.propBytes = nil, 0
+	for _, p := range props {
+		p.queued = false
+	}
 	for len(props) > 0 {
 		end, size := 0, 0
 		for end < len(props) && (end == 0 || size+writeSize(props[end]) <= n.cfg.MaxBatchBytes) {
