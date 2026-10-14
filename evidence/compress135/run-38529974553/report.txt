@@ -1,0 +1,344 @@
+libzstd 1.5.5, Go go1.27.2, GOMAXPROCS 1, reps 5
+
+## Corpus
+
+live snapshot: 6719 values, 9830369 value bytes (mean 1463, median 774, p90 3215, max 33365), 382567 key bytes
+write trace (every put in revision order): 22677 values, 53067195 value bytes (mean 2340, median 937, p90 5201, max 33365), 1208987 key bytes
+snapshot split by key hash: 1384 train / 5335 test values. trace split by order: first 6803 puts train, last 15874 evaluate.
+
+live snapshot by format:
+
+| Format | Values | Value bytes | Share of bytes |
+| --- | ---: | ---: | ---: |
+| protobuf | 6454 | 9320153 | 94.81% |
+| json | 265 | 510216 | 5.19% |
+
+live snapshot by resource:
+
+| Resource | Values | Value bytes | Share of bytes |
+| --- | ---: | ---: | ---: |
+| events | 4026 | 2955383 | 30.06% |
+| configmaps | 385 | 2681580 | 27.28% |
+| replicasets | 422 | 1360995 | 13.84% |
+| pods | 129 | 654750 | 6.66% |
+| endpointslices | 362 | 458792 | 4.67% |
+| deployments | 122 | 414005 | 4.21% |
+| appreleases(crd) | 120 | 340776 | 3.47% |
+| secrets | 121 | 203225 | 2.07% |
+| leases | 244 | 161423 | 1.64% |
+| servicemonitors(crd) | 120 | 145200 | 1.48% |
+| services/endpoints | 122 | 106692 | 1.09% |
+| services/specs | 122 | 87253 | 0.89% |
+| ipaddresses | 122 | 65283 | 0.66% |
+| clusterroles | 77 | 64880 | 0.66% |
+| clusterrolebindings | 64 | 40600 | 0.41% |
+| apiservices | 23 | 20286 | 0.21% |
+| flowschemas | 11 | 11403 | 0.12% |
+| serviceaccounts | 61 | 7930 | 0.08% |
+| rolebindings | 12 | 7543 | 0.08% |
+| daemonsets | 2 | 6345 | 0.06% |
+| roles | 12 | 6006 | 0.06% |
+| namespaces | 17 | 5231 | 0.05% |
+| prioritylevelconfigurations | 8 | 4912 | 0.05% |
+| controllerrevisions | 2 | 4419 | 0.04% |
+| minions | 1 | 4106 | 0.04% |
+| customresourcedefinitions | 2 | 3954 | 0.04% |
+| certificatesigningrequests | 1 | 2400 | 0.02% |
+| clustertrustbundles | 1 | 1473 | 0.01% |
+| servicecidrs | 1 | 951 | 0.01% |
+| storageclasses | 1 | 841 | 0.01% |
+| priorityclasses | 2 | 782 | 0.01% |
+| csinodes | 1 | 682 | 0.01% |
+| peerserverleases | 1 | 139 | 0.00% |
+| ranges | 1 | 66 | 0.00% |
+| masterleases | 1 | 63 | 0.00% |
+
+write trace by format:
+
+| Format | Values | Value bytes | Share of bytes |
+| --- | ---: | ---: | ---: |
+| protobuf | 21578 | 50316682 | 94.82% |
+| json | 1099 | 2750513 | 5.18% |
+
+write trace by resource:
+
+| Resource | Values | Value bytes | Share of bytes |
+| --- | ---: | ---: | ---: |
+| pods | 3801 | 17179579 | 32.37% |
+| configmaps | 1452 | 10583208 | 19.94% |
+| replicasets | 2452 | 7832465 | 14.76% |
+| events | 8827 | 7005938 | 13.20% |
+| deployments | 1418 | 4581188 | 8.63% |
+| appreleases(crd) | 960 | 2579892 | 4.86% |
+| endpointslices | 1275 | 1460702 | 2.75% |
+| leases | 1141 | 722309 | 1.36% |
+| services/endpoints | 761 | 564543 | 1.06% |
+| secrets | 132 | 210180 | 0.40% |
+| servicemonitors(crd) | 132 | 159720 | 0.30% |
+| services/specs | 132 | 94020 | 0.18% |
+| ipaddresses | 132 | 70638 | 0.13% |
+| customresourcedefinitions | 6 | 10020 | 0.02% |
+| minions | 1 | 4106 | 0.01% |
+| namespaces | 12 | 3480 | 0.01% |
+| peerserverleases | 15 | 2085 | 0.00% |
+| serviceaccounts | 12 | 1296 | 0.00% |
+| masterleases | 15 | 945 | 0.00% |
+| apiservices | 1 | 881 | 0.00% |
+
+## Dictionaries
+
+snapshot-trained: 12 per-resource dictionaries, 209852 bytes in total, plus a 32768-byte global one for 12 small resource groups. Training CPU 172 ms per-resource total, 95 ms global (libzstd fastCover defaults). Building encoder+decoder tables for all per-resource dictionaries once: 0.52 ms CPU (0.52 ms wall).
+trained on first 30% of writes: 13 per-resource dictionaries, 346733 bytes in total, plus a 32768-byte global one for 7 small resource groups. Training CPU 488 ms per-resource total, 588 ms global (libzstd fastCover defaults). Building encoder+decoder tables for all per-resource dictionaries once: 0.76 ms CPU (0.76 ms wall).
+
+## Per-value ratio, live snapshot test split (stored bytes incl. 1-byte tag and raw fallback / raw bytes)
+
+| Codec | Stored / raw | Median per-value ratio | Values left raw | Bytes saved per value |
+| --- | ---: | ---: | ---: | ---: |
+| none | 100.07% | 100.13% | 5335 | -1 |
+| z1 | 46.49% | 65.35% | 46 | 778 |
+| z2 | 46.62% | 65.18% | 46 | 777 |
+| z3 | 46.39% | 64.75% | 46 | 780 |
+| z1+dict | 14.56% | 16.18% | 2 | 1243 |
+| z2+dict | 14.67% | 16.83% | 0 | 1241 |
+| z3+dict | 13.80% | 15.68% | 0 | 1254 |
+| z1+global | 19.32% | 19.35% | 2 | 1174 |
+| k1 | 46.90% | 66.48% | 46 | 773 |
+| k1+dict | 15.36% | 18.96% | 0 | 1231 |
+| k3 | 46.32% | 64.94% | 46 | 781 |
+| k3+dict | 15.19% | 18.80% | 2 | 1234 |
+| lz4 | 58.47% | 75.98% | 43 | 604 |
+| s2 | 57.51% | 74.04% | 65 | 618 |
+| s2better | 56.03% | 72.29% | 80 | 640 |
+| s2+dict | 21.56% | 23.19% | 0 | 1141 |
+
+## Per-value by resource, zstd 1 with and without per-resource dictionary (snapshot test split)
+
+
+| Group | Values | Raw bytes | z1 | z1+dict | lz4 | s2 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| events | 3215 | 2354067 | 67.11% | 15.70% | 79.33% | 77.84% |
+| configmaps | 308 | 2122175 | 18.14% | 11.43% | 30.92% | 31.86% |
+| replicasets | 334 | 1077357 | 46.64% | 5.71% | 58.25% | 57.04% |
+| pods | 102 | 513233 | 42.15% | 16.44% | 53.91% | 51.91% |
+| endpointslices | 291 | 368142 | 47.59% | 8.52% | 57.75% | 55.45% |
+| deployments | 86 | 292519 | 48.74% | 16.43% | 62.07% | 60.56% |
+| appreleases(crd) | 97 | 275445 | 35.38% | 15.81% | 50.06% | 47.41% |
+| secrets | 99 | 162043 | 90.75% | 70.55% | 91.95% | 92.62% |
+| leases | 189 | 125511 | 67.71% | 21.84% | 75.05% | 72.70% |
+| servicemonitors(crd) | 90 | 108900 | 46.09% | 15.14% | 64.36% | 61.01% |
+| services/endpoints | 96 | 83865 | 62.24% | 12.31% | 72.35% | 69.32% |
+| services/specs | 95 | 68015 | 69.33% | 11.00% | 78.15% | 75.82% |
+| clusterroles | 65 | 57672 | 54.22% | 43.22% | 65.73% | 62.09% |
+| ipaddresses | 95 | 50840 | 68.68% | 14.14% | 76.69% | 74.80% |
+| clusterrolebindings | 45 | 28972 | 60.15% | 33.84% | 71.01% | 66.47% |
+| apiservices | 18 | 15873 | 51.62% | 42.29% | 68.90% | 65.81% |
+| flowschemas | 9 | 9207 | 60.04% | 14.43% | 74.04% | 71.12% |
+| rolebindings | 10 | 6512 | 59.03% | 39.31% | 69.46% | 65.54% |
+| daemonsets | 2 | 6345 | 44.27% | 35.78% | 56.00% | 54.47% |
+| serviceaccounts | 45 | 5950 | 97.70% | 81.26% | 98.42% | 98.39% |
+| roles | 10 | 5126 | 67.85% | 48.87% | 77.70% | 74.56% |
+| namespaces | 15 | 4635 | 80.47% | 52.82% | 86.95% | 84.06% |
+| controllerrevisions | 2 | 4419 | 51.64% | 49.17% | 68.32% | 63.50% |
+| customresourcedefinitions | 2 | 3954 | 38.11% | 41.76% | 52.93% | 49.62% |
+| prioritylevelconfigurations | 6 | 3628 | 69.85% | 40.74% | 80.60% | 77.29% |
+| certificatesigningrequests | 1 | 2400 | 69.33% | 58.29% | 85.29% | 83.58% |
+| clustertrustbundles | 1 | 1473 | 78.68% | 13.37% | 95.11% | 95.11% |
+| servicecidrs | 1 | 951 | 51.84% | 33.54% | 60.25% | 55.73% |
+| storageclasses | 1 | 841 | 56.36% | 49.94% | 69.20% | 65.87% |
+| priorityclasses | 2 | 782 | 84.65% | 69.44% | 93.61% | 93.09% |
+| csinodes | 1 | 682 | 61.73% | 44.87% | 70.09% | 68.33% |
+| peerserverleases | 1 | 139 | 100.72% | 92.81% | 100.00% | 100.72% |
+| ranges | 1 | 66 | 101.52% | 101.52% | 101.52% | 101.52% |
+
+## Per-value by format, snapshot test split (built-in protobuf with the k8s\x00 prefix against CRD and aggregator JSON)
+
+
+| Group | Values | Raw bytes | z1 | z3 | z1+dict | k1 | k1+dict | lz4 | s2 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| protobuf | 5128 | 7357567 | 46.91% | 46.80% | 14.43% | 47.33% | 15.39% | 58.68% | 57.82% |
+| json | 207 | 404172 | 38.93% | 38.94% | 16.92% | 39.05% | 14.85% | 54.68% | 51.82% |
+
+| Group | Values | Raw bytes | z1 | z1+dict | lz4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| protobuf 256 B-1 KiB | 3977 | 2886809 | 66.84% | 16.68% | 78.35% |
+| protobuf 1-4 KiB | 845 | 2022938 | 46.65% | 10.19% | 58.22% |
+| protobuf 4-16 KiB | 241 | 1841382 | 27.08% | 16.62% | 38.94% |
+| protobuf >=16 KiB | 18 | 600570 | 12.23% | 10.55% | 25.79% |
+| json 1-4 KiB | 189 | 388299 | 38.41% | 15.89% | 54.10% |
+| json 256 B-1 KiB | 18 | 15873 | 51.62% | 42.29% | 68.90% |
+| protobuf <256 B | 47 | 5868 | 100.32% | 82.40% | 100.24% |
+
+## Per-value by size, snapshot test split
+
+
+| Group | Values | Raw bytes | z1 | z1+dict | lz4 | s2 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| a <256 B | 47 | 5868 | 100.32% | 82.40% | 100.24% | 100.44% |
+| b 256 B-1 KiB | 3995 | 2902682 | 66.76% | 16.82% | 78.30% | 76.55% |
+| c 1-4 KiB | 1034 | 2411237 | 45.32% | 11.11% | 57.56% | 56.10% |
+| d 4-16 KiB | 241 | 1841382 | 27.08% | 16.62% | 38.94% | 39.36% |
+| e >=16 KiB | 18 | 600570 | 12.23% | 10.55% | 25.79% | 26.33% |
+
+## Per-value CPU on one core, snapshot test split (median of reps; ns per KiB of raw value)
+
+| Codec | Compress CPU ns/KiB | Decompress CPU ns/KiB | Compress ns/value | Decompress ns/value | Compress wall ns/KiB | Decompress wall ns/KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| z1 | 5133 | 2383 | 7294 | 3386 | 5134 | 2384 |
+| z2 | 5191 | 2409 | 7376 | 3423 | 5191 | 2410 |
+| z3 | 5982 | 2418 | 8499 | 3436 | 5982 | 2419 |
+| z1+dict | 1967 | 728 | 2795 | 1035 | 1967 | 729 |
+| z2+dict | 2201 | 743 | 3127 | 1056 | 2201 | 743 |
+| z3+dict | 2409 | 717 | 3423 | 1018 | 2412 | 717 |
+| z1+global | 2113 | 765 | 3002 | 1087 | 2114 | 765 |
+| k1 | 6802 | 2709 | 9664 | 3849 | 6803 | 2710 |
+| k1+dict | 10415 | 1836 | 14797 | 2608 | 10417 | 1836 |
+| k3 | 8970 | 2715 | 12745 | 3858 | 8971 | 2716 |
+| k3+dict | 23866 | 1851 | 33909 | 2629 | 23868 | 1851 |
+| lz4 | 1439 | 141 | 2044 | 201 | 1439 | 141 |
+| s2 | 973 | 244 | 1382 | 347 | 973 | 244 |
+| s2better | 2089 | 242 | 2968 | 343 | 2089 | 242 |
+| s2+dict | 1822 | 315 | 2589 | 447 | 1823 | 315 |
+
+## Write trace, last 70% of puts, dictionaries trained on the first 30% (aging check)
+
+| Codec | Stored / raw | Median per-value ratio | Values left raw | Bytes saved per value |
+| --- | ---: | ---: | ---: | ---: |
+| none | 100.04% | 100.09% | 15874 | -1 |
+| z1 | 42.78% | 56.69% | 22 | 1393 |
+| z1+dict | 8.71% | 10.00% | 0 | 2222 |
+| z1+global | 11.11% | 11.12% | 0 | 2164 |
+| z3+dict | 8.37% | 9.90% | 0 | 2231 |
+| k1+dict | 9.56% | 11.62% | 0 | 2202 |
+| lz4 | 55.02% | 67.01% | 11 | 1095 |
+| s2 | 53.69% | 64.96% | 22 | 1127 |
+
+| Group | Values | Raw bytes | z1 | z1+dict | lz4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| protobuf | 15189 | 36730162 | 43.16% | 8.86% | 55.27% |
+| json | 685 | 1913577 | 35.44% | 5.82% | 50.21% |
+
+## Bytes per Put on disk, write trace last 70%, tigerstore framing, entries of N puts in arrival order
+
+Mean value 2434 bytes, mean key 53 bytes. Per-entry rows compress the whole entry (keys and framing too) as one block with a 1-byte tag. Model cap = 336 MiB/s (#28's disk, as #109 uses it) / (3 replicas x bytes per Put); a model, not a measurement.
+
+| Scheme | N=1 B/Put | N=16 B/Put | N=64 B/Put | N=256 B/Put | Saved at N=64 | Model cap at N=64, Put/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| raw | 2528 | 2511 | 2510 | 2510 | 0.0% | 46787 |
+| per value z1 | 1135 | 1118 | 1117 | 1117 | 55.5% | 105126 |
+| per value z1+dict | 305 | 288 | 287 | 287 | 88.5% | 408615 |
+| per value k1+dict | 326 | 309 | 308 | 308 | 87.7% | 380928 |
+| per value lz4 | 1433 | 1416 | 1415 | 1415 | 43.6% | 82994 |
+| per value s2 | 1401 | 1384 | 1383 | 1383 | 44.9% | 84927 |
+| per entry z1 | 1105 | 409 | 234 | 152 | 90.7% | 502927 |
+| per entry z3 | 1097 | 401 | 241 | 155 | 90.4% | 486945 |
+| per entry z1+global | 338 | 225 | 175 | 136 | 93.0% | 670027 |
+| per entry k1 | 1121 | 412 | 234 | 153 | 90.7% | 502794 |
+| per entry lz4 | 1404 | 561 | 399 | 361 | 84.1% | 294472 |
+| per entry s2 | 1366 | 560 | 357 | 269 | 85.8% | 329229 |
+
+Per-entry CPU on one core, N=64 (ns per KiB of raw entry bytes, median of reps) and the cost to read one value back:
+
+| Codec | Compress ns/KiB | Decompress ns/KiB | Decode one N=64 entry, ns | Decode one N=256 entry, ns |
+| --- | ---: | ---: | ---: | ---: |
+| z1 | 938 | 335 | 52386 | 149454 |
+| z3 | 1221 | 364 | 56931 | 156517 |
+| z1+global | 864 | 295 | 46107 | 145157 |
+| k1 | 1310 | 360 | 56243 | 176482 |
+| lz4 | 843 | 128 | 19990 | 77099 |
+| s2 | 560 | 210 | 32863 | 117560 |
+
+## managedFields
+
+live snapshot, raw bytes:
+
+| Format | Values parsed | Not parsed | Bytes | managedFields bytes | Share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| protobuf | 6454 | 0 | 9320153 | 3170278 | 34.02% |
+| json | 265 | 0 | 509951 | 158933 | 31.17% |
+
+write trace, raw bytes:
+
+| Format | Values parsed | Not parsed | Bytes | managedFields bytes | Share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| protobuf | 21578 | 0 | 50316682 | 21810522 | 43.35% |
+| json | 1099 | 0 | 2749414 | 783476 | 28.50% |
+
+Compressed, snapshot test split, per value (JSON values re-marshaled both ways so only managedFields differs):
+
+| Format | Codec | Stored with | Stored without | managedFields share of stored bytes |
+| --- | --- | ---: | ---: | ---: |
+| protobuf | z1 | 3451341 | 2384392 | 30.91% |
+| protobuf | z1+dict | 1061916 | 999353 | 5.89% |
+| protobuf | lz4 | 4317357 | 2919307 | 32.38% |
+| json | z1 | 157013 | 124296 | 20.84% |
+| json | z1+dict | 68772 | 48709 | 29.17% |
+| json | lz4 | 220930 | 173605 | 21.42% |
+
+## Encrypted at rest (k8s:enc:aesgcm:v1, AES-256-GCM over the real snapshot test values) and random controls
+
+| Set | Codec | Stored / raw | Values left raw | Compress CPU ns/KiB | Decompress CPU ns/KiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| all test values encrypted | z1 | 100.07% | 5335 of 5335 | 1991 | 33 |
+| all test values encrypted | z1+dict | 100.07% | 5335 of 5335 | 2401 | 32 |
+| all test values encrypted | z3 | 100.07% | 5335 of 5335 | 2701 | 32 |
+| all test values encrypted | k1 | 100.07% | 5335 of 5335 | 500 | 32 |
+| all test values encrypted | lz4 | 100.07% | 5335 of 5335 | 876 | 33 |
+| all test values encrypted | s2 | 100.07% | 5335 of 5335 | 323 | 32 |
+| test Secrets in plaintext | z1 | 90.75% | 0 of 99 | 4649 | 693 |
+| test Secrets in plaintext | z1+dict | 70.55% | 0 of 99 | 1962 | 323 |
+| test Secrets in plaintext | z3 | 90.45% | 0 of 99 | 5225 | 438 |
+| test Secrets in plaintext | k1 | 91.42% | 0 of 99 | 7783 | 321 |
+| test Secrets in plaintext | lz4 | 91.95% | 0 of 99 | 1080 | 73 |
+| test Secrets in plaintext | s2 | 92.62% | 19 of 99 | 528 | 77 |
+| test Secrets encrypted | z1 | 100.06% | 99 of 99 | 1684 | 30 |
+| test Secrets encrypted | z1+dict | 100.06% | 99 of 99 | 2087 | 30 |
+| test Secrets encrypted | z3 | 100.06% | 99 of 99 | 2349 | 30 |
+| test Secrets encrypted | k1 | 100.06% | 99 of 99 | 441 | 30 |
+| test Secrets encrypted | lz4 | 100.06% | 99 of 99 | 842 | 30 |
+| test Secrets encrypted | s2 | 100.06% | 99 of 99 | 297 | 30 |
+| random 1 KiB x2000 | z1 | 100.10% | 2000 of 2000 | 2149 | 34 |
+| random 1 KiB x2000 | z1+dict | 100.10% | 2000 of 2000 | 2972 | 34 |
+| random 1 KiB x2000 | z3 | 100.10% | 2000 of 2000 | 3504 | 34 |
+| random 1 KiB x2000 | k1 | 100.10% | 2000 of 2000 | 654 | 34 |
+| random 1 KiB x2000 | lz4 | 100.10% | 2000 of 2000 | 1200 | 34 |
+| random 1 KiB x2000 | s2 | 100.10% | 2000 of 2000 | 417 | 34 |
+| random 10 KiB x300 | z1 | 100.01% | 300 of 300 | 728 | 26 |
+| random 10 KiB x300 | z1+dict | 100.01% | 300 of 300 | 1234 | 26 |
+| random 10 KiB x300 | z3 | 100.01% | 300 of 300 | 902 | 25 |
+| random 10 KiB x300 | k1 | 100.01% | 300 of 300 | 175 | 26 |
+| random 10 KiB x300 | lz4 | 100.01% | 300 of 300 | 333 | 25 |
+| random 10 KiB x300 | s2 | 100.01% | 300 of 300 | 126 | 26 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | z1 | 100.05% | 4000 of 4000 | 1472 | 31 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | z1+dict | 100.05% | 4000 of 4000 | 1923 | 30 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | z3 | 100.05% | 4000 of 4000 | 2071 | 31 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | k1 | 100.05% | 4000 of 4000 | 429 | 30 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | lz4 | 100.05% | 4000 of 4000 | 757 | 31 |
+| random bytes at the trace's first 4000 sizes (mixed-k8s bench style) | s2 | 100.05% | 4000 of 4000 | 279 | 31 |
+
+## Point read cost
+
+In memory, one value at a time, warm decoder (time.Now around each call, so about 30-50 ns of the result is the clock):
+
+| Codec | p50 ns | p99 ns | p50 ns for values over 4 KiB |
+| --- | ---: | ---: | ---: |
+| none | 72 | 480 | 200 |
+| z1 | 3304 | 10056 | 6872 |
+| z1+dict | 1152 | 8080 | 1944 |
+| k1 | 4256 | 9136 | 6416 |
+| k1+dict | 3120 | 10840 | 5024 |
+| lz4 | 192 | 1384 | 720 |
+| s2 | 296 | 2816 | 1128 |
+
+Fresh libzstd decoder per read: z1 p50 3864 ns, p99 12833 ns; z1+dict (decoder plus dictionary tables built per read) p50 7648 ns, p99 16761 ns.
+
+Cold disk point read: O_DIRECT pread of the 4 KiB pages holding one value, then decode. 1000 random values of the trace's last 70%, layouts interleaved, 4 timed reps after one warmup rep:
+
+| Layout | File bytes | Mean pages | Read p50 us | Read p99 us | Decode p50 us | Decode p99 us |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| per value none | 38659613 | 1.58 | 128 | 222 | 0.4 | 1.3 |
+| per value z1+dict | 3364907 | 1.05 | 111 | 222 | 2.4 | 13.3 |
+| per value lz4 | 21260368 | 1.32 | 122 | 219 | 0.7 | 2.9 |
+| per entry z1, N=64 | 3702571 | 4.66 | 124 | 234 | 51.5 | 72.7 |
+| per entry z1, N=256 | 2415183 | 10.44 | 136 | 244 | 165.1 | 195.5 |
+
+done
