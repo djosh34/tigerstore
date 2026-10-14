@@ -10,24 +10,26 @@ import (
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
-// TestGrayHealingSeed preserves the schedule from #81. Its gray network
-// fault ends near 21 s, but an fsync started before healing ends at 22.7 s.
-// All nodes serve definite answers after the final election at 24.17 s,
-// even before the checker's recovery allowance ends at 26.7 s.
+// TestGrayHealingSeed keeps a schedule of the shape from #81: healing is
+// at 20 s, but a gray fsync started before it ends at 22.07 s. The last
+// call without a definite answer starts at 23.03 s, after the election
+// that follows; from 23.1 s every call gets one, long before the
+// checker's recovery allowance ends at 26.07 s. Seed 745672193 had this
+// shape until writes waited for a leader (#106).
 func TestGrayHealingSeed(t *testing.T) {
-	cfg := DefaultConfig(745672193)
+	cfg := DefaultConfig(384)
 	a := run(t, cfg)
 	b := run(t, cfg)
 	if a.Trace != b.Trace {
 		t.Fatalf("trace changed on replay: %016x, then %016x", a.Trace, b.Trace)
 	}
 	checkers(t, a)
-	if a.grayHealedAt < cfg.Duration+2700*Millisecond || a.grayHealedAt > cfg.Duration+2702*Millisecond {
-		t.Fatalf("last gray fsync at %d ms, want the fsync at 22701 ms", a.grayHealedAt/Millisecond)
+	if a.grayHealedAt < cfg.Duration+2065*Millisecond || a.grayHealedAt > cfg.Duration+2066*Millisecond {
+		t.Fatalf("last gray fsync at %d ms, want the fsync at 22065 ms", a.grayHealedAt/Millisecond)
 	}
 	calls := 0
 	for _, r := range a.History {
-		if r.Call < cfg.Duration+4200*Millisecond {
+		if r.Call < cfg.Duration+3100*Millisecond {
 			continue
 		}
 		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
@@ -38,7 +40,7 @@ func TestGrayHealingSeed(t *testing.T) {
 	if calls < 50 {
 		t.Fatalf("only %d calls after the final election", calls)
 	}
-	t.Logf("last gray fsync at %d ms; %d definite answers from 24200 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
+	t.Logf("last gray fsync at %d ms; %d definite answers from 23100 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
 }
 
 // TestGrayFsyncRecoveryBound checks the disk completion path, including a

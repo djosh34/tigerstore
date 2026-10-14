@@ -11,6 +11,7 @@ package core
 
 import (
 	"cmp"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -184,6 +186,8 @@ type pending struct {
 	req      Request
 	deadline int64
 	done     bool
+	// queued marks a write in proposals that was not proposed yet.
+	queued bool
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -557,26 +561,29 @@ const batchFraming = 4*binary.MaxVarintLen64 + 1
 // queueWrite adds a write to the next entry. A write that would take the
 // entry past MaxBatchBytes first sends off the entry so far.
 func (n *Node) queueWrite(p *pending) {
-	size := len(p.req.Put.Wire) + batchFraming
-	switch {
-	case p.req.Wire != nil:
-		size = len(p.req.Wire) + batchFraming
-	case p.req.Op != nil:
-		size = proto.Size(p.req.Op) + batchFraming
-	}
+	size := writeSize(p)
 	if n.propBytes > 0 && n.propBytes+size > n.cfg.MaxBatchBytes {
 		n.propose()
 	}
 	if p.req.ID != 0 {
 		n.waiting[p.req.ID] = p
 	}
+	p.queued = true
 	n.proposals = append(n.proposals, p)
 	n.propBytes += size
 }
 
-// expire fails requests whose deadline passed.
+// errNotProposed answers a write whose deadline passed before it was
+// proposed, as etcd v3.7.2 answers a write whose context ends while its
+// raft.Node waits for a leader. clientv3 retries this code for writes,
+// unlike the request timeout of a write that was proposed.
+var errNotProposed = status.Error(codes.DeadlineExceeded, context.DeadlineExceeded.Error())
+
+// expire fails requests whose deadline passed. Writes that expired before
+// they were proposed leave the queue at once, so a node without a leader
+// holds only writes that may still go out.
 func (n *Node) expire() {
-	i := 0
+	i, dropped := 0, false
 	for ; i < len(n.timeouts); i++ {
 		p := n.timeouts[i]
 		if p.done {
@@ -585,9 +592,18 @@ func (n *Node) expire() {
 		if p.deadline > n.now {
 			break
 		}
+		if p.queued {
+			dropped = true
+			n.propBytes -= writeSize(p)
+			n.finish(p, nil, errNotProposed)
+			continue
+		}
 		n.finish(p, nil, rpctypes.ErrGRPCTimeout)
 	}
 	n.timeouts = n.timeouts[i:]
+	if dropped {
+		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+	}
 }
 
 func (n *Node) finish(p *pending, resp proto.Message, err error) {
@@ -615,16 +631,47 @@ func (n *Node) reply(id uint64, resp proto.Message, err error) {
 	n.out.Replies = append(n.out.Replies, Reply{ID: id, Resp: resp, Err: err})
 }
 
-// propose packs the queued writes into one Raft entry.
+// writeSize is the bytes a queued write adds to a Raft entry.
+func writeSize(p *pending) int {
+	switch {
+	case p.req.Wire != nil:
+		return len(p.req.Wire) + batchFraming
+	case p.req.Op != nil:
+		return proto.Size(p.req.Op) + batchFraming
+	}
+	return len(p.req.Put.Wire) + batchFraming
+}
+
+// propose packs the queued writes into Raft entries of at most
+// MaxBatchBytes each. Without a leader it proposes nothing: like etcd,
+// whose raft.Node takes no proposal while there is no leader, the writes
+// wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
-	// A write that timed out while it waited never goes out; its client
-	// got an answer that allows both outcomes.
-	props := slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
-	size := n.propBytes
-	n.proposals, n.propBytes = nil, 0
-	if len(props) == 0 {
+	// Raft's own leader, not the one the last Ready reported: a Tick or a
+	// Step since then may have ended it, and Propose would drop the entry.
+	if n.rn.BasicStatus().Lead == raft.None {
 		return
 	}
+	// A write that timed out while it waited already left the queue
+	// (expire), so it never goes out.
+	props := n.proposals
+	n.proposals, n.propBytes = nil, 0
+	for _, p := range props {
+		p.queued = false
+	}
+	for len(props) > 0 {
+		end, size := 0, 0
+		for end < len(props) && (end == 0 || size+writeSize(props[end]) <= n.cfg.MaxBatchBytes) {
+			size += writeSize(props[end])
+			end++
+		}
+		n.proposeEntry(props[:end], size)
+		props = props[end:]
+	}
+}
+
+// proposeEntry proposes one Raft entry with props.
+func (n *Node) proposeEntry(props []*pending, size int) {
 	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)
 	if err != nil {
 		n.fail(err)
