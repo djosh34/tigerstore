@@ -5,15 +5,18 @@
 package node
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -258,10 +261,17 @@ type Node struct {
 
 // diskLog is the WAL as the committer, the snapshot server and the
 // persist goroutine share it. The lock covers the WAL's map of where
-// entries are: appends and reads take it, the fsync does not.
+// entries are: appends and reads take it, the fsync does not. Values in
+// segments that no longer change are read from a read-only mapping of the
+// file, a copy from the page cache instead of a read call.
 type diskLog struct {
-	mu sync.Mutex
-	w  *wal.WAL
+	mu  sync.Mutex
+	w   *wal.WAL
+	dir string
+	// sealed is the newest segment that no longer changes; maps holds the
+	// mappings of sealed segments by sequence number.
+	sealed uint64
+	maps   map[uint64][]byte
 }
 
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
@@ -279,7 +289,63 @@ func (l *diskLog) Has(index uint64) bool {
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.w.Value(index, off, n)
+	seq, at, ok := l.w.ValuePlace(index, off, n)
+	if !ok || seq > l.sealed {
+		return l.w.Value(index, off, n)
+	}
+	m, err := l.mapping(seq)
+	if err != nil {
+		return nil, err
+	}
+	if at+int64(n) > int64(len(m)) {
+		return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
+	}
+	return bytes.Clone(m[at : at+int64(n)]), nil
+}
+
+// mapping returns the mapping of sealed segment seq, mapping it first.
+func (l *diskLog) mapping(seq uint64) ([]byte, error) {
+	if m, ok := l.maps[seq]; ok {
+		return m, nil
+	}
+	f, err := os.Open(filepath.Join(l.dir, wal.SegmentName(seq)))
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		return nil, errors.Join(err, f.Close())
+	}
+	m, err := syscall.Mmap(int(f.Fd()), 0, int(st.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err = errors.Join(err, f.Close()); err != nil {
+		return nil, err
+	}
+	l.maps[seq] = m
+	return m, nil
+}
+
+// synced notes, with the lock held, the segments that no longer change
+// after a sync, and unmaps those that were removed.
+func (l *diskLog) synced() error {
+	l.sealed = l.w.Seq() - 1
+	var err error
+	for seq, m := range l.maps {
+		if seq < l.w.Oldest() {
+			err = errors.Join(err, syscall.Munmap(m))
+			delete(l.maps, seq)
+		}
+	}
+	return err
+}
+
+// close unmaps every segment and closes the WAL.
+func (l *diskLog) close() error {
+	err := l.w.Close()
+	for seq, m := range l.maps {
+		err = errors.Join(err, syscall.Munmap(m))
+		delete(l.maps, seq)
+	}
+	return err
 }
 
 func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
@@ -301,7 +367,8 @@ func New(cfg Config) (*Node, error) {
 	if cfg.SegmentBytes > 0 {
 		w.SetSegmentBytes(cfg.SegmentBytes)
 	}
-	log := &diskLog{w: w}
+	log := &diskLog{w: w, dir: filepath.Join(cfg.DataDir, "wal"), maps: map[uint64][]byte{}}
+	log.sealed = w.Seq() - 1
 	cfg.Core.Boot = rand.Uint64()
 	c, err := core.New(cfg.Core, rec, log)
 	if err != nil {
@@ -402,7 +469,7 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	close(n.done)
 	cancel()
 	wg.Wait()
-	return errors.Join(err, n.log.w.Close())
+	return errors.Join(err, n.log.close())
 }
 
 // commit is the committer loop. It is the only goroutine that touches the
@@ -662,7 +729,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		if done.err == nil {
-			if err := w.Sync(); err != nil {
+			err := w.Sync()
+			n.log.mu.Lock()
+			err = errors.Join(err, n.log.synced())
+			n.log.mu.Unlock()
+			if err != nil {
 				done = persistDone{err: err}
 			}
 		}
@@ -671,7 +742,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				continue
 			}
 			n.log.mu.Lock()
-			err := errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index))
+			err := errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
 			n.log.mu.Unlock()
 			if err != nil {
 				done = persistDone{err: err}

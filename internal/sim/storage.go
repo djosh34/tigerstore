@@ -347,7 +347,8 @@ func (s *Sim) rot() bool {
 		if r.Index >= n.core.FirstIndex() {
 			continue
 		}
-		name, at, ok := n.log.ValuePlace(r.Index, r.Off)
+		seq, at, ok := n.log.ValuePlace(r.Index, r.Off, r.Len)
+		name := wal.SegmentName(seq)
 		if !ok || name == newestSegment(n.disk) {
 			// Damage in the newest segment looks like a torn write.
 			continue

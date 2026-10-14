@@ -802,26 +802,42 @@ const MaxEntryBytes = 64 << 20
 // entry's record or from a value record. The caller checks them against
 // the value's checksum.
 func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
+	seq, at, ok := w.ValuePlace(index, off, n)
+	if !ok {
+		return nil, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+	}
 	b := make([]byte, n)
+	return b, w.readAt(seq, b, at)
+}
+
+// ValuePlace returns the segment, and the offset in its file, of the n
+// bytes at offset off of the data of entry index, from the entry's record
+// or from a value record, if they are on disk.
+func (w *WAL) ValuePlace(index uint64, off, n uint32) (seq uint64, at int64, ok bool) {
 	if s, i := w.locate(index); s != nil {
-		return b, w.readAt(s.seq, b, int64(s.offs[i])+recHdrSize+entryHdrSize+int64(off))
+		return s.seq, int64(s.offs[i]) + recHdrSize + entryHdrSize + int64(off), true
 	}
 	for _, v := range w.vals[index] {
 		if v.off <= off && uint64(off)+uint64(n) <= uint64(v.off)+uint64(v.len) {
-			return b, w.readAt(v.seq, b, int64(v.at)+int64(off-v.off))
+			return v.seq, int64(v.at) + int64(off-v.off), true
 		}
 	}
-	return nil, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+	return 0, 0, false
 }
 
-// ValuePlace returns the file and the offset in it where the data of
-// entry index holds offset off, if the entry is on disk.
-func (w *WAL) ValuePlace(index uint64, off uint32) (string, int64, bool) {
-	s, i := w.locate(index)
-	if s == nil {
-		return "", 0, false
+// SegmentName is the file name of segment seq.
+func SegmentName(seq uint64) string { return segmentName(seq) }
+
+// Seq is the sequence number of the segment that appends go to; older
+// segments no longer change.
+func (w *WAL) Seq() uint64 { return w.seq }
+
+// Oldest is the sequence number of the oldest segment on disk.
+func (w *WAL) Oldest() uint64 {
+	if len(w.runs) == 0 {
+		return w.seq
 	}
-	return segmentName(s.seq), int64(s.offs[i]) + recHdrSize + entryHdrSize + int64(off), true
+	return w.runs[0].seq
 }
 
 // RemoveBelow removes the oldest segments whose every entry and value is
