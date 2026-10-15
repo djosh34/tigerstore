@@ -170,10 +170,17 @@ func (c *behind) stop(id uint64) error {
 	return <-c.ran[id]
 }
 
+// close stops the nodes and waits up to 2 s for each, so none writes to
+// its directory or logs after the test. A node whose error was read
+// already does not answer again.
 func (c *behind) close() {
-	for id := range c.stops {
+	for id, stop := range c.stops {
 		c.net.leave(id)
-		c.stops[id]()
+		stop()
+		select {
+		case <-c.ran[id]:
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
 

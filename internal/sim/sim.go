@@ -507,12 +507,11 @@ type Stats struct {
 	// the entries were gone, OlderCheckpoints those whose checkpoint was
 	// older than the source's newest root, ServeFailures fetches that the
 	// source could not serve because it no longer had what the snapshot
-	// needs, SnapshotFlips those damaged on
-	// the way, FetchCrashes sources that crashed during a stream,
-	// SlowFetches fetches that started late, InstallFailures installs
-	// that failed, each followed by a reload, StepCrashes crashes at a
-	// checkpoint, removal or install step, and Rots values damaged under a
-	// running node.
+	// needs, SnapshotFlips those damaged on the way, FetchCrashes sources
+	// that crashed during a stream, SlowFetches fetches that started late,
+	// InstallFailures installs that failed, each followed by a reload,
+	// StepCrashes crashes at a checkpoint, removal or install step, and
+	// Rots values damaged under a running node.
 	Checkpoints, Snapshots, CheckpointSnapshots, OlderCheckpoints, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, InstallFailures, StepCrashes, Rots int
 }
 
