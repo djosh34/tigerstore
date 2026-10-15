@@ -48,11 +48,9 @@ const minProcs = 2
 
 // gcPercent is the GOGC that tigerstore runs with unless GOGC is set.
 // Design E keeps values in the log on disk, so the heap is mostly the
-// index, whose pointers every collection scans. At Go's default of 100 a
-// node under load collects every few seconds, and on one CPU each
-// collection holds up requests: mixed-k8s p99 went from 5 to 17 ms
-// (#143). Before E, every Raft entry stayed in the heap, which kept the
-// next collection far off. GOMEMLIMIT still caps the heap.
+// index, whose pointers every collection scans, and at Go's default of
+// 100 a node under load collects every few seconds; docs/design.md has
+// the measurements. GOMEMLIMIT, when set, still caps the heap.
 const gcPercent = 400
 
 // tick is a node's Raft tick.
