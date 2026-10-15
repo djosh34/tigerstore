@@ -62,6 +62,7 @@ type cluster struct {
 	// ID.
 	nodes      map[uint64]*node.Node
 	transports map[uint64]*peer.TCP
+	servers    map[uint64]*server.Server
 	// peerLns are the peer listeners of nodes not started yet, held open
 	// from the start so that no other process takes their ports.
 	peerLns map[uint64]net.Listener
@@ -198,7 +199,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
+	tr, err := peer.Start(peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,9 +235,9 @@ func (c *cluster) start(id uint64) {
 		run = c.wrap(id, run)
 	}
 	if c.nodes == nil {
-		c.nodes, c.transports = map[uint64]*node.Node{}, map[uint64]*peer.TCP{}
+		c.nodes, c.transports, c.servers = map[uint64]*node.Node{}, map[uint64]*peer.TCP{}, map[uint64]*server.Server{}
 	}
-	c.nodes[id], c.transports[id] = n, tr
+	c.nodes[id], c.transports[id], c.servers[id] = n, tr, g
 	go func() { ran <- n.Run(ctx, run) }()
 	go func() { served <- g.Serve(ln) }()
 	var once sync.Once

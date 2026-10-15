@@ -8,6 +8,8 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/djosh34/tigerstore/internal/wal"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3"
@@ -466,3 +468,34 @@ func (n *Node) RemovedMembers() []uint64 {
 // Removed stops a node that a peer told the cluster removed it, as
 // etcd's does.
 func (n *Node) Removed() { n.fail(ErrRemoved) }
+
+// ForceNewCluster is etcd's --force-new-cluster for a node that restarted
+// from its log: the configuration changes that remove every other member,
+// as entries right after the commit index, and the hard state that
+// commits them. The driver appends both, which drops the entries after
+// the commit index, and starts the node again from its log; the node is
+// then the only member and elects itself. There is nothing to append for
+// a node that is the only member already.
+func (n *Node) ForceNewCluster() ([]*raftpb.Entry, wal.HardState, error) {
+	hs := wal.HardState{Term: n.term, Vote: n.vote, Commit: n.applied}
+	if n.state.members[n.cfg.ID] == nil {
+		return nil, hs, errors.New("core: --force-new-cluster: this node is not a member of its cluster")
+	}
+	var ents []*raftpb.Entry
+	for _, m := range n.state.cloneMembers() {
+		if m.ID == n.cfg.ID {
+			continue
+		}
+		ctx, err := encodeConfContext(n.cfg.ID, n.cfg.Boot, 0, confRemove, &pb.Member{ID: m.ID})
+		if err != nil {
+			return nil, hs, err
+		}
+		data, err := proto.Marshal(&raftpb.ConfChange{Type: raftpb.ConfChangeRemoveNode.Enum(), NodeId: new(m.ID), Context: ctx})
+		if err != nil {
+			return nil, hs, err
+		}
+		hs.Commit++
+		ents = append(ents, &raftpb.Entry{Term: new(n.term), Index: new(hs.Commit), Type: raftpb.EntryConfChange.Enum(), Data: data})
+	}
+	return ents, hs, nil
+}

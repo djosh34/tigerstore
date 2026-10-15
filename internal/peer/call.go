@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -52,7 +53,7 @@ func (t *TCP) call(ctx context.Context, s *sender, id uint64, req []byte) ([]byt
 		return nil, err
 	}
 	defer t.untrack(c)
-	deadline := time.Now().Add(writeTimeout)
+	deadline := time.Now().Add(cmp.Or(t.cfg.WriteTimeout, defaultTimeout))
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
@@ -94,7 +95,7 @@ func (t *TCP) answer(c net.Conn, r io.Reader, from uint64) error {
 	} else {
 		out = append([]byte{0}, out...)
 	}
-	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
+	if err := c.SetWriteDeadline(t.writeDeadline()); err != nil {
 		return err
 	}
 	return writeChunk(c, out)

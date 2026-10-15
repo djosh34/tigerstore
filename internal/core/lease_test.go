@@ -201,9 +201,9 @@ func (s *single) ttlLeft(id uint64, lease int64) int64 {
 // than the interval left gets no checkpoint.
 func TestLeaseCheckpoint(t *testing.T) {
 	disk := simfs.New()
-	every := func(cfg *Config) { cfg.LeaseCheckpointTicks = 2 * cfg.TicksPerSecond }
+	every := func(cfg *Config) { cfg.LeaseCheckpointTicks = int(cfg.ticksOf(2)) }
 	s := startSingleWith(t, disk, 1, every).capable()
-	tps := s.n.cfg.TicksPerSecond
+	tps := s.n.cfg.ticksOf(1)
 	s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 30})
 	s.ok(2, &pb.LeaseGrantRequest{ID: 8, TTL: 2})
 	for range 5*tps + 1 {

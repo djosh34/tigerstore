@@ -57,6 +57,10 @@ const MaxRequestBytes = 1536 * 1024
 type Config struct {
 	// ID is this node's Raft ID, not 0.
 	ID uint64
+	// MaxRequestBytes and MaxTxnOps are etcd's --max-request-bytes and
+	// --max-txn-ops; 0 means etcd's defaults, MaxRequestBytes and
+	// mvcc.MaxTxnOps.
+	MaxRequestBytes, MaxTxnOps int
 	// Peers are the Raft IDs of all voters, this node included.
 	Peers []uint64
 	// ClusterID goes into every response header.
@@ -68,13 +72,17 @@ type Config struct {
 
 	// ElectionTicks and HeartbeatTicks are the Raft timeouts in ticks.
 	ElectionTicks, HeartbeatTicks int
+	// NoPreVote turns Raft's pre-vote off, as etcd's --pre-vote=false.
+	NoPreVote bool
 	// RequestTicks is how long a request waits before it fails with a
 	// timeout. It may still commit afterwards.
 	RequestTicks int
 	// MaxBatchBytes caps the requests packed into one Raft entry.
 	MaxBatchBytes int
-	// TicksPerSecond converts lease TTLs to ticks.
-	TicksPerSecond int
+	// TickMillis is the length of a tick in milliseconds, etcd's
+	// --heartbeat-interval; it converts lease TTLs and other times in
+	// seconds to ticks.
+	TickMillis int64
 	// ProgressTicks is the interval of progress notifications to watchers
 	// that ask for them; 0 turns them off.
 	ProgressTicks int
@@ -159,7 +167,7 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		RequestTicks:   70,
 		MaxBatchBytes:  4 << 20,
 		ProgressTicks:  6000, // etcd's 10 minutes
-		TicksPerSecond: 10,
+		TickMillis:     100,
 
 		StrictReconfigCheck: true,
 
@@ -501,6 +509,8 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	st := newStorage()
 	c := newCache()
 	vals := &values{storage: st, log: disk, cache: c}
+	cfg.MaxRequestBytes = cmp.Or(cfg.MaxRequestBytes, MaxRequestBytes)
+	cfg.MaxTxnOps = cmp.Or(cfg.MaxTxnOps, mvcc.MaxTxnOps)
 	n := &Node{
 		cfg:       cfg,
 		storage:   st,
@@ -620,7 +630,7 @@ func raftConfig(cfg Config, st *storage, applied uint64) *raft.Config {
 		MaxInflightBytes:          uint64(cfg.UnappliedBytes / 2),
 		MaxUncommittedEntriesSize: uint64(cfg.UnappliedBytes + int64(cfg.MaxBatchBytes)),
 		CheckQuorum:               true,
-		PreVote:                   true,
+		PreVote:                   !cfg.NoPreVote,
 		ReadOnlyOption:            raft.ReadOnlySafe,
 		Logger:                    quietLogger(),
 	}
@@ -645,9 +655,21 @@ func (n *Node) setState(st *State) {
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
 // up to whole seconds; 2 s with the default timeouts.
 func MinLeaseTTL(cfg Config) int64 {
-	ticks := int64(3 * cfg.ElectionTicks / 2)
-	tps := int64(cfg.TicksPerSecond)
-	return (ticks + tps - 1) / tps
+	return cfg.ceilSeconds(int64(3 * cfg.ElectionTicks / 2))
+}
+
+// ticksOf is s seconds in ticks, rounded up.
+func (c *Config) ticksOf(s int64) int64 { return (s*1000 + c.TickMillis - 1) / c.TickMillis }
+
+// ceilSeconds and floorSeconds are a number of ticks in seconds, rounded
+// up or down.
+func (c *Config) ceilSeconds(ticks int64) int64  { return (ticks*c.TickMillis + 999) / 1000 }
+func (c *Config) floorSeconds(ticks int64) int64 { return ticks * c.TickMillis / 1000 }
+
+// every reports whether tick now ends a period of s seconds: once per
+// period, at its last tick.
+func (c *Config) every(now, s int64) bool {
+	return now*c.TickMillis/(s*1000) != (now-1)*c.TickMillis/(s*1000)
 }
 
 // quietLogger drops raft's log lines. Its Panic methods still panic,
@@ -688,6 +710,15 @@ func (n *Node) fail(err error) {
 	}
 }
 
+// AdvanceElection moves Raft's election clock ticks ahead, and nothing
+// else, as etcd's advanceTicks does at start so that a first election
+// comes sooner.
+func (n *Node) AdvanceElection(ticks int) {
+	for range ticks {
+		n.rn.Tick()
+	}
+}
+
 // Tick advances the node's clock by one tick.
 func (n *Node) Tick() {
 	if n.err != nil {
@@ -716,7 +747,7 @@ func (n *Node) Tick() {
 	}
 	n.retryReads(false)
 	n.publish()
-	if n.now%int64(n.cfg.TicksPerSecond) == 0 {
+	if n.cfg.every(n.now, 1) {
 		n.expireTokens()
 	}
 	n.snapshotProgress()
@@ -826,7 +857,7 @@ func (n *Node) submit(r Request, p *pending) {
 			n.reply(r.ID, aiErr)
 			return
 		}
-		if err := checkPutSize(&r.Put, extra); err != nil {
+		if err := checkPutSize(&r.Put, extra, n.cfg.MaxRequestBytes); err != nil {
 			n.reply(r.ID, err)
 			return
 		}
@@ -840,12 +871,12 @@ func (n *Node) submit(r Request, p *pending) {
 		n.refuseNoSpace(r.ID)
 		return
 	}
-	sized, err := validate(r.Op)
+	sized, err := validate(r.Op, n.cfg.MaxTxnOps)
 	if err == nil {
 		err = aiErr
 	}
 	if err == nil && sized != nil {
-		err = checkSize(sized, extra)
+		err = checkSize(sized, extra, n.cfg.MaxRequestBytes)
 	}
 	if err == nil {
 		err = n.authorize(r.Op, ai, hasAI)
@@ -955,7 +986,7 @@ const sizeRequestID = 1 << 63
 // validate checks a request like etcd's gRPC layer, and returns the
 // InternalRaftRequest whose size etcd's server limits for a write, or nil
 // for a request that does not go through Raft.
-func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
+func validate(op proto.Message, maxTxnOps int) (*pb.InternalRaftRequest, error) {
 	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
 	case *pb.RangeRequest:
@@ -967,7 +998,7 @@ func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
 		r.DeleteRange = op
 		return r, mvcc.CheckDelete(op)
 	case *pb.TxnRequest:
-		if err := mvcc.CheckTxn(op); err != nil || mvcc.IsTxnReadOnly(op) {
+		if err := mvcc.CheckTxn(op, maxTxnOps); err != nil || mvcc.IsTxnReadOnly(op) {
 			return nil, err
 		}
 		r.Txn = op
@@ -996,9 +1027,9 @@ func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
 }
 
 // checkSize limits a write as etcd's server does: the marshaled
-// InternalRaftRequest with the client's identity (extra).
-func checkSize(r *pb.InternalRaftRequest, extra int) error {
-	if proto.Size(r)+extra > MaxRequestBytes {
+// InternalRaftRequest with the client's identity (extra) to limit bytes.
+func checkSize(r *pb.InternalRaftRequest, extra, limit int) error {
+	if proto.Size(r)+extra > limit {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
@@ -1011,8 +1042,8 @@ var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHead
 // checkPutSize limits a put in wire form as checkSize does a decoded one.
 // Like etcd, it limits the size of the request as protobuf marshals it
 // again, not of the client's encoding.
-func checkPutSize(p *Put, extra int) error {
-	if putRequestBytes+extra+protowire.SizeBytes(p.size()) > MaxRequestBytes {
+func checkPutSize(p *Put, extra, limit int) error {
+	if putRequestBytes+extra+protowire.SizeBytes(p.size()) > limit {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil

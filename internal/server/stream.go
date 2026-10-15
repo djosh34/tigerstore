@@ -139,8 +139,8 @@ func (st *stream) receive(d []byte) error {
 				return err
 			}
 			size := binary.BigEndian.Uint32(st.hdr[1:])
-			if size > maxRecvMsg {
-				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, maxRecvMsg)
+			if limit := st.c.s.maxRecvMsg; int64(size) > int64(limit) {
+				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, limit)
 			}
 			st.msg = make([]byte, 0, size)
 		}
@@ -157,7 +157,7 @@ func (st *stream) receive(d []byte) error {
 		msg := st.msg
 		if st.hdr[0] == 1 {
 			var err error
-			if msg, err = gunzip(msg); err != nil {
+			if msg, err = gunzip(msg, st.c.s.maxRecvMsg); err != nil {
 				return err
 			}
 		}
@@ -416,7 +416,12 @@ func (c *conn) runUnary(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
+	began := time.Now()
 	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
+	if d := time.Since(began); d > c.s.slowUnary && c.s.cfg.Logf != nil {
+		// etcd's logUnaryRequestStats, with fewer details.
+		c.s.cfg.Logf("request stats: %s from %s took %v, more than %v", methodPaths[st.rpc.idx], c.nc.RemoteAddr(), d, c.s.slowUnary)
+	}
 	st.body = nil
 	if err != nil {
 		st.finish(err)

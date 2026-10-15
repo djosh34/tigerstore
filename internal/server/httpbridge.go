@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"sync"
 
 	"golang.org/x/net/http2/hpack"
+	"google.golang.org/grpc/codes"
 )
 
 // HTTP requests on an HTTP/2 stream run Server.ServeHTTP as soon as their
@@ -31,6 +33,21 @@ func (c *conn) runHTTP(st *stream) {
 	defer st.cancel()
 	st.done.Store(true)
 	w := &h2Writer{st: st, header: http.Header{}, head: st.httpMethod == http.MethodHead}
+	if c.traffic == TrafficGRPC {
+		// grpc-go's answer to a request that is not gRPC.
+		contentType := ""
+		for _, f := range st.httpFields {
+			if f.Name == "content-type" {
+				contentType = f.Value
+			}
+		}
+		w.header.Set("Content-Type", "application/grpc")
+		w.header.Set("Grpc-Status", codeString(codes.InvalidArgument))
+		w.header.Set("Grpc-Message", encodeGrpcMessage(fmt.Sprintf("invalid gRPC request content-type %q", contentType)))
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		w.finish()
+		return
+	}
 	u, err := url.ParseRequestURI(st.httpPath)
 	if err != nil {
 		http.Error(w, "400 Bad Request", http.StatusBadRequest)

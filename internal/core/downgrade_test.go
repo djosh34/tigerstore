@@ -30,7 +30,7 @@ func (s *single) downgrade(id uint64, action pb.DowngradeRequest_DowngradeAction
 
 // monitor ticks the node through a run of etcd's version monitor.
 func (s *single) monitor() {
-	for range monitorSeconds*s.n.cfg.TicksPerSecond + 1 {
+	for range s.n.cfg.ticksOf(monitorSeconds) + 1 {
 		s.n.Tick()
 		s.run()
 	}

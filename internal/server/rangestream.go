@@ -7,7 +7,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -99,7 +98,7 @@ func (s *Server) rangeStream(st *stream) error {
 			return nil
 		}
 		r.Key = next
-		r.Limit = min(nextChunk(r.Limit, size, core.MaxRequestBytes), total-count)
+		r.Limit = min(nextChunk(r.Limit, size, s.maxRequestBytes), total-count)
 	}
 }
 

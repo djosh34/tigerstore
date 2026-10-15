@@ -42,6 +42,20 @@ import (
 type Config struct {
 	Core    core.Config
 	DataDir string
+	// WalDir is etcd's --wal-dir: where the log goes instead of
+	// <DataDir>/wal.
+	WalDir string
+	// UnsafeNoFsync is etcd's --unsafe-no-fsync: the log never syncs, so
+	// a crash can lose acknowledged writes.
+	UnsafeNoFsync bool
+	// WarningApplyDuration is etcd's --warning-apply-duration: an apply
+	// that takes longer is logged and counted in
+	// etcd_server_slow_apply_total; 0 means 100 ms.
+	WarningApplyDuration time.Duration
+	// ForceNewCluster is etcd's --force-new-cluster: a node that restarts
+	// from its log removes every other member and goes on as a cluster of
+	// one (core.Node.ForceNewCluster).
+	ForceNewCluster bool
 	// Tick is the length of one Raft tick.
 	Tick time.Duration
 	// WatchQueue is how many responses a watch stream may fall behind
@@ -86,6 +100,8 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
+	// advance moves the election clock (AdjustTicks).
+	advance int
 	// removed is a peer's answer that the cluster removed this node.
 	removed    bool
 	authorize  *authorize
@@ -473,10 +489,13 @@ func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 
 // New recovers the node's state from its checkpoint and log on disk.
 func New(cfg Config) (*Node, error) {
-	path := filepath.Join(cfg.DataDir, "wal")
+	path := cmp.Or(cfg.WalDir, filepath.Join(cfg.DataDir, "wal"))
 	dir, err := osfs.New(path)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.UnsafeNoFsync {
+		dir = dir.WithoutSync()
 	}
 	if cfg.Metrics == nil {
 		if cfg.Metrics, err = metrics.New(nil); err != nil {
@@ -492,7 +511,27 @@ func New(cfg Config) (*Node, error) {
 	if err := n.open(); err != nil {
 		return nil, errors.Join(err, n.log.close())
 	}
+	if cfg.ForceNewCluster && n.core.Applied() > 0 {
+		if err := n.forceNewCluster(); err != nil {
+			return nil, errors.Join(err, n.log.close())
+		}
+	}
 	return n, nil
+}
+
+// forceNewCluster writes the entries that leave this node the only
+// member, committed, and starts the core again from the log.
+func (n *Node) forceNewCluster() error {
+	ents, hs, err := n.core.ForceNewCluster()
+	if err != nil || len(ents) == 0 {
+		return err
+	}
+	n.logf("forcing a new cluster: removing %d members after commit index %d", len(ents), n.core.Applied())
+	n.log.w.Append(&hs, ents)
+	if err := n.log.w.Sync(); err != nil {
+		return err
+	}
+	return n.open()
 }
 
 // open recovers the log and starts a core from it, with empty queues to
@@ -515,7 +554,7 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot = rand.Uint64()
-	cfg.Timer = newTimer(n.cfg.Metrics)
+	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
 		return err
@@ -994,6 +1033,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.advance != 0:
+		n.core.AdvanceElection(in.advance)
 	case in.removed:
 		n.core.Removed()
 	case in.authorize != nil:

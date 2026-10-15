@@ -116,8 +116,7 @@ start() {
 		# verifies peer certificates and logs little.
 		local extra=(--quota-backend-bytes $((8 << 30)))
 		if [ "$kind" = etcd ]; then
-			extra+=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
-				--log-level warn --peer-client-cert-auth)
+			extra+=(--log-level warn --peer-client-cert-auth)
 		elif [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
 			extra+=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
 		fi
@@ -127,6 +126,7 @@ start() {
 			--listen-client-urls "$client" \
 			--advertise-client-urls "$client" \
 			--listen-peer-urls "$peer" \
+			--initial-advertise-peer-urls "$peer" \
 			--initial-cluster "$initial" \
 			--initial-cluster-token bench \
 			--cert-file "$certs/node$i.pem" --key-file "$certs/node$i-key.pem" \

@@ -13,7 +13,10 @@ import (
 )
 
 // Dir is a directory on disk.
-type Dir struct{ path string }
+type Dir struct {
+	path   string
+	noSync bool
+}
 
 var _ wal.FS = Dir{}
 
@@ -35,6 +38,14 @@ func New(path string) (Dir, error) {
 		}
 	}
 	return Dir{path: path}, nil
+}
+
+// WithoutSync is the directory with its syncs and those of its files
+// turned into no-ops, for etcd's --unsafe-no-fsync: a crash may lose or
+// tear any write.
+func (d Dir) WithoutSync() Dir {
+	d.noSync = true
+	return d
 }
 
 // List returns the names in the directory.
@@ -77,7 +88,7 @@ func (d Dir) Create(name string) (wal.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return file{f}, nil
+	return file{f, d.noSync}, nil
 }
 
 // Open opens an existing file for reading and appending.
@@ -86,14 +97,19 @@ func (d Dir) Open(name string) (wal.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return file{f}, nil
+	return file{f, d.noSync}, nil
 }
 
 // Remove deletes a file.
 func (d Dir) Remove(name string) error { return os.Remove(filepath.Join(d.path, name)) }
 
 // SyncDir makes creations and removals durable.
-func (d Dir) SyncDir() error { return syncPath(d.path) }
+func (d Dir) SyncDir() error {
+	if d.noSync {
+		return nil
+	}
+	return syncPath(d.path)
+}
 
 func syncPath(path string) error {
 	f, err := os.Open(path)
@@ -103,7 +119,17 @@ func syncPath(path string) error {
 	return errors.Join(f.Sync(), f.Close())
 }
 
-type file struct{ *os.File }
+type file struct {
+	*os.File
+	noSync bool
+}
+
+func (f file) Sync() error {
+	if f.noSync {
+		return nil
+	}
+	return f.File.Sync()
+}
 
 func (f file) ReadAll() ([]byte, error) {
 	st, err := f.Stat()

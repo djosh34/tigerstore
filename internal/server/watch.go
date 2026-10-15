@@ -11,8 +11,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // watch serves one Watch stream. A goroutine reads client requests into
@@ -79,13 +77,9 @@ func (s *Server) watch(st *stream) error {
 	}
 }
 
-// maxWatchBytes is etcd's MaxRequestBytesWithOverhead: --max-request-bytes
-// and 512 KiB of gRPC overhead, the size from which etcd splits the
-// responses of a watcher that asked for fragments.
-const maxWatchBytes = core.MaxRequestBytes + 512<<10
-
 // sendFragments is etcd's: a response the node marked for a watcher that
-// asked for fragments goes out in parts of fewer than maxWatchBytes, each
+// asked for fragments goes out in parts of fewer than etcd's
+// MaxRequestBytesWithOverhead (Server.maxRecvMsg) bytes, each
 // of at least one event and all but the last marked as fragments, if it
 // is that large and has more than one event.
 func sendFragments(st *stream, r *pb.WatchResponse) error {
@@ -93,6 +87,7 @@ func sendFragments(st *stream, r *pb.WatchResponse) error {
 		return st.Send(r)
 	}
 	r.Fragment = false
+	maxWatchBytes := st.c.s.maxRecvMsg
 	if proto.Size(r) < maxWatchBytes {
 		return st.Send(r)
 	}

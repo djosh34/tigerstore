@@ -19,14 +19,15 @@ Each node is one process. `scripts/local-cluster.sh` runs, for node 1:
 ```sh
 ./tigerstore --name node1 --data-dir data/node1 \
   --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:32380 \
-  --listen-client-urls https://127.0.0.1:2379 \
+  --listen-peer-urls https://127.0.0.1:2380 --initial-advertise-peer-urls https://127.0.0.1:2380 \
+  --listen-client-urls https://127.0.0.1:2379 --advertise-client-urls https://127.0.0.1:2379 \
   --cert-file certs/node1.pem --key-file certs/node1-key.pem \
   --trusted-ca-file certs/ca.pem --client-cert-auth \
   --peer-cert-file certs/node1.pem --peer-key-file certs/node1-key.pem \
   --peer-trusted-ca-file certs/ca.pem
 ```
 
-Every node gets the same `--initial-cluster`; a node's Raft ID is its position in that list. Peer URLs must be https: traffic between nodes is always TLS 1.3 with certificates checked on both ends.
+The flags, `ETCD_*` environment variables and `--config-file` are etcd v3.7.2's, checked as etcd checks them. Every node gets the same `--initial-cluster`; a node's Raft ID is the position of its name in that list. Peer URLs must be https: traffic between nodes is always TLS 1.3 with certificates checked on both ends.
 
 Talk to it with etcdctl:
 

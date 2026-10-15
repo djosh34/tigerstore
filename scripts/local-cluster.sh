@@ -18,9 +18,11 @@ budget=${MEMORY_BUDGET:-$(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024
 mkdir -p data
 for i in 1 2 3; do
 	port=${client[$((i - 1))]}
+	peerurl=https://127.0.0.1:${peer[$((i - 1))]}
 	"$bin" --name "node$i" --data-dir "data/node$i" \
 		--initial-cluster "$cluster" \
-		--listen-client-urls "https://127.0.0.1:$port" \
+		--listen-peer-urls "$peerurl" --initial-advertise-peer-urls "$peerurl" \
+		--listen-client-urls "https://127.0.0.1:$port" --advertise-client-urls "https://127.0.0.1:$port" \
 		--cert-file "$certs/node$i.pem" --key-file "$certs/node$i-key.pem" \
 		--trusted-ca-file "$certs/ca.pem" --client-cert-auth \
 		--peer-cert-file "$certs/node$i.pem" --peer-key-file "$certs/node$i-key.pem" \

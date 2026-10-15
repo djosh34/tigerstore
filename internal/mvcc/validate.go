@@ -69,10 +69,10 @@ func CheckDelete(r *pb.DeleteRangeRequest) error {
 	return nil
 }
 
-// CheckTxn validates a transaction, including that no two writes in it
-// touch the same key.
-func CheckTxn(r *pb.TxnRequest) error {
-	if err := validateTxn(r, MaxTxnOps); err != nil {
+// CheckTxn validates a transaction with at most maxOps operations in a
+// branch, including that no two writes in it touch the same key.
+func CheckTxn(r *pb.TxnRequest, maxOps int) error {
+	if err := validateTxn(r, maxOps); err != nil {
 		return err
 	}
 	if _, _, err := checkIntervals(r.Success); err != nil {

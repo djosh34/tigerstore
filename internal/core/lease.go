@@ -31,7 +31,7 @@ const leaseRetryTicks = 10
 // never expires early.
 func (n *Node) arm(id int64) {
 	if l, ok := n.state.leases[id]; ok {
-		l.expiry = n.now + l.left()*int64(n.cfg.TicksPerSecond) + 1
+		l.expiry = n.now + n.cfg.ticksOf(l.left()) + 1
 		l.revokeAt = 0
 	}
 }
@@ -51,7 +51,7 @@ func (l *lease) left() int64 {
 func (n *Node) scheduleCheckpoint(id int64) {
 	every := int64(n.cfg.LeaseCheckpointTicks)
 	l, ok := n.state.leases[id]
-	if !ok || every == 0 || !n.isLeader || l.left()*int64(n.cfg.TicksPerSecond) <= every {
+	if !ok || every == 0 || !n.isLeader || n.cfg.ticksOf(l.left()) <= every {
 		return
 	}
 	l.checkpointAt = n.now + every
@@ -64,14 +64,13 @@ func (n *Node) checkpointLeases() {
 	if n.cfg.LeaseCheckpointTicks == 0 || !n.isLeader || !n.capable() {
 		return
 	}
-	tps := int64(n.cfg.TicksPerSecond)
 	var cps []*pb.LeaseCheckpoint
 	for _, l := range n.state.sortedLeases() {
 		if l.checkpointAt == 0 || l.checkpointAt > n.now || l.expiry == 0 {
 			continue
 		}
 		l.checkpointAt = 0
-		left := (l.expiry - n.now - 1 + tps - 1) / tps
+		left := n.cfg.ceilSeconds(l.expiry - n.now - 1)
 		if left >= l.ttl {
 			continue
 		}
@@ -109,8 +108,7 @@ func (n *Node) remaining(id int64) int64 {
 	if !ok || !n.isLeader || l.expiry == 0 {
 		return -1
 	}
-	tps := int64(n.cfg.TicksPerSecond)
-	return max(0, (l.expiry-n.now-1)/tps)
+	return max(0, n.cfg.floorSeconds(l.expiry-n.now-1))
 }
 
 // expireLeases proposes the revoke of every expired lease, on the leader.

@@ -379,7 +379,11 @@ func (s *Server) serveVars(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	vars := map[string]string{"file_descriptor_limit": strconv.FormatUint(metrics.FDLimit(), 10), "raft.status": "null"}
+	// The command links etcd's server package, which publishes its own
+	// file_descriptor_limit and raft.status; this member's replace them.
+	vars := map[string]string{}
+	expvar.Do(func(kv expvar.KeyValue) { vars[kv.Key] = kv.Value.String() })
+	vars["file_descriptor_limit"], vars["raft.status"] = strconv.FormatUint(metrics.FDLimit(), 10), "null"
 	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
 	defer cancel()
 	if nm, err := s.n.Metrics(ctx); err == nil {
@@ -387,7 +391,6 @@ func (s *Server) serveVars(w http.ResponseWriter, r *http.Request) {
 			vars["raft.status"] = string(b)
 		}
 	}
-	expvar.Do(func(kv expvar.KeyValue) { vars[kv.Key] = kv.Value.String() })
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	var b strings.Builder
 	b.WriteString("{\n")

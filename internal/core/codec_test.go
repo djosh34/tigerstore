@@ -277,11 +277,11 @@ func TestTxnValuesPlaced(t *testing.T) {
 
 // check validates and sizes a request as submit does for caller c.
 func check(op proto.Message, c Caller) error {
-	r, err := validate(op)
+	r, err := validate(op, mvcc.MaxTxnOps)
 	if err != nil || r == nil {
 		return err
 	}
-	return checkSize(r, c.extra)
+	return checkSize(r, c.extra, MaxRequestBytes)
 }
 
 // checkPut validates and sizes a put in wire form as submit does.
@@ -289,5 +289,5 @@ func checkPut(p *Put, c Caller) error {
 	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
 		return err
 	}
-	return checkPutSize(p, c.extra)
+	return checkPutSize(p, c.extra, MaxRequestBytes)
 }

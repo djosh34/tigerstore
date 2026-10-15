@@ -27,18 +27,12 @@ import (
 
 // HTTP/2 limits of one client connection.
 const (
-	// maxStreams is the limit of concurrent streams per connection. One
-	// kube-apiserver connection carries many watches; etcd advertises
-	// math.MaxUint32.
-	maxStreams = 1 << 20
 	// streamWindow is the receive window of each stream. It is above the
 	// largest request, so a unary request never waits for a window update.
 	streamWindow = 4 << 20
 	// connWindow is the receive window of the connection. Data is credited
 	// back as it arrives; streamWindow bounds what one stream holds.
 	connWindow = 16 << 20
-	// maxRecvMsg is etcd's request limit plus the room it leaves for gRPC.
-	maxRecvMsg = core.MaxRequestBytes + 512*1024
 	// sendQueue is how many encoded bytes one stream may queue for the
 	// writer before its Send waits.
 	sendQueue = 4 << 20
@@ -63,9 +57,12 @@ type conn struct {
 	apiCounters [2]prometheus.Counter
 	nc          net.Conn
 	raw         net.Conn // nc without TLS, closed to abort a stuck write
-	fr          *http2.Framer
-	br          *bufio.Reader
-	bw          *bufio.Writer
+	// traffic is what the connection serves: gRPC alone answers HTTP
+	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
+	traffic Traffic
+	fr      *http2.Framer
+	br      *bufio.Reader
+	bw      *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -607,7 +604,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 	}
 	c.mu.Lock()
 	c.maxID = id
-	refuse := c.goingAway || len(c.streams) >= maxStreams
+	refuse := c.goingAway || uint64(len(c.streams)) >= uint64(c.s.maxStreams)
 	c.mu.Unlock()
 	if refuse {
 		c.resetStream(id, http2.ErrCodeRefusedStream)
@@ -636,7 +633,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
 	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
-	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
+	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc") && c.traffic != TrafficHTTP
 	if grpc {
 		st.rpc = methods[h.path]
 	} else {

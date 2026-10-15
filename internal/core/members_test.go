@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 func (s *single) members(id uint64) []*pb.Member {
@@ -110,4 +111,54 @@ func sameMembers(got []*pb.Member, want ...*pb.Member) bool {
 		}
 	}
 	return true
+}
+
+// TestForceNewCluster restarts node 1 of a three-member cluster as
+// etcd's --force-new-cluster does: the entries ForceNewCluster gives
+// remove the other two, and the node, started again from its log,
+// elects itself and takes writes alone.
+func TestForceNewCluster(t *testing.T) {
+	members := []*pb.Member{
+		{ID: 1, Name: "one", PeerURLs: []string{"https://a:1"}},
+		{ID: 2, Name: "two", PeerURLs: []string{"https://b:1"}},
+		{ID: 3, Name: "three", PeerURLs: []string{"https://c:1"}},
+	}
+	three := func(cfg *Config) { cfg.Peers, cfg.Members = []uint64{1, 2, 3}, members }
+	s := newMember(t, []uint64{1, 2, 3})
+	s.run()
+	disk := s.disk
+
+	w, rec, err := wal.Open(disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig(1, nil)
+	three(&cfg)
+	n, err := New(cfg, rec, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(n.Members()); got != 3 {
+		t.Fatalf("%d members before, want 3", got)
+	}
+	ents, hs, err := n.ForceNewCluster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 2 || hs.Commit != ents[1].GetIndex() || ents[0].GetIndex() != n.Applied()+1 {
+		t.Fatalf("%d entries, commit %d after applied %d", len(ents), hs.Commit, n.Applied())
+	}
+	w.Append(&hs, ents)
+	if err := errors.Join(w.Sync(), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+
+	f := startSingleWith(t, disk, 2, three)
+	if got := f.members(10); len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("members after: %v", got)
+	}
+	f.ok(11, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+	if ents, _, err := f.n.ForceNewCluster(); err != nil || len(ents) != 0 {
+		t.Fatalf("a second force: %d entries, %v", len(ents), err)
+	}
 }

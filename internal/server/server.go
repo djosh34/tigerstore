@@ -7,17 +7,22 @@
 package server
 
 import (
+	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
@@ -53,6 +58,18 @@ type Config struct {
 	// TracerProvider, if set, traces the gRPC calls as etcd's
 	// --enable-distributed-tracing does (tracing.go).
 	TracerProvider trace.TracerProvider
+	// MaxRequestBytes is etcd's --max-request-bytes, 0 for its default;
+	// a message may have 512 KiB more, as in etcd. MaxConcurrentStreams
+	// is its --max-concurrent-streams, 0 for its default,
+	// math.MaxUint32.
+	MaxRequestBytes      int
+	MaxConcurrentStreams uint32
+	// WarningUnaryRequestDuration is etcd's
+	// --warning-unary-request-duration: a unary call that takes longer
+	// is logged with Logf. 0 means etcd's default, 300 ms.
+	WarningUnaryRequestDuration time.Duration
+	// Logf, if set, logs the slow unary calls.
+	Logf func(format string, args ...any)
 }
 
 // handshakeTimeout bounds the TLS handshake and the HTTP/2 preface.
@@ -85,8 +102,17 @@ type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// grpcTLS is Config.TLS for listeners that serve gRPC only.
+	grpcTLS *tls.Config
+	// maxRequestBytes, maxRecvMsg and maxStreams are the limits of
+	// Config (setLimits).
+	maxRequestBytes, maxRecvMsg int
+	maxStreams                  uint32
+	// slowUnary is Config.WarningUnaryRequestDuration with its default.
+	slowUnary time.Duration
+
 	mu      sync.Mutex
-	ln      net.Listener
+	lns     []net.Listener
 	conns   map[closer]struct{}
 	stopped bool
 	wg      sync.WaitGroup
@@ -108,7 +134,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, cfg: cfg, gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 	if err := s.newServerMetrics(); err != nil {
 		cancel()
 		return nil, err
@@ -117,6 +143,7 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		s.pprof = pprofMux()
 	}
 	s.tracing = newTracing(cfg.TracerProvider)
+	s.setLimits()
 	if !cfg.NoGateway {
 		var err error
 		if s.gateway, s.gwConn, err = s.newGateway(); err != nil {
@@ -127,14 +154,45 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 	return s, nil
 }
 
-// Serve accepts clients on ln until Stop.
+// Traffic is what a client listener serves. etcd serves gRPC and HTTP on
+// each client URL; with --listen-client-http-urls, those serve HTTP only
+// and the client URLs gRPC only.
+type Traffic uint8
+
+const (
+	TrafficAll Traffic = iota
+	TrafficGRPC
+	TrafficHTTP
+)
+
+// Listener is a client listener and how it serves.
+type Listener struct {
+	net.Listener
+	// TLS makes each connection start with a TLS handshake, with
+	// Config.TLS.
+	TLS     bool
+	Traffic Traffic
+}
+
+// Serve accepts clients on ln until Stop, with TLS if Config.TLS is set,
+// serving gRPC and HTTP.
 func (s *Server) Serve(ln net.Listener) error {
+	return s.ServeListener(Listener{Listener: ln, TLS: s.cfg.TLS != nil})
+}
+
+// ServeListener accepts clients on l until Stop. A server serves any
+// number of listeners at once.
+func (s *Server) ServeListener(l Listener) error {
+	ln := l.Listener
+	if l.TLS && s.cfg.TLS == nil {
+		return errors.Join(errors.New("server: a TLS listener without Config.TLS"), ln.Close())
+	}
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
 		return ln.Close()
 	}
-	s.ln = ln
+	s.lns = append(s.lns, ln)
 	s.mu.Unlock()
 	for {
 		nc, err := ln.Accept()
@@ -162,18 +220,26 @@ func (s *Server) Serve(ln net.Listener) error {
 		s.mu.Unlock()
 		go func() {
 			defer s.wg.Done()
-			s.serveConn(nc)
+			s.serveConn(nc, l)
 		}()
 	}
 }
 
 // serveConn finishes the TLS handshake and serves HTTP/2, or HTTP/1.1 for
-// a client that did not offer h2.
-func (s *Server) serveConn(nc net.Conn) {
+// a client that did not offer h2 or, without TLS, did not start with
+// HTTP/2's preface. As in etcd, a listener without TLS hands HTTP/2 to
+// gRPC alone, and one that serves only HTTP drops HTTP/2 without TLS and
+// one that serves only gRPC HTTP/1.1.
+func (s *Server) serveConn(nc net.Conn, l Listener) {
 	raw := nc
-	h2 := true
-	if s.cfg.TLS != nil {
-		tc := tls.Server(nc, s.cfg.TLS)
+	traffic := l.Traffic
+	var h2 bool
+	if l.TLS {
+		cfg := s.cfg.TLS
+		if traffic == TrafficGRPC {
+			cfg = s.grpcTLS
+		}
+		tc := tls.Server(nc, cfg)
 		ctx, cancel := context.WithTimeout(s.ctx, handshakeTimeout)
 		err := tc.HandshakeContext(ctx)
 		cancel()
@@ -183,6 +249,20 @@ func (s *Server) serveConn(nc net.Conn) {
 		}
 		h2 = tc.ConnectionState().NegotiatedProtocol == "h2"
 		nc = tc
+	} else {
+		pc, err := peekPreface(nc)
+		if err != nil {
+			_ = raw.Close()
+			return
+		}
+		h2, nc = pc.h2, pc
+		if h2 {
+			traffic = TrafficGRPC
+		}
+	}
+	if (h2 && l.Traffic == TrafficHTTP && !l.TLS) || (!h2 && l.Traffic == TrafficGRPC) {
+		_ = raw.Close()
+		return
 	}
 	if !h2 {
 		h := &http1Conn{s: s, nc: nc, raw: raw}
@@ -194,6 +274,7 @@ func (s *Server) serveConn(nc net.Conn) {
 		return
 	}
 	c := newConn(s, nc, raw)
+	c.traffic = traffic
 	if !s.track(c) {
 		return
 	}
@@ -243,8 +324,8 @@ func (s *Server) Stop() error {
 	}
 	s.mu.Lock()
 	s.stopped = true
-	if s.ln != nil {
-		err = errors.Join(err, s.ln.Close())
+	for _, ln := range s.lns {
+		err = errors.Join(err, ln.Close())
 	}
 	for c := range s.conns {
 		c.goAway()
@@ -271,3 +352,51 @@ func (s *Server) Stop() error {
 // learner reports whether the node is a learner. Tests run connections
 // without a node.
 func (s *Server) learner() bool { return s.n != nil && s.n.Learner() }
+
+// grpcTLS is cfg for listeners that serve only gRPC, which offer only h2,
+// as grpc-go's TLS does; nil without cfg.
+func grpcTLS(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return nil
+	}
+	cfg = cfg.Clone()
+	cfg.NextProtos = []string{"h2"}
+	return cfg
+}
+
+// prefaceConn is a connection without TLS whose first bytes were read to
+// tell HTTP/2 from HTTP/1.1; reads take them first.
+type prefaceConn struct {
+	net.Conn
+	br *bufio.Reader
+	h2 bool
+}
+
+func (c *prefaceConn) Read(p []byte) (int, error) { return c.br.Read(p) }
+
+// peekPreface reads as much of a connection's first bytes as it takes to
+// tell whether it starts with HTTP/2's client preface, as cmux does in
+// etcd, within handshakeTimeout.
+func peekPreface(nc net.Conn) (*prefaceConn, error) {
+	if err := nc.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		return nil, err
+	}
+	pc := &prefaceConn{Conn: nc, br: bufio.NewReaderSize(nc, len(http2.ClientPreface)), h2: true}
+	for i := 1; i <= len(http2.ClientPreface) && pc.h2; i++ {
+		b, err := pc.br.Peek(i)
+		if err != nil {
+			return nil, err
+		}
+		pc.h2 = b[i-1] == http2.ClientPreface[i-1]
+	}
+	return pc, nc.SetReadDeadline(time.Time{})
+}
+
+// setLimits sets the limits of Config, etcd's defaults for those not set.
+func (s *Server) setLimits() {
+	s.maxRequestBytes = cmp.Or(s.cfg.MaxRequestBytes, core.MaxRequestBytes)
+	// etcd's MaxRequestBytesWithOverhead.
+	s.maxRecvMsg = s.maxRequestBytes + 512<<10
+	s.maxStreams = cmp.Or(s.cfg.MaxConcurrentStreams, math.MaxUint32)
+	s.slowUnary = cmp.Or(s.cfg.WarningUnaryRequestDuration, 300*time.Millisecond)
+}

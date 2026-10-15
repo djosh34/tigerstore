@@ -24,6 +24,7 @@ package peer
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -64,11 +65,8 @@ type Transport interface {
 type Config struct {
 	// ID is this node's Raft ID.
 	ID uint64
-	// Listen is the host:port to accept peers on.
-	Listen string
-	// Listener, if set, is used instead of listening on Listen. Tests
-	// pass one they hold open, so no other process can take its port.
-	Listener net.Listener
+	// Listeners accept peers, those of etcd's --listen-peer-urls.
+	Listeners []net.Listener
 	// Peers maps every other node's Raft ID to its host:port.
 	Peers map[uint64]string
 	// Certificate is this node's peer certificate and CA the pool that
@@ -76,6 +74,16 @@ type Config struct {
 	// and verifies both ends.
 	Certificate tls.Certificate
 	CA          *x509.CertPool
+	// InsecureSkipVerify takes any certificate of the other node, as
+	// etcd's --peer-auto-tls does with its self-signed ones; CA is not
+	// used then.
+	InsecureSkipVerify bool
+	// WriteTimeout is etcd's --raft-write-timeout: how long a write to a
+	// peer may take before the connection is dropped. ReadTimeout is its
+	// --raft-read-timeout: how long a snapshot fetch waits for the next
+	// bytes and a peer for an inbound connection's preface. 0 means
+	// etcd's 5 s.
+	WriteTimeout, ReadTimeout time.Duration
 	// AllowedCNs and AllowedHostnames are etcd's --peer-cert-allowed-cn
 	// and --peer-cert-allowed-hostname: when one is set, the other node's
 	// certificate must also have one of these CommonNames, or be valid
@@ -154,7 +162,9 @@ const (
 	controlQueue = 4096
 	dataQueue    = 4096
 
-	writeTimeout = 5 * time.Second
+	// defaultTimeout is etcd's --raft-read-timeout and
+	// --raft-write-timeout.
+	defaultTimeout = 5 * time.Second
 	// slowQueue is how long a message may wait in its queue before the
 	// wait is logged: a real node's tick. Waits are logged at most once a
 	// second per peer.
@@ -170,7 +180,7 @@ const (
 type TCP struct {
 	cfg    Config
 	verify func([][]byte, [][]*x509.Certificate) error
-	ln     net.Listener
+	lns    []net.Listener
 	// senders are the peers by Raft ID, replaced whole by SetPeers;
 	// peersMu orders the replacements.
 	senders atomic.Pointer[map[uint64]*sender]
@@ -205,13 +215,10 @@ func Start(cfg Config) (*TCP, error) {
 			return nil, err
 		}
 	}
-	raw := cfg.Listener
-	if raw == nil {
-		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
-			return nil, err
-		}
+	if len(cfg.Listeners) == 0 {
+		return nil, errors.New("peer: no listener")
 	}
-	ln := tls.NewListener(raw, &tls.Config{
+	scfg := &tls.Config{
 		Certificates: []tls.Certificate{cfg.Certificate},
 		ClientCAs:    cfg.CA,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
@@ -219,12 +226,19 @@ func Start(cfg Config) (*TCP, error) {
 		NextProtos:   alpns(cfg.minVersion, cfg.maxVersion),
 		// The CA check runs first; verify only narrows it.
 		VerifyPeerCertificate: verify,
-	})
+	}
+	if cfg.InsecureSkipVerify {
+		scfg.ClientAuth = tls.RequireAnyClientCert
+	}
+	var lns []net.Listener
+	for _, raw := range cfg.Listeners {
+		lns = append(lns, tls.NewListener(raw, scfg))
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
 		cfg:     cfg,
 		verify:  verify,
-		ln:      ln,
+		lns:     lns,
 		ctx:     ctx,
 		cancel:  cancel,
 		conns:   map[net.Conn]struct{}{},
@@ -233,8 +247,22 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	t.senders.Store(&map[uint64]*sender{})
 	t.SetPeers(cfg.Peers, nil)
-	t.wg.Go(t.accept)
+	for _, ln := range lns {
+		t.wg.Go(func() { t.accept(ln) })
+	}
 	return t, nil
+}
+
+// ActivePeers is the number of peers this node has a connection to, as
+// etcd's transport counts them.
+func (t *TCP) ActivePeers() int {
+	n := 0
+	for _, s := range *t.senders.Load() {
+		if s.version.Load() != 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // peer returns the sender of peer id.
@@ -298,7 +326,7 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 }
 
 // Addr is the address the transport listens on.
-func (t *TCP) Addr() net.Addr { return t.ln.Addr() }
+func (t *TCP) Addr() net.Addr { return t.lns[0].Addr() }
 
 func (t *TCP) logf(format string, args ...any) {
 	if t.cfg.Logf != nil {
@@ -369,7 +397,12 @@ func (t *TCP) Send(m *raftpb.Message) {
 // Close stops the transport and waits for its goroutines.
 func (t *TCP) Close() error {
 	t.cancel()
-	err := t.ln.Close()
+	var err error
+	for _, ln := range t.lns {
+		if cerr := ln.Close(); !errors.Is(cerr, net.ErrClosed) {
+			err = errors.Join(err, cerr)
+		}
+	}
 	t.mu.Lock()
 	for c := range t.conns {
 		// The other end may have reset the connection already; that is
@@ -380,9 +413,6 @@ func (t *TCP) Close() error {
 	}
 	t.mu.Unlock()
 	t.wg.Wait()
-	if errors.Is(err, net.ErrClosed) {
-		return nil
-	}
 	return err
 }
 
@@ -406,9 +436,9 @@ func (t *TCP) untrack(c net.Conn) {
 	}
 }
 
-func (t *TCP) accept() {
+func (t *TCP) accept(ln net.Listener) {
 	for {
-		c, err := t.ln.Accept()
+		c, err := ln.Accept()
 		if err != nil {
 			if t.ctx.Err() == nil {
 				t.logf("peer: accept: %v", err)
@@ -434,7 +464,7 @@ func (t *TCP) accept() {
 // returns the error that ended it, nil after a snapshot was served or
 // after a failed handshake, which it logs itself.
 func (t *TCP) receive(c net.Conn) error {
-	if err := c.SetReadDeadline(time.Now().Add(dialTimeout)); err != nil {
+	if err := c.SetReadDeadline(time.Now().Add(t.readTimeout())); err != nil {
 		return err
 	}
 	r := bufio.NewReaderSize(c, ioBuffer)
@@ -533,7 +563,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
 		if (*t.removed.Load())[id] {
 			// As etcd's peers answer a removed member, so that it stops.
-			if werr := c.SetWriteDeadline(writeDeadline()); werr == nil {
+			if werr := c.SetWriteDeadline(t.writeDeadline()); werr == nil {
 				_, werr = c.Write([]byte{removedReply})
 				err = werr
 			}
@@ -549,7 +579,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id, name, v)
 		v = 0
 	}
-	if werr := c.SetWriteDeadline(writeDeadline()); werr != nil {
+	if werr := c.SetWriteDeadline(t.writeDeadline()); werr != nil {
 		return 0, 0, 0, errors.Join(err, werr)
 	}
 	if _, werr := c.Write([]byte{v}); werr != nil {
@@ -601,18 +631,22 @@ func (t *TCP) serve(c net.Conn, r io.Reader, from uint64) error {
 	if t.cfg.Serve == nil {
 		return errors.New("this node serves no snapshots")
 	}
-	w := &deadlineWriter{c: c}
+	w := &deadlineWriter{t: t, c: c}
 	if err := t.cfg.Serve(from, binary.BigEndian.Uint64(span[:]), binary.BigEndian.Uint64(span[8:]), w); err != nil {
 		return fmt.Errorf("snapshot for %d: %w", from, err)
 	}
 	return nil
 }
 
-// deadlineWriter fails a write that has not finished within writeTimeout.
-type deadlineWriter struct{ c net.Conn }
+// deadlineWriter fails a write that has not finished within the write
+// timeout.
+type deadlineWriter struct {
+	t *TCP
+	c net.Conn
+}
 
 func (w *deadlineWriter) Write(p []byte) (int, error) {
-	if err := w.c.SetWriteDeadline(writeDeadline()); err != nil {
+	if err := w.c.SetWriteDeadline(w.t.writeDeadline()); err != nil {
 		return 0, err
 	}
 	return w.c.Write(p)
@@ -631,7 +665,7 @@ func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser,
 	var span [16]byte
 	binary.BigEndian.PutUint64(span[:], first)
 	binary.BigEndian.PutUint64(span[8:], last)
-	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
+	if err := c.SetWriteDeadline(t.writeDeadline()); err != nil {
 		t.untrack(c)
 		return nil, err
 	}
@@ -642,15 +676,15 @@ func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser,
 	return &fetchConn{t: t, c: c}, nil
 }
 
-// fetchConn reads a snapshot stream; a read that waits longer than
-// writeTimeout fails, so a stalled peer does not hold the follower.
+// fetchConn reads a snapshot stream; a read that waits longer than the
+// read timeout fails, so a stalled peer does not hold the follower.
 type fetchConn struct {
 	t *TCP
 	c net.Conn
 }
 
 func (f *fetchConn) Read(p []byte) (int, error) {
-	if err := f.c.SetReadDeadline(time.Now().Add(writeTimeout)); err != nil {
+	if err := f.c.SetReadDeadline(time.Now().Add(f.t.readTimeout())); err != nil {
 		return 0, err
 	}
 	return f.c.Read(p)
@@ -853,11 +887,13 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 		return nil, 0, err
 	}
 	c := tls.Client(raw, &tls.Config{
-		Certificates: []tls.Certificate{s.t.cfg.Certificate},
-		RootCAs:      s.t.cfg.CA,
-		ServerName:   host,
-		MinVersion:   tls.VersionTLS13,
-		NextProtos:   alpns(s.t.cfg.minVersion, s.t.cfg.maxVersion),
+		Certificates:       []tls.Certificate{s.t.cfg.Certificate},
+		RootCAs:            s.t.cfg.CA,
+		InsecureSkipVerify: s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
+
+		ServerName: host,
+		MinVersion: tls.VersionTLS13,
+		NextProtos: alpns(s.t.cfg.minVersion, s.t.cfg.maxVersion),
 		// As in etcd, a dialing node checks the allowed names too.
 		VerifyPeerCertificate: s.t.verify,
 	})
@@ -935,7 +971,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 			return err
 		}
 		binary.BigEndian.PutUint32(hdr[:], uint32(len(buf)))
-		if err := c.SetWriteDeadline(writeDeadline()); err != nil {
+		if err := c.SetWriteDeadline(s.t.writeDeadline()); err != nil {
 			return err
 		}
 		if _, err := w.Write(hdr[:]); err != nil {
@@ -950,10 +986,12 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 
 // writeDeadline is when a write that has not finished fails the
 // connection, so that a stalled peer is dropped and reported.
-func writeDeadline() time.Time {
+func (t *TCP) writeDeadline() time.Time {
 	if planted.On("B14") {
 		// Planted: no deadline; a stalled peer holds the writer.
 		return time.Time{}
 	}
-	return time.Now().Add(writeTimeout)
+	return time.Now().Add(cmp.Or(t.cfg.WriteTimeout, defaultTimeout))
 }
+
+func (t *TCP) readTimeout() time.Duration { return cmp.Or(t.cfg.ReadTimeout, defaultTimeout) }

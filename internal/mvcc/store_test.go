@@ -283,7 +283,7 @@ func TestCheckTxnDuplicateKeys(t *testing.T) {
 		{"nested put and outer delete", []*pb.RequestOp{delOp("a", ""), txnOp(nil, []*pb.RequestOp{putOp("a")})}, true},
 	}
 	for _, c := range cases {
-		err := CheckTxn(&pb.TxnRequest{Success: c.ops})
+		err := CheckTxn(&pb.TxnRequest{Success: c.ops}, MaxTxnOps)
 		if got := errors.Is(err, rpctypes.ErrGRPCDuplicateKey); got != c.dup {
 			t.Errorf("%s: duplicate = %v (err %v), want %v", c.name, got, err, c.dup)
 		}
@@ -295,10 +295,10 @@ func TestCheckTxnTooManyOps(t *testing.T) {
 	for i := range ops {
 		ops[i] = &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}}
 	}
-	if err := CheckTxn(&pb.TxnRequest{Success: ops}); !errors.Is(err, rpctypes.ErrGRPCTooManyOps) {
+	if err := CheckTxn(&pb.TxnRequest{Success: ops}, MaxTxnOps); !errors.Is(err, rpctypes.ErrGRPCTooManyOps) {
 		t.Fatalf("too many ops: %v", err)
 	}
-	if err := CheckTxn(&pb.TxnRequest{Success: ops[:MaxTxnOps]}); err != nil {
+	if err := CheckTxn(&pb.TxnRequest{Success: ops[:MaxTxnOps]}, MaxTxnOps); err != nil {
 		t.Fatalf("max ops: %v", err)
 	}
 }

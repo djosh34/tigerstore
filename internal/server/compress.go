@@ -36,18 +36,18 @@ func (st *stream) checkFlag(flag byte) error {
 	return status.Errorf(codes.Internal, "grpc: received unexpected payload format %d", flag)
 }
 
-// gunzip decompresses a message, at most maxRecvMsg bytes of it.
-func gunzip(b []byte) ([]byte, error) {
+// gunzip decompresses a message, at most limit bytes of it.
+func gunzip(b []byte, limit int) ([]byte, error) {
 	r, err := gzip.NewReader(bytes.NewReader(b))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "grpc: failed to decompress the received message: %v", err)
 	}
-	out, err := io.ReadAll(io.LimitReader(r, maxRecvMsg+1))
+	out, err := io.ReadAll(io.LimitReader(r, int64(limit)+1))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "grpc: failed to decompress the received message: %v", err)
 	}
-	if len(out) > maxRecvMsg {
-		return nil, status.Errorf(codes.ResourceExhausted, "grpc: received message after decompression larger than max (%d vs. %d)", len(out), maxRecvMsg)
+	if len(out) > limit {
+		return nil, status.Errorf(codes.ResourceExhausted, "grpc: received message after decompression larger than max (%d vs. %d)", len(out), limit)
 	}
 	return out, nil
 }

@@ -29,7 +29,7 @@ import (
 // own cluster version, the entry format (version.go), which never goes
 // down.
 
-// monitorTicks is how often, in seconds, etcd's leader checks the
+// monitorSeconds is how often, in seconds, etcd's leader checks the
 // cluster version: rafthttp's ConnWriteTimeout less a second.
 const monitorSeconds = 4
 
@@ -157,7 +157,7 @@ func (n *Node) applyVersionSet(r *pb.InternalRaftRequest) (proto.Message, error)
 // cluster version to the downgrade's target while one is enabled, and
 // back to this build's once none is.
 func (n *Node) monitorVersion() {
-	if !n.isLeader || !n.capable() || n.now%int64(monitorSeconds*n.cfg.TicksPerSecond) != 0 {
+	if !n.isLeader || !n.capable() || !n.cfg.every(n.now, monitorSeconds) {
 		return
 	}
 	st := n.state

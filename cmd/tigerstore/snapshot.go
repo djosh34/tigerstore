@@ -27,7 +27,7 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	}
 	fs := flag.NewFlagSet("tigerstore snapshot restore", flag.ContinueOnError)
 	name := fs.String("name", "default", "name of this node in --initial-cluster")
-	dataDir := fs.String("data-dir", "", "data directory to create (default <name>.tigerstore)")
+	dataDir := fs.String("data-dir", "", "data directory to create (default <name>.etcd)")
 	cluster := fs.String("initial-cluster", "", "the new cluster as name=https://host:peerport, comma separated, the same on every node")
 	fs.String("initial-cluster-token", "tigerstore", "token of the new cluster; pass the same when the nodes start")
 	fs.String("initial-advertise-peer-urls", "", "accepted for etcdutl's sake; peer URLs come from --initial-cluster")
@@ -53,7 +53,7 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 		return fmt.Errorf("--name %q is not in --initial-cluster", *name)
 	}
 	if *dataDir == "" {
-		*dataDir = *name + ".tigerstore"
+		*dataDir = *name + ".etcd"
 	}
 	info, err := node.Restore(path, *dataDir, initialMembers(members), *skipHash)
 	if err != nil {

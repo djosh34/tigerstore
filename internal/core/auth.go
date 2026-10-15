@@ -513,7 +513,7 @@ func (n *Node) authenticate(r *pb.InternalAuthenticateRequest, index uint64, h *
 }
 
 // tokenTicks is how long an unused simple token lives.
-func (n *Node) tokenTicks() int { return cmp.Or(n.cfg.AuthTokenTicks, 300*n.cfg.TicksPerSecond) }
+func (n *Node) tokenTicks() int { return cmp.Or(n.cfg.AuthTokenTicks, int(n.cfg.ticksOf(300))) }
 
 func (n *Node) invalidateTokens(user string) {
 	for t, st := range n.tokens {

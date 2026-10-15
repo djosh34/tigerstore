@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/server/v3/embed"
 
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -33,48 +36,61 @@ const joinTimeout = 30 * time.Second
 // of a first start: in a new cluster, the node's place in
 // --initial-cluster and a hash of the token and that list; in a running
 // one (--initial-cluster-state existing), what the other members answer
-// for the node's peer URL.
-func loadIdentity(f *flags, members []member, self *member, pcfg peer.Config) (identity, error) {
+// for any of the node's peer URLs.
+func loadIdentity(ec *embed.Config, members []member, pcfg peer.Config) (identity, error) {
 	var id identity
-	b, err := os.ReadFile(identityFile(f.dataDir))
+	b, err := os.ReadFile(identityFile(ec.Dir))
 	switch {
 	case err == nil:
 		if _, err := fmt.Sscanf(string(b), "%x %x\n", &id.id, &id.cluster); err != nil {
-			return id, fmt.Errorf("%s: %w", identityFile(f.dataDir), err)
+			return id, fmt.Errorf("%s: %w", identityFile(ec.Dir), err)
 		}
 		return id, nil
 	case !errors.Is(err, fs.ErrNotExist):
 		return id, err
-	case f.clusterState == "new":
+	}
+	i := slices.IndexFunc(members, func(m member) bool { return m.name == ec.Name })
+	if i < 0 {
+		return id, fmt.Errorf("couldn't find local name %q in the initial cluster configuration", ec.Name)
+	}
+	self := members[i]
+	if ec.IsNewCluster() {
 		h := fnv.New64a()
-		h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
+		h.Write([]byte(ec.InitialClusterToken + "/" + ec.InitialCluster))
 		id = identity{id: self.id, cluster: h.Sum64()}
-	default:
-		var addrs []string
-		for _, m := range members {
-			if m.name != f.name {
-				addrs = append(addrs, m.url.Host)
+		return id, saveIdentity(ec.Dir, id)
+	}
+	var addrs []string
+	for _, m := range members {
+		if m.name == ec.Name {
+			continue
+		}
+		for _, raw := range m.urls {
+			u, err := url.Parse(raw)
+			if err != nil {
+				return id, err
 			}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), joinTimeout)
-		defer cancel()
-		ms, cluster, err := node.RemoteMembers(ctx, pcfg, addrs)
-		if err != nil {
-			return id, err
-		}
-		id.cluster = cluster
-		for _, m := range ms {
-			for _, u := range m.PeerURLs {
-				if u == self.url.String() {
-					id.id = m.ID
-				}
-			}
-		}
-		if id.id == 0 {
-			return id, fmt.Errorf("the cluster has no member with peer URL %s; add it with MemberAdd first", self.url)
+			addrs = append(addrs, u.Host)
 		}
 	}
-	return id, saveIdentity(f.dataDir, id)
+	ctx, cancel := context.WithTimeout(context.Background(), joinTimeout)
+	defer cancel()
+	ms, cluster, err := node.RemoteMembers(ctx, pcfg, addrs)
+	if err != nil {
+		return id, err
+	}
+	id.cluster = cluster
+	for _, m := range ms {
+		for _, u := range m.PeerURLs {
+			if slices.Contains(self.urls, u) {
+				id.id = m.ID
+			}
+		}
+	}
+	if id.id == 0 {
+		return id, fmt.Errorf("the cluster has no member with peer URLs %v; add it with MemberAdd first", self.urls)
+	}
+	return id, saveIdentity(ec.Dir, id)
 }
 
 // saveIdentity writes the identity file and syncs it and its directory.
@@ -106,7 +122,7 @@ func saveIdentity(dataDir string, id identity) error {
 func initialMembers(members []member) []*pb.Member {
 	var out []*pb.Member
 	for _, m := range members {
-		out = append(out, &pb.Member{ID: m.id, Name: m.name, PeerURLs: []string{m.url.String()}})
+		out = append(out, &pb.Member{ID: m.id, Name: m.name, PeerURLs: m.urls})
 	}
 	return out
 }

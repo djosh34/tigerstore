@@ -67,20 +67,20 @@ func run() error {
 	var nodes []*exec.Cmd
 	for i := range 3 {
 		name := fmt.Sprintf("node%d", i+1)
+		peer := cluster[i][len(name)+1:]
 		args := []string{
 			"--name", name, "--data-dir", filepath.Join(dir, name),
 			"--initial-cluster", strings.Join(cluster, ","),
-			"--listen-client-urls", endpoints[i],
+			"--listen-client-urls", endpoints[i], "--advertise-client-urls", endpoints[i],
+			"--listen-peer-urls", peer, "--initial-advertise-peer-urls", peer,
 			"--cert-file", filepath.Join(certs, name+".pem"), "--key-file", filepath.Join(certs, name+"-key.pem"),
 			"--trusted-ca-file", filepath.Join(certs, "ca.pem"), "--client-cert-auth",
 			"--peer-cert-file", filepath.Join(certs, name+".pem"), "--peer-key-file", filepath.Join(certs, name+"-key.pem"),
 			"--peer-trusted-ca-file", filepath.Join(certs, "ca.pem"),
 		}
 		if etcd != "" {
-			peer := cluster[i][len(name)+1:]
-			args = append(args, "--advertise-client-urls", endpoints[i], "--listen-peer-urls", peer,
-				"--initial-advertise-peer-urls", peer, "--initial-cluster-state", "new",
-				"--peer-client-cert-auth", "--log-level", "error")
+			// tigerstore always verifies peer certificates.
+			args = append(args, "--peer-client-cert-auth", "--log-level", "error")
 		}
 		if iv := os.Getenv("STORAGE_TEST_PROGRESS_INTERVAL"); iv != "" {
 			args = append(args, "--watch-progress-notify-interval", iv)

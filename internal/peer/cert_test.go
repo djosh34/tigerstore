@@ -71,7 +71,7 @@ func delivers(t *testing.T, ca *x509.CertPool, c1, c2 Config, wait time.Duration
 	}()
 	for i, c := range []Config{c1, c2} {
 		id, other := uint64(i+1), uint64(2-i)
-		c.ID, c.Listener, c.Peers, c.CA = id, lns[id], map[uint64]string{other: addrs[other]}, ca
+		c.ID, c.Listeners, c.Peers, c.CA = id, []net.Listener{lns[id]}, map[uint64]string{other: addrs[other]}, ca
 		c.Deliver = func(m *raftpb.Message) { got <- m }
 		c.Unreachable = func(uint64) {}
 		c.Logf = t.Logf

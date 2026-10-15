@@ -9,8 +9,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/metrics"
 )
 
-// warningApply is etcd's --warning-apply-duration: applies that take
-// longer count in etcd_server_slow_apply_total.
+// warningApply is etcd's default --warning-apply-duration: applies that
+// take longer are logged and count in etcd_server_slow_apply_total.
 const warningApply = 100 * time.Millisecond
 
 // timer is the core's Timer. The core calls it from the committer
@@ -18,15 +18,20 @@ const warningApply = 100 * time.Millisecond
 type timer struct {
 	m     *metrics.Set
 	epoch time.Time
+	// slow is the apply time from which an apply is slow.
+	slow time.Duration
+	logf func(format string, args ...any)
 	// apply holds the observers of each op, failed and succeeded.
 	apply  map[string]*[2]prometheus.Observer
 	ranges [2]prometheus.Observer
 }
 
-func newTimer(m *metrics.Set) *timer {
+func newTimer(m *metrics.Set, slow time.Duration, logf func(string, ...any)) *timer {
 	return &timer{
 		m:      m,
 		epoch:  time.Now(),
+		slow:   slow,
+		logf:   logf,
 		apply:  map[string]*[2]prometheus.Observer{},
 		ranges: [2]prometheus.Observer{m.Range.WithLabelValues("false"), m.Range.WithLabelValues("true")},
 	}
@@ -52,8 +57,9 @@ func (t *timer) Applied(op string, ok bool, nanos int64) {
 		t.apply[op] = o
 	}
 	o[b2i(ok)].Observe(seconds(nanos))
-	if time.Duration(nanos) > warningApply {
+	if d := time.Duration(nanos); d > t.slow {
 		t.m.SlowApplies.Inc()
+		t.logf("apply request took too long: took %v, expected-duration %v, op %s", d, t.slow, op)
 	}
 	if op == "Compaction" && ok {
 		// The index compacts as the compaction applies; there is no

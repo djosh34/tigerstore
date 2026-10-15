@@ -76,7 +76,7 @@ func startWith(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string
 		ln = listen(t, addrs[id])
 	}
 	cfg := Config{
-		ID: id, Listener: ln, Peers: peers, Certificate: cert, CA: pool,
+		ID: id, Listeners: []net.Listener{ln}, Peers: peers, Certificate: cert, CA: pool,
 		Deliver:     func(m *raftpb.Message) { e.got <- m },
 		Unreachable: func(uint64) { e.unreachable.Add(1) },
 		Logf:        t.Logf,

@@ -155,7 +155,7 @@ func stalledPeerIsDropped(t *testing.T) error {
 	case <-time.After(5 * time.Second):
 		return errors.New("the stall never took effect")
 	}
-	deadline := time.Now().Add(writeTimeout + 10*time.Second)
+	deadline := time.Now().Add(defaultTimeout + 10*time.Second)
 	for time.Now().Before(deadline) {
 		a.t.Send(msg(999, "after"))
 		select {

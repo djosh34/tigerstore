@@ -26,7 +26,9 @@ func bareServer(t testing.TB) *Server {
 		t.Fatal(err)
 	}
 	m, _ := buildServerMetrics(set, false)
-	return &Server{metrics: m}
+	s := &Server{metrics: m}
+	s.setLimits()
+	return s
 }
 
 func testCall(c *conn, id uint32) *stream {
