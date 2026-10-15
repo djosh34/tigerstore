@@ -72,3 +72,25 @@ func TestForwardedWritesGetNoSpace(t *testing.T) {
 		t.Fatalf("the put after the budget: %d answers, revision %d", c.replies, f.Store().Rev())
 	}
 }
+
+// TestQueuedWritesGetNoSpace has the leader take 100 puts while it may
+// propose only a few, then pass its budget: the puts not proposed yet get
+// NOSPACE.
+func TestQueuedWritesGetNoSpace(t *testing.T) {
+	c := newMemCluster(t, func(cfg *Config) { cfg.UnappliedBytes, cfg.MaxBatchBytes = 8<<10, 2<<10 })
+	l := c.nodes[0]
+	for i := range 100 {
+		l.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: []byte("k"), Value: make([]byte, 1<<10)}})
+	}
+	c.step()
+	l.SetNoSpace(true)
+	for range 100 {
+		if c.noSpace+c.replies == 100 {
+			break
+		}
+		c.step()
+	}
+	if c.noSpace+c.replies != 100 || c.replies > 10 {
+		t.Fatalf("%d NOSPACE answers and %d others, want at most 10 others", c.noSpace, c.replies)
+	}
+}

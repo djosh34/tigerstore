@@ -865,6 +865,19 @@ func writeSize(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
+	if n.noSpace {
+		// Writes taken before the disk passed its budget get NOSPACE
+		// too, unless they were proposed: only those still add to the
+		// files, and UnappliedBytes bounds them.
+		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool {
+			if !TakesSpace(p.req) {
+				return false
+			}
+			n.propBytes -= writeSize(p)
+			n.finish(p, nil, rpctypes.ErrGRPCNoSpace)
+			return true
+		})
+	}
 	// Raft's own leader, not the one the last Ready reported: a Tick or a
 	// Step since then may have ended it, and Propose would drop the entry.
 	if n.rn.BasicStatus().Lead == raft.None {
