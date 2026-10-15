@@ -172,4 +172,16 @@ if [ "$proxied" != $'viaproxy\n1' ]; then
 	tail -20 "$work/proxy.log"
 	exit 1
 fi
+# etcd's TCP gateway, which tigerstore runs, passes TLS through to the
+# cluster.
+gateway=$((2384 + off))
+"$work/tigerstore" gateway start --endpoints=127.0.0.1:$((2379 + off)),127.0.0.1:$((22379 + off)) \
+	--listen-addr=127.0.0.1:$gateway >"$work/gateway.log" 2>&1 &
+echo $! >"$work/data/gateway.pid"
+for _ in $(seq 50); do
+	etcdctl --endpoints=https://127.0.0.1:$gateway --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" \
+		--key "$work/certs/client-key.pem" --command-timeout=2s put viagateway 1 >/dev/null 2>&1 && break
+	sleep 0.2
+done
+expect $'viagateway\n1' get viagateway
 echo "smoke test passed"

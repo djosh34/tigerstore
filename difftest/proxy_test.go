@@ -5,6 +5,7 @@ package difftest
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -139,4 +140,19 @@ func (r *run) proxyWatch(do string, req *pb.WatchCreateRequest, n int) {
 		}
 	}
 	r.record(do, res, nil)
+}
+
+// TestGateway runs through etcd's TCP gateway, which scripts/difftest.sh
+// starts in front of the server at TIGERSTORE_DIFF_GATEWAY: etcd
+// v3.7.2's own in front of etcd and `tigerstore gateway start` in front
+// of tigerstore. TLS passes through it to the server.
+func TestGateway(t *testing.T) {
+	runCasesOn(t, "etcd-v3.7.2-gateway.json", dialAt(t, "TIGERSTORE_DIFF_GATEWAY", os.Getenv("TIGERSTORE_DIFF_CA")), []testCase{{"gateway", func(r *run) {
+		r.put("put a", &pb.PutRequest{Key: r.key("a"), Value: []byte("1")})
+		r.get("get a", &pb.RangeRequest{Key: r.key("a")})
+		r.watch("watch a from the case's start", &pb.WatchCreateRequest{Key: r.key("a"), StartRevision: r.abs(1)})
+		id := r.grant("grant", 0, 60)
+		r.revoke("revoke", id)
+		r.del("delete a", &pb.DeleteRangeRequest{Key: r.key("a"), PrevKv: true})
+	}}})
 }

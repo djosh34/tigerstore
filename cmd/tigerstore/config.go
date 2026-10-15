@@ -109,7 +109,10 @@ const usage = `Usage:
     Restore a member's data directory from an etcd snapshot file.
 
   tigerstore grpc-proxy start [options]
-    Start etcd v3.7.2's gRPC proxy in front of the cluster.`
+    Start etcd v3.7.2's gRPC proxy in front of the cluster.
+
+  tigerstore gateway start [options]
+    Start etcd v3.7.2's TCP gateway to the cluster.`
 
 // parse parses the command line, the environment or the configuration
 // file, as etcd's config.parse does, and validates the result. With

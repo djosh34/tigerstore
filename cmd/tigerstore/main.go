@@ -56,9 +56,10 @@ func main() {
 		debug.SetGCPercent(gcPercent)
 	}
 	args := os.Args[1:]
-	if len(args) > 0 && args[0] == "grpc-proxy" {
-		// etcd's own command, a gRPC proxy in front of the cluster's
-		// client URLs, with etcd's flags (--namespace among them).
+	if len(args) > 0 && (args[0] == "grpc-proxy" || args[0] == "gateway") {
+		// etcd's own commands, with etcd's flags: a gRPC proxy in front
+		// of the cluster's client URLs (--namespace among them), and a
+		// TCP gateway to them.
 		etcdmain.Main(os.Args)
 		return
 	}
