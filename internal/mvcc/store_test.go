@@ -424,7 +424,7 @@ type swapped struct {
 	from, to uint64
 }
 
-func (s *swapped) Read(r Ref) ([]byte, error) {
+func (s *swapped) Read(r Ref) ([]byte, bool, error) {
 	if r.Index == s.from {
 		r.Index = s.to
 	}
