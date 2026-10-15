@@ -20,16 +20,23 @@ import (
 
 // A follower that is behind the leader's window gets a snapshot from
 // Raft: only an index and a term, the newest checkpoint's or the window's
-// start, with no data. Its driver fetches what it lacks from the leader
-// (FetchSnapshot), writes it to its own log, and reports the persist job;
+// start, with no data. Its driver fetches what it lacks from the leader,
+// writes it to its own log (ReceiveSnapshot), and reports the persist job;
 // the core then brings its state to the snapshot's index (install).
 //
 // The leader sends the raw entries the follower lacks, read from its
-// segments. When those are gone, it sends its checkpoint, the values of
-// the entries after the follower's applied index that the checkpoint
-// names, and the entries after the checkpoint. The root names the
-// checkpoint; the entries after it, in the log, bring the state to the
-// snapshot's index, where Raft's snapshot is.
+// segments. When those are gone, it sends its newest checkpoint at or
+// before the snapshot's index, the values of the entries after the
+// follower's applied index that the checkpoint names, and the entries
+// after the checkpoint. The root names the checkpoint; the entries after
+// it, in the log, bring the state to the snapshot's index, where Raft's
+// snapshot is.
+//
+// Raft cannot take back a snapshot it handed a follower. A driver whose
+// fetch fails, because the leader crashed or no longer has what the
+// snapshot needs, syncs what it wrote and starts a new core from its log,
+// as a restart does. The leader hears that the fetch failed and Raft
+// sends another snapshot.
 
 // Install is a snapshot that Raft hands a follower: the state at Index,
 // whose entry has Term. The driver brings its log there with
@@ -267,16 +274,29 @@ var errNoSnapshot = errors.New("core: the log cannot serve this snapshot")
 
 // ServeSnapshot writes to w what a follower that applied up to from-1
 // needs to reach index to: the entries from..to from log, or, when some
-// are gone, the checkpoint ckpt, the values it names in entries from from
-// on, and the entries after it.
-func ServeSnapshot(disk Log, ckpt wal.Root, from, to uint64, w io.Writer) error {
+// are gone, a checkpoint, the values it names in entries from from on,
+// and the entries after it. ckpts are the durable checkpoints whose files
+// are on disk. It takes the newest one at or before to, so that a newer
+// root that became durable after Raft sent the snapshot does not stop it
+// from serving the checkpoint the snapshot named.
+func ServeSnapshot(disk Log, ckpts []wal.Root, from, to uint64, w io.Writer) error {
+	var ckpt wal.Root
+	for _, c := range ckpts {
+		if c.Index <= to && c.Index > ckpt.Index {
+			ckpt = c
+		}
+	}
 	s := &snapWriter{w: bufio.NewWriterSize(w, 256<<10)}
 	// Entries after the checkpoint are always on disk.
+	last := to
+	if ckpt.Index > 0 {
+		last = ckpt.Index
+	}
 	raw := true
-	for i := from; i <= min(to, ckpt.Index) && raw; i++ {
+	for i := from; i <= last && raw; i++ {
 		raw = disk.Has(i)
 	}
-	if !raw && (ckpt.Index < from || ckpt.Index > to) {
+	if !raw && ckpt.Index < from {
 		return fmt.Errorf("%w: entries %d to %d, the checkpoint is at %d", errNoSnapshot, from, to, ckpt.Index)
 	}
 	var hdr []byte

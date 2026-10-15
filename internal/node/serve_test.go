@@ -95,7 +95,7 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ckpt := n.log.ckpt
+	ckpt := n.log.ckpts[len(n.log.ckpts)-1]
 	st, err := os.Stat(filepath.Join(dir, "wal", wal.CheckpointName(ckpt.Index)))
 	if err != nil {
 		t.Fatalf("setup: checkpoint at %d: %v", ckpt.Index, err)
