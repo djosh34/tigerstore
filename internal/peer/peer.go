@@ -209,7 +209,9 @@ func (t *TCP) logf(format string, args ...any) {
 }
 
 // logHandshake logs a failed handshake with a peer, unless one with the
-// same peer was logged within handshakeLogEvery.
+// same peer was logged within handshakeLogEvery. The dialer names the
+// peer by its ID. The acceptor does not know the ID before the preface,
+// so it names the peer by its host.
 func (t *TCP) logHandshake(peer string, err error) {
 	now := time.Now()
 	t.logMu.Lock()
@@ -308,15 +310,13 @@ func (t *TCP) receive(c net.Conn) error {
 		return err
 	}
 	r := bufio.NewReaderSize(c, ioBuffer)
-	from, err := t.handshake(c, r)
+	from, fetch, err := t.handshake(c, r)
 	if err != nil {
 		if t.ctx.Err() == nil {
 			t.logHandshake("from "+remoteHost(c), err)
 		}
 		return nil
 	}
-	fetch := from&fetchBit != 0
-	from &^= fetchBit
 	if fetch {
 		return t.serve(c, r, from)
 	}
@@ -355,47 +355,48 @@ func (t *TCP) receive(c net.Conn) error {
 }
 
 // handshake checks the ALPN version and the preface of an inbound
-// connection and writes the reply. It returns the dialer's Raft ID, with
-// fetchBit set on a snapshot fetch.
-func (t *TCP) handshake(c net.Conn, r io.Reader) (uint64, error) {
+// connection and writes the reply. It returns the dialer's Raft ID and
+// whether the connection fetches a snapshot.
+func (t *TCP) handshake(c net.Conn, r io.Reader) (id uint64, fetch bool, err error) {
 	tc, ok := c.(*tls.Conn)
 	if !ok {
-		return 0, fmt.Errorf("a %T is not a TLS connection", c)
+		return 0, false, fmt.Errorf("a %T is not a TLS connection", c)
 	}
 	if err := tc.Handshake(); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	name := tc.ConnectionState().NegotiatedProtocol
 	if name == "" {
-		return 0, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
+		return 0, false, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
 	}
 	var p [12]byte
 	if _, err := io.ReadFull(r, p[:]); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if p[0] != magic[0] || p[1] != magic[1] {
-		return 0, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
+		return 0, false, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
 	}
-	id := binary.BigEndian.Uint64(p[4:])
-	if _, ok := t.senders[id&^fetchBit]; !ok {
-		return 0, fmt.Errorf("unknown peer %d", id&^fetchBit)
+	id = binary.BigEndian.Uint64(p[4:])
+	fetch = id&fetchBit != 0
+	id &^= fetchBit
+	if _, ok := t.senders[id]; !ok {
+		return 0, false, fmt.Errorf("unknown peer %d", id)
 	}
-	var err error
 	v := pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
 	switch {
 	case v == 0:
-		err = fmt.Errorf("peer %d speaks versions %d-%d", id&^fetchBit, p[2], p[3])
+		err = fmt.Errorf("peer %d speaks versions %d-%d", id, p[2], p[3])
 	case name != alpn(v):
-		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id&^fetchBit, name, v)
+		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id, name, v)
 		v = 0
 	}
 	if werr := c.SetWriteDeadline(writeDeadline()); werr != nil {
-		return 0, errors.Join(err, werr)
+		return 0, false, errors.Join(err, werr)
 	}
 	if _, werr := c.Write([]byte{v}); werr != nil {
-		return 0, errors.Join(err, werr)
+		return 0, false, errors.Join(err, werr)
 	}
-	return id, err
+	return id, fetch, err
 }
 
 // remoteHost is the host of c's remote address. Unlike the port, it stays
@@ -706,7 +707,7 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) error {
 	}
 	switch v := reply[0]; {
 	case v == 0:
-		return errors.New("the peer shares no version with this node")
+		return errors.New("the peer refused the preface with reply 0")
 	case name != alpn(v):
 		return fmt.Errorf("the peer replied version %d, but chose %s in ALPN", v, name)
 	}

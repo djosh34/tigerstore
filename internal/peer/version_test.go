@@ -175,7 +175,8 @@ func TestRejectsBadPreface(t *testing.T) {
 	if err := lns[1].Close(); err != nil {
 		t.Fatal(err)
 	}
-	b := start(t, 2, lns[2], addrs, cert, ca.Pool)
+	// Node 2 speaks 1-2, so a preface of 2-3 picks 2 while ALPN chose 1.
+	b := startWith(t, 2, lns[2], addrs, cert, ca.Pool, func(c *Config) { c.minVersion, c.maxVersion = 1, 2 })
 	defer func() {
 		if err := b.t.Close(); err != nil {
 			t.Error(err)
