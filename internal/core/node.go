@@ -93,8 +93,9 @@ type Config struct {
 	// follower come from it.
 	UnappliedBytes int64
 	// A checkpoint is cut once the entries applied since the last one
-	// pass CheckpointBytes and CheckpointRatio times the last one's size.
-	// Each checkpoint writes the whole index again: the ratio keeps those
+	// pass CheckpointBytes and CheckpointRatio times the base, the size of
+	// the newest checkpoint finished when the last one was cut. Each
+	// checkpoint writes the whole index again: the ratio keeps those
 	// bytes to about 1/ratio of the log's, and a restart replays about
 	// max(CheckpointBytes, ratio times the base) of log. docs/design.md
 	// has the measurements behind 64.
