@@ -88,6 +88,11 @@ ctl endpoint status -w json | grep -q '"version":"3.7.2"' || {
 	echo "endpoint status does not report version 3.7.2"
 	exit 1
 }
+# etcdctl checks that the snapshot ends with the SHA-256 of what comes
+# before it, after a multiple of 512 bytes.
+etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
+	--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+	snapshot save "$work/snap.db" | grep -q "Snapshot saved at"
 version=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	"https://127.0.0.1:$((2379 + off))/version")
 if [ "$version" != '{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}' ]; then

@@ -66,6 +66,7 @@ var methods = map[string]*method{
 	"/etcdserverpb.Maintenance/Alarm":     {unary: nodeCall[pb.AlarmRequest]},
 	"/etcdserverpb.Maintenance/Hash":      {unary: nodeCall[pb.HashRequest]},
 	"/etcdserverpb.Maintenance/HashKV":    {unary: nodeCall[pb.HashKVRequest]},
+	"/etcdserverpb.Maintenance/Snapshot":  {stream: (*Server).snapshot, serverStream: true},
 	"/v3lockpb.Lock/Lock":                 {unary: lock},
 	"/v3lockpb.Lock/Unlock":               {unary: unlock},
 	"/v3electionpb.Election/Campaign":     {unary: campaign},

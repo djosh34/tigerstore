@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -23,8 +24,11 @@ func TestQuota(t *testing.T) {
 func quota(r *run) {
 	value := bytes.Repeat([]byte("q"), 100<<10)
 	var err error
-	for i := 0; i < 100 && err == nil; i++ {
-		_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: r.key(fmt.Sprintf("big/%02d", i)), Value: value})
+	// etcd sees its database grow only when its backend commits, every
+	// 100 ms, so the writes are paced.
+	for i := 0; i < 200 && err == nil; i++ {
+		_, err = r.c.kv.Put(r.ctx, &pb.PutRequest{Key: r.key(fmt.Sprintf("big/%03d", i)), Value: value})
+		time.Sleep(20 * time.Millisecond)
 	}
 	r.record("put 100 KiB values until one is refused", nil, err)
 	r.rebase()
@@ -42,8 +46,8 @@ func quota(r *run) {
 	r.put("small put under NOSPACE", &pb.PutRequest{Key: k, Value: []byte("v")})
 	r.txn("txn with a put under NOSPACE", &pb.TxnRequest{Success: []*pb.RequestOp{putOp(k, "v")}})
 	r.grant("grant under NOSPACE", 0, 60)
-	r.del("delete under NOSPACE", &pb.DeleteRangeRequest{Key: r.key("big/00")})
-	r.get("get the deleted key under NOSPACE", &pb.RangeRequest{Key: r.key("big/00")})
+	r.del("delete under NOSPACE", &pb.DeleteRangeRequest{Key: r.key("big/000")})
+	r.get("get the deleted key under NOSPACE", &pb.RangeRequest{Key: r.key("big/000")})
 	r.compact("compact under NOSPACE", r.abs(1), false)
 	r.ownAlarms("deactivate the alarm", &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: member})
 	r.alarm("list after deactivating", &pb.AlarmRequest{})

@@ -649,3 +649,10 @@ func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint6
 	}
 	return nil
 }
+
+// SnapshotPoint is where a client's snapshot of the state is taken: the
+// applied index, its entry's term and the revision there.
+func (n *Node) SnapshotPoint() (index, term uint64, rev int64, err error) {
+	term, err = n.termAt(n.applied)
+	return n.applied, term, n.kv.Rev(), err
+}

@@ -4570,5 +4570,22 @@
         "count": 25
       }
     }
+  ],
+  "snapshot": [
+    {
+      "do": "snapshot",
+      "code": "OK",
+      "result": {
+        "mod512": 32,
+        "digest": true,
+        "versions": [
+          "3.7.0"
+        ],
+        "remaining": [
+          0,
+          0
+        ]
+      }
+    }
   ]
 }

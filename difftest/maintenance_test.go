@@ -3,7 +3,11 @@
 package difftest
 
 import (
+	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"errors"
+	"io"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -148,4 +152,41 @@ func alarms(r *run) {
 	r.alarm("deactivate CORRUPT for 7", deact(pb.AlarmType_CORRUPT, 7))
 	r.alarm("list after deactivating", &pb.AlarmRequest{})
 	r.put("put after deactivating", put)
+}
+
+// snapshot records what etcdctl snapshot save checks of a
+// Maintenance.Snapshot stream, since the file's format is each server's
+// own: the size after a multiple of 512 bytes, whether the last 32 bytes
+// are the SHA-256 of the rest, the storage version, and the bytes still
+// to come in the last two messages.
+func snapshot(r *run) {
+	s, err := r.c.maint.Snapshot(r.ctx, &pb.SnapshotRequest{})
+	var file []byte
+	var versions []string
+	var remaining []uint64
+	for err == nil {
+		var m *pb.SnapshotResponse
+		if m, err = s.Recv(); err == nil {
+			file = append(file, m.Blob...)
+			remaining = append(remaining, m.RemainingBytes)
+			if !slices.Contains(versions, m.Version) {
+				versions = append(versions, m.Version)
+			}
+		}
+	}
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	var res any
+	if err == nil && len(file) >= sha256.Size && len(remaining) >= 2 {
+		body := len(file) - sha256.Size
+		sum := sha256.Sum256(file[:body])
+		res = struct {
+			Mod512    int      `json:"mod512"`
+			Digest    bool     `json:"digest"`
+			Versions  []string `json:"versions"`
+			Remaining []uint64 `json:"remaining"`
+		}{len(file) % 512, bytes.Equal(sum[:], file[body:]), versions, remaining[len(remaining)-2:]}
+	}
+	r.record("snapshot", res, err)
 }

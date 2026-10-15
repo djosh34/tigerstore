@@ -79,7 +79,9 @@ type input struct {
 	stream      uint64
 	status      chan *pb.StatusResponse
 	hashes      chan []mvcc.KVHash
-	metrics     chan core.Metrics
+	// snapshotPoint asks where a client's snapshot starts.
+	snapshotPoint chan snapshotPoint
+	metrics       chan core.Metrics
 	// written is the index of a checkpoint the writer synced, or failed
 	// to write with writeErr.
 	written  uint64
@@ -825,6 +827,10 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		in.metrics <- n.core.Metrics()
 	case in.hashes != nil:
 		in.hashes <- n.core.CompactHashes()
+	case in.snapshotPoint != nil:
+		var p snapshotPoint
+		p.info.Index, p.info.Term, p.info.Revision, p.err = n.core.SnapshotPoint()
+		in.snapshotPoint <- p
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:
