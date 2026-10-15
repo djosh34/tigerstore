@@ -236,8 +236,8 @@ type Store struct {
 	fills []Fill
 
 	counts Counts
-	// versions and keyBytes count the versions and the key bytes in the
-	// index, for Bytes.
+	// versions and keyBytes count the room for versions that the keys'
+	// arrays have and the key bytes in the index, for Bytes.
 	versions, keyBytes int64
 
 	// written holds the values that puts wrote since the last Leaving,
@@ -247,7 +247,8 @@ type Store struct {
 }
 
 // Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree and its bytes, and per version 64 bytes.
+// its place in the B-tree and its bytes, and 64 bytes per version its
+// array has room for.
 func (s *Store) Bytes() int64 {
 	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64
 }
@@ -561,8 +562,14 @@ func (s *Store) drop(rev int64) {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
 		if i := k.dropped(rev); i > 0 {
+			c := cap(k.vers)
 			k.vers = slices.Delete(k.vers, 0, i)
-			s.versions -= int64(i)
+			// The array stays; a key that lost most of its versions gets a
+			// smaller one, so that the memory goes.
+			if len(k.vers) <= c/4 {
+				k.vers = slices.Clone(k.vers)
+			}
+			s.versions -= int64(c - cap(k.vers))
 		}
 		if len(k.vers) == 0 {
 			gone = append(gone, k)

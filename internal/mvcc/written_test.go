@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"slices"
+	"strconv"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -52,34 +53,52 @@ func TestLeavingAndReplaced(t *testing.T) {
 	}
 }
 
-// TestBytes checks that the index estimate follows the keys and versions
-// that puts, deletes, a compaction and a checkpoint load leave.
+// TestBytes checks that the index estimate follows the keys, their bytes
+// and the room their version arrays have through puts, deletes, two
+// compactions and a checkpoint load, and that a compaction gives back the
+// array of a key that lost most of its versions.
 func TestBytes(t *testing.T) {
-	s := New(&Heap{})
-	want := func(keys, keyBytes, versions int64) {
+	check := func(s *Store, keys int) {
 		t.Helper()
-		if got := s.Bytes(); got != keys*64+keyBytes+versions*64 {
-			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, %d versions", got, keys, keyBytes, versions)
+		var keyBytes, room int64
+		s.keys.Ascend(func(k *keyIndex) bool {
+			keyBytes += int64(len(k.key))
+			room += int64(cap(k.vers))
+			return true
+		})
+		if s.keys.Len() != keys {
+			t.Fatalf("%d keys, want %d", s.keys.Len(), keys)
+		}
+		if got := s.Bytes(); got != int64(keys)*64+keyBytes+room*64 {
+			t.Fatalf("Bytes = %d, want %d keys, %d key bytes, room for %d versions", got, keys, keyBytes, room)
 		}
 	}
+	s := New(&Heap{})
 	put(t, s, "a", "1")
 	put(t, s, "bb", "2")
 	put(t, s, "a", "3")
-	want(2, 3, 3)
+	check(s, 2)
 	if _, err := s.DeleteRange(&pb.DeleteRangeRequest{Key: []byte("bb")}); err != nil {
 		t.Fatal(err)
 	}
-	want(2, 3, 4)
+	check(s, 2)
+	for i := range 1000 {
+		put(t, s, "hot", strconv.Itoa(i))
+	}
+	check(s, 3)
 	if err := s.Compact(s.Rev()); err != nil {
 		t.Fatal(err)
 	}
-	// The tombstone of bb is at the compaction revision, so it stays.
-	want(2, 3, 2)
+	// The tombstone of bb is older than the compaction, so bb goes.
+	check(s, 2)
+	if s.Bytes() > 1024 {
+		t.Fatalf("Bytes = %d after the compaction left one version per key", s.Bytes())
+	}
 	put(t, s, "c", "4")
 	if err := s.Compact(s.Rev()); err != nil {
 		t.Fatal(err)
 	}
-	want(2, 2, 2)
+	check(s, 3)
 	s.Freeze()
 	b, _, done := s.CopyFrozen(nil, 1<<20)
 	if !done {
@@ -89,7 +108,5 @@ func TestBytes(t *testing.T) {
 	if _, err := loaded.Load(bufio.NewReader(bytes.NewReader(b)), s.Rev(), s.CompactRev()); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Bytes() != s.Bytes() {
-		t.Fatalf("loaded Bytes = %d, want %d", loaded.Bytes(), s.Bytes())
-	}
+	check(loaded, 3)
 }

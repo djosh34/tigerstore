@@ -389,8 +389,9 @@ func (w *writer) add(k *keyIndex, v version) {
 			w.s.Replaced(old.value)
 		}
 	}
+	c := cap(k.vers)
 	k.vers = append(k.vers, v)
-	w.s.versions++
+	w.s.versions += int64(cap(k.vers) - c)
 	if w.s.track {
 		w.s.sum ^= versionHash(k.key, &v)
 	}

@@ -62,6 +62,7 @@ func (n *Node) install(in *Install) error {
 	}
 	n.paused, n.epoch = nil, n.epoch+1
 	defer func() { n.resume = nil }()
+	// The entries in memory up to the applied index leave it now.
 	n.fillCache(n.applied)
 	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.conf}}); err != nil {
 		return err
@@ -102,7 +103,8 @@ func (n *Node) install(in *Install) error {
 		}
 		term = e.GetTerm()
 	}
-	// The entries applied from the log were never in memory.
+	// Forget what the entries applied from the log wrote: they never
+	// enter memory, so none of their values go into the cache.
 	n.fillCache(n.applied)
 	if (n.applied != in.Index || term != in.Term) && !planted.On("B23") {
 		return fmt.Errorf("core: the snapshot at %d term %d left the state at %d term %d", in.Index, in.Term, n.applied, term)

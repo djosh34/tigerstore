@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"maps"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
@@ -20,6 +21,10 @@ import (
 type cache struct {
 	limit, bytes int64
 	items        map[mvcc.Ref]*cached
+	// peak is the most values items held since it was made. A Go map
+	// keeps its memory as it empties, so items is made again once it
+	// holds half of that.
+	peak int
 	// head is the start and end of the ring of cached values, the most
 	// recently used after it.
 	head cached
@@ -64,6 +69,7 @@ func (c *cache) add(r mvcc.Ref, val []byte) {
 	}
 	e := &cached{ref: r, val: val}
 	c.items[r] = e
+	c.peak = max(c.peak, len(c.items))
 	c.push(e)
 	c.bytes += int64(len(val)) + cachedOverhead
 	c.fit()
@@ -85,7 +91,7 @@ func (c *cache) setLimit(limit int64) {
 
 // clear forgets every value.
 func (c *cache) clear() {
-	clear(c.items)
+	c.items, c.peak = map[mvcc.Ref]*cached{}, 0
 	c.head.prev, c.head.next = &c.head, &c.head
 	c.bytes = 0
 }
@@ -102,6 +108,11 @@ func (c *cache) remove(e *cached) {
 	c.unlink(e)
 	delete(c.items, e.ref)
 	c.bytes -= int64(len(e.val)) + cachedOverhead
+	if len(c.items) <= c.peak/2 {
+		items := make(map[mvcc.Ref]*cached, len(c.items))
+		maps.Copy(items, c.items)
+		c.items, c.peak = items, len(items)
+	}
 }
 
 func (c *cache) push(e *cached) {

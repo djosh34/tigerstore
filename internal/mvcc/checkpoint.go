@@ -115,7 +115,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 			return 0, fmt.Errorf("%w: key %q after %q", errBadCheckpoint, k.key, prev)
 		}
 		prev = k.key
-		s.versions += int64(len(k.vers))
+		s.versions += int64(cap(k.vers))
 		s.keyBytes += int64(len(k.key))
 		for i := range k.vers {
 			v := &k.vers[i]

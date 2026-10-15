@@ -435,7 +435,8 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The replayed entries were never in memory.
+	// Forget what the replay wrote: its entries never enter memory, so
+	// none of their values go into the cache.
 	n.fillCache(n.applied)
 	if hs.Commit > 0 {
 		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.conf}}
