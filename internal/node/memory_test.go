@@ -1,0 +1,89 @@
+package node
+
+import (
+	"math"
+	"runtime/debug"
+	"testing"
+	"testing/fstest"
+)
+
+// TestMemoryBudget checks where a node's memory budget comes from: the
+// flag, then GOMEMLIMIT, then the lowest memory.max of its cgroup and
+// those above it, then the host's memory.
+func TestMemoryBudget(t *testing.T) {
+	// CI may run the tests with GOMEMLIMIT.
+	defer debug.SetMemoryLimit(debug.SetMemoryLimit(math.MaxInt64))
+	meminfo := &fstest.MapFile{Data: []byte("MemTotal:       16384 kB\nMemFree:         1024 kB\n")}
+	file := func(s string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(s)} }
+	cases := []struct {
+		name string
+		root fstest.MapFS
+		flag int64
+		want int64
+		from string
+	}{
+		{"flag", fstest.MapFS{"proc/meminfo": meminfo}, 1 << 30, 1 << 30, "flag"},
+		{"no cgroup", fstest.MapFS{"proc/meminfo": meminfo}, 0, 16 << 20, "host"},
+		{"cgroup without a limit", fstest.MapFS{
+			"proc/meminfo":                 meminfo,
+			"proc/self/cgroup":             file("0::/a/b\n"),
+			"sys/fs/cgroup/a/b/memory.max": file("max\n"),
+			"sys/fs/cgroup/a/memory.max":   file("max\n"),
+		}, 0, 16 << 20, "host"},
+		{"lowest limit above", fstest.MapFS{
+			"proc/meminfo":                 meminfo,
+			"proc/self/cgroup":             file("0::/a/b\n"),
+			"sys/fs/cgroup/a/b/memory.max": file("536870912\n"),
+			"sys/fs/cgroup/a/memory.max":   file("268435456\n"),
+		}, 0, 256 << 20, "cgroup"},
+		{"own limit", fstest.MapFS{
+			"proc/meminfo":                 meminfo,
+			"proc/self/cgroup":             file("0::/a/b\n"),
+			"sys/fs/cgroup/a/b/memory.max": file("134217728\n"),
+			"sys/fs/cgroup/a/memory.max":   file("max\n"),
+		}, 0, 128 << 20, "cgroup"},
+		{"container root", fstest.MapFS{
+			"proc/meminfo":             meminfo,
+			"proc/self/cgroup":         file("0::/\n"),
+			"sys/fs/cgroup/memory.max": file("1073741824\n"),
+		}, 0, 1 << 30, "cgroup"},
+		{"cgroup v1 only", fstest.MapFS{
+			"proc/meminfo":     meminfo,
+			"proc/self/cgroup": file("4:memory:/a\n"),
+		}, 0, 16 << 20, "host"},
+	}
+	for _, c := range cases {
+		got, from, err := MemoryBudget(c.root, c.flag)
+		if err != nil || got != c.want || from != c.from {
+			t.Errorf("%s: %d from %s, %v; want %d from %s", c.name, got, from, err, c.want, c.from)
+		}
+	}
+
+	if _, _, err := MemoryBudget(fstest.MapFS{}, -1); err == nil {
+		t.Error("a negative flag gave no error")
+	}
+	if _, _, err := MemoryBudget(fstest.MapFS{}, 0); err == nil {
+		t.Error("no /proc/meminfo gave no error")
+	}
+	bad := fstest.MapFS{"proc/meminfo": meminfo, "proc/self/cgroup": file("0::/a\n"), "sys/fs/cgroup/a/memory.max": file("lots\n")}
+	if _, _, err := MemoryBudget(bad, 0); err == nil {
+		t.Error("a malformed memory.max gave no error")
+	}
+
+	debug.SetMemoryLimit(3 << 30)
+	if got, from, err := MemoryBudget(fstest.MapFS{"proc/meminfo": meminfo}, 0); err != nil || got != 3<<30 || from != "GOMEMLIMIT" {
+		t.Errorf("with a Go memory limit: %d from %s, %v", got, from, err)
+	}
+	if got, from, err := MemoryBudget(fstest.MapFS{}, 1<<30); err != nil || got != 1<<30 || from != "flag" {
+		t.Errorf("flag and Go memory limit: %d from %s, %v", got, from, err)
+	}
+}
+
+func TestCacheMemory(t *testing.T) {
+	if got := CacheMemory(1 << 30); got != 3<<28-BufferBytes {
+		t.Errorf("CacheMemory(1 GiB) = %d", got)
+	}
+	if got := CacheMemory(64 << 20); got != 0 {
+		t.Errorf("CacheMemory(64 MiB) = %d, want 0", got)
+	}
+}
