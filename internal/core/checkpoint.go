@@ -375,9 +375,6 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		return nil, lastCkpt{}, fmt.Errorf("%w: checkpoint at %d term %d, the root names %d term %d",
 			errBadCheckpoint, h.index, h.term, root.Index, root.Term)
 	}
-	if own := ownVersion(cfg); h.version > own {
-		return nil, lastCkpt{}, tooOld(h.version, own)
-	}
 	st := NewState(MinLeaseTTL(cfg), v)
 	if cfg.Record {
 		st.kv.TrackHash()
@@ -403,6 +400,11 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	}
 	if err := tr.check(r); err != nil {
 		return nil, lastCkpt{}, err
+	}
+	// Only a checkpoint that matches its checksum says the cluster runs
+	// a newer version; a damaged one is damage.
+	if own := ownVersion(cfg); h.version > own {
+		return nil, lastCkpt{}, tooOld(h.version, own)
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {

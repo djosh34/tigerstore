@@ -59,7 +59,12 @@ jobs:
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      - run: go test -race ./...
+      # The simulator starts no goroutine (the determinism lint forbids
+      # it), so the race detector has nothing to find there; its tests run
+      # without it. Under -race they took 545 s of the 600 s package
+      # timeout on main.
+      - run: go list ./... | grep -v '/internal/sim$' | xargs go test -race
+      - run: go test ./internal/sim
 
   # Values near the request limit from clients on every node at a real
   # node's 100 ms ticks, failing if a leader entry waits one election

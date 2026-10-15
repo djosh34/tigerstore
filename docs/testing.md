@@ -44,7 +44,8 @@ The owner approved these on #47:
 - **B13 and B14** are tested by one fixed scenario each instead of 64 seeds; B14 adds the 3-node quorum check.
 
 - **B04a.** With checksums skipped, the record decoder still rejects the random bytes of a torn record, so the bug shows as recovery refusing the log, not as invented state. B04c covers invented state: under it, the damage a crash leaves is one flipped payload bit in an entry, which still decodes, and recovery accepts a record that fails its checksum only if it still decodes cleanly. The node is not marked damaged, so the run must catch what it applies.
-- **B12.** The pre-work's bug is recovery accepting a partial append after ENOSPC. The plant is the write side: the WAL ignores the short write and keeps appending after the partial bytes. That is caught as acknowledged data that recovery does not return, which is the pre-work's assertion.
+- **B12.** The pre-work's bug is recovery accepting a partial append after ENOSPC. The plant is the write side: the WAL ignores the short write and keeps appending after the partial bytes. That is caught as acknowledged data that recovery does not return, which is the pre-work's assertion, or as a node that reads a value its log no longer holds and stops.
+- **B04c and values.** A flipped payload bit can land in a value instead of an entry's other fields. Then the node stops when it reads the value and finds it does not match its checksum, which also counts: the node noticed. Since the members start the log (#147), seed 1 lands there.
 - **B17.** The pre-work's bug holds the core across a stalled fsync. The core never waits for the disk; the driver does. The plant switches off the leader's stalled-disk watchdog, and the assertion is the same: the stalled leader must stop.
 - There is no forced seed-0 schedule; each bug runs the full fault mix from seed 1.
 

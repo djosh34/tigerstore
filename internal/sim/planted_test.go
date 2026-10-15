@@ -54,8 +54,9 @@ const (
 	inventedState = `applied different entries|applied the same log to different states|differs from the final log|` + badState
 	// Recovery refused a log it wrote itself.
 	refused = `cannot recover its log`
-	// A node read a value that is not the one it wrote, and stopped.
-	badValue = `does not match its checksum|past the end of entry`
+	// A node read a value that is not the one it wrote, or that its log
+	// no longer holds, and stopped.
+	badValue = `does not match its checksum|past the end of entry|wal: read \d+ of \d+ bytes`
 )
 
 var plantedCases = map[string]plantedCase{
@@ -64,7 +65,7 @@ var plantedCases = map[string]plantedCase{
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
-	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused},
+	"B04c": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|without noticing|` + refused + `|` + badValue},
 	// B04b cuts the last synced record, which can be a vote: the node then
 	// votes twice in one term, and two leaders write different entries.
 	"B04b": {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|applied different entries`},
