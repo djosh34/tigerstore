@@ -19,6 +19,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	epb "go.etcd.io/etcd/server/v3/etcdserver/api/v3election/v3electionpb"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/v3lock/v3lockpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -37,6 +39,9 @@ type client struct {
 	lease  pb.LeaseClient
 	maint  pb.MaintenanceClient
 	health healthpb.HealthClient
+	// lock and election are etcd's Lock and Election services.
+	lock     v3lockpb.LockClient
+	election epb.ElectionClient
 	// url is the endpoint's base URL. http2 offers HTTP/2, http1 does not.
 	url          string
 	http2, http1 *http.Client
@@ -78,13 +83,15 @@ func dial(t *testing.T) *client {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	c := &client{
-		conn:   conn,
-		kv:     pb.NewKVClient(conn),
-		watch:  pb.NewWatchClient(conn),
-		lease:  pb.NewLeaseClient(conn),
-		maint:  pb.NewMaintenanceClient(conn),
-		health: healthpb.NewHealthClient(conn),
-		url:    "http://" + endpoint,
+		conn:     conn,
+		kv:       pb.NewKVClient(conn),
+		watch:    pb.NewWatchClient(conn),
+		lease:    pb.NewLeaseClient(conn),
+		maint:    pb.NewMaintenanceClient(conn),
+		health:   healthpb.NewHealthClient(conn),
+		lock:     v3lockpb.NewLockClient(conn),
+		election: epb.NewElectionClient(conn),
+		url:      "http://" + endpoint,
 		// Each transport gets its own TLS configuration: one set up for
 		// HTTP/2 adds h2 to the configuration's protocols.
 		http2: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConf.Clone(), ForceAttemptHTTP2: true}},

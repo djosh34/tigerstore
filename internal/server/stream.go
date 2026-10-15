@@ -157,6 +157,27 @@ func (st *stream) deliver(m []byte) {
 	}
 }
 
+// RecvOne takes the request of a server-streaming call. As grpc-go
+// does, it then waits for the client to end its side, and answers a call
+// with no request or with more than one with grpc-go's errors.
+func (st *stream) RecvOne(m proto.Message) error {
+	err := st.Recv(m)
+	if errors.Is(err, io.EOF) {
+		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
+	}
+	if err != nil {
+		return err
+	}
+	err = st.Recv(m.ProtoReflect().New().Interface())
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return status.Error(codes.Internal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
+}
+
 // Recv takes the next request message of a streaming call. It returns
 // io.EOF once the client ended its side.
 func (st *stream) Recv(m proto.Message) error {
@@ -191,27 +212,6 @@ func (st *stream) Recv(m proto.Message) error {
 			return st.ctx.Err()
 		}
 	}
-}
-
-// recvRequest takes the request of a server-streaming call. As grpc-go
-// does, it then waits for the client to end its side, and answers a call
-// with no request or with more than one with grpc-go's errors.
-func recvRequest(st *stream, m proto.Message) error {
-	err := st.Recv(m)
-	if errors.Is(err, io.EOF) {
-		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
-	}
-	if err != nil {
-		return err
-	}
-	err = st.Recv(m.ProtoReflect().New().Interface())
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return status.Error(codes.Internal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
 }
 
 // Send queues one response message of a streaming call. It waits while
@@ -379,7 +379,7 @@ func (c *conn) runUnary(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	resp, err := st.rpc.unary(st.ctx, c.s, st.body)
+	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
 	st.body = nil
 	if err != nil {
 		st.finish(err)

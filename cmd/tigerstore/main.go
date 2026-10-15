@@ -34,7 +34,9 @@ type flags struct {
 	certFile, keyFile, caFile                 string
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
+	peerAllowedCNs, peerAllowedHostnames      []string
 	progressInterval                          time.Duration
+	memoryBudget                              int64
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -50,7 +52,7 @@ const minProcs = 2
 // Design E keeps values in the log on disk, so the heap is mostly the
 // index, whose pointers every collection scans, and at Go's default of
 // 100 a node under load collects every few seconds; docs/design.md has
-// the measurements. GOMEMLIMIT, when set, still caps the heap.
+// the measurements. The node's memory budget still caps the heap (run).
 const gcPercent = 400
 
 // tick is a node's Raft tick.
@@ -87,12 +89,26 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	// As in etcd, each takes a comma-separated list, and a repeated flag
+	// replaces the list.
+	fs.Func("peer-cert-allowed-cn", "comma-separated CommonNames of the peer certificates to accept", func(s string) error {
+		f.peerAllowedCNs = strings.Split(s, ",")
+		return nil
+	})
+	fs.Func("peer-cert-allowed-hostname", "comma-separated SAN hostnames of the peer certificates to accept", func(s string) error {
+		f.peerAllowedHostnames = strings.Split(s, ",")
+		return nil
+	})
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
+	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 	if f.name == "" || f.initialCluster == "" {
 		return nil, errors.New("--name and --initial-cluster are required")
+	}
+	if len(f.peerAllowedCNs) > 0 && len(f.peerAllowedHostnames) > 0 {
+		return nil, errors.New("--peer-cert-allowed-cn and --peer-cert-allowed-hostname cannot both be set")
 	}
 	if f.dataDir == "" {
 		f.dataDir = f.name + ".tigerstore"
@@ -229,6 +245,15 @@ func run(args []string, logger *log.Logger) error {
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
 	}
+	budget, from, err := node.MemoryBudget(os.DirFS("/"), f.memoryBudget)
+	if err != nil {
+		return err
+	}
+	// The garbage collector works harder as the heap nears the budget;
+	// the value cache takes what the rest leaves.
+	debug.SetMemoryLimit(budget)
+	ccfg.MemoryBytes = node.CacheMemory(budget)
+	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
 	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
 	if err != nil {
 		return err
@@ -236,6 +261,7 @@ func run(args []string, logger *log.Logger) error {
 	t, err := peer.Start(peer.Config{
 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
 		Certificate: peerCert, CA: peerCA,
+		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames,
 		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logger.Printf,
 	})
 	if err != nil {

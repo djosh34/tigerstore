@@ -188,10 +188,11 @@ func (n *Node) put(ctx context.Context, in input) error {
 }
 
 type request struct {
-	id    uint64
-	op    proto.Message
-	chunk bool // a RangeStream chunk; see core.Request.Chunk
-	reply chan core.Reply
+	id     uint64
+	op     proto.Message
+	chunk  bool // a RangeStream chunk; see core.Request.Chunk
+	caller core.Caller
+	reply  chan core.Reply
 }
 
 // Completer takes the replies to the requests it handed the node with
@@ -476,7 +477,13 @@ func (n *Node) Unreachable(id uint64) {
 
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
-	return n.do(ctx, &request{id: n.nextID.Add(1), op: op, reply: make(chan core.Reply, 1)})
+	return n.DoAs(ctx, core.Caller{}, op)
+}
+
+// DoAs runs one request of caller and waits for its reply. The caller
+// counts in the size limit of a write.
+func (n *Node) DoAs(ctx context.Context, caller core.Caller, op proto.Message) (proto.Message, error) {
+	return n.do(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan core.Reply, 1)})
 }
 
 // RangeChunk reads one chunk of a RangeStream: a range that counts keys
@@ -776,7 +783,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:
 		waiters[in.req.id] = waiter{reply: in.req.reply}
-		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op, Chunk: in.req.chunk})
+		n.core.Submit(core.Request{ID: in.req.id, Op: in.req.op, Chunk: in.req.chunk, Caller: in.req.caller})
 	case in.msg != nil:
 		if err := n.core.Step(in.msg); err != nil {
 			n.logf("step message from %d: %v", in.msg.GetFrom(), err)

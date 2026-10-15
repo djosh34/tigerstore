@@ -54,6 +54,10 @@ type Metrics struct {
 	// as etcd_server_proposals_committed_total and _applied_total.
 	Committed, Applied uint64
 	mvcc.Counts
+	// CacheBytes is what the value cache holds and CacheLimit what it may
+	// hold now; CacheHits are the values it returned and CacheMisses those
+	// read from the log.
+	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
 }
 
 // Metrics returns the node's metrics.
@@ -65,5 +69,9 @@ func (n *Node) Metrics() Metrics {
 		Committed:     st.GetCommit(),
 		Applied:       n.applied,
 		Counts:        n.kv.Counts(),
+		CacheBytes:    n.cache.bytes,
+		CacheLimit:    max(n.cache.limit, 0),
+		CacheHits:     n.cache.hits,
+		CacheMisses:   n.cache.misses,
 	}
 }

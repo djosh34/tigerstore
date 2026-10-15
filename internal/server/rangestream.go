@@ -25,7 +25,7 @@ const initialChunk = 10
 // stream midway, as in etcd.
 func (s *Server) rangeStream(st *stream) error {
 	r := &pb.RangeRequest{}
-	if err := recvRequest(st, r); err != nil {
+	if err := st.RecvOne(r); err != nil {
 		return err
 	}
 	if err := mvcc.CheckRangeStream(r); err != nil {

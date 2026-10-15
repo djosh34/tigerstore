@@ -14,6 +14,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // The gRPC health service answers as grpc-go's health.Server does in
@@ -23,7 +25,7 @@ import (
 // which is off by default.
 const healthService = "grpc.health.v1.Health"
 
-func healthCheck(_ context.Context, _ *Server, b []byte) (proto.Message, error) {
+func healthCheck(_ context.Context, _ *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	var r healthpb.HealthCheckRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
@@ -34,7 +36,7 @@ func healthCheck(_ context.Context, _ *Server, b []byte) (proto.Message, error) 
 	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
 }
 
-func healthList(_ context.Context, _ *Server, b []byte) (proto.Message, error) {
+func healthList(_ context.Context, _ *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &healthpb.HealthListRequest{}); err != nil {
 		return nil, err
 	}
@@ -48,7 +50,7 @@ func healthList(_ context.Context, _ *Server, b []byte) (proto.Message, error) {
 // since the status never changes.
 func (s *Server) healthWatch(st *stream) error {
 	var r healthpb.HealthCheckRequest
-	if err := recvRequest(st, &r); err != nil {
+	if err := st.RecvOne(&r); err != nil {
 		return err
 	}
 	resp := &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVICE_UNKNOWN}

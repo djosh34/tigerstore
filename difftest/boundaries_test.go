@@ -40,6 +40,8 @@ var cases = []struct {
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
 	{"range-stream", rangeStream},
+	{"lock", lockCase},
+	{"election", electionCase},
 	{"health", health},
 }
 

@@ -127,6 +127,10 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) httpAnswer {
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
 		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.load()},
 		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.load()},
+		{"tigerstore_cache_bytes", "gauge", "Bytes of values in the value cache.", nm.CacheBytes},
+		{"tigerstore_cache_limit_bytes", "gauge", "Bytes the value cache may hold now: the memory that the index and the entries in memory leave.", nm.CacheLimit},
+		{"tigerstore_cache_hits_total", "counter", "Values read from the value cache.", nm.CacheHits},
+		{"tigerstore_cache_misses_total", "counter", "Values read from the log on disk.", nm.CacheMisses},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)

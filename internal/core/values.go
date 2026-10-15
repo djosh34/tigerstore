@@ -45,6 +45,7 @@ func (pl *placer) add(value []byte, off int) {
 type values struct {
 	storage *storage
 	log     Log
+	cache   *cache
 	// index is the entry being applied, and entry its data, which a
 	// replayed entry has only here; placer knows where the values of its
 	// current write start.
@@ -73,16 +74,19 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Read returns a copy of a value from its entry in memory, or one that
-// was fetched, and false if only the log has it. Responses and watch
-// events keep what it returns, maybe for long behind a slow client, and
-// must not keep the entry with it.
+// Read returns a copy of a value from its entry in memory, or one from
+// the cache or fetched, and false if only the log has it. Responses and
+// watch events keep what it returns, maybe for long behind a slow client,
+// and must not keep the entry with it.
 func (v *values) Read(r mvcc.Ref) ([]byte, bool, error) {
 	data, ok := v.entry, v.entry != nil && r.Index == v.index
 	if !ok {
 		data, ok = v.storage.entryData(r.Index)
 	}
 	if !ok {
+		if b, ok := v.cache.get(r); ok {
+			return b, true, nil
+		}
 		b, ok := v.fetched[r]
 		return b, ok, nil
 	}
