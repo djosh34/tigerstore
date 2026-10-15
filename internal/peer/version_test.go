@@ -199,6 +199,7 @@ func TestRejectsBadPreface(t *testing.T) {
 		{"bad magic", []string{"tigerstore-peer/1"}, preface("XX", 1, 1, 1), nil},
 		{"unknown peer", []string{"tigerstore-peer/1"}, preface("TS", 1, 1, 9), nil},
 		{"preface range beyond ALPN", []string{"tigerstore-peer/1"}, preface("TS", 2, 3, 1), []byte{0}},
+		{"no shared version in the preface", []string{"tigerstore-peer/1"}, preface("TS", 3, 4, 1), []byte{0}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
