@@ -89,7 +89,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
-	fs.Int64Var(&f.diskBudget, "disk-budget-bytes", 0, "bytes the log's files may take; cleaning keeps them below, and writes get NOSPACE at it (0 means no budget)")
+	fs.Int64Var(&f.diskBudget, "disk-budget-bytes", 0, "bytes of the log's files at which writes get NOSPACE; cleaning keeps them below. Leave room above it for 64 MiB of writes in flight, a 64 MiB pack and a checkpoint; below two segments (128 MiB) plus the checkpoints and live values, writes stay at NOSPACE (0 means no budget)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

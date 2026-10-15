@@ -574,6 +574,21 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
 	}
+	if n.noSpace && m.GetType() == raftpb.MsgProp {
+		// Writes a follower forwards. Past its budget, the leader refuses
+		// those that take space, as it refuses its own clients': each
+		// applies as a record that answers its client with NOSPACE.
+		for _, e := range m.GetEntries() {
+			if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
+				continue
+			}
+			data, err := refuseSpace(e.GetData())
+			if err != nil {
+				return err
+			}
+			e.Data = data
+		}
+	}
 	return n.rn.Step(m)
 }
 
@@ -1237,8 +1252,14 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 			p = n.waiting[id]
 		}
 		n.values.reset()
-		if kind == kindPut {
+		switch kind {
+		case kindPut:
 			return n.applyPut(b, at, p)
+		case kindNoSpace:
+			if p != nil {
+				n.finish(p, nil, rpctypes.ErrGRPCNoSpace)
+			}
+			return nil
 		}
 		op, err := newOp(kind)
 		if err != nil {

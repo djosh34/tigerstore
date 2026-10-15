@@ -243,6 +243,11 @@ func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool
 			return nil
 		}
 		b, err := l.Value(r.Index, r.Off, r.Len)
+		if errors.Is(err, wal.ErrNotOnDisk) {
+			// A newer root removed it since walk found it; that
+			// checkpoint no longer names it.
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -274,10 +279,11 @@ func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
-// walk calls fn for every value the checkpoint in f names, with the file
-// that holds it. It looks the values up in batches, one lock each.
+// walk calls fn once for every value the checkpoint in f names, with the
+// file that holds it. It looks the values up in batches, one lock each.
 func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) error) error {
 	l := c.n.log
+	var last mvcc.Ref
 	batch := make([]mvcc.Ref, 0, whereBatch)
 	ids := make([]wal.FileID, whereBatch)
 	found := make([]bool, whereBatch)
@@ -300,6 +306,12 @@ func (c *cleaner) walk(f io.Reader, ckpt uint64, fn func(wal.FileID, mvcc.Ref) e
 		return nil
 	}
 	err := core.WalkCheckpoint(f, ckpt, func(r mvcc.Ref) error {
+		// A version put with ignore_value names the value of the version
+		// before it, so versions that share a value come one after another.
+		if r == last {
+			return nil
+		}
+		last = r
 		if batch = append(batch, r); len(batch) < whereBatch {
 			return nil
 		}

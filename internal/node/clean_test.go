@@ -251,6 +251,53 @@ func TestNoSpace(t *testing.T) {
 	}
 }
 
+// TestSharedValues writes one 32 KiB value, then 100 puts of its key with
+// ignore_value, which all name that value, then other keys until cleaning
+// copies it. The pack must hold it once.
+func TestSharedValues(t *testing.T) {
+	const budget = 512 << 10
+	dir := t.TempDir()
+	r := runClean(t, dir, budget)
+	big := []byte(fmt.Sprintf("%032768d", 1))
+	if _, err := do(r.n, &pb.PutRequest{Key: []byte("big"), Value: big}); err != nil {
+		t.Fatal(err)
+	}
+	for range 100 {
+		if _, err := do(r.n, &pb.PutRequest{Key: []byte("big"), IgnoreValue: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for round := 0; ; round++ {
+		if round == 100 {
+			t.Fatalf("nothing was cleaned in %d rounds", round)
+		}
+		if _, err := putAll(r.n, round, keys(fmt.Sprintf("r%03d-", round), 10)...); err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		m, err := r.n.Metrics(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.CleanedBytes == 0 {
+			continue
+		}
+		// Each round writes about 10 KiB of other values.
+		if want := int64(len(big) + (round+1)*12<<10); m.CleanedBytes > want {
+			t.Fatalf("cleaning wrote %d bytes into packs, more than the %d bytes of all live values", m.CleanedBytes, want)
+		}
+		break
+	}
+	resp, err := r.n.Do(ctx, &pb.RangeRequest{Key: []byte("big")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kvs := resp.(*pb.RangeResponse).Kvs; len(kvs) != 1 || string(kvs[0].Value) != string(big) || kvs[0].Version != 101 {
+		t.Fatalf("big reads back as %v", kvs)
+	}
+}
+
 // TestChoose picks the files of one pass.
 func TestChoose(t *testing.T) {
 	seg := func(n uint64, size int64) wal.CleanFile { return wal.CleanFile{N: n, Size: size} }

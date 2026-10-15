@@ -27,6 +27,9 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
+	// kindNoSpace stands for a forwarded write that the leader refused
+	// because its disk is past its budget. It has no request.
+	kindNoSpace = 9
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -117,6 +120,30 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 	return nil
 }
 
+// refuseSpace returns the data of a Raft entry with every write that
+// TakesSpace replaced by a kindNoSpace record. A transaction in an entry
+// is never read-only, so all of them take space.
+func refuseSpace(data []byte) ([]byte, error) {
+	n, _, ok := uvarint(data)
+	if !ok {
+		return nil, errBadBatch
+	}
+	out := binary.AppendUvarint(make([]byte, 0, len(data)), n)
+	err := walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindPut || kind == kindTxn || kind == kindGrant {
+			kind, b = kindNoSpace, nil
+		}
+		out = binary.AppendUvarint(out, origin)
+		out = binary.AppendUvarint(out, boot)
+		out = binary.AppendUvarint(out, id)
+		out = append(out, kind)
+		out = binary.AppendUvarint(out, uint64(len(b)))
+		out = append(out, b...)
+		return nil
+	})
+	return out, err
+}
+
 // newOp returns an empty request of an entry kind.
 func newOp(kind byte) (proto.Message, error) {
 	switch kind {
@@ -144,6 +171,10 @@ func newOp(kind byte) (proto.Message, error) {
 // decoded. The checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
 	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindNoSpace {
+			// A refused write did not apply.
+			return nil
+		}
 		op, err := newOp(kind)
 		if err != nil {
 			return err
