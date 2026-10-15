@@ -7,6 +7,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // A Raft entry carries a batch of writes:
@@ -17,6 +18,12 @@ import (
 //
 // The origin node, boot and request ID let the node that received the
 // request answer it once the entry applies.
+//
+// That is entry format 1. Every later format starts with a 0 byte and its
+// number, then the batch; a format 1 batch never starts with 0, as it
+// holds at least one write. Format 2 adds only that header. A node writes
+// the cluster version's format (State.version), so a format goes out only
+// once every voter supports it.
 
 const (
 	kindPut     = 1
@@ -27,14 +34,22 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
+	// kindVersion is a node's announcement of the newest version it
+	// supports, a wrapperspb.UInt32Value. It changes no key.
+	kindVersion = 9
 )
 
 var errBadBatch = errors.New("core: malformed batch")
 
-// encodeBatch packs writes into the data of one Raft entry. A write in
-// wire form goes in as the client sent it; other writes are marshaled.
-func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
-	buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))
+// encodeBatch packs writes into the data of one Raft entry of a format. A
+// write in wire form goes in as the client sent it; other writes are
+// marshaled.
+func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([]byte, error) {
+	buf := make([]byte, 0, 2+binary.MaxVarintLen64+size)
+	if format > 1 {
+		buf = append(buf, 0, byte(format))
+	}
+	buf = binary.AppendUvarint(buf, uint64(len(ps)))
 	for _, p := range ps {
 		var kind byte
 		switch p.req.Op.(type) {
@@ -56,6 +71,8 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 			kind = kindRenew
 		case *pb.LeaseCheckpoint:
 			kind = kindExpiry
+		case *wrapperspb.UInt32Value:
+			kind = kindVersion
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
@@ -87,6 +104,15 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 // the write's bytes in place and where they start in data.
 func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte, at int) error) error {
 	whole := data
+	if len(data) > 0 && data[0] == 0 {
+		if len(data) < 2 {
+			return errBadBatch
+		}
+		if f := data[1]; f < 2 || f > MaxVersion {
+			return fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
+		}
+		data = data[2:]
+	}
 	n, data, ok := uvarint(data)
 	if !ok {
 		return errBadBatch
@@ -141,9 +167,13 @@ func newOp(kind byte) (proto.Message, error) {
 }
 
 // DecodeBatch calls fn for every write in the data of a Raft entry,
-// decoded. The checks use it; the core applies writes in place.
+// decoded, and skips version announcements, which change no key. The
+// checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
 	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindVersion {
+			return nil
+		}
 		op, err := newOp(kind)
 		if err != nil {
 			return err

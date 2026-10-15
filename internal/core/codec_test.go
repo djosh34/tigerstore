@@ -24,12 +24,29 @@ func TestBatchRoundTrip(t *testing.T) {
 		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}}},
 		{req: Request{ID: 9, Op: &pb.TxnRequest{Compare: []*pb.Compare{{Key: []byte("a")}}}}},
 	}
-	data, err := encodeBatch(2, 99, ops, 0)
-	if err != nil {
-		t.Fatal(err)
+	for format := uint32(1); format <= MaxVersion; format++ {
+		data, err := encodeBatch(format, 2, 99, ops, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (data[0] == 0) != (format > 1) {
+			t.Fatalf("format %d starts with %d", format, data[0])
+		}
+		decodeAll(t, data, ops)
 	}
+	if err := DecodeBatch([]byte{0, MaxVersion + 1, 0}, func(_, _, _ uint64, _ proto.Message) error { return nil }); err == nil {
+		t.Fatal("an unknown format decoded")
+	}
+	if _, err := encodeBatch(1, 1, 1, []*pending{{req: Request{Op: &pb.RangeRequest{}}}}, 0); err == nil {
+		t.Fatal("a range was encoded as a write")
+	}
+}
+
+// decodeAll decodes a batch of ops and checks every write and every cut.
+func decodeAll(t *testing.T, data []byte, ops []*pending) {
+	t.Helper()
 	i := 0
-	err = DecodeBatch(data, func(origin, boot, id uint64, op proto.Message) error {
+	err := DecodeBatch(data, func(origin, boot, id uint64, op proto.Message) error {
 		want := ops[i].req.Op
 		if want == nil {
 			want = &pb.PutRequest{Key: []byte("w"), Value: []byte("2"), Lease: 5, PrevKv: true}
@@ -47,9 +64,6 @@ func TestBatchRoundTrip(t *testing.T) {
 		if err := DecodeBatch(data[:cut], func(_, _, _ uint64, _ proto.Message) error { return nil }); err == nil {
 			t.Fatalf("batch cut at %d of %d bytes decoded without error", cut, len(data))
 		}
-	}
-	if _, err := encodeBatch(1, 1, []*pending{{req: Request{Op: &pb.RangeRequest{}}}}, 0); err == nil {
-		t.Fatal("a range was encoded as a write")
 	}
 }
 
