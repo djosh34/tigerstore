@@ -33,10 +33,11 @@ import (
 //   - every watch delivered exactly the final history of its range;
 //   - every call that starts after the cluster healed succeeds.
 func (s *Sim) check(res *Result) error {
-	final, err := s.converged()
+	last, err := s.converged()
 	if err != nil {
 		return err
 	}
+	final := last.core.Store()
 	res.FinalRev = final.Rev()
 	ents, err := s.committed(s.live()[0].core.Applied())
 	if err != nil {
@@ -61,7 +62,7 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	res.Log, res.revs = log, revs
-	if err := sameLatest(model, final); err != nil {
+	if err := sameLatest(model, final, last.log); err != nil {
 		return err
 	}
 	for _, r := range res.History {
@@ -129,9 +130,9 @@ func (s *Sim) live() []*node {
 }
 
 // converged checks that all nodes applied the same log to the same state,
-// the one the record of committed entries has, and returns that state,
-// from a node whose disk the run did not damage under it.
-func (s *Sim) converged() (*mvcc.Store, error) {
+// the one the record of committed entries has, and returns a node with
+// that state whose disk the run did not damage under it.
+func (s *Sim) converged() (*node, error) {
 	live := s.live()
 	for _, n := range live {
 		if !n.up {
@@ -152,10 +153,10 @@ func (s *Sim) converged() (*mvcc.Store, error) {
 	}
 	for _, n := range live {
 		if !n.rotted {
-			return n.core.Store(), nil
+			return n, nil
 		}
 	}
-	return first.core.Store(), nil
+	return first, nil
 }
 
 func at(st *mvcc.Store, key []byte, rev int64) (*mvccpb.KeyValue, error) {
@@ -513,8 +514,8 @@ func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) 
 }
 
 // sameLatest checks that two stores are at the same revision with the same
-// keys and values.
-func sameLatest(a, b *mvcc.Store) error {
+// keys and values. b reads the values that left memory from log.
+func sameLatest(a, b *mvcc.Store, log core.Log) error {
 	all := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}}
 	ra, err := a.Range(all)
 	if err != nil {
@@ -522,6 +523,9 @@ func sameLatest(a, b *mvcc.Store) error {
 	}
 	rb, err := b.Range(all)
 	if err != nil {
+		return err
+	}
+	if err := core.ReadValues(log, b.TakeFills()); err != nil {
 		return err
 	}
 	if a.Rev() != b.Rev() || !proto.Equal(ra, rb) {
