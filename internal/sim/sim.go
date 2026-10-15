@@ -253,6 +253,7 @@ const (
 	evWatchResponse
 	evWatchBroken
 	evWatchDrop
+	evValuesRead
 )
 
 type event struct {
@@ -276,6 +277,8 @@ type event struct {
 	grayDisk bool
 	// ckpt is the checkpoint file that an evCheckpointSync syncs.
 	ckpt wal.File
+	// read is the value read an evValuesRead runs.
+	read *core.ValueRead
 }
 
 // queue is a binary min-heap of events by time, then sequence number.
@@ -412,14 +415,17 @@ type link struct {
 
 // Sim is one run.
 type Sim struct {
-	cfg   Config
-	rng   *rand.Rand
-	now   int64
-	seq   uint64
-	q     queue
-	nodes []*node
-	links [][]link
-	trace hash.Hash64
+	cfg Config
+	rng *rand.Rand
+	// readRng times value reads, apart from rng, so that they do not move
+	// every fault that rng draws after them.
+	readRng *rand.Rand
+	now     int64
+	seq     uint64
+	q       queue
+	nodes   []*node
+	links   [][]link
+	trace   hash.Hash64
 
 	healAt, stopAt, endAt int64
 	healed                bool
@@ -592,6 +598,7 @@ func newSim(cfg Config) *Sim {
 	s := &Sim{
 		cfg:       cfg,
 		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+		readRng:   rand.New(rand.NewPCG(cfg.Seed, 0x72656164)),
 		trace:     fnv.New64a(),
 		expiredAt: map[int64]int64{},
 		log:       map[uint64]logRec{},
@@ -830,6 +837,11 @@ func (s *Sim) handle(e *event) {
 		e.watch.broken(e)
 	case evWatchDrop:
 		e.watch.drop()
+	case evValuesRead:
+		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
+			n.core.ValuesRead(e.read, e.read.Run())
+			s.process(n)
+		}
 	}
 }
 
@@ -943,6 +955,11 @@ func (s *Sim) process(n *node) {
 	}
 	for _, r := range eff.Replies {
 		s.replied(n, r)
+	}
+	for _, r := range eff.Reads {
+		// A helper reads the values, each read in its own time, so that
+		// they finish out of order.
+		s.push(&event{at: s.now + 50*Microsecond + s.readRng.Int64N(950*Microsecond), kind: evValuesRead, node: n.idx, gen: n.gen, read: r})
 	}
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
