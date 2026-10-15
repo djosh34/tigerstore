@@ -531,7 +531,8 @@ func (n *Node) Tick() {
 	n.rn.Tick()
 	n.expire()
 	// A lone voter has no one to lead in its place, so stopping would only
-	// turn a slow disk into an outage; it waits for its disk instead.
+	// turn a slow disk into an outage; it waits for its disk instead. It
+	// still calls commitStalled, which trims uncommitted.
 	alone := len(n.cfg.Peers) == 1
 	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
