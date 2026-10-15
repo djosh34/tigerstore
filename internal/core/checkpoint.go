@@ -252,6 +252,9 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 	if n.last.minRef != 0 {
 		mark = min(mark, n.last.minRef)
 	}
+	// A value read under way may need a value that a compaction since
+	// dropped from the index.
+	mark = n.readMark(mark)
 	if len(n.snapWait) > 0 {
 		// A follower may be fetching a snapshot from what the removal
 		// would take; the next root removes it.

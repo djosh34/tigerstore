@@ -244,6 +244,10 @@ type Effects struct {
 	// Expired lists the leases that expired as this node applied the log.
 	// Drivers may log them; the simulator checks their timing.
 	Expired []int64
+	// Reads are values that only the log has. The driver runs each on a
+	// helper goroutine, never the committer, in any order, and hands it
+	// back with ValuesRead.
+	Reads []*ValueRead
 	// Checkpoint is the next part of a checkpoint for the driver to write
 	// in order. When the part with Done is written and synced, and the
 	// directory synced, the driver calls CheckpointWritten.
@@ -277,6 +281,9 @@ type pending struct {
 	done     bool
 	// queued marks a write in proposals that was not proposed yet.
 	queued bool
+	// fetched holds the values read from the log for a read that needed
+	// them at once.
+	fetched map[mvcc.Ref][]byte
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -367,6 +374,20 @@ type Node struct {
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
+	// cold are the value reads under way, and epoch counts the snapshots
+	// installed. watchRead is the read of this turn's watch events.
+	cold      map[*ValueRead]struct{}
+	epoch     uint64
+	watchRead *ValueRead
+	// applyQ holds Raft's apply messages not applied yet: while paused
+	// waits for values from the log, ordered apply waits with it. resume
+	// is the write that runs again after its read. readInline is set
+	// while the node starts or installs a snapshot: nothing else waits
+	// then, so a write reads the values it needs itself.
+	applyQ         []*raftpb.Message
+	paused, resume *pausedWrite
+	readInline     bool
+
 	out Effects
 	err error
 }
@@ -388,6 +409,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
 		snapWait: map[uint64]int64{},
+		cold:     map[*ValueRead]struct{}{},
 		logBytes: rec.Bytes,
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
@@ -404,7 +426,9 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	// checkpoint shows.
 	hs := rec.HardState
 	hs.Commit = max(hs.Commit, n.applied)
+	n.readInline = true
 	term, err := n.replay(hs.Commit)
+	n.readInline = false
 	if err != nil {
 		return nil, err
 	}
@@ -613,12 +637,12 @@ func (n *Node) SubmitAll(rs []Request) {
 // submit takes a request; p is its zero bookkeeping record.
 func (n *Node) submit(r Request, p *pending) {
 	if n.err != nil {
-		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
+		n.reply(r.ID, rpctypes.ErrGRPCStopped)
 		return
 	}
 	if r.Op == nil {
 		if err := checkPut(&r.Put, r.Caller); err != nil {
-			n.reply(r.ID, nil, err)
+			n.reply(r.ID, err)
 			return
 		}
 		*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
@@ -627,7 +651,7 @@ func (n *Node) submit(r Request, p *pending) {
 		return
 	}
 	if err := check(r.Op, r.Caller); err != nil {
-		n.reply(r.ID, nil, err)
+		n.reply(r.ID, err)
 		return
 	}
 	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
@@ -780,10 +804,10 @@ func (n *Node) expire() {
 		if p.queued {
 			dropped = true
 			n.propBytes -= writeSize(p)
-			n.finish(p, nil, errNotProposed)
+			n.finish(p, errNotProposed)
 			continue
 		}
-		n.finish(p, nil, rpctypes.ErrGRPCTimeout)
+		n.finish(p, rpctypes.ErrGRPCTimeout)
 	}
 	n.timeouts = n.timeouts[i:]
 	if dropped {
@@ -791,9 +815,10 @@ func (n *Node) expire() {
 	}
 }
 
-func (n *Node) finish(p *pending, resp proto.Message, err error) {
+// finish fails a request with err.
+func (n *Node) finish(p *pending, err error) {
 	if n.settle(p) {
-		n.reply(p.req.ID, resp, err)
+		n.reply(p.req.ID, err)
 	}
 }
 
@@ -812,8 +837,9 @@ func (n *Node) settle(p *pending) bool {
 	return true
 }
 
-func (n *Node) reply(id uint64, resp proto.Message, err error) {
-	n.out.Replies = append(n.out.Replies, Reply{ID: id, Resp: resp, Err: err})
+// reply fails request id with err.
+func (n *Node) reply(id uint64, err error) {
+	n.out.Replies = append(n.out.Replies, Reply{ID: id, Err: err})
 }
 
 // writeSize is the bytes a queued write adds to a Raft entry.
@@ -881,7 +907,7 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 	if err := n.rn.Propose(data); err != nil {
 		// Raft dropped the proposal, so none of these requests will apply.
 		for _, p := range props {
-			n.finish(p, nil, rpctypes.ErrGRPCNoLeader)
+			n.finish(p, rpctypes.ErrGRPCNoLeader)
 		}
 		return
 	}
@@ -973,6 +999,8 @@ func (n *Node) Process() (Effects, error) {
 		if !n.isLeader || n.durable >= n.ownIndex {
 			n.propose()
 		}
+		// Apply messages left behind by a snapshot install.
+		n.runApply()
 		n.requestReads()
 		for n.err == nil && n.rn.HasReady() {
 			n.handleReady(n.rn.Ready())
@@ -982,7 +1010,7 @@ func (n *Node) Process() (Effects, error) {
 			// goes out ahead of the events it covers.
 			for _, w := range n.watchers {
 				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream.id, &pb.WatchResponse{WatchId: w.id})
+					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil)
 				}
 			}
 		}
@@ -996,13 +1024,14 @@ func (n *Node) Process() (Effects, error) {
 	}
 	out := n.out
 	n.out = Effects{}
+	n.watchRead = nil
 	return out, n.err
 }
 
 // stop fails every waiting request once the node stopped.
 func (n *Node) stop() {
 	for _, p := range n.timeouts {
-		n.finish(p, nil, rpctypes.ErrGRPCStopped)
+		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
 	n.timeouts, n.proposals, n.reads, n.readBatches = nil, nil, nil, nil
 }
@@ -1071,11 +1100,11 @@ func (n *Node) handleReady(rd raft.Ready) {
 				n.awaitOwn = false
 			}
 		case raft.LocalApplyThread:
-			if err := n.apply(m.Entries); err != nil {
-				n.fail(err)
+			n.applyQ = append(n.applyQ, m)
+			n.runApply()
+			if n.err != nil {
 				return
 			}
-			n.deliver(m.GetResponses())
 		default:
 			n.send(m)
 		}
@@ -1125,28 +1154,23 @@ func allDone(ps []*pending) bool {
 	return true
 }
 
+// serveRead answers a read. One that needs values from the log at once,
+// to compare or sort by them, runs again once a helper read them.
 func (n *Node) serveRead(p *pending) {
 	if p.done {
 		return
 	}
 	var resp proto.Message
 	var err error
+	rep := Reply{ID: p.req.ID}
 	switch op := p.req.Op.(type) {
 	case *pb.RangeRequest:
 		if p.req.Compact {
-			res, err := n.kv.RangeKVs(op)
-			if err != nil && !isAnswer(err) {
-				n.fail(err)
-				return
+			var res mvcc.RangeResult
+			if res, err = n.kv.RangeKVs(op); err == nil {
+				rep.Term, rep.Range = n.term, res
 			}
-			if err != nil {
-				n.finish(p, nil, err)
-				return
-			}
-			if n.settle(p) {
-				n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Term: n.term, Range: res})
-			}
-			return
+			break
 		}
 		var r *pb.RangeResponse
 		if p.req.Chunk {
@@ -1174,13 +1198,18 @@ func (n *Node) serveRead(p *pending) {
 		n.fillHeader(r.Header)
 		resp = r
 	}
+	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
+		n.fetch(cold.Need).read = p
+		return
+	}
 	if err != nil && !isAnswer(err) {
 		// A value that cannot be read, or does not match its checksum,
 		// never reaches a client: the node stops.
 		n.fail(err)
 		return
 	}
-	n.finish(p, resp, err)
+	rep.Resp, rep.Err = resp, err
+	n.answer(p, rep, n.kv.TakeFills())
 }
 
 func (n *Node) fillHeader(h *pb.ResponseHeader) {
@@ -1190,11 +1219,19 @@ func (n *Node) fillHeader(h *pb.ResponseHeader) {
 }
 
 // apply runs committed entries against the index and answers the requests
-// that this run of the node is waiting for.
+// that this run of the node is waiting for. It stops at a write that
+// waits for values from the log (paused) and skips entries already
+// applied, before a pause or a snapshot.
 func (n *Node) apply(ents []*raftpb.Entry) error {
 	for _, e := range ents {
+		if e.GetIndex() <= n.applied {
+			continue
+		}
 		if err := n.applyEntry(e); err != nil {
 			return fmt.Errorf("core: apply entry %d: %w", e.GetIndex(), err)
+		}
+		if n.paused != nil {
+			return nil
 		}
 		n.applied = e.GetIndex()
 		n.sinceCkpt += int64(len(e.GetData()))
@@ -1211,9 +1248,22 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 		return nil
 	}
-	n.values.index = e.GetIndex()
-	defer n.values.reset()
-	return walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
+	// A write may read what an earlier write of its entry put, and an
+	// entry replayed from the log is not in memory.
+	n.values.index, n.values.entry = e.GetIndex(), e.GetData()
+	defer func() {
+		n.values.entry = nil
+		n.values.reset()
+	}()
+	// After a pause, the writes before the paused one are applied.
+	skip, k := 0, -1
+	if r := n.resume; r != nil && r.index == e.GetIndex() {
+		skip = r.write
+	}
+	err := walkBatch(e.GetData(), func(origin, boot, id uint64, kind byte, b []byte, at int) error {
+		if k++; k < skip {
+			return nil
+		}
 		var p *pending
 		if origin == n.cfg.ID && boot == n.cfg.Boot {
 			p = n.waiting[id]
@@ -1240,17 +1290,36 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}
 		resp, err := n.applyOp(op)
+		var cold *mvcc.ColdError
+		for errors.As(err, &cold) {
+			if !n.readInline {
+				n.pause(e.GetIndex(), k, cold.Need)
+				return errPaused
+			}
+			if err := n.readNow(cold.Need); err != nil {
+				return err
+			}
+			resp, err = n.applyOp(op)
+		}
+		if n.readInline {
+			n.values.fetched = nil
+		}
 		if errors.Is(err, errInternal) {
 			return err
 		}
+		fills := n.kv.TakeFills()
 		if err == nil {
 			n.matchWatches()
 		}
 		if p != nil {
-			n.finish(p, resp, err)
+			n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
 		}
 		return nil
 	})
+	if errors.Is(err, errPaused) {
+		return nil
+	}
+	return err
 }
 
 var errInternal = errors.New("core: internal error")
@@ -1268,6 +1337,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 	if err != nil && !isAnswer(err) {
 		return fmt.Errorf("%w: %w", errInternal, err)
 	}
+	fills := n.kv.TakeFills()
 	if err == nil {
 		n.matchWatches()
 	}
@@ -1275,18 +1345,16 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 		return nil
 	}
 	if err != nil {
-		n.finish(p, nil, err)
+		n.finish(p, err)
 		return nil
 	}
 	if p.req.Op != nil {
 		r := &pb.PutResponse{Header: &pb.ResponseHeader{Revision: n.kv.Rev()}, PrevKv: prev}
 		n.fillHeader(r.Header)
-		n.finish(p, r, nil)
+		n.answer(p, Reply{ID: p.req.ID, Resp: r}, fills)
 		return nil
 	}
-	if n.settle(p) {
-		n.out.Replies = append(n.out.Replies, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev})
-	}
+	n.answer(p, Reply{ID: p.req.ID, Rev: n.kv.Rev(), Term: n.term, PrevKv: prev}, fills)
 	return nil
 }
 
@@ -1295,7 +1363,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	resp, err := n.state.Apply(op)
 	if err != nil {
-		if errors.Is(err, errInternal) || isAnswer(err) {
+		if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) || errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %w", errInternal, err)

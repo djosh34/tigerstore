@@ -40,15 +40,20 @@ func (pl *placer) add(value []byte, off int) {
 }
 
 // values names every value by its Raft position and reads the bytes back
-// from the entries in memory, or from the log on disk once its entry left
-// memory.
+// from the entries in memory. Once its entry left memory, a value comes
+// from the log on disk, read by a helper (ValueRead).
 type values struct {
 	storage *storage
 	log     Log
-	// index is the entry being applied; placer knows where the values of
-	// its current write start.
+	// index is the entry being applied, and entry its data, which a
+	// replayed entry has only here; placer knows where the values of its
+	// current write start.
 	index uint64
+	entry []byte
 	placer
+	// fetched holds the values read from the log for the write or read
+	// that runs again now because it needed them at once.
+	fetched map[mvcc.Ref][]byte
 }
 
 var errNotPlaced = errors.New("core: a value is not where its write was decoded")
@@ -68,16 +73,21 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 	return mvcc.Ref{}, errNotPlaced
 }
 
-// Read returns a copy of a value, from its entry in memory or from the
-// log. Responses and watch events keep what it returns, maybe for long
-// behind a slow client, and must not keep the entry with it.
-func (v *values) Read(r mvcc.Ref) ([]byte, error) {
-	data, ok := v.storage.entryData(r.Index)
+// Read returns a copy of a value from its entry in memory, or one that
+// was fetched, and false if only the log has it. Responses and watch
+// events keep what it returns, maybe for long behind a slow client, and
+// must not keep the entry with it.
+func (v *values) Read(r mvcc.Ref) ([]byte, bool, error) {
+	data, ok := v.entry, v.entry != nil && r.Index == v.index
 	if !ok {
-		return v.log.Value(r.Index, r.Off, r.Len)
+		data, ok = v.storage.entryData(r.Index)
+	}
+	if !ok {
+		b, ok := v.fetched[r]
+		return b, ok, nil
 	}
 	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
-		return nil, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
+		return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 	}
-	return bytes.Clone(data[r.Off : r.Off+r.Len]), nil
+	return bytes.Clone(data[r.Off : r.Off+r.Len]), true, nil
 }

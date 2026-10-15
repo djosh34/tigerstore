@@ -395,7 +395,7 @@ func TestServeOlderCheckpoint(t *testing.T) {
 	if older.Index == 0 || src.log.Has(1) {
 		t.Fatalf("setup: checkpoint at %d, entry 1 on disk %v", older.Index, src.log.Has(1))
 	}
-	src.hold = true
+	src.keep = true
 	for range 100 {
 		if src.n.DurableCheckpoint() != older {
 			break
