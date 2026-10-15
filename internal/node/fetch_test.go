@@ -120,72 +120,95 @@ func (c *cutWriter) Write(p []byte) (int, error) {
 
 var errFollowerStopped = errors.New("the follower stopped")
 
-// followerRetriesFetch runs three nodes with a window of a few kilobytes
-// and frequent checkpoints. Node 3 is down while the others write and
-// compact, until their segments with the entries it lacks are gone. When
-// node 3 starts, its first two snapshot streams break off partway, after
-// it wrote some of each to its log. It must start again from its log,
-// fetch another snapshot, and serve the newest values, without stopping.
-func followerRetriesFetch(t *testing.T) error {
+// behind is three nodes with a window of a few kilobytes and frequent
+// checkpoints, where node 3 was down while the others wrote and compacted
+// until their segments with the entries it lacks were gone.
+type behind struct {
+	t     *testing.T
+	net   *memNet
+	dirs  map[uint64]string
+	nodes map[uint64]*Node
+	ran   map[uint64]chan error
+	stops map[uint64]context.CancelFunc
+	// rev is the revision of the last write, which set every key k00 to
+	// k49 to value(i, 40).
+	rev int64
+}
+
+func value(i, round int) []byte { return fmt.Appendf(nil, "value %d of round %d %0200d", i, round, 0) }
+
+func (c *behind) config(id uint64) Config {
+	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
+	cfg.WindowBytes, cfg.WindowMaxBytes = 4<<10, 8<<10
+	cfg.UnappliedBytes = 1 << 20
+	cfg.CheckpointBytes, cfg.CheckpointRatio = 16<<10, 2
 	// The leader stops itself when an append takes two election
 	// timeouts; 50 ms ticks keep a slow runner's fsync below that.
-	tick := 50 * time.Millisecond
-	net := &memNet{queues: map[uint64]chan *raftpb.Message{}, nodes: map[uint64]*Node{}}
-	dirs := map[uint64]string{1: t.TempDir(), 2: t.TempDir(), 3: t.TempDir()}
-	ran := map[uint64]chan error{}
-	stops := map[uint64]context.CancelFunc{}
-	start := func(id uint64) (*Node, error) {
-		cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
-		cfg.WindowBytes, cfg.WindowMaxBytes = 4<<10, 8<<10
-		cfg.UnappliedBytes = 1 << 20
-		cfg.CheckpointBytes, cfg.CheckpointRatio = 16<<10, 2
-		n, err := New(Config{Core: cfg, DataDir: dirs[id], Tick: tick, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
-			t.Logf("node %d: "+f, append([]any{id}, args...)...)
-		}})
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		net.join(ctx, n)
-		done := make(chan error, 1)
-		ran[id], stops[id] = done, cancel
-		go func() { done <- n.Run(ctx, memPeer{net: net, id: id}) }()
-		return n, nil
+	return Config{Core: cfg, DataDir: c.dirs[id], Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
+		c.t.Logf("node %d: "+f, append([]any{id}, args...)...)
+	}}
+}
+
+// start runs node id until close.
+func (c *behind) start(id uint64) (*Node, error) {
+	n, err := New(c.config(id))
+	if err != nil {
+		return nil, err
 	}
-	stop := func(id uint64) error {
-		net.leave(id)
-		stops[id]()
-		return <-ran[id]
+	ctx, cancel := context.WithCancel(context.Background())
+	c.net.join(ctx, n)
+	done := make(chan error, 1)
+	c.ran[id], c.stops[id], c.nodes[id] = done, cancel, n
+	go func() { done <- n.Run(ctx, memPeer{net: c.net, id: id}) }()
+	return n, nil
+}
+
+func (c *behind) stop(id uint64) error {
+	c.net.leave(id)
+	c.stops[id]()
+	delete(c.stops, id)
+	return <-c.ran[id]
+}
+
+func (c *behind) close() {
+	for id := range c.stops {
+		c.net.leave(id)
+		c.stops[id]()
 	}
-	defer func() {
-		for id := range stops {
-			net.leave(id)
-			stops[id]()
+}
+
+// do retries op on n for up to 20 s.
+func do(n *Node, op proto.Message) (proto.Message, error) {
+	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		r, err := n.Do(ctx, op)
+		cancel()
+		if err == nil || time.Now().After(deadline) {
+			return r, err
 		}
-	}()
-	nodes := map[uint64]*Node{}
+	}
+}
+
+// newBehind sets up a behind cluster with node 3 stopped. The caller
+// closes it, also after an error.
+func newBehind(t *testing.T) (*behind, error) {
+	c := &behind{
+		t:     t,
+		net:   &memNet{queues: map[uint64]chan *raftpb.Message{}, nodes: map[uint64]*Node{}},
+		dirs:  map[uint64]string{1: t.TempDir(), 2: t.TempDir(), 3: t.TempDir()},
+		nodes: map[uint64]*Node{},
+		ran:   map[uint64]chan error{},
+		stops: map[uint64]context.CancelFunc{},
+	}
 	for id := uint64(1); id <= 3; id++ {
-		n, err := start(id)
-		if err != nil {
-			return err
-		}
-		nodes[id] = n
-	}
-	value := func(i, round int) []byte { return fmt.Appendf(nil, "value %d of round %d %0200d", i, round, 0) }
-	do := func(n *Node, op proto.Message) (proto.Message, error) {
-		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			r, err := n.Do(ctx, op)
-			cancel()
-			if err == nil || time.Now().After(deadline) {
-				return r, err
-			}
+		if _, err := c.start(id); err != nil {
+			return c, err
 		}
 	}
 	write := func(round int) (int64, error) {
 		var rev int64
 		for i := range 50 {
-			r, err := do(nodes[1], &pb.PutRequest{Key: fmt.Appendf(nil, "k%02d", i), Value: value(i, round)})
+			r, err := do(c.nodes[1], &pb.PutRequest{Key: fmt.Appendf(nil, "k%02d", i), Value: value(i, round)})
 			if err != nil {
 				return 0, fmt.Errorf("put: %w", err)
 			}
@@ -194,51 +217,63 @@ func followerRetriesFetch(t *testing.T) error {
 		return rev, nil
 	}
 	if _, err := write(0); err != nil {
-		return err
+		return c, err
 	}
-	if err := stop(3); err != nil {
-		return fmt.Errorf("stop node 3: %w", err)
+	if err := c.stop(3); err != nil {
+		return c, fmt.Errorf("stop node 3: %w", err)
 	}
-	var rev int64
 	for round := 1; round <= 40; round++ {
 		var err error
-		if rev, err = write(round); err != nil {
-			return err
+		if c.rev, err = write(round); err != nil {
+			return c, err
 		}
-		if _, err := do(nodes[1], &pb.CompactionRequest{Revision: rev}); err != nil {
-			return fmt.Errorf("compact: %w", err)
+		if _, err := do(c.nodes[1], &pb.CompactionRequest{Revision: c.rev}); err != nil {
+			return c, fmt.Errorf("compact: %w", err)
 		}
 	}
 	for id := uint64(1); id <= 2; id++ {
-		first := filepath.Join(dirs[id], "wal", wal.SegmentName(1))
+		first := filepath.Join(c.dirs[id], "wal", wal.SegmentName(1))
 		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 			if _, err := os.Stat(first); os.IsNotExist(err) {
 				break
 			}
 			if time.Now().After(deadline) {
-				return fmt.Errorf("setup: node %d still has its first segment", id)
+				return c, fmt.Errorf("setup: node %d still has its first segment", id)
 			}
 		}
 	}
+	return c, nil
+}
+
+// followerRetriesFetch starts node 3 of a behind cluster. Its first two
+// snapshot streams break off partway, after it wrote some of each to its
+// log. It must start again from its log, fetch another snapshot, and
+// serve the newest values, without stopping.
+func followerRetriesFetch(t *testing.T) error {
+	c, err := newBehind(t)
+	defer c.close()
+	if err != nil {
+		return err
+	}
 	// The first stream breaks off within its header or checkpoint, the
 	// second further on.
-	net.mu.Lock()
-	net.cuts = []int{100, 16 << 10}
-	net.mu.Unlock()
-	n3, err := start(3)
+	c.net.mu.Lock()
+	c.net.cuts = []int{100, 16 << 10}
+	c.net.mu.Unlock()
+	n3, err := c.start(3)
 	if err != nil {
 		return err
 	}
 	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		select {
-		case err := <-ran[3]:
+		case err := <-c.ran[3]:
 			return fmt.Errorf("%w: %w", errFollowerStopped, err)
 		default:
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		r, err := n3.Do(ctx, &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Serializable: true})
 		cancel()
-		if err == nil && r.(*pb.RangeResponse).Header.Revision >= rev {
+		if err == nil && r.(*pb.RangeResponse).Header.Revision >= c.rev {
 			kvs := r.(*pb.RangeResponse).Kvs
 			if len(kvs) != 50 {
 				return fmt.Errorf("node 3 has %d keys", len(kvs))
@@ -252,18 +287,18 @@ func followerRetriesFetch(t *testing.T) error {
 		}
 		if time.Now().After(deadline) {
 			if err == nil {
-				err = fmt.Errorf("it is at revision %d of %d", r.(*pb.RangeResponse).Header.Revision, rev)
+				err = fmt.Errorf("it is at revision %d of %d", r.(*pb.RangeResponse).Header.Revision, c.rev)
 			}
 			return fmt.Errorf("node 3 did not catch up: %w", err)
 		}
 	}
-	net.mu.Lock()
-	cut := net.cut
-	net.mu.Unlock()
+	c.net.mu.Lock()
+	cut := c.net.cut
+	c.net.mu.Unlock()
 	if cut != 2 {
 		return fmt.Errorf("%d streams were cut, want 2", cut)
 	}
-	names, err := os.ReadDir(filepath.Join(dirs[3], "wal"))
+	names, err := os.ReadDir(filepath.Join(c.dirs[3], "wal"))
 	if err != nil {
 		return err
 	}
@@ -278,10 +313,50 @@ func followerRetriesFetch(t *testing.T) error {
 // TestFollowerRetriesFetch: a follower whose snapshot fetch breaks off
 // starts again from its log and catches up.
 func TestFollowerRetriesFetch(t *testing.T) {
-	if testing.Short() {
-		t.Skip("runs a three-node cluster for several seconds")
-	}
 	if err := followerRetriesFetch(t); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestQueuedInstalls runs two installs on node 3 of a behind cluster from
+// the same applied index, as when Raft's second snapshot is queued behind
+// the first: the leader's checkpoint, then the entry after it. The second
+// stream carries the checkpoint the first wrote. It must end the run for
+// a reload, not stop the node as a failed disk write would.
+func TestQueuedInstalls(t *testing.T) {
+	c, err := newBehind(t)
+	defer c.close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n3, err := New(c.config(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := n3.log.close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	leader := c.nodes[1]
+	leader.log.mu.Lock()
+	ckpt := leader.log.ckpts[len(leader.log.ckpts)-1]
+	leader.log.mu.Unlock()
+	next, err := leader.log.Entry(ckpt.Index + 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied := n3.core.Applied()
+	if applied >= ckpt.Index {
+		t.Fatalf("setup: node 3 applied %d, the checkpoint is at %d", applied, ckpt.Index)
+	}
+	p := memPeer{net: c.net, id: 3}
+	first := &core.Install{From: 1, Index: ckpt.Index, Term: ckpt.Term, Applied: applied}
+	if err := n3.install(t.Context(), p, first); err != nil || first.Checkpoint != ckpt {
+		t.Fatalf("first install: %v, checkpoint %+v, want %+v", err, first.Checkpoint, ckpt)
+	}
+	second := &core.Install{From: 1, Index: ckpt.Index + 1, Term: next.GetTerm(), Applied: applied}
+	if err := n3.install(t.Context(), p, second); !errors.Is(err, errReload) {
+		t.Fatalf("second install: %v, want a reload", err)
 	}
 }

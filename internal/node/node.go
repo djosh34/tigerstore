@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -926,6 +927,12 @@ func (s *logSink) Value(index uint64, off uint32, value []byte) error {
 func (s *logSink) CheckpointChunk(index uint64, data []byte) error {
 	if s.ckpt == nil {
 		f, err := s.n.log.w.CreateCheckpoint(index)
+		if errors.Is(err, fs.ErrExist) {
+			// An install queued before this one wrote the checkpoint, and
+			// this one asked from an older applied index. A core started
+			// from the log asks from after it.
+			return err
+		}
 		if err != nil {
 			return s.disk(err)
 		}
