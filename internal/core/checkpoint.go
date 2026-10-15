@@ -298,7 +298,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		return nil, lastCkpt{}, fmt.Errorf("%w: checkpoint at %d term %d with voters %v, the root names %d term %d",
 			errBadCheckpoint, h.index, h.term, h.voters, root.Index, root.Term)
 	}
-	if own := maxVersion(cfg); h.version > own {
+	if own := ownVersion(cfg); h.version > own {
 		return nil, lastCkpt{}, tooOld(h.version, own)
 	}
 	st := NewState(MinLeaseTTL(cfg), v)

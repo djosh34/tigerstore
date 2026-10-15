@@ -21,9 +21,8 @@ import (
 //
 // That is entry format 1. Every later format starts with a 0 byte and its
 // number, then the batch; a format 1 batch never starts with 0, as it
-// holds at least one write. Format 2 adds only that header. A node writes
-// the cluster version's format (State.version), so a format goes out only
-// once every voter supports it.
+// holds at least one write. Format 2 adds only that header. Which format
+// a node writes is the cluster version (version.go).
 
 const (
 	kindPut     = 1

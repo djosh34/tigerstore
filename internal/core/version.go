@@ -15,8 +15,9 @@ import (
 // announces through Raft the newest version it supports, and once every
 // voter has announced, the cluster version rises to the lowest of their
 // versions. It is replicated state, held in checkpoints, and never goes
-// down: a node announcing a lower version before then holds it back, and
-// a binary older than the cluster version refuses to start.
+// down: a node whose announcement of a lower version applies before then
+// holds it back, and a binary older than the cluster version refuses to
+// start.
 
 // MaxVersion is the newest cluster version, and so entry format, this
 // build supports. It reads every format up to it.
@@ -50,8 +51,8 @@ func (st *State) announce(id uint64, v uint32, voters []uint64) {
 	st.version = max(st.version, low)
 }
 
-// maxVersion is the newest version a node supports.
-func maxVersion(cfg Config) uint32 { return cmp.Or(cfg.MaxVersion, MaxVersion) }
+// ownVersion is the newest version this node supports.
+func ownVersion(cfg Config) uint32 { return cmp.Or(cfg.MaxVersion, MaxVersion) }
 
 // ActiveVersion is the cluster version this node has applied.
 func (n *Node) ActiveVersion() uint32 { return n.state.version }
@@ -64,8 +65,8 @@ func (n *Node) applyVersion(origin uint64, b []byte) error {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	n.state.announce(origin, v.Value, n.cfg.Peers)
-	if n.state.version > maxVersion(n.cfg) {
-		return tooOld(n.state.version, maxVersion(n.cfg))
+	if n.state.version > ownVersion(n.cfg) {
+		return tooOld(n.state.version, ownVersion(n.cfg))
 	}
 	return nil
 }
@@ -74,7 +75,7 @@ func (n *Node) applyVersion(origin uint64, b []byte) error {
 // the state holds it, again after each election timeout, as Raft may
 // drop a proposal.
 func (n *Node) announceVersion() {
-	own := maxVersion(n.cfg)
+	own := ownVersion(n.cfg)
 	if n.state.supports[n.cfg.ID] == own || n.leader == raft.None {
 		return
 	}
@@ -82,5 +83,5 @@ func (n *Node) announceVersion() {
 		return
 	}
 	n.announcedAt = n.now
-	n.queueWrite(&pending{req: Request{Op: wrapperspb.UInt32(own)}})
+	n.proposeInternal(wrapperspb.UInt32(own))
 }
