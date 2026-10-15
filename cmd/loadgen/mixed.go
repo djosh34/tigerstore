@@ -928,7 +928,12 @@ func runMixed(cfg config) (*result, error) {
 			}
 		}
 	})
+	stopProfile, err := startProfile(cfg.cpuprofile)
+	if err != nil {
+		return nil, err
+	}
 	phaseErr := runPhase(workers, loads, phase{rate: cfg.rate / float64(cfg.conns), start: t0, stop: t2, drain: drainTimeout})
+	stopProfile()
 	sampler.Wait()
 	deadline = time.Now().Add(watchCatchUp)
 	for {
@@ -977,7 +982,7 @@ func runMixed(cfg config) (*result, error) {
 	}
 	res.Watch = &watchResult{Watchers: len(watches), Events: ledger.events, EventsPerS: float64(ledger.events) / cfg.duration.Seconds(), Latency: ledger.lat.summary()}
 	ledger.mu.Unlock()
-	err := errors.Join(phaseErr, sampleErr)
+	err = errors.Join(phaseErr, sampleErr)
 	if len(cfg.pids) == 0 {
 		err = errors.Join(err, errors.New("no server pids"))
 	}

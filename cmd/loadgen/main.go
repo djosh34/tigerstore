@@ -43,6 +43,7 @@ type config struct {
 	out         string
 	cacert      string
 	cert, key   string
+	cpuprofile  string
 }
 
 var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
@@ -70,6 +71,7 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.cacert, "cacert", "", "CA certificate of the servers; with it, connections use TLS 1.3")
 	fs.StringVar(&cfg.cert, "cert", "", "client certificate for TLS")
 	fs.StringVar(&cfg.key, "key", "", "client key for TLS")
+	fs.StringVar(&cfg.cpuprofile, "cpuprofile", "", "mixed: write a CPU profile of the generator's warmup and measurement phase to this file (temporary, issue #188)")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
