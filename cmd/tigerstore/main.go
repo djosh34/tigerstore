@@ -34,6 +34,7 @@ type flags struct {
 	certFile, keyFile, caFile                 string
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
+	peerAllowedCNs, peerAllowedHostnames      []string
 	progressInterval                          time.Duration
 	memoryBudget                              int64
 }
@@ -88,6 +89,16 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	// As in etcd, each takes a comma-separated list, and a repeated flag
+	// replaces the list.
+	fs.Func("peer-cert-allowed-cn", "comma-separated CommonNames of the peer certificates to accept", func(s string) error {
+		f.peerAllowedCNs = strings.Split(s, ",")
+		return nil
+	})
+	fs.Func("peer-cert-allowed-hostname", "comma-separated SAN hostnames of the peer certificates to accept", func(s string) error {
+		f.peerAllowedHostnames = strings.Split(s, ",")
+		return nil
+	})
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
 	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
@@ -95,6 +106,9 @@ func parse(args []string) (*flags, error) {
 	}
 	if f.name == "" || f.initialCluster == "" {
 		return nil, errors.New("--name and --initial-cluster are required")
+	}
+	if len(f.peerAllowedCNs) > 0 && len(f.peerAllowedHostnames) > 0 {
+		return nil, errors.New("--peer-cert-allowed-cn and --peer-cert-allowed-hostname cannot both be set")
 	}
 	if f.dataDir == "" {
 		f.dataDir = f.name + ".tigerstore"
@@ -247,6 +261,7 @@ func run(args []string, logger *log.Logger) error {
 	t, err := peer.Start(peer.Config{
 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
 		Certificate: peerCert, CA: peerCA,
+		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames,
 		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logger.Printf,
 	})
 	if err != nil {
