@@ -61,7 +61,7 @@ func ParseCompaction(mode, retention string) (Compaction, error) {
 	if h, aerr := strconv.Atoi(retention); aerr == nil && h >= 0 {
 		d, err = time.Duration(h), nil
 		if mode == CompactPeriodic {
-			d *= time.Hour
+			d = time.Duration(h) * time.Hour
 		}
 	}
 	if err != nil {
