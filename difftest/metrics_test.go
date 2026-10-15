@@ -173,7 +173,9 @@ func metricsCase(r *run) {
 		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: a}}},
 	}})
 	r.record("txn with a put and a range", nil, err)
-	g, err := r.c.lease.LeaseGrant(r.ctx, &pb.LeaseGrantRequest{TTL: 60})
+	// A lease ID of its own, since the byte counters count the ID in the
+	// revoke, and an ID the server picks varies in length.
+	g, err := r.c.lease.LeaseGrant(r.ctx, &pb.LeaseGrantRequest{ID: 0x5eed, TTL: 60})
 	r.record("lease grant", nil, err)
 	if err == nil {
 		_, err = r.c.lease.LeaseRevoke(r.ctx, &pb.LeaseRevokeRequest{ID: g.ID})
