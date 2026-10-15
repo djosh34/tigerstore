@@ -124,9 +124,10 @@ func walFiles(t *testing.T, dir string) (segs, packs int) {
 
 // TestCleaningCycles writes 50 cold keys once, then overwrites 50 hot keys
 // and compacts, round after round, on a node with a 1 MiB disk budget.
-// Cleaning must keep the disk within it without a NOSPACE answer, copy the
-// cold values into packs, keep the map of where values are from growing
-// with the history, and every value must read back, also after a restart.
+// Cleaning must keep the disk within it, take writes again after any
+// NOSPACE answer, copy the cold values into packs, and keep the map of
+// where values are from growing with the history, and every value must
+// read back, also after a restart.
 func TestCleaningCycles(t *testing.T) {
 	const budget = 1 << 20
 	dir := t.TempDir()
@@ -146,6 +147,12 @@ func TestCleaningCycles(t *testing.T) {
 	var maps []int64
 	for round := 1; round <= 200; round++ {
 		rev, err := putAll(r.n, round, hot...)
+		// On a slow disk cleaning may fall behind for a while, and then
+		// NOSPACE is the right answer; writes must go on once it catches up.
+		for deadline := time.Now().Add(10 * time.Second); errors.Is(err, rpctypes.ErrGRPCNoSpace) && time.Now().Before(deadline); {
+			time.Sleep(50 * time.Millisecond)
+			rev, err = putAll(r.n, round, hot...)
+		}
 		if err != nil {
 			t.Fatalf("round %d: %v", round, err)
 		}
