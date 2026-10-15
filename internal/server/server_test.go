@@ -53,6 +53,8 @@ type cluster struct {
 	// wrap the transport each node runs with.
 	nodeConfig func(*node.Config)
 	wrap       func(id uint64, t peer.Transport) peer.Transport
+	// jwt, if set, makes the auth tokens.
+	jwt *server.JWT
 	// nodes and transports are the running nodes and their transports by
 	// ID.
 	nodes      map[uint64]*node.Node
@@ -200,7 +202,7 @@ func (c *cluster) start(id uint64) {
 	g := server.New(n, server.Config{TLS: &tls.Config{
 		Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
 		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
-	}, PeerVersions: tr.Versions})
+	}, PeerVersions: tr.Versions, JWT: c.jwt})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

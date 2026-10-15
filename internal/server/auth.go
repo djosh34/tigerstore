@@ -10,6 +10,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -125,8 +127,9 @@ func userChangePassword(ctx context.Context, s *Server, caller core.Caller, b []
 }
 
 // authenticate is etcd's Authenticate: it reads the user's hash with a
-// linearizable read, checks the password, and has the log assign a token
-// with a prefix it picks. If auth changed in between, it starts again.
+// linearizable read, checks the password, and has the log assign a
+// simple token with a prefix it picks, or signs a JWT once the log took
+// the Authenticate. If auth changed in between, it starts again.
 func authenticate(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
 	var r pb.AuthenticateRequest
 	if err := unmarshal(b, &r); err != nil {
@@ -137,21 +140,38 @@ func authenticate(ctx context.Context, s *Server, caller core.Caller, b []byte) 
 		if err != nil {
 			return nil, toStatus(err)
 		}
-		u := rep.Resp.(*authpb.User)
+		u, ok := rep.Resp.(*authpb.User)
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "the credentials came as %T", rep.Resp)
+		}
 		if bcrypt.CompareHashAndPassword(u.Password, []byte(r.Password)) != nil {
 			return nil, rpctypes.ErrGRPCAuthFailed
 		}
-		prefix, err := tokenPrefix()
-		if err != nil {
-			return nil, toStatus(err)
+		var prefix string
+		if s.cfg.JWT == nil {
+			if prefix, err = tokenPrefix(); err != nil {
+				return nil, toStatus(err)
+			}
 		}
 		applied, err := s.n.DoReply(ctx, caller, &pb.InternalRaftRequest{Authenticate: &pb.InternalAuthenticateRequest{Name: r.Name, SimpleToken: prefix}})
 		if err != nil {
 			return nil, toStatus(err)
 		}
-		if applied.Rev == rep.Rev {
+		if applied.Rev != rep.Rev {
+			continue
+		}
+		if s.cfg.JWT == nil {
 			return applied.Resp, nil
 		}
+		// etcd signs when the entry applies, with the auth revision then.
+		resp, ok := applied.Resp.(*pb.AuthenticateResponse)
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "Authenticate answered %T", applied.Resp)
+		}
+		if resp.Token, err = s.cfg.JWT.sign(r.Name, uint64(applied.Rev)); err != nil {
+			return nil, toStatus(err)
+		}
+		return resp, nil
 	}
 }
 

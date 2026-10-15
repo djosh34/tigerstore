@@ -216,8 +216,10 @@ type Caller struct {
 	name  string
 	extra int
 	// Token is the token of the call (etcd's "token" metadata), if any.
-	// User and Revision are set when the server verified it (JWT).
+	// Verified says that the server checked it itself (JWT): User and
+	// Revision are its claims, and an empty User means it is not valid.
 	Token    string
+	Verified bool
 	User     string
 	Revision uint64
 	// root makes the caller the root user, as etcd's WithRoot does for
@@ -830,7 +832,7 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, err)
 		return
 	}
-	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && r.Caller.User == ""}
+	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && !r.Caller.Verified}
 	n.tagWrite(p, ai, hasAI)
 	switch op := r.Op.(type) {
 	case *pb.InternalRaftRequest:

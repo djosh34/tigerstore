@@ -21,9 +21,19 @@ func TestAuth(t *testing.T) {
 	runCases(t, "etcd-v3.7.2-auth.json", []testCase{{"auth", authCase}})
 }
 
+// TestAuthJWT runs the same case on a fresh server with JWT tokens
+// (--auth-token jwt,...), which no change of a user ends, but which every
+// change of auth makes old.
+func TestAuthJWT(t *testing.T) {
+	runCases(t, "etcd-v3.7.2-auth-jwt.json", []testCase{{"auth", authCase}})
+}
+
 // simpleToken is the form of etcd's simple tokens: 16 letters, a dot and
-// the index of the Authenticate entry.
-var simpleToken = regexp.MustCompile(`^[a-zA-Z]{16}\.[0-9]+$`)
+// the index of the Authenticate entry; jwtToken that of a JWT.
+var (
+	simpleToken = regexp.MustCompile(`^[a-zA-Z]{16}\.[0-9]+$`)
+	jwtToken    = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
+)
 
 // as makes the next steps go with token, or without one when it is
 // empty.
@@ -45,17 +55,24 @@ func authDo[T any](r *run, do string, call func(ctx context.Context) (T, error),
 	r.record(do, out, err)
 }
 
-// login authenticates and returns the token; the step records whether it
-// has the form of a simple token.
+// login authenticates and returns the token; the step records the
+// token's form.
 func (r *run) login(do, name, password string) string {
 	r.t.Helper()
 	auth := pb.NewAuthClient(r.c.conn)
 	resp, err := auth.Authenticate(r.ctx, &pb.AuthenticateRequest{Name: name, Password: password})
 	var res any
 	if err == nil {
+		form := "other"
+		switch {
+		case simpleToken.MatchString(resp.Token):
+			form = "simple"
+		case jwtToken.MatchString(resp.Token):
+			form = "jwt"
+		}
 		res = struct {
-			Simple bool `json:"simple"`
-		}{simpleToken.MatchString(resp.Token)}
+			Form string `json:"form"`
+		}{form}
 	}
 	r.record(do, res, err)
 	return resp.GetToken()

@@ -9,7 +9,8 @@
 #                                     the steps it does not match yet
 #
 # Each test in suites runs on a fresh server started with the flags next to
-# it, on top of the ones below.
+# it, on top of the ones below; @CERTS@ in a flag is the directory of the
+# certificates and keys.
 #
 # ETCD is the etcd v3.7.2 binary, etcd on PATH by default. etcd runs on fixed
 # ports, because its member ID comes from its peer URL and the largest
@@ -24,6 +25,7 @@ suites=(
 	"TestBoundaries|"
 	"TestQuota|--quota-backend-bytes 1048576"
 	"TestAuth|"
+	"TestAuthJWT|--auth-token jwt,priv-key=@CERTS@/jwt.pem,sign-method=RS256"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are
@@ -75,9 +77,13 @@ tigerstore)
 	;;
 esac
 
+# The key of the JWT suite.
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/certs/jwt.pem" 2>/dev/null
+
 for suite in "${suites[@]}"; do
 	test=${suite%%|*}
 	read -r -a flags <<<"${suite#*|}"
+	flags=("${flags[@]//@CERTS@/$work/certs}")
 	echo "== $test ${flags[*]}"
 	case $server in
 	etcd)

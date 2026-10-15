@@ -105,6 +105,10 @@ func (c *conn) callerOf(st *stream) core.Caller {
 		caller = core.Caller{}
 	}
 	caller.Token = st.token
+	if t := c.s.cfg.JWT; t != nil && caller.Token != "" {
+		caller.Verified = true
+		caller.User, caller.Revision, _ = t.info(caller.Token)
+	}
 	return caller
 }
 

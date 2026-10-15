@@ -26,6 +26,9 @@ type Config struct {
 	TLS *tls.Config
 	// BcryptCost is etcd's --bcrypt-cost; 0 means bcrypt's default.
 	BcryptCost int
+	// JWT, if set, makes and checks the auth tokens instead of the
+	// node's simple tokens (--auth-token, ParseAuthToken).
+	JWT *JWT
 	// PeerVersions, if set, reports the peer transport's protocol
 	// versions for /metrics.
 	PeerVersions func() peer.Versions

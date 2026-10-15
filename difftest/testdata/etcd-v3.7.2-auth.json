@@ -204,7 +204,7 @@
       "do": "authenticate alice",
       "code": "OK",
       "result": {
-        "simple": true
+        "form": "simple"
       }
     },
     {
@@ -480,7 +480,7 @@
       "do": "authenticate root",
       "code": "OK",
       "result": {
-        "simple": true
+        "form": "simple"
       }
     },
     {
@@ -607,7 +607,7 @@
       "do": "authenticate alice with the new password",
       "code": "OK",
       "result": {
-        "simple": true
+        "form": "simple"
       }
     },
     {

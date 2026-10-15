@@ -546,8 +546,11 @@ func (n *Node) identify(c Caller) (ai authInfo, ok bool, err error) {
 		return authInfo{user: rootUser, revision: a.revision}, true, nil
 	}
 	if a.enabled && c.Token != "" {
-		if c.User != "" {
-			// A token the server verified itself (JWT).
+		if c.Verified {
+			// A token the server checked itself (JWT).
+			if c.User == "" {
+				return authInfo{}, false, rpctypes.ErrGRPCInvalidAuthToken
+			}
 			return authInfo{user: c.User, revision: c.Revision}, true, nil
 		}
 		st, found := n.tokens[c.Token]

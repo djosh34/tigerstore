@@ -431,7 +431,7 @@ type reqHeaders struct {
 	// etcd ignores the client certificate's identity.
 	gateway bool
 	// token is the call's auth token: etcd's "token" metadata, or its
-	// "authorization", without "Bearer ".
+	// "authorization", without "Bearer " either way.
 	token   string
 	size    int
 	regular bool  // a regular field came; pseudo-fields must come first
@@ -534,7 +534,7 @@ func (c *conn) onField(f hpack.HeaderField) {
 	case "grpcgateway-accept":
 		h.gateway = true
 	case "token":
-		h.token = f.Value
+		h.token = strings.TrimPrefix(f.Value, "Bearer ")
 	case "authorization":
 		if h.token == "" {
 			h.token = strings.TrimPrefix(f.Value, "Bearer ")

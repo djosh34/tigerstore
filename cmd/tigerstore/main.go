@@ -44,6 +44,7 @@ type flags struct {
 	maxLearners                               int
 	strictReconfig                            bool
 	authToken                                 string
+	jwt                                       *server.JWT
 	bcryptCost, authTokenTTL                  uint
 }
 
@@ -104,7 +105,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
 	fs.StringVar(&f.clusterState, "initial-cluster-state", "new", "new for a node of a new cluster, existing for one that joins a running cluster after MemberAdd")
 	fs.String("initial-advertise-peer-urls", "", "accepted for etcd's sake; a node's peer URL is its entry in --initial-cluster")
-	fs.StringVar(&f.authToken, "auth-token", "simple", "auth token type: simple")
+	fs.StringVar(&f.authToken, "auth-token", "simple", "auth token type: simple, or jwt,pub-key=<file>,priv-key=<file>,sign-method=<alg>,ttl=<duration>")
 	fs.UintVar(&f.bcryptCost, "bcrypt-cost", 10, "bcrypt cost factor of hashed passwords")
 	fs.UintVar(&f.authTokenTTL, "auth-token-ttl", 300, "seconds an unused simple token lives")
 	fs.IntVar(&f.maxLearners, "max-learners", 1, "the most learners the cluster may have")
@@ -130,8 +131,9 @@ func parse(args []string) (*flags, error) {
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	if f.authToken != "simple" {
-		return nil, fmt.Errorf("--auth-token %q: only simple tokens are supported yet", f.authToken)
+	var err error
+	if f.jwt, err = server.ParseAuthToken(f.authToken); err != nil {
+		return nil, fmt.Errorf("--auth-token %q: %w", f.authToken, err)
 	}
 	if f.clusterState != "new" && f.clusterState != "existing" {
 		return nil, fmt.Errorf("--initial-cluster-state must be new or existing, not %q", f.clusterState)
@@ -317,7 +319,7 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost)})
+	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost), JWT: f.jwt})
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())
