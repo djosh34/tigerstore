@@ -10,7 +10,9 @@ import (
 	"io"
 	"slices"
 
+	"go.etcd.io/etcd/api/v3/authpb"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -34,9 +36,12 @@ import (
 //	uvarint cluster version | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
 //	uvarint lease count | per lease: varint ID | varint TTL | varint stamp |
-//	uvarint alarm count | per alarm: uvarint member ID | varint type
+//	uvarint alarm count | per alarm: uvarint member ID | varint type |
+//	u8 auth enabled | uvarint auth revision |
+//	uvarint user count | per user: bytes authpb.User |
+//	uvarint role count | per role: bytes authpb.Role
 //
-// where a string is a uvarint length and the bytes, and base is the size
+// where a string or bytes are a uvarint length and the bytes, and base is the size
 // of the newest checkpoint finished when this one was cut, which the next
 // cut is measured against.
 //
@@ -46,7 +51,7 @@ import (
 const ckptMagic = "tigerckp"
 
 // ckptVersion is the format version of checkpoint files. Version 2 added
-// the versions, version 3 the members.
+// the versions, version 3 the members and auth.
 const ckptVersion = 3
 
 // ckptHeader is the part of a checkpoint before the keys.
@@ -60,9 +65,10 @@ type ckptHeader struct {
 	base                 int64
 	leases               []*lease
 	alarms               []*pb.AlarmMember
+	auth                 *authState
 }
 
-func (h *ckptHeader) encode() []byte {
+func (h *ckptHeader) encode() ([]byte, error) {
 	b := append([]byte(ckptMagic), 0, 0, 0, 0)
 	binary.LittleEndian.PutUint32(b[len(ckptMagic):], ckptVersion)
 	b = binary.LittleEndian.AppendUint64(b, h.index)
@@ -110,7 +116,30 @@ func (h *ckptHeader) encode() []byte {
 		b = binary.AppendUvarint(b, a.MemberID)
 		b = binary.AppendVarint(b, int64(a.Alarm))
 	}
-	return b
+	enabled := byte(0)
+	if h.auth.enabled {
+		enabled = 1
+	}
+	b = append(b, enabled)
+	b = binary.AppendUvarint(b, h.auth.revision)
+	var err error
+	msg := func(m proto.Message) {
+		var data []byte
+		if err == nil {
+			data, err = proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		}
+		b = binary.AppendUvarint(b, uint64(len(data)))
+		b = append(b, data...)
+	}
+	b = binary.AppendUvarint(b, uint64(len(h.auth.users)))
+	for _, name := range sortedKeys(h.auth.users) {
+		msg(h.auth.users[name])
+	}
+	b = binary.AppendUvarint(b, uint64(len(h.auth.roles)))
+	for _, name := range sortedKeys(h.auth.roles) {
+		msg(h.auth.roles[name])
+	}
+	return b, err
 }
 
 var errBadCheckpoint = fmt.Errorf("%w: bad checkpoint", wal.ErrCorrupt)
@@ -193,6 +222,29 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	for i := uint64(0); i < n && err == nil; i++ {
 		h.alarms = append(h.alarms, &pb.AlarmMember{MemberID: uv(), Alarm: pb.AlarmType(sv())})
 	}
+	h.auth = newAuthState()
+	if err == nil {
+		var enabled byte
+		enabled, err = r.ReadByte()
+		h.auth.enabled = enabled == 1
+	}
+	h.auth.revision = uv()
+	msg := func(m proto.Message) {
+		b := []byte(str())
+		if err == nil {
+			err = proto.Unmarshal(b, m)
+		}
+	}
+	for i, n := uint64(0), uv(); i < n && err == nil; i++ {
+		u := &authpb.User{}
+		msg(u)
+		h.auth.users[string(u.Name)] = u
+	}
+	for i, n := uint64(0), uv(); i < n && err == nil; i++ {
+		ro := &authpb.Role{}
+		msg(ro)
+		h.auth.roles[string(ro.Name)] = ro
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: header: %w", errBadCheckpoint, err)
 	}
@@ -236,22 +288,25 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 	}
 	n.base = n.last.size
 	h := n.state.header(index, term)
-	*h = ckptHeader{
-		index: index, term: term, members: h.members, supports: h.supports, removed: h.removed,
-		version: n.state.version,
-		rev:     n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
-		base: n.base, leases: n.state.sortedLeases(), alarms: n.state.alarms,
+	h.base = n.base
+	data, err := h.encode()
+	if err != nil {
+		n.fail(err)
+		return
 	}
-	data := h.encode()
 	n.copy = &copying{index: index, term: term, crc: crc32.Update(0, castagnoli, data), size: int64(len(data))}
 	n.kv.Freeze()
 	n.sinceCkpt = 0
 	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: index, Data: data})
 }
 
-// header is the members part of a checkpoint header of the state.
+// header is the checkpoint header of the state, but for its base.
 func (st *State) header(index, term uint64) *ckptHeader {
-	h := &ckptHeader{index: index, term: term, members: st.memberList()}
+	h := &ckptHeader{
+		index: index, term: term, members: st.memberList(), version: st.version,
+		rev: st.kv.Rev(), compact: st.kv.CompactRev(), stamps: st.stamps,
+		leases: st.sortedLeases(), alarms: st.alarms, auth: st.auth,
+	}
 	for _, m := range h.members {
 		h.supports = append(h.supports, st.supports[m.ID])
 	}
@@ -394,6 +449,8 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	}
 	st.alarms = h.alarms
 	st.alarmsChanged()
+	st.auth = h.auth
+	st.auth.rebuild()
 	minRef, err := st.kv.Load(r, h.rev, h.compact)
 	if err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)
@@ -494,10 +551,10 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error
 	if err != nil {
 		return wal.Root{}, nil, err
 	}
-	h := st.header(n.applied, term)
-	h.version, h.rev, h.compact, h.stamps = st.version, n.kv.Rev(), n.kv.CompactRev(), st.stamps
-	h.leases, h.alarms = st.sortedLeases(), st.alarms
-	data := h.encode()
+	data, err := st.header(n.applied, term).encode()
+	if err != nil {
+		return wal.Root{}, nil, err
+	}
 	n.kv.Freeze()
 	for {
 		b, _, done := n.kv.CopyFrozen(nil, 1<<20)

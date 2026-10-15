@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 
@@ -47,6 +48,7 @@ const (
 
 // methodPaths are the paths of methods, sorted.
 var methodPaths = func() []string {
+	maps.Copy(methods, authMethods)
 	paths := make([]string, 0, len(methods))
 	for p := range methods {
 		paths = append(paths, p)
@@ -136,21 +138,25 @@ func newOp[T any, P interface {
 func nodeCall[T any, P interface {
 	*T
 	proto.Message
-}](ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
+}](ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
 	req := P(new(T))
 	if err := unmarshal(b, req); err != nil {
 		return nil, err
 	}
-	resp, err := s.n.Do(ctx, req)
+	resp, err := s.n.DoAs(ctx, caller, req)
 	if err != nil {
 		return nil, toStatus(err)
 	}
 	return resp, nil
 }
 
-func maintenanceStatus(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
-	if err := unmarshal(b, &pb.StatusRequest{}); err != nil {
+func maintenanceStatus(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	var r pb.StatusRequest
+	if err := unmarshal(b, &r); err != nil {
 		return nil, err
+	}
+	if err := s.n.Authorize(ctx, caller, &r); err != nil {
+		return nil, toStatus(err)
 	}
 	st, err := s.n.Status(ctx)
 	if err != nil {

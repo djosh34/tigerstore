@@ -27,6 +27,7 @@ type stream struct {
 	rpc        *method // nil for HTTP requests
 	needLeader bool    // etcd's "hasleader" metadata
 	gateway    bool    // grpcgateway-accept metadata: no certificate identity
+	token      string  // the call's auth token
 	httpMethod string
 	httpPath   string
 

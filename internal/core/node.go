@@ -127,6 +127,9 @@ type Config struct {
 	ClientURLs []string
 	// MaxLearners is etcd's --max-learners; 0 means 1.
 	MaxLearners int
+	// AuthTokenTicks is how long an unused simple token lives, etcd's
+	// --auth-token-ttl; 0 means 300 seconds.
+	AuthTokenTicks int
 	// StrictReconfigCheck is etcd's --strict-reconfig-check: member
 	// changes that would leave fewer started voters than a quorum are
 	// refused.
@@ -208,18 +211,34 @@ type Request struct {
 // the certificate's common name and the auth revision, which is 1 on a
 // store that never changed auth. The zero Caller has no identity.
 type Caller struct {
-	// extra is the bytes the identity adds to the marshaled request.
+	// name is the common name of the client's certificate, and extra the
+	// bytes it adds to the marshaled request with auth revision 1.
+	name  string
 	extra int
+	// Token is the token of the call (etcd's "token" metadata), if any.
+	// User and Revision are set when the server verified it (JWT).
+	Token    string
+	User     string
+	Revision uint64
+	// root makes the caller the root user, as etcd's WithRoot does for
+	// its own requests.
+	root bool
 }
 
-// authRevision is etcd's auth revision on a store whose auth never changed;
-// tigerstore has no auth requests that would change it.
-const authRevision = 1
+// RootCaller is the root user, for a node's own requests such as its
+// health check.
+func RootCaller() Caller { return Caller{root: true} }
 
 // NewCaller returns the caller whose certificate has this common name.
 func NewCaller(commonName string) Caller {
-	with := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID, Username: commonName, AuthRevision: authRevision}})
-	return Caller{extra: with - proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})}
+	return Caller{name: commonName, extra: identityBytes(commonName, 1)}
+}
+
+// identityBytes is what a user and an auth revision add to the
+// marshaled request.
+func identityBytes(user string, revision uint64) int {
+	with := proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID, Username: user, AuthRevision: revision}})
+	return with - proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}})
 }
 
 // Reply answers one request. Resp is the response of the same kind as the
@@ -319,6 +338,13 @@ type pending struct {
 	early bool
 	// conf is the configuration change of a member change.
 	conf *raftpb.ConfChange
+	// who is the identity a write carries into the log while auth is
+	// enabled. ai is the identity of a read, checked when it is served;
+	// aiCurrent says that it takes the auth revision of that moment, as
+	// a simple token and a certificate do.
+	who       *authInfo
+	ai        authInfo
+	aiCurrent bool
 	// refuse, if set, answers the request once its write applied: the
 	// NOSPACE alarm a refused write raised (quota.go).
 	refuse error
@@ -439,6 +465,10 @@ type Node struct {
 
 	// hashes are the hashes the last compactions took, oldest first.
 	hashes []mvcc.KVHash
+	// tokens are the simple tokens this node assigned (auth.go), and
+	// tokenWaits the requests whose token's entry is not applied yet.
+	tokens     map[string]*simpleToken
+	tokenWaits []tokenWait
 	// installs counts the persist jobs with a snapshot install that are
 	// not durable yet.
 	installs int
@@ -472,6 +502,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		cold:      map[*ValueRead]struct{}{},
 		logBytes:  rec.Bytes,
 		noSpaceAt: -1,
+		tokens:    map[string]*simpleToken{},
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
 	if root := rec.Root; root.Index > 0 {
@@ -666,6 +697,9 @@ func (n *Node) Tick() {
 	}
 	n.retryReads(false)
 	n.publish()
+	if n.now%int64(n.cfg.TicksPerSecond) == 0 {
+		n.expireTokens()
+	}
 	n.snapshotProgress()
 	n.expireLeases()
 	n.announceVersion()
@@ -747,17 +781,33 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, rpctypes.ErrGRPCNoSpace)
 		return
 	}
-	// etcd checks the quota before it validates the request.
+	ai, hasAI, aiErr := n.identify(r.Caller)
+	if errors.Is(aiErr, errTokenNotApplied) {
+		n.tokenWaits = append(n.tokenWaits, tokenWait{req: r, deadline: n.now + int64(n.cfg.RequestTicks)})
+		return
+	}
+	extra := identityExtra(r.Caller, ai, hasAI)
+	// etcd checks the quota before it validates the request, and who the
+	// client is after it.
 	if r.Op == nil {
 		if !n.quotaLeft(putCost(&r.Put.PutOp)) {
 			n.refuseNoSpace(r.ID)
 			return
 		}
-		if err := checkPut(&r.Put, r.Caller); err != nil {
+		if err := mvcc.CheckPutOp(&r.Put.PutOp); err != nil {
+			n.reply(r.ID, err)
+			return
+		}
+		if aiErr != nil {
+			n.reply(r.ID, aiErr)
+			return
+		}
+		if err := checkPutSize(&r.Put, extra); err != nil {
 			n.reply(r.ID, err)
 			return
 		}
 		*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+		n.tagWrite(p, ai, hasAI)
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
 		return
@@ -766,12 +816,33 @@ func (n *Node) submit(r Request, p *pending) {
 		n.refuseNoSpace(r.ID)
 		return
 	}
-	if err := check(r.Op, r.Caller); err != nil {
+	sized, err := validate(r.Op)
+	if err == nil {
+		err = aiErr
+	}
+	if err == nil && sized != nil {
+		err = checkSize(sized, extra)
+	}
+	if err == nil {
+		err = n.authorize(r.Op, ai, hasAI)
+	}
+	if err != nil {
 		n.reply(r.ID, err)
 		return
 	}
-	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
+	*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks), ai: ai, aiCurrent: hasAI && r.Caller.User == ""}
+	n.tagWrite(p, ai, hasAI)
 	switch op := r.Op.(type) {
+	case *pb.InternalRaftRequest:
+		// The identity comes from the caller only.
+		op.Header = nil
+		if hasAI {
+			op.Header = &pb.RequestHeader{Username: ai.user, AuthRevision: ai.revision}
+		}
+		p.who = nil
+		n.queueFeature(p)
+	case *pb.AuthenticateRequest:
+		n.reads = append(n.reads, p)
 	case *pb.RangeRequest:
 		if op.Serializable || planted.On("B01a") {
 			n.serveRead(p)
@@ -851,46 +922,53 @@ func TakesSpace(r Request) bool {
 // more.
 const sizeRequestID = 1 << 63
 
-// check validates a request like etcd's gRPC layer, then limits the size of
-// a write like etcd's server does. Reads do not go through Raft and have
-// only gRPC's limit.
-func check(op proto.Message, c Caller) error {
-	var err error
+// validate checks a request like etcd's gRPC layer, and returns the
+// InternalRaftRequest whose size etcd's server limits for a write, or nil
+// for a request that does not go through Raft.
+func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
 	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
 	case *pb.RangeRequest:
-		return mvcc.CheckRange(op)
+		return nil, mvcc.CheckRange(op)
 	case *pb.PutRequest:
-		err, r.Put = mvcc.CheckPut(op), op
+		r.Put = op
+		return r, mvcc.CheckPut(op)
 	case *pb.DeleteRangeRequest:
-		err, r.DeleteRange = mvcc.CheckDelete(op), op
+		r.DeleteRange = op
+		return r, mvcc.CheckDelete(op)
 	case *pb.TxnRequest:
-		err, r.Txn = mvcc.CheckTxn(op), op
-		if err == nil && mvcc.IsTxnReadOnly(op) {
-			return nil
+		if err := mvcc.CheckTxn(op); err != nil || mvcc.IsTxnReadOnly(op) {
+			return nil, err
 		}
+		r.Txn = op
 	case *pb.CompactionRequest:
 		r.Compaction = op
 	case *pb.LeaseGrantRequest:
 		r.LeaseGrant = op
 	case *pb.LeaseRevokeRequest:
 		r.LeaseRevoke = op
-	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest:
-		return nil
 	case *pb.AlarmRequest:
 		if !isAlarmChange(op) {
-			return nil
+			return nil, nil
 		}
 		r.Alarm = op
-	case *pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
-		return nil
+	case *pb.InternalRaftRequest:
+		r = proto.CloneOf(op)
+		r.Header = &pb.RequestHeader{ID: sizeRequestID}
+	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest,
+		*pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest,
+		*pb.AuthenticateRequest, *pb.StatusRequest:
+		return nil, nil
 	default:
-		return fmt.Errorf("core: unknown request type %T", op)
+		return nil, fmt.Errorf("core: unknown request type %T", op)
 	}
-	if err != nil {
-		return err
-	}
-	if proto.Size(r)+c.extra > MaxRequestBytes {
+	return r, nil
+}
+
+// checkSize limits a write as etcd's server does: the marshaled
+// InternalRaftRequest with the client's identity (extra).
+func checkSize(r *pb.InternalRaftRequest, extra int) error {
+	if proto.Size(r)+extra > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
@@ -900,17 +978,22 @@ func check(op proto.Message, c Caller) error {
 // without the put itself: the header with sizeRequestID, and the put's tag.
 var putRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(4)
 
-// checkPut checks a put in wire form as check does a decoded one. Like
-// etcd, it limits the size of the request as protobuf marshals it again,
-// not of the client's encoding.
-func checkPut(p *Put, c Caller) error {
-	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
-		return err
-	}
-	if putRequestBytes+c.extra+protowire.SizeBytes(p.size()) > MaxRequestBytes {
+// checkPutSize limits a put in wire form as checkSize does a decoded one.
+// Like etcd, it limits the size of the request as protobuf marshals it
+// again, not of the client's encoding.
+func checkPutSize(p *Put, extra int) error {
+	if putRequestBytes+extra+protowire.SizeBytes(p.size()) > MaxRequestBytes {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
+}
+
+// tagWrite gives a write the identity it carries into the log while auth
+// is enabled; without one it applies as etcd's empty identity.
+func (n *Node) tagWrite(p *pending, ai authInfo, ok bool) {
+	if ok && n.state.auth.enabled {
+		p.who = &authInfo{user: ai.user, revision: ai.revision}
+	}
 }
 
 // newLeaseID returns a positive lease ID that differs from the IDs this
@@ -1013,6 +1096,14 @@ func (n *Node) reply(id uint64, err error) {
 
 // writeSize is the bytes a queued write adds to a Raft entry.
 func writeSize(p *pending) int {
+	if p.who != nil {
+		return writeBytes(p) + len(p.who.user) + 2*binary.MaxVarintLen64 + 1
+	}
+	return writeBytes(p)
+}
+
+// writeBytes is the bytes of a queued write's request.
+func writeBytes(p *pending) int {
 	switch {
 	case p.req.Wire != nil:
 		return len(p.req.Wire) + batchFraming
@@ -1180,6 +1271,9 @@ func (n *Node) Process() (Effects, error) {
 		// flight a write goes out at once, so one client sees no delay.
 		// The byte cap still sends a full entry early (queueWrite).
 		n.releaseEarly()
+		if len(n.tokenWaits) > 0 {
+			n.retryTokenWaits()
+		}
 		if !n.isLeader || n.durable >= n.ownIndex {
 			n.propose()
 		}
@@ -1350,7 +1444,17 @@ func (n *Node) serveRead(p *pending) {
 	var resp proto.Message
 	var err error
 	rep := Reply{ID: p.req.ID}
+	if p.aiCurrent {
+		p.ai.revision = n.state.auth.revision
+	}
+	if err := n.readAllowed(p); err != nil {
+		n.finish(p, err)
+		return
+	}
 	switch op := p.req.Op.(type) {
+	case *pb.AuthenticateRequest:
+		resp, err = n.credentials(op)
+		rep.Rev = int64(n.state.auth.revision)
 	case *pb.RangeRequest:
 		if p.req.Compact {
 			var res mvcc.RangeResult
@@ -1476,9 +1580,16 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 			p = n.waiting[id]
 		}
 		n.values.reset()
+		kind, b, at, who, err := unwrapAuth(kind, b, at)
+		if err != nil {
+			return err
+		}
+		n.state.who = who
 		switch kind {
 		case kindPut:
 			return n.applyPut(b, at, p)
+		case kindAuth:
+			return n.applyAuthEntry(b, e.GetIndex(), p)
 		case kindNoSpace:
 			if p != nil {
 				n.finish(p, rpctypes.ErrGRPCNoSpace)

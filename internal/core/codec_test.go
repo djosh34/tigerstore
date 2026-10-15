@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -272,4 +273,21 @@ func TestTxnValuesPlaced(t *testing.T) {
 	if _, err := vals.Place([]byte("elsewhere")); err == nil {
 		t.Fatal("a value from no entry was placed")
 	}
+}
+
+// check validates and sizes a request as submit does for caller c.
+func check(op proto.Message, c Caller) error {
+	r, err := validate(op)
+	if err != nil || r == nil {
+		return err
+	}
+	return checkSize(r, c.extra)
+}
+
+// checkPut validates and sizes a put in wire form as submit does.
+func checkPut(p *Put, c Caller) error {
+	if err := mvcc.CheckPutOp(&p.PutOp); err != nil {
+		return err
+	}
+	return checkPutSize(p, c.extra)
 }

@@ -135,7 +135,7 @@ func (w *watchClient) create(n *node, gen uint64) {
 	n.nextStream++
 	n.streams[n.nextStream] = w
 	w.open, w.node, w.gen, w.stream, w.lastAt, w.watchID = true, n.idx, n.gen, n.nextStream, 0, -1
-	n.core.Watch(n.nextStream, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+	n.core.Watch(n.nextStream, core.Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
 		Key: w.key, RangeEnd: w.end, StartRevision: w.next, PrevKv: w.prevKV, ProgressNotify: w.progress,
 	}}})
 	s.process(n)

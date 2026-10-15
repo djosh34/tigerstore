@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
@@ -78,7 +79,7 @@ func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []pe
 func (n *Node) hashKV(ctx context.Context, rev int64) (*pb.HashKVResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
 	defer cancel()
-	resp, err := n.Do(ctx, &pb.HashKVRequest{Revision: rev})
+	resp, err := n.DoAs(ctx, core.RootCaller(), &pb.HashKVRequest{Revision: rev})
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +115,7 @@ func (n *Node) periodicCheck(ctx context.Context, t peer.Transport) error {
 	}
 	peers := n.peerHashes(ctx, t, h.HashRevision)
 	rctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
-	_, err = n.Do(rctx, &pb.RangeRequest{Key: []byte{0}, CountOnly: true})
+	_, err = n.DoAs(rctx, core.RootCaller(), &pb.RangeRequest{Key: []byte{0}, CountOnly: true})
 	cancel()
 	if err != nil {
 		return err
@@ -216,7 +217,7 @@ func (n *Node) compactHashCheck(ctx context.Context, t peer.Transport, checked i
 func (n *Node) corruptAlarm(ctx context.Context, id uint64) {
 	ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
 	defer cancel()
-	_, err := n.Do(ctx, &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_CORRUPT, MemberID: id})
+	_, err := n.DoAs(ctx, core.RootCaller(), &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_CORRUPT, MemberID: id})
 	if err != nil && !errors.Is(err, rpctypes.ErrGRPCStopped) {
 		n.logf("corruption check: raising CORRUPT for %x: %v", id, err)
 	}

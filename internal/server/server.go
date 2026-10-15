@@ -24,6 +24,8 @@ type Config struct {
 	// TLS is the client TLS configuration. Nil serves HTTP/2 without TLS
 	// (prior knowledge, no HTTP/1), which only tests should do.
 	TLS *tls.Config
+	// BcryptCost is etcd's --bcrypt-cost; 0 means bcrypt's default.
+	BcryptCost int
 	// PeerVersions, if set, reports the peer transport's protocol
 	// versions for /metrics.
 	PeerVersions func() peer.Versions

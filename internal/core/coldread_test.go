@@ -184,7 +184,7 @@ func TestColdRepliesWait(t *testing.T) {
 func TestColdWatchEventsWait(t *testing.T) {
 	s, _ := coldSingle(t, nil)
 	create := func(stream uint64, c *pb.WatchCreateRequest) {
-		s.n.Watch(stream, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: c}})
+		s.n.Watch(stream, Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: c}})
 	}
 	create(1, &pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("d"), PrevKv: true})
 	s.run()
@@ -198,7 +198,7 @@ func TestColdWatchEventsWait(t *testing.T) {
 	}
 	// A watch from the start catches up on values on disk only.
 	create(2, &pb.WatchCreateRequest{Key: []byte("c"), StartRevision: 1})
-	s.n.Watch(1, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}})
+	s.n.Watch(1, Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}})
 	if r := s.do(203, &pb.CompactionRequest{Revision: s.n.kv.Rev()}); r.Err != nil {
 		t.Fatal(r.Err)
 	}

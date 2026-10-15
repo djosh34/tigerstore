@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"maps"
 	"slices"
+	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -64,6 +65,10 @@ type State struct {
 	// removed, which never come back (members.go).
 	members map[uint64]*pb.Member
 	removed map[uint64]bool
+	// auth is the auth store (auth.go), and who the identity of the write
+	// being applied.
+	auth *authState
+	who  authInfo
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
@@ -83,7 +88,7 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 func NewState(minTTL int64, v mvcc.Values) *State {
 	st := &State{
 		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{},
-		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{},
+		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(),
 	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
@@ -135,6 +140,25 @@ func (st *State) Hash() uint64 {
 	}
 	for _, id := range slices.Sorted(maps.Keys(st.removed)) {
 		mix(id)
+	}
+	mix(st.auth.revision)
+	if st.auth.enabled {
+		mix(1)
+	}
+	for _, name := range sortedKeys(st.auth.users) {
+		u := st.auth.users[name]
+		mix(uint64(crc32.Checksum(u.Name, castagnoli)))
+		mix(uint64(crc32.Checksum(u.Password, castagnoli)))
+		mix(uint64(crc32.Checksum([]byte(strings.Join(u.Roles, "\x00")), castagnoli)))
+		if u.Options != nil && u.Options.NoPassword {
+			mix(1)
+		}
+	}
+	for _, name := range sortedKeys(st.auth.roles) {
+		for _, p := range st.auth.roles[name].KeyPermission {
+			mix(uint64(crc32.Checksum(append(append([]byte(name+"\x00"), p.Key...), p.RangeEnd...), castagnoli)))
+			mix(uint64(p.PermType))
+		}
 	}
 	return h
 }
@@ -196,6 +220,9 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 	if err := st.refused(true); err != nil {
 		return nil, err
 	}
+	if err := st.putAllowed(op.Key, op.Lease, op.PrevKv); err != nil {
+		return nil, err
+	}
 	prev, err := st.kv.PutKV(op)
 	if err != nil {
 		return nil, err
@@ -211,6 +238,9 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	st.changes = nil
 	if err := st.refusedOp(op); err != nil {
+		return nil, err
+	}
+	if err := st.writeAllowed(op); err != nil {
 		return nil, err
 	}
 	switch op := op.(type) {

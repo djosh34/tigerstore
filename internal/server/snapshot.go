@@ -17,8 +17,12 @@ const snapshotChunk = 32 << 10
 // version, then the SHA-256 digest in a message of its own. The file is
 // tigerstore's own format (node.Snapshot).
 func (s *Server) snapshot(st *stream) error {
-	if err := st.RecvOne(&pb.SnapshotRequest{}); err != nil {
+	var r pb.SnapshotRequest
+	if err := st.RecvOne(&r); err != nil {
 		return err
+	}
+	if err := s.n.Authorize(st.ctx, st.c.callerOf(st), &r); err != nil {
+		return toStatus(err)
 	}
 	w := &snapshotWriter{st: st}
 	_, sum, err := s.n.Snapshot(st.ctx, w, func(size int64) error {

@@ -9,6 +9,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
 
@@ -47,7 +48,9 @@ func (n *Node) Answer(from uint64, req []byte) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), n.requestTimeout())
 	defer cancel()
-	resp, err := n.Do(ctx, r)
+	// As etcd's peer handlers, these run without the client's identity;
+	// the node that took the call checked it.
+	resp, err := n.DoAs(ctx, core.RootCaller(), r)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +72,8 @@ func call(ctx context.Context, t peer.Transport, id uint64, kind byte, req, resp
 
 // Promote answers Cluster.MemberPromote. Only the leader can check that
 // the learner caught up; another node asks the leader, as etcd does.
-func (n *Node) Promote(ctx context.Context, r *pb.MemberPromoteRequest) (proto.Message, error) {
-	resp, err := n.Do(ctx, r)
+func (n *Node) Promote(ctx context.Context, caller core.Caller, r *pb.MemberPromoteRequest) (proto.Message, error) {
+	resp, err := n.DoAs(ctx, caller, r)
 	if !errors.Is(err, rpctypes.ErrGRPCNotLeader) {
 		return resp, err
 	}

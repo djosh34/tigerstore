@@ -154,7 +154,7 @@ func linearizableRead(s *Server, ctx context.Context) error { return s.healthRea
 func (s *Server) healthRead(ctx context.Context, serializable bool) error {
 	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
 	defer cancel()
-	_, err := s.n.Do(ctx, &pb.RangeRequest{Key: []byte("health"), KeysOnly: true, Limit: 1, Serializable: serializable})
+	_, err := s.n.DoAs(ctx, core.RootCaller(), &pb.RangeRequest{Key: []byte("health"), KeysOnly: true, Limit: 1, Serializable: serializable})
 	if err == nil {
 		return nil
 	}

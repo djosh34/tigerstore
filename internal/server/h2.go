@@ -430,6 +430,9 @@ type reqHeaders struct {
 	// gateway: the call carries grpcgateway-accept metadata, for which
 	// etcd ignores the client certificate's identity.
 	gateway bool
+	// token is the call's auth token: etcd's "token" metadata, or its
+	// "authorization", without "Bearer ".
+	token   string
 	size    int
 	regular bool  // a regular field came; pseudo-fields must come first
 	pseudo  uint8 // bits of the pseudo-fields seen
@@ -530,6 +533,12 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.needLeader = h.needLeader || f.Value == "true"
 	case "grpcgateway-accept":
 		h.gateway = true
+	case "token":
+		h.token = f.Value
+	case "authorization":
+		if h.token == "" {
+			h.token = strings.TrimPrefix(f.Value, "Bearer ")
+		}
 	}
 }
 
@@ -591,7 +600,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway}
+	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]

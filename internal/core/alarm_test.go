@@ -27,7 +27,7 @@ func restartFromCheckpoint(t *testing.T, s *single, disk *simfs.Disk, boot uint6
 	applied := s.n.Applied()
 	for i := 0; s.n.DurableCheckpoint().Index <= applied || slices.Contains(disk.DurableNames(), "0000000000000001.wal"); i++ {
 		if i == 1000 {
-			t.Fatal("no checkpoint became durable")
+			t.Fatalf("no checkpoint became durable: %v applied %d now %d %v", s.n.DurableCheckpoint(), applied, s.n.Applied(), disk.DurableNames())
 		}
 		if r := s.do(uint64(1_000_000+i), fill(i)); r.Err != nil {
 			t.Fatal(r.Err)

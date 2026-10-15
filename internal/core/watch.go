@@ -64,7 +64,10 @@ type watcher struct {
 func (w *watcher) ahead(rev int64) bool { return rev < w.asked }
 
 type watchStream struct {
-	id     uint64
+	id uint64
+	// caller is the client of the stream, whose watches need its read
+	// permission while auth is enabled.
+	caller Caller
 	nextID int64
 	byID   map[int64]*watcher
 	// held are responses that wait for value reads, their own or those of
@@ -150,13 +153,13 @@ func addWait(waits []*ValueRead, r *ValueRead) []*ValueRead {
 
 // Watch handles one request on a watch stream. The stream exists from its
 // first request until CloseWatchStream.
-func (n *Node) Watch(stream uint64, r *pb.WatchRequest) {
+func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 	if n.err != nil {
 		return
 	}
 	s, ok := n.streams[stream]
 	if !ok {
-		s = &watchStream{id: stream, byID: map[int64]*watcher{}}
+		s = &watchStream{id: stream, byID: map[int64]*watcher{}, caller: c}
 		n.streams[stream] = s
 	}
 	switch {
@@ -250,6 +253,11 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	key := c.Key
 	if len(key) == 0 {
 		key = []byte{0}
+	}
+	if err := n.watchAllowed(s.caller, key, c.RangeEnd); err != nil {
+		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, err.Error()
+		n.watchReply(s, created, nil)
+		return
 	}
 	fromKey := len(c.RangeEnd) == 1 && c.RangeEnd[0] == 0
 	if len(c.RangeEnd) != 0 && !fromKey && bytes.Compare(key, c.RangeEnd) >= 0 {

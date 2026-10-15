@@ -19,7 +19,7 @@ func (s *Server) keepAlive(st *stream) error {
 		if err != nil {
 			return err
 		}
-		resp, err := s.n.Do(st.ctx, r)
+		resp, err := s.n.DoAs(st.ctx, st.c.callerOf(st), r)
 		if err != nil {
 			return toStatus(err)
 		}

@@ -23,6 +23,7 @@ record=${2:-}
 suites=(
 	"TestBoundaries|"
 	"TestQuota|--quota-backend-bytes 1048576"
+	"TestAuth|"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are

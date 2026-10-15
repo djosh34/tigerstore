@@ -100,10 +100,12 @@ func (c *conn) admit(st *stream) {
 // AuthInfoFromTLS ignores the certificate of a request from its gRPC
 // gateway.
 func (c *conn) callerOf(st *stream) core.Caller {
+	caller := c.caller
 	if st.gateway {
-		return core.Caller{}
+		caller = core.Caller{}
 	}
-	return c.caller
+	caller.Token = st.token
+	return caller
 }
 
 // batchDue reports whether the reader should hand its batch to the node

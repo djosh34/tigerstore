@@ -152,9 +152,19 @@ func learnerJoinsAndLeaves(t *testing.T, snapshot bool) {
 		t.Fatalf("remove: %v, %v", rm, err)
 	}
 	<-c.nodes[4].Done()
-	if _, err := cl.MemberRemove(context.Background(), &pb.MemberRemoveRequest{ID: 4}); !errors.Is(err, rpctypes.ErrGRPCMemberNotFound) {
-		t.Fatalf("removing a removed member: %v", err)
-	}
+	// Raft drops a configuration change while the leader has not applied
+	// the one before, and the request times out, as in etcd; a client
+	// tries again.
+	retry(t, func(ctx context.Context) (*pb.MemberRemoveResponse, error) {
+		r, err := cl.MemberRemove(ctx, &pb.MemberRemoveRequest{ID: 4})
+		if errors.Is(err, rpctypes.ErrGRPCMemberNotFound) {
+			return r, nil
+		}
+		if err == nil || status.Code(err) != codes.Unavailable {
+			t.Fatalf("removing a removed member: %v, %v", r, err)
+		}
+		return r, err
+	})
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return c.client(3, cert).Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("3")})
 	})

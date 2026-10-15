@@ -140,10 +140,6 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
 	})
-	_, err = pb.NewAuthClient(conn).Authenticate(context.Background(), &pb.AuthenticateRequest{})
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("Authenticate: %v", err)
-	}
 	err = conn.Invoke(context.Background(), "/nothing.Here/Call", &pb.RangeRequest{}, &pb.RangeResponse{})
 	if status.Code(err) != codes.Unimplemented {
 		t.Fatalf("unknown service: %v", err)

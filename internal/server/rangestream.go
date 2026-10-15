@@ -46,7 +46,7 @@ func (s *Server) rangeStream(st *stream) error {
 	var header *pb.ResponseHeader
 	count := int64(0)
 	for {
-		resp, err := s.n.RangeChunk(st.ctx, r)
+		resp, err := s.n.RangeChunk(st.ctx, st.c.callerOf(st), r)
 		if err != nil {
 			return toStatus(err)
 		}
@@ -97,7 +97,7 @@ func (s *Server) rangeStream(st *stream) error {
 // countRead runs a count-only Range of a RangeStream on the node, with the
 // total count.
 func (s *Server) countRead(st *stream, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := s.n.Do(st.ctx, r)
+	resp, err := s.n.DoAs(st.ctx, st.c.callerOf(st), r)
 	if err != nil {
 		return nil, toStatus(err)
 	}

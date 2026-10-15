@@ -72,7 +72,7 @@ func slowWatcherIsCut(t *testing.T) error {
 			return errors.New("the node never took a write")
 		}
 	}
-	ws, err := n.OpenWatch(ctx)
+	ws, err := n.OpenWatch(ctx, core.Caller{})
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func TestWatchBytesBound(t *testing.T) {
 			t.Fatal("the node never took a write")
 		}
 	}
-	ws, err := n.OpenWatch(ctx)
+	ws, err := n.OpenWatch(ctx, core.Caller{})
 	if err != nil {
 		t.Fatal(err)
 	}

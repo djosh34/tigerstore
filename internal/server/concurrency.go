@@ -163,7 +163,7 @@ func (c client) watchEvents(ctx context.Context, req *pb.WatchCreateRequest, f f
 // watchOnce runs watchEvents on one watch stream. It moves the start of
 // req past each event it hands f.
 func (c client) watchOnce(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
-	ws, err := c.s.n.OpenWatch(ctx)
+	ws, err := c.s.n.OpenWatch(ctx, c.caller)
 	if err != nil {
 		return err
 	}

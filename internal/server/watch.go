@@ -12,7 +12,7 @@ import (
 // the node; this one sends the node's responses.
 func (s *Server) watch(st *stream) error {
 	ctx := st.ctx
-	ws, err := s.n.OpenWatch(ctx)
+	ws, err := s.n.OpenWatch(ctx, st.c.callerOf(st))
 	if err != nil {
 		return toStatus(err)
 	}

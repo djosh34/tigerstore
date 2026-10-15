@@ -76,6 +76,7 @@ type input struct {
 	unreachable uint64
 	// removed is a peer's answer that the cluster removed this node.
 	removed    bool
+	authorize  *authorize
 	watchOpen  *WatchStream
 	watchReq   *pb.WatchRequest
 	watchClose bool
@@ -117,6 +118,8 @@ var ErrSnapshotInstalled = status.Error(codes.Unavailable, "tigerstore: the node
 type WatchStream struct {
 	n  *Node
 	id uint64
+	// caller is the stream's client, for its permissions.
+	caller core.Caller
 	// C carries the responses in order. Whoever takes one calls Taken.
 	C chan *pb.WatchResponse
 	// queued is the size of the responses in C.
@@ -148,6 +151,30 @@ func (ws *WatchStream) Close() {
 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
 	case <-ws.n.done:
 	}
+}
+
+// Authorize checks a call the server serves itself (Status, Snapshot)
+// against the caller's permissions.
+func (n *Node) Authorize(ctx context.Context, caller core.Caller, op proto.Message) error {
+	ch := make(chan error, 1)
+	if err := n.put(ctx, input{authorize: &authorize{caller: caller, op: op, reply: ch}}); err != nil {
+		return err
+	}
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-n.done:
+		return rpctypes.ErrGRPCStopped
+	}
+}
+
+// authorize is a check of Authorize for the committer.
+type authorize struct {
+	caller core.Caller
+	op     proto.Message
+	reply  chan error
 }
 
 // Status returns the node's Maintenance.Status answer.
@@ -188,9 +215,9 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	return m, err
 }
 
-// OpenWatch starts a watch stream.
-func (n *Node) OpenWatch(ctx context.Context) (*WatchStream, error) {
-	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+// OpenWatch starts a watch stream of a client.
+func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, error) {
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
 	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
 		return nil, err
 	}
@@ -556,30 +583,40 @@ func (n *Node) DoAs(ctx context.Context, caller core.Caller, op proto.Message) (
 
 // RangeChunk reads one chunk of a RangeStream: a range that counts keys
 // only up to its limit, as etcd's chunks do.
-func (n *Node) RangeChunk(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, reply: make(chan core.Reply, 1)})
+func (n *Node) RangeChunk(ctx context.Context, caller core.Caller, r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, caller: caller, reply: make(chan core.Reply, 1)})
 	if err != nil {
 		return nil, err
 	}
 	return resp.(*pb.RangeResponse), nil
 }
 
+// DoReply runs one request of caller and returns the node's whole reply.
+func (n *Node) DoReply(ctx context.Context, caller core.Caller, op proto.Message) (core.Reply, error) {
+	return n.doReply(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan core.Reply, 1)})
+}
+
 func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
+	rep, err := n.doReply(ctx, r)
+	return rep.Resp, err
+}
+
+func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	if core.TakesSpace(core.Request{Op: r.op}) {
 		if err := n.throttle(ctx); err != nil {
-			return nil, err
+			return core.Reply{}, err
 		}
 	}
 	if err := n.put(ctx, input{req: r}); err != nil {
-		return nil, err
+		return core.Reply{}, err
 	}
 	select {
 	case rep := <-r.reply:
-		return rep.Resp, rep.Err
+		return rep, rep.Err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return core.Reply{}, ctx.Err()
 	case <-n.done:
-		return nil, rpctypes.ErrGRPCStopped
+		return core.Reply{}, rpctypes.ErrGRPCStopped
 	}
 }
 
@@ -873,7 +910,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:
 		if _, ok := streams[in.stream]; ok {
-			n.core.Watch(in.stream, in.watchReq)
+			n.core.Watch(in.stream, streams[in.stream].caller, in.watchReq)
 		}
 	case in.watchClose:
 		delete(streams, in.stream)
@@ -889,6 +926,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		n.core.Unreachable(in.unreachable)
 	case in.removed:
 		n.core.Removed()
+	case in.authorize != nil:
+		in.authorize.reply <- n.core.Authorize(in.authorize.caller, in.authorize.op)
 	case in.written != 0:
 		n.core.CheckpointWritten(in.written, in.writeErr)
 	case in.fetching:

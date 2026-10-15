@@ -5,6 +5,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
@@ -151,7 +152,7 @@ func (s *Sim) grayCreate(e *event) {
 		if s.rng.IntN(4) == 0 {
 			start = 1
 		}
-		n.core.Watch(e.stream, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+		n.core.Watch(e.stream, core.Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
 			Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: start, PrevKv: true,
 		}}})
 	}

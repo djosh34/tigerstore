@@ -48,7 +48,7 @@ func ParsePeerURLs(in []string) ([]string, error) {
 
 // memberAdd answers Cluster.MemberAdd: as etcd's handler, it checks and
 // sorts the peer URLs before the node takes the change.
-func memberAdd(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
+func memberAdd(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
 	var r pb.MemberAddRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func memberAdd(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.M
 		return nil, rpctypes.ErrGRPCMemberBadURLs
 	}
 	r.PeerURLs = urls
-	resp, err := s.n.Do(ctx, &r)
+	resp, err := s.n.DoAs(ctx, caller, &r)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -67,12 +67,12 @@ func memberAdd(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.M
 
 // memberPromote answers Cluster.MemberPromote, which a follower hands
 // the leader (node.Promote).
-func memberPromote(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
+func memberPromote(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
 	var r pb.MemberPromoteRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
 	}
-	resp, err := s.n.Promote(ctx, &r)
+	resp, err := s.n.Promote(ctx, caller, &r)
 	if err != nil {
 		return nil, toStatus(err)
 	}
