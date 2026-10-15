@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/djosh34/tigerstore/internal/server"
+	"github.com/djosh34/tigerstore/internal/testcert"
 )
 
 // parseArgs parses a command line as run does.
@@ -167,5 +169,74 @@ func TestCheckPeerURLs(t *testing.T) {
 	}
 	if err := checkPeerURLs(&c.ec, ms); err == nil {
 		t.Error("etcd's default http peer URLs: no error")
+	}
+}
+
+// TestTLSFlags checks that the client TLS configuration takes etcd's
+// --cipher-suites and --tls-*-version and asks for client certificates
+// with --trusted-ca-file alone, and that the peer flags refuse TLS 1.2
+// and a client certificate without its key.
+func TestTLSFlags(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, certPEM, keyPEM, err := ca.Issue("node", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{"ca.pem": ca.PEM, "node.pem": certPEM, "node-key.pem": keyPEM}
+	for name, b := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := func(name string) string { return filepath.Join(dir, name) }
+	certs := []string{
+		"--cert-file", f("node.pem"), "--key-file", f("node-key.pem"), "--trusted-ca-file", f("ca.pem"),
+		"--peer-cert-file", f("node.pem"), "--peer-key-file", f("node-key.pem"), "--peer-trusted-ca-file", f("ca.pem"),
+		"--listen-peer-urls", "https://127.0.0.1:0",
+	}
+	c, err := parseArgs(t, append(certs, "--cipher-suites", "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "--tls-max-version", "TLS1.2")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := clientTLS(&c.ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.CipherSuites, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}) || cfg.MinVersion != tls.VersionTLS12 || cfg.MaxVersion != tls.VersionTLS12 || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		t.Errorf("client TLS: suites %v, versions %x-%x, client auth %v", cfg.CipherSuites, cfg.MinVersion, cfg.MaxVersion, cfg.ClientAuth)
+	}
+	if _, err := peerConfig(&c.ec, false); err == nil || !strings.Contains(err.Error(), "TLS 1.3") {
+		t.Errorf("peers with --tls-max-version TLS1.2: %v", err)
+	}
+
+	if c, err = parseArgs(t, append(certs, "--peer-client-cert-file", f("node.pem"))...); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peerConfig(&c.ec, false); err == nil {
+		t.Error("--peer-client-cert-file without --peer-client-key-file: no error")
+	}
+	if c, err = parseArgs(t, append(certs, "--peer-client-cert-file", f("node.pem"), "--peer-client-key-file", f("node-key.pem"), "--peer-crl-file", f("crl"))...); err != nil {
+		t.Fatal(err)
+	}
+	pcfg, err := peerConfig(&c.ec, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closeAll(pcfg.Listeners); err != nil {
+		t.Error(err)
+	}
+	if pcfg.GetClientCertificate == nil || pcfg.CRLFile != f("crl") || !pcfg.CheckClientSAN {
+		t.Errorf("peer config: client certificate %v, CRL %q, SAN check %v", pcfg.GetClientCertificate != nil, pcfg.CRLFile, pcfg.CheckClientSAN)
+	}
+
+	if c, err = parseArgs(t, append(certs, "--cipher-suites", "NO_SUCH_SUITE")...); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientTLS(&c.ec); err == nil {
+		t.Error("an unknown cipher suite: no error")
 	}
 }

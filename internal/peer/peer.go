@@ -74,6 +74,19 @@ type Config struct {
 	// and verifies both ends.
 	Certificate tls.Certificate
 	CA          *x509.CertPool
+	// GetCertificate, if set, gives the certificate for each handshake
+	// instead of Certificate, and GetClientCertificate, if set, the one
+	// this node dials with, as etcd reads its certificate files again
+	// for every handshake and dials with --peer-client-cert-file.
+	GetCertificate, GetClientCertificate func() (*tls.Certificate, error)
+	// CRLFile is etcd's --peer-crl-file: a peer that dials with a
+	// certificate it revokes is refused.
+	CRLFile string
+	// CheckClientSAN is etcd's check, unless
+	// --peer-skip-client-san-verification, that the certificate of a
+	// peer that dials in is valid for its address: by an IP SAN, or else
+	// by a DNS SAN that a reverse lookup of the address gives.
+	CheckClientSAN bool
 	// InsecureSkipVerify takes any certificate of the other node, as
 	// etcd's --peer-auto-tls does with its self-signed ones; CA is not
 	// used then.
@@ -178,9 +191,10 @@ const (
 
 // TCP is the transport over TLS on TCP.
 type TCP struct {
-	cfg    Config
-	verify func([][]byte, [][]*x509.Certificate) error
-	lns    []net.Listener
+	cfg        Config
+	clientCert func() (*tls.Certificate, error)
+	verify     func([][]byte, [][]*x509.Certificate) error
+	lns        []net.Listener
 	// senders are the peers by Raft ID, replaced whole by SetPeers;
 	// peersMu orders the replacements.
 	senders atomic.Pointer[map[uint64]*sender]
@@ -218,17 +232,21 @@ func Start(cfg Config) (*TCP, error) {
 	if len(cfg.Listeners) == 0 {
 		return nil, errors.New("peer: no listener")
 	}
+	serverCert, clientCert := cfg.certificates()
 	scfg := &tls.Config{
-		Certificates: []tls.Certificate{cfg.Certificate},
-		ClientCAs:    cfg.CA,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		MinVersion:   tls.VersionTLS13,
-		NextProtos:   alpns(cfg.minVersion, cfg.maxVersion),
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return serverCert() },
+		ClientCAs:      cfg.CA,
+		ClientAuth:     tls.RequireAndVerifyClientCert,
+		MinVersion:     tls.VersionTLS13,
+		NextProtos:     alpns(cfg.minVersion, cfg.maxVersion),
 		// The CA check runs first; verify only narrows it.
 		VerifyPeerCertificate: verify,
 	}
 	if cfg.InsecureSkipVerify {
 		scfg.ClientAuth = tls.RequireAnyClientCert
+	}
+	if cfg.CRLFile != "" {
+		scfg.VerifyConnection = func(cs tls.ConnectionState) error { return checkCRL(cfg.CRLFile, cs.PeerCertificates) }
 	}
 	var lns []net.Listener
 	for _, raw := range cfg.Listeners {
@@ -236,14 +254,15 @@ func Start(cfg Config) (*TCP, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
-		cfg:     cfg,
-		verify:  verify,
-		lns:     lns,
-		ctx:     ctx,
-		cancel:  cancel,
-		conns:   map[net.Conn]struct{}{},
-		inbound: map[net.Conn]inbound{},
-		logged:  map[string]time.Time{},
+		cfg:        cfg,
+		clientCert: clientCert,
+		verify:     verify,
+		lns:        lns,
+		ctx:        ctx,
+		cancel:     cancel,
+		conns:      map[net.Conn]struct{}{},
+		inbound:    map[net.Conn]inbound{},
+		logged:     map[string]time.Time{},
 	}
 	t.senders.Store(&map[uint64]*sender{})
 	t.SetPeers(cfg.Peers, nil)
@@ -545,6 +564,14 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	}
 	if err := tc.Handshake(); err != nil {
 		return 0, 0, 0, err
+	}
+	if certs := tc.ConnectionState().PeerCertificates; t.cfg.CheckClientSAN && len(certs) > 0 {
+		ctx, cancel := context.WithTimeout(t.ctx, t.readTimeout())
+		err := CheckCertSAN(ctx, certs[0], c.RemoteAddr().String())
+		cancel()
+		if err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	name := tc.ConnectionState().NegotiatedProtocol
 	if name == "" {
@@ -887,9 +914,9 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 		return nil, 0, err
 	}
 	c := tls.Client(raw, &tls.Config{
-		Certificates:       []tls.Certificate{s.t.cfg.Certificate},
-		RootCAs:            s.t.cfg.CA,
-		InsecureSkipVerify: s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return s.t.clientCert() },
+		RootCAs:              s.t.cfg.CA,
+		InsecureSkipVerify:   s.t.cfg.InsecureSkipVerify, //nolint:gosec // etcd's --peer-auto-tls
 
 		ServerName: host,
 		MinVersion: tls.VersionTLS13,
