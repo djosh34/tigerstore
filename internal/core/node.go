@@ -93,7 +93,12 @@ type Config struct {
 	// follower come from it.
 	UnappliedBytes int64
 	// A checkpoint is cut once the entries applied since the last one
-	// pass CheckpointBytes and CheckpointRatio times the last one's size.
+	// pass CheckpointBytes and CheckpointRatio times the base, the size of
+	// the newest checkpoint finished when the last one was cut. Each
+	// checkpoint writes the whole index again: the ratio keeps those
+	// bytes to about 1/ratio of the log's, and a restart replays about
+	// max(CheckpointBytes, ratio times the base) of log. docs/design.md
+	// has the measurements behind 64.
 	CheckpointBytes, CheckpointRatio int64
 	// CheckpointChunk is about how many bytes of the index each
 	// CopyCheckpoint copies into a checkpoint under way.
@@ -123,7 +128,7 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		WindowMaxBytes:  128 << 20,
 		UnappliedBytes:  64 << 20,
 		CheckpointBytes: 256 << 20,
-		CheckpointRatio: 16,
+		CheckpointRatio: 64,
 		CheckpointChunk: 32 << 10,
 		SnapshotTicks:   200,
 	}
