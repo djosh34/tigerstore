@@ -113,7 +113,7 @@ func (s *single) persistAll(jobs []PersistJob) {
 func TestForwardedWritesDoNotHoldLocalOnes(t *testing.T) {
 	s := startSingle(t, simfs.New(), 1)
 	forward := func(i uint64) {
-		data, err := encodeBatch(2, 9, []*pending{{req: Request{ID: i, Op: &pb.PutRequest{Key: []byte("f"), Value: []byte("x")}}}}, 0)
+		data, err := encodeBatch(1, 2, 9, []*pending{{req: Request{ID: i, Op: &pb.PutRequest{Key: []byte("f"), Value: []byte("x")}}}}, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

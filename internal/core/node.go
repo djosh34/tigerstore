@@ -114,6 +114,9 @@ type Config struct {
 	// Record makes Effects.Applied carry every applied entry with the
 	// state's hash after it, for the simulator's checks.
 	Record bool
+	// MaxVersion is the newest cluster version the node supports; 0 means
+	// MaxVersion. Tests set it lower to run an older binary.
+	MaxVersion uint32
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -320,6 +323,8 @@ type Node struct {
 	// etcd_server_leader_changes_seen_total does.
 	leaderChanges int64
 	leaseSeq      uint64
+	// announcedAt is the tick this node last proposed its version.
+	announcedAt int64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -592,6 +597,7 @@ func (n *Node) Tick() {
 	n.retryReads(false)
 	n.snapshotProgress()
 	n.expireLeases()
+	n.announceVersion()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
 		n.progressNotify()
 	}
@@ -959,7 +965,7 @@ func (n *Node) requeue(props []*pending) {
 
 // proposeEntry proposes one Raft entry with props.
 func (n *Node) proposeEntry(props []*pending, size int) {
-	data, err := encodeBatch(n.cfg.ID, n.cfg.Boot, props, size)
+	data, err := encodeBatch(n.state.version, n.cfg.ID, n.cfg.Boot, props, size)
 	if err != nil {
 		n.fail(err)
 		return
@@ -1339,6 +1345,8 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 				n.finish(p, rpctypes.ErrGRPCNoSpace)
 			}
 			return nil
+		case kindVersion:
+			return n.applyVersion(origin, b)
 		}
 		op, err := newOp(kind)
 		if err != nil {
