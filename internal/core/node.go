@@ -1242,8 +1242,13 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 		return nil
 	}
-	n.values.index = e.GetIndex()
-	defer n.values.reset()
+	// A write may read what an earlier write of its entry put, and an
+	// entry replayed from the log is not in memory.
+	n.values.index, n.values.entry = e.GetIndex(), e.GetData()
+	defer func() {
+		n.values.entry = nil
+		n.values.reset()
+	}()
 	// After a pause, the writes before the paused one are applied.
 	skip, k := 0, -1
 	if r := n.resume; r != nil && r.index == e.GetIndex() {

@@ -54,8 +54,14 @@ type Install struct {
 // can be ones the snapshot replaced, and values must come from the log.
 func (n *Node) install(in *Install) error {
 	// A write that waited for values is before the snapshot, and reads
-	// under way may find their files gone (ValuesRead).
+	// under way may find their files gone (ValuesRead). Without a
+	// checkpoint the state stays, and the writes of the paused entry
+	// before that write are applied.
+	if in.Checkpoint.Index == 0 {
+		n.resume = n.paused
+	}
 	n.paused, n.epoch = nil, n.epoch+1
+	defer func() { n.resume = nil }()
 	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.conf}}); err != nil {
 		return err
 	}

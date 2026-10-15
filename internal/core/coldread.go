@@ -89,11 +89,17 @@ func (n *Node) readValues(fills []mvcc.Fill) *ValueRead {
 
 // fetch starts a read of the values a write or a read needs at once.
 func (n *Node) fetch(need []mvcc.Fill) *ValueRead {
+	return n.readValues(withDst(need))
+}
+
+// withDst points every fill of need at a slot of its own, for the values
+// a write or a read needs at once.
+func withDst(need []mvcc.Fill) []mvcc.Fill {
 	vals := make([][]byte, len(need))
 	for i := range need {
 		need[i].Dst = &vals[i]
 	}
-	return n.readValues(need)
+	return need
 }
 
 // keep adds the values r read to fetched.
@@ -107,13 +113,8 @@ func keep(fetched map[mvcc.Ref][]byte, r *ValueRead) {
 // installs a snapshot, when no driver runs reads yet and nothing else
 // waits. They stay in values.fetched for the write's next run.
 func (n *Node) readNow(need []mvcc.Fill) error {
-	r := &ValueRead{log: n.log}
-	vals := make([][]byte, len(need))
-	for i := range need {
-		need[i].Dst = &vals[i]
-	}
-	r.fills = need
-	if err := r.Run(); err != nil {
+	r := &ValueRead{fills: withDst(need)}
+	if err := ReadValues(n.log, r.fills); err != nil {
 		return err
 	}
 	if n.values.fetched == nil {
@@ -172,7 +173,7 @@ func (n *Node) runApply() {
 // Run. The replies and watch responses that waited for it go out, and a
 // write or read that needed its values runs again.
 func (n *Node) ValuesRead(r *ValueRead, err error) {
-	if n.err != nil || r.done {
+	if n.err != nil {
 		return
 	}
 	r.done = true

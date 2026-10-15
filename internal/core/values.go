@@ -45,9 +45,11 @@ func (pl *placer) add(value []byte, off int) {
 type values struct {
 	storage *storage
 	log     Log
-	// index is the entry being applied; placer knows where the values of
-	// its current write start.
+	// index is the entry being applied, and entry its data, which a
+	// replayed entry has only here; placer knows where the values of its
+	// current write start.
 	index uint64
+	entry []byte
 	placer
 	// fetched holds the values read from the log for the write or read
 	// that runs again now because it needed them at once.
@@ -76,7 +78,10 @@ func (v *values) Place(value []byte) (mvcc.Ref, error) {
 // events keep what it returns, maybe for long behind a slow client, and
 // must not keep the entry with it.
 func (v *values) Read(r mvcc.Ref) ([]byte, bool, error) {
-	data, ok := v.storage.entryData(r.Index)
+	data, ok := v.entry, v.entry != nil && r.Index == v.index
+	if !ok {
+		data, ok = v.storage.entryData(r.Index)
+	}
 	if !ok {
 		b, ok := v.fetched[r]
 		return b, ok, nil
