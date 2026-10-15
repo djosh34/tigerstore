@@ -3,7 +3,9 @@ package core
 import (
 	"bytes"
 	"cmp"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -90,6 +92,21 @@ func (st *State) Hash() uint64 {
 		mix(uint64(len(l.keys)))
 	}
 	return h
+}
+
+// Hash32 answers Maintenance.Hash: a CRC-32C of every version in the
+// index (mvcc.Store.HashAll) and of the leases. etcd hashes its whole
+// database file there, so the number differs from etcd's, but replicas
+// with the same state agree on it.
+func (st *State) Hash32() uint32 {
+	b := binary.BigEndian.AppendUint32(nil, st.kv.HashAll())
+	b = binary.AppendVarint(b, st.stamps)
+	for _, l := range st.sortedLeases() {
+		b = binary.AppendVarint(b, l.id)
+		b = binary.AppendVarint(b, l.ttl)
+		b = binary.AppendVarint(b, l.stamp)
+	}
+	return crc32.Checksum(b, castagnoli)
 }
 
 // sortedLeases returns the leases in ID order, so that the core walks them

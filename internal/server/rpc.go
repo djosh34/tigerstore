@@ -62,6 +62,8 @@ var methods = map[string]*method{
 	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
 	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
 	"/etcdserverpb.Maintenance/Alarm":     {unary: alarm},
+	"/etcdserverpb.Maintenance/Hash":      {unary: nodeCall[pb.HashRequest]},
+	"/etcdserverpb.Maintenance/HashKV":    {unary: nodeCall[pb.HashKVRequest]},
 }
 
 // services are etcd's gRPC services; their other methods are not
@@ -94,6 +96,22 @@ func newOp[T any, P interface {
 	proto.Message
 }]() proto.Message {
 	return P(new(T))
+}
+
+// nodeCall decodes a request of type T and has the node answer it.
+func nodeCall[T any, P interface {
+	*T
+	proto.Message
+}](ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+	req := P(new(T))
+	if err := unmarshal(b, req); err != nil {
+		return nil, err
+	}
+	resp, err := s.n.Do(ctx, req)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return resp, nil
 }
 
 func memberList(_ context.Context, s *Server, b []byte) (proto.Message, error) {

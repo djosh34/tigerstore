@@ -1,0 +1,123 @@
+package mvcc
+
+import (
+	"encoding/binary"
+	"hash/crc32"
+
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+)
+
+// KVHash is the answer to etcd's Maintenance.HashKV: a CRC-32C of every
+// version up to Revision, with the compaction revision it was taken at.
+type KVHash struct {
+	Hash            uint32
+	CompactRevision int64
+	Revision        int64
+}
+
+// HashKV hashes the versions up to rev, or the current revision if rev is
+// 0, with etcd v3.7.2's rules (server/storage/mvcc/hash.go) for which
+// versions count: one above rev never does; one at or below the
+// compaction revision C counts only if it is the version a read at rev
+// sees, unless no key exists at rev; a tombstone at C never does. So
+// replicas that compacted at different revisions agree on the hash of a
+// revision at or above both. A rev below C is ErrCompacted, one above the
+// current revision ErrFutureRev.
+//
+// etcd hashes its database rows in revision order, each a revision key and
+// the marshaled KeyValue. This walks the index in key order instead, and
+// hashes each version's checksum instead of its value, so it reads nothing
+// from disk: the hash tells replicas apart as etcd's does, but its number
+// differs from etcd's for the same data.
+func (s *Store) HashKV(rev int64) (KVHash, error) {
+	c := s.compactRev
+	switch {
+	case rev > 0 && rev < c:
+		return KVHash{}, rpctypes.ErrGRPCCompacted
+	case rev > s.rev:
+		return KVHash{}, rpctypes.ErrGRPCFutureRev
+	case rev == 0:
+		rev = s.rev
+	}
+	// etcd's rule for versions at or below C depends on whether any key
+	// exists at rev, which is known only at the end: both sums are kept.
+	live, dead := newKVHasher(), newKVHasher()
+	anyLive := false
+	pending := s.pendingCompact()
+	s.keys.Ascend(func(k *keyIndex) bool {
+		seen := k.at(rev)
+		if seen >= 0 && k.vers[seen].ver != 0 {
+			anyLive = true
+		}
+		for i := k.dropped(pending); i < len(k.vers); i++ {
+			v := &k.vers[i]
+			if v.mod.main > rev || (v.mod.main == c && v.ver == 0) {
+				continue
+			}
+			if v.mod.main > c || (i == seen && v.ver != 0) {
+				live.add(k.key, v)
+			}
+			dead.add(k.key, v)
+		}
+		return true
+	})
+	h := dead
+	if anyLive {
+		h = live
+	}
+	return KVHash{Hash: h.sum, CompactRevision: c, Revision: rev}, nil
+}
+
+// pendingCompact is the compaction a checkpoint copy holds back, whose
+// versions are gone for every reader but the copy, or 0.
+func (s *Store) pendingCompact() int64 {
+	if s.frozen != nil {
+		return s.frozen.compact
+	}
+	return 0
+}
+
+// HashAll hashes every version in the index, as HashKV does, without its
+// rules for compacted versions.
+func (s *Store) HashAll() uint32 {
+	h := newKVHasher()
+	pending := s.pendingCompact()
+	s.keys.Ascend(func(k *keyIndex) bool {
+		for i := k.dropped(pending); i < len(k.vers); i++ {
+			h.add(k.key, &k.vers[i])
+		}
+		return true
+	})
+	return h.sum
+}
+
+// kvHasher sums versions: per version, etcd's revision key (main and sub
+// revision, and a tombstone mark), then the key and the version's fields,
+// and the length and checksum of its value.
+type kvHasher struct {
+	sum uint32
+	buf []byte
+}
+
+func newKVHasher() *kvHasher {
+	// etcd starts with the name of its key bucket.
+	return &kvHasher{sum: crc32.Update(0, castagnoli, []byte("key"))}
+}
+
+func (h *kvHasher) add(key []byte, v *version) {
+	b := binary.BigEndian.AppendUint64(h.buf[:0], uint64(v.mod.main))
+	b = append(b, '_')
+	b = binary.BigEndian.AppendUint64(b, uint64(v.mod.sub))
+	if v.ver == 0 {
+		b = append(b, 't')
+	}
+	b = binary.AppendUvarint(b, uint64(len(key)))
+	b = append(b, key...)
+	b = binary.AppendVarint(b, v.create)
+	b = binary.AppendVarint(b, v.ver)
+	b = binary.AppendVarint(b, v.lease)
+	b = binary.BigEndian.AppendUint32(b, v.value.Len)
+	b = binary.BigEndian.AppendUint32(b, v.value.Sum)
+	h.sum = crc32.Update(h.sum, castagnoli, b)
+	h.buf = b
+}

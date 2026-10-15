@@ -668,6 +668,10 @@ func (n *Node) submit(r Request, p *pending) {
 		n.queueWrite(p)
 	case *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest:
 		n.reads = append(n.reads, p)
+	case *pb.HashKVRequest, *pb.HashRequest:
+		// etcd answers both from its local store, without Raft.
+		n.serveRead(p)
+		return
 	case *pb.LeaseGrantRequest:
 		if op.ID == 0 {
 			// The node that takes the request picks the ID, so every
@@ -715,7 +719,7 @@ func check(op proto.Message, c Caller) error {
 		r.LeaseGrant = op
 	case *pb.LeaseRevokeRequest:
 		r.LeaseRevoke = op
-	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest:
+	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest:
 		return nil
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
@@ -1189,6 +1193,17 @@ func (n *Node) serveRead(p *pending) {
 		resp = r
 	case *pb.LeaseLeasesRequest:
 		r := n.state.leaseIDs()
+		n.fillHeader(r.Header)
+		resp = r
+	case *pb.HashKVRequest:
+		var h mvcc.KVHash
+		if h, err = n.kv.HashKV(op.Revision); err == nil {
+			r := &pb.HashKVResponse{Header: header(n.kv.Rev()), Hash: h.Hash, CompactRevision: h.CompactRevision, HashRevision: h.Revision}
+			n.fillHeader(r.Header)
+			resp = r
+		}
+	case *pb.HashRequest:
+		r := &pb.HashResponse{Header: header(n.kv.Rev()), Hash: n.state.Hash32()}
 		n.fillHeader(r.Header)
 		resp = r
 	}

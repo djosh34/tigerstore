@@ -1323,6 +1323,150 @@
       "message": "etcdserver: mvcc: required revision has been compacted"
     }
   ],
+  "hashes": [
+    {
+      "do": "put a",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put b",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a again",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "delete b",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "hashkv at 4",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": 0
+      }
+    },
+    {
+      "do": "hashkv at 4 again",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": 0,
+        "same": true
+      }
+    },
+    {
+      "do": "hashkv at revision 0",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": 0,
+        "same": true
+      }
+    },
+    {
+      "do": "put c",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 4 after a put",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 4,
+        "compactRevision": 0,
+        "same": true
+      }
+    },
+    {
+      "do": "hashkv at revision 0 after a put",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": 0
+      }
+    },
+    {
+      "do": "hashkv at a future revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "compact at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 3 after compacting at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "hashkv at 4 after compacting at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 4,
+        "compactRevision": 4
+      }
+    },
+    {
+      "do": "hashkv at 5 after compacting at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": 4
+      }
+    },
+    {
+      "do": "compact at 5",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 5 after compacting at 5",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": 5
+      }
+    },
+    {
+      "do": "hash",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    }
+  ],
   "kubernetes-shapes": [
     {
       "do": "create a: mod(a) = 0",
