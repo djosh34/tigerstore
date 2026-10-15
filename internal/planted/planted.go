@@ -38,4 +38,5 @@ var Bugs = map[string]string{
 	"B23":  "a snapshot install stops one entry short of Raft's snapshot",
 	"B24":  "the index names a value one byte after where it is in its Raft entry",
 	"B25":  "value reads skip the checksum",
+	"B26":  "a follower stops when it cannot fetch its snapshot, instead of starting again from its log",
 }

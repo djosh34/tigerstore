@@ -104,6 +104,7 @@ var plantedCases = map[string]plantedCase{
 var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
+	"B26": "internal/node",
 }
 
 // TestPlantedInventory requires a case for every planted bug.

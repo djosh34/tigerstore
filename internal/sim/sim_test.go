@@ -254,6 +254,7 @@ func TestEachFaultTakesEffect(t *testing.T) {
 		{"crash in recovery", Faults{CrashEvery: 2 * Second, MaxDown: Second, RecoveryCrash: true}, func(st Stats) int { return st.RecoveryCrashes }},
 		{"follower held down", Faults{HoldDown: true}, func(st Stats) int { return st.Snapshots }},
 		{"damaged snapshot", Faults{HoldDown: true, FlipSnapshot: true}, func(st Stats) int { return st.SnapshotFlips }},
+		{"crash during a fetch", Faults{HoldDown: true, FetchCrash: true}, func(st Stats) int { return min(st.FetchCrashes, st.InstallFailures) }},
 		{"crash at a checkpoint step", Faults{StepCrash: true}, func(st Stats) int { return st.StepCrashes }},
 		{"rotten value", Faults{Rot: true}, func(st Stats) int { return st.Rots }},
 	}
@@ -269,6 +270,30 @@ func TestEachFaultTakesEffect(t *testing.T) {
 				t.Fatalf("the fault never took effect: %+v", res.Stats)
 			}
 		})
+	}
+}
+
+// TestSlowFetch holds a follower down until it needs a snapshot, and
+// starts half its fetches up to 2 s late. Meanwhile the leader may make a
+// newer checkpoint durable while it still keeps the one the snapshot
+// named, which it must then serve, or give up on the snapshot and remove
+// that checkpoint, after which the follower starts again from its log and
+// gets another snapshot. Across the seeds each must happen, and every run
+// must pass the checkers.
+func TestSlowFetch(t *testing.T) {
+	older, failed := 0, 0
+	for seed := uint64(1); seed <= 60 && (older == 0 || failed == 0); seed++ {
+		cfg := DefaultConfig(5000 + seed)
+		cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
+		cfg.Duration = 10 * Second
+		cfg.Heal = 8 * Second
+		res := run(t, cfg)
+		checkers(t, res)
+		older += res.Stats.OlderCheckpoints
+		failed += res.Stats.ServeFailures
+	}
+	if older == 0 || failed == 0 {
+		t.Fatalf("%d snapshots served from an older checkpoint, %d fetches the leader could not serve; each must happen", older, failed)
 	}
 }
 
