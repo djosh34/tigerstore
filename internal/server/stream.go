@@ -193,14 +193,25 @@ func (st *stream) Recv(m proto.Message) error {
 	}
 }
 
-// recvRequest takes the request of a server-streaming call.
+// recvRequest takes the request of a server-streaming call. As grpc-go
+// does, it then waits for the client to end its side, and answers a call
+// with no request or with more than one with grpc-go's errors.
 func recvRequest(st *stream, m proto.Message) error {
 	err := st.Recv(m)
 	if errors.Is(err, io.EOF) {
-		// grpc-go's answer to a server-streaming call without a request.
 		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	err = st.Recv(m.ProtoReflect().New().Interface())
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return status.Error(codes.Internal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
 }
 
 // Send queues one response message of a streaming call. It waits while

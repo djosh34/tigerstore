@@ -567,6 +567,9 @@ func health(r *run) {
 	r.healthList("list")
 	r.healthWatch("watch the server", "")
 	r.healthWatch("watch a service", "etcdserverpb.KV")
+	r.healthWatchRaw("watch with no request", 0, true)
+	r.healthWatchRaw("watch with two requests", 2, true)
+	r.healthWatchRaw("watch before the client ends its side", 1, false)
 	r.invoke("call an unknown health method", "/grpc.health.v1.Health/Nothing")
 	for _, path := range []string{
 		"/readyz",

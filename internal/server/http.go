@@ -21,8 +21,9 @@ import (
 // They are served over HTTP/2 and, for probes that do not offer h2 in
 // TLS, over HTTP/1.1.
 
-// healthTimeout bounds the read that /health makes: etcd's request
-// timeout, 5 s plus two election timeouts of 1 s.
+// healthTimeout bounds the read of /health, /readyz and /livez: etcd's
+// request timeout, 5 s plus two election timeouts of 1 s, after which
+// etcd's read-index wait fails with ErrTimeout.
 const healthTimeout = 7 * time.Second
 
 // http1Idle closes an HTTP/1.1 connection that sends no request.

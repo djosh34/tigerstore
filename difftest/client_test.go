@@ -571,11 +571,20 @@ func (r *run) healthList(do string) {
 	r.record(do, res, err)
 }
 
+// watchCtx is the context of a health Watch that the client cancels after
+// a second. It has no deadline, which the server would see and race to
+// end the call on.
+func (r *run) watchCtx() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(r.ctx)
+	timer := time.AfterFunc(time.Second, cancel)
+	return ctx, func() { timer.Stop(); cancel() }
+}
+
 // healthWatch records the first status a health Watch sends and whether
 // the stream then stays open for the rest of a second.
 func (r *run) healthWatch(do, service string) {
 	r.t.Helper()
-	ctx, cancel := context.WithTimeout(r.ctx, time.Second)
+	ctx, cancel := r.watchCtx()
 	defer cancel()
 	w, err := r.c.health.Watch(ctx, &healthpb.HealthCheckRequest{Service: service})
 	if err != nil {
@@ -592,10 +601,46 @@ func (r *run) healthWatch(do, service string) {
 	}{first.Status.String(), "open"}
 	if next, err := w.Recv(); err == nil {
 		res.Then = "status " + next.Status.String()
-	} else if status.Code(err) != codes.DeadlineExceeded {
+	} else if ctx.Err() == nil {
 		res.Then = err.Error()
 	}
 	r.record(do, res, nil)
+}
+
+// healthWatchRaw records what a health Watch first answers when the client
+// sends n requests for the server, then ends its side if closeSend is set.
+// "nothing" means no answer came within a second.
+func (r *run) healthWatchRaw(do string, n int, closeSend bool) {
+	r.t.Helper()
+	ctx, cancel := r.watchCtx()
+	defer cancel()
+	w, err := r.c.conn.NewStream(ctx, &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/grpc.health.v1.Health/Watch")
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	for range n {
+		if err := w.SendMsg(&healthpb.HealthCheckRequest{}); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	if closeSend {
+		if err := w.CloseSend(); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	var first healthpb.HealthCheckResponse
+	err = w.RecvMsg(&first)
+	if err != nil && ctx.Err() != nil {
+		r.record(do, "nothing", nil)
+		return
+	}
+	var res any
+	if err == nil {
+		res = struct {
+			Status string `json:"status"`
+		}{first.Status.String()}
+	}
+	r.record(do, res, err)
 }
 
 // invoke records a unary call to a method by its path, with an empty

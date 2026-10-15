@@ -1362,6 +1362,21 @@
       }
     },
     {
+      "do": "watch with no request",
+      "code": "Internal",
+      "message": "cardinality violation: received no request message from non-client-streaming RPC"
+    },
+    {
+      "do": "watch with two requests",
+      "code": "Internal",
+      "message": "cardinality violation: received multiple request messages for non-client-streaming RPC"
+    },
+    {
+      "do": "watch before the client ends its side",
+      "code": "OK",
+      "result": "nothing"
+    },
+    {
       "do": "call an unknown health method",
       "code": "Unimplemented",
       "message": "unknown method Nothing for service grpc.health.v1.Health"

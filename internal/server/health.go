@@ -145,9 +145,10 @@ func serializableRead(s *Server, ctx context.Context) error { return s.healthRea
 
 func linearizableRead(s *Server, ctx context.Context) error { return s.healthRead(ctx, false) }
 
-// healthRead makes the one-key keys-only read of etcd's health checks,
-// bounded by etcd's request timeout. Its error carries the error text
-// etcd reports, without gRPC's wrapper.
+// healthRead makes the one-key keys-only read of etcd's health checks.
+// It fails after etcd's request timeout, as etcd's read-index wait does
+// with ErrTimeout. Its error carries the error text etcd reports, without
+// gRPC's wrapper.
 func (s *Server) healthRead(ctx context.Context, serializable bool) error {
 	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
 	defer cancel()
