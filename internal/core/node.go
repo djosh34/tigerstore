@@ -355,6 +355,8 @@ type Node struct {
 
 	// logBytes estimates the size of the durable log.
 	logBytes int64
+	// noSpace refuses new data: the node's disk is past its budget.
+	noSpace bool
 
 	// log reads what left memory.
 	log Log
@@ -611,6 +613,21 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
 	}
+	if n.noSpace && m.GetType() == raftpb.MsgProp {
+		// Writes a follower forwards. Past its budget, the leader refuses
+		// those that take space, as it refuses its own clients': each
+		// applies as a record that answers its client with NOSPACE.
+		for _, e := range m.GetEntries() {
+			if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
+				continue
+			}
+			data, err := refuseSpace(e.GetData())
+			if err != nil {
+				return err
+			}
+			e.Data = data
+		}
+	}
 	return n.rn.Step(m)
 }
 
@@ -647,6 +664,10 @@ func (n *Node) SubmitAll(rs []Request) {
 func (n *Node) submit(r Request, p *pending) {
 	if n.err != nil {
 		n.reply(r.ID, rpctypes.ErrGRPCStopped)
+		return
+	}
+	if n.noSpace && TakesSpace(r) {
+		n.reply(r.ID, rpctypes.ErrGRPCNoSpace)
 		return
 	}
 	if r.Op == nil {
@@ -696,6 +717,24 @@ func (n *Node) submit(r Request, p *pending) {
 		n.queueWrite(p)
 	}
 	n.timeouts = append(n.timeouts, p)
+}
+
+// SetNoSpace tells the node whether its disk is past its budget. While it
+// is, the node answers requests that write new data with etcd's NOSPACE
+// error, as etcd does past its quota.
+func (n *Node) SetNoSpace(full bool) { n.noSpace = full }
+
+// TakesSpace reports whether etcd v3.7.2 refuses a request while its
+// NOSPACE alarm is active: a put, a lease grant and a transaction that is
+// not read-only. A delete range and a compaction go through.
+func TakesSpace(r Request) bool {
+	switch op := r.Op.(type) {
+	case nil, *pb.PutRequest, *pb.LeaseGrantRequest:
+		return true
+	case *pb.TxnRequest:
+		return !mvcc.IsTxnReadOnly(op)
+	}
+	return false
 }
 
 // sizeRequestID stands in for etcd's request ID when sizing a write. etcd
@@ -867,6 +906,19 @@ func writeSize(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
+	if n.noSpace {
+		// Writes taken before the disk passed its budget get NOSPACE
+		// too, unless they were proposed: only those still add to the
+		// files, and UnappliedBytes bounds them.
+		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool {
+			if !TakesSpace(p.req) {
+				return false
+			}
+			n.propBytes -= writeSize(p)
+			n.finish(p, rpctypes.ErrGRPCNoSpace)
+			return true
+		})
+	}
 	// Raft's own leader, not the one the last Ready reported: a Tick or a
 	// Step since then may have ended it, and Propose would drop the entry.
 	if n.rn.BasicStatus().Lead == raft.None {
@@ -1279,8 +1331,14 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 			p = n.waiting[id]
 		}
 		n.values.reset()
-		if kind == kindPut {
+		switch kind {
+		case kindPut:
 			return n.applyPut(b, at, p)
+		case kindNoSpace:
+			if p != nil {
+				n.finish(p, rpctypes.ErrGRPCNoSpace)
+			}
+			return nil
 		}
 		op, err := newOp(kind)
 		if err != nil {

@@ -292,12 +292,8 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	if err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)
 	}
-	rest, err := io.ReadAll(r)
-	if err != nil {
+	if err := tr.check(r); err != nil {
 		return nil, lastCkpt{}, err
-	}
-	if len(rest) != 4 || len(tr.tail) != 4 || binary.LittleEndian.Uint32(tr.tail) != tr.crc {
-		return nil, lastCkpt{}, fmt.Errorf("%w: checksum", errBadCheckpoint)
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {
@@ -305,6 +301,27 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		}
 	})
 	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef, base: h.base}, nil
+}
+
+// WalkCheckpoint calls fn for the value of every version that the
+// checkpoint at index names, read from f, the start of its file, then
+// checks the file's trailer. The node's cleaner keeps the values it names.
+func WalkCheckpoint(f io.Reader, index uint64, fn func(mvcc.Ref) error) error {
+	tr := &trailerReader{r: f}
+	r := bufio.NewReaderSize(tr, 64<<10)
+	h, err := readHeader(r)
+	if err == nil && h.index != index {
+		err = fmt.Errorf("%w: the file of the checkpoint at %d holds the one at %d", errBadCheckpoint, index, h.index)
+	}
+	if err == nil {
+		if err = mvcc.WalkRefs(r, fn); errors.Is(err, mvcc.ErrBadCheckpoint) {
+			err = fmt.Errorf("%w: %w", errBadCheckpoint, err)
+		}
+	}
+	if err == nil {
+		err = tr.check(r)
+	}
+	return err
 }
 
 // trailerReader computes the CRC-32C of everything it reads but the last
@@ -320,6 +337,19 @@ func (t *trailerReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
 	t.add(p[:n])
 	return n, err
+}
+
+// check reads the rest of r, which reads from t, and checks that it is
+// the trailer and matches.
+func (t *trailerReader) check(r io.Reader) error {
+	rest, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 4 || len(t.tail) != 4 || binary.LittleEndian.Uint32(t.tail) != t.crc {
+		return fmt.Errorf("%w: checksum", errBadCheckpoint)
+	}
+	return nil
 }
 
 // add takes the next bytes of the file.

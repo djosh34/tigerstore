@@ -36,6 +36,7 @@ type flags struct {
 	peerCertFile, peerKeyFile, peerCAFile     string
 	peerAllowedCNs, peerAllowedHostnames      []string
 	progressInterval                          time.Duration
+	diskBudget                                int64
 	memoryBudget                              int64
 }
 
@@ -100,6 +101,7 @@ func parse(args []string) (*flags, error) {
 		return nil
 	})
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
+	fs.Int64Var(&f.diskBudget, "disk-budget-bytes", 0, "bytes of the log's files at which writes get NOSPACE; cleaning keeps them below. Leave room above it for 64 MiB of writes in flight, a 64 MiB pack and a checkpoint; below two segments (128 MiB) plus the checkpoints and live values, writes stay at NOSPACE (0 means no budget)")
 	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -254,7 +256,7 @@ func run(args []string, logger *log.Logger) error {
 	debug.SetMemoryLimit(budget)
 	ccfg.MemoryBytes = node.CacheMemory(budget)
 	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
+	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, Logf: logger.Printf})
 	if err != nil {
 		return err
 	}
