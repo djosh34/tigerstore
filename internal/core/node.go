@@ -419,7 +419,9 @@ type Node struct {
 	// confs are member changes that wait for a leader; lastMemberID is
 	// the last member ID this node handed out, and publishedAt the tick
 	// it last proposed its attributes.
-	confs        []*pending
+	confs []*pending
+	// transfers are the MoveLeader requests under way.
+	transfers    []*pending
 	lastMemberID uint64
 	publishedAt  int64
 	propBytes    int
@@ -875,6 +877,9 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reads = append(n.reads, p)
 	case *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
 		n.submitMember(p)
+	case *pb.MoveLeaderRequest:
+		n.moveLeader(p, op)
+		return
 	case *pb.AlarmRequest:
 		// etcd passes every alarm request through Raft; a list is a
 		// linearizable read here, which answers the same.
@@ -959,7 +964,7 @@ func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
 		r.Header = &pb.RequestHeader{ID: sizeRequestID}
 	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest,
 		*pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest,
-		*pb.AuthenticateRequest, *pb.StatusRequest:
+		*pb.AuthenticateRequest, *pb.StatusRequest, *pb.MoveLeaderRequest:
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("core: unknown request type %T", op)
@@ -1056,6 +1061,10 @@ func (n *Node) expire() {
 			dropped = true
 			n.propBytes -= writeSize(p)
 			n.finish(p, errNotProposed)
+			continue
+		}
+		if _, ok := p.req.Op.(*pb.MoveLeaderRequest); ok {
+			n.finish(p, ErrTimeoutLeaderTransfer)
 			continue
 		}
 		n.finish(p, rpctypes.ErrGRPCTimeout)
@@ -1315,7 +1324,7 @@ func (n *Node) stop() {
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
-	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs = nil, nil, nil, nil, nil, nil
+	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
@@ -1337,6 +1346,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.leaderChanges++
 		}
 		n.leader = rd.Lead
+		n.checkTransfers()
 	}
 	if rd.HardState != nil {
 		n.term = rd.GetTerm()

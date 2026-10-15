@@ -617,7 +617,7 @@ func (n *Node) authorize(op proto.Message, ai authInfo, ok bool) error {
 		who = &ai
 	}
 	switch op := op.(type) {
-	case *pb.CompactionRequest, *pb.HashRequest, *pb.HashKVRequest,
+	case *pb.CompactionRequest, *pb.HashRequest, *pb.HashKVRequest, *pb.MoveLeaderRequest, *pb.DefragmentRequest,
 		*pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
 		return a.admin(who)
 	case *pb.AlarmRequest:

@@ -25,7 +25,7 @@ import (
 // which is off by default.
 const healthService = "grpc.health.v1.Health"
 
-func healthCheck(_ context.Context, _ *Server, _ core.Caller, b []byte) (proto.Message, error) {
+func healthCheck(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	var r healthpb.HealthCheckRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
@@ -33,35 +33,49 @@ func healthCheck(_ context.Context, _ *Server, _ core.Caller, b []byte) (proto.M
 	if r.Service != "" {
 		return nil, status.Error(codes.NotFound, "unknown service")
 	}
-	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	st, _ := s.serving.status()
+	return &healthpb.HealthCheckResponse{Status: st}, nil
 }
 
-func healthList(_ context.Context, _ *Server, _ core.Caller, b []byte) (proto.Message, error) {
+func healthList(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &healthpb.HealthListRequest{}); err != nil {
 		return nil, err
 	}
+	st, _ := s.serving.status()
 	return &healthpb.HealthListResponse{Statuses: map[string]*healthpb.HealthCheckResponse{
-		"": {Status: healthpb.HealthCheckResponse_SERVING},
+		"": {Status: st},
 	}}, nil
 }
 
-// healthWatch sends the service's status once, SERVICE_UNKNOWN for one
-// without a status, and then keeps the stream open until the client goes,
-// since the status never changes.
+// healthWatch sends the service's status, SERVICE_UNKNOWN for one without
+// a status, and then each change of it until the client goes.
 func (s *Server) healthWatch(st *stream) error {
 	var r healthpb.HealthCheckRequest
 	if err := st.RecvOne(&r); err != nil {
 		return err
 	}
-	resp := &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVICE_UNKNOWN}
-	if r.Service == "" {
-		resp.Status = healthpb.HealthCheckResponse_SERVING
+	if r.Service != "" {
+		if err := st.Send(&healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVICE_UNKNOWN}); err != nil {
+			return err
+		}
+		<-st.ctx.Done()
+		return status.Error(codes.Canceled, "Stream has ended.")
 	}
-	if err := st.Send(resp); err != nil {
-		return err
+	last := healthpb.HealthCheckResponse_SERVICE_UNKNOWN
+	for {
+		cur, changed := s.serving.status()
+		if cur != last {
+			if err := st.Send(&healthpb.HealthCheckResponse{Status: cur}); err != nil {
+				return err
+			}
+			last = cur
+		}
+		select {
+		case <-changed:
+		case <-st.ctx.Done():
+			return status.Error(codes.Canceled, "Stream has ended.")
+		}
 	}
-	<-st.ctx.Done()
-	return status.Error(codes.Canceled, "Stream has ended.")
 }
 
 // /readyz and /livez run named checks, as etcd v3.7.2's CheckRegistry

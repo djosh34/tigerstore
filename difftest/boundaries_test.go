@@ -45,6 +45,7 @@ var cases = []testCase{
 	{"alarms", alarms},
 	{"snapshot", snapshot},
 	{"members", members},
+	{"defragment", defragment},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After

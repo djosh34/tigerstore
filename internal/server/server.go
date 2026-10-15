@@ -29,6 +29,8 @@ type Config struct {
 	// JWT, if set, makes and checks the auth tokens instead of the
 	// node's simple tokens (--auth-token, ParseAuthToken).
 	JWT *JWT
+	// StopServiceOnDefrag is etcd's StopGRPCServiceOnDefrag feature.
+	StopServiceOnDefrag bool
 	// PeerVersions, if set, reports the peer transport's protocol
 	// versions for /metrics.
 	PeerVersions func() peer.Versions
@@ -48,6 +50,8 @@ type Server struct {
 	gone *metrics
 	// cluster and member go in every response header.
 	cluster, member uint64
+	// serving is the gRPC health service's status.
+	serving *healthState
 
 	// ctx ends at Stop; it bounds TLS handshakes in progress.
 	ctx    context.Context
@@ -76,7 +80,7 @@ func New(n *node.Node, cfg Config) *Server {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}}
+	return &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
 }
 
 // Serve accepts clients on ln until Stop.

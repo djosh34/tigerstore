@@ -310,6 +310,7 @@ type Node struct {
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
+	defragQ   chan chan error
 	readQ     chan *core.ValueRead
 	readDone  chan readDone
 	nextID    atomic.Uint64
@@ -503,6 +504,7 @@ func (n *Node) open() error {
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
+	n.defragQ = make(chan chan error)
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
@@ -672,9 +674,7 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
-	if n.cfg.DiskBudget > 0 {
-		wg.Go(func() { n.clean(ctx) })
-	}
+	wg.Go(func() { n.clean(ctx) })
 	for range readers {
 		wg.Go(func() { n.readValues(ctx) })
 	}

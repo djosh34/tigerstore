@@ -973,6 +973,39 @@
       }
     }
   ],
+  "defragment": [
+    {
+      "do": "put before",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "defragment",
+      "code": "OK",
+      "result": {
+        "header": false
+      }
+    },
+    {
+      "do": "get after",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    }
+  ],
   "election": [
     {
       "do": "grant a",

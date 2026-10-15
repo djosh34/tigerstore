@@ -319,7 +319,10 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost), JWT: f.jwt})
+	g := server.New(n, server.Config{
+		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost), JWT: f.jwt,
+		StopServiceOnDefrag: f.features["StopGRPCServiceOnDefrag"],
+	})
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())

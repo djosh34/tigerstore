@@ -190,3 +190,18 @@ func snapshot(r *run) {
 	}
 	r.record("snapshot", res, err)
 }
+
+// defragment records Defragment's answer and whether it has a header,
+// and that the data reads back after it.
+func defragment(r *run) {
+	r.put("put before", &pb.PutRequest{Key: r.key("a"), Value: []byte("1")})
+	resp, err := r.c.maint.Defragment(r.ctx, &pb.DefragmentRequest{})
+	var res any
+	if err == nil {
+		res = struct {
+			Header bool `json:"header"`
+		}{resp.Header != nil}
+	}
+	r.record("defragment", res, err)
+	r.get("get after", &pb.RangeRequest{Key: r.key("a")})
+}
