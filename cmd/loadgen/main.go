@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -423,7 +425,11 @@ func runPhase(workers []*worker, loads []load, p phase) error {
 	errs := make([]error, len(workers))
 	var wg sync.WaitGroup
 	for i, wk := range workers {
-		wg.Go(func() { errs[i] = wk.run(loads[i], p) })
+		wg.Go(func() {
+			pprof.Do(context.Background(), pprof.Labels("g", fmt.Sprintf("write%02d", i)), func(context.Context) {
+				errs[i] = wk.run(loads[i], p)
+			})
+		})
 	}
 	wg.Wait()
 	return errors.Join(errs...)

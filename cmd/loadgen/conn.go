@@ -2,14 +2,17 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"net"
+	"runtime/pprof"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -26,6 +29,9 @@ const (
 )
 
 var epoch = time.Now()
+
+// dials numbers connections in dial order, for profile labels.
+var dials atomic.Int64
 
 // now is the monotonic time in nanoseconds since the process started.
 func now() int64 { return int64(time.Since(epoch)) }
@@ -277,6 +283,8 @@ func (c *conn) flush() error {
 
 func (c *conn) readLoop() {
 	defer close(c.gone)
+	// Temporary, issue #188: label each reader for CPU per goroutine.
+	pprof.SetGoroutineLabels(pprof.WithLabels(context.Background(), pprof.Labels("g", fmt.Sprintf("read%02d", dials.Add(1)-1))))
 	err := c.read()
 	at := now()
 	c.mu.Lock()
