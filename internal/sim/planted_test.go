@@ -79,7 +79,7 @@ var plantedCases = map[string]plantedCase{
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},
 	"B11":  {seeds: 64, cfg: DefaultConfig, want: lostAppend + `|` + refused},
-	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused},
+	"B12":  {seeds: 256, cfg: DefaultConfig, want: lostAppend + `|` + refused + `|` + badValue},
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader`, extra: func(r *Result) error {
@@ -104,6 +104,7 @@ var plantedCases = map[string]plantedCase{
 var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
+	"B26": "internal/node",
 }
 
 // TestPlantedInventory requires a case for every planted bug.

@@ -167,7 +167,7 @@ func hashBytes(b []byte) uint64 {
 
 // removed carries out a synced root's removals.
 func (s *Sim) removed(n *node, j core.PersistJob) bool {
-	n.root = j.Root.Index
+	n.root, n.roots = j.Root.Index, append(n.roots, *j.Root)
 	if j.RemoveBelow == 0 {
 		return true
 	}
@@ -185,6 +185,7 @@ func (s *Sim) removed(n *node, j core.PersistJob) bool {
 		s.diskFailed(n, err)
 		return false
 	}
+	n.roots = []wal.Root{*j.Root}
 	return true
 }
 
@@ -210,8 +211,9 @@ func (s *Sim) firstReplaced(n *node, in *core.Install) uint64 {
 var errFetch = errors.New("sim: the snapshot's source cannot be reached")
 
 // install fetches a snapshot for n from the node that sent it, as a
-// separate connection, and writes it to n's log. The first stream of a
-// run, and one in four after it, arrives damaged.
+// separate connection, and writes it to n's log. The source of the first
+// stream of a run crashes partway through it, and the first stream that
+// arrives whole, and one in four after it, arrives damaged.
 func (s *Sim) install(n *node, in *core.Install) error {
 	if in.From == 0 || in.From > uint64(len(s.nodes)) {
 		return errFetch
@@ -222,14 +224,20 @@ func (s *Sim) install(n *node, in *core.Install) error {
 	}
 	src.core.SnapshotStarted(n.id)
 	var buf bytes.Buffer
-	err := core.ServeSnapshot(src.log, src.core.DurableCheckpoint(), in.Applied+1, in.Index, &buf)
+	err := core.ServeSnapshot(src.log, src.roots, in.Applied+1, in.Index, &buf)
 	s.push(&event{at: s.now + s.clientLatency(), kind: evSnapshotSent, node: src.idx, gen: src.gen, from: n.idx, err: err})
 	if err != nil {
+		s.stats.ServeFailures++
 		return err
 	}
 	data := buf.Bytes()
 	s.stats.Snapshots++
-	if s.cfg.Faults.FlipSnapshot && !s.healed && len(data) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
+	newest := src.root
+	if s.cfg.Faults.FetchCrash && !s.healed && s.stats.FetchCrashes == 0 {
+		s.stats.FetchCrashes++
+		data = data[:s.rng.IntN(len(data))]
+		s.stopNode(src)
+	} else if s.cfg.Faults.FlipSnapshot && !s.healed && len(data) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
 		data[s.rng.IntN(len(data))] ^= byte(1 + s.rng.IntN(255))
 		s.stats.SnapshotFlips++
 	}
@@ -237,6 +245,9 @@ func (s *Sim) install(n *node, in *core.Install) error {
 	err = core.ReceiveSnapshot(bytes.NewReader(data), &simSink{s: s, n: n}, n.log, []uint64{1, 2, 3}, in)
 	if err == nil && in.Checkpoint.Index > 0 {
 		s.stats.CheckpointSnapshots++
+		if in.Checkpoint.Index < newest {
+			s.stats.OlderCheckpoints++
+		}
 	}
 	return err
 }
@@ -317,9 +328,10 @@ func (s *Sim) stepCrash(n *node) bool {
 	return true
 }
 
-// installFailed handles a snapshot that could not be installed: the node
-// stops and restarts from its disk, as the real node does, and gets
-// another snapshot.
+// installFailed handles a snapshot that could not be fetched or did not
+// check out, as the real node does: it syncs what the stream wrote and
+// at once starts a new core from its disk, and Raft sends another
+// snapshot.
 func (s *Sim) installFailed(n *node, err error) {
 	switch {
 	case errors.Is(err, errStepCrash):
@@ -330,7 +342,14 @@ func (s *Sim) installFailed(n *node, err error) {
 	}
 	s.stats.InstallFailures++
 	s.mix(0x5f, uint64(n.idx), uint64(len(err.Error())))
-	s.stopNode(n)
+	if err := n.log.Sync(); err != nil {
+		s.diskFailed(n, err)
+		return
+	}
+	s.down(n)
+	if err := s.start(n); err != nil {
+		s.fail("%w", err)
+	}
 }
 
 // newestSegment is the name of the newest WAL segment on a disk.

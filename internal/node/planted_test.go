@@ -12,20 +12,31 @@ import (
 
 var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
 
-// TestPlanted catches B13 with the slow watcher's own test, which must
-// fail with the bug on. Other bugs belong to other packages.
+// TestPlanted catches B13 with the slow watcher's own test and B26 with
+// the fetch test, each of which must fail with its bug on. Other bugs
+// belong to other packages.
 func TestPlanted(t *testing.T) {
-	if *plantedBug != "B13" {
+	cases := map[string]struct {
+		run func(*testing.T) error
+		// caught is how the scenario fails when it catches the bug.
+		caught error
+	}{
+		"B13": {slowWatcherIsCut, errSlowWatcher},
+		"B26": {followerRetriesFetch, errFollowerStopped},
+	}
+	c, ok := cases[*plantedBug]
+	if !ok {
 		t.Skip("not a bug of this package")
 	}
-	planted.Active = "B13"
+	bug := *plantedBug
+	planted.Active = bug
 	t.Cleanup(func() { planted.Active = "" })
-	err := slowWatcherIsCut(t)
+	err := c.run(t)
 	if err == nil {
-		t.Fatal("B13 (the node driver waits for a slow watch stream) was not caught")
+		t.Fatalf("%s (%s) was not caught", bug, planted.Bugs[bug])
 	}
-	if !errors.Is(err, errSlowWatcher) {
-		t.Fatalf("B13: the scenario failed before it could catch anything: %v", err)
+	if !errors.Is(err, c.caught) {
+		t.Fatalf("%s: the scenario failed before it could catch anything: %v", bug, err)
 	}
-	t.Logf("B13 (%s) caught: %v", planted.Bugs["B13"], err)
+	t.Logf("%s (%s) caught: %v", bug, planted.Bugs[bug], err)
 }

@@ -136,6 +136,14 @@ type Faults struct {
 	// FlipSnapshot damages the first snapshot stream, and one in four
 	// after it, on its way.
 	FlipSnapshot bool
+	// FetchCrash crashes the node that serves the first snapshot stream
+	// of a run partway through it.
+	FetchCrash bool
+	// SlowFetch starts half the snapshot fetches during the faults 0.2 to
+	// 2 s late, as a busy disk goroutine would, so that the leader may
+	// first make a newer checkpoint durable, or give up on the snapshot
+	// and remove what it needs.
+	SlowFetch bool
 	// Rot flips a bit of a value on a running node's disk, once per run,
 	// as the run's corruption if it has none yet.
 	Rot bool
@@ -184,6 +192,8 @@ func DefaultConfig(seed uint64) Config {
 			RecoveryCrash:  true,
 			StepCrash:      true,
 			FlipSnapshot:   true,
+			FetchCrash:     true,
+			SlowFetch:      true,
 			Rot:            true,
 			HoldDown:       true,
 		},
@@ -230,6 +240,7 @@ const (
 	evRot
 	evCheckpointSync
 	evSnapshotSent
+	evFetch
 	evRestart
 	evLinks
 	evHeal
@@ -368,11 +379,13 @@ type node struct {
 	// recoverFloor is how far recovery must reach after the last crash.
 	recoverFloor uint64
 	// ckptFile is the checkpoint being written, at ckptIndex; root is the
-	// index of the newest synced root.
+	// index of the newest synced root, and roots are the synced roots
+	// whose checkpoint files are on disk, for the snapshots it serves.
 	ckptFile   wal.File
 	ckptIndex  uint64
 	ckptSyncAt int64
 	root       uint64
+	roots      []wal.Root
 	// rotted is set when the run flipped a bit of a value of entry
 	// rotEntry, in segment rotFile, on the disk of this running node.
 	rotted   bool
@@ -491,11 +504,15 @@ type Stats struct {
 	GrayLeaderStops int
 	// Checkpoints counts checkpoints written, Snapshots snapshot streams
 	// sent, CheckpointSnapshots those that carried a checkpoint because
-	// the entries were gone, SnapshotFlips those damaged on the way,
-	// InstallFailures installs that failed, StepCrashes crashes at a
-	// checkpoint, removal or install step, and Rots values damaged under a
-	// running node.
-	Checkpoints, Snapshots, CheckpointSnapshots, SnapshotFlips, InstallFailures, StepCrashes, Rots int
+	// the entries were gone, OlderCheckpoints those whose checkpoint was
+	// older than the source's newest root, ServeFailures fetches that the
+	// source could not serve because it no longer had what the snapshot
+	// needs, SnapshotFlips those damaged on the way, FetchCrashes sources
+	// that crashed during a stream, SlowFetches fetches that started late,
+	// InstallFailures installs that failed, each followed by a reload,
+	// StepCrashes crashes at a checkpoint, removal or install step, and
+	// Rots values damaged under a running node.
+	Checkpoints, Snapshots, CheckpointSnapshots, OlderCheckpoints, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, InstallFailures, StepCrashes, Rots int
 }
 
 // Result is the outcome of a run.
@@ -774,6 +791,10 @@ func (s *Sim) handle(e *event) {
 			n.core.CloseWatchStream(e.stream)
 			s.process(n)
 		}
+	case evFetch:
+		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
+			s.writeJobs(n, e.jobs)
+		}
 	case evRestart:
 		n := s.nodes[e.node]
 		if !n.up && n.gen == e.gen {
@@ -879,7 +900,10 @@ func (s *Sim) start(n *node) error {
 	}
 	// What recovery returned is now durable, and nothing is in flight.
 	n.durableLast, n.recoverFloor, n.inflight, n.replaceFrom = rec.Last, 0, nil, 0
-	n.root, n.ckptFile = rec.Root.Index, nil
+	n.root, n.roots, n.ckptFile = rec.Root.Index, nil, nil
+	if rec.Root.Index > 0 {
+		n.roots = []wal.Root{rec.Root}
+	}
 	n.gen++
 	n.log, n.core, n.up = w, c, true
 	n.tickEvery = TickTime
@@ -978,11 +1002,23 @@ func rotStop(n *node, err error) bool {
 	return strings.Contains(msg, fmt.Sprintf("the record of entry %d in segment ", n.rotEntry)) && strings.Contains(msg, "does not verify")
 }
 
-// startDisk writes every queued job and schedules the fsync. A crash before
-// the fsync finishes leaves a torn tail.
+// startDisk writes every queued job and schedules the fsync, or, for a
+// slow fetch, does so later.
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	if s.cfg.Faults.SlowFetch && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return j.Install != nil }) && s.rng.IntN(2) == 0 {
+		s.stats.SlowFetches++
+		n.diskBusy = true
+		s.push(&event{at: s.now + 200*Millisecond + s.rng.Int64N(1800*Millisecond), kind: evFetch, node: n.idx, gen: n.gen, jobs: jobs})
+		return
+	}
+	s.writeJobs(n, jobs)
+}
+
+// writeJobs writes jobs and schedules the fsync. A crash before the fsync
+// finishes leaves a torn tail.
+func (s *Sim) writeJobs(n *node, jobs []core.PersistJob) {
 	n.inflight, n.replaceFrom = jobs, 0
 	for _, j := range jobs {
 		if len(j.Entries) > 0 && j.Entries[0].GetIndex() <= n.durableLast && (n.replaceFrom == 0 || j.Entries[0].GetIndex() < n.replaceFrom) {
@@ -1067,7 +1103,7 @@ func (s *Sim) diskDone(e *event) {
 	n.inflight, n.replaceFrom = nil, 0
 	for _, j := range e.jobs {
 		if j.Install != nil && j.Install.Checkpoint.Index > 0 {
-			n.root = j.Install.Checkpoint.Index
+			n.root, n.roots = j.Install.Checkpoint.Index, []wal.Root{j.Install.Checkpoint}
 		}
 		if j.Root != nil && !s.removed(n, j) {
 			return
@@ -1191,13 +1227,20 @@ func (s *Sim) crashRandom() {
 }
 
 func (s *Sim) crash(n *node) {
+	s.stats.Crashes++
+	s.down(n)
+	n.disk.Crash(s.rng)
+}
+
+// down takes n down: its core and log are gone, its links cut, and its
+// clients and watchers lose their connections.
+func (s *Sim) down(n *node) {
 	// The crash may keep part of an unsynced write that replaces entries
 	// reported durable; recovery may then end below them.
 	n.recoverFloor = n.durableLast
 	if n.inflight != nil && n.replaceFrom > 0 {
 		n.recoverFloor = min(n.recoverFloor, n.replaceFrom-1)
 	}
-	s.stats.Crashes++
 	n.up = false
 	if n.pausedUntil > s.now {
 		// A crash ends a pause; the node handles what it held, as a node
@@ -1206,7 +1249,6 @@ func (s *Sim) crash(n *node) {
 		s.push(&event{at: s.now, kind: evResume, node: n.idx})
 	}
 	n.core, n.log = nil, nil
-	n.disk.Crash(s.rng)
 	s.cut(n.idx)
 	for _, op := range n.outstanding {
 		if !op.done {

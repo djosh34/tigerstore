@@ -298,7 +298,7 @@ func TestSnapshotStream(t *testing.T) {
 			t.Fatal(err)
 		}
 		var buf bytes.Buffer
-		if err := ServeSnapshot(src.log, src.n.DurableCheckpoint(), applied+1, last, &buf); err != nil {
+		if err := ServeSnapshot(src.log, []wal.Root{src.n.DurableCheckpoint()}, applied+1, last, &buf); err != nil {
 			t.Fatal(err)
 		}
 		stream := buf.Bytes()
@@ -365,6 +365,68 @@ func (k *keepSink) Root(r wal.Root) error {
 	return nil
 }
 
+// TestServeOlderCheckpoint serves a snapshot that Raft sent at a
+// checkpoint after a newer root became durable, while the older
+// checkpoint's file is still on disk because a fetch held back the
+// removal. The newest checkpoint alone cannot serve it; with both, the
+// stream carries the older one and the follower installs it.
+func TestServeOlderCheckpoint(t *testing.T) {
+	src := startSingleWith(t, simfs.New(), 1, func(cfg *Config) {
+		cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024
+		cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
+	})
+	id := uint64(0)
+	round := func() {
+		for k := range 10 {
+			id++
+			if r := src.do(id, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: fmt.Appendf(nil, "value %d of write %d", k, id)}); r.Err != nil {
+				t.Fatal(r.Err)
+			}
+		}
+		id++
+		if r := src.do(id, &pb.CompactionRequest{Revision: src.n.kv.Rev()}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	for range 30 {
+		round()
+	}
+	older := src.n.DurableCheckpoint()
+	if older.Index == 0 || src.log.Has(1) {
+		t.Fatalf("setup: checkpoint at %d, entry 1 on disk %v", older.Index, src.log.Has(1))
+	}
+	src.hold = true
+	for range 100 {
+		if src.n.DurableCheckpoint() != older {
+			break
+		}
+		round()
+	}
+	newer := src.n.DurableCheckpoint()
+	if newer == older {
+		t.Fatal("setup: no newer checkpoint")
+	}
+	var buf bytes.Buffer
+	if err := ServeSnapshot(src.log, []wal.Root{newer}, 1, older.Index, &buf); !errors.Is(err, errNoSnapshot) {
+		t.Fatalf("served the snapshot at %d from the checkpoint at %d alone: %v", older.Index, newer.Index, err)
+	}
+	buf.Reset()
+	if err := ServeSnapshot(src.log, []wal.Root{older, newer}, 1, older.Index, &buf); err != nil {
+		t.Fatal(err)
+	}
+	w, _, err := wal.Open(simfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := &Install{From: 1, Index: older.Index, Term: older.Term}
+	if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), &walSink{w: w}, w, []uint64{1}, in); err != nil {
+		t.Fatal(err)
+	}
+	if in.Checkpoint != older {
+		t.Fatalf("the stream carried the checkpoint %+v, want %+v", in.Checkpoint, older)
+	}
+}
+
 // TestInstallKeepsHeldEntries installs snapshots on a follower that holds
 // entries past its applied index, as one whose commit index trails does.
 // It may have acknowledged them, so the install must keep them durable:
@@ -408,7 +470,7 @@ func TestInstallKeepsHeldEntries(t *testing.T) {
 	}
 	for _, applied := range []uint64{ckpt.Index, 0} {
 		var buf bytes.Buffer
-		if err := ServeSnapshot(src.log, ckpt, applied+1, last, &buf); err != nil {
+		if err := ServeSnapshot(src.log, []wal.Root{ckpt}, applied+1, last, &buf); err != nil {
 			t.Fatal(err)
 		}
 		disk := follower.Durable()
