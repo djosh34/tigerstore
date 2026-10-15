@@ -707,6 +707,7 @@ func (n *Node) Tick() {
 	n.snapshotProgress()
 	n.expireLeases()
 	n.announceVersion()
+	n.monitorVersion()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
 		n.progressNotify()
 	}
@@ -880,6 +881,9 @@ func (n *Node) submit(r Request, p *pending) {
 	case *pb.MoveLeaderRequest:
 		n.moveLeader(p, op)
 		return
+	case *pb.DowngradeRequest:
+		n.submitDowngrade(p, op)
+		return
 	case *pb.AlarmRequest:
 		// etcd passes every alarm request through Raft; a list is a
 		// linearizable read here, which answers the same.
@@ -964,7 +968,7 @@ func validate(op proto.Message) (*pb.InternalRaftRequest, error) {
 		r.Header = &pb.RequestHeader{ID: sizeRequestID}
 	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest,
 		*pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest,
-		*pb.AuthenticateRequest, *pb.StatusRequest, *pb.MoveLeaderRequest:
+		*pb.AuthenticateRequest, *pb.StatusRequest, *pb.MoveLeaderRequest, *pb.DowngradeRequest:
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("core: unknown request type %T", op)
@@ -1517,6 +1521,8 @@ func (n *Node) serveRead(p *pending) {
 		resp = r
 	case *pb.MemberListRequest:
 		resp = n.memberResponse(op, nil)
+	case *pb.DowngradeRequest:
+		resp, err = n.validateDowngrade(op)
 	}
 	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
 		n.fetch(cold.Need).read = p

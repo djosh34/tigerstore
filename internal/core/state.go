@@ -76,6 +76,11 @@ type State struct {
 	// corrupt say whether a NOSPACE or a CORRUPT alarm is among them.
 	alarms           []*pb.AlarmMember
 	noSpace, corrupt bool
+	// etcdVersion is etcd's cluster version, and downgradeEnabled and
+	// downgradeTarget etcd's downgrade info (downgrade.go).
+	etcdVersion      string
+	downgradeEnabled bool
+	downgradeTarget  string
 }
 
 // Changes are the key changes of the last write Apply ran. The slice is
@@ -88,7 +93,7 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 func NewState(minTTL int64, v mvcc.Values) *State {
 	st := &State{
 		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{},
-		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(),
+		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(), etcdVersion: ClusterVersion,
 	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st

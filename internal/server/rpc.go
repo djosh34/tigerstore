@@ -88,6 +88,7 @@ var methods = map[string]*method{
 	"/etcdserverpb.Maintenance/Snapshot":   {stream: (*Server).snapshot, serverStream: true, learner: learnerAlways},
 	"/etcdserverpb.Maintenance/Defragment": {unary: defragment},
 	"/etcdserverpb.Maintenance/MoveLeader": {unary: nodeCall[pb.MoveLeaderRequest]},
+	"/etcdserverpb.Maintenance/Downgrade":  {unary: nodeCall[pb.DowngradeRequest]},
 	"/v3lockpb.Lock/Lock":                  {unary: lock},
 	"/v3lockpb.Lock/Unlock":                {unary: unlock},
 	"/v3electionpb.Election/Campaign":      {unary: campaign},

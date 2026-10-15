@@ -1006,6 +1006,144 @@
       }
     }
   ],
+  "downgrade": [
+    {
+      "do": "validate ",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate v3.6",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate 3.6.x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate 3.5",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 3.7",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 4.6",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 3.6",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "validate 3.6.0",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "validate 3.6.9",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "cancel without a downgrade",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "unknown action",
+      "code": "Unknown",
+      "message": "etcdserver: unknown method"
+    },
+    {
+      "do": "status before",
+      "code": "OK",
+      "result": {
+        "enabled": false
+      }
+    },
+    {
+      "do": "enable 3.7",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "enable x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "enable 3.6",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "enable 3.6 again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: cluster has a downgrade job in progress"
+    },
+    {
+      "do": "validate 3.6 during the downgrade",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: cluster has a downgrade job in progress"
+    },
+    {
+      "do": "status during the downgrade",
+      "code": "OK",
+      "result": {
+        "enabled": true,
+        "target": "3.6.0"
+      }
+    },
+    {
+      "do": "cancel",
+      "code": "OK",
+      "result": {
+        "header": true
+      }
+    },
+    {
+      "do": "status after the cancel",
+      "code": "OK",
+      "result": {
+        "enabled": false
+      }
+    },
+    {
+      "do": "cancel again",
+      "code": "OK",
+      "result": {
+        "header": true
+      }
+    }
+  ],
   "election": [
     {
       "do": "grant a",

@@ -61,7 +61,7 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnsw
 	case "/health":
 		answer = s.health
 	case "/version":
-		answer = version
+		answer = s.version
 	case "/metrics":
 		answer = s.metricsText
 	default:
@@ -88,8 +88,11 @@ func methodNotAllowed() httpAnswer {
 }
 
 // version answers like etcd: the server, cluster and storage versions.
-func version(context.Context, url.Values) httpAnswer {
-	return httpAnswer{code: http.StatusOK, contentType: appJSON, body: `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + core.ClusterVersion + `","storage":"` + core.StorageVersion + `"}`}
+// The storage version follows the cluster version, which a downgrade
+// lowers.
+func (s *Server) version(context.Context, url.Values) httpAnswer {
+	v := s.n.EtcdVersion()
+	return httpAnswer{code: http.StatusOK, contentType: appJSON, body: `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + v + `","storage":"` + v + `"}`}
 }
 
 // health answers like etcd: without ?serializable=true it needs a leader,

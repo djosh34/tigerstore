@@ -20,9 +20,9 @@ func tinyCheckpoints(cfg *Config) {
 
 // restartFromCheckpoint runs the writes fill makes until a durable
 // checkpoint holds everything the node applied so far and the first
-// segment is gone, then restarts the node from its disk with boot+1. The
+// segment is gone, then restarts the node from its disk with boot 2. The
 // state it had must come back from the checkpoint, not from the log.
-func restartFromCheckpoint(t *testing.T, s *single, disk *simfs.Disk, boot uint64, fill func(i int) proto.Message) *single {
+func restartFromCheckpoint(t *testing.T, s *single, disk *simfs.Disk, fill func(i int) proto.Message) *single {
 	t.Helper()
 	applied := s.n.Applied()
 	for i := 0; s.n.DurableCheckpoint().Index <= applied || slices.Contains(disk.DurableNames(), "0000000000000001.wal"); i++ {
@@ -37,7 +37,7 @@ func restartFromCheckpoint(t *testing.T, s *single, disk *simfs.Disk, boot uint6
 	if err := s.log.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = startSingleWith(t, disk, boot+1, tinyCheckpoints)
+	s = startSingleWith(t, disk, 2, tinyCheckpoints)
 	if s.n.Hash() != want {
 		t.Fatal("the restarted node's state differs")
 	}
@@ -150,7 +150,7 @@ func TestAlarms(t *testing.T) {
 	}
 
 	// Under CORRUPT, only keepalives still write.
-	s = restartFromCheckpoint(t, s, disk, 1, func(int) proto.Message { return &pb.LeaseKeepAliveRequest{ID: 5} })
+	s = restartFromCheckpoint(t, s, disk, func(int) proto.Message { return &pb.LeaseKeepAliveRequest{ID: 5} })
 	if got := s.alarms(70, alarmReq(pb.AlarmRequest_GET, pb.AlarmType_NONE, 0)); !sameAlarms(got, nospace7, corrupt3) {
 		t.Fatalf("list after the restart: %v", got)
 	}

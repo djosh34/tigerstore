@@ -78,7 +78,7 @@ func TestMemberChanges(t *testing.T) {
 
 	// Compactions let the old values, and so the first segment, go.
 	old := s
-	s = restartFromCheckpoint(t, s, disk, 1, func(i int) proto.Message {
+	s = restartFromCheckpoint(t, s, disk, func(i int) proto.Message {
 		if i%5 == 4 {
 			return &pb.CompactionRequest{Revision: old.n.kv.Rev()}
 		}

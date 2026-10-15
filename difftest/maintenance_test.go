@@ -205,3 +205,59 @@ func defragment(r *run) {
 	r.record("defragment", res, err)
 	r.get("get after", &pb.RangeRequest{Key: r.key("a")})
 }
+
+// downgrade records a Downgrade's answer: its version, unless version is
+// false, and whether it has a header.
+func (r *run) downgrade(do string, action pb.DowngradeRequest_DowngradeAction, v string, version bool) {
+	r.t.Helper()
+	resp, err := r.c.maint.Downgrade(r.ctx, &pb.DowngradeRequest{Action: action, Version: v})
+	var res any
+	if err == nil {
+		out := struct {
+			Version string `json:"version,omitempty"`
+			Header  bool   `json:"header"`
+		}{Header: resp.Header != nil}
+		if version {
+			out.Version = resp.Version
+		}
+		res = out
+	}
+	r.record(do, res, err)
+}
+
+// downgradeInfo records the downgrade Status reports.
+func (r *run) downgradeInfo(do string) {
+	r.t.Helper()
+	st, err := r.c.maint.Status(r.ctx, &pb.StatusRequest{})
+	var res any
+	if err == nil {
+		res = struct {
+			Enabled bool   `json:"enabled"`
+			Target  string `json:"target,omitempty"`
+		}{st.DowngradeInfo.GetEnabled(), st.DowngradeInfo.GetTargetVersion()}
+	}
+	r.record(do, res, err)
+}
+
+// downgradeCase checks Downgrade's version formats and targets, one
+// downgrade at a time, and CANCEL with and without one. The leader's
+// version monitor may lower the cluster version at any moment once a
+// downgrade is on, so CANCEL's version is not recorded.
+func downgradeCase(r *run) {
+	V, E, C := pb.DowngradeRequest_VALIDATE, pb.DowngradeRequest_ENABLE, pb.DowngradeRequest_CANCEL
+	for _, v := range []string{"", "x", "v3.6", "3.6.x", "3.5", "3.7", "4.6", "3.6", "3.6.0", "3.6.9"} {
+		r.downgrade("validate "+v, V, v, true)
+	}
+	r.downgrade("cancel without a downgrade", C, "", true)
+	r.downgrade("unknown action", 7, "3.6", true)
+	r.downgradeInfo("status before")
+	r.downgrade("enable 3.7", E, "3.7", true)
+	r.downgrade("enable x", E, "x", true)
+	r.downgrade("enable 3.6", E, "3.6", true)
+	r.downgrade("enable 3.6 again", E, "3.6", true)
+	r.downgrade("validate 3.6 during the downgrade", V, "3.6", true)
+	r.downgradeInfo("status during the downgrade")
+	r.downgrade("cancel", C, "", false)
+	r.downgradeInfo("status after the cancel")
+	r.downgrade("cancel again", C, "", false)
+}

@@ -253,7 +253,7 @@ func TestAuth(t *testing.T) {
 	s.as = root
 	revision := s.n.state.auth.revision
 	old := s
-	s = restartFromCheckpoint(t, s, disk, 1, func(i int) proto.Message {
+	s = restartFromCheckpoint(t, s, disk, func(i int) proto.Message {
 		// The values of the keys so far hold the first segment until
 		// they are deleted and compacted.
 		switch {

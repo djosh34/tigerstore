@@ -320,6 +320,8 @@ type Node struct {
 	// and learner whether this node is a learner.
 	leader  atomic.Uint64
 	learner atomic.Bool
+	// etcdVersion is etcd's cluster version the committer saw last.
+	etcdVersion atomic.Pointer[string]
 	// transport is the peer.Transport Run got, for calls to peers.
 	transport atomic.Value
 }
@@ -508,6 +510,8 @@ func (n *Node) open() error {
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
+	v := c.EtcdVersion()
+	n.etcdVersion.Store(&v)
 	return nil
 }
 
@@ -542,6 +546,10 @@ func PeerAddrs(members []*pb.Member) map[uint64]string {
 
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
+
+// EtcdVersion is etcd's cluster version, which is also the storage
+// version, as /version and Snapshot report them.
+func (n *Node) EtcdVersion() string { return *n.etcdVersion.Load() }
 
 // Done is closed when the node stopped.
 func (n *Node) Done() <-chan struct{} { return n.done }
@@ -828,6 +836,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.logf("leader is %d at term %d", l, tm)
 			n.leader.Store(l)
 			term = tm
+		}
+		if v := n.core.EtcdVersion(); v != *n.etcdVersion.Load() {
+			n.etcdVersion.Store(&v)
 		}
 		if err != nil {
 			return err

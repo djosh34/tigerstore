@@ -46,6 +46,9 @@ var cases = []testCase{
 	{"snapshot", snapshot},
 	{"members", members},
 	{"defragment", defragment},
+	// Last: after a cancel, the cluster version may stay a minor
+	// version lower for up to 4 s.
+	{"downgrade", downgradeCase},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After

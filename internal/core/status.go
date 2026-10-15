@@ -10,10 +10,11 @@ import (
 
 // The versions tigerstore reports, as etcd v3.7.2 does in Maintenance.Status
 // and on /version. Kubernetes reads Version to decide which features to use.
+// The cluster version, which the storage version follows, is
+// ClusterVersion but during a downgrade (downgrade.go).
 const (
 	ServerVersion  = "3.7.2"
 	ClusterVersion = "3.7.0"
-	StorageVersion = "3.7.0"
 )
 
 // Status answers Maintenance.Status from this node's state. DbSize is the
@@ -28,9 +29,9 @@ func (n *Node) Status() *pb.StatusResponse {
 	h.RaftTerm = st.GetTerm()
 	resp := &pb.StatusResponse{
 		Header:           h,
-		DowngradeInfo:    &pb.DowngradeInfo{},
+		DowngradeInfo:    &pb.DowngradeInfo{Enabled: n.state.downgradeEnabled, TargetVersion: n.state.downgradeTarget},
 		Version:          ServerVersion,
-		StorageVersion:   StorageVersion,
+		StorageVersion:   n.state.etcdVersion,
 		DbSize:           max(n.logBytes, 1),
 		DbSizeInUse:      n.kv.Size(),
 		DbSizeQuota:      cmp.Or(n.cfg.QuotaBytes, QuotaBytes),

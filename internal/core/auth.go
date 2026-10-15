@@ -617,7 +617,7 @@ func (n *Node) authorize(op proto.Message, ai authInfo, ok bool) error {
 		who = &ai
 	}
 	switch op := op.(type) {
-	case *pb.CompactionRequest, *pb.HashRequest, *pb.HashKVRequest, *pb.MoveLeaderRequest, *pb.DefragmentRequest,
+	case *pb.CompactionRequest, *pb.HashRequest, *pb.HashKVRequest, *pb.MoveLeaderRequest, *pb.DefragmentRequest, *pb.DowngradeRequest,
 		*pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
 		return a.admin(who)
 	case *pb.AlarmRequest:
@@ -832,7 +832,13 @@ func (n *Node) applyAuthEntry(b []byte, index uint64, p *pending) error {
 	if err := proto.Unmarshal(b, &r); err != nil {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
-	resp, err := n.applyAuth(&r, index)
+	var resp proto.Message
+	var err error
+	if r.DowngradeInfoSet != nil || r.ClusterVersionSet != nil {
+		resp, err = n.applyVersionSet(&r)
+	} else {
+		resp, err = n.applyAuth(&r, index)
+	}
 	if err != nil && !isAnswer(err) {
 		return err
 	}

@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-
-	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // snapshotChunk is how many bytes of the file each message carries, as
@@ -24,7 +22,7 @@ func (s *Server) snapshot(st *stream) error {
 	if err := s.n.Authorize(st.ctx, st.c.callerOf(st), &r); err != nil {
 		return toStatus(err)
 	}
-	w := &snapshotWriter{st: st}
+	w := &snapshotWriter{st: st, version: s.n.EtcdVersion()}
 	_, sum, err := s.n.Snapshot(st.ctx, w, func(size int64) error {
 		// RemainingBytes counts the file without its digest.
 		w.left = size - sha256.Size
@@ -36,7 +34,7 @@ func (s *Server) snapshot(st *stream) error {
 	if err != nil {
 		return toStatus(err)
 	}
-	return st.Send(&pb.SnapshotResponse{Blob: sum, Version: core.StorageVersion})
+	return st.Send(&pb.SnapshotResponse{Blob: sum, Version: w.version})
 }
 
 // snapshotWriter sends what is written to it in messages of
@@ -45,6 +43,8 @@ type snapshotWriter struct {
 	st   *stream
 	buf  []byte
 	left int64
+	// version is the storage version every response names.
+	version string
 }
 
 func (w *snapshotWriter) Write(p []byte) (int, error) {
@@ -69,7 +69,7 @@ func (w *snapshotWriter) flush() error {
 		return nil
 	}
 	w.left -= int64(len(w.buf))
-	err := w.st.Send(&pb.SnapshotResponse{RemainingBytes: uint64(w.left), Blob: w.buf, Version: core.StorageVersion})
+	err := w.st.Send(&pb.SnapshotResponse{RemainingBytes: uint64(w.left), Blob: w.buf, Version: w.version})
 	w.buf = make([]byte, 0, snapshotChunk)
 	return err
 }

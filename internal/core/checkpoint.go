@@ -39,7 +39,8 @@ import (
 //	uvarint alarm count | per alarm: uvarint member ID | varint type |
 //	u8 auth enabled | uvarint auth revision |
 //	uvarint user count | per user: bytes authpb.User |
-//	uvarint role count | per role: bytes authpb.Role
+//	uvarint role count | per role: bytes authpb.Role |
+//	string etcd's cluster version | u8 downgrade enabled | string target
 //
 // where a string or bytes are a uvarint length and the bytes, and base is the size
 // of the newest checkpoint finished when this one was cut, which the next
@@ -66,6 +67,9 @@ type ckptHeader struct {
 	leases               []*lease
 	alarms               []*pb.AlarmMember
 	auth                 *authState
+	etcdVersion          string
+	downgradeEnabled     bool
+	downgradeTarget      string
 }
 
 func (h *ckptHeader) encode() ([]byte, error) {
@@ -139,6 +143,13 @@ func (h *ckptHeader) encode() ([]byte, error) {
 	for _, name := range sortedKeys(h.auth.roles) {
 		msg(h.auth.roles[name])
 	}
+	str(h.etcdVersion)
+	downgrade := byte(0)
+	if h.downgradeEnabled {
+		downgrade = 1
+	}
+	b = append(b, downgrade)
+	str(h.downgradeTarget)
 	return b, err
 }
 
@@ -245,6 +256,13 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		msg(ro)
 		h.auth.roles[string(ro.Name)] = ro
 	}
+	h.etcdVersion = str()
+	if err == nil {
+		var downgrade byte
+		downgrade, err = r.ReadByte()
+		h.downgradeEnabled = downgrade == 1
+	}
+	h.downgradeTarget = str()
 	if err != nil {
 		return nil, fmt.Errorf("%w: header: %w", errBadCheckpoint, err)
 	}
@@ -306,6 +324,7 @@ func (st *State) header(index, term uint64) *ckptHeader {
 		index: index, term: term, members: st.memberList(), version: st.version,
 		rev: st.kv.Rev(), compact: st.kv.CompactRev(), stamps: st.stamps,
 		leases: st.sortedLeases(), alarms: st.alarms, auth: st.auth,
+		etcdVersion: st.etcdVersion, downgradeEnabled: st.downgradeEnabled, downgradeTarget: st.downgradeTarget,
 	}
 	for _, m := range h.members {
 		h.supports = append(h.supports, st.supports[m.ID])
@@ -451,6 +470,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	st.alarmsChanged()
 	st.auth = h.auth
 	st.auth.rebuild()
+	st.etcdVersion, st.downgradeEnabled, st.downgradeTarget = h.etcdVersion, h.downgradeEnabled, h.downgradeTarget
 	minRef, err := st.kv.Load(r, h.rev, h.compact)
 	if err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)

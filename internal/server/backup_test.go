@@ -43,7 +43,7 @@ func saveSnapshot(t *testing.T, c *cluster, id uint64) []byte {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if m.Version != core.StorageVersion {
+		if m.Version != core.ClusterVersion {
 			t.Fatalf("storage version %q", m.Version)
 		}
 		file = append(file, m.Blob...)
