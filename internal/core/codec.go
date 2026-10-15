@@ -27,6 +27,7 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
+	kindAlarm   = 9
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -56,6 +57,8 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 			kind = kindRenew
 		case *pb.LeaseCheckpoint:
 			kind = kindExpiry
+		case *pb.AlarmRequest:
+			kind = kindAlarm
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
@@ -136,6 +139,8 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.LeaseKeepAliveRequest{}, nil
 	case kindExpiry:
 		return &pb.LeaseCheckpoint{}, nil
+	case kindAlarm:
+		return &pb.AlarmRequest{}, nil
 	}
 	return nil, errBadBatch
 }

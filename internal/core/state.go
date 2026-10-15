@@ -57,6 +57,10 @@ type State struct {
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
+	// alarms are the active alarms in type and member order. noSpace and
+	// corrupt say whether a NOSPACE or a CORRUPT alarm is among them.
+	alarms           []*pb.AlarmMember
+	noSpace, corrupt bool
 }
 
 // Changes are the key changes of the last write Apply ran. The slice is
@@ -76,8 +80,8 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 func (st *State) Store() *mvcc.Store { return st.kv }
 
 // Hash is a hash of the whole replicated state: the index, the leases
-// with their key counts, and the lease stamps. The keys themselves follow
-// from the index.
+// with their key counts, the lease stamps and the alarms. The keys
+// themselves follow from the index.
 func (st *State) Hash() uint64 {
 	h := st.kv.Hash()
 	mix := func(x uint64) {
@@ -91,11 +95,15 @@ func (st *State) Hash() uint64 {
 		mix(uint64(l.stamp))
 		mix(uint64(len(l.keys)))
 	}
+	for _, a := range st.alarms {
+		mix(a.MemberID)
+		mix(uint64(a.Alarm))
+	}
 	return h
 }
 
 // Hash32 answers Maintenance.Hash: a CRC-32C of every version in the
-// index (mvcc.Store.HashAll) and of the leases. etcd hashes its whole
+// index (mvcc.Store.HashAll), the leases and the alarms. etcd hashes its whole
 // database file there, so the number differs from etcd's, but replicas
 // with the same state agree on it.
 func (st *State) Hash32() uint32 {
@@ -105,6 +113,10 @@ func (st *State) Hash32() uint32 {
 		b = binary.AppendVarint(b, l.id)
 		b = binary.AppendVarint(b, l.ttl)
 		b = binary.AppendVarint(b, l.stamp)
+	}
+	for _, a := range st.alarms {
+		b = binary.AppendUvarint(b, a.MemberID)
+		b = binary.AppendVarint(b, int64(a.Alarm))
 	}
 	return crc32.Checksum(b, castagnoli)
 }
@@ -144,6 +156,9 @@ func (st *State) track() {
 // previous version if the put asked for it.
 func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 	st.changes = nil
+	if err := st.refused(true); err != nil {
+		return nil, err
+	}
 	prev, err := st.kv.PutKV(op)
 	if err != nil {
 		return nil, err
@@ -158,6 +173,9 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 // and are the same on every replica; any other error is a bug.
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	st.changes = nil
+	if err := st.refusedOp(op); err != nil {
+		return nil, err
+	}
 	switch op := op.(type) {
 	case *pb.PutRequest:
 		r, err := st.kv.Put(op)
@@ -207,6 +225,8 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 			return nil, nil
 		}
 		return st.revoke(op.ID)
+	case *pb.AlarmRequest:
+		return st.alarm(op), nil
 	}
 	return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
 }

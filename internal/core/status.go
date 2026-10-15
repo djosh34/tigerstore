@@ -42,6 +42,7 @@ func (n *Node) Status() *pb.StatusResponse {
 	if st.Lead == 0 {
 		resp.Errors = append(resp.Errors, "etcdserver: no leader")
 	}
+	resp.Errors = append(resp.Errors, n.state.alarmStrings()...)
 	return resp
 }
 

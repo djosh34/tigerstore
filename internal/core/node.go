@@ -672,6 +672,14 @@ func (n *Node) submit(r Request, p *pending) {
 		// etcd answers both from its local store, without Raft.
 		n.serveRead(p)
 		return
+	case *pb.AlarmRequest:
+		// etcd passes every alarm request through Raft; a list is a
+		// linearizable read here, which answers the same.
+		if !isAlarmChange(op) {
+			n.reads = append(n.reads, p)
+			break
+		}
+		n.queueWrite(p)
 	case *pb.LeaseGrantRequest:
 		if op.ID == 0 {
 			// The node that takes the request picks the ID, so every
@@ -721,6 +729,11 @@ func check(op proto.Message, c Caller) error {
 		r.LeaseRevoke = op
 	case *pb.LeaseKeepAliveRequest, *pb.LeaseTimeToLiveRequest, *pb.LeaseLeasesRequest, *pb.HashKVRequest, *pb.HashRequest:
 		return nil
+	case *pb.AlarmRequest:
+		if !isAlarmChange(op) {
+			return nil
+		}
+		r.Alarm = op
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
 	}
@@ -1204,6 +1217,10 @@ func (n *Node) serveRead(p *pending) {
 		}
 	case *pb.HashRequest:
 		r := &pb.HashResponse{Header: header(n.kv.Rev()), Hash: n.state.Hash32()}
+		n.fillHeader(r.Header)
+		resp = r
+	case *pb.AlarmRequest:
+		r := n.state.alarmList(op)
 		n.fillHeader(r.Header)
 		resp = r
 	}

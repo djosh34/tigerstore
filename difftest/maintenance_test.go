@@ -3,6 +3,9 @@
 package difftest
 
 import (
+	"cmp"
+	"slices"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
@@ -56,4 +59,91 @@ func hashes(r *run) {
 		}{r.rel(resp.Header.Revision)}
 	}
 	r.record("hash", res, err)
+}
+
+// alarm records a Maintenance.Alarm, with its alarms in type and member
+// order: etcd lists them in map order.
+func (r *run) alarm(do string, req *pb.AlarmRequest) {
+	r.t.Helper()
+	resp, err := r.c.maint.Alarm(r.ctx, req)
+	var res any
+	if err == nil {
+		type alarm struct {
+			Member uint64 `json:"member"`
+			Alarm  string `json:"alarm"`
+		}
+		var alarms []alarm
+		for _, a := range resp.Alarms {
+			alarms = append(alarms, alarm{a.MemberID, a.Alarm.String()})
+		}
+		slices.SortFunc(alarms, func(a, b alarm) int {
+			return cmp.Or(cmp.Compare(a.Alarm, b.Alarm), cmp.Compare(a.Member, b.Member))
+		})
+		res = struct {
+			Revision int64   `json:"revision"`
+			Alarms   []alarm `json:"alarms,omitempty"`
+		}{r.rel(resp.Header.Revision), alarms}
+	}
+	r.record(do, res, err)
+}
+
+// statusErrors records the errors Maintenance.Status lists, sorted.
+func (r *run) statusErrors(do string) {
+	r.t.Helper()
+	resp, err := r.c.maint.Status(r.ctx, &pb.StatusRequest{})
+	var res any
+	if err == nil {
+		res = slices.Sorted(slices.Values(resp.Errors))
+	}
+	r.record(do, res, err)
+}
+
+// alarms activates, lists and deactivates alarms, and checks which
+// requests NOSPACE and CORRUPT refuse. It leaves no alarm active.
+func alarms(r *run) {
+	r.rebase()
+	k := r.key("k")
+	put := &pb.PutRequest{Key: k, Value: []byte("v")}
+	putInFailure := &pb.TxnRequest{Failure: []*pb.RequestOp{putOp(k, "w")}}
+	act := func(typ pb.AlarmType, member uint64) *pb.AlarmRequest {
+		return &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: typ, MemberID: member}
+	}
+	deact := func(typ pb.AlarmType, member uint64) *pb.AlarmRequest {
+		return &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: typ, MemberID: member}
+	}
+	r.put("put k", put)
+	r.alarm("list with no alarm", &pb.AlarmRequest{})
+	r.alarm("activate NONE", act(pb.AlarmType_NONE, 7))
+	r.alarm("activate NOSPACE for 7", act(pb.AlarmType_NOSPACE, 7))
+	r.alarm("activate NOSPACE for 7 again", act(pb.AlarmType_NOSPACE, 7))
+	r.alarm("activate NOSPACE for 8", act(pb.AlarmType_NOSPACE, 8))
+	r.alarm("activate alarm type 9 for 3", act(9, 3))
+	r.alarm("list", &pb.AlarmRequest{})
+	r.alarm("list NOSPACE", &pb.AlarmRequest{Alarm: pb.AlarmType_NOSPACE})
+	r.alarm("list CORRUPT", &pb.AlarmRequest{Alarm: pb.AlarmType_CORRUPT})
+	r.statusErrors("status with alarms")
+	r.put("put under NOSPACE", put)
+	r.txn("txn with a put in its failure branch under NOSPACE", putInFailure)
+	r.txn("txn with a delete under NOSPACE", &pb.TxnRequest{Success: []*pb.RequestOp{deleteOp(r.key("missing"))}})
+	r.grant("grant under NOSPACE", 0, 60)
+	r.get("range under NOSPACE", &pb.RangeRequest{Key: k})
+	r.compact("compact under NOSPACE", r.abs(1), false)
+	r.alarm("deactivate NOSPACE for 7", deact(pb.AlarmType_NOSPACE, 7))
+	r.alarm("deactivate NOSPACE for 7 again", deact(pb.AlarmType_NOSPACE, 7))
+	r.put("put with NOSPACE still active for 8", put)
+	r.alarm("deactivate NOSPACE for 8", deact(pb.AlarmType_NOSPACE, 8))
+	r.alarm("deactivate alarm type 9 for 3", deact(9, 3))
+	r.put("put with no alarm", put)
+	r.alarm("activate CORRUPT for 7", act(pb.AlarmType_CORRUPT, 7))
+	r.put("put under CORRUPT", put)
+	r.del("delete under CORRUPT", &pb.DeleteRangeRequest{Key: k})
+	r.txn("txn with a delete under CORRUPT", &pb.TxnRequest{Success: []*pb.RequestOp{deleteOp(k)}})
+	r.txn("read-only txn under CORRUPT", &pb.TxnRequest{Success: []*pb.RequestOp{getOp(k)}})
+	r.get("range under CORRUPT", &pb.RangeRequest{Key: k})
+	r.compact("compact under CORRUPT", r.abs(2), false)
+	r.grant("grant under CORRUPT", 0, 60)
+	r.revoke("revoke under CORRUPT", 0x7a11)
+	r.alarm("deactivate CORRUPT for 7", deact(pb.AlarmType_CORRUPT, 7))
+	r.alarm("list after deactivating", &pb.AlarmRequest{})
+	r.put("put after deactivating", put)
 }

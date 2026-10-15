@@ -9,6 +9,8 @@ import (
 	"io"
 	"slices"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -26,7 +28,8 @@ import (
 //	magic "tigerckp" | u32 format version | u64 index | u64 term |
 //	uvarint voter count | uvarint voters | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
-//	uvarint lease count | per lease: varint ID | varint TTL | varint stamp
+//	uvarint lease count | per lease: varint ID | varint TTL | varint stamp |
+//	uvarint alarm count | per alarm: uvarint member ID | varint type
 //
 // where base is the size of the newest checkpoint finished when this one
 // was cut, which the next cut is measured against.
@@ -43,6 +46,7 @@ type ckptHeader struct {
 	rev, compact, stamps int64
 	base                 int64
 	leases               []*lease
+	alarms               []*pb.AlarmMember
 }
 
 func (h *ckptHeader) encode() []byte {
@@ -63,6 +67,11 @@ func (h *ckptHeader) encode() []byte {
 		b = binary.AppendVarint(b, l.id)
 		b = binary.AppendVarint(b, l.ttl)
 		b = binary.AppendVarint(b, l.stamp)
+	}
+	b = binary.AppendUvarint(b, uint64(len(h.alarms)))
+	for _, a := range h.alarms {
+		b = binary.AppendUvarint(b, a.MemberID)
+		b = binary.AppendVarint(b, int64(a.Alarm))
 	}
 	return b
 }
@@ -114,6 +123,10 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		l := &lease{id: sv(), ttl: sv(), stamp: sv(), keys: map[string]struct{}{}}
 		h.leases = append(h.leases, l)
 	}
+	n = uv()
+	for i := uint64(0); i < n && err == nil; i++ {
+		h.alarms = append(h.alarms, &pb.AlarmMember{MemberID: uv(), Alarm: pb.AlarmType(sv())})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: header: %w", errBadCheckpoint, err)
 	}
@@ -159,7 +172,7 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 	h := &ckptHeader{
 		index: index, term: term, voters: n.cfg.Peers,
 		rev: n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
-		base: n.base, leases: n.state.sortedLeases(),
+		base: n.base, leases: n.state.sortedLeases(), alarms: n.state.alarms,
 	}
 	data := h.encode()
 	n.copy = &copying{index: index, term: term, crc: crc32.Update(0, castagnoli, data), size: int64(len(data))}
@@ -288,6 +301,8 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	for _, l := range h.leases {
 		st.leases[l.id] = l
 	}
+	st.alarms = h.alarms
+	st.alarmsChanged()
 	minRef, err := st.kv.Load(r, h.rev, h.compact)
 	if err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)

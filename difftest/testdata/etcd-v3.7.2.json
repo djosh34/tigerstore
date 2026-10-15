@@ -1,4 +1,356 @@
 {
+  "alarms": [
+    {
+      "do": "put k",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "list with no alarm",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "activate NONE",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "activate NOSPACE for 7",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate NOSPACE for 7 again",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate NOSPACE for 8",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate alarm type 9 for 3",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          },
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          },
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          },
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "status with alarms",
+      "code": "OK",
+      "result": [
+        "memberID:3 alarm:9",
+        "memberID:7 alarm:NOSPACE",
+        "memberID:8 alarm:NOSPACE"
+      ]
+    },
+    {
+      "do": "put under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "txn with a put in its failure branch under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "txn with a delete under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "deleted": 0
+          }
+        ]
+      }
+    },
+    {
+      "do": "grant under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "range under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "compact under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "deactivate NOSPACE for 7",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "deactivate NOSPACE for 7 again",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put with NOSPACE still active for 8",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "deactivate NOSPACE for 8",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "deactivate alarm type 9 for 3",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          }
+        ]
+      }
+    },
+    {
+      "do": "put with no alarm",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "activate CORRUPT for 7",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "CORRUPT"
+          }
+        ]
+      }
+    },
+    {
+      "do": "put under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "delete under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "txn with a delete under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "read-only txn under CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 2,
+              "kvs": [
+                {
+                  "key": "k",
+                  "value": "v",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range under CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "compact under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "grant under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "revoke under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "deactivate CORRUPT for 7",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "CORRUPT"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list after deactivating",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put after deactivating",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    }
+  ],
   "compact-above-current": [
     {
       "do": "put a=1",

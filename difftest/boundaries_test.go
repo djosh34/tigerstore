@@ -40,6 +40,7 @@ var cases = []struct {
 	{"max-request-size", maxRequestSize},
 	{"range-stream", rangeStream},
 	{"hashes", hashes},
+	{"alarms", alarms},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
