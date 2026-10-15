@@ -3,6 +3,7 @@
 # scripts/dev-certs.sh. Clients connect to https://127.0.0.1:2379, 22379
 # and 32379, peers to ports 2380, 22380 and 32380; OFFSET adds to every
 # port. Data goes to ./data/node1..3, logs to ./data/node1..3.log.
+# Arguments are passed to every node as extra flags.
 # Stop it with: kill $(cat data/*.pid)
 set -euo pipefail
 bin=${TIGERSTORE:-./tigerstore}
@@ -20,7 +21,7 @@ for i in 1 2 3; do
 		--cert-file "$certs/node$i.pem" --key-file "$certs/node$i-key.pem" \
 		--trusted-ca-file "$certs/ca.pem" --client-cert-auth \
 		--peer-cert-file "$certs/node$i.pem" --peer-key-file "$certs/node$i-key.pem" \
-		--peer-trusted-ca-file "$certs/ca.pem" \
+		--peer-trusted-ca-file "$certs/ca.pem" "$@" \
 		>"data/node$i.log" 2>&1 &
 	echo $! >"data/node$i.pid"
 done

@@ -385,6 +385,7 @@ func (w *writer) add(k *keyIndex, v version) {
 		v.mod = rev{main: w.begin + 1 + int64(len(w.s.changes))}
 	}
 	k.vers = append(k.vers, v)
+	w.s.size += rowBytes(k.key, &v)
 	if w.s.track {
 		w.s.sum ^= versionHash(k.key, &v)
 	}

@@ -109,6 +109,9 @@ type Config struct {
 	// Record makes Effects.Applied carry every applied entry with the
 	// state's hash after it, for the simulator's checks.
 	Record bool
+	// QuotaBytes is etcd's --quota-backend-bytes: 0 means etcd's default
+	// of 2 GiB, a negative value no quota (quota.go).
+	QuotaBytes int64
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -383,6 +386,10 @@ type Node struct {
 	paused, resume *pausedWrite
 	readInline     bool
 
+	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
+	// or -1 once an alarm change of it applied.
+	noSpaceAt int64
+
 	out Effects
 	err error
 }
@@ -404,8 +411,9 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		waiting:  map[uint64]*pending{},
 		streams:  map[uint64]*watchStream{},
 		snapWait: map[uint64]int64{},
-		cold:     map[*ValueRead]struct{}{},
-		logBytes: rec.Bytes,
+		cold:      map[*ValueRead]struct{}{},
+		logBytes:  rec.Bytes,
+		noSpaceAt: -1,
 	}
 	n.setState(NewState(MinLeaseTTL(cfg), vals))
 	if root := rec.Root; root.Index > 0 {
@@ -634,7 +642,12 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, rpctypes.ErrGRPCStopped)
 		return
 	}
+	// etcd checks the quota before it validates the request.
 	if r.Op == nil {
+		if !n.quotaLeft(putCost(&r.Put.PutOp)) {
+			n.noSpace(r.ID)
+			return
+		}
 		if err := checkPut(&r.Put, r.Caller); err != nil {
 			n.reply(r.ID, err)
 			return
@@ -642,6 +655,10 @@ func (n *Node) submit(r Request, p *pending) {
 		*p = pending{req: r, deadline: n.now + int64(n.cfg.RequestTicks)}
 		n.queueWrite(p)
 		n.timeouts = append(n.timeouts, p)
+		return
+	}
+	if !n.quotaLeft(quotaCost(r.Op)) {
+		n.noSpace(r.ID)
 		return
 	}
 	if err := check(r.Op, r.Caller); err != nil {
@@ -1312,6 +1329,7 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		if err != nil {
 			return fmt.Errorf("%w: %w", errBadBatch, err)
 		}
+		room := n.quotaLeft(quotaCost(op))
 		resp, err := n.applyOp(op)
 		var cold *mvcc.ColdError
 		for errors.As(err, &cold) {
@@ -1333,6 +1351,9 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		fills := n.kv.TakeFills()
 		if err == nil {
 			n.matchWatches()
+			if !room {
+				resp, err, fills = nil, n.overQuota(), nil
+			}
 		}
 		if p != nil {
 			n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
@@ -1356,6 +1377,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	n.values.add(put.Value, at+put.valueAt)
+	room := n.quotaLeft(putCost(&put.PutOp))
 	prev, err := n.state.ApplyPut(&put.PutOp)
 	if err != nil && !isAnswer(err) {
 		return fmt.Errorf("%w: %w", errInternal, err)
@@ -1363,6 +1385,9 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 	fills := n.kv.TakeFills()
 	if err == nil {
 		n.matchWatches()
+		if !room {
+			err = n.overQuota()
+		}
 	}
 	if p == nil || p.done {
 		return nil
@@ -1396,6 +1421,11 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
 		n.out.Expired = append(n.out.Expired, e.ID)
+	}
+	if a, ok := op.(*pb.AlarmRequest); ok && a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID {
+		// The proposal raiseNoSpace waits for has applied, or the alarm
+		// changed otherwise.
+		n.noSpaceAt = -1
 	}
 	if n.isLeader || planted.On("B10") {
 		switch op := op.(type) {

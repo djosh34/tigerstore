@@ -35,6 +35,7 @@ type flags struct {
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
 	progressInterval                          time.Duration
+	quotaBackendBytes                         int64
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -87,6 +88,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	fs.Int64Var(&f.quotaBackendBytes, "quota-backend-bytes", 0, "raise the NOSPACE alarm when the data reaches this size; 0 means 2 GiB, a negative value no quota")
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -225,6 +227,7 @@ func run(args []string, logger *log.Logger) error {
 	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
 	ccfg := core.DefaultConfig(self.id, ids)
 	ccfg.ClusterID = h.Sum64()
+	ccfg.QuotaBytes = f.quotaBackendBytes
 	// As in etcd, an interval of 0 or less keeps the default.
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))

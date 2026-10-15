@@ -17,19 +17,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var recordFlag = flag.Bool("record", false, "write etcd's answers to "+goldenFile+", or tigerstore's answers to its expected failures to "+knownFile+", instead of comparing")
+var recordFlag = flag.Bool("record", false, "write etcd's answers to the golden file of each test, or tigerstore's answers to its expected failures to the known file, instead of comparing")
 
-const (
-	goldenFile = "testdata/etcd-v3.7.2.json"
-	knownFile  = "testdata/tigerstore-known.json"
-)
+// testCase is one named sequence of steps.
+type testCase struct {
+	name string
+	run  func(r *run)
+}
 
 // cases run in this order, because compaction is global: each case only
 // compacts above the revisions of the cases before it.
-var cases = []struct {
-	name string
-	run  func(r *run)
-}{
+var cases = []testCase{
 	{"compact-below-current", compactBelowCurrent},
 	{"compact-at-current", compactAtCurrent},
 	{"compact-above-current", compactAboveCurrent},
@@ -99,9 +97,17 @@ func allowed(srv, name string, want, got step) bool {
 	return false
 }
 
-func TestBoundaries(t *testing.T) {
+func TestBoundaries(t *testing.T) { runCases(t, "etcd-v3.7.2.json", cases) }
+
+// runCases runs cases in order against the endpoint and compares the
+// answers with etcd's in testdata/<golden>. tigerstore's answers to its
+// expected failures are in testdata/<golden> with "etcd-v3.7.2" replaced
+// by "tigerstore-known".
+func runCases(t *testing.T, golden string, cases []testCase) {
 	srv := server(t)
 	c := dial(t)
+	goldenFile := "testdata/" + golden
+	knownFile := "testdata/" + strings.Replace(golden, "etcd-v3.7.2", "tigerstore-known", 1)
 	if *recordFlag && srv == "etcd" {
 		st, err := c.maint.Status(t.Context(), &pb.StatusRequest{})
 		if err != nil {
@@ -144,9 +150,18 @@ func TestBoundaries(t *testing.T) {
 		t.Errorf("%s has %d cases, the test has %d", goldenFile, len(want), len(cases))
 	}
 	known := map[string]step{}
-	readJSON(t, knownFile, &known)
+	if _, err := os.Stat(knownFile); err == nil {
+		readJSON(t, knownFile, &known)
+	}
+	ours := map[string]bool{}
+	for _, cs := range cases {
+		ours[cs.name] = true
+	}
 	listed := 0
 	for name, ef := range expectedFail {
+		if !ours[name] {
+			continue
+		}
 		for _, do := range ef.steps {
 			listed++
 			if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
@@ -162,6 +177,9 @@ func TestBoundaries(t *testing.T) {
 	}
 	for k := range stricter {
 		name, do, _ := strings.Cut(k, "/")
+		if !ours[name] {
+			continue
+		}
 		if !slices.ContainsFunc(want[name], func(s step) bool { return s.Do == do }) {
 			t.Errorf("stricter names %q, which %s does not have", k, goldenFile)
 		}

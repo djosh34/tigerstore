@@ -1,6 +1,8 @@
 package core
 
 import (
+	"cmp"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -14,12 +16,11 @@ const (
 	StorageVersion = "3.7.0"
 )
 
-// QuotaBytes is etcd's default --quota-backend-bytes.
-const QuotaBytes = 2 << 30
 
 // Status answers Maintenance.Status from this node's state. DbSize is the
 // size of the log, which is all the node stores; it is never 0, because
-// etcdctl divides by it.
+// etcdctl divides by it. DbSizeInUse is what the space quota counts
+// (mvcc.Store.Size).
 func (n *Node) Status() *pb.StatusResponse {
 	st := n.rn.BasicStatus()
 	// Header and body take the term from one snapshot; etcdctl prints one
@@ -32,8 +33,8 @@ func (n *Node) Status() *pb.StatusResponse {
 		Version:          ServerVersion,
 		StorageVersion:   StorageVersion,
 		DbSize:           max(n.logBytes, 1),
-		DbSizeInUse:      max(n.logBytes, 1),
-		DbSizeQuota:      QuotaBytes,
+		DbSizeInUse:      n.kv.Size(),
+		DbSizeQuota:      cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
 		Leader:           st.Lead,
 		RaftIndex:        st.GetCommit(),
 		RaftTerm:         st.GetTerm(),

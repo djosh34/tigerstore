@@ -120,6 +120,7 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 			if v.value.Len > 0 && (minRef == 0 || v.value.Index < minRef) {
 				minRef = v.value.Index
 			}
+			s.size += rowBytes(k.key, v)
 			if s.track {
 				s.sum ^= versionHash(k.key, v)
 			}

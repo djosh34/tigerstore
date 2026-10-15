@@ -15,6 +15,7 @@ import (
 	"slices"
 
 	"github.com/google/btree"
+	"google.golang.org/protobuf/encoding/protowire"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
@@ -232,6 +233,9 @@ type Store struct {
 	fills []Fill
 
 	counts Counts
+	// size is the bytes etcd's database would hold for the versions
+	// (rowBytes), the size the space quota counts.
+	size int64
 }
 
 // Counts are the operations a store has seen, for etcd's metrics
@@ -257,6 +261,31 @@ func New(v Values) *Store {
 
 // Counts returns the operations the store has seen.
 func (s *Store) Counts() Counts { return s.counts }
+
+// Size is about the bytes etcd v3.7.2's database would hold for the
+// versions in the index: per version, the row etcd writes, a revision key
+// and the marshaled KeyValue. The versions a compaction drops no longer
+// count, even while a checkpoint copy keeps them. etcd's file also holds
+// free pages and its other buckets.
+func (s *Store) Size() int64 { return s.size }
+
+// rowBytes is the size of etcd's row for a version: its 17-byte revision
+// key, one more for a tombstone's mark, and the KeyValue, which for a
+// tombstone holds only the key.
+func rowBytes(key []byte, v *version) int64 {
+	n := 17 + protowire.SizeTag(1) + protowire.SizeBytes(len(key))
+	if v.ver == 0 {
+		return int64(n + 1)
+	}
+	n += 3*protowire.SizeTag(2) + protowire.SizeVarint(uint64(v.create)) + protowire.SizeVarint(uint64(v.mod.main)) + protowire.SizeVarint(uint64(v.ver))
+	if v.value.Len > 0 {
+		n += protowire.SizeTag(5) + protowire.SizeBytes(int(v.value.Len))
+	}
+	if v.lease != 0 {
+		n += protowire.SizeTag(6) + protowire.SizeVarint(uint64(v.lease))
+	}
+	return int64(n)
+}
 
 // Rev is the current revision.
 func (s *Store) Rev() int64 { return s.rev }
@@ -463,26 +492,33 @@ func (s *Store) Compact(rev int64) error {
 		return rpctypes.ErrGRPCFutureRev
 	}
 	s.changes = s.changes[:0]
-	if s.track {
-		var pending int64
-		if s.frozen != nil {
-			pending = s.frozen.compact
-		}
-		s.keys.Ascend(func(k *keyIndex) bool {
-			for i := k.dropped(pending); i < k.dropped(rev); i++ {
-				s.sum ^= versionHash(k.key, &k.vers[i])
-			}
-			return true
-		})
-	}
+	pending := s.pendingCompact()
 	s.compactRev = rev
 	if s.frozen != nil {
 		// A checkpoint copy is under way and reads the versions in place;
-		// they go once it is done.
+		// they go once it is done, but no longer count.
 		s.frozen.compact = rev
-		return nil
 	}
-	s.drop(rev)
+	var gone []*keyIndex
+	s.keys.Ascend(func(k *keyIndex) bool {
+		from, to := k.dropped(pending), k.dropped(rev)
+		for i := from; i < to; i++ {
+			s.size -= rowBytes(k.key, &k.vers[i])
+			if s.track {
+				s.sum ^= versionHash(k.key, &k.vers[i])
+			}
+		}
+		if s.frozen == nil && to > 0 {
+			k.vers = slices.Delete(k.vers, 0, to)
+			if len(k.vers) == 0 {
+				gone = append(gone, k)
+			}
+		}
+		return true
+	})
+	for _, k := range gone {
+		s.keys.Delete(k)
+	}
 	return nil
 }
 
