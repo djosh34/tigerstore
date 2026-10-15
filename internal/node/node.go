@@ -51,7 +51,10 @@ type Config struct {
 	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
 	// go.
 	SegmentBytes int64
-	Logf         func(format string, args ...any)
+	// BeforeRead, if set, runs before each read of a value from the log.
+	// Tests use it to stall those reads.
+	BeforeRead func()
+	Logf       func(format string, args ...any)
 }
 
 // input is one event for the committer from a client, a peer or a helper
@@ -252,6 +255,8 @@ type Node struct {
 	persistQ  chan []core.PersistJob
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
+	readQ     chan *core.ValueRead
+	readDone  chan readDone
 	nextID    atomic.Uint64
 	done      chan struct{}
 
@@ -279,6 +284,8 @@ type diskLog struct {
 	// is removed.
 	ckpts   []wal.Root
 	serving int
+	// before runs before each value read; see Config.BeforeRead.
+	before func()
 }
 
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
@@ -294,6 +301,9 @@ func (l *diskLog) Has(index uint64) bool {
 }
 
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
+	if l.before != nil {
+		l.before()
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	seq, at, ok := l.w.ValuePlace(index, off, n)
@@ -380,7 +390,7 @@ func New(cfg Config) (*Node, error) {
 	}
 	n := &Node{
 		cfg:   cfg,
-		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}},
+		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead},
 		inbox: make(chan input, 8192),
 		done:  make(chan struct{}),
 	}
@@ -423,6 +433,8 @@ func (n *Node) open() error {
 	n.persistQ = make(chan []core.PersistJob, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
+	n.readQ = make(chan *core.ValueRead)
+	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
 	return nil
 }
@@ -491,6 +503,16 @@ func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
 	}
 }
 
+// readers is how many goroutines read values from the log for the
+// committer.
+const readers = 16
+
+// readDone is a value read a reader ran, with its error.
+type readDone struct {
+	read *core.ValueRead
+	err  error
+}
+
 // maxBacklog is the number of persist batches that may wait for the disk.
 // Beyond it the committer stops taking new inputs, but it keeps ticking
 // and taking finished disk writes.
@@ -525,6 +547,9 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
+	for range readers {
+		wg.Go(func() { n.readValues(ctx) })
+	}
 	err := n.commit(ctx, t)
 	cancel()
 	wg.Wait()
@@ -545,6 +570,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	// slows the copy instead of piling parts up in memory.
 	var chunks []core.CheckpointChunk
 	var pace *time.Timer
+	// reads wait for a free reader.
+	var reads []*core.ValueRead
 	streams := map[uint64]*WatchStream{}
 	var term uint64 // the term logged last
 	for {
@@ -561,6 +588,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		var chunk core.CheckpointChunk
 		if len(chunks) > 0 {
 			toWriter, chunk = n.ckptQ, chunks[0]
+		}
+		var toReader chan<- *core.ValueRead
+		var read *core.ValueRead
+		if len(reads) > 0 {
+			toReader, read = n.readQ, reads[0]
 		}
 		var paced <-chan time.Time
 		if n.core.Copying() && len(chunks) == 0 {
@@ -599,6 +631,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			chunks[0] = core.CheckpointChunk{}
 			chunks = chunks[1:]
 			continue
+		case toReader <- read:
+			reads[0] = nil
+			reads = reads[1:]
+			continue
+		case d := <-n.readDone:
+			n.core.ValuesRead(d.read, d.err)
 		case <-paced:
 			pace = nil
 			n.core.CopyCheckpoint()
@@ -612,6 +650,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			backlog = append(backlog, eff.Persist)
 		}
 		chunks = append(chunks, eff.Checkpoint...)
+		reads = append(reads, eff.Reads...)
 		for _, id := range eff.Closed {
 			if ws, ok := streams[id]; ok {
 				delete(streams, id)
@@ -1046,6 +1085,24 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.mu.Unlock()
 	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
 	return err
+}
+
+// readValues runs the value reads the committer hands it.
+func (n *Node) readValues(ctx context.Context) {
+	for {
+		var d readDone
+		select {
+		case d.read = <-n.readQ:
+		case <-ctx.Done():
+			return
+		}
+		d.err = d.read.Run()
+		select {
+		case n.readDone <- d:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // tell hands the committer an input from a helper goroutine.

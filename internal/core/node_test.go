@@ -25,8 +25,11 @@ type single struct {
 	n     *Node
 	watch []WatchResponse
 	ckpt  wal.File
-	// hold skips removals, as a node does while it serves a fetch.
+	// hold keeps value reads in held instead of running them.
 	hold bool
+	held []*ValueRead
+	// keep skips removals, as a node does while it serves a fetch.
+	keep bool
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -94,7 +97,14 @@ func (s *single) run() []Reply {
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
 		s.writeCheckpoint(eff.Checkpoint)
-		if len(eff.Persist) == 0 && !s.n.Copying() && len(eff.Checkpoint) == 0 {
+		if s.hold {
+			s.held = append(s.held, eff.Reads...)
+		} else {
+			for _, r := range eff.Reads {
+				s.n.ValuesRead(r, r.Run())
+			}
+		}
+		if len(eff.Persist) == 0 && !s.n.Copying() && len(eff.Checkpoint) == 0 && (len(eff.Reads) == 0 || s.hold) {
 			return out
 		}
 		for _, j := range eff.Persist {
@@ -107,7 +117,7 @@ func (s *single) run() []Reply {
 			s.t.Fatal(err)
 		}
 		for _, j := range eff.Persist {
-			if j.Root == nil || s.hold {
+			if j.Root == nil || s.keep {
 				continue
 			}
 			if err := errors.Join(s.log.RemoveBelow(j.RemoveBelow), s.log.RemoveCheckpoints(j.Root.Index)); err != nil {
