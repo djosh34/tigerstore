@@ -259,16 +259,18 @@ func TestSharedValues(t *testing.T) {
 	dir := t.TempDir()
 	r := runClean(t, dir, budget)
 	big := []byte(fmt.Sprintf("%032768d", 1))
-	if _, err := do(r.n, &pb.PutRequest{Key: []byte("big"), Value: big}); err != nil {
+	// One deadline and no retry, since a retried put that committed would
+	// add a version.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := r.n.Do(ctx, &pb.PutRequest{Key: []byte("big"), Value: big}); err != nil {
 		t.Fatal(err)
 	}
 	for range 100 {
-		if _, err := do(r.n, &pb.PutRequest{Key: []byte("big"), IgnoreValue: true}); err != nil {
+		if _, err := r.n.Do(ctx, &pb.PutRequest{Key: []byte("big"), IgnoreValue: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	for round := 0; ; round++ {
 		if round == 100 {
 			t.Fatalf("nothing was cleaned in %d rounds", round)
