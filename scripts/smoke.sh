@@ -133,6 +133,18 @@ if [ "$health" != '{"health":"true","reason":""}' ]; then
 	echo "/health over HTTP/1.1: got [$health]"
 	exit 1
 fi
+# The gRPC gateway speaks JSON, with keys and values base64 encoded:
+# gw, set to 1, reads back.
+gw() {
+	curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
+		-X POST -d "$2" "https://127.0.0.1:$((2379 + off))$1"
+}
+gw /v3/kv/put '{"key":"Z3c=","value":"MQ=="}' >/dev/null
+range=$(gw /v3/kv/range '{"key":"Z3c="}')
+if ! grep -q '"value":"MQ=="' <<<"$range"; then
+	echo "/v3/kv/range: got [$range]"
+	exit 1
+fi
 if etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) --cacert "$work/certs/ca.pem" \
 	--command-timeout=3s get foo >/dev/null 2>&1; then
 	echo "a client without a client certificate was served"

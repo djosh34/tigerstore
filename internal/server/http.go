@@ -1,17 +1,10 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
-	"sync"
 	"time"
-
-	"golang.org/x/net/http2/hpack"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -108,75 +101,4 @@ func (s *Server) health(ctx context.Context, q url.Values) httpAnswer {
 		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RANGE ERROR:`+err.Error()+`"}`)
 	}
 	return httpAnswer{code: http.StatusOK, contentType: textPlain, body: `{"health":"true","reason":""}`}
-}
-
-// httpHeaders is the HTTP/2 header block of an HTTP response.
-func httpHeaders(a httpAnswer) []byte {
-	fields := []hpack.HeaderField{
-		{Name: ":status", Value: strconv.Itoa(a.code)},
-		{Name: "content-type", Value: a.contentType},
-		{Name: "content-length", Value: strconv.Itoa(len(a.body))},
-	}
-	if a.allow != "" {
-		fields = append(fields, hpack.HeaderField{Name: "allow", Value: a.allow})
-	}
-	if a.nosniff {
-		fields = append(fields, hpack.HeaderField{Name: "x-content-type-options", Value: "nosniff"})
-	}
-	return headerBlock(fields...)
-}
-
-// http1Conn is a TLS client that did not offer h2. It gets /health and
-// /version over HTTP/1.1; gRPC needs HTTP/2.
-type http1Conn struct {
-	s    *Server
-	nc   net.Conn
-	raw  net.Conn
-	once sync.Once
-}
-
-func (h *http1Conn) goAway() { h.close() }
-
-func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
-
-func (h *http1Conn) serve() {
-	br := bufio.NewReader(h.nc)
-	bw := bufio.NewWriter(h.nc)
-	for {
-		if err := h.nc.SetReadDeadline(time.Now().Add(http1Idle)); err != nil {
-			return
-		}
-		req, err := http.ReadRequest(br)
-		if err != nil {
-			return
-		}
-		// The endpoints read no body; a small one is skipped.
-		if _, err := io.Copy(io.Discard, io.LimitReader(req.Body, 1<<16)); err != nil {
-			return
-		}
-		ctx, cancel := context.WithCancel(h.s.ctx)
-		a := h.s.answerHTTP(ctx, req.Method, req.RequestURI)
-		cancel()
-		if err := h.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-			return
-		}
-		_, _ = bw.WriteString("HTTP/1.1 " + strconv.Itoa(a.code) + " " + http.StatusText(a.code) + "\r\n" +
-			"Content-Type: " + a.contentType + "\r\nContent-Length: " + strconv.Itoa(len(a.body)) + "\r\n")
-		if a.allow != "" {
-			_, _ = bw.WriteString("Allow: " + a.allow + "\r\n")
-		}
-		if a.nosniff {
-			_, _ = bw.WriteString("X-Content-Type-Options: nosniff\r\n")
-		}
-		if req.Close {
-			_, _ = bw.WriteString("Connection: close\r\n")
-		}
-		_, _ = bw.WriteString("\r\n")
-		if req.Method != http.MethodHead {
-			_, _ = bw.WriteString(a.body)
-		}
-		if err := bw.Flush(); err != nil || req.Close {
-			return
-		}
-	}
 }

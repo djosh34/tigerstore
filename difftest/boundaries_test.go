@@ -48,6 +48,7 @@ var cases = []testCase{
 	{"defragment", defragment},
 	{"compression", compression},
 	{"fragments", fragments},
+	{"gateway", gatewayCase},
 	// Last: after a cancel, the cluster version may stay a minor
 	// version lower for up to 4 s.
 	{"downgrade", downgradeCase},

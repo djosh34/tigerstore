@@ -328,8 +328,10 @@ type Node struct {
 	// and learner whether this node is a learner.
 	leader  atomic.Uint64
 	learner atomic.Bool
-	// etcdVersion is etcd's cluster version the committer saw last.
+	// etcdVersion is etcd's cluster version the committer saw last, and
+	// authEnabled whether auth was on.
 	etcdVersion atomic.Pointer[string]
+	authEnabled atomic.Bool
 	// transport is the peer.Transport Run got, for calls to peers.
 	transport atomic.Value
 }
@@ -520,6 +522,7 @@ func (n *Node) open() error {
 	n.leader.Store(0)
 	v := c.EtcdVersion()
 	n.etcdVersion.Store(&v)
+	n.authEnabled.Store(c.AuthEnabled())
 	return nil
 }
 
@@ -558,6 +561,9 @@ func (n *Node) Leader() uint64 { return n.leader.Load() }
 // EtcdVersion is etcd's cluster version, which is also the storage
 // version, as /version and Snapshot report them.
 func (n *Node) EtcdVersion() string { return *n.etcdVersion.Load() }
+
+// AuthEnabled reports whether auth was on when the committer looked last.
+func (n *Node) AuthEnabled() bool { return n.authEnabled.Load() }
 
 // Done is closed when the node stopped.
 func (n *Node) Done() <-chan struct{} { return n.done }
@@ -861,6 +867,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if v := n.core.EtcdVersion(); v != *n.etcdVersion.Load() {
 			n.etcdVersion.Store(&v)
 		}
+		n.authEnabled.Store(n.core.AuthEnabled())
 		if err != nil {
 			return err
 		}

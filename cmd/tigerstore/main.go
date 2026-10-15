@@ -45,6 +45,8 @@ type flags struct {
 	strictReconfig                            bool
 	authToken                                 string
 	compactionMode, compactionRetention       string
+	gateway                                   bool
+	cors, hostWhitelist                       map[string]struct{}
 	compaction                                time.Duration
 	jwt                                       *server.JWT
 	bcryptCost, authTokenTTL                  uint
@@ -116,6 +118,16 @@ func parse(args []string) (*flags, error) {
 	fs.Var(f.features, "feature-gates", "comma-separated etcd server feature gates, such as InitialCorruptCheck=true,CompactHashCheck=true")
 	fs.DurationVar(&f.corruptCheck, "corrupt-check-time", 0, "interval of the leader's corruption checks of every member; 0 turns them off")
 	fs.DurationVar(&f.compactHashCheck, "compact-hash-check-time", time.Minute, "interval of the leader's checks of the hashes compactions took, with the CompactHashCheck feature gate")
+	fs.BoolVar(&f.gateway, "enable-grpc-gateway", true, "Enable GRPC gateway.")
+	f.cors, f.hostWhitelist = map[string]struct{}{"*": {}}, map[string]struct{}{"*": {}}
+	fs.Func("cors", "Comma-separated white list of origins for CORS, or cross-origin resource sharing, (empty or * means allow all)", func(s string) error {
+		f.cors = uniqueStrings(s)
+		return nil
+	})
+	fs.Func("host-whitelist", "Comma-separated acceptable hostnames from HTTP client requests, if server is not secure (empty means allow all).", func(s string) error {
+		f.hostWhitelist = uniqueStrings(s)
+		return nil
+	})
 	fs.StringVar(&f.compactionRetention, "auto-compaction-retention", "0", "Auto compaction retention for mvcc key value store. 0 means disable auto compaction.")
 	fs.StringVar(&f.compactionMode, "auto-compaction-mode", "periodic", "interpret 'auto-compaction-retention' one of: periodic|revision. 'periodic' for duration based retention, defaulting to hours if no time unit is provided (e.g. '5m'). 'revision' for revision number based retention.")
 	fs.Int64Var(&f.quotaBackendBytes, "quota-backend-bytes", 0, "raise the NOSPACE alarm when the data reaches this size; 0 means 2 GiB, a negative value no quota")
@@ -333,10 +345,14 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	g := server.New(n, server.Config{
+	g, err := server.New(n, server.Config{
 		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost), JWT: f.jwt,
 		StopServiceOnDefrag: f.features["StopGRPCServiceOnDefrag"],
+		NoGateway:           !f.gateway, CORS: f.cors, HostWhitelist: f.hostWhitelist,
 	})
+	if err != nil {
+		return errors.Join(err, t.Close())
+	}
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())
@@ -370,4 +386,14 @@ func run(args []string, logger *log.Logger) error {
 	runErr := <-ran
 	stopErr := g.Stop()
 	return errors.Join(runErr, stopErr, <-served, t.Close())
+}
+
+// uniqueStrings is etcd's UniqueStringsValue: the comma-separated values,
+// each once, as they are.
+func uniqueStrings(s string) map[string]struct{} {
+	m := map[string]struct{}{}
+	for v := range strings.SplitSeq(s, ",") {
+		m[v] = struct{}{}
+	}
+	return m
 }

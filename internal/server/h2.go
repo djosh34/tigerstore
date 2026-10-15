@@ -435,10 +435,14 @@ type reqHeaders struct {
 	token string
 	// encoding is the call's grpc-encoding.
 	encoding string
-	size     int
-	regular  bool  // a regular field came; pseudo-fields must come first
-	pseudo   uint8 // bits of the pseudo-fields seen
-	bad      bool  // a field broke HTTP/2's rules
+	// authority is :authority, and fields the regular fields of an HTTP
+	// request; gRPC calls keep none.
+	authority string
+	fields    []hpack.HeaderField
+	size      int
+	regular   bool  // a regular field came; pseudo-fields must come first
+	pseudo    uint8 // bits of the pseudo-fields seen
+	bad       bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -510,7 +514,7 @@ func (c *conn) onField(f hpack.HeaderField) {
 		case ":scheme":
 			bit = 4
 		case ":authority":
-			bit = 8
+			bit, h.authority = 8, f.Value
 		default:
 			h.bad = true
 		}
@@ -525,6 +529,9 @@ func (c *conn) onField(f hpack.HeaderField) {
 	if !validFieldName(f.Name) {
 		h.bad = true
 		return
+	}
+	if isHTTPPath(h.path) {
+		h.fields = append(h.fields, f)
 	}
 	switch f.Name {
 	case "content-type":
@@ -596,6 +603,9 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 	if st.rpc != nil && st.rpc.stream != nil {
 		go c.runStream(st)
 	}
+	if st.httpPath != "" {
+		go c.runHTTP(st)
+	}
 	if h.ended {
 		return c.onEnd(st)
 	}
@@ -613,6 +623,8 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		if st.httpPath == "" {
 			st.httpPath = "/"
 		}
+		st.authority, st.httpFields = h.authority, h.fields
+		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	// A call that the node runs needs no context of its own: the node
 	// answers it within its request timeout, the deadline timer below ends
@@ -685,7 +697,12 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
 		return nil
 	}
-	if st.rpc != nil && !st.done.Load() {
+	switch {
+	case st.httpPath != "":
+		if d := f.Data(); len(d) > 0 {
+			st.deliver(append([]byte(nil), d...), len(d))
+		}
+	case st.rpc != nil && !st.done.Load():
 		if err := st.receive(f.Data()); err != nil {
 			st.finish(err)
 		}
@@ -709,9 +726,7 @@ func (c *conn) onEnd(st *stream) error {
 	default:
 	}
 	switch {
-	case st.done.Load():
-	case st.httpPath != "":
-		go c.runHTTP(st)
+	case st.done.Load(), st.httpPath != "":
 	case st.rpc.op != nil:
 		c.admit(st)
 	case st.rpc.unary != nil:

@@ -849,6 +849,9 @@ func (n *Node) applyAuthEntry(b []byte, index uint64, p *pending) error {
 	return nil
 }
 
+// AuthEnabled reports whether auth is on.
+func (n *Node) AuthEnabled() bool { return n.state.auth.enabled }
+
 // Authorize checks a call the driver serves itself (Status, Snapshot) as
 // etcd's gRPC layer does: op says which.
 func (n *Node) Authorize(c Caller, op proto.Message) error {

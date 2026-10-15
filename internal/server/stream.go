@@ -5,12 +5,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"net/http"
 	"slices"
 	"sync/atomic"
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -31,6 +31,8 @@ type stream struct {
 	encoding   string  // the call's grpc-encoding: gzip, identity or none
 	httpMethod string
 	httpPath   string
+	authority  string
+	httpFields []hpack.HeaderField
 
 	// Reader only: the gRPC message being received.
 	hdr  [5]byte
@@ -56,10 +58,10 @@ type stream struct {
 	deadline *time.Timer
 
 	// Guarded by c.mu.
-	in            [][]byte // streaming calls: messages not yet taken by Recv
-	inEOF         bool     // the client ended its side
-	recvCredit    int      // stream bytes taken by Recv and not yet credited back
-	recvUsed      int      // stream bytes received and not credited back
+	in            []inMsg // streaming calls and HTTP bodies: input not yet taken
+	inEOF         bool    // the client ended its side
+	recvCredit    int     // stream bytes taken by Recv and not yet credited back
+	recvUsed      int     // stream bytes received and not credited back
 	sendWin       int64
 	out           []outItem
 	queued        int  // message bytes in out
@@ -145,20 +147,27 @@ func (st *stream) receive(d []byte) error {
 				return err
 			}
 		}
-		st.deliver(msg)
+		st.deliver(msg, len(st.msg)+5)
 		st.msg, st.hdrN = nil, 0
 	}
 }
 
-func (st *stream) deliver(m []byte) {
-	if st.rpc.stream == nil {
+// inMsg is a message, or a piece of an HTTP body, and the stream bytes
+// it took, which go back to the client's window once it is taken.
+type inMsg struct {
+	b    []byte
+	wire int
+}
+
+func (st *stream) deliver(m []byte, wire int) {
+	if st.rpc != nil && st.rpc.stream == nil {
 		st.body = m
 		st.msgs++
 		return
 	}
 	c := st.c
 	c.mu.Lock()
-	st.in = append(st.in, m)
+	st.in = append(st.in, inMsg{b: m, wire: wire})
 	c.mu.Unlock()
 	select {
 	case st.inSignal <- struct{}{}:
@@ -190,14 +199,27 @@ func (st *stream) RecvOne(m proto.Message) error {
 // Recv takes the next request message of a streaming call. It returns
 // io.EOF once the client ended its side.
 func (st *stream) Recv(m proto.Message) error {
+	b, err := st.next()
+	if err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(b, m); err != nil {
+		return status.Errorf(codes.Internal, "grpc: failed to unmarshal the received message: %v", err)
+	}
+	return nil
+}
+
+// next takes the next input of the stream and credits its bytes back to
+// the client's window. It returns io.EOF once the client ended its side.
+func (st *stream) next() ([]byte, error) {
 	c := st.c
 	for {
 		c.mu.Lock()
 		if len(st.in) > 0 {
-			b := st.in[0]
-			st.in[0] = nil
+			in := st.in[0]
+			st.in[0] = inMsg{}
 			st.in = st.in[1:]
-			st.recvCredit += len(b) + 5
+			st.recvCredit += in.wire
 			if st.recvCredit >= streamWindow/4 {
 				c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
 				st.recvUsed -= st.recvCredit
@@ -205,20 +227,17 @@ func (st *stream) Recv(m proto.Message) error {
 			}
 			c.mu.Unlock()
 			c.signal()
-			if err := proto.Unmarshal(b, m); err != nil {
-				return status.Errorf(codes.Internal, "grpc: failed to unmarshal the received message: %v", err)
-			}
-			return nil
+			return in.b, nil
 		}
 		eof := st.inEOF
 		c.mu.Unlock()
 		if eof {
-			return io.EOF
+			return nil, io.EOF
 		}
 		select {
 		case <-st.inSignal:
 		case <-st.ctx.Done():
-			return st.ctx.Err()
+			return nil, st.ctx.Err()
 		}
 	}
 }
@@ -373,20 +392,6 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	st.c.list(st)
 }
 
-// pushHTTP queues a whole HTTP response.
-func (st *stream) pushHTTP(headers, body []byte) {
-	c := st.c
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if st.reset || c.closed {
-		return
-	}
-	st.out = append(st.out, outItem{kind: outHeaders, b: headers}, outItem{kind: outData, b: body, end: true})
-	st.queued += len(body)
-	c.list(st)
-	c.signal()
-}
-
 // runUnary runs a unary call once its request has arrived.
 func (c *conn) runUnary(st *stream) {
 	defer st.cancel()
@@ -451,16 +456,4 @@ func (st *stream) expire() {
 	if st.cancel != nil {
 		st.cancel()
 	}
-}
-
-// runHTTP answers an HTTP request on an HTTP/2 stream.
-func (c *conn) runHTTP(st *stream) {
-	defer st.cancel()
-	st.done.Store(true)
-	a := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
-	headers := httpHeaders(a)
-	if st.httpMethod == http.MethodHead {
-		a.body = ""
-	}
-	st.pushHTTP(headers, []byte(a.body))
 }

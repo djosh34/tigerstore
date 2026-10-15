@@ -11,8 +11,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/http"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -34,6 +37,12 @@ type Config struct {
 	// PeerVersions, if set, reports the peer transport's protocol
 	// versions for /metrics.
 	PeerVersions func() peer.Versions
+	// NoGateway turns the gRPC gateway off (etcd's
+	// --enable-grpc-gateway=false).
+	NoGateway bool
+	// CORS and HostWhitelist are etcd's --cors and --host-whitelist; nil
+	// means etcd's default, which allows all.
+	CORS, HostWhitelist map[string]struct{}
 }
 
 // handshakeTimeout bounds the TLS handshake and the HTTP/2 preface.
@@ -48,6 +57,9 @@ type Server struct {
 	cfg Config
 	// gone sums the metrics of closed connections; guarded by mu.
 	gone *metrics
+	// gateway serves /v3/ over HTTP (gateway.go) through gwConn.
+	gateway http.Handler
+	gwConn  *grpc.ClientConn
 	// cluster and member go in every response header.
 	cluster, member uint64
 	// serving is the gRPC health service's status.
@@ -72,7 +84,7 @@ type closer interface {
 }
 
 // New builds the server for a node.
-func New(n *node.Node, cfg Config) *Server {
+func New(n *node.Node, cfg Config) (*Server, error) {
 	if cfg.TLS != nil {
 		cfg.TLS = cfg.TLS.Clone()
 		// HTTP/1.1 stays for /health and /version probes that do not
@@ -80,7 +92,15 @@ func New(n *node.Node, cfg Config) *Server {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	if !cfg.NoGateway {
+		var err error
+		if s.gateway, s.gwConn, err = s.newGateway(); err != nil {
+			cancel()
+			return nil, err
+		}
+	}
+	return s, nil
 }
 
 // Serve accepts clients on ln until Stop.
@@ -157,6 +177,17 @@ func (s *Server) serveConn(nc net.Conn) {
 	c.serve()
 }
 
+// servePlain serves HTTP/2 with prior knowledge on a connection of the
+// gateway's.
+func (s *Server) servePlain(nc net.Conn) {
+	c := newConn(s, nc, nc)
+	if !s.track(c) {
+		return
+	}
+	defer s.untrack(c)
+	c.serve()
+}
+
 func (s *Server) track(c closer) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -182,11 +213,14 @@ func (s *Server) untrack(c closer) {
 // streams in flight a moment to finish, and then closes every connection.
 func (s *Server) Stop() error {
 	s.cancel()
+	var err error
+	if s.gwConn != nil {
+		err = s.gwConn.Close()
+	}
 	s.mu.Lock()
 	s.stopped = true
-	var err error
 	if s.ln != nil {
-		err = s.ln.Close()
+		err = errors.Join(err, s.ln.Close())
 	}
 	for c := range s.conns {
 		c.goAway()

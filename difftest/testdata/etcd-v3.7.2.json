@@ -2257,6 +2257,386 @@
       "result": "eee"
     }
   ],
+  "gateway": [
+    {
+      "do": "put",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "put again over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 2
+            },
+            "prev_kv": {
+              "create_revision": 1,
+              "key": "a",
+              "mod_revision": 1,
+              "value": "1",
+              "version": "1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            },
+            "kvs": [
+              {
+                "create_revision": 1,
+                "key": "a",
+                "mod_revision": 2,
+                "value": "1",
+                "version": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "range under /v3beta/",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range with an unknown field",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            },
+            "kvs": [
+              {
+                "create_revision": 1,
+                "key": "a",
+                "mod_revision": 2,
+                "value": "1",
+                "version": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "range without a key",
+      "code": "OK",
+      "result": {
+        "status": 400,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 3,
+            "message": "etcdserver: key is not provided"
+          }
+        ]
+      }
+    },
+    {
+      "do": "range with bad JSON",
+      "code": "OK",
+      "result": {
+        "status": 400,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 3,
+            "message": "unexpected EOF"
+          }
+        ]
+      }
+    },
+    {
+      "do": "GET of range",
+      "code": "OK",
+      "result": {
+        "status": 501,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 12,
+            "message": "Method Not Allowed"
+          }
+        ]
+      }
+    },
+    {
+      "do": "unknown path",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 5,
+            "message": "Not Found"
+          }
+        ]
+      }
+    },
+    {
+      "do": "OPTIONS",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "",
+        "cors": "*"
+      }
+    },
+    {
+      "do": "txn",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 2
+            },
+            "responses": [
+              {
+                "response_range": {
+                  "count": "1",
+                  "header": {
+                    "revision": 2
+                  },
+                  "kvs": [
+                    {
+                      "create_revision": 1,
+                      "key": "a",
+                      "mod_revision": 2,
+                      "value": "1",
+                      "version": "2"
+                    }
+                  ]
+                }
+              }
+            ],
+            "succeeded": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "deleted": "1",
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch from the first put",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "result": {
+              "created": true,
+              "header": {
+                "revision": 3
+              }
+            }
+          },
+          {
+            "result": {
+              "events": [
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 1,
+                    "value": "1",
+                    "version": "1"
+                  }
+                },
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 2,
+                    "value": "1",
+                    "version": "2"
+                  }
+                },
+                {
+                  "kv": {
+                    "key": "a",
+                    "mod_revision": 3
+                  },
+                  "type": "DELETE"
+                }
+              ],
+              "header": {
+                "revision": 3
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "result": {
+              "created": true,
+              "header": {
+                "revision": 3
+              }
+            }
+          },
+          {
+            "result": {
+              "events": [
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 1,
+                    "value": "1",
+                    "version": "1"
+                  }
+                },
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 2,
+                    "value": "1",
+                    "version": "2"
+                  }
+                },
+                {
+                  "kv": {
+                    "key": "a",
+                    "mod_revision": 3
+                  },
+                  "type": "DELETE"
+                }
+              ],
+              "header": {
+                "revision": 3
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "member list status",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*"
+      }
+    },
+    {
+      "do": "alarm list",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "auth status",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "authRevision": "1",
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    }
+  ],
   "hashes": [
     {
       "do": "put a",
@@ -2467,6 +2847,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -2477,6 +2858,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -2487,6 +2869,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -2497,6 +2880,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -2507,6 +2891,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\nok\n"
       }
     },
@@ -2517,6 +2902,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -2527,6 +2913,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]linearizable_read ok\nok\n"
       }
     },
@@ -2537,6 +2924,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -2547,6 +2935,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -2557,6 +2946,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -2567,6 +2957,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -2577,6 +2968,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -2587,6 +2979,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -2597,6 +2990,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -2607,6 +3001,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -2618,6 +3013,7 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": ""
       }
     },
@@ -2629,6 +3025,7 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": "Method Not Allowed\n"
       }
     },
@@ -2639,6 +3036,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -2650,6 +3048,7 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": "Method Not Allowed\n"
       }
     }

@@ -684,6 +684,7 @@ func (r *run) http(do string, hc *http.Client, method, path string) {
 		ContentType string `json:"contentType"`
 		NoSniff     string `json:"nosniff,omitempty"`
 		Allow       string `json:"allow,omitempty"`
+		CORS        string `json:"cors,omitempty"`
 		Body        string `json:"body"`
-	}{resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Content-Type-Options"), resp.Header.Get("Allow"), strings.Join(lines, "")}, nil)
+	}{resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Content-Type-Options"), resp.Header.Get("Allow"), resp.Header.Get("Access-Control-Allow-Origin"), strings.Join(lines, "")}, nil)
 }
