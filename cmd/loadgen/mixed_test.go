@@ -191,7 +191,7 @@ func TestMixedWatchPairing(t *testing.T) {
 		k.value = []byte("new")
 		k.mod = 3
 		k.version++
-		observed := mixedEvent{digest: eventDigest(k, &prev, false), at: 30}
+		observed := mixedEvent{event: eventDigest(k, &prev, false), at: 30}
 		if watchFirst {
 			l.pair(3, observed, false)
 		}
@@ -203,7 +203,8 @@ func TestMixedWatchPairing(t *testing.T) {
 			t.Fatalf("pair failed: %+v", l)
 		}
 		l.expect(4, k, &prev, true, 20)
-		observed.digest[0]++
+		observed.event = append([]byte{}, observed.event...)
+		observed.event[len(observed.event)-1]++
 		l.pair(4, observed, false)
 		if len(l.errs) != 1 {
 			t.Fatal("accepted wrong watch event")

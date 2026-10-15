@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -607,11 +606,12 @@ func (p *mixedPreload) done(st *stream, at int64, err error) {
 	p.w.wk.stats.complete(st, at, err)
 }
 
-// A watch can beat its write reply. Pair by revision and compare a digest
-// of the full event, keeping only unmatched events rather than all history.
+// A watch can beat its write reply. Pair by revision and compare the full
+// canonical event bytes, keeping only unmatched events rather than all
+// history.
 type (
 	mixedEvent struct {
-		digest       [32]byte
+		event        []byte
 		at, intended int64
 	}
 	mixedLedger struct {
@@ -641,7 +641,7 @@ func mixedKV(k *mixedKey) *msg {
 	return m
 }
 
-func eventDigest(k, prev *mixedKey, deleted bool) [32]byte {
+func eventDigest(k, prev *mixedKey, deleted bool) []byte {
 	m := newMsg()
 	if deleted {
 		m.varint(eventType, eventTypeDelete)
@@ -650,7 +650,7 @@ func eventDigest(k, prev *mixedKey, deleted bool) [32]byte {
 	if prev.mod != 0 {
 		m.sub(eventPrevKV, mixedKV(prev))
 	}
-	return sha256.Sum256(m.b)
+	return m.b
 }
 
 // unmatchedError needs l.mu held, or all readers joined. Check again
@@ -679,7 +679,7 @@ func (l *mixedLedger) pair(rev int64, e mixedEvent, expected bool) {
 	}
 	if old, ok := other[rev]; ok {
 		delete(other, rev)
-		if old.digest != e.digest {
+		if !bytes.Equal(old.event, e.event) {
 			l.errs = append(l.errs, fmt.Errorf("watch differs at revision %d", rev))
 		}
 		if expected {
@@ -699,7 +699,7 @@ func (l *mixedLedger) pair(rev int64, e mixedEvent, expected bool) {
 }
 
 func (l *mixedLedger) expect(rev int64, k, prev *mixedKey, deleted bool, intended int64) {
-	l.pair(rev, mixedEvent{digest: eventDigest(k, prev, deleted), intended: intended}, true)
+	l.pair(rev, mixedEvent{event: eventDigest(k, prev, deleted), intended: intended}, true)
 }
 
 type mixedWatch struct {
@@ -797,7 +797,7 @@ func (w *mixedWatch) response(m []byte) error {
 				canonical.sub(field, km)
 			}
 			at := now()
-			w.ledger.pair(int64(rev), mixedEvent{digest: sha256.Sum256(canonical.b), at: at}, false)
+			w.ledger.pair(int64(rev), mixedEvent{event: canonical.b, at: at}, false)
 			w.ledger.mu.Lock()
 			if at >= w.ledger.start && at < w.ledger.stop {
 				w.ledger.events++
