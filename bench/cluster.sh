@@ -18,7 +18,8 @@
 #
 # CERTS is a directory made by scripts/dev-certs.sh (required). ETCDCTL
 # names the etcdctl (default: etcdctl next to the server binary, then on
-# PATH). BENCH_PORT is the first port (default 40000). BENCH_GOMEMLIMIT
+# PATH). BENCH_PORT is the first port (default 20000, below Linux's ephemeral
+# ports, so no outgoing connection holds one). BENCH_GOMEMLIMIT
 # goes to every node as GOMEMLIMIT, and a tigerstore node takes it as its
 # memory budget; without it, each tigerstore node gets a quarter of the
 # host's memory as its budget, so that the three of them and the load
@@ -28,7 +29,7 @@
 # the election.
 set -euo pipefail
 
-port=${BENCH_PORT:-40000}
+port=${BENCH_PORT:-20000}
 etcdctl=${ETCDCTL:-etcdctl}
 certs=${CERTS:-}
 

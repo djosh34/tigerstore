@@ -23,7 +23,7 @@ on:
         description: repetitions
         default: "5"
       layouts:
-        description: extra max runs of the tigerstore refs in put and txn jobs, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
+        description: extra max runs of the tigerstore refs in the put-1k and txn-1k jobs, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
         default: tmpfs alone
 
 jobs:
@@ -114,7 +114,7 @@ jobs:
           LAYOUT: 3 0 1 2
           MODES: ${{ inputs.modes || (matrix.bench == 'mixed-k8s' && 'rate' || 'max rate') }}
           REPS: ${{ inputs.reps || '5' }}
-          LAYOUTS: ${{ (startsWith(matrix.bench, 'put-') || startsWith(matrix.bench, 'txn-')) && inputs.layouts || '' }}
+          LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
         run: |
           DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
           export DISK
