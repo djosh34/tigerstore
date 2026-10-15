@@ -386,7 +386,7 @@ func (s *Sim) rot() bool {
 			}
 		}
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
-		n.corrupted, n.rotted, n.rotFile = true, true, name
+		n.corrupted, n.rotted, n.rotFile, n.rotEntry = true, true, name, r.Index
 		s.stats.Rots++
 		s.mix(0x60, uint64(n.idx), r.Index)
 		return true

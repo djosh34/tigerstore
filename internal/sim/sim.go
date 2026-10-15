@@ -17,6 +17,7 @@ import (
 	"hash/fnv"
 	"math/rand/v2"
 	"slices"
+	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
@@ -372,10 +373,11 @@ type node struct {
 	ckptIndex  uint64
 	ckptSyncAt int64
 	root       uint64
-	// rotted is set when the run flipped a bit of a value in segment
-	// rotFile on the disk of this running node.
-	rotted  bool
-	rotFile string
+	// rotted is set when the run flipped a bit of a value of entry
+	// rotEntry, in segment rotFile, on the disk of this running node.
+	rotted   bool
+	rotFile  string
+	rotEntry uint64
 }
 
 type link struct {
@@ -501,8 +503,10 @@ type Result struct {
 	// Trace is the hash of every event.
 	Trace   uint64
 	History []*Record
-	// Log is every committed write in commit order.
+	// Log is every committed write in commit order, and revs the
+	// revision right after each.
 	Log     []proto.Message
+	revs    []int64
 	Watches []WatchResult
 	Stats   Stats
 	// StallStops are the times leaders stopped on a stalled disk, and
@@ -899,8 +903,8 @@ func (s *Sim) process(n *node) {
 	for _, a := range eff.Applied {
 		s.record(n, a)
 	}
-	if n.rotted && errors.Is(err, mvcc.ErrBadValue) {
-		// It read the value the run damaged, and stopped instead of
+	if n.rotted && rotStop(n, err) {
+		// It read the value the run damaged and stopped instead of
 		// answering with it.
 		s.stopNode(n)
 		return
@@ -957,6 +961,21 @@ func (s *Sim) process(n *node) {
 	if !n.diskBusy && len(n.diskQ) > 0 {
 		s.startDisk(n)
 	}
+}
+
+// rotStop reports whether err is how a rotted node stops when it reads
+// the damaged value: alone, where its checksum fails, or in the whole
+// record of its entry, where the record's crc fails. Any other error
+// fails the run, as on a node that was not rotted.
+func rotStop(n *node, err error) bool {
+	if errors.Is(err, mvcc.ErrBadValue) {
+		return true
+	}
+	if !errors.Is(err, wal.ErrCorrupt) {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, fmt.Sprintf("the record of entry %d in segment ", n.rotEntry)) && strings.Contains(msg, "does not verify")
 }
 
 // startDisk writes every queued job and schedules the fsync. A crash before

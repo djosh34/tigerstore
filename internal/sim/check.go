@@ -56,11 +56,11 @@ func (s *Sim) check(res *Result) error {
 	// The cluster compacts, so the checks read history from a model: the
 	// committed log replayed without compactions. It must end in the
 	// cluster's state.
-	model, log, err := replay(res.Log)
+	model, log, revs, err := replay(res.Log)
 	if err != nil {
 		return err
 	}
-	res.Log = log
+	res.Log, res.revs = log, revs
 	if err := sameLatest(model, final); err != nil {
 		return err
 	}
@@ -487,28 +487,29 @@ func isRejection(err error) bool {
 // so every revision stays readable. It returns the log as the checkers
 // read it: an expiry that applied becomes the LeaseRevoke it amounts to,
 // and one that no longer applied, because a keepalive came first, is left
-// out.
-func replay(log []proto.Message) (*mvcc.Store, []proto.Message, error) {
+// out. With it come the revisions right after each of its entries.
+func replay(log []proto.Message) (*mvcc.Store, []proto.Message, []int64, error) {
 	st := core.NewState(core.MinLeaseTTL(core.DefaultConfig(1, nil)), &mvcc.Heap{})
 	var out []proto.Message
+	var revs []int64
 	for i, op := range log {
 		e, expiry := op.(*pb.LeaseCheckpoint)
 		if _, ok := op.(*pb.CompactionRequest); ok {
-			out = append(out, op)
+			out, revs = append(out, op), append(revs, st.Store().Rev())
 			continue
 		}
 		resp, err := st.Apply(op)
 		if err != nil && !isRejection(err) {
-			return nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
+			return nil, nil, nil, fmt.Errorf("replaying log write %d: %w", i, err)
 		}
 		switch {
 		case !expiry:
-			out = append(out, op)
+			out, revs = append(out, op), append(revs, st.Store().Rev())
 		case resp != nil:
-			out = append(out, &pb.LeaseRevokeRequest{ID: e.ID})
+			out, revs = append(out, &pb.LeaseRevokeRequest{ID: e.ID}), append(revs, st.Store().Rev())
 		}
 	}
-	return st.Store(), out, nil
+	return st.Store(), out, revs, nil
 }
 
 // sameLatest checks that two stores are at the same revision with the same

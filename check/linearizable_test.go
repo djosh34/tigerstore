@@ -78,6 +78,15 @@ func TestLinearizableGood(t *testing.T) {
 		h.Ops = append(h.Ops, history.Op{Client: 1, Call: 100, Return: 110, Req: history.Request{Range: &history.RangeRequest{Key: "a"}}, Resp: &history.Response{Revision: 1, Range: &history.RangeResponse{}}})
 		mustPass(t, "Linearizable", Linearizable(h, timeout))
 	})
+	t.Run("timed out write took effect as the log says", func(t *testing.T) {
+		b := newBuilder(t, "a")
+		put := b.put(0, "a", "1")
+		b.get(1, "a")
+		h := b.done()
+		h.Ops[put].Resp, h.Ops[put].Err = nil, errUnavailable
+		h.Ops[put].Effect = &history.Effect{By: 25, Revision: 2}
+		mustPass(t, "Linearizable", Linearizable(h, timeout))
+	})
 	t.Run("rejected request had no effect", func(t *testing.T) {
 		b := newBuilder(t, "a")
 		b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "x", Lease: 5}})
@@ -140,6 +149,24 @@ func TestLinearizableBroken(t *testing.T) {
 			put := b.put(0, "a", "1")
 			h := b.done()
 			h.Ops[put].Resp.Revision = 3
+			return h
+		}},
+		{"timed out write the log has is not read after it took effect", func(t *testing.T) *history.History {
+			b := newBuilder(t, "a")
+			put := b.put(0, "a", "1")
+			h := b.done()
+			h.Ops[put].Resp, h.Ops[put].Err = nil, errUnavailable
+			h.Ops[put].Effect = &history.Effect{By: 20, Revision: 2}
+			h.Ops = append(h.Ops, history.Op{Client: 1, Call: 100, Return: 110, Req: history.Request{Range: &history.RangeRequest{Key: "a"}}, Resp: &history.Response{Revision: 1, Range: &history.RangeResponse{}}})
+			return h
+		}},
+		{"timed out write took effect at another revision than the log's", func(t *testing.T) *history.History {
+			b := newBuilder(t, "a")
+			put := b.put(0, "a", "1")
+			b.get(1, "a")
+			h := b.done()
+			h.Ops[put].Resp, h.Ops[put].Err = nil, errUnavailable
+			h.Ops[put].Effect = &history.Effect{By: 20, Revision: 3}
 			return h
 		}},
 		{"rejected write took effect", func(t *testing.T) *history.History {
@@ -218,4 +245,9 @@ func TestValidate(t *testing.T) {
 	h = b.done()
 	h.Ops[0].Req.Range = &history.RangeRequest{Key: "a"}
 	mustFail(t, "Validate", h.Validate(), "2 fields set")
+	b = newBuilder(t, "a")
+	b.put(0, "a", "1")
+	h = b.done()
+	h.Ops[0].Effect = &history.Effect{By: h.Ops[0].Return, Revision: 2}
+	mustFail(t, "Validate", h.Validate(), "not an ambiguous mutation")
 }
