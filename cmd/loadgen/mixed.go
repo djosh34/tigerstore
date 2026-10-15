@@ -304,12 +304,28 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 func (w *mixedLoad) exhausted() bool { return false }
 
 // checkMixedKV validates all of the stored fields, not only key and size.
+// It reads the KV in one pass; as before, the last copy of a field wins.
 func checkMixedKV(m []byte, k *mixedKey) error {
-	key, err := bytesField(m, kvKey)
-	if err != nil {
-		return err
-	}
-	value, err := bytesField(m, kvValue)
+	var key, value []byte
+	var create, mod, version, lease uint64
+	err := fields(m, func(n protowire.Number, v uint64, b []byte) error {
+		//exhaustive:ignore // other fields are not checked, as before
+		switch n {
+		case kvKey:
+			key = b
+		case kvValue:
+			value = b
+		case kvCreateRevision:
+			create = v
+		case kvModRevision:
+			mod = v
+		case kvVersion:
+			version = v
+		case kvLease:
+			lease = v
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
@@ -318,14 +334,11 @@ func checkMixedKV(m []byte, k *mixedKey) error {
 	}
 	for _, f := range []struct {
 		field protowire.Number
+		have  uint64
 		want  int64
-	}{{kvCreateRevision, k.create}, {kvModRevision, k.mod}, {kvVersion, k.version}, {kvLease, 0}} {
-		v, err := varintField(m, f.field)
-		if err != nil {
-			return err
-		}
-		if int64(v) != f.want {
-			return fmt.Errorf("%q field %d = %d, want %d", k.key, f.field, v, f.want)
+	}{{kvCreateRevision, create, k.create}, {kvModRevision, mod, k.mod}, {kvVersion, version, k.version}, {kvLease, lease, 0}} {
+		if int64(f.have) != f.want {
+			return fmt.Errorf("%q field %d = %d, want %d", k.key, f.field, f.have, f.want)
 		}
 	}
 	return nil
