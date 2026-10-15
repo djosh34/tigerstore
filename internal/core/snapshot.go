@@ -64,7 +64,7 @@ func (n *Node) install(in *Install) error {
 	defer func() { n.resume = nil }()
 	// The entries in memory up to the applied index leave it now.
 	n.fillCache(n.applied)
-	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.conf}}); err != nil {
+	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
 		return err
 	}
 	if c := in.Checkpoint; c.Index > 0 {
@@ -80,6 +80,9 @@ func (n *Node) install(in *Install) error {
 		n.setState(st)
 		n.cache.clear()
 		n.applied, n.last, n.base, n.sinceCkpt, n.storage.ckpt = c.Index, last, last.base, 0, c
+		n.storage.confs = nil
+		n.storage.setConf(c.Index, st.confState())
+		n.membersChanged()
 		n.record(c.Index, c.Term)
 		// The state jumped; watchers would miss the changes in between.
 		// Their clients watch again from where they were.
@@ -347,6 +350,27 @@ func ServeSnapshot(disk Log, ckpts []wal.Root, from, to uint64, w io.Writer) err
 	return s.w.Flush()
 }
 
+// ServeCheckpoint writes to w the snapshot stream of a node that has
+// nothing yet: the checkpoint ckpt with every value it names, and no
+// entry. A restore writes a new log from it.
+func ServeCheckpoint(disk Log, ckpt wal.Root, w io.Writer) error {
+	s := &snapWriter{w: bufio.NewWriterSize(w, 256<<10)}
+	var hdr []byte
+	for _, x := range []uint64{1, ckpt.Index, ckpt.Index, ckpt.Term} {
+		hdr = binary.AppendUvarint(hdr, x)
+	}
+	if err := s.item(snapHeader, hdr); err != nil {
+		return err
+	}
+	if err := serveCheckpoint(s, disk, ckpt, 1); err != nil {
+		return err
+	}
+	if err := s.item(snapEnd); err != nil {
+		return err
+	}
+	return s.w.Flush()
+}
+
 // serveCheckpoint writes the checkpoint file, then every value it names
 // in entries from from on.
 func serveCheckpoint(s *snapWriter, disk Log, ckpt wal.Root, from uint64) error {
@@ -463,7 +487,7 @@ var errBadSnapshot = errors.New("core: bad snapshot")
 // leader's (Raft's log matching), and it may have acknowledged them: it
 // skips them, so that they stay durable through the install, and the
 // root keeps them. Only the first entry it lacks replaces those after it.
-func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, in *Install) error {
+func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) error {
 	s := &snapReader{r: bufio.NewReaderSize(r, 256<<10)}
 	kind, p, err := s.next()
 	if err != nil {
@@ -486,7 +510,7 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, peers []uint64, i
 	var root *wal.Root
 	if ckpt != 0 {
 		next, term = ckpt+1, ckptTerm
-		if err := receiveCheckpoint(s, sink, disk, peers, from, ckpt, ckptTerm); err != nil {
+		if err := receiveCheckpoint(s, sink, disk, from, ckpt, ckptTerm); err != nil {
 			return err
 		}
 		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
@@ -580,7 +604,7 @@ func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {
 
 // receiveCheckpoint writes the checkpoint file and the values, and checks
 // them.
-func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint64, from, ckpt, ckptTerm uint64) error {
+func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, from, ckpt, ckptTerm uint64) error {
 	root := wal.Root{Index: ckpt, Term: ckptTerm}
 	check := !planted.On("B22")
 	tr := &trailerReader{}
@@ -615,7 +639,7 @@ func receiveCheckpoint(s *snapReader, sink SnapshotSink, disk Log, peers []uint6
 	if err = errors.Join(err, f.Close()); err != nil {
 		return err
 	}
-	if check && (h.index != root.Index || h.term != root.Term || !slices.Equal(h.voters, peers)) {
+	if check && (h.index != root.Index || h.term != root.Term) {
 		return fmt.Errorf("%w: the checkpoint says index %d term %d, the stream %d term %d", errBadSnapshot, h.index, h.term, root.Index, root.Term)
 	}
 	for {

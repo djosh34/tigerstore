@@ -32,27 +32,6 @@ import (
 //     compactions took: members whose hash differs from a majority's get
 //     a CORRUPT alarm, or member 0 when no majority agrees.
 
-// callHashKV is the kind of a Call that asks for a HashKV answer.
-const callHashKV = 1
-
-// Answer answers a peer's Call.
-func (n *Node) Answer(_ uint64, req []byte) ([]byte, error) {
-	if len(req) == 0 || req[0] != callHashKV {
-		return nil, errors.New("node: unknown call")
-	}
-	var r pb.HashKVRequest
-	if err := proto.Unmarshal(req[1:], &r); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), n.requestTimeout())
-	defer cancel()
-	resp, err := n.Do(ctx, &r)
-	if err != nil {
-		return nil, err
-	}
-	return proto.Marshal(resp)
-}
-
 // requestTimeout is how long a node's own request may take, etcd's
 // ReqTimeout.
 func (n *Node) requestTimeout() time.Duration {

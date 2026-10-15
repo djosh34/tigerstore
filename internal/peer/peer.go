@@ -15,8 +15,8 @@
 // carries its Raft ID with the top bit set. After the reply it writes the
 // first and the last index it needs, 8 bytes each, and reads the snapshot
 // stream until the other end closes. A node asks another a question (Call)
-// on a connection of its own too: its preface carries its Raft ID with
-// the second bit from the top set; then it writes the request, and the
+// on a connection of its own too: its preface carries its Raft ID, or 0
+// for a node that has none yet, with the second bit from the top set; then it writes the request, and the
 // other end writes the answer, each a 4-byte length and the bytes. An
 // answer starts with 0 and the answer's bytes, or with 1, a 4-byte gRPC
 // code and the error's message.
@@ -53,6 +53,8 @@ type Transport interface {
 	// Call sends peer id a request, which its Config.Answer answers, and
 	// returns the answer.
 	Call(ctx context.Context, id uint64, req []byte) ([]byte, error)
+	// SetPeers sets the peers by Raft ID and host:port.
+	SetPeers(peers map[uint64]string)
 	Close() error
 }
 
@@ -158,10 +160,13 @@ const (
 
 // TCP is the transport over TLS on TCP.
 type TCP struct {
-	cfg     Config
-	verify  func([][]byte, [][]*x509.Certificate) error
-	ln      net.Listener
-	senders map[uint64]*sender
+	cfg    Config
+	verify func([][]byte, [][]*x509.Certificate) error
+	ln     net.Listener
+	// senders are the peers by Raft ID, replaced whole by SetPeers;
+	// peersMu orders the replacements.
+	senders atomic.Pointer[map[uint64]*sender]
+	peersMu sync.Mutex
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -206,26 +211,70 @@ func Start(cfg Config) (*TCP, error) {
 		cfg:     cfg,
 		verify:  verify,
 		ln:      ln,
-		senders: map[uint64]*sender{},
 		ctx:     ctx,
 		cancel:  cancel,
 		conns:   map[net.Conn]struct{}{},
 		inbound: map[net.Conn]inbound{},
 		logged:  map[string]time.Time{},
 	}
-	for id, addr := range cfg.Peers {
-		s := &sender{
-			t:    t,
-			id:   id,
-			addr: addr,
-			ctrl: make(chan queued, controlQueue),
-			data: make(chan queued, dataQueue),
-		}
-		t.senders[id] = s
-		t.wg.Go(s.run)
-	}
+	t.senders.Store(&map[uint64]*sender{})
+	t.SetPeers(cfg.Peers)
 	t.wg.Go(t.accept)
 	return t, nil
+}
+
+// peer returns the sender of peer id.
+func (t *TCP) peer(id uint64) (*sender, bool) {
+	s, ok := (*t.senders.Load())[id]
+	return s, ok
+}
+
+// SetPeers makes peers the nodes the transport sends to and accepts
+// connections from, by Raft ID and host:port. A peer that is new or has
+// a new address gets a writer; one that is gone loses its writer and its
+// connection.
+func (t *TCP) SetPeers(peers map[uint64]string) {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	old := *t.senders.Load()
+	next := make(map[uint64]*sender, len(peers))
+	for id, addr := range peers {
+		if id == t.cfg.ID {
+			continue
+		}
+		if s, ok := old[id]; ok && s.addr == addr {
+			next[id] = s
+			continue
+		}
+		ctx, cancel := context.WithCancel(t.ctx)
+		s := &sender{
+			t:      t,
+			id:     id,
+			addr:   addr,
+			ctx:    ctx,
+			cancel: cancel,
+			ctrl:   make(chan queued, controlQueue),
+			data:   make(chan queued, dataQueue),
+		}
+		next[id] = s
+		t.wg.Go(s.run)
+	}
+	for id, s := range old {
+		if next[id] != s {
+			s.cancel()
+		}
+	}
+	t.senders.Store(&next)
+	// A peer that left may still be connected to this node.
+	t.mu.Lock()
+	for c, in := range t.inbound {
+		if _, ok := next[in.id]; !ok {
+			if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				t.logf("peer: close: %v", err)
+			}
+		}
+	}
+	t.mu.Unlock()
 }
 
 // Addr is the address the transport listens on.
@@ -276,7 +325,7 @@ type Versions struct {
 // Versions returns the transport's protocol versions now.
 func (t *TCP) Versions() Versions {
 	v := Versions{Min: t.cfg.minVersion, Max: t.cfg.maxVersion, Out: map[uint64]byte{}, In: map[uint64]byte{}}
-	for id, s := range t.senders {
+	for id, s := range *t.senders.Load() {
 		v.Out[id] = byte(s.version.Load())
 		v.In[id] = 0
 	}
@@ -290,7 +339,7 @@ func (t *TCP) Versions() Versions {
 
 // Send queues a message for its peer.
 func (t *TCP) Send(m *raftpb.Message) {
-	s, ok := t.senders[m.GetTo()]
+	s, ok := t.peer(m.GetTo())
 	if !ok {
 		return
 	}
@@ -448,7 +497,7 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	id = binary.BigEndian.Uint64(p[4:])
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
-	if _, ok := t.senders[id]; !ok {
+	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
 		return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
 	}
 	v = pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
@@ -522,7 +571,7 @@ func (w *deadlineWriter) Write(p []byte) (int, error) {
 
 // Fetch opens a connection to peer id that fetches a snapshot stream.
 func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error) {
-	s, ok := t.senders[id]
+	s, ok := t.peer(id)
 	if !ok {
 		return nil, fmt.Errorf("peer: unknown peer %d", id)
 	}
@@ -568,8 +617,11 @@ type sender struct {
 	t    *TCP
 	id   uint64
 	addr string
-	ctrl chan queued
-	data chan queued
+	// ctx ends when the transport closes or the peer leaves.
+	ctx    context.Context
+	cancel context.CancelFunc
+	ctrl   chan queued
+	data   chan queued
 	// ctrlBytes and dataBytes are the estimated bytes in each queue.
 	ctrlBytes, dataBytes atomic.Int64
 	// version is the protocol version of the connection to the peer, 0
@@ -701,7 +753,7 @@ func (s *sender) drop() {
 }
 
 func (s *sender) run() {
-	ctx := s.t.ctx
+	ctx := s.ctx
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)

@@ -189,7 +189,7 @@ func TestSnapshotRestore(t *testing.T) {
 	restored := newClusterWith(t, func(r *cluster) {
 		tinyCheckpoints(r)
 		for id := uint64(1); id <= 3; id++ {
-			if _, err := node.Restore(path, r.dirs[id], []uint64{1, 2, 3}, false); err != nil {
+			if _, err := node.Restore(path, r.dirs[id], r.members(), false); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -203,7 +203,7 @@ func TestSnapshotRestore(t *testing.T) {
 	if err := os.WriteFile(path, file, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := node.Restore(path, t.TempDir(), []uint64{1, 2, 3}, false); err == nil {
+	if _, err := node.Restore(path, t.TempDir(), restored.members(), false); err == nil {
 		t.Fatal("a damaged snapshot was restored")
 	}
 }

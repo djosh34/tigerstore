@@ -78,6 +78,10 @@ func (c *conn) admit(st *stream) {
 				st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
 				return
 			}
+			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
+				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
+				return
+			}
 		default:
 			if err := unmarshal(st.body, req.Op); err != nil {
 				st.finish(err)

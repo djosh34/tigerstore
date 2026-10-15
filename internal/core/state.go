@@ -60,6 +60,10 @@ type State struct {
 	// voter announced (version.go).
 	version  uint32
 	supports map[uint64]uint32
+	// members are the cluster's members by ID, and removed the IDs it
+	// removed, which never come back (members.go).
+	members map[uint64]*pb.Member
+	removed map[uint64]bool
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
@@ -77,7 +81,10 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 // at least minTTL seconds, as etcd clamps them to 1.5 election timeouts
 // rounded up.
 func NewState(minTTL int64, v mvcc.Values) *State {
-	st := &State{kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{}}
+	st := &State{
+		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{},
+		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{},
+	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
 }
@@ -109,6 +116,25 @@ func (st *State) Hash() uint64 {
 	for _, a := range st.alarms {
 		mix(a.MemberID)
 		mix(uint64(a.Alarm))
+	}
+	for _, m := range st.memberList() {
+		mix(m.ID)
+		b := binary.AppendUvarint(nil, uint64(len(m.Name)))
+		b = append(b, m.Name...)
+		for _, urls := range [][]string{m.PeerURLs, m.ClientURLs} {
+			b = binary.AppendUvarint(b, uint64(len(urls)))
+			for _, u := range urls {
+				b = binary.AppendUvarint(b, uint64(len(u)))
+				b = append(b, u...)
+			}
+		}
+		if m.IsLearner {
+			b = append(b, 1)
+		}
+		mix(uint64(crc32.Checksum(b, castagnoli)))
+	}
+	for _, id := range slices.Sorted(maps.Keys(st.removed)) {
+		mix(id)
 	}
 	return h
 }
@@ -238,6 +264,9 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		return st.revoke(op.ID)
 	case *pb.AlarmRequest:
 		return st.alarm(op), nil
+	case *pb.Member:
+		st.applyAttributes(op)
+		return nil, nil
 	}
 	return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
 }

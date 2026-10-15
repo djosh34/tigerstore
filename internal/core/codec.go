@@ -41,6 +41,9 @@ const (
 	// supports, a wrapperspb.UInt32Value. It changes no key.
 	kindVersion = 10
 	kindAlarm   = 11
+	// kindMember is a member's name and client URLs, which it publishes
+	// once it starts (members.go).
+	kindMember = 12
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -79,6 +82,8 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 			kind = kindVersion
 		case *pb.AlarmRequest:
 			kind = kindAlarm
+		case *pb.Member:
+			kind = kindMember
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
@@ -208,6 +213,8 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.LeaseCheckpoint{}, nil
 	case kindAlarm:
 		return &pb.AlarmRequest{}, nil
+	case kindMember:
+		return &pb.Member{}, nil
 	}
 	return nil, errBadBatch
 }

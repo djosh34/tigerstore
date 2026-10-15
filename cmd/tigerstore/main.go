@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"log"
 	"net"
 	"net/url"
@@ -41,6 +40,9 @@ type flags struct {
 	features                                  featureGates
 	diskBudget                                int64
 	memoryBudget                              int64
+	clusterState                              string
+	maxLearners                               int
+	strictReconfig                            bool
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -98,6 +100,10 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	fs.StringVar(&f.clusterState, "initial-cluster-state", "new", "new for a node of a new cluster, existing for one that joins a running cluster after MemberAdd")
+	fs.String("initial-advertise-peer-urls", "", "accepted for etcd's sake; a node's peer URL is its entry in --initial-cluster")
+	fs.IntVar(&f.maxLearners, "max-learners", 1, "the most learners the cluster may have")
+	fs.BoolVar(&f.strictReconfig, "strict-reconfig-check", true, "refuse member changes that would leave fewer started voters than a quorum")
 	f.features = newFeatureGates()
 	fs.Var(f.features, "feature-gates", "comma-separated etcd server feature gates, such as InitialCorruptCheck=true,CompactHashCheck=true")
 	fs.DurationVar(&f.corruptCheck, "corrupt-check-time", 0, "interval of the leader's corruption checks of every member; 0 turns them off")
@@ -118,6 +124,9 @@ func parse(args []string) (*flags, error) {
 	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+	if f.clusterState != "new" && f.clusterState != "existing" {
+		return nil, fmt.Errorf("--initial-cluster-state must be new or existing, not %q", f.clusterState)
 	}
 	if f.compactHashCheck <= 0 {
 		return nil, fmt.Errorf("--compact-hash-check-time must be >0 (set to %v)", f.compactHashCheck)
@@ -218,16 +227,10 @@ func run(args []string, logger *log.Logger) error {
 		return err
 	}
 	var self *member
-	var ids []uint64
-	peers := map[uint64]string{}
 	for i := range members {
-		m := &members[i]
-		ids = append(ids, m.id)
-		if m.name == f.name {
-			self = m
-			continue
+		if members[i].name == f.name {
+			self = &members[i]
 		}
-		peers[m.id] = m.url.Host
 	}
 	if self == nil {
 		return fmt.Errorf("--name %q is not in --initial-cluster", f.name)
@@ -255,10 +258,26 @@ func run(args []string, logger *log.Logger) error {
 		return err
 	}
 
-	h := fnv.New64a()
-	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
-	ccfg := core.DefaultConfig(self.id, ids)
-	ccfg.ClusterID = h.Sum64()
+	pcfg := peer.Config{
+		Listen: listenPeer.Host, Certificate: peerCert, CA: peerCA,
+		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames, Logf: logger.Printf,
+	}
+	ident, err := loadIdentity(f, members, self, pcfg)
+	if err != nil {
+		return err
+	}
+	ccfg := core.DefaultConfig(ident.id, nil)
+	ccfg.ClusterID = ident.cluster
+	if f.clusterState == "new" {
+		ccfg.Members = initialMembers(members)
+		for _, m := range ccfg.Members {
+			ccfg.Peers = append(ccfg.Peers, m.ID)
+		}
+	} else {
+		ccfg.Join = true
+	}
+	ccfg.Name, ccfg.ClientURLs = f.name, []string{f.advertiseClient}
+	ccfg.MaxLearners, ccfg.StrictReconfigCheck = f.maxLearners, f.strictReconfig
 	ccfg.QuotaBytes = f.quotaBackendBytes
 	// As in etcd, an interval of 0 or less keeps the default.
 	if f.progressInterval > 0 {
@@ -281,24 +300,15 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	t, err := peer.Start(peer.Config{
-		ID: self.id, Listen: listenPeer.Host, Peers: peers,
-		Certificate: peerCert, CA: peerCA,
-		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames,
-		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Logf: logger.Printf,
-	})
+	// The node hands the transport the members once it runs; until then,
+	// those of --initial-cluster.
+	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(initialMembers(members))
+	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer = n.Deliver, n.Unreachable, n.Serve, n.Answer
+	t, err := peer.Start(pcfg)
 	if err != nil {
 		return err
 	}
-
-	var sm []server.Member
-	for _, m := range members {
-		sm = append(sm, server.Member{ID: m.id, Name: m.name, PeerURLs: []string{m.url.String()}})
-		if m.id == self.id {
-			sm[len(sm)-1].ClientURLs = []string{f.advertiseClient}
-		}
-	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls, PeerVersions: t.Versions})
+	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions})
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())
@@ -328,7 +338,7 @@ func run(args []string, logger *log.Logger) error {
 		served <- g.Serve(ln)
 		cancel()
 	}()
-	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
+	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, ident.id, clientURL, listenPeer.Host)
 	runErr := <-ran
 	stopErr := g.Stop()
 	return errors.Join(runErr, stopErr, <-served, t.Close())

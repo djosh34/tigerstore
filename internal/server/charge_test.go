@@ -14,7 +14,7 @@ import (
 // testConn is a connection with no socket, for the accounting of calls.
 func testConn() *conn {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &conn{ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newMetrics()}
+	return &conn{s: &Server{}, ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newMetrics()}
 }
 
 func testCall(c *conn, id uint32) *stream {

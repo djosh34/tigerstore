@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
@@ -629,8 +630,13 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		st.deadline = time.AfterFunc(h.timeout, st.expire)
 	}
 	c.mu.Unlock()
-	if grpc && st.rpc == nil {
+	switch {
+	case grpc && st.rpc == nil:
 		st.finish(unknownMethod(h.path))
+	case st.rpc != nil && st.rpc.learner == learnerNever && c.s.learner():
+		// As etcd's interceptors, a learner serves only Status,
+		// serializable ranges and snapshots.
+		st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
 	}
 	return st
 }

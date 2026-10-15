@@ -27,6 +27,8 @@ func (noPeers) Fetch(context.Context, uint64, uint64, uint64) (io.ReadCloser, er
 	return nil, errors.New("no peers")
 }
 
+func (noPeers) SetPeers(map[uint64]string) {}
+
 func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("no peers")
 }

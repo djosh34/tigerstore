@@ -114,6 +114,23 @@ type Config struct {
 	// Record makes Effects.Applied carry every applied entry with the
 	// state's hash after it, for the simulator's checks.
 	Record bool
+	// Members are the initial cluster's members, by Raft ID, with their
+	// names and peer URLs, for the configuration changes that start a new
+	// cluster's log; Peers without one start with no name or URL. Join
+	// makes the node start with an empty log instead, as one that joins
+	// a running cluster (--initial-cluster-state existing).
+	Members []*pb.Member
+	Join    bool
+	// Name and ClientURLs are what this node publishes as its member's
+	// attributes.
+	Name       string
+	ClientURLs []string
+	// MaxLearners is etcd's --max-learners; 0 means 1.
+	MaxLearners int
+	// StrictReconfigCheck is etcd's --strict-reconfig-check: member
+	// changes that would leave fewer started voters than a quorum are
+	// refused.
+	StrictReconfigCheck bool
 	// QuotaBytes is etcd's --quota-backend-bytes: 0 means etcd's default
 	// of 2 GiB, a negative value no quota (quota.go).
 	QuotaBytes int64
@@ -134,6 +151,8 @@ func DefaultConfig(id uint64, peers []uint64) Config {
 		MaxBatchBytes:  4 << 20,
 		ProgressTicks:  6000, // etcd's 10 minutes
 		TicksPerSecond: 10,
+
+		StrictReconfigCheck: true,
 
 		WindowBytes:     64 << 20,
 		WindowMaxBytes:  128 << 20,
@@ -262,6 +281,9 @@ type Effects struct {
 	Checkpoint []CheckpointChunk
 	// Applied is every entry applied, with Config.Record.
 	Applied []Applied
+	// Members, if set, are the members after a change; the driver
+	// connects to their peer URLs.
+	Members []*pb.Member
 }
 
 // CheckpointChunk is part of the checkpoint at Index.
@@ -276,6 +298,7 @@ type CheckpointChunk struct {
 // checkpoint instead, and Data is nil.
 type Applied struct {
 	Index, Term uint64
+	Type        raftpb.EntryType
 	Data        []byte
 	Hash        uint64
 	Checkpoint  bool
@@ -294,6 +317,8 @@ type pending struct {
 	fetched map[mvcc.Ref][]byte
 	// early marks a write in Node.early.
 	early bool
+	// conf is the configuration change of a member change.
+	conf *raftpb.ConfChange
 	// refuse, if set, answers the request once its write applied: the
 	// NOSPACE alarm a refused write raised (quota.go).
 	refuse error
@@ -362,11 +387,17 @@ type Node struct {
 
 	proposals []*pending
 	// early are writes that need featureVersion, which wait for it.
-	early       []*pending
-	propBytes   int
-	reads       []*pending
-	readBatches []*readBatch
-	nextReadCtx uint64
+	early []*pending
+	// confs are member changes that wait for a leader; lastMemberID is
+	// the last member ID this node handed out, and publishedAt the tick
+	// it last proposed its attributes.
+	confs        []*pending
+	lastMemberID uint64
+	publishedAt  int64
+	propBytes    int
+	reads        []*pending
+	readBatches  []*readBatch
+	nextReadCtx  uint64
 
 	// logBytes estimates the size of the durable log.
 	logBytes int64
@@ -408,6 +439,9 @@ type Node struct {
 
 	// hashes are the hashes the last compactions took, oldest first.
 	hashes []mvcc.KVHash
+	// installs counts the persist jobs with a snapshot install that are
+	// not durable yet.
+	installs int
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -420,7 +454,7 @@ type Node struct {
 // the root names, applies the committed entries after it, and hands Raft
 // the rest. It reads every entry from disk, one at a time.
 func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
-	st := newStorage(cfg.Peers)
+	st := newStorage()
 	c := newCache()
 	vals := &values{storage: st, log: disk, cache: c}
 	n := &Node{
@@ -448,6 +482,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		n.setState(state)
 		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
 		n.record(root.Index, root.Term)
+		st.setConf(root.Index, state.confState())
 	}
 	// The commit index on disk can lag what was applied, which a
 	// checkpoint shows.
@@ -463,7 +498,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	// none of their values go into the cache.
 	n.fillCache(n.applied)
 	if hs.Commit > 0 {
-		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.conf}}
+		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.confAt(hs.Commit)}}
 		if err := st.reset(snap); err != nil {
 			return nil, err
 		}
@@ -485,6 +520,20 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		return nil, err
 	}
 	n.rn = rn
+	if n.state.removed[cfg.ID] {
+		return nil, ErrRemoved
+	}
+	if rec.Last == 0 && rec.Root.Index == 0 && !cfg.Join {
+		// A new cluster: its log starts with its members.
+		peers, err := bootstrapPeers(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if err := rn.Bootstrap(peers); err != nil {
+			return nil, err
+		}
+	}
+	n.out.Members = n.state.cloneMembers()
 	return n, nil
 }
 
@@ -596,7 +645,7 @@ func (n *Node) Tick() {
 	// A lone voter has no one to lead in its place, so stopping would only
 	// turn a slow disk into an outage; it waits for its disk instead. It
 	// still calls commitStalled, which trims uncommitted.
-	alone := len(n.cfg.Peers) == 1
+	alone := len(n.state.voters()) == 1
 	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
 		// never elect a replacement. It stops instead; the healthy pair
@@ -612,6 +661,7 @@ func (n *Node) Tick() {
 		return
 	}
 	n.retryReads(false)
+	n.publish()
 	n.snapshotProgress()
 	n.expireLeases()
 	n.announceVersion()
@@ -740,6 +790,14 @@ func (n *Node) submit(r Request, p *pending) {
 		// etcd answers both from its local store, without Raft.
 		n.serveRead(p)
 		return
+	case *pb.MemberListRequest:
+		if !op.Linearizable {
+			n.serveRead(p)
+			return
+		}
+		n.reads = append(n.reads, p)
+	case *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
+		n.submitMember(p)
 	case *pb.AlarmRequest:
 		// etcd passes every alarm request through Raft; a list is a
 		// linearizable read here, which answers the same.
@@ -820,6 +878,8 @@ func check(op proto.Message, c Caller) error {
 			return nil
 		}
 		r.Alarm = op
+	case *pb.MemberListRequest, *pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
+		return nil
 	default:
 		return fmt.Errorf("core: unknown request type %T", op)
 	}
@@ -1055,6 +1115,7 @@ func (n *Node) Persisted(job PersistJob) {
 	}
 	n.unpersisted -= job.bytes
 	if job.Install != nil {
+		n.installs--
 		if err := n.install(job.Install); err != nil {
 			n.fail(err)
 			return
@@ -1118,6 +1179,7 @@ func (n *Node) Process() (Effects, error) {
 		if !n.isLeader || n.durable >= n.ownIndex {
 			n.propose()
 		}
+		n.proposeConfs()
 		// Apply messages left behind by a snapshot install.
 		n.runApply()
 		n.requestReads()
@@ -1153,7 +1215,7 @@ func (n *Node) stop() {
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
-	n.timeouts, n.proposals, n.reads, n.readBatches, n.early = nil, nil, nil, nil, nil
+	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs = nil, nil, nil, nil, nil, nil
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
@@ -1197,6 +1259,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 		case raft.LocalAppendThread:
 			job := PersistJob{Entries: m.Entries, msg: m}
 			if m.Snapshot != nil {
+				n.installs++
 				meta := m.Snapshot.GetMetadata()
 				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
 			}
@@ -1332,6 +1395,8 @@ func (n *Node) serveRead(p *pending) {
 		r := n.state.alarmList(op)
 		n.fillHeader(r.Header)
 		resp = r
+	case *pb.MemberListRequest:
+		resp = n.memberResponse(op, nil)
 	}
 	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
 		n.fetch(cold.Need).read = p
@@ -1371,7 +1436,7 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 		n.applied = e.GetIndex()
 		n.sinceCkpt += int64(len(e.GetData()))
 		if n.cfg.Record {
-			n.out.Applied = append(n.out.Applied, Applied{Index: e.GetIndex(), Term: e.GetTerm(), Data: e.GetData(), Hash: n.state.Hash()})
+			n.out.Applied = append(n.out.Applied, Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: n.state.Hash()})
 		}
 		n.maybeCheckpoint(e.GetIndex(), e.GetTerm())
 	}
@@ -1380,6 +1445,9 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 
 // applyEntry runs the writes of one entry.
 func (n *Node) applyEntry(e *raftpb.Entry) error {
+	if e.GetType() == raftpb.EntryConfChange {
+		return n.applyConfChange(e)
+	}
 	if e.GetType() != raftpb.EntryNormal || len(e.GetData()) == 0 {
 		return nil
 	}
@@ -1524,6 +1592,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
 		n.out.Expired = append(n.out.Expired, e.ID)
+	}
+	if _, ok := op.(*pb.Member); ok {
+		n.membersChanged()
 	}
 	if a, ok := op.(*pb.AlarmRequest); ok && a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID {
 		// The proposal raiseNoSpace waits for has applied, or the alarm

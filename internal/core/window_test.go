@@ -273,7 +273,7 @@ func TestSnapshotStream(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := ReceiveSnapshot(bytes.NewReader(data), &walSink{w: w}, w, []uint64{1}, in); err != nil {
+		if err := ReceiveSnapshot(bytes.NewReader(data), &walSink{w: w}, w, in); err != nil {
 			return nil, nil, err
 		}
 		w.Append(&wal.HardState{Term: in.Term, Commit: in.Index}, nil)
@@ -426,7 +426,7 @@ func TestServeOlderCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := &Install{From: 1, Index: older.Index, Term: older.Term}
-	if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), &walSink{w: w}, w, []uint64{1}, in); err != nil {
+	if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), &walSink{w: w}, w, in); err != nil {
 		t.Fatal(err)
 	}
 	if in.Checkpoint != older {
@@ -497,7 +497,7 @@ func TestInstallKeepsHeldEntries(t *testing.T) {
 		}
 		sink := &keepSink{walSink: &walSink{w: w}, t: t, disk: disk, held: held}
 		in := &Install{From: 1, Index: last, Term: term, Applied: applied}
-		if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), sink, w, []uint64{1}, in); err != nil {
+		if err := ReceiveSnapshot(bytes.NewReader(buf.Bytes()), sink, w, in); err != nil {
 			t.Fatalf("from %d: %v", applied+1, err)
 		}
 		if sink.first != held+1 {

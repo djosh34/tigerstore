@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -26,15 +27,18 @@ import (
 // and the header is
 //
 //	magic "tigerckp" | u32 format version | u64 index | u64 term |
-//	uvarint voter count | uvarint voters |
-//	per voter: uvarint version it supports, 0 before it announced one |
+//	uvarint member count | per member: uvarint ID | string name |
+//	uvarint count | strings peer URLs | uvarint count | strings client URLs |
+//	u8 learner | uvarint version it supports, 0 before it announced one |
+//	uvarint removed member count | uvarint removed IDs |
 //	uvarint cluster version | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
 //	uvarint lease count | per lease: varint ID | varint TTL | varint stamp |
 //	uvarint alarm count | per alarm: uvarint member ID | varint type
 //
-// where base is the size of the newest checkpoint finished when this one
-// was cut, which the next cut is measured against.
+// where a string is a uvarint length and the bytes, and base is the size
+// of the newest checkpoint finished when this one was cut, which the next
+// cut is measured against.
 //
 // The leases' keys are not in it: they are the keys whose newest version
 // has the lease, rebuilt on load.
@@ -42,14 +46,15 @@ import (
 const ckptMagic = "tigerckp"
 
 // ckptVersion is the format version of checkpoint files. Version 2 added
-// the versions.
-const ckptVersion = 2
+// the versions, version 3 the members.
+const ckptVersion = 3
 
 // ckptHeader is the part of a checkpoint before the keys.
 type ckptHeader struct {
 	index, term          uint64
-	voters               []uint64
+	members              []*pb.Member
 	supports             []uint32
+	removed              []uint64
 	version              uint32
 	rev, compact, stamps int64
 	base                 int64
@@ -62,12 +67,32 @@ func (h *ckptHeader) encode() []byte {
 	binary.LittleEndian.PutUint32(b[len(ckptMagic):], ckptVersion)
 	b = binary.LittleEndian.AppendUint64(b, h.index)
 	b = binary.LittleEndian.AppendUint64(b, h.term)
-	b = binary.AppendUvarint(b, uint64(len(h.voters)))
-	for _, v := range h.voters {
-		b = binary.AppendUvarint(b, v)
+	str := func(v string) {
+		b = binary.AppendUvarint(b, uint64(len(v)))
+		b = append(b, v...)
 	}
-	for _, v := range h.supports {
-		b = binary.AppendUvarint(b, uint64(v))
+	strs := func(vs []string) {
+		b = binary.AppendUvarint(b, uint64(len(vs)))
+		for _, v := range vs {
+			str(v)
+		}
+	}
+	b = binary.AppendUvarint(b, uint64(len(h.members)))
+	for i, m := range h.members {
+		b = binary.AppendUvarint(b, m.ID)
+		str(m.Name)
+		strs(m.PeerURLs)
+		strs(m.ClientURLs)
+		learner := byte(0)
+		if m.IsLearner {
+			learner = 1
+		}
+		b = append(b, learner)
+		b = binary.AppendUvarint(b, uint64(h.supports[i]))
+	}
+	b = binary.AppendUvarint(b, uint64(len(h.removed)))
+	for _, id := range h.removed {
+		b = binary.AppendUvarint(b, id)
 	}
 	b = binary.AppendUvarint(b, uint64(h.version))
 	b = binary.AppendVarint(b, h.rev)
@@ -89,6 +114,9 @@ func (h *ckptHeader) encode() []byte {
 }
 
 var errBadCheckpoint = fmt.Errorf("%w: bad checkpoint", wal.ErrCorrupt)
+
+// maxCheckpointString bounds a name or URL in a checkpoint header.
+const maxCheckpointString = 64 << 10
 
 // readHeader reads a checkpoint header.
 func readHeader(r *bufio.Reader) (*ckptHeader, error) {
@@ -122,15 +150,37 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		}
 		return x
 	}
+	str := func() string {
+		n := uv()
+		if err != nil || n > maxCheckpointString {
+			err = cmp.Or(err, fmt.Errorf("%w: a string of %d bytes", errBadCheckpoint, n))
+			return ""
+		}
+		b := make([]byte, n)
+		_, err = io.ReadFull(r, b)
+		return string(b)
+	}
+	strs := func() []string {
+		var out []string
+		for i, n := uint64(0), uv(); i < n && err == nil; i++ {
+			out = append(out, str())
+		}
+		return out
+	}
 	n := uv()
-	if n > 7 {
-		return nil, fmt.Errorf("%w: %d voters", errBadCheckpoint, n)
-	}
-	for range n {
-		h.voters = append(h.voters, uv())
-	}
-	for range n {
+	for i := uint64(0); i < n && err == nil; i++ {
+		m := &pb.Member{ID: uv(), Name: str(), PeerURLs: strs(), ClientURLs: strs()}
+		if err == nil {
+			var learner byte
+			learner, err = r.ReadByte()
+			m.IsLearner = learner == 1
+		}
+		h.members = append(h.members, m)
 		h.supports = append(h.supports, uint32(uv()))
+	}
+	n = uv()
+	for i := uint64(0); i < n && err == nil; i++ {
+		h.removed = append(h.removed, uv())
 	}
 	h.version = uint32(uv())
 	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
@@ -185,14 +235,11 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 		index = max(index, n.rn.BasicStatus().GetCommit())
 	}
 	n.base = n.last.size
-	supports := make([]uint32, len(n.cfg.Peers))
-	for i, id := range n.cfg.Peers {
-		supports[i] = n.state.supports[id]
-	}
-	h := &ckptHeader{
-		index: index, term: term, voters: n.cfg.Peers,
-		supports: supports, version: n.state.version,
-		rev: n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
+	h := n.state.header(index, term)
+	*h = ckptHeader{
+		index: index, term: term, members: h.members, supports: h.supports, removed: h.removed,
+		version: n.state.version,
+		rev:     n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
 		base: n.base, leases: n.state.sortedLeases(), alarms: n.state.alarms,
 	}
 	data := h.encode()
@@ -200,6 +247,19 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 	n.kv.Freeze()
 	n.sinceCkpt = 0
 	n.out.Checkpoint = append(n.out.Checkpoint, CheckpointChunk{Index: index, Data: data})
+}
+
+// header is the members part of a checkpoint header of the state.
+func (st *State) header(index, term uint64) *ckptHeader {
+	h := &ckptHeader{index: index, term: term, members: st.memberList()}
+	for _, m := range h.members {
+		h.supports = append(h.supports, st.supports[m.ID])
+	}
+	for id := range st.removed {
+		h.removed = append(h.removed, id)
+	}
+	slices.Sort(h.removed)
+	return h
 }
 
 // copyChunk copies about limit bytes more of the checkpoint under way, or
@@ -251,9 +311,10 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
 		return
 	}
-	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index {
-		// An older checkpoint than one a snapshot installed; it never
-		// counts.
+	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index || n.installs > 0 {
+		// An older checkpoint than one a snapshot installed, or one of
+		// the state an install on its way to disk replaces; it never
+		// counts. Its root would land after the install's.
 		return
 	}
 	term, err := n.termAt(index)
@@ -310,9 +371,9 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	if err != nil {
 		return nil, lastCkpt{}, err
 	}
-	if h.index != root.Index || h.term != root.Term || !slices.Equal(h.voters, cfg.Peers) {
-		return nil, lastCkpt{}, fmt.Errorf("%w: checkpoint at %d term %d with voters %v, the root names %d term %d",
-			errBadCheckpoint, h.index, h.term, h.voters, root.Index, root.Term)
+	if h.index != root.Index || h.term != root.Term {
+		return nil, lastCkpt{}, fmt.Errorf("%w: checkpoint at %d term %d, the root names %d term %d",
+			errBadCheckpoint, h.index, h.term, root.Index, root.Term)
 	}
 	if own := ownVersion(cfg); h.version > own {
 		return nil, lastCkpt{}, tooOld(h.version, own)
@@ -322,10 +383,14 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		st.kv.TrackHash()
 	}
 	st.version, st.stamps = h.version, h.stamps
-	for i, id := range h.voters {
+	for i, m := range h.members {
+		st.members[m.ID] = m
 		if h.supports[i] != 0 {
-			st.supports[id] = h.supports[i]
+			st.supports[m.ID] = h.supports[i]
 		}
+	}
+	for _, id := range h.removed {
+		st.removed[id] = true
 	}
 	for _, l := range h.leases {
 		st.leases[l.id] = l
@@ -407,3 +472,38 @@ func (t *trailerReader) add(p []byte) {
 }
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
+
+// RestoredCheckpoint gives the state the members of a restored cluster,
+// as etcdutl snapshot restore does, and returns a whole checkpoint of it
+// at the applied index, for the new log to start from. Each member
+// supports the cluster version.
+func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error) {
+	if n.copy != nil {
+		n.copyChunk(-1)
+		n.out.Checkpoint = nil
+	}
+	st := n.state
+	st.members, st.removed, st.supports = map[uint64]*pb.Member{}, map[uint64]bool{}, map[uint64]uint32{}
+	for _, m := range members {
+		st.members[m.ID] = &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, IsLearner: m.IsLearner}
+		st.supports[m.ID] = st.version
+	}
+	term, err := n.termAt(n.applied)
+	if err != nil {
+		return wal.Root{}, nil, err
+	}
+	h := st.header(n.applied, term)
+	h.version, h.rev, h.compact, h.stamps = st.version, n.kv.Rev(), n.kv.CompactRev(), st.stamps
+	h.leases, h.alarms = st.sortedLeases(), st.alarms
+	data := h.encode()
+	n.kv.Freeze()
+	for {
+		b, _, done := n.kv.CopyFrozen(nil, 1<<20)
+		data = append(data, b...)
+		if done {
+			break
+		}
+	}
+	data = binary.LittleEndian.AppendUint32(data, crc32.Checksum(data, castagnoli))
+	return wal.Root{Index: n.applied, Term: term}, data, nil
+}

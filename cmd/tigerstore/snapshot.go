@@ -12,10 +12,10 @@ import (
 
 // snapshotCommand runs `tigerstore snapshot restore <file>`, which writes
 // a snapshot that Maintenance.Snapshot saved (etcdctl snapshot save) into
-// a new data directory, as `etcdutl snapshot restore` does. Every node of
-// the new cluster restores the same file with its own --name and the same
-// --initial-cluster, which must have as many members as the cluster the
-// snapshot came from.
+// a new data directory, as `etcdutl snapshot restore` does: the members
+// of --initial-cluster replace the snapshot's. Every node of the new
+// cluster restores the same file with its own --name and the same
+// --initial-cluster, and starts with --initial-cluster-state new.
 func snapshotCommand(args []string, logger *log.Logger) error {
 	if len(args) == 0 || args[0] != "restore" {
 		return errors.New("usage: tigerstore snapshot restore <file> --name <name> --initial-cluster <cluster> [--data-dir <dir>] [--skip-hash-check]")
@@ -45,10 +45,8 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	var voters []uint64
 	found := false
 	for _, m := range members {
-		voters = append(voters, m.id)
 		found = found || m.name == *name
 	}
 	if !found {
@@ -57,7 +55,7 @@ func snapshotCommand(args []string, logger *log.Logger) error {
 	if *dataDir == "" {
 		*dataDir = *name + ".tigerstore"
 	}
-	info, err := node.Restore(path, *dataDir, voters, *skipHash)
+	info, err := node.Restore(path, *dataDir, initialMembers(members), *skipHash)
 	if err != nil {
 		return err
 	}

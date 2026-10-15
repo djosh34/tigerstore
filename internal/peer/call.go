@@ -22,11 +22,31 @@ const maxCall = 4 << 20
 // Call sends peer id a request on a connection of its own and returns
 // the answer, or the error the peer answered with.
 func (t *TCP) Call(ctx context.Context, id uint64, req []byte) ([]byte, error) {
-	s, ok := t.senders[id]
+	s, ok := t.peer(id)
 	if !ok {
 		return nil, fmt.Errorf("peer: unknown peer %d", id)
 	}
-	c, _, err := s.dial(ctx, t.cfg.ID|callBit)
+	return t.call(ctx, s, t.cfg.ID, req)
+}
+
+// Ask sends the node at addr a request as Call does, from a node that
+// has no Raft ID and no transport yet: one that joins a running cluster
+// asks for its members. The other end answers it as from Raft ID 0. cfg
+// gives the certificates and the allowed names.
+func Ask(ctx context.Context, cfg Config, addr string, req []byte) ([]byte, error) {
+	if cfg.minVersion == 0 {
+		cfg.minVersion, cfg.maxVersion = minVersion, maxVersion
+	}
+	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	if err != nil {
+		return nil, err
+	}
+	t := &TCP{cfg: cfg, verify: verify, ctx: ctx, conns: map[net.Conn]struct{}{}, inbound: map[net.Conn]inbound{}, logged: map[string]time.Time{}}
+	return t.call(ctx, &sender{t: t, addr: addr}, 0, req)
+}
+
+func (t *TCP) call(ctx context.Context, s *sender, id uint64, req []byte) ([]byte, error) {
+	c, _, err := s.dial(ctx, id|callBit)
 	if err != nil {
 		return nil, err
 	}

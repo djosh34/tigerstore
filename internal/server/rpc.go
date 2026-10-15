@@ -30,7 +30,20 @@ type method struct {
 	serverStream bool
 	// idx is the method's place in methodPaths, for its metrics.
 	idx int
+	// learner says what a learner serves of the method, as etcd's
+	// isRPCSupportedForLearner: nothing by default.
+	learner learnerUse
 }
+
+// learnerUse is what a learner serves of a method.
+type learnerUse byte
+
+const (
+	learnerNever learnerUse = iota
+	learnerAlways
+	// learnerSerializable serves serializable ranges only.
+	learnerSerializable
+)
 
 // methodPaths are the paths of methods, sorted.
 var methodPaths = func() []string {
@@ -49,7 +62,7 @@ var methodPaths = func() []string {
 // service's. Every other method of etcd's services answers Unimplemented,
 // as grpc-go's generated Unimplemented servers do.
 var methods = map[string]*method{
-	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
+	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true, learner: learnerSerializable},
 	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream, serverStream: true},
 	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
 	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
@@ -61,12 +74,16 @@ var methods = map[string]*method{
 	"/etcdserverpb.Lease/LeaseLeases":     {op: newOp[pb.LeaseLeasesRequest]},
 	"/etcdserverpb.Lease/LeaseKeepAlive":  {stream: (*Server).keepAlive},
 	"/etcdserverpb.Watch/Watch":           {stream: (*Server).watch},
-	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
-	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
+	"/etcdserverpb.Cluster/MemberList":    {unary: nodeCall[pb.MemberListRequest]},
+	"/etcdserverpb.Cluster/MemberAdd":     {unary: memberAdd},
+	"/etcdserverpb.Cluster/MemberRemove":  {unary: nodeCall[pb.MemberRemoveRequest]},
+	"/etcdserverpb.Cluster/MemberUpdate":  {unary: nodeCall[pb.MemberUpdateRequest]},
+	"/etcdserverpb.Cluster/MemberPromote": {unary: memberPromote},
+	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus, learner: learnerAlways},
 	"/etcdserverpb.Maintenance/Alarm":     {unary: nodeCall[pb.AlarmRequest]},
 	"/etcdserverpb.Maintenance/Hash":      {unary: nodeCall[pb.HashRequest]},
 	"/etcdserverpb.Maintenance/HashKV":    {unary: nodeCall[pb.HashKVRequest]},
-	"/etcdserverpb.Maintenance/Snapshot":  {stream: (*Server).snapshot, serverStream: true},
+	"/etcdserverpb.Maintenance/Snapshot":  {stream: (*Server).snapshot, serverStream: true, learner: learnerAlways},
 	"/v3lockpb.Lock/Lock":                 {unary: lock},
 	"/v3lockpb.Lock/Unlock":               {unary: unlock},
 	"/v3electionpb.Election/Campaign":     {unary: campaign},
@@ -129,13 +146,6 @@ func nodeCall[T any, P interface {
 		return nil, toStatus(err)
 	}
 	return resp, nil
-}
-
-func memberList(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
-	if err := unmarshal(b, &pb.MemberListRequest{}); err != nil {
-		return nil, err
-	}
-	return s.memberList(), nil
 }
 
 func maintenanceStatus(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {

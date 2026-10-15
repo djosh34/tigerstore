@@ -14,24 +14,13 @@ import (
 	"sync"
 	"time"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 )
 
-// Member is one cluster member as MemberList reports it.
-type Member struct {
-	ID         uint64
-	Name       string
-	PeerURLs   []string
-	ClientURLs []string
-}
-
 // Config sets up the server.
 type Config struct {
 	ClusterID uint64
-	Members   []Member
 	// TLS is the client TLS configuration. Nil serves HTTP/2 without TLS
 	// (prior knowledge, no HTTP/1), which only tests should do.
 	TLS *tls.Config
@@ -212,11 +201,6 @@ func (s *Server) Stop() error {
 	return err
 }
 
-// memberList answers Cluster.MemberList from the configuration.
-func (s *Server) memberList() *pb.MemberListResponse {
-	resp := &pb.MemberListResponse{Header: &pb.ResponseHeader{ClusterId: s.cfg.ClusterID, MemberId: s.n.ID()}}
-	for _, m := range s.cfg.Members {
-		resp.Members = append(resp.Members, &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, ClientURLs: m.ClientURLs})
-	}
-	return resp
-}
+// learner reports whether the node is a learner. Tests run connections
+// without a node.
+func (s *Server) learner() bool { return s.n != nil && s.n.Learner() }

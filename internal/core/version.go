@@ -25,7 +25,7 @@ const MaxVersion = 3
 
 // featureVersion is the cluster version, and entry format, from which
 // entries may hold the writes of etcd's features that format 2 has no
-// kind for: alarm changes. Until it is active, such writes wait for it,
+// kind for: alarm changes, members' attributes and member changes. Until it is active, such writes wait for it,
 // up to their deadline, as writes wait for a leader. A fresh cluster
 // activates it once every voter's announcement applied.
 const featureVersion = 3
@@ -52,7 +52,12 @@ func (n *Node) releaseEarly() {
 		return
 	}
 	for _, p := range n.early {
-		if !p.done {
+		switch {
+		case p.done:
+		case p.conf != nil:
+			p.early = false
+			n.confs = append(n.confs, p)
+		default:
 			p.early = false
 			n.queueWrite(p)
 		}
@@ -101,7 +106,7 @@ func (n *Node) applyVersion(origin uint64, b []byte) error {
 	if err := proto.Unmarshal(b, &v); err != nil {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
-	n.state.announce(origin, v.Value, n.cfg.Peers)
+	n.state.announce(origin, v.Value, n.state.voters())
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))
 	}

@@ -38,6 +38,7 @@ func (n *Node) Status() *pb.StatusResponse {
 		RaftIndex:        st.GetCommit(),
 		RaftTerm:         st.GetTerm(),
 		RaftAppliedIndex: n.applied,
+		IsLearner:        n.IsLearner(),
 	}
 	if st.Lead == 0 {
 		resp.Errors = append(resp.Errors, "etcdserver: no leader")

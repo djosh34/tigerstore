@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -18,12 +19,13 @@ import (
 )
 
 // Restore writes the state of the snapshot file at path into a new data
-// directory, for a node of a cluster with these voters, as etcdutl
-// snapshot restore does: the node starts at the snapshot's index and
-// term, with everything up to it committed. Every node of the new cluster
-// restores the same file. Unless skipHash is set, the file's SHA-256
-// must match. The data directory must not exist yet, or be empty.
-func Restore(path, dataDir string, voters []uint64, skipHash bool) (SnapshotInfo, error) {
+// directory, for a node of a new cluster with these members, as etcdutl
+// snapshot restore does: the members replace the snapshot's, and the
+// node starts at the snapshot's index and term, from a checkpoint there.
+// Every node of the new cluster restores the same file with the same
+// members. Unless skipHash is set, the file's SHA-256 must match. The
+// data directory must not exist yet, or be empty.
+func Restore(path, dataDir string, members []*pb.Member, skipHash bool) (SnapshotInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return SnapshotInfo{}, err
@@ -65,22 +67,74 @@ func Restore(path, dataDir string, voters []uint64, skipHash bool) (SnapshotInfo
 	if entries, err := os.ReadDir(dataDir); err == nil && len(entries) > 0 {
 		return info, fmt.Errorf("node: data directory %q exists and is not empty", dataDir)
 	}
-	dir, err := osfs.New(filepath.Join(dataDir, "wal"))
+	if len(members) == 0 {
+		return info, errors.New("node: a restored cluster needs members")
+	}
+	// The snapshot goes into a log of its own first, which a core opens
+	// to give the state its new members; their checkpoint starts the new
+	// log.
+	tmp := dataDir + ".restore"
+	if err := os.RemoveAll(tmp); err != nil {
+		return info, err
+	}
+	defer os.RemoveAll(tmp) //nolint:errcheck // a leftover goes on the next restore
+	if err := receive(r, filepath.Join(tmp, "wal"), &core.Install{Index: info.Index, Term: info.Term}); err != nil {
+		return info, err
+	}
+	dir, err := osfs.New(filepath.Join(tmp, "wal"))
 	if err != nil {
 		return info, err
 	}
-	w, _, err := wal.Open(dir)
+	old, rec, err := wal.Open(dir)
 	if err != nil {
 		return info, err
+	}
+	defer old.Close() //nolint:errcheck // read only by now
+	cfg := core.DefaultConfig(members[0].ID, nil)
+	cfg.Join = true
+	n, err := core.New(cfg, rec, old)
+	if err != nil {
+		return info, err
+	}
+	root, ckpt, err := n.RestoredCheckpoint(members)
+	if err != nil {
+		return info, err
+	}
+	pr, pw := io.Pipe()
+	go func() { pw.CloseWithError(core.ServeCheckpoint(restoredLog{WAL: old, ckpt: ckpt}, root, pw)) }()
+	err = receive(pr, filepath.Join(dataDir, "wal"), &core.Install{Index: root.Index, Term: root.Term})
+	return info, errors.Join(err, pr.Close())
+}
+
+// receive writes a snapshot stream into a new log in dir, with everything
+// up to its index committed.
+func receive(r io.Reader, dir string, in *core.Install) error {
+	d, err := osfs.New(dir)
+	if err != nil {
+		return err
+	}
+	w, _, err := wal.Open(d)
+	if err != nil {
+		return err
 	}
 	sink := &restoreSink{w: w}
-	in := &core.Install{Index: info.Index, Term: info.Term}
-	err = core.ReceiveSnapshot(r, sink, w, voters, in)
+	err = core.ReceiveSnapshot(r, sink, w, in)
 	if err == nil {
-		w.Append(&wal.HardState{Term: info.Term, Commit: info.Index}, nil)
+		w.Append(&wal.HardState{Term: in.Term, Commit: in.Index}, nil)
 		err = w.Sync()
 	}
-	return info, errors.Join(err, sink.close(), w.Close())
+	return errors.Join(err, sink.close(), w.Close())
+}
+
+// restoredLog reads a restored log, with the checkpoint that gives the
+// state its new members in place of any on disk.
+type restoredLog struct {
+	*wal.WAL
+	ckpt []byte
+}
+
+func (l restoredLog) Checkpoint(uint64) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(l.ckpt)), nil
 }
 
 // restoreSink writes a snapshot into a new log.

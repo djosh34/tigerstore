@@ -292,7 +292,9 @@ func TestEachFaultTakesEffect(t *testing.T) {
 // must pass the checkers.
 func TestSlowFetch(t *testing.T) {
 	older, failed := 0, 0
-	for seed := uint64(1); seed <= 60 && (older == 0 || failed == 0); seed++ {
+	// Each of the two happens in about one seed in 25 to 50; the search
+	// stops once both did.
+	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0); seed++ {
 		cfg := DefaultConfig(5000 + seed)
 		cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
 		cfg.Duration = 10 * Second

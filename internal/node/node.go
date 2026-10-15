@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/fs"
 	"math/rand/v2"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -285,8 +286,12 @@ type Node struct {
 	nextID    atomic.Uint64
 	done      chan struct{}
 
-	// leader is the leader the committer saw last, for readers outside it.
-	leader atomic.Uint64
+	// leader is the leader the committer saw last, for readers outside it,
+	// and learner whether this node is a learner.
+	leader  atomic.Uint64
+	learner atomic.Bool
+	// transport is the peer.Transport Run got, for calls to peers.
+	transport atomic.Value
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -487,6 +492,23 @@ func (n *Node) ID() uint64 { return n.cfg.Core.ID }
 // ClusterID is the cluster ID in the node's response headers.
 func (n *Node) ClusterID() uint64 { return n.cfg.Core.ClusterID }
 
+// Learner reports whether the node is a learner.
+func (n *Node) Learner() bool { return n.learner.Load() }
+
+// PeerAddrs are the host:port of each member's first peer URL, by Raft ID.
+func PeerAddrs(members []*pb.Member) map[uint64]string {
+	out := map[uint64]string{}
+	for _, m := range members {
+		if len(m.PeerURLs) == 0 {
+			continue
+		}
+		if u, err := url.Parse(m.PeerURLs[0]); err == nil {
+			out[m.ID] = u.Host
+		}
+	}
+	return out
+}
+
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
 
@@ -573,6 +595,7 @@ var errReload = errors.New("node: the snapshot fetch failed")
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
+	n.transport.Store(t)
 	if n.cfg.CorruptCheckTime > 0 || n.cfg.CompactHashCheckTime > 0 {
 		ctx, cancel := context.WithCancel(ctx)
 		var wg sync.WaitGroup
@@ -717,6 +740,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				ws.err = ErrSnapshotInstalled
 				close(ws.done)
 			}
+		}
+		if eff.Members != nil {
+			t.SetPeers(PeerAddrs(eff.Members))
+			n.learner.Store(n.core.IsLearner())
 		}
 		for _, m := range eff.Send {
 			t.Send(m)
@@ -975,7 +1002,7 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 	sink := &logSink{n: n}
 	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
 	if err == nil {
-		err = core.ReceiveSnapshot(r, sink, n.log, n.cfg.Core.Peers, in)
+		err = core.ReceiveSnapshot(r, sink, n.log, in)
 		err = errors.Join(err, r.Close())
 	}
 	err = errors.Join(err, sink.close())

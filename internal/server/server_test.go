@@ -116,6 +116,32 @@ func newClusterWith(t *testing.T, setup func(*cluster)) *cluster {
 	return c
 }
 
+// viaPeers keeps node from dialing its peers through the addresses in
+// cluster.via when the members change.
+type viaPeers struct {
+	peer.Transport
+	c    *cluster
+	from uint64
+}
+
+func (v viaPeers) SetPeers(peers map[uint64]string) {
+	for to := range peers {
+		if a, ok := v.c.via[[2]uint64{v.from, to}]; ok {
+			peers[to] = a
+		}
+	}
+	v.Transport.SetPeers(peers)
+}
+
+// members are the cluster's three members with their peer URLs.
+func (c *cluster) members() []*pb.Member {
+	var ms []*pb.Member
+	for id := uint64(1); id <= 3; id++ {
+		ms = append(ms, &pb.Member{ID: id, Name: fmt.Sprintf("node%d", id), PeerURLs: []string{"https://" + c.peerAddrs[id]}})
+	}
+	return ms
+}
+
 func (c *cluster) start(id uint64) {
 	t := c.t
 	cert, _, _, err := c.ca.Issue("node", int64(id+10))
@@ -124,6 +150,8 @@ func (c *cluster) start(id uint64) {
 	}
 	logf := func(format string, args ...any) { t.Logf("node %d: %s", id, fmt.Sprintf(format, args...)) }
 	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
+	cfg.Members = c.members()
+	cfg.Name = fmt.Sprintf("node%d", id)
 	cfg.CommitStallElections = c.stallElections
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
@@ -167,8 +195,11 @@ func (c *cluster) start(id uint64) {
 	ran := make(chan error, 1)
 	served := make(chan error, 1)
 	var run peer.Transport = tr
+	if c.via != nil {
+		run = viaPeers{Transport: run, c: c, from: id}
+	}
 	if c.wrap != nil {
-		run = c.wrap(id, tr)
+		run = c.wrap(id, run)
 	}
 	if c.nodes == nil {
 		c.nodes, c.transports = map[uint64]*node.Node{}, map[uint64]*peer.TCP{}

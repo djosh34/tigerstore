@@ -12,11 +12,12 @@ import (
 
 // storage is what Raft reads of the log: the durable entries that are
 // still in memory, a window of applied ones and those not applied yet.
-// Older entries are on disk only. Membership is fixed: every peer is a
-// voter from the start.
+// Older entries are on disk only.
 type storage struct {
 	*raft.MemoryStorage
-	conf *raftpb.ConfState
+	// confs are the Raft configurations from the index each took effect
+	// at, oldest first; a snapshot names the one of its index.
+	confs []confAt
 	// data[i] is the data of entry first+i in memory, and cum[i] the
 	// data bytes of the entries up to and including it, counted from
 	// base.
@@ -29,18 +30,51 @@ type storage struct {
 	ckpt wal.Root
 }
 
-func newStorage(peers []uint64) *storage {
-	return &storage{
-		MemoryStorage: raft.NewMemoryStorage(),
-		conf:          &raftpb.ConfState{Voters: append([]uint64(nil), peers...)},
-		first:         1,
-	}
+// confAt is a Raft configuration and the index it took effect at.
+type confAt struct {
+	index uint64
+	conf  *raftpb.ConfState
 }
 
-// InitialState returns the recovered hard state and the fixed membership.
+func newStorage() *storage {
+	return &storage{MemoryStorage: raft.NewMemoryStorage(), first: 1}
+}
+
+// InitialState returns the recovered hard state and the newest
+// configuration.
 func (s *storage) InitialState() (*raftpb.HardState, *raftpb.ConfState, error) {
 	hs, _, err := s.MemoryStorage.InitialState()
-	return hs, s.conf, err
+	return hs, s.confAt(^uint64(0)), err
+}
+
+// setConf records the configuration in effect from index on.
+func (s *storage) setConf(index uint64, cs *raftpb.ConfState) {
+	for len(s.confs) > 0 && s.confs[len(s.confs)-1].index >= index {
+		s.confs = s.confs[:len(s.confs)-1]
+	}
+	s.confs = append(s.confs, confAt{index, cs})
+}
+
+// confAt returns the configuration in effect at index.
+func (s *storage) confAt(index uint64) *raftpb.ConfState {
+	cs := &raftpb.ConfState{}
+	for _, c := range s.confs {
+		if c.index > index {
+			break
+		}
+		cs = c.conf
+	}
+	return cs
+}
+
+// pruneConfs forgets the configurations that no snapshot can name any
+// more: those older than the one in effect at index.
+func (s *storage) pruneConfs(index uint64) {
+	i := 0
+	for i+1 < len(s.confs) && s.confs[i+1].index <= index {
+		i++
+	}
+	s.confs = slices.Clone(s.confs[i:])
 }
 
 // Snapshot is what a follower behind the window gets: the state at the
@@ -58,7 +92,7 @@ func (s *storage) Snapshot() (*raftpb.Snapshot, error) {
 	if index == 0 {
 		return nil, raft.ErrSnapshotTemporarilyUnavailable
 	}
-	return &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(index), Term: new(term), ConfState: s.conf}}, nil
+	return &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(index), Term: new(term), ConfState: s.confAt(index)}}, nil
 }
 
 // add appends durable entries to memory. An entry replaces those at and
@@ -116,6 +150,7 @@ func (s *storage) trim(index uint64) error {
 	if err := s.Compact(index); err != nil {
 		return err
 	}
+	s.pruneConfs(index)
 	k := index - s.first + 1
 	s.base = s.cum[k-1]
 	s.cum, s.data = slices.Clone(s.cum[k:]), slices.Clone(s.data[k:])
