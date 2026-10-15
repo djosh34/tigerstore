@@ -621,6 +621,362 @@
       }
     }
   ],
+  "election": [
+    {
+      "do": "grant a",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant b",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "leader of e before a campaign",
+      "code": "Unknown",
+      "message": "election: no leader"
+    },
+    {
+      "do": "campaign e with a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "observe e",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 1,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a1",
+              "create": 1,
+              "mod": 1,
+              "version": 1,
+              "lease": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of e",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kv": {
+          "key": "e/\u003clease 1\u003e",
+          "value": "a1",
+          "create": 1,
+          "mod": 1,
+          "version": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "campaign e with b waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "proclaim a2",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "campaign e with a and another value",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "campaign e with a and the same value",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "resign a",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "campaign e with b",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 2\u003e",
+          "rev": 2,
+          "lease": 2
+        }
+      }
+    },
+    {
+      "do": "observe e after the changes",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 3,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a2",
+              "create": 1,
+              "mod": 3,
+              "version": 2,
+              "lease": 1
+            }
+          },
+          {
+            "revision": 4,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a3",
+              "create": 1,
+              "mod": 4,
+              "version": 3,
+              "lease": 1
+            }
+          },
+          {
+            "revision": 5,
+            "kv": {
+              "key": "e/\u003clease 2\u003e",
+              "value": "b1",
+              "create": 2,
+              "mod": 2,
+              "version": 1,
+              "lease": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of e after a resigned",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kv": {
+          "key": "e/\u003clease 2\u003e",
+          "value": "b1",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        }
+      }
+    },
+    {
+      "do": "proclaim with a's old leader key",
+      "code": "Unknown",
+      "message": "election: not leader"
+    },
+    {
+      "do": "resign with a's old leader key",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "proclaim without a leader key",
+      "code": "Unknown",
+      "message": "\"leader\" field must be provided"
+    },
+    {
+      "do": "resign without a leader key",
+      "code": "Unknown",
+      "message": "\"leader\" field must be provided"
+    },
+    {
+      "do": "campaign e with a and a deadline",
+      "code": "OK",
+      "result": {
+        "code": "DeadlineExceeded"
+      }
+    },
+    {
+      "do": "keys of e after a gave up",
+      "code": "OK",
+      "result": [
+        {
+          "key": "e/\u003clease 2\u003e",
+          "value": "b1",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        }
+      ]
+    },
+    {
+      "do": "resign b",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "leader of e after b resigned",
+      "code": "Unknown",
+      "message": "election: no leader"
+    },
+    {
+      "do": "observe e after b resigned",
+      "code": "OK",
+      "result": {
+        "leaders": null
+      }
+    },
+    {
+      "do": "observe f before a campaign",
+      "code": "OK",
+      "result": {
+        "leaders": null
+      }
+    },
+    {
+      "do": "campaign f without a lease",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "leader": {
+          "name": "f",
+          "key": "f/\u003clease 3\u003e",
+          "rev": 9,
+          "lease": 3
+        }
+      }
+    },
+    {
+      "do": "observe f",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 9,
+            "kv": {
+              "key": "f/\u003clease 3\u003e",
+              "value": "f1",
+              "create": 9,
+              "mod": 9,
+              "version": 1,
+              "lease": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of f",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "kv": {
+          "key": "f/\u003clease 3\u003e",
+          "value": "f1",
+          "create": 9,
+          "mod": 9,
+          "version": 1,
+          "lease": 3
+        }
+      }
+    },
+    {
+      "do": "campaign with a missing lease",
+      "code": "Unknown",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "grant h with an ID",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "lease": 4,
+        "asAsked": true,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "campaign h",
+      "code": "OK",
+      "result": {
+        "revision": 10,
+        "leader": {
+          "name": "h",
+          "key": "h/\u003clease 4\u003e",
+          "rev": 10,
+          "lease": 4
+        }
+      }
+    },
+    {
+      "do": "largest proclaim value for h",
+      "code": "OK",
+      "result": 1572741
+    },
+    {
+      "do": "proclaim one byte below of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "proclaim exactly of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "proclaim one byte above of the largest size",
+      "code": "Unknown",
+      "message": "etcdserver: request is too large"
+    }
+  ],
   "error-codes": [
     {
       "do": "put k",
@@ -1321,6 +1677,258 @@
       "do": "compact at revision -1",
       "code": "OutOfRange",
       "message": "etcdserver: mvcc: required revision has been compacted"
+    }
+  ],
+  "health": [
+    {
+      "do": "check the server",
+      "code": "OK",
+      "result": {
+        "status": "SERVING"
+      }
+    },
+    {
+      "do": "check a service",
+      "code": "NotFound",
+      "message": "unknown service"
+    },
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {
+        "statuses": {
+          "": "SERVING"
+        }
+      }
+    },
+    {
+      "do": "watch the server",
+      "code": "OK",
+      "result": {
+        "status": "SERVING",
+        "then": "open"
+      }
+    },
+    {
+      "do": "watch a service",
+      "code": "OK",
+      "result": {
+        "status": "SERVICE_UNKNOWN",
+        "then": "open"
+      }
+    },
+    {
+      "do": "watch with no request",
+      "code": "Internal",
+      "message": "cardinality violation: received no request message from non-client-streaming RPC"
+    },
+    {
+      "do": "watch with two requests",
+      "code": "Internal",
+      "message": "cardinality violation: received multiple request messages for non-client-streaming RPC"
+    },
+    {
+      "do": "watch before the client ends its side",
+      "code": "OK",
+      "result": "nothing"
+    },
+    {
+      "do": "call an unknown health method",
+      "code": "Unimplemented",
+      "message": "unknown method Nothing for service grpc.health.v1.Health"
+    },
+    {
+      "do": "GET /readyz",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?exclude=linearizable_read\u0026exclude=nothing\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?exclude=data_corruption\u0026exclude=serializable_read\u0026exclude=linearizable_read\u0026exclude=non_learner",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/data_corruption?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/serializable_read?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/linearizable_read?exclude=linearizable_read\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]linearizable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/non_learner",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "GET /readyz/nothing",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "GET /livez",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /livez?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /livez?exclude=serializable_read\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /livez/serializable_read?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /livez/linearizable_read",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "HEAD /readyz",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": ""
+      }
+    },
+    {
+      "do": "POST /livez",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": "Method Not Allowed\n"
+      }
+    },
+    {
+      "do": "GET /readyz?verbose over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "POST /livez over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": "Method Not Allowed\n"
+      }
     }
   ],
   "kubernetes-shapes": [
@@ -2056,6 +2664,221 @@
       "do": "revoke lease 0",
       "code": "NotFound",
       "message": "etcdserver: requested lease not found"
+    }
+  ],
+  "lock": [
+    {
+      "do": "grant a",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant b",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant c",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 3,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "key": "m/\u003clease 1\u003e"
+      }
+    },
+    {
+      "do": "lock m with a again",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "key": "m/\u003clease 1\u003e"
+      }
+    },
+    {
+      "do": "lock m with b waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "lock m with c waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "keys of m",
+      "code": "OK",
+      "result": [
+        {
+          "key": "m/\u003clease 1\u003e",
+          "create": 1,
+          "mod": 1,
+          "version": 1,
+          "lease": 1
+        },
+        {
+          "key": "m/\u003clease 2\u003e",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        },
+        {
+          "key": "m/\u003clease 3\u003e",
+          "create": 3,
+          "mod": 3,
+          "version": 1,
+          "lease": 3
+        }
+      ]
+    },
+    {
+      "do": "unlock a",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "lock m with b",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "key": "m/\u003clease 2\u003e"
+      }
+    },
+    {
+      "do": "revoke b",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "lock m with c",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "key": "m/\u003clease 3\u003e"
+      }
+    },
+    {
+      "do": "grant d",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "lease": 4,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with d and a deadline",
+      "code": "OK",
+      "result": {
+        "code": "DeadlineExceeded"
+      }
+    },
+    {
+      "do": "keys of m after d gave up",
+      "code": "OK",
+      "result": [
+        {
+          "key": "m/\u003clease 3\u003e",
+          "create": 3,
+          "mod": 3,
+          "version": 1,
+          "lease": 3
+        }
+      ]
+    },
+    {
+      "do": "grant e",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "lease": 5,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with e waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "revoke e",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "unlock c",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "lock m with e after its lease was revoked",
+      "code": "Unknown",
+      "message": "mutex: session is expired"
+    },
+    {
+      "do": "lock n without a lease",
+      "code": "OK",
+      "result": {
+        "revision": 11,
+        "key": "n/\u003clease 6\u003e"
+      }
+    },
+    {
+      "do": "lease of the lock of n",
+      "code": "OK",
+      "result": {
+        "grantedTTL": 60,
+        "keys": [
+          "n/\u003clease 6\u003e"
+        ]
+      }
+    },
+    {
+      "do": "lock with a missing lease",
+      "code": "Unknown",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "unlock without a key",
+      "code": "Unknown",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "unlock a key that is not a lock",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
     }
   ],
   "max-request-size": [

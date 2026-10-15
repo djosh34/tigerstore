@@ -54,6 +54,18 @@ type Metrics struct {
 	// as etcd_server_proposals_committed_total and _applied_total.
 	Committed, Applied uint64
 	mvcc.Counts
+	// IndexBytes estimates what the index takes in memory, and
+	// WindowBytes is the data of the Raft entries in memory.
+	IndexBytes, WindowBytes int64
+	// The node driver adds the rest: MapBytes estimates what the map of
+	// where entries and values are on disk takes in memory, DiskBytes is
+	// the size of the log's files, DiskBudget the budget for them, and
+	// CleanedBytes what cleaning wrote.
+	MapBytes, DiskBytes, DiskBudget, CleanedBytes int64
+	// CacheBytes is what the value cache holds and CacheLimit what it may
+	// hold now; CacheHits are the values it returned and CacheMisses those
+	// read from the log.
+	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
 }
 
 // Metrics returns the node's metrics.
@@ -65,5 +77,11 @@ func (n *Node) Metrics() Metrics {
 		Committed:     st.GetCommit(),
 		Applied:       n.applied,
 		Counts:        n.kv.Counts(),
+		IndexBytes:    n.kv.Bytes(),
+		WindowBytes:   n.storage.total(),
+		CacheBytes:    n.cache.bytes,
+		CacheLimit:    max(n.cache.limit, 0),
+		CacheHits:     n.cache.hits,
+		CacheMisses:   n.cache.misses,
 	}
 }

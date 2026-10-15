@@ -33,9 +33,12 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
+	// kindNoSpace stands for a forwarded write that the leader refused
+	// because its disk is past its budget. It has no request.
+	kindNoSpace = 9
 	// kindVersion is a node's announcement of the newest version it
 	// supports, a wrapperspb.UInt32Value. It changes no key.
-	kindVersion = 9
+	kindVersion = 10
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -99,18 +102,27 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 	return buf, nil
 }
 
+// skipFormat returns the data of a Raft entry without its format header.
+func skipFormat(data []byte) ([]byte, error) {
+	if len(data) == 0 || data[0] != 0 {
+		return data, nil
+	}
+	if len(data) < 2 {
+		return nil, errBadBatch
+	}
+	if f := data[1]; f < 2 || f > MaxVersion {
+		return nil, fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
+	}
+	return data[2:], nil
+}
+
 // walkBatch calls fn for every write in the data of a Raft entry, with
 // the write's bytes in place and where they start in data.
 func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte, at int) error) error {
 	whole := data
-	if len(data) > 0 && data[0] == 0 {
-		if len(data) < 2 {
-			return errBadBatch
-		}
-		if f := data[1]; f < 2 || f > MaxVersion {
-			return fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
-		}
-		data = data[2:]
+	data, err := skipFormat(data)
+	if err != nil {
+		return err
 	}
 	n, data, ok := uvarint(data)
 	if !ok {
@@ -142,6 +154,35 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 	return nil
 }
 
+// refuseSpace returns the data of a Raft entry with every write that
+// TakesSpace replaced by a kindNoSpace record. A transaction in an entry
+// is never read-only, so all of them take space.
+func refuseSpace(data []byte) ([]byte, error) {
+	batch, err := skipFormat(data)
+	if err != nil {
+		return nil, err
+	}
+	n, _, ok := uvarint(batch)
+	if !ok {
+		return nil, errBadBatch
+	}
+	out := append(make([]byte, 0, len(data)), data[:len(data)-len(batch)]...)
+	out = binary.AppendUvarint(out, n)
+	err = walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindPut || kind == kindTxn || kind == kindGrant {
+			kind, b = kindNoSpace, nil
+		}
+		out = binary.AppendUvarint(out, origin)
+		out = binary.AppendUvarint(out, boot)
+		out = binary.AppendUvarint(out, id)
+		out = append(out, kind)
+		out = binary.AppendUvarint(out, uint64(len(b)))
+		out = append(out, b...)
+		return nil
+	})
+	return out, err
+}
+
 // newOp returns an empty request of an entry kind.
 func newOp(kind byte) (proto.Message, error) {
 	switch kind {
@@ -166,11 +207,13 @@ func newOp(kind byte) (proto.Message, error) {
 }
 
 // DecodeBatch calls fn for every write in the data of a Raft entry,
-// decoded, and skips version announcements, which change no key. The
+// decoded, and skips refused writes and version announcements, which change no key. The
 // checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
 	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
-		if kind == kindVersion {
+		if kind == kindNoSpace || kind == kindVersion {
+			// A refused write did not apply, and an announcement changes
+			// no key.
 			return nil
 		}
 		op, err := newOp(kind)

@@ -157,6 +157,27 @@ func (st *stream) deliver(m []byte) {
 	}
 }
 
+// RecvOne takes the request of a server-streaming call. As grpc-go
+// does, it then waits for the client to end its side, and answers a call
+// with no request or with more than one with grpc-go's errors.
+func (st *stream) RecvOne(m proto.Message) error {
+	err := st.Recv(m)
+	if errors.Is(err, io.EOF) {
+		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
+	}
+	if err != nil {
+		return err
+	}
+	err = st.Recv(m.ProtoReflect().New().Interface())
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return status.Error(codes.Internal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
+}
+
 // Recv takes the next request message of a streaming call. It returns
 // io.EOF once the client ended its side.
 func (st *stream) Recv(m proto.Message) error {
@@ -358,7 +379,7 @@ func (c *conn) runUnary(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	resp, err := st.rpc.unary(st.ctx, c.s, st.body)
+	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
 	st.body = nil
 	if err != nil {
 		st.finish(err)
@@ -417,10 +438,10 @@ func (st *stream) expire() {
 func (c *conn) runHTTP(st *stream) {
 	defer st.cancel()
 	st.done.Store(true)
-	code, contentType, body := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
-	headers := httpHeaders(code, contentType, len(body))
+	a := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
+	headers := httpHeaders(a)
 	if st.httpMethod == http.MethodHead {
-		body = ""
+		a.body = ""
 	}
-	st.pushHTTP(headers, []byte(body))
+	st.pushHTTP(headers, []byte(a.body))
 }
