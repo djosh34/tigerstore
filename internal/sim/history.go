@@ -36,11 +36,11 @@ func (r *Result) Checkable() (*history.History, error) {
 	if err != nil {
 		return nil, err
 	}
-	places, err := r.places()
+	unique, err := r.uniqueInLog(committed)
 	if err != nil {
 		return nil, err
 	}
-	effectBy := r.effectBy(places)
+	effectBy := r.effectBy(unique)
 	expiryClient := r.Clients + len(r.Watches)
 	for _, rec := range r.History {
 		if _, ok := rec.req.(*pb.LeaseKeepAliveRequest); ok {
@@ -66,7 +66,7 @@ func (r *Result) Checkable() (*history.History, error) {
 			// Planted: a call that may have taken effect counts as one
 			// that certainly did not.
 			op.Err = historyError(rec.Err, rec.Ambiguous && !planted.On("B15"))
-			if pos, ok := places[rec]; ok && op.Err.Ambiguous {
+			if pos, ok := unique[rec]; ok && op.Err.Ambiguous {
 				op.Effect = &history.Effect{By: effectBy[pos], Revision: r.revs[pos]}
 			}
 		} else if op.Resp, err = response(rec.Resp); err != nil {
@@ -104,76 +104,59 @@ func (r *Result) Checkable() (*history.History, error) {
 	return h, nil
 }
 
-// committed returns the encoded puts, deletes and txns of the committed log.
-// The cluster logs them as the client sent them.
-func (r *Result) committed() (map[string]bool, error) {
-	out := map[string]bool{}
-	for _, m := range r.Log {
-		if !writeOp(m) {
-			continue
-		}
-		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
-		if err != nil {
-			return nil, err
-		}
-		out[string(b)] = true
-	}
-	return out, nil
-}
-
-// places returns the position in the committed log of the write of each
-// call that is the only call with its request and is in the log once. Only
-// then is that entry surely the call's.
-func (r *Result) places() (map[*Record]int, error) {
+// committed returns the positions in the committed log of each encoded
+// put, delete and txn. The cluster logs them as the client sent them.
+func (r *Result) committed() (map[string][]int, error) {
 	if len(r.revs) != len(r.Log) {
 		return nil, fmt.Errorf("sim: %d revisions for %d log entries", len(r.revs), len(r.Log))
 	}
-	encode := func(m proto.Message) (string, error) {
-		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
-		return string(b), err
-	}
-	inLog := map[string]int{}
-	seen := map[string]int{}
+	out := map[string][]int{}
 	for i, m := range r.Log {
 		if !writeOp(m) {
 			continue
 		}
-		b, err := encode(m)
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 		if err != nil {
 			return nil, err
 		}
-		inLog[b] = i
-		seen[b]++
+		out[string(b)] = append(out[string(b)], i)
 	}
+	return out, nil
+}
+
+// uniqueInLog returns the position in the committed log of the write of
+// each call that is the only call with its request and is in the log once.
+// Only then is that entry surely the call's.
+func (r *Result) uniqueInLog(committed map[string][]int) (map[*Record]int, error) {
 	calls := map[string][]*Record{}
 	for _, rec := range r.History {
 		if !writeOp(rec.req) {
 			continue
 		}
-		b, err := encode(rec.req)
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(rec.req)
 		if err != nil {
 			return nil, err
 		}
-		calls[b] = append(calls[b], rec)
+		calls[string(b)] = append(calls[string(b)], rec)
 	}
 	out := map[*Record]int{}
 	for b, recs := range calls {
-		if len(recs) == 1 && seen[b] == 1 {
-			out[recs[0]] = inLog[b]
+		if pos := committed[b]; len(recs) == 1 && len(pos) == 1 {
+			out[recs[0]] = pos[0]
 		}
 	}
 	return out, nil
 }
 
 // effectBy returns, for each position in the committed log, the earliest
-// time a write at or after it was acknowledged, or math.MaxInt64 if none
-// was.
-func (r *Result) effectBy(places map[*Record]int) []int64 {
+// time a unique write at or after it was acknowledged, or math.MaxInt64 if
+// none was.
+func (r *Result) effectBy(unique map[*Record]int) []int64 {
 	by := make([]int64, len(r.Log))
 	for i := range by {
 		by[i] = math.MaxInt64
 	}
-	for rec, pos := range places {
+	for rec, pos := range unique {
 		if rec.Err == nil {
 			by[pos] = rec.Return
 		}
@@ -192,12 +175,12 @@ func writeOp(m proto.Message) bool {
 	return false
 }
 
-func neverCommitted(m proto.Message, committed map[string]bool) bool {
+func neverCommitted(m proto.Message, committed map[string][]int) bool {
 	if !writeOp(m) {
 		return false
 	}
 	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
-	return err == nil && !committed[string(b)]
+	return err == nil && len(committed[string(b)]) == 0
 }
 
 func historyError(err error, ambiguous bool) *history.Error {
