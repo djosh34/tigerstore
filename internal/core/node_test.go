@@ -356,3 +356,30 @@ func TestProposedWriteTimesOut(t *testing.T) {
 		t.Fatalf("a forwarded write that never commits: %+v", got)
 	}
 }
+
+// TestLoneLeaderWaitsForItsDisk holds a one-node cluster's append past
+// both stall limits. With no other voter to lead, the node keeps running,
+// and the write is answered once its append is durable.
+func TestLoneLeaderWaitsForItsDisk(t *testing.T) {
+	s := startSingle(t, simfs.New(), 1)
+	n := s.n
+	n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	eff, err := n.Process()
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := eff.Persist
+	for range (max(StallTicks, CommitStallTicks) + 1) * n.cfg.ElectionTicks {
+		n.Tick()
+		eff, err := n.Process()
+		if err != nil {
+			t.Fatalf("the lone leader stopped while its append was held: %v", err)
+		}
+		held = append(held, eff.Persist...)
+	}
+	s.persistAll(held)
+	got := s.run()
+	if len(got) != 1 || got[0].ID != 1 || got[0].Err != nil {
+		t.Fatalf("the held write: %+v", got)
+	}
+}

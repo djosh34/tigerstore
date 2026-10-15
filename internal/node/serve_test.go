@@ -3,6 +3,7 @@ package node
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -55,13 +57,14 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	// so the stream writes while it still reads the checkpoint.
 	// Rounds of writes, each compacted away, let the oldest segments go.
 	key := func(i int) []byte { return fmt.Appendf(nil, "%01000d", i) }
-	do := func(op proto.Message) {
+	// do retries op until it succeeds or the node stops.
+	do := func(op proto.Message) error {
 		for {
 			c, done := context.WithTimeout(ctx, 5*time.Second)
 			_, err := n.Do(c, op)
 			done()
-			if err == nil {
-				return
+			if err == nil || errors.Is(err, rpctypes.ErrGRPCStopped) {
+				return err
 			}
 		}
 	}
@@ -70,12 +73,16 @@ func TestServeKeepsItsFiles(t *testing.T) {
 		for w := range 8 {
 			wg.Go(func() {
 				for i := w; i < 800; i += 8 {
-					do(&pb.PutRequest{Key: key(i), Value: fmt.Appendf(nil, "v%d", round)})
+					if do(&pb.PutRequest{Key: key(i), Value: fmt.Appendf(nil, "v%d", round)}) != nil {
+						return
+					}
 				}
 			})
 		}
 		wg.Wait()
-		do(&pb.CompactionRequest{Revision: int64(800 * (round + 1))})
+		if do(&pb.CompactionRequest{Revision: int64(800 * (round + 1))}) != nil {
+			t.Fatalf("the node stopped: %v", <-ran)
+		}
 	}
 	// Let the last checkpoint's root become durable.
 	time.Sleep(500 * time.Millisecond)
