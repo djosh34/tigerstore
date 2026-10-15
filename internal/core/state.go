@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -43,15 +44,20 @@ func newExpiry(id, stamp int64) *pb.LeaseCheckpoint {
 	return &pb.LeaseCheckpoint{ID: id, Remaining_TTL: stamp}
 }
 
-// State is the replicated state machine: the key index and the leases.
-// Every replica applies the same log to it and ends in the same state,
-// apart from the leader's lease expiry times, which are not replicated.
+// State is the replicated state machine: the key index, the leases and
+// the cluster version. Every replica applies the same log to it and ends
+// in the same state, apart from the leader's lease expiry times, which are
+// not replicated.
 type State struct {
 	kv     *mvcc.Store
 	leases map[int64]*lease
 	minTTL int64
 	// stamps counts grants and keepalives, to stamp leases.
 	stamps int64
+	// version is the cluster version, and supports the newest version each
+	// voter announced (version.go).
+	version  uint32
+	supports map[uint64]uint32
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
@@ -65,7 +71,7 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 // at least minTTL seconds, as etcd clamps them to 1.5 election timeouts
 // rounded up.
 func NewState(minTTL int64, v mvcc.Values) *State {
-	st := &State{kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL}
+	st := &State{kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{}}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
 }
@@ -74,8 +80,8 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 func (st *State) Store() *mvcc.Store { return st.kv }
 
 // Hash is a hash of the whole replicated state: the index, the leases
-// with their key counts, and the lease stamps. The keys themselves follow
-// from the index.
+// with their key counts, the lease stamps and the versions. The keys
+// themselves follow from the index.
 func (st *State) Hash() uint64 {
 	h := st.kv.Hash()
 	mix := func(x uint64) {
@@ -88,6 +94,11 @@ func (st *State) Hash() uint64 {
 		mix(uint64(l.ttl))
 		mix(uint64(l.stamp))
 		mix(uint64(len(l.keys)))
+	}
+	mix(uint64(st.version))
+	for _, id := range slices.Sorted(maps.Keys(st.supports)) {
+		mix(id)
+		mix(uint64(st.supports[id]))
 	}
 	return h
 }

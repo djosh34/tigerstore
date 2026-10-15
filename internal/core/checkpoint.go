@@ -24,7 +24,9 @@ import (
 // and the header is
 //
 //	magic "tigerckp" | u32 format version | u64 index | u64 term |
-//	uvarint voter count | uvarint voters | varint revision |
+//	uvarint voter count | uvarint voters |
+//	per voter: uvarint version it supports, 0 before it announced one |
+//	uvarint cluster version | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
 //	uvarint lease count | per lease: varint ID | varint TTL | varint stamp
 //
@@ -36,10 +38,16 @@ import (
 
 const ckptMagic = "tigerckp"
 
+// ckptVersion is the format version of checkpoint files. Version 2 added
+// the versions.
+const ckptVersion = 2
+
 // ckptHeader is the part of a checkpoint before the keys.
 type ckptHeader struct {
 	index, term          uint64
 	voters               []uint64
+	supports             []uint32
+	version              uint32
 	rev, compact, stamps int64
 	base                 int64
 	leases               []*lease
@@ -47,13 +55,17 @@ type ckptHeader struct {
 
 func (h *ckptHeader) encode() []byte {
 	b := append([]byte(ckptMagic), 0, 0, 0, 0)
-	binary.LittleEndian.PutUint32(b[len(ckptMagic):], wal.Version)
+	binary.LittleEndian.PutUint32(b[len(ckptMagic):], ckptVersion)
 	b = binary.LittleEndian.AppendUint64(b, h.index)
 	b = binary.LittleEndian.AppendUint64(b, h.term)
 	b = binary.AppendUvarint(b, uint64(len(h.voters)))
 	for _, v := range h.voters {
 		b = binary.AppendUvarint(b, v)
 	}
+	for _, v := range h.supports {
+		b = binary.AppendUvarint(b, uint64(v))
+	}
+	b = binary.AppendUvarint(b, uint64(h.version))
 	b = binary.AppendVarint(b, h.rev)
 	b = binary.AppendVarint(b, h.compact)
 	b = binary.AppendVarint(b, h.stamps)
@@ -78,9 +90,9 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	if string(fixed[:len(ckptMagic)]) != ckptMagic {
 		return nil, fmt.Errorf("%w: no magic", errBadCheckpoint)
 	}
-	if v := binary.LittleEndian.Uint32(fixed[len(ckptMagic):]); v != wal.Version {
+	if v := binary.LittleEndian.Uint32(fixed[len(ckptMagic):]); v != ckptVersion {
 		// A root of this node names it, so it is damage or a newer build's.
-		return nil, fmt.Errorf("%w: format version %d; this build reads version %d", errBadCheckpoint, v, wal.Version)
+		return nil, fmt.Errorf("%w: format version %d; this build reads version %d", errBadCheckpoint, v, ckptVersion)
 	}
 	h := &ckptHeader{
 		index: binary.LittleEndian.Uint64(fixed[len(ckptMagic)+4:]),
@@ -108,6 +120,10 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	for range n {
 		h.voters = append(h.voters, uv())
 	}
+	for range n {
+		h.supports = append(h.supports, uint32(uv()))
+	}
+	h.version = uint32(uv())
 	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
@@ -156,8 +172,13 @@ func (n *Node) maybeCheckpoint(index, term uint64) {
 		index = max(index, n.rn.BasicStatus().GetCommit())
 	}
 	n.base = n.last.size
+	supports := make([]uint32, len(n.cfg.Peers))
+	for i, id := range n.cfg.Peers {
+		supports[i] = n.state.supports[id]
+	}
 	h := &ckptHeader{
 		index: index, term: term, voters: n.cfg.Peers,
+		supports: supports, version: n.state.version,
 		rev: n.kv.Rev(), compact: n.kv.CompactRev(), stamps: n.state.stamps,
 		base: n.base, leases: n.state.sortedLeases(),
 	}
@@ -280,11 +301,19 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		return nil, lastCkpt{}, fmt.Errorf("%w: checkpoint at %d term %d with voters %v, the root names %d term %d",
 			errBadCheckpoint, h.index, h.term, h.voters, root.Index, root.Term)
 	}
+	if own := ownVersion(cfg); h.version > own {
+		return nil, lastCkpt{}, tooOld(h.version, own)
+	}
 	st := NewState(MinLeaseTTL(cfg), v)
 	if cfg.Record {
 		st.kv.TrackHash()
 	}
-	st.stamps = h.stamps
+	st.version, st.stamps = h.version, h.stamps
+	for i, id := range h.voters {
+		if h.supports[i] != 0 {
+			st.supports[id] = h.supports[i]
+		}
+	}
 	for _, l := range h.leases {
 		st.leases[l.id] = l
 	}
@@ -292,12 +321,8 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	if err != nil {
 		return nil, lastCkpt{}, fmt.Errorf("%w: %w", errBadCheckpoint, err)
 	}
-	rest, err := io.ReadAll(r)
-	if err != nil {
+	if err := tr.check(r); err != nil {
 		return nil, lastCkpt{}, err
-	}
-	if len(rest) != 4 || len(tr.tail) != 4 || binary.LittleEndian.Uint32(tr.tail) != tr.crc {
-		return nil, lastCkpt{}, fmt.Errorf("%w: checksum", errBadCheckpoint)
 	}
 	st.kv.EachLeased(func(key []byte, id int64) {
 		if l, ok := st.leases[id]; ok {
@@ -305,6 +330,27 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 		}
 	})
 	return st, lastCkpt{index: root.Index, size: tr.n, minRef: minRef, base: h.base}, nil
+}
+
+// WalkCheckpoint calls fn for the value of every version that the
+// checkpoint at index names, read from f, the start of its file, then
+// checks the file's trailer. The node's cleaner keeps the values it names.
+func WalkCheckpoint(f io.Reader, index uint64, fn func(mvcc.Ref) error) error {
+	tr := &trailerReader{r: f}
+	r := bufio.NewReaderSize(tr, 64<<10)
+	h, err := readHeader(r)
+	if err == nil && h.index != index {
+		err = fmt.Errorf("%w: the file of the checkpoint at %d holds the one at %d", errBadCheckpoint, index, h.index)
+	}
+	if err == nil {
+		if err = mvcc.WalkRefs(r, fn); errors.Is(err, mvcc.ErrBadCheckpoint) {
+			err = fmt.Errorf("%w: %w", errBadCheckpoint, err)
+		}
+	}
+	if err == nil {
+		err = tr.check(r)
+	}
+	return err
 }
 
 // trailerReader computes the CRC-32C of everything it reads but the last
@@ -320,6 +366,19 @@ func (t *trailerReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
 	t.add(p[:n])
 	return n, err
+}
+
+// check reads the rest of r, which reads from t, and checks that it is
+// the trailer and matches.
+func (t *trailerReader) check(r io.Reader) error {
+	rest, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 4 || len(t.tail) != 4 || binary.LittleEndian.Uint32(t.tail) != t.crc {
+		return fmt.Errorf("%w: checksum", errBadCheckpoint)
+	}
+	return nil
 }
 
 // add takes the next bytes of the file.

@@ -56,12 +56,7 @@ func (c *conn) admit(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	req := core.Request{Compact: st.rpc.compact, Caller: c.caller}
-	if st.gateway {
-		// etcd's AuthInfoFromTLS ignores the certificate of a request
-		// from its gRPC gateway.
-		req.Caller = core.Caller{}
-	}
+	req := core.Request{Compact: st.rpc.compact, Caller: c.callerOf(st)}
 	if st.rpc.wirePut {
 		// The put stays in its wire form; the node copies it into the
 		// Raft entry as it is.
@@ -95,6 +90,16 @@ func (c *conn) admit(st *stream) {
 	c.batch.reqs = append(c.batch.reqs, req)
 	c.batch.tags = append(c.batch.tags, st)
 	c.batch.bytes += st.reqSize
+}
+
+// callerOf is the caller of a call on the connection. etcd's
+// AuthInfoFromTLS ignores the certificate of a request from its gRPC
+// gateway.
+func (c *conn) callerOf(st *stream) core.Caller {
+	if st.gateway {
+		return core.Caller{}
+	}
+	return c.caller
 }
 
 // batchDue reports whether the reader should hand its batch to the node

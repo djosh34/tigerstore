@@ -1,14 +1,15 @@
 // Package peer carries Raft messages between nodes: framed TLS 1.3 over
 // TCP, one connection per directed pair of nodes.
 //
-// Both ends verify the other's certificate against the peer CA, and both
-// offer the protocol versions they speak in TLS ALPN, as
-// "tigerstore-peer/<version>". After the TLS handshake, the dialing node
-// writes a 12-byte preface: the magic "TS", the lowest and the highest
-// version it speaks, and its Raft ID as 8 bytes. The accepting node
-// replies with 1 byte: the highest version both speak, which must be the
-// one ALPN chose, or 0 if there is none, after which it closes. Then each
-// frame is a 4-byte length and a protobuf raftpb.Message.
+// Both ends verify the other's certificate against the peer CA and, when
+// set, the allowed CommonNames or hostnames. Both ends also offer the
+// protocol versions they speak in TLS ALPN, as "tigerstore-peer/<version>".
+// After the TLS handshake, the dialing node writes a 12-byte preface: the
+// magic "TS", the lowest and the highest version it speaks, and its Raft
+// ID as 8 bytes. The accepting node replies with 1 byte: the highest
+// version both speak, which must be the one ALPN chose, or 0 if there is
+// none, after which it closes. Then each frame is a 4-byte length and a
+// protobuf raftpb.Message.
 //
 // A follower fetches a snapshot on a connection of its own: its preface
 // carries its Raft ID with the top bit set. After the reply it writes the
@@ -63,6 +64,12 @@ type Config struct {
 	// and verifies both ends.
 	Certificate tls.Certificate
 	CA          *x509.CertPool
+	// AllowedCNs and AllowedHostnames are etcd's --peer-cert-allowed-cn
+	// and --peer-cert-allowed-hostname: when one is set, the other node's
+	// certificate must also have one of these CommonNames, or be valid
+	// for one of these hostnames. At most one of them may be set.
+	AllowedCNs       []string
+	AllowedHostnames []string
 	// Deliver gets every message received from a peer. It may block,
 	// which slows down that peer's connection.
 	Deliver func(*raftpb.Message)
@@ -141,6 +148,7 @@ const (
 // TCP is the transport over TLS on TCP.
 type TCP struct {
 	cfg     Config
+	verify  func([][]byte, [][]*x509.Certificate) error
 	ln      net.Listener
 	senders map[uint64]*sender
 	ctx     context.Context
@@ -160,9 +168,12 @@ func Start(cfg Config) (*TCP, error) {
 	if cfg.minVersion == 0 {
 		cfg.minVersion, cfg.maxVersion = minVersion, maxVersion
 	}
+	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	if err != nil {
+		return nil, err
+	}
 	raw := cfg.Listener
 	if raw == nil {
-		var err error
 		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
 			return nil, err
 		}
@@ -173,10 +184,13 @@ func Start(cfg Config) (*TCP, error) {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS13,
 		NextProtos:   alpns(cfg.minVersion, cfg.maxVersion),
+		// The CA check runs first; verify only narrows it.
+		VerifyPeerCertificate: verify,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
 		cfg:     cfg,
+		verify:  verify,
 		ln:      ln,
 		senders: map[uint64]*sender{},
 		ctx:     ctx,
@@ -671,6 +685,8 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, error) {
 		ServerName:   host,
 		MinVersion:   tls.VersionTLS13,
 		NextProtos:   alpns(s.t.cfg.minVersion, s.t.cfg.maxVersion),
+		// As in etcd, a dialing node checks the allowed names too.
+		VerifyPeerCertificate: s.t.verify,
 	})
 	if !s.t.track(c) {
 		return nil, errors.Join(net.ErrClosed, c.Close())

@@ -2,7 +2,7 @@
 
 A drop-in etcd replacement for Kubernetes: the etcd v3 API that kube-apiserver uses, consensus with [go.etcd.io/raft](https://github.com/etcd-io/raft), and its own storage. The Raft log is the value store. [docs/design.md](docs/design.md) describes what is built and what comes next.
 
-Work in progress. It serves Range, Put, DeleteRange, Txn, Compact, Watch, leases, MemberList and Maintenance.Status over TLS, and `/health` and `/version` on the client port.
+Work in progress. It serves Range, Put, DeleteRange, Txn, Compact, Watch, leases, MemberList, Maintenance.Status, Maintenance.Alarm, and the Lock and Election services over TLS, the gRPC health service, and `/health`, `/readyz`, `/livez` and `/version` on the client port.
 
 ## Run a 3-node cluster on one machine
 

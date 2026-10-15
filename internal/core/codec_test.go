@@ -24,12 +24,29 @@ func TestBatchRoundTrip(t *testing.T) {
 		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b"), RangeEnd: []byte("c")}}},
 		{req: Request{ID: 9, Op: &pb.TxnRequest{Compare: []*pb.Compare{{Key: []byte("a")}}}}},
 	}
-	data, err := encodeBatch(2, 99, ops, 0)
-	if err != nil {
-		t.Fatal(err)
+	for format := uint32(1); format <= MaxVersion; format++ {
+		data, err := encodeBatch(format, 2, 99, ops, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (data[0] == 0) != (format > 1) {
+			t.Fatalf("format %d starts with %d", format, data[0])
+		}
+		decodeAll(t, data, ops)
 	}
+	if err := DecodeBatch([]byte{0, MaxVersion + 1, 0}, func(_, _, _ uint64, _ proto.Message) error { return nil }); err == nil {
+		t.Fatal("an unknown format decoded")
+	}
+	if _, err := encodeBatch(1, 1, 1, []*pending{{req: Request{Op: &pb.RangeRequest{}}}}, 0); err == nil {
+		t.Fatal("a range was encoded as a write")
+	}
+}
+
+// decodeAll decodes a batch of ops and checks every write and every cut.
+func decodeAll(t *testing.T, data []byte, ops []*pending) {
+	t.Helper()
 	i := 0
-	err = DecodeBatch(data, func(origin, boot, id uint64, op proto.Message) error {
+	err := DecodeBatch(data, func(origin, boot, id uint64, op proto.Message) error {
 		want := ops[i].req.Op
 		if want == nil {
 			want = &pb.PutRequest{Key: []byte("w"), Value: []byte("2"), Lease: 5, PrevKv: true}
@@ -48,8 +65,37 @@ func TestBatchRoundTrip(t *testing.T) {
 			t.Fatalf("batch cut at %d of %d bytes decoded without error", cut, len(data))
 		}
 	}
-	if _, err := encodeBatch(1, 1, []*pending{{req: Request{Op: &pb.RangeRequest{}}}}, 0); err == nil {
-		t.Fatal("a range was encoded as a write")
+}
+
+// TestRefuseSpaceKeepsFormat checks that refusing the writes of an entry
+// keeps its format and every write that takes no space.
+func TestRefuseSpaceKeepsFormat(t *testing.T) {
+	ops := []*pending{
+		{req: Request{ID: 7, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}}},
+		{req: Request{ID: 8, Op: &pb.DeleteRangeRequest{Key: []byte("b")}}},
+	}
+	for format := uint32(1); format <= MaxVersion; format++ {
+		data, err := encodeBatch(format, 2, 99, ops, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refused, err := refuseSpace(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (refused[0] == 0) != (format > 1) {
+			t.Fatalf("format %d became an entry that starts with %d", format, refused[0])
+		}
+		var kinds []byte
+		if err := walkBatch(refused, func(_, _, _ uint64, kind byte, _ []byte, _ int) error {
+			kinds = append(kinds, kind)
+			return nil
+		}); err != nil {
+			t.Fatalf("format %d: %v", format, err)
+		}
+		if want := []byte{kindNoSpace, kindDelete}; !bytes.Equal(kinds, want) {
+			t.Fatalf("format %d: kinds %v, want %v", format, kinds, want)
+		}
 	}
 }
 
