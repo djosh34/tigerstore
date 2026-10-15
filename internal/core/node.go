@@ -103,6 +103,11 @@ type Config struct {
 	// CheckpointChunk is about how many bytes of the index each
 	// CopyCheckpoint copies into a checkpoint under way.
 	CheckpointChunk int
+	// MemoryBytes is the memory that the index, the entries in memory and
+	// the value cache share: the node's budget less what buffers take and
+	// room for the garbage collector. The cache takes what the index and
+	// the entries leave. 0 turns the cache off.
+	MemoryBytes int64
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
 	SnapshotTicks int
@@ -302,6 +307,7 @@ type Node struct {
 	rn      *raft.RawNode
 	storage *storage
 	values  *values
+	cache   *cache
 	state   *State
 	kv      *mvcc.Store
 
@@ -394,11 +400,13 @@ type Node struct {
 // the rest. It reads every entry from disk, one at a time.
 func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	st := newStorage(cfg.Peers)
-	vals := &values{storage: st, log: disk}
+	c := newCache()
+	vals := &values{storage: st, log: disk, cache: c}
 	n := &Node{
 		cfg:      cfg,
 		storage:  st,
 		values:   vals,
+		cache:    c,
 		log:      disk,
 		term:     rec.HardState.Term,
 		voteTerm: rec.HardState.Term,
@@ -429,6 +437,9 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Forget what the replay wrote: its entries never enter memory, so
+	// none of their values go into the cache.
+	n.fillCache(n.applied)
 	if hs.Commit > 0 {
 		snap := &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(hs.Commit), Term: new(term), ConfState: st.conf}}
 		if err := st.reset(snap); err != nil {
@@ -500,6 +511,10 @@ func (n *Node) setState(st *State) {
 		st.kv.TrackHash()
 	}
 	n.state, n.kv = st, st.Store()
+	if n.cfg.MemoryBytes > 0 {
+		n.kv.TrackWritten()
+		n.kv.Replaced = n.cache.drop
+	}
 }
 
 // MinLeaseTTL is etcd's smallest lease TTL: 1.5 election timeouts, rounded
@@ -1063,6 +1078,7 @@ func (n *Node) Process() (Effects, error) {
 		n.flushWatches()
 		if n.err == nil {
 			n.trimWindow()
+			n.fitCache()
 		}
 	}
 	if n.err != nil {

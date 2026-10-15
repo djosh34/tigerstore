@@ -225,6 +225,10 @@ type Store struct {
 	// LeaseExists reports whether a lease is granted. Nil means that no
 	// lease exists, so every Put with a lease fails.
 	LeaseExists func(id int64) bool
+	// Replaced, if set, gets the value of a key's newest version when a
+	// put or a delete replaces that version and the new one does not keep
+	// the value. Older revisions may still read it.
+	Replaced func(Ref)
 
 	// changes collects the changes of the request being applied.
 	changes []Change
@@ -232,15 +236,61 @@ type Store struct {
 	fills []Fill
 
 	counts Counts
-	// versions and keyBytes count the versions and the key bytes in the
-	// index, for Bytes.
+	// versions and keyBytes count the room for versions that the keys'
+	// arrays have and the key bytes in the index, for Bytes.
 	versions, keyBytes int64
+
+	// written holds the values that puts wrote since the last Leaving,
+	// oldest first, with TrackWritten.
+	written      []written
+	trackWritten bool
 }
 
 // Bytes estimates what the index takes in memory: per key its record,
-// its place in the B-tree and its bytes, and per version 64 bytes.
+// its place in the B-tree and its bytes, and 64 bytes per version its
+// array has room for.
 func (s *Store) Bytes() int64 {
 	return int64(s.keys.Len())*64 + s.keyBytes + s.versions*64
+}
+
+// written is a value a put wrote to key k.
+type written struct {
+	k   *keyIndex
+	ref Ref
+}
+
+// TrackWritten makes the store keep the value of every put until
+// Leaving hands it out.
+func (s *Store) TrackWritten() { s.trackWritten = true }
+
+// Leaving calls fn, oldest first, with each value written in an entry up
+// to index that is still its key's newest value, and forgets every value
+// written up to index.
+func (s *Store) Leaving(index uint64, fn func(Ref)) {
+	n := 0
+	for ; n < len(s.written) && s.written[n].ref.Index <= index; n++ {
+		if w := s.written[n]; w.k.current(w.ref) {
+			fn(w.ref)
+		}
+	}
+	clear(s.written[:n])
+	s.written = s.written[n:]
+}
+
+// Current reports whether r names the value of key's newest version.
+func (s *Store) Current(key []byte, r Ref) bool {
+	k, ok := s.keys.Get(&keyIndex{key: key})
+	return ok && k.current(r)
+}
+
+// current reports whether r names the value of k's newest version. A
+// key that a compaction removed has no versions left.
+func (k *keyIndex) current(r Ref) bool {
+	if len(k.vers) == 0 {
+		return false
+	}
+	v := &k.vers[len(k.vers)-1]
+	return v.ver != 0 && v.value == r
 }
 
 // Counts are the operations a store has seen, for etcd's metrics
@@ -512,8 +562,14 @@ func (s *Store) drop(rev int64) {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
 		if i := k.dropped(rev); i > 0 {
+			c := cap(k.vers)
 			k.vers = slices.Delete(k.vers, 0, i)
-			s.versions -= int64(i)
+			// The array stays; a key that lost most of its versions gets a
+			// smaller one, so that the memory goes.
+			if len(k.vers) <= c/4 {
+				k.vers = slices.Clone(k.vers)
+			}
+			s.versions -= int64(c - cap(k.vers))
 		}
 		if len(k.vers) == 0 {
 			gone = append(gone, k)

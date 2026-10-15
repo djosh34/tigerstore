@@ -25,8 +25,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 )
 
-// TestHTTP1HealthAndVersion reads /health and /version over HTTP/1.1, as a
-// probe that does not offer h2 does.
+// TestHTTP1HealthAndVersion reads /health, /version and /readyz over
+// HTTP/1.1, as a probe that does not offer h2 does.
 func TestHTTP1HealthAndVersion(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 90)
@@ -64,6 +64,19 @@ func TestHTTP1HealthAndVersion(t *testing.T) {
 		if code, _, _ := get("/nothing"); code != 404 {
 			t.Fatalf("/nothing = %d", code)
 		}
+		if code, body, _ := get("/readyz?verbose"); code != 200 || body != "[+]data_corruption ok\n[+]serializable_read ok\n[+]linearizable_read ok\n[+]non_learner ok\nok\n" {
+			t.Fatalf("/readyz = %d %q", code, body)
+		}
+	}
+	resp, err := hc.Post("https://"+c.running[1].addr+"/livez", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.ProtoMajor != 1 || resp.Header.Get("Allow") != "GET" || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("POST /livez = %d HTTP/%d %v", resp.StatusCode, resp.ProtoMajor, resp.Header)
 	}
 }
 

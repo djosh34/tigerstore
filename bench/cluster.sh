@@ -18,7 +18,11 @@
 #
 # CERTS is a directory made by scripts/dev-certs.sh (required). ETCDCTL
 # names the etcdctl (default: etcdctl next to the server binary, then on
-# PATH). BENCH_PORT is the first port (default 40000).
+# PATH). BENCH_PORT is the first port (default 40000). BENCH_GOMEMLIMIT
+# goes to every node as GOMEMLIMIT, and a tigerstore node takes it as its
+# memory budget; without it, each tigerstore node gets a quarter of the
+# host's memory as its budget, so that the three of them and the load
+# generator fit.
 set -euo pipefail
 
 port=${BENCH_PORT:-40000}
@@ -114,6 +118,8 @@ start() {
 		if [ "$kind" = etcd ]; then
 			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
 				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth)
+		elif [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
+			extra=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
 		fi
 		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \

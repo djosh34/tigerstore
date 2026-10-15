@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // method serves one gRPC method. A request the node runs (op) is decoded
@@ -21,7 +23,7 @@ type method struct {
 	// compact: op is a range whose answer the writer encodes from the
 	// index's values, without building a RangeResponse.
 	compact bool
-	unary   func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
+	unary   func(ctx context.Context, s *Server, caller core.Caller, req []byte) (proto.Message, error)
 	stream  func(s *Server, st *stream) error
 	// serverStream: stream is a server-streaming call, whose client sends
 	// one request.
@@ -43,9 +45,9 @@ var methodPaths = func() []string {
 	return paths
 }()
 
-// methods are the etcd methods that are served. Every other method of
-// etcd's services answers Unimplemented, as grpc-go's generated
-// Unimplemented servers do.
+// methods are the methods that are served: etcd's and the gRPC health
+// service's. Every other method of etcd's services answers Unimplemented,
+// as grpc-go's generated Unimplemented servers do.
 var methods = map[string]*method{
 	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
 	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream, serverStream: true},
@@ -62,11 +64,21 @@ var methods = map[string]*method{
 	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
 	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
 	"/etcdserverpb.Maintenance/Alarm":     {unary: alarm},
+	"/v3lockpb.Lock/Lock":                 {unary: lock},
+	"/v3lockpb.Lock/Unlock":               {unary: unlock},
+	"/v3electionpb.Election/Campaign":     {unary: campaign},
+	"/v3electionpb.Election/Proclaim":     {unary: electionProclaim},
+	"/v3electionpb.Election/Leader":       {unary: electionLeader},
+	"/v3electionpb.Election/Observe":      {stream: (*Server).observe, serverStream: true},
+	"/v3electionpb.Election/Resign":       {unary: electionResign},
+	"/grpc.health.v1.Health/Check":        {unary: healthCheck},
+	"/grpc.health.v1.Health/List":         {unary: healthList},
+	"/grpc.health.v1.Health/Watch":        {stream: (*Server).healthWatch, serverStream: true},
 }
 
 // services are etcd's gRPC services; their other methods are not
 // implemented.
-var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth"}
+var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election"}
 
 // unknownMethod is grpc-go's answer for a method that is not served.
 func unknownMethod(path string) error {
@@ -76,6 +88,10 @@ func unknownMethod(path string) error {
 	}
 	if slices.Contains(services, service) {
 		return status.Errorf(codes.Unimplemented, "method %s not implemented", name)
+	}
+	if service == healthService {
+		// The health service serves all of its methods.
+		return status.Errorf(codes.Unimplemented, "unknown method %v for service %v", name, service)
 	}
 	return status.Errorf(codes.Unimplemented, "unknown service %v", service)
 }
@@ -96,14 +112,14 @@ func newOp[T any, P interface {
 	return P(new(T))
 }
 
-func memberList(_ context.Context, s *Server, b []byte) (proto.Message, error) {
+func memberList(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &pb.MemberListRequest{}); err != nil {
 		return nil, err
 	}
 	return s.memberList(), nil
 }
 
-func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func maintenanceStatus(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &pb.StatusRequest{}); err != nil {
 		return nil, err
 	}
@@ -126,7 +142,7 @@ func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message,
 // header carries the revision: here a linearizable read gives both.
 // Activating NOSPACE or CORRUPT by hand, which would refuse writes, is
 // not supported.
-func alarm(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func alarm(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	var r pb.AlarmRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
