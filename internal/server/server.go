@@ -70,6 +70,12 @@ type Config struct {
 	WarningUnaryRequestDuration time.Duration
 	// Logf, if set, logs the slow unary calls.
 	Logf func(format string, args ...any)
+	// KeepaliveMinTime, KeepaliveTime and KeepaliveTimeout are etcd's
+	// --grpc-keepalive-min-time, --grpc-keepalive-interval and
+	// --grpc-keepalive-timeout as etcd hands them to grpc-go
+	// (keepalive.go); 0 means grpc-go's default, 5 minutes, 2 hours and
+	// 20 seconds.
+	KeepaliveMinTime, KeepaliveTime, KeepaliveTimeout time.Duration
 }
 
 // handshakeTimeout bounds the TLS handshake and the HTTP/2 preface.
@@ -108,8 +114,10 @@ type Server struct {
 	// Config (setLimits).
 	maxRequestBytes, maxRecvMsg int
 	maxStreams                  uint32
-	// slowUnary is Config.WarningUnaryRequestDuration with its default.
-	slowUnary time.Duration
+	// slowUnary is Config.WarningUnaryRequestDuration with its default,
+	// and the keepalive fields Config's.
+	slowUnary                                     time.Duration
+	keepaliveMin, keepaliveTime, keepaliveTimeout time.Duration
 
 	mu      sync.Mutex
 	lns     []net.Listener
@@ -399,4 +407,7 @@ func (s *Server) setLimits() {
 	s.maxRecvMsg = s.maxRequestBytes + 512<<10
 	s.maxStreams = cmp.Or(s.cfg.MaxConcurrentStreams, math.MaxUint32)
 	s.slowUnary = cmp.Or(s.cfg.WarningUnaryRequestDuration, 300*time.Millisecond)
+	s.keepaliveMin = cmp.Or(s.cfg.KeepaliveMinTime, 5*time.Minute)
+	s.keepaliveTime = cmp.Or(s.cfg.KeepaliveTime, 2*time.Hour)
+	s.keepaliveTimeout = cmp.Or(s.cfg.KeepaliveTimeout, 20*time.Second)
 }

@@ -222,6 +222,14 @@ func start(c *config, lg *zap.Logger) error {
 	if err != nil {
 		return err
 	}
+	// etcd hands grpc-go each keepalive setting only when it is above 0.
+	var kaMin, kaTime, kaTimeout time.Duration
+	if ec.GRPCKeepAliveMinTime > 0 {
+		kaMin = ec.GRPCKeepAliveMinTime
+	}
+	if ec.GRPCKeepAliveInterval > 0 && ec.GRPCKeepAliveTimeout > 0 {
+		kaTime, kaTimeout = ec.GRPCKeepAliveInterval, ec.GRPCKeepAliveTimeout
+	}
 	g, err := server.New(n, server.Config{
 		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(ec.BcryptCost), JWT: jwt,
 		StopServiceOnDefrag: gate.Enabled(features.StopGRPCServiceOnDefrag),
@@ -230,6 +238,7 @@ func start(c *config, lg *zap.Logger) error {
 		TracerProvider:  tracerProvider(tp),
 		MaxRequestBytes: int(ec.MaxRequestBytes), MaxConcurrentStreams: ec.MaxConcurrentStreams,
 		WarningUnaryRequestDuration: ec.WarningUnaryRequestDuration, Logf: logf,
+		KeepaliveMinTime: kaMin, KeepaliveTime: kaTime, KeepaliveTimeout: kaTimeout,
 	})
 	if err != nil {
 		return errors.Join(err, t.Close())

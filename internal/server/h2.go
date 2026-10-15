@@ -101,6 +101,15 @@ type conn struct {
 	waitingReplies atomic.Int64
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
+
+	// lastRead is when the reader last got a frame, in Unix nanoseconds,
+	// and wrote is set when the writer sends HEADERS or DATA, which
+	// forgives the client's pings (keepalive.go). lastPing and
+	// pingStrikes are the reader's.
+	lastRead    atomic.Int64
+	wrote       atomic.Bool
+	lastPing    time.Time
+	pingStrikes int
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -113,6 +122,7 @@ const (
 	ctrlWindowUpdate
 	ctrlRST
 	ctrlGoAway
+	ctrlPing
 )
 
 // ctrlFrame is a frame other than HEADERS and DATA.
@@ -121,6 +131,8 @@ type ctrlFrame struct {
 	id   uint32 // stream, or last stream for GOAWAY
 	val  uint32 // window increment or error code
 	ping [8]byte
+	// debug is the debug data of a GOAWAY.
+	debug string
 }
 
 // caller is the client of a connection as etcd's size limit for writes
@@ -153,6 +165,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.lastRead.Store(time.Now().UnixNano())
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
@@ -170,9 +183,14 @@ func (c *conn) serve() {
 		defer c.close()
 		_ = c.writeLoop()
 	})
+	wg.Go(c.keepalive)
 	err := c.readLoop()
-	if ce, ok := errors.AsType[http2.ConnectionError](err); ok {
-		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ce)})
+	ga, ok := errors.AsType[goAwayError](err)
+	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {
+		ga, ok = goAwayError{code: http2.ErrCode(ce)}, true
+	}
+	if ok {
+		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ga.code), debug: ga.debug})
 		c.mu.Lock()
 		c.goingAway = true
 		c.mu.Unlock()
@@ -294,6 +312,7 @@ func (c *conn) readLoop() error {
 		if err != nil {
 			return err
 		}
+		c.lastRead.Store(time.Now().UnixNano())
 		f, err := c.fr.ReadFrameForHeader(fh)
 		if err != nil {
 			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
@@ -332,6 +351,7 @@ func (c *conn) onFrame(f http2.Frame) error {
 	case *http2.PingFrame:
 		if !f.IsAck() {
 			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.Data})
+			return c.checkPing()
 		}
 	case *http2.RSTStreamFrame:
 		c.resetStream(f.StreamID, 0)

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -130,5 +131,81 @@ func TestRequestLimits(t *testing.T) {
 	}
 	if _, err := kv.Txn(context.Background(), &pb.TxnRequest{Success: []*pb.RequestOp{op, op, op}}); !errors.Is(err, rpctypes.ErrGRPCTooManyOps) {
 		t.Errorf("a txn over --max-txn-ops: %v", err)
+	}
+}
+
+// TestKeepalive checks grpc-go's keepalive with etcd's settings: a client
+// that pings too often without a call open gets GOAWAY ENHANCE_YOUR_CALM
+// "too_many_pings", and one that stays silent gets the server's ping and
+// is dropped when it does not answer within the timeout.
+func TestKeepalive(t *testing.T) {
+	c := newClusterWith(t, func(c *cluster) {
+		c.serverConfig = func(cfg *server.Config) {
+			cfg.KeepaliveMinTime, cfg.KeepaliveTime, cfg.KeepaliveTimeout = time.Hour, 200*time.Millisecond, 200*time.Millisecond
+		}
+	})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go c.servers[1].ServeListener(server.Listener{Listener: ln, Traffic: server.TrafficAll}) //nolint:errcheck // ends with the cluster's Stop
+	open := func() *http2.Framer {
+		nc, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { nc.Close() }) //nolint:errcheck // closing a test connection
+		if err := nc.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(nc, http2.ClientPreface); err != nil {
+			t.Fatal(err)
+		}
+		fr := http2.NewFramer(nc, nc)
+		if err := fr.WriteSettings(); err != nil {
+			t.Fatal(err)
+		}
+		return fr
+	}
+
+	fr := open()
+	for range 4 {
+		if err := fr.WritePing(false, [8]byte{7}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatalf("no GOAWAY for too many pings: %v", err)
+		}
+		if ga, ok := f.(*http2.GoAwayFrame); ok {
+			if ga.ErrCode != http2.ErrCodeEnhanceYourCalm || string(ga.DebugData()) != "too_many_pings" {
+				t.Errorf("GOAWAY %v %q", ga.ErrCode, ga.DebugData())
+			}
+			break
+		}
+	}
+	if _, err := fr.ReadFrame(); err == nil {
+		t.Error("the connection stays open after GOAWAY too_many_pings")
+	}
+
+	fr = open()
+	began := time.Now()
+	pinged := false
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			if !pinged {
+				t.Fatalf("closed without a ping: %v", err)
+			}
+			break
+		}
+		if p, ok := f.(*http2.PingFrame); ok && !p.IsAck() {
+			pinged = true
+		}
+	}
+	if d := time.Since(began); d > 5*time.Second {
+		t.Errorf("a silent client was dropped after %v", d)
 	}
 }
