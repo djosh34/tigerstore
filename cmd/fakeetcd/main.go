@@ -102,7 +102,8 @@ const (
 	rangeKey, rangeEnd, rangeLimit   = 1, 2, 3
 	rrHeader, rrKVs, rrMore, rrCount = 1, 2, 3, 4
 
-	txnCompare, txnSuccess               = 1, 2
+	txnCompare, txnSuccess, txnFailure   = 1, 2, 3
+	opRange, respRange                   = 1, 1
 	cmpTarget, cmpKey, cmpCreate, cmpMod = 2, 3, 5, 6
 	targetCreate, targetMod              = 1, 2
 	opPut, opDelete                      = 2, 3
@@ -162,8 +163,36 @@ type watcher struct {
 	key, end []byte
 	mu       sync.Mutex
 	cond     *sync.Cond
-	events   [][]byte
+	events   []wevent
 	last     int64
+}
+
+// wevent references the encoded KVs of one event; the sender builds the
+// event bytes outside seq.
+type wevent struct {
+	del      bool
+	kv, prev []byte
+}
+
+func appendEvent(m []byte, e wevent) []byte {
+	n := 0
+	if e.del {
+		n += 2
+	}
+	n += 1 + protowire.SizeBytes(len(e.kv))
+	if e.prev != nil {
+		n += 1 + protowire.SizeBytes(len(e.prev))
+	}
+	m = protowire.AppendTag(m, wrEvents, protowire.BytesType)
+	m = protowire.AppendVarint(m, uint64(n))
+	if e.del {
+		m = varint(m, evType, 1)
+	}
+	m = bytesF(m, evKV, e.kv)
+	if e.prev != nil {
+		m = bytesF(m, evPrevKV, e.prev)
+	}
+	return m
 }
 
 // arena holds stored keys and KVs outside the Go heap, so the collector
@@ -308,6 +337,7 @@ type mutation struct {
 func (s *store) txnReq(req []byte) ([]byte, error) {
 	var cmps [][]byte
 	var muts []mutation
+	var gets [][]byte // failure branch: single-key Ranges, as kube-apiserver's Else(OpGet(key))
 	var perr error
 	err := each(req, func(n protowire.Number, _ uint64, b []byte) {
 		switch n {
@@ -339,6 +369,18 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 			if err != nil {
 				perr = err
 			}
+		case txnFailure:
+			_ = each(b, func(n protowire.Number, _ uint64, b []byte) {
+				if n != opRange {
+					perr = fmt.Errorf("unsupported failure op %d", n)
+					return
+				}
+				_ = each(b, func(n protowire.Number, _ uint64, v []byte) {
+					if n == rangeKey {
+						gets = append(gets, v)
+					}
+				})
+			})
 		default:
 			perr = fmt.Errorf("unsupported txn field %d", n)
 		}
@@ -359,6 +401,9 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 				locked = append(locked, s.shard(b))
 			}
 		})
+	}
+	for _, g := range gets {
+		locked = append(locked, s.shard(g))
 	}
 	slices.Sort(locked)
 	locked = slices.Compact(locked)
@@ -397,18 +442,31 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 		}
 	}
 	if !ok {
-		out := header(nil, trHeader, s.rev.Load())
+		rev := s.rev.Load()
+		out := header(nil, trHeader, rev)
+		for _, g := range gets {
+			rr := header(nil, rrHeader, rev)
+			if it, found := s.shards[s.shard(g)].kvs.Get(&item{key: g}); found {
+				rr = bytesF(rr, rrKVs, it.enc)
+				rr = varint(rr, rrCount, 1)
+			}
+			out = bytesF(out, trResps, bytesF(nil, respRange, rr))
+		}
 		return out, nil
 	}
 	rev := s.rev.Load()
-	if len(muts) > 0 {
-		s.seq.Lock()
-		defer s.seq.Unlock()
-		rev = s.rev.Add(1)
+	// Look up and update the btrees outside seq: the shard locks already
+	// keep every reader of these keys out until the Txn returns. seq only
+	// orders the revision and the watch queues.
+	type pending struct {
+		sh   *shard
+		old  *item
+		had  bool
+		key  []byte
+		put  *item
 	}
-	out := header(nil, trHeader, rev)
-	out = varint(out, trSucceeded, 1)
-	for _, m := range muts {
+	pend := make([]pending, len(muts))
+	for i, m := range muts {
 		sh := &s.shards[s.shard(m.key)]
 		old, had := sh.kvs.Get(&item{key: m.key})
 		key := m.key
@@ -417,16 +475,26 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 		} else {
 			key = append(sh.mem.alloc(len(m.key)), m.key...)
 		}
-		var event []byte
+		pend[i] = pending{sh: sh, old: old, had: had, key: key}
+	}
+	if len(muts) > 0 {
+		s.seq.Lock()
+		rev = s.rev.Add(1)
+	}
+	out := header(nil, trHeader, rev)
+	out = varint(out, trSucceeded, 1)
+	for i, m := range muts {
+		p := &pend[i]
+		sh, old, had, key := p.sh, p.old, p.had, p.key
+		var event wevent
+		has := false
 		var r []byte
 		if m.del {
 			deleted := 0
 			if had {
-				sh.kvs.Delete(old)
 				deleted = 1
-				event = varint(event, evType, 1)
-				event = bytesF(event, evKV, encKV(&sh.mem, key, nil, 0, rev, 0))
-				event = bytesF(event, evPrevKV, old.enc)
+				event = wevent{del: true, kv: encKV(&sh.mem, key, nil, 0, rev, 0), prev: old.enc}
+				has = true
 			}
 			inner := header(nil, 1, rev)
 			if deleted > 0 {
@@ -439,15 +507,15 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 				it.create, it.version = old.create, old.version+1
 			}
 			it.enc = encKV(&sh.mem, key, m.value, it.create, it.mod, it.version)
-			sh.kvs.ReplaceOrInsert(it)
-			event = bytesF(event, evKV, it.enc)
+			p.put = it
+			event, has = wevent{kv: it.enc}, true
 			if had {
-				event = bytesF(event, evPrevKV, old.enc)
+				event.prev = old.enc
 			}
 			r = bytesF(nil, respPut, header(nil, 1, rev))
 		}
 		out = bytesF(out, trResps, r)
-		if event != nil {
+		if has {
 			for _, w := range s.watchers {
 				if bytes.Compare(key, w.key) >= 0 && bytes.Compare(key, w.end) < 0 {
 					w.mu.Lock()
@@ -457,6 +525,16 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 					w.mu.Unlock()
 				}
 			}
+		}
+	}
+	if len(muts) > 0 {
+		s.seq.Unlock()
+	}
+	for _, p := range pend {
+		if p.put != nil {
+			p.sh.kvs.ReplaceOrInsert(p.put)
+		} else if p.had {
+			p.sh.kvs.Delete(p.old)
 		}
 	}
 	return out, nil
@@ -743,7 +821,7 @@ func (c *hconn) sendEvents(w *watcher, id uint32) {
 			m := header(nil, wrHeader, last)
 			m = varint(m, wrID, uint64(id))
 			for _, e := range evs[:k] {
-				m = bytesF(m, wrEvents, e)
+				m = appendEvent(m, e)
 			}
 			evs = evs[k:]
 			if err := c.appendData(id, m, true); err != nil {
