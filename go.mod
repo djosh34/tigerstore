@@ -6,6 +6,7 @@ require (
 	github.com/anishathalye/porcupine v1.1.0
 	github.com/google/btree v1.1.3
 	go.etcd.io/etcd/api/v3 v3.7.2
+	go.etcd.io/etcd/server/v3 v3.7.2
 	go.etcd.io/raft/v3 v3.7.0
 	golang.org/x/net v0.58.0
 	google.golang.org/grpc v1.84.0

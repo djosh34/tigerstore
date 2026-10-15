@@ -621,6 +621,362 @@
       }
     }
   ],
+  "election": [
+    {
+      "do": "grant a",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant b",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "leader of e before a campaign",
+      "code": "Unknown",
+      "message": "election: no leader"
+    },
+    {
+      "do": "campaign e with a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "observe e",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 1,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a1",
+              "create": 1,
+              "mod": 1,
+              "version": 1,
+              "lease": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of e",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kv": {
+          "key": "e/\u003clease 1\u003e",
+          "value": "a1",
+          "create": 1,
+          "mod": 1,
+          "version": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "campaign e with b waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "proclaim a2",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "campaign e with a and another value",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "campaign e with a and the same value",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 1\u003e",
+          "rev": 1,
+          "lease": 1
+        }
+      }
+    },
+    {
+      "do": "resign a",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "campaign e with b",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "leader": {
+          "name": "e",
+          "key": "e/\u003clease 2\u003e",
+          "rev": 2,
+          "lease": 2
+        }
+      }
+    },
+    {
+      "do": "observe e after the changes",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 3,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a2",
+              "create": 1,
+              "mod": 3,
+              "version": 2,
+              "lease": 1
+            }
+          },
+          {
+            "revision": 4,
+            "kv": {
+              "key": "e/\u003clease 1\u003e",
+              "value": "a3",
+              "create": 1,
+              "mod": 4,
+              "version": 3,
+              "lease": 1
+            }
+          },
+          {
+            "revision": 5,
+            "kv": {
+              "key": "e/\u003clease 2\u003e",
+              "value": "b1",
+              "create": 2,
+              "mod": 2,
+              "version": 1,
+              "lease": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of e after a resigned",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kv": {
+          "key": "e/\u003clease 2\u003e",
+          "value": "b1",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        }
+      }
+    },
+    {
+      "do": "proclaim with a's old leader key",
+      "code": "Unknown",
+      "message": "election: not leader"
+    },
+    {
+      "do": "resign with a's old leader key",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "proclaim without a leader key",
+      "code": "Unknown",
+      "message": "\"leader\" field must be provided"
+    },
+    {
+      "do": "resign without a leader key",
+      "code": "Unknown",
+      "message": "\"leader\" field must be provided"
+    },
+    {
+      "do": "campaign e with a and a deadline",
+      "code": "OK",
+      "result": {
+        "code": "DeadlineExceeded"
+      }
+    },
+    {
+      "do": "keys of e after a gave up",
+      "code": "OK",
+      "result": [
+        {
+          "key": "e/\u003clease 2\u003e",
+          "value": "b1",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        }
+      ]
+    },
+    {
+      "do": "resign b",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "leader of e after b resigned",
+      "code": "Unknown",
+      "message": "election: no leader"
+    },
+    {
+      "do": "observe e after b resigned",
+      "code": "OK",
+      "result": {
+        "leaders": null
+      }
+    },
+    {
+      "do": "observe f before a campaign",
+      "code": "OK",
+      "result": {
+        "leaders": null
+      }
+    },
+    {
+      "do": "campaign f without a lease",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "leader": {
+          "name": "f",
+          "key": "f/\u003clease 3\u003e",
+          "rev": 9,
+          "lease": 3
+        }
+      }
+    },
+    {
+      "do": "observe f",
+      "code": "OK",
+      "result": {
+        "leaders": [
+          {
+            "revision": 9,
+            "kv": {
+              "key": "f/\u003clease 3\u003e",
+              "value": "f1",
+              "create": 9,
+              "mod": 9,
+              "version": 1,
+              "lease": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "leader of f",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "kv": {
+          "key": "f/\u003clease 3\u003e",
+          "value": "f1",
+          "create": 9,
+          "mod": 9,
+          "version": 1,
+          "lease": 3
+        }
+      }
+    },
+    {
+      "do": "campaign with a missing lease",
+      "code": "Unknown",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "grant h with an ID",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "lease": 4,
+        "asAsked": true,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "campaign h",
+      "code": "OK",
+      "result": {
+        "revision": 10,
+        "leader": {
+          "name": "h",
+          "key": "h/\u003clease 4\u003e",
+          "rev": 10,
+          "lease": 4
+        }
+      }
+    },
+    {
+      "do": "largest proclaim value for h",
+      "code": "OK",
+      "result": 1572741
+    },
+    {
+      "do": "proclaim one byte below of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "proclaim exactly of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "proclaim one byte above of the largest size",
+      "code": "Unknown",
+      "message": "etcdserver: request is too large"
+    }
+  ],
   "error-codes": [
     {
       "do": "put k",
@@ -2056,6 +2412,221 @@
       "do": "revoke lease 0",
       "code": "NotFound",
       "message": "etcdserver: requested lease not found"
+    }
+  ],
+  "lock": [
+    {
+      "do": "grant a",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant b",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "grant c",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 3,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "key": "m/\u003clease 1\u003e"
+      }
+    },
+    {
+      "do": "lock m with a again",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "key": "m/\u003clease 1\u003e"
+      }
+    },
+    {
+      "do": "lock m with b waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "lock m with c waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "keys of m",
+      "code": "OK",
+      "result": [
+        {
+          "key": "m/\u003clease 1\u003e",
+          "create": 1,
+          "mod": 1,
+          "version": 1,
+          "lease": 1
+        },
+        {
+          "key": "m/\u003clease 2\u003e",
+          "create": 2,
+          "mod": 2,
+          "version": 1,
+          "lease": 2
+        },
+        {
+          "key": "m/\u003clease 3\u003e",
+          "create": 3,
+          "mod": 3,
+          "version": 1,
+          "lease": 3
+        }
+      ]
+    },
+    {
+      "do": "unlock a",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "lock m with b",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "key": "m/\u003clease 2\u003e"
+      }
+    },
+    {
+      "do": "revoke b",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "lock m with c",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "key": "m/\u003clease 3\u003e"
+      }
+    },
+    {
+      "do": "grant d",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "lease": 4,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with d and a deadline",
+      "code": "OK",
+      "result": {
+        "code": "DeadlineExceeded"
+      }
+    },
+    {
+      "do": "keys of m after d gave up",
+      "code": "OK",
+      "result": [
+        {
+          "key": "m/\u003clease 3\u003e",
+          "create": 3,
+          "mod": 3,
+          "version": 1,
+          "lease": 3
+        }
+      ]
+    },
+    {
+      "do": "grant e",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "lease": 5,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "lock m with e waits",
+      "code": "OK",
+      "result": {
+        "waits": true
+      }
+    },
+    {
+      "do": "revoke e",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "unlock c",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "lock m with e after its lease was revoked",
+      "code": "Unknown",
+      "message": "mutex: session is expired"
+    },
+    {
+      "do": "lock n without a lease",
+      "code": "OK",
+      "result": {
+        "revision": 11,
+        "key": "n/\u003clease 6\u003e"
+      }
+    },
+    {
+      "do": "lease of the lock of n",
+      "code": "OK",
+      "result": {
+        "grantedTTL": 60,
+        "keys": [
+          "n/\u003clease 6\u003e"
+        ]
+      }
+    },
+    {
+      "do": "lock with a missing lease",
+      "code": "Unknown",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "unlock without a key",
+      "code": "Unknown",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "unlock a key that is not a lock",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
     }
   ],
   "max-request-size": [
