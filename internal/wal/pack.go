@@ -170,8 +170,10 @@ func (pw *PackWriter) Finish() (*Pack, error) {
 	return pw.p, nil
 }
 
-// Abort closes the file of a pack that is not finished. Open removes it.
-func (pw *PackWriter) Abort() error { return pw.p.f.Close() }
+// Abort closes and removes the file of a pack that is not finished.
+func (pw *PackWriter) Abort() error {
+	return errors.Join(pw.p.f.Close(), pw.fs.Remove(packName(pw.p.id)))
+}
 
 // sortPackVals sorts a pack's values by position and drops repeats: two
 // versions may name the same value.
@@ -368,10 +370,10 @@ func (w *WAL) Cleanable(below uint64) []CleanFile {
 		if !ok || !sealed {
 			break
 		}
-		out = append(out, CleanFile{FileID: FileID{N: seq}, Size: size})
+		out = append(out, CleanFile{N: seq, Size: size})
 	}
 	for _, p := range w.packs {
-		out = append(out, CleanFile{FileID: FileID{Pack: true, N: p.id}, Size: p.size})
+		out = append(out, CleanFile{Pack: true, N: p.id, Size: p.size})
 	}
 	return out
 }

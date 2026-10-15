@@ -176,7 +176,11 @@ func TestPackMerge(t *testing.T) {
 	if got := packFiles(t, d); len(got) != 1 {
 		t.Fatalf("packs after the merge: %v", got)
 	}
-	// A new pack gets a number no pack had.
+	// A new pack gets a number no pack had, and one given up leaves no
+	// file.
+	if p3 := writePack(t, w, [3]uint32{3, 0, 2}); p3.ID() <= p2.ID() {
+		t.Fatalf("a new pack after %d is %d", p2.ID(), p3.ID())
+	}
 	pw, err := w.NewPack()
 	if err != nil {
 		t.Fatal(err)
@@ -184,8 +188,8 @@ func TestPackMerge(t *testing.T) {
 	if err := pw.Abort(); err != nil {
 		t.Fatal(err)
 	}
-	if got := packFiles(t, d); !slices.Equal(got, []string{"pack-0000000000000001", "pack-0000000000000002"}) {
-		t.Fatalf("pack files %v, want packs 1 and a new 2", got)
+	if got := packFiles(t, d); len(got) != 2 {
+		t.Fatalf("pack files %v, want the merged one and the new one", got)
 	}
 }
 
@@ -209,16 +213,16 @@ func TestDamagedPackIsCorrupt(t *testing.T) {
 		return d, name, len(d.DurableBytes(name))
 	}
 	// A flipped format version is a newer build's pack, as in a segment.
-	d, name, size := setup()
-	for off := 0; off < size; off++ {
+	_, _, size := setup()
+	for off := range size {
 		if off >= 8 && off < 12 {
 			continue
 		}
-		d, name, _ = setup()
+		d, name, _ := setup()
 		d.FlipDurable(name, off)
 		wantCorrupt(t, d)
 	}
-	d, name, _ = setup()
+	d, name, _ := setup()
 	if err := errors.Join(d.Remove(name), d.SyncDir()); err != nil {
 		t.Fatal(err)
 	}

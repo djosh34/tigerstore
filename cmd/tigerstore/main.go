@@ -35,6 +35,7 @@ type flags struct {
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
 	progressInterval                          time.Duration
+	diskBudget                                int64
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -88,6 +89,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
+	fs.Int64Var(&f.diskBudget, "disk-budget-bytes", 0, "bytes the log's files may take; cleaning keeps them below, and writes get NOSPACE at it (0 means no budget)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -229,7 +231,7 @@ func run(args []string, logger *log.Logger) error {
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
 	}
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
+	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, Logf: logger.Printf})
 	if err != nil {
 		return err
 	}

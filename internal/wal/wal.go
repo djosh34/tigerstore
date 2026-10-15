@@ -769,6 +769,10 @@ func (w *WAL) Sync() error {
 	return w.newSegment()
 }
 
+// Buffered is the size of what Append buffered for the next write. Only
+// the goroutine that calls Sync may call it.
+func (w *WAL) Buffered() int64 { return int64(len(w.buf)) }
+
 // SetSegmentBytes changes the size after which a new segment starts. Tests
 // and the simulator use small segments to exercise rotation.
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }

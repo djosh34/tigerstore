@@ -342,6 +342,8 @@ type Node struct {
 
 	// logBytes estimates the size of the durable log.
 	logBytes int64
+	// noSpace refuses new data: the node's disk is past its budget.
+	noSpace bool
 
 	// log reads what left memory.
 	log Log
@@ -610,6 +612,10 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, nil, rpctypes.ErrGRPCStopped)
 		return
 	}
+	if n.noSpace && TakesSpace(r) {
+		n.reply(r.ID, nil, rpctypes.ErrGRPCNoSpace)
+		return
+	}
 	if r.Op == nil {
 		if err := checkPut(&r.Put, r.Caller); err != nil {
 			n.reply(r.ID, nil, err)
@@ -657,6 +663,24 @@ func (n *Node) submit(r Request, p *pending) {
 		n.queueWrite(p)
 	}
 	n.timeouts = append(n.timeouts, p)
+}
+
+// SetNoSpace tells the node whether its disk is past its budget. While it
+// is, the node answers requests that write new data with etcd's NOSPACE
+// error, as etcd does past its quota.
+func (n *Node) SetNoSpace(full bool) { n.noSpace = full }
+
+// TakesSpace reports whether etcd v3.7.2 refuses a request while its
+// NOSPACE alarm is active: a put, a lease grant and a transaction that is
+// not read-only. A delete range and a compaction go through.
+func TakesSpace(r Request) bool {
+	switch op := r.Op.(type) {
+	case nil, *pb.PutRequest, *pb.LeaseGrantRequest:
+		return true
+	case *pb.TxnRequest:
+		return !mvcc.IsTxnReadOnly(op)
+	}
+	return false
 }
 
 // sizeRequestID stands in for etcd's request ID when sizing a write. etcd

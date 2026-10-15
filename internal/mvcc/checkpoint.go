@@ -95,7 +95,8 @@ func (s *Store) CopyFrozen(b []byte, limit int) (_ []byte, minRef uint64, done b
 	return b, minRef, true
 }
 
-var errBadCheckpoint = errors.New("mvcc: malformed checkpoint")
+// ErrBadCheckpoint means that the keys of a checkpoint do not parse.
+var ErrBadCheckpoint = errors.New("mvcc: malformed checkpoint")
 
 // MaxKeyBytes bounds a key in a checkpoint; a request is smaller.
 const MaxKeyBytes = 4 << 20
@@ -112,9 +113,11 @@ func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err
 			return minRef, err
 		}
 		if prev != nil && string(prev) >= string(k.key) {
-			return 0, fmt.Errorf("%w: key %q after %q", errBadCheckpoint, k.key, prev)
+			return 0, fmt.Errorf("%w: key %q after %q", ErrBadCheckpoint, k.key, prev)
 		}
 		prev = k.key
+		s.versions += int64(len(k.vers))
+		s.keyBytes += int64(len(k.key))
 		for i := range k.vers {
 			v := &k.vers[i]
 			if v.value.Len > 0 && (minRef == 0 || v.value.Index < minRef) {
@@ -157,7 +160,7 @@ func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
 		return nil, nil
 	}
 	if n > MaxKeyBytes {
-		return nil, fmt.Errorf("%w: key of %d bytes", errBadCheckpoint, n)
+		return nil, fmt.Errorf("%w: key of %d bytes", ErrBadCheckpoint, n)
 	}
 	k := &keyIndex{key: make([]byte, n)}
 	if _, err := io.ReadFull(r, k.key); err != nil {
@@ -168,7 +171,7 @@ func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
 		return nil, loadError(err)
 	}
 	if count == 0 || (rev >= 0 && count > uint64(rev)) || count > 1<<32 {
-		return nil, fmt.Errorf("%w: %d versions of key %q", errBadCheckpoint, count, k.key)
+		return nil, fmt.Errorf("%w: %d versions of key %q", ErrBadCheckpoint, count, k.key)
 	}
 	k.vers = make([]version, 0, min(count, 1024))
 	for range count {
@@ -189,7 +192,7 @@ func readKey(r *bufio.Reader, rev int64) (*keyIndex, error) {
 			return nil, loadError(err)
 		}
 		if off > 1<<32-1 || length > 1<<32-1 {
-			return nil, fmt.Errorf("%w: value at %d+%d", errBadCheckpoint, off, length)
+			return nil, fmt.Errorf("%w: value at %d+%d", ErrBadCheckpoint, off, length)
 		}
 		v.value.Off, v.value.Len, v.value.Sum = uint32(off), uint32(length), binary.LittleEndian.Uint32(sum[:])
 		k.vers = append(k.vers, v)
@@ -201,7 +204,7 @@ func loadError(err error) error {
 	if errors.Is(err, io.EOF) {
 		err = io.ErrUnexpectedEOF
 	}
-	return fmt.Errorf("%w: %w", errBadCheckpoint, err)
+	return fmt.Errorf("%w: %w", ErrBadCheckpoint, err)
 }
 
 // EachLeased calls fn for every key whose newest version is live and has

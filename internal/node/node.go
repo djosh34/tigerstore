@@ -51,7 +51,10 @@ type Config struct {
 	// 0 means wal.SegmentBytes. Tests make it small, so that old segments
 	// go.
 	SegmentBytes int64
-	Logf         func(format string, args ...any)
+	// DiskBudget is how many bytes the log's files may take; 0 means no
+	// budget and no cleaning (clean.go).
+	DiskBudget int64
+	Logf       func(format string, args ...any)
 }
 
 // input is one event for the committer from a client, a peer or a helper
@@ -154,14 +157,20 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	if err := n.put(ctx, input{metrics: ch}); err != nil {
 		return core.Metrics{}, err
 	}
+	var m core.Metrics
 	select {
-	case m := <-ch:
-		return m, nil
+	case m = <-ch:
 	case <-ctx.Done():
 		return core.Metrics{}, ctx.Err()
 	case <-n.done:
 		return core.Metrics{}, rpctypes.ErrGRPCStopped
 	}
+	n.log.mu.Lock()
+	m.MapBytes = n.log.w.MapBytes()
+	n.log.mu.Unlock()
+	used, err := n.log.fs.Usage()
+	m.DiskBytes, m.DiskBudget, m.CleanedBytes = used, n.cfg.DiskBudget, n.log.cleaned.Load()
+	return m, err
 }
 
 // OpenWatch starts a watch stream.
@@ -238,6 +247,11 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 		return rpctypes.ErrGRPCStopped
 	default:
 	}
+	if n.delay() > 0 && slices.ContainsFunc(reqs, core.TakesSpace) {
+		if err := n.throttle(ctx); err != nil {
+			return err
+		}
+	}
 	k := uint64(len(reqs))
 	b := &batch{first: n.nextID.Add(k) - k + 1, reqs: reqs, tags: tags, to: to}
 	return n.put(ctx, input{batch: b})
@@ -252,6 +266,7 @@ type Node struct {
 	persistQ  chan []core.PersistJob
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
+	cleanQ    chan packRoot
 	nextID    atomic.Uint64
 	done      chan struct{}
 
@@ -279,6 +294,10 @@ type diskLog struct {
 	// is removed.
 	ckpts   []wal.Root
 	serving int
+	// used is the size of the log's files when the cleaner measured them
+	// last, plus what the disk goroutines wrote since, and cleaned the
+	// bytes that cleaning wrote.
+	used, cleaned atomic.Int64
 }
 
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
@@ -342,9 +361,15 @@ func (l *diskLog) mapping(seq uint64) ([]byte, error) {
 // after a sync, and unmaps those that were removed.
 func (l *diskLog) synced() error {
 	l.sealed = l.w.Seq() - 1
+	return l.unmap(l.w.Oldest() - 1)
+}
+
+// unmap unmaps the segments up to upto, which are removed. The lock is
+// held.
+func (l *diskLog) unmap(upto uint64) error {
 	var err error
 	for seq, m := range l.maps {
-		if seq < l.w.Oldest() {
+		if seq <= upto {
 			err = errors.Join(err, syscall.Munmap(m))
 			delete(l.maps, seq)
 		}
@@ -423,6 +448,7 @@ func (n *Node) open() error {
 	n.persistQ = make(chan []core.PersistJob, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
+	n.cleanQ = make(chan packRoot)
 	n.leader.Store(0)
 	return nil
 }
@@ -478,6 +504,11 @@ func (n *Node) RangeChunk(ctx context.Context, r *pb.RangeRequest) (*pb.RangeRes
 }
 
 func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
+	if core.TakesSpace(core.Request{Op: r.op}) {
+		if err := n.throttle(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if err := n.put(ctx, input{req: r}); err != nil {
 		return nil, err
 	}
@@ -525,6 +556,9 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
+	if n.cfg.DiskBudget > 0 {
+		wg.Go(func() { n.clean(ctx) })
+	}
 	err := n.commit(ctx, t)
 	cancel()
 	wg.Wait()
@@ -606,6 +640,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.Tick()
 		case <-ctx.Done():
 			return nil
+		}
+		if n.cfg.DiskBudget > 0 {
+			n.core.SetNoSpace(n.log.used.Load() >= n.cfg.DiskBudget)
 		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
@@ -772,6 +809,15 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		var jobs []core.PersistJob
 		select {
 		case jobs = <-n.persistQ:
+		case pr := <-n.cleanQ:
+			if err := n.installPacks(pr); err != nil {
+				select {
+				case n.persisted <- persistDone{err: fmt.Errorf("install the root of a pack: %w", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			continue
 		case <-ctx.Done():
 			return
 		}
@@ -806,6 +852,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		if done.err == nil {
+			n.log.used.Add(w.Buffered())
 			err := w.Sync()
 			n.log.mu.Lock()
 			err = errors.Join(err, n.log.synced())
@@ -989,7 +1036,9 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		f, err := n.log.w.CreateCheckpoint(c.Index)
 		unsynced := 0
 		for err == nil {
-			if _, err = f.Write(c.Data); err != nil || c.Done {
+			_, err = f.Write(c.Data)
+			n.log.used.Add(int64(len(c.Data)))
+			if err != nil || c.Done {
 				break
 			}
 			// Synced a little at a time, so that one large flush does not

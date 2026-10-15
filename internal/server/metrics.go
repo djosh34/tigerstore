@@ -127,6 +127,12 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
 		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.load()},
 		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.load()},
+		{"tigerstore_index_bytes", "gauge", "Estimated memory of the key index.", nm.IndexBytes},
+		{"tigerstore_window_bytes", "gauge", "Data bytes of the Raft entries in memory.", nm.WindowBytes},
+		{"tigerstore_map_bytes", "gauge", "Estimated memory of the map of where entries and values are on disk.", nm.MapBytes},
+		{"tigerstore_disk_bytes", "gauge", "Size of the log's files: segments, packs and checkpoints.", nm.DiskBytes},
+		{"tigerstore_disk_budget_bytes", "gauge", "The disk budget of the log's files; 0 means none.", nm.DiskBudget},
+		{"tigerstore_cleaned_bytes_total", "counter", "Bytes that cleaning wrote into packs.", nm.CleanedBytes},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)

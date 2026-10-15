@@ -358,6 +358,7 @@ func (w *writer) add(k *keyIndex, v version) {
 		v.mod = rev{main: w.begin + 1 + int64(len(w.s.changes))}
 	}
 	k.vers = append(k.vers, v)
+	w.s.versions++
 	if w.s.track {
 		w.s.sum ^= versionHash(k.key, &v)
 	}
@@ -404,6 +405,7 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 		// A copy, so that the index keeps no Raft entry alive.
 		k = &keyIndex{key: bytes.Clone(p.Key)}
 		w.s.keys.ReplaceOrInsert(k)
+		w.s.keyBytes += int64(len(k.key))
 	}
 	w.add(k, v)
 	return prevKV, nil
