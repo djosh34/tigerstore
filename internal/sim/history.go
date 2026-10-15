@@ -3,6 +3,7 @@ package sim
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -23,15 +24,23 @@ import (
 // which the checkers' models may apply at any time after it.
 //
 // An ambiguous put, delete or txn that is not in the committed log never
-// took effect, so it is left out. That keeps Porcupine's search small, and
-// it cannot hide a bug: a history with fewer ops is never easier to
-// linearize.
+// took effect, so it is left out. One that is took effect. If it is the
+// only call with its request and the log holds it once, its Effect says at
+// which revision, and that it was before any write after it in the log was
+// acknowledged. Both keep Porcupine's search small, as etcd's robustness
+// tests do, and neither can hide a bug: a history with fewer ops, or with
+// narrower ones, is never easier to linearize.
 func (r *Result) Checkable() (*history.History, error) {
 	h := &history.History{Target: r.FinalRev}
 	committed, err := r.committed()
 	if err != nil {
 		return nil, err
 	}
+	places, err := r.places()
+	if err != nil {
+		return nil, err
+	}
+	effectBy := r.effectBy(places)
 	expiryClient := r.Clients + len(r.Watches)
 	for _, rec := range r.History {
 		if _, ok := rec.req.(*pb.LeaseKeepAliveRequest); ok {
@@ -57,6 +66,9 @@ func (r *Result) Checkable() (*history.History, error) {
 			// Planted: a call that may have taken effect counts as one
 			// that certainly did not.
 			op.Err = historyError(rec.Err, rec.Ambiguous && !planted.On("B15"))
+			if pos, ok := places[rec]; ok && op.Err.Ambiguous {
+				op.Effect = &history.Effect{By: effectBy[pos], Revision: r.revs[pos]}
+			}
 		} else if op.Resp, err = response(rec.Resp); err != nil {
 			return nil, err
 		}
@@ -107,6 +119,69 @@ func (r *Result) committed() (map[string]bool, error) {
 		out[string(b)] = true
 	}
 	return out, nil
+}
+
+// places returns the position in the committed log of the write of each
+// call that is the only call with its request and is in the log once. Only
+// then is that entry surely the call's.
+func (r *Result) places() (map[*Record]int, error) {
+	if len(r.revs) != len(r.Log) {
+		return nil, fmt.Errorf("sim: %d revisions for %d log entries", len(r.revs), len(r.Log))
+	}
+	encode := func(m proto.Message) (string, error) {
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		return string(b), err
+	}
+	inLog := map[string]int{}
+	seen := map[string]int{}
+	for i, m := range r.Log {
+		if !writeOp(m) {
+			continue
+		}
+		b, err := encode(m)
+		if err != nil {
+			return nil, err
+		}
+		inLog[b] = i
+		seen[b]++
+	}
+	calls := map[string][]*Record{}
+	for _, rec := range r.History {
+		if !writeOp(rec.req) {
+			continue
+		}
+		b, err := encode(rec.req)
+		if err != nil {
+			return nil, err
+		}
+		calls[b] = append(calls[b], rec)
+	}
+	out := map[*Record]int{}
+	for b, recs := range calls {
+		if len(recs) == 1 && seen[b] == 1 {
+			out[recs[0]] = inLog[b]
+		}
+	}
+	return out, nil
+}
+
+// effectBy returns, for each position in the committed log, the earliest
+// time a write at or after it was acknowledged, or math.MaxInt64 if none
+// was.
+func (r *Result) effectBy(places map[*Record]int) []int64 {
+	by := make([]int64, len(r.Log))
+	for i := range by {
+		by[i] = math.MaxInt64
+	}
+	for rec, pos := range places {
+		if rec.Err == nil {
+			by[pos] = rec.Return
+		}
+	}
+	for i := len(by) - 2; i >= 0; i-- {
+		by[i] = min(by[i], by[i+1])
+	}
+	return by
 }
 
 func writeOp(m proto.Message) bool {

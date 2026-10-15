@@ -45,9 +45,12 @@ func Linearizable(h *history.History, timeout time.Duration) error {
 			// A read that failed tells nothing.
 			continue
 		}
-		out := output{resp: op.Resp, err: op.Err}
+		out := output{resp: op.Resp, err: op.Err, effect: op.Effect}
 		ret := op.Return
-		if op.Err != nil && op.Err.Ambiguous {
+		switch {
+		case op.Effect != nil:
+			ret = op.Effect.By
+		case op.Err != nil && op.Err.Ambiguous:
 			// It may take effect at any time after its call.
 			ret = math.MaxInt64
 		}
@@ -101,6 +104,9 @@ type input struct{ req history.Request }
 type output struct {
 	resp *history.Response
 	err  *history.Error
+	// effect is set when an ambiguous mutation is known to have taken
+	// effect.
+	effect *history.Effect
 }
 
 func (o output) String() string {
@@ -185,6 +191,10 @@ func (ss states) step(in input, out output) (states, bool) {
 		n.sum = n.fingerprint()
 		unsupported = unsupported || o.err == errUnsupported
 		switch {
+		case out.effect != nil:
+			if n.rev == out.effect.Revision {
+				add(n)
+			}
 		case out.err != nil && out.err.Ambiguous:
 			add(s)
 			add(n)

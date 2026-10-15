@@ -405,3 +405,32 @@ func TestGrayClient(t *testing.T) {
 func TestColdRestartWaitsForLastCommit(t *testing.T) {
 	run(t, DefaultConfig(736998125))
 }
+
+// TestRotInAnEntryRecord runs seed 1320469980, whose rotten value on node
+// 3 is in entry 16. At 11,799 ms the node reads that entry's whole record
+// for the term of its checkpoint root, and stops on the record's crc
+// instead of the value's checksum. That is the stop the run expects. A
+// change to the simulator's random draws can move this seed off that edge;
+// the test then passes without testing it.
+func TestRotInAnEntryRecord(t *testing.T) {
+	res := run(t, DefaultConfig(1320469980))
+	checkers(t, res)
+}
+
+// TestAmbiguousWritesInTheLog runs seed 1320469923, whose history has 8
+// ambiguous writes, all in the committed log, in its first 7.3 s. Each
+// one Porcupine had to fork into took effect or not, at any time after
+// its call, and it did not finish in a minute. With their revisions and
+// times from the log it takes milliseconds. A change to the simulator's
+// random draws can move this seed off that edge; the test then passes
+// without testing it.
+func TestAmbiguousWritesInTheLog(t *testing.T) {
+	res := run(t, linearizableConfig(1320469923))
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := check.Linearizable(h, time.Minute); err != nil {
+		t.Fatalf("linearizability: %v", err)
+	}
+}

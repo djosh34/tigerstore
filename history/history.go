@@ -56,6 +56,20 @@ type Op struct {
 	Resp *Response `json:"resp,omitempty"`
 	// Err is the error the client got.
 	Err *Error `json:"err,omitempty"`
+	// Effect, if set on an ambiguous mutation, is what the committed log
+	// shows of it: it took effect, by when and at which revision. Without
+	// it, the mutation may or may not take effect, at any time after Call.
+	Effect *Effect `json:"effect,omitempty"`
+}
+
+// Effect is what the committed log shows of an ambiguous mutation that
+// took effect.
+type Effect struct {
+	// By is a time by which it took effect: a write after it in the log was
+	// acknowledged then. math.MaxInt64 means no write after it was.
+	By int64 `json:"by"`
+	// Revision is the store's revision right after it.
+	Revision int64 `json:"revision"`
 }
 
 // Error is a failed call.
@@ -389,6 +403,9 @@ func (op *Op) validate() error {
 	}
 	if (op.Resp == nil) == (op.Err == nil) {
 		return errors.New("exactly one of Resp and Err must be set")
+	}
+	if e := op.Effect; e != nil && (op.Err == nil || !op.Err.Ambiguous || !op.Req.Mutates() || e.By < op.Call || e.Revision < 1) {
+		return fmt.Errorf("has an effect by %d at revision %d but is not an ambiguous mutation called before it", e.By, e.Revision)
 	}
 	if op.Resp == nil {
 		return nil

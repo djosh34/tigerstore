@@ -501,8 +501,10 @@ type Result struct {
 	// Trace is the hash of every event.
 	Trace   uint64
 	History []*Record
-	// Log is every committed write in commit order.
+	// Log is every committed write in commit order, and revs the
+	// revision right after each.
 	Log     []proto.Message
+	revs    []int64
 	Watches []WatchResult
 	Stats   Stats
 	// StallStops are the times leaders stopped on a stalled disk, and
@@ -899,9 +901,9 @@ func (s *Sim) process(n *node) {
 	for _, a := range eff.Applied {
 		s.record(n, a)
 	}
-	if n.rotted && errors.Is(err, mvcc.ErrBadValue) {
-		// It read the value the run damaged, and stopped instead of
-		// answering with it.
+	if n.rotted && (errors.Is(err, mvcc.ErrBadValue) || errors.Is(err, wal.ErrCorrupt)) {
+		// It read the value the run damaged, alone or in the record of
+		// its entry, and stopped instead of answering with it.
 		s.stopNode(n)
 		return
 	}
