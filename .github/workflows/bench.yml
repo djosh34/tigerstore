@@ -22,6 +22,9 @@ on:
       reps:
         description: repetitions
         default: "5"
+      layouts:
+        description: extra max runs of the tigerstore refs in put and txn jobs, tmpfs (all nodes on tmpfs, the CPU reference) and alone (followers on tmpfs), with the disk ceiling from diskbench
+        default: tmpfs alone
 
 jobs:
   plan:
@@ -63,6 +66,7 @@ jobs:
         run: |
           go build -o bin/loadgen ./cmd/loadgen
           go build -o bin/benchreport ./cmd/benchreport
+          go build -o bin/diskbench ./cmd/diskbench
           for target in baseline candidate; do
             ref=$BASELINE
             if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
@@ -96,7 +100,7 @@ jobs:
             echo "layout (generator, leader, followers): $LAYOUT"
             echo "both stores: 3 nodes on 127.0.0.1, client and peer TLS with client certificates, fresh data directory per run"
             if [ "$BENCHMARK" = mixed-k8s ]; then
-              echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, fitted beta sizes, all endpoints, default mix plus resource watches; both stores GOMEMLIMIT=3GiB; rate is half etcd median max"
+              echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, measured size histogram, all endpoints, default mix plus resource watches; both stores GOMEMLIMIT=3GiB; rate is half etcd median max"
             fi
             echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
@@ -110,7 +114,14 @@ jobs:
           LAYOUT: 3 0 1 2
           MODES: ${{ inputs.modes || (matrix.bench == 'mixed-k8s' && 'rate' || 'max rate') }}
           REPS: ${{ inputs.reps || '5' }}
-        run: DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+          LAYOUTS: ${{ (startsWith(matrix.bench, 'put-') || startsWith(matrix.bench, 'txn-')) && inputs.layouts || '' }}
+        run: |
+          DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
+          export DISK
+          DATA="$RUNNER_TEMP/bench-data" bench/run.sh "${{ matrix.bench }}" results
+          if [ -n "$LAYOUTS" ]; then
+            taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "results/${{ matrix.bench }}/diskbench.jsonl"
+          fi
       # A failed run leaves no comparison: the report would be over the
       # runs that survived. The raw results are uploaded either way.
       - name: Report

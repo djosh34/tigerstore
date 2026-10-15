@@ -22,7 +22,10 @@
 # goes to every node as GOMEMLIMIT, and a tigerstore node takes it as its
 # memory budget; without it, each tigerstore node gets a quarter of the
 # host's memory as its budget, so that the three of them and the load
-# generator fit.
+# generator fit. TMPFS_NODES lists node numbers (1 to 3) whose data
+# directories go to TMPFS_DIR, a tmpfs, instead of <dir>. LEAD names the
+# node that must lead: start moves the leadership to it if another node won
+# the election.
 set -euo pipefail
 
 port=${BENCH_PORT:-40000}
@@ -47,6 +50,23 @@ status() {
 		return 1
 	fi
 	echo "${leader#https://} $(jq '[.[].Status | (.raft_term // .raftTerm)] | max' <<<"$st")"
+}
+
+# lead <node> moves the leadership to node n<node> and waits until every
+# node names it.
+lead() {
+	local want=127.0.0.1:$((port + 10 * $1)) id st
+	st=$(status) || exit 1
+	if [ "${st%% *}" = "$want" ]; then return 0; fi
+	id=$(ctl member list | awk -F', ' -v n="n$1" '$3 == n {print $1}')
+	ctl move-leader "$id" >/dev/null
+	for _ in $(seq 50); do
+		st=$(status 2>/dev/null) || st=""
+		if [ "${st%% *}" = "$want" ]; then return 0; fi
+		sleep 0.2
+	done
+	echo "n$1 did not become the leader" >&2
+	exit 1
 }
 
 # place finds the leader, pins every thread of each node to its CPUs, the
@@ -99,6 +119,18 @@ start() {
 		exit 2
 	fi
 	mkdir -p "$dir"
+	local datadirs=()
+	for i in 1 2 3; do
+		datadirs+=("$dir/n$i")
+		if [[ " ${TMPFS_NODES:-} " == *" $i "* ]]; then
+			datadirs[i - 1]=${TMPFS_DIR:?TMPFS_NODES needs TMPFS_DIR}/n$i
+			if [ -e "${datadirs[i - 1]}" ]; then
+				echo "${datadirs[i - 1]} exists" >&2
+				exit 2
+			fi
+		fi
+	done
+	printf '%s\n' "${datadirs[@]}" >"$dir/datadirs"
 
 	certs=${CERTS:?CERTS must name a dev-certs.sh directory}
 	local initial="" endpoints=""
@@ -122,7 +154,7 @@ start() {
 		fi
 		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
-			--data-dir "$dir/n$i" \
+			--data-dir "${datadirs[i - 1]}" \
 			--listen-client-urls "$client" \
 			--advertise-client-urls "$client" \
 			--listen-peer-urls "$peer" \
@@ -146,6 +178,7 @@ start() {
 	fi
 	for _ in $(seq 100); do
 		if ctl put /bench/ready 1 >/dev/null 2>&1; then
+			if [ -n "${LEAD:-}" ]; then lead "$LEAD"; fi
 			place "$kind" "$dir" "$endpoints" "$pids" "${cpus[@]}"
 			return 0
 		fi
@@ -189,6 +222,9 @@ stop() {
 			done
 			kill -9 "$pid" 2>/dev/null || true
 		done
+	fi
+	if [ -f "$dir/datadirs" ]; then
+		xargs rm -rf <"$dir/datadirs"
 	fi
 	rm -rf "$dir"
 }

@@ -35,6 +35,13 @@
 #   REPS        repetitions (default 5)
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
+#   DISK        device or partition of DATA in /proc/diskstats, such as
+#               sda1; each result then has the bytes it wrote per operation
+#   LAYOUTS     extra max runs of every tigerstore target, REPS each:
+#               tmpfs puts all three nodes on TMPFS_DIR (no disk: the CPU
+#               reference), alone puts the followers there and keeps the
+#               leader on the disk; written as <target>-<layout>-<rep>.json
+#   TMPFS_DIR   a directory on tmpfs for LAYOUTS (default /dev/shm/bench-data)
 set -euo pipefail
 
 bench=$1
@@ -46,6 +53,8 @@ if [ "$bench" = mixed-k8s ]; then default_modes=rate; fi
 read -r -a modes <<<"${MODES:-$default_modes}"
 reps=${REPS:-5}
 data=${DATA:-/tmp/bench-data}
+tmpfs=${TMPFS_DIR:-/dev/shm/bench-data}
+read -r -a extra_layouts <<<"${LAYOUTS:-}"
 bins=$(realpath "${BINS:-bin}")
 loadgen=${LOADGEN:-$bins/loadgen}
 certs=$(realpath "${CERTS:?CERTS must name a dev-certs.sh directory}")
@@ -117,12 +126,17 @@ order() {
 }
 
 # once <target> <mode> <rep> <loadgen flags...>
+# Mode tmpfs or alone places the nodes as LAYOUTS says.
 once() {
 	local target=$1 mode=$2 rep=$3
 	shift 3
-	local dir=$data/$target
+	local dir=$data/$target place=()
+	case $mode in
+	tmpfs) place=(TMPFS_NODES="1 2 3") ;;
+	alone) place=(TMPFS_NODES="2 3" LEAD=1) ;;
+	esac
 	"$here/cluster.sh" stop "$dir"
-	"$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
+	env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
 	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
 	local status=0 endpoint_file=leader
 	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
@@ -137,6 +151,7 @@ once() {
 		-warmup "$warmup" \
 		-duration "$duration" \
 		-seed "$rep" \
+		${DISK:+-disk "$DISK"} \
 		-out "$out/$bench/$target-$mode-$rep.json" \
 		"$@" || status=$?
 	if [ "$status" -eq 0 ]; then
@@ -172,6 +187,16 @@ if [[ " ${modes[*]} " == *" max "* ]]; then
 		done
 	done
 fi
+
+for mode in "${extra_layouts[@]}"; do
+	for rep in $(seq "$reps"); do
+		for target in $(order "$rep"); do
+			if [ "$(kind "$target")" = tigerstore ]; then
+				once "$target" "$mode" "$rep" -keys "$keys" "${concurrency[@]}"
+			fi
+		done
+	done
+done
 
 if [ "$workload" = mixed ] && [[ " ${modes[*]} " == *" rate "* ]] && [[ " ${modes[*]} " != *" max "* ]]; then
 	# One measured max point per store, with the same mixed concurrency.

@@ -4,7 +4,9 @@
 //	benchreport <dir>
 //
 // <dir> holds one directory per benchmark, each with files named
-// <target>-<max|rate>-<rep>.json.
+// <target>-<mode>-<rep>.json, mode max, rate, or the layouts tmpfs and alone
+// that only tigerstore targets run. A diskbench.jsonl next to them adds the
+// table of ceilings.
 package main
 
 import (
@@ -35,6 +37,7 @@ type result struct {
 	ServerCPUUsPerOp float64   `json:"server_cpu_us_per_op"`
 	ServerCores      []float64 `json:"server_cores_by_node"`
 	ClientCPUUsPerOp float64   `json:"client_cpu_us_per_op"`
+	DiskBytesPerOp   float64   `json:"disk_bytes_per_op"`
 	Watch            *struct {
 		EventsPerS          float64 `json:"events_per_s"`
 		ServerCPUUsPerEvent float64 `json:"server_cpu_us_per_event"`
@@ -100,9 +103,13 @@ func report(w io.Writer, dir string) error {
 			targets = append(targets, k.target)
 		}
 	}
-	// Every target ran the same runs, or the comparison is unfair.
+	// Every target ran the same runs, or the comparison is unfair. etcd
+	// runs no layouts.
 	for k, rs := range all {
 		for _, t := range targets {
+			if t == "etcd" && slices.Contains(layouts, k.mode) {
+				continue
+			}
 			if n := len(all[key{k.bench, t, k.mode}]); n != len(rs) {
 				return fmt.Errorf("%s %s: %s has %d runs, %s has %d", k.bench, k.mode, k.target, len(rs), t, n)
 			}
@@ -118,7 +125,7 @@ func report(w io.Writer, dir string) error {
 	each := func(f func(bench, target, mode string, rs runs)) {
 		for _, bench := range benches {
 			for _, target := range targets {
-				for _, mode := range []string{"max", "rate"} {
+				for _, mode := range append([]string{"max", "rate"}, layouts...) {
 					rs := all[key{bench, target, mode}]
 					if len(rs) > 0 {
 						f(bench, target, mode, rs)
@@ -172,6 +179,71 @@ func report(w io.Writer, dir string) error {
 			spread(rs, func(r result) float64 { return r.OfferedRate }),
 			num(rs, func(r result) float64 { return float64(r.Unsent) }, "%.0f"), len(rs))
 	})
+	return ceilings(w, dir, benches, targets, func(bench, target, mode string) runs {
+		return all[key{bench, target, mode}]
+	})
+}
+
+// layouts are the max runs of bench/run.sh's LAYOUTS: tmpfs has all three
+// nodes on tmpfs, alone only the followers.
+var layouts = []string{"tmpfs", "alone"}
+
+// ceilings prints, for each benchmark with a diskbench result, how close
+// each tigerstore target's max runs come to the lower of its disk ceiling
+// (the device's MiB/s over the device bytes per operation measured in the
+// run) and its CPU reference (its median on tmpfs).
+func ceilings(w io.Writer, dir string, benches, targets []string, all func(bench, target, mode string) runs) error {
+	header := false
+	for _, bench := range benches {
+		b, err := os.ReadFile(filepath.Join(dir, bench, "diskbench.jsonl"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		var disk struct {
+			Max float64 `json:"max_mib_per_s"`
+		}
+		for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
+			if err := json.Unmarshal([]byte(line), &disk); err != nil {
+				return fmt.Errorf("%s diskbench: %w", bench, err)
+			}
+		}
+		if disk.Max <= 0 {
+			return fmt.Errorf("%s diskbench: no max_mib_per_s", bench)
+		}
+		for _, target := range targets {
+			tmpfs := all(bench, target, "tmpfs")
+			if len(tmpfs) == 0 {
+				continue
+			}
+			cpu, _, _ := median(tmpfs, func(r result) float64 { return r.Throughput })
+			for _, mode := range []string{"max", "alone"} {
+				rs := all(bench, target, mode)
+				if len(rs) == 0 {
+					continue
+				}
+				got, _, _ := median(rs, func(r result) float64 { return r.Throughput })
+				perOp, _, _ := median(rs, func(r result) float64 { return r.DiskBytesPerOp })
+				if perOp <= 0 {
+					return fmt.Errorf("%s %s %s: no disk bytes per operation", bench, target, mode)
+				}
+				ceiling := disk.Max * (1 << 20) / perOp
+				if !header {
+					_, _ = fmt.Fprintf(w, "\n| Benchmark | Store | Layout | Ops/s | Disk bytes/op | Disk ceiling | CPU reference | Share of the lower |\n|---|---|---|---|---|---|---|---|\n")
+					header = true
+				}
+				layout := "shared disk"
+				if mode == "alone" {
+					layout = "leader alone"
+				}
+				_, _ = fmt.Fprintf(w, "| %s | %s | %s | %s | %.0f | %s | %s | %.1f%% |\n", bench, target, layout,
+					thousands(got), perOp, thousands(ceiling), thousands(cpu), 100*got/min(ceiling, cpu))
+			}
+		}
+		_, _ = fmt.Fprintf(w, "\n%s: the disk takes %.1f MiB/s at most (diskbench: O_DIRECT and fdatasync on written space). Medians over the runs. The disk ceiling is that rate over the median device bytes per operation in the same runs; the CPU reference is the median with all three nodes on tmpfs.\n", bench, disk.Max)
+	}
 	return nil
 }
 

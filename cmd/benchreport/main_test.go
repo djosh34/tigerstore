@@ -103,3 +103,27 @@ func TestReportRefusesUnequalRuns(t *testing.T) {
 		t.Fatalf("unequal runs were reported: %v", err)
 	}
 }
+
+func TestReportCeilings(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "etcd-max-1.json", valid)
+	write(t, dir, "main-max-1.json", `{"valid": true, "throughput": 90000, "disk_bytes_per_op": 3495.25}`)
+	write(t, dir, "main-tmpfs-1.json", `{"valid": true, "throughput": 120000}`)
+	write(t, dir, "main-alone-1.json", `{"valid": true, "throughput": 110000, "disk_bytes_per_op": 1165.08}`)
+	write(t, dir, "diskbench.jsonl", "{\"group_bytes\":1048576,\"mib_per_s\":333.3}\n{\"max_mib_per_s\":333.3}\n")
+	var b strings.Builder
+	if err := report(&b, dir); err != nil {
+		t.Fatal(err)
+	}
+	// 333.3 MiB/s over 3,495.25 bytes is 99,990/s, under the 120,000 on
+	// tmpfs; over 1,165.08 bytes it is 299,971/s, so tmpfs is the lower.
+	for _, want := range []string{
+		"| put-1k | main | shared disk | 90,000 | 3495 | 99,990 | 120,000 | 90.0% |",
+		"| put-1k | main | leader alone | 110,000 | 1165 | 299,971 | 120,000 | 91.7% |",
+		"| put-1k | main | tmpfs | 120,000",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %s in report:\n%s", want, b.String())
+		}
+	}
+}
