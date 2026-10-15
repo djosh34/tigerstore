@@ -234,7 +234,7 @@ func (st *stream) next() ([]byte, error) {
 			st.in[0] = inMsg{}
 			st.in = st.in[1:]
 			st.recvCredit += in.wire
-			if st.recvCredit >= streamWindow/4 {
+			if st.recvCredit >= c.s.streamWindow/4 {
 				c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
 				st.recvUsed -= st.recvCredit
 				st.recvCredit = 0

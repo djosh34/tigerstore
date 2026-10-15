@@ -79,6 +79,8 @@ func (p memPeer) Close() error { return nil }
 
 func (p memPeer) SetPeers(map[uint64]string, []uint64) {}
 
+func (p memPeer) ActiveSince(uint64) time.Time { return time.Time{} }
+
 func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("memPeer answers no calls")
 }

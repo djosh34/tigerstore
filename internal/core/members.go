@@ -173,6 +173,11 @@ func (st *State) checkConfChange(op byte, m *pb.Member, maxLearners int) error {
 		if have == nil {
 			return rpctypes.ErrGRPCMemberNotFound
 		}
+		// Raft cannot remove the last voter: it fails the change, and
+		// the node would fail again on every start.
+		if !have.IsLearner && len(st.voters()) == 1 {
+			return rpctypes.ErrGRPCMemberNotEnoughStarted
+		}
 	case confUpdate:
 		if have == nil {
 			return rpctypes.ErrGRPCMemberNotFound
@@ -291,15 +296,19 @@ func (n *Node) submitMember(p *pending) {
 	case *pb.MemberAddRequest:
 		// The server checked and sorted the URLs.
 		op, m.ID, m.PeerURLs, m.IsLearner = confAdd, n.newMemberID(), r.PeerURLs, r.IsLearner
-		if !m.IsLearner && n.cfg.StrictReconfigCheck && !n.readyToAddVoter() {
-			n.finish(p, rpctypes.ErrGRPCMemberNotEnoughStarted)
-			return
+		if !m.IsLearner && n.cfg.StrictReconfigCheck {
+			if err := n.mayAddVoter(); err != nil {
+				n.finish(p, err)
+				return
+			}
 		}
 	case *pb.MemberRemoveRequest:
 		op, m.ID = confRemove, r.ID
-		if have := n.state.members[r.ID]; have != nil && !have.IsLearner && n.cfg.StrictReconfigCheck && !n.readyToRemoveVoter(r.ID) {
-			n.finish(p, rpctypes.ErrGRPCMemberNotEnoughStarted)
-			return
+		if have := n.state.members[r.ID]; have != nil && !have.IsLearner && n.cfg.StrictReconfigCheck {
+			if err := n.mayRemoveVoter(r.ID); err != nil {
+				n.finish(p, err)
+				return
+			}
 		}
 	case *pb.MemberUpdateRequest:
 		op, m.ID, m.PeerURLs = confUpdate, r.ID, r.PeerURLs
@@ -382,20 +391,61 @@ func (n *Node) started(skip uint64) (members, started int) {
 	return members, started
 }
 
-// readyToAddVoter is etcd's IsReadyToAddVotingMember.
-func (n *Node) readyToAddVoter() bool {
-	members, started := n.started(0)
-	members++
-	if started == 1 && members == 2 {
-		return true
+// connected counts the voters this node has been connected to for
+// etcd's health interval, itself included.
+func (n *Node) connected() (voters, connected int) {
+	for _, id := range n.state.voters() {
+		voters++
+		if id == n.cfg.ID || n.isConnected(id) {
+			connected++
+		}
 	}
-	return started >= members/2+1
+	return voters, connected
 }
 
-// readyToRemoveVoter is etcd's IsReadyToRemoveVotingMember.
-func (n *Node) readyToRemoveVoter(id uint64) bool {
+// healthSeconds is etcd's HealthInterval: a peer counts as connected
+// once its connection is that old.
+const healthSeconds = 5
+
+func (n *Node) isConnected(id uint64) bool {
+	return n.cfg.ConnectedTicks == nil || n.cfg.ConnectedTicks(id) > n.cfg.ticksOf(healthSeconds)
+}
+
+// isDown reports whether this node has no connection to peer id.
+func (n *Node) isDown(id uint64) bool {
+	return n.cfg.ConnectedTicks != nil && n.cfg.ConnectedTicks(id) < 0
+}
+
+// mayAddVoter is etcd's mayAddMember for a voter: enough started voters
+// (IsReadyToAddVotingMember), and a connected quorum that counts the new
+// member as down.
+func (n *Node) mayAddVoter() error {
+	members, started := n.started(0)
+	members++
+	if (started != 1 || members != 2) && started < members/2+1 {
+		return rpctypes.ErrGRPCMemberNotEnoughStarted
+	}
+	if voters, connected := n.connected(); voters > 1 && connected < (voters+1)/2+1 {
+		return rpctypes.ErrGRPCUnhealthy
+	}
+	return nil
+}
+
+// mayRemoveVoter is etcd's mayRemoveMember for a voter: enough started
+// voters left (IsReadyToRemoveVotingMember), and, unless the voter is a
+// down peer, a connected quorum left without it.
+func (n *Node) mayRemoveVoter(id uint64) error {
 	members, started := n.started(id)
-	return started >= members/2+1
+	if started < members/2+1 {
+		return rpctypes.ErrGRPCMemberNotEnoughStarted
+	}
+	if id != n.cfg.ID && n.isDown(id) {
+		return nil
+	}
+	if voters, connected := n.connected(); connected-1 < 1+(voters-1)/2 {
+		return rpctypes.ErrGRPCUnhealthy
+	}
+	return nil
 }
 
 // readyToPromote is etcd's check before it promotes a learner: only the

@@ -29,6 +29,8 @@ func (noPeers) Fetch(context.Context, uint64, uint64, uint64) (io.ReadCloser, er
 
 func (noPeers) SetPeers(map[uint64]string, []uint64) {}
 
+func (noPeers) ActiveSince(uint64) time.Time { return time.Time{} }
+
 func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("no peers")
 }

@@ -186,14 +186,23 @@ func TestSnapshotRestore(t *testing.T) {
 	if err := os.WriteFile(path, file, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A directory next to the data directory is not the restore's.
+	var sibling string
 	restored := newClusterWith(t, func(r *cluster) {
 		tinyCheckpoints(r)
+		sibling = filepath.Join(r.dirs[1]+".restore", "keep")
+		if err := errors.Join(os.MkdirAll(filepath.Dir(sibling), 0o700), os.WriteFile(sibling, nil, 0o600)); err != nil {
+			t.Fatal(err)
+		}
 		for id := uint64(1); id <= 3; id++ {
 			if _, err := node.Restore(path, r.dirs[id], r.members(), false); err != nil {
 				t.Fatal(err)
 			}
 		}
 	})
+	if _, err := os.Stat(sibling); err != nil {
+		t.Fatalf("the restore removed a directory next to the data directory: %v", err)
+	}
 	t.Logf("comparing %d keys now, %d at %d, %d leases, alarms %v, below the compaction: %s", len(want.Now), len(want.Past), compacted, len(want.Leases), want.Alarms, want.BelowCompaction)
 	if got := dumpState(t, restored, compacted); !reflect.DeepEqual(got, want) {
 		t.Fatalf("restored:\n%+v\nwant:\n%+v", got, want)

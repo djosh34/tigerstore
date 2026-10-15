@@ -46,7 +46,7 @@ type peerHash struct {
 	err  error
 }
 
-// peerHashes asks every peer for its HashKV of rev.
+// peerHashes asks every other member for its HashKV of rev.
 func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []peerHash {
 	req, err := proto.Marshal(&pb.HashKVRequest{Revision: rev})
 	if err != nil {
@@ -54,7 +54,7 @@ func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []pe
 	}
 	req = append([]byte{callHashKV}, req...)
 	var out []peerHash
-	for _, id := range n.cfg.Core.Peers {
+	for _, id := range *n.members.Load() {
 		if id == n.ID() {
 			continue
 		}

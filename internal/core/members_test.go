@@ -2,6 +2,8 @@ package core
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -98,6 +100,87 @@ func TestMemberChanges(t *testing.T) {
 	again, ok := s.ok(63, &pb.MemberAddRequest{PeerURLs: []string{"https://b:2"}, IsLearner: true}).(*pb.MemberAddResponse)
 	if !ok || again.Member.ID != 3 {
 		t.Fatalf("a new member got %v; a removed ID never comes back", again)
+	}
+}
+
+// TestLastVoterStays removes the only voter, with and without
+// --strict-reconfig-check. Raft cannot remove the last voter: the change
+// is refused, the node goes on with its learner, and it starts again
+// from its log.
+func TestLastVoterStays(t *testing.T) {
+	for _, strict := range []bool{false, true} {
+		disk := simfs.New()
+		change := func(cfg *Config) { cfg.StrictReconfigCheck = strict }
+		s := startSingleWith(t, disk, 1, change).capable()
+		s.ok(1, &pb.MemberAddRequest{PeerURLs: []string{"https://b:1"}, IsLearner: true})
+		if r := s.do(2, &pb.MemberRemoveRequest{ID: 1}); !errors.Is(r.Err, rpctypes.ErrGRPCMemberNotEnoughStarted) {
+			t.Fatalf("strict %v: removing the last voter: %v", strict, r.Err)
+		}
+		s.ok(3, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+		if err := s.log.Close(); err != nil {
+			t.Fatal(err)
+		}
+		s = startSingleWith(t, disk, 2, change)
+		if got := s.members(4); len(got) != 2 || got[0].ID != 1 || got[0].IsLearner {
+			t.Fatalf("strict %v: members after a restart: %v", strict, got)
+		}
+		s.ok(5, &pb.MemberRemoveRequest{ID: 2})
+	}
+}
+
+// TestStrictReconfigNeedsConnectedQuorum follows etcd's mayAddMember
+// and mayRemoveMember: with three started voters and voter 3 down, no
+// voter may be added or a connected one removed, as either would leave
+// too few connected voters; voter 3 may go. A peer connected for less
+// than 5 seconds counts as not connected, but not as down.
+func TestStrictReconfigNeedsConnectedQuorum(t *testing.T) {
+	up := map[uint64]int64{2: 600, 3: -1}
+	w, rec, err := wal.Open(simfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig(1, []uint64{1, 2, 3})
+	for id := uint64(1); id <= 3; id++ {
+		cfg.Members = append(cfg.Members, &pb.Member{ID: id, Name: strconv.FormatUint(id, 10), PeerURLs: []string{fmt.Sprintf("https://%d:1", id)}})
+	}
+	cfg.ConnectedTicks = func(id uint64) int64 { return up[id] }
+	n, err := New(cfg, rec, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &single{t: t, log: w, n: n}
+	s.run()
+	if r := s.do(1, &pb.MemberAddRequest{PeerURLs: []string{"https://4:1"}}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
+		t.Fatalf("adding a voter with one of three down: %v", r.Err)
+	}
+	if r := s.do(2, &pb.MemberRemoveRequest{ID: 2}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
+		t.Fatalf("removing a connected voter with another down: %v", r.Err)
+	}
+	if r := s.do(3, &pb.MemberRemoveRequest{ID: 1}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
+		t.Fatalf("removing itself with another voter down: %v", r.Err)
+	}
+	// A change that passes the checks waits for a leader, without an
+	// answer.
+	refused := func(id uint64, op proto.Message) error {
+		n.Submit(Request{ID: id, Op: op})
+		for _, r := range s.run() {
+			if r.ID == id {
+				return r.Err
+			}
+		}
+		return nil
+	}
+	up[3] = 10
+	if r := s.do(4, &pb.MemberRemoveRequest{ID: 2}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
+		t.Fatalf("removing a voter with another connected for 1 s: %v", r.Err)
+	}
+	up[3] = -1
+	if err := refused(5, &pb.MemberRemoveRequest{ID: 3}); err != nil {
+		t.Fatalf("removing the voter that is down: %v", err)
+	}
+	up[3] = 600
+	if err := refused(6, &pb.MemberAddRequest{PeerURLs: []string{"https://5:1"}}); err != nil {
+		t.Fatalf("adding a voter with every voter connected: %v", err)
 	}
 }
 

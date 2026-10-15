@@ -134,6 +134,24 @@ func TestRequestLimits(t *testing.T) {
 	}
 }
 
+// TestLargeRequestLimit sets --max-request-bytes above the stream window
+// of its default: a put of 5 MiB under a limit of 8 MiB arrives whole
+// without a window update.
+func TestLargeRequestLimit(t *testing.T) {
+	c := newClusterWith(t, func(c *cluster) {
+		c.serverConfig = func(cfg *server.Config) { cfg.MaxRequestBytes = 8 << 20 }
+		c.coreConfig = func(cfg *core.Config) { cfg.MaxRequestBytes = 8 << 20 }
+	})
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: make([]byte, 5<<20)})
+	})
+}
+
 // TestKeepalive checks grpc-go's keepalive with etcd's settings: a client
 // that pings too often without a call open gets GOAWAY ENHANCE_YOUR_CALM
 // "too_many_pings", and one that stays silent gets the server's ping and

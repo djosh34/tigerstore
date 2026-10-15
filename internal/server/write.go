@@ -202,7 +202,7 @@ func (c *conn) writeCtrl(f *ctrlFrame) error {
 	case ctrlSettings:
 		return c.fr.WriteSettings(
 			http2.Setting{ID: http2.SettingMaxConcurrentStreams, Val: c.s.maxStreams},
-			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow})
+			http2.Setting{ID: http2.SettingInitialWindowSize, Val: uint32(c.s.streamWindow)})
 	case ctrlSettingsAck:
 		return c.fr.WriteSettingsAck()
 	case ctrlPingAck:

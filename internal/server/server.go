@@ -111,9 +111,11 @@ type Server struct {
 	// grpcTLS is Config.TLS for listeners that serve gRPC only.
 	grpcTLS *tls.Config
 	// maxRequestBytes, maxRecvMsg and maxStreams are the limits of
-	// Config (setLimits).
-	maxRequestBytes, maxRecvMsg int
-	maxStreams                  uint32
+	// Config (setLimits), and streamWindow the receive window of each
+	// stream, above the largest request, so a unary request never waits
+	// for a window update.
+	maxRequestBytes, maxRecvMsg, streamWindow int
+	maxStreams                                uint32
 	// slowUnary is Config.WarningUnaryRequestDuration with its default,
 	// and the keepalive fields Config's.
 	slowUnary                                     time.Duration
@@ -405,6 +407,8 @@ func (s *Server) setLimits() {
 	s.maxRequestBytes = cmp.Or(s.cfg.MaxRequestBytes, core.MaxRequestBytes)
 	// etcd's MaxRequestBytesWithOverhead.
 	s.maxRecvMsg = s.maxRequestBytes + 512<<10
+	// gRPC's message prefix is 5 bytes.
+	s.streamWindow = min(max(minStreamWindow, s.maxRecvMsg+5), math.MaxInt32)
 	s.maxStreams = cmp.Or(s.cfg.MaxConcurrentStreams, math.MaxUint32)
 	s.slowUnary = cmp.Or(s.cfg.WarningUnaryRequestDuration, 300*time.Millisecond)
 	s.keepaliveMin = cmp.Or(s.cfg.KeepaliveMinTime, 5*time.Minute)

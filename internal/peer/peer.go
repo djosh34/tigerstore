@@ -58,6 +58,9 @@ type Transport interface {
 	// SetPeers sets the peers by Raft ID and host:port, and the IDs the
 	// cluster removed, which it tells that they were.
 	SetPeers(peers map[uint64]string, removed []uint64)
+	// ActiveSince is since when this node has had a connection to peer
+	// id, the zero time while it has none.
+	ActiveSince(id uint64) time.Time
 	Close() error
 }
 
@@ -282,6 +285,19 @@ func (t *TCP) ActivePeers() int {
 		}
 	}
 	return n
+}
+
+// ActiveSince is since when this node has had a connection to peer id,
+// the zero time while it has none, as etcd's transport reports it.
+func (t *TCP) ActiveSince(id uint64) time.Time {
+	s, ok := t.peer(id)
+	if !ok {
+		return time.Time{}
+	}
+	if ns := s.since.Load(); ns != 0 {
+		return time.Unix(0, ns)
+	}
+	return time.Time{}
 }
 
 // peer returns the sender of peer id.
@@ -735,8 +751,9 @@ type sender struct {
 	// ctrlBytes and dataBytes are the estimated bytes in each queue.
 	ctrlBytes, dataBytes atomic.Int64
 	// version is the protocol version of the connection to the peer, 0
-	// while there is none.
+	// while there is none, and since when it is up in Unix nanoseconds.
 	version  atomic.Uint32
+	since    atomic.Int64
 	counters *counters
 	// Writer only: messages that waited longer than slowQueue since the
 	// last report, the longest wait among them, the last one's type, and
@@ -886,10 +903,12 @@ func (s *sender) run() {
 		}
 		backoff = 50 * time.Millisecond
 		s.version.Store(uint32(v))
+		s.since.Store(time.Now().UnixNano())
 		s.counters.active.Inc()
 		err = s.write(ctx, c)
 		s.counters.active.Dec()
 		s.version.Store(0)
+		s.since.Store(0)
 		s.reportWaits()
 		if err != nil && ctx.Err() == nil {
 			s.counters.disconnected.Inc()

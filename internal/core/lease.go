@@ -20,7 +20,8 @@ import (
 // armed it, again after each checkpoint, while more than that is left.
 // The remaining TTL is replicated state, held in checkpoints, and a new
 // leader arms a lease for it instead of its full TTL; a keepalive ends
-// it. etcd checkpoints a lease whose remaining TTL is below its TTL only.
+// it, and schedules a checkpoint if none is due. etcd checkpoints a lease
+// whose remaining TTL is below its TTL only.
 
 // leaseRetryTicks is how long the leader waits for an expiry revoke to
 // apply before it proposes it again; Raft may drop a proposal.

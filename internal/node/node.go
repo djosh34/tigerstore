@@ -358,6 +358,8 @@ type Node struct {
 	alarmsGen uint64
 	// transport is the peer.Transport Run got, for calls to peers.
 	transport atomic.Value
+	// members are the members' IDs the committer saw last.
+	members atomic.Pointer[[]uint64]
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -554,6 +556,7 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot = rand.Uint64()
+	cfg.ConnectedTicks = n.connectedTicks
 	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
@@ -576,6 +579,7 @@ func (n *Node) open() error {
 	v := c.EtcdVersion()
 	n.etcdVersion.Store(&v)
 	n.authEnabled.Store(c.AuthEnabled())
+	n.setMembers(c.Members())
 	n.alarmsGen = 0
 	as, _ := c.Alarms()
 	as = slices.Clone(as)
@@ -609,6 +613,28 @@ func (n *Node) ClusterID() uint64 { return n.cfg.Core.ClusterID }
 
 // Learner reports whether the node is a learner.
 func (n *Node) Learner() bool { return n.learner.Load() }
+
+// setMembers keeps the members' IDs for readers outside the committer.
+func (n *Node) setMembers(ms []*pb.Member) {
+	ids := make([]uint64, len(ms))
+	for i, m := range ms {
+		ids[i] = m.ID
+	}
+	n.members.Store(&ids)
+}
+
+// connectedTicks is how many ticks the transport has had a connection
+// to peer id, -1 while it has none or Run has not started.
+func (n *Node) connectedTicks(id uint64) int64 {
+	t, ok := n.transport.Load().(peer.Transport)
+	if !ok {
+		return -1
+	}
+	if since := t.ActiveSince(id); !since.IsZero() {
+		return int64(time.Since(since) / n.cfg.Tick)
+	}
+	return -1
+}
 
 // PeerAddrs are the host:port of each member's first peer URL, by Raft ID.
 func PeerAddrs(members []*pb.Member) map[uint64]string {
@@ -894,6 +920,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 		}
 		if eff.Members != nil {
+			n.setMembers(eff.Members)
 			t.SetPeers(PeerAddrs(eff.Members), n.core.RemovedMembers())
 			n.learner.Store(n.core.IsLearner())
 		}

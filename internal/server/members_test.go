@@ -102,6 +102,11 @@ func learnerJoinsAndLeaves(t *testing.T, snapshot bool) {
 	if string(got.Kvs[0].Value) != "1" {
 		t.Fatalf("learner read %v", got)
 	}
+	// The corruption checks of a node that joined ask the members it
+	// learned from the log.
+	if err := c.nodes[4].InitialCheck(context.Background(), lyingPeer{Transport: c.transports[4], self: 4, liar: 2}); err == nil {
+		t.Fatal("the joined node's initial check passed against a peer with another hash")
+	}
 	if _, err := kv4.Range(context.Background(), &pb.RangeRequest{Key: []byte("a")}); !errors.Is(err, rpctypes.ErrGRPCNotSupportedForLearner) {
 		t.Fatalf("linearizable read on a learner: %v", err)
 	}
@@ -147,9 +152,17 @@ func learnerJoinsAndLeaves(t *testing.T, snapshot bool) {
 		}
 	}
 
-	rm, err := cl.MemberRemove(context.Background(), &pb.MemberRemoveRequest{ID: 4})
-	if err != nil || len(rm.Members) != 3 {
-		t.Fatalf("remove: %v, %v", rm, err)
+	// As in etcd, a voter that has been connected for less than 5 seconds
+	// cannot be removed yet: the cluster counts as unhealthy.
+	rm := retry(t, func(ctx context.Context) (*pb.MemberRemoveResponse, error) {
+		r, err := cl.MemberRemove(ctx, &pb.MemberRemoveRequest{ID: 4})
+		if err != nil && !errors.Is(err, rpctypes.ErrGRPCUnhealthy) {
+			t.Fatalf("remove: %v", err)
+		}
+		return r, err
+	})
+	if len(rm.Members) != 3 {
+		t.Fatalf("remove: %v", rm)
 	}
 	<-c.nodes[4].Done()
 	// Raft drops a configuration change while the leader has not applied

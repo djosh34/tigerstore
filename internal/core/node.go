@@ -139,9 +139,13 @@ type Config struct {
 	// --auth-token-ttl; 0 means 300 seconds.
 	AuthTokenTicks int
 	// StrictReconfigCheck is etcd's --strict-reconfig-check: member
-	// changes that would leave fewer started voters than a quorum are
-	// refused.
+	// changes that would leave fewer started voters than a quorum, or
+	// fewer connected ones, are refused.
 	StrictReconfigCheck bool
+	// ConnectedTicks, if set, is how many ticks this node has been
+	// connected to peer id, -1 while it is not. Without it, every peer
+	// counts as connected since long ago.
+	ConnectedTicks func(id uint64) int64
 	// QuotaBytes is etcd's --quota-backend-bytes: 0 means etcd's default
 	// of 2 GiB, a negative value no quota (quota.go).
 	QuotaBytes int64
@@ -1858,6 +1862,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 			n.arm(op.ID)
 		case *pb.LeaseKeepAliveRequest:
 			n.arm(op.ID)
+			if l, ok := n.state.leases[op.ID]; ok && l.checkpointAt == 0 {
+				n.scheduleCheckpoint(op.ID)
+			}
 		case *pb.LeaseCheckpointRequest:
 			for _, c := range op.Checkpoints {
 				n.scheduleCheckpoint(c.ID)

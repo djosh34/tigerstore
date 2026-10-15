@@ -27,11 +27,11 @@ import (
 
 // HTTP/2 limits of one client connection.
 const (
-	// streamWindow is the receive window of each stream. It is above the
-	// largest request, so a unary request never waits for a window update.
-	streamWindow = 4 << 20
+	// minStreamWindow is the smallest receive window of a stream; see
+	// Server.streamWindow.
+	minStreamWindow = 4 << 20
 	// connWindow is the receive window of the connection. Data is credited
-	// back as it arrives; streamWindow bounds what one stream holds.
+	// back as it arrives; the stream window bounds what one stream holds.
 	connWindow = 16 << 20
 	// sendQueue is how many encoded bytes one stream may queue for the
 	// writer before its Send waits.
@@ -726,7 +726,7 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		// messages; a client that sends past it breaks flow control.
 		// Padding is never stored, so it is credited back at once.
 		st.recvUsed += len(f.Data())
-		overflow = st.recvUsed > streamWindow
+		overflow = st.recvUsed > c.s.streamWindow
 		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
 			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
 		}

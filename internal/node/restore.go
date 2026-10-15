@@ -73,11 +73,15 @@ func Restore(path, dataDir string, members []*pb.Member, skipHash bool) (Snapsho
 	// The snapshot goes into a log of its own first, which a core opens
 	// to give the state its new members; their checkpoint starts the new
 	// log.
-	tmp := dataDir + ".restore"
-	if err := os.RemoveAll(tmp); err != nil {
+	parent := filepath.Dir(filepath.Clean(dataDir))
+	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return info, err
 	}
-	defer os.RemoveAll(tmp) //nolint:errcheck // a leftover goes on the next restore
+	tmp, err := os.MkdirTemp(parent, filepath.Base(dataDir)+".restore-")
+	if err != nil {
+		return info, err
+	}
+	defer os.RemoveAll(tmp) //nolint:errcheck // only a temporary copy
 	if err := receive(r, filepath.Join(tmp, "wal"), &core.Install{Index: info.Index, Term: info.Term}); err != nil {
 		return info, err
 	}

@@ -236,3 +236,30 @@ func TestLeaseCheckpoint(t *testing.T) {
 		t.Fatalf("TimeToLive %d after a keepalive and a restart, want the full 30 s", got)
 	}
 }
+
+// TestLeaseCheckpointAfterRenewal renews a lease whose last checkpoint
+// left too little TTL to schedule another: the renewal gives it the full
+// TTL again, and so a checkpoint after the interval.
+func TestLeaseCheckpointAfterRenewal(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.LeaseCheckpointTicks = int(cfg.ticksOf(2)) }).capable()
+	tps := s.n.cfg.ticksOf(1)
+	tick := func(ticks int64) {
+		for range ticks {
+			s.n.Tick()
+			s.run()
+		}
+	}
+	s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 4})
+	tick(3 * tps)
+	if l := s.n.state.leases[7]; l.remaining == 0 || l.checkpointAt != 0 {
+		t.Fatalf("remaining TTL %d, next checkpoint at tick %d after 3 s of 4", l.remaining, l.checkpointAt)
+	}
+	s.ok(2, &pb.LeaseKeepAliveRequest{ID: 7})
+	if l := s.n.state.leases[7]; l.remaining != 0 {
+		t.Fatalf("remaining TTL %d after a keepalive", l.remaining)
+	}
+	tick(3 * tps)
+	if l := s.n.state.leases[7]; l.remaining == 0 {
+		t.Fatal("no checkpoint in the 3 s after a keepalive")
+	}
+}
