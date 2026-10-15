@@ -33,31 +33,50 @@ import (
 // client is a raw etcd v3 gRPC client, with HTTP clients for the
 // endpoints of the client port.
 type client struct {
-	conn   *grpc.ClientConn
-	kv     pb.KVClient
-	watch  pb.WatchClient
-	lease  pb.LeaseClient
-	maint  pb.MaintenanceClient
-	health healthpb.HealthClient
+	conn    *grpc.ClientConn
+	kv      pb.KVClient
+	watch   pb.WatchClient
+	lease   pb.LeaseClient
+	maint   pb.MaintenanceClient
+	cluster pb.ClusterClient
+	health  healthpb.HealthClient
 	// lock and election are etcd's Lock and Election services.
 	lock     v3lockpb.LockClient
 	election epb.ElectionClient
 	// url is the endpoint's base URL. http2 offers HTTP/2, http1 does not.
 	url          string
 	http2, http1 *http.Client
+	// endpoint is the address dialed, and tls the client's TLS
+	// configuration, nil without TLS.
+	endpoint string
+	tls      *tls.Config
 }
 
 // dial connects to TIGERSTORE_DIFF_ENDPOINT. A missing endpoint fails the
 // test: these tests only build with the difftest tag, so they never skip.
 func dial(t *testing.T) *client {
 	t.Helper()
-	endpoint := os.Getenv("TIGERSTORE_DIFF_ENDPOINT")
+	return dialAt(t, "TIGERSTORE_DIFF_ENDPOINT", os.Getenv("TIGERSTORE_DIFF_CA"))
+}
+
+// dialAt connects to the endpoint in the environment variable env, with
+// TLS when ca names the CA file.
+func dialAt(t *testing.T, env, ca string) *client {
+	t.Helper()
+	endpoint := os.Getenv(env)
 	if endpoint == "" {
-		t.Fatal("TIGERSTORE_DIFF_ENDPOINT is not set")
+		t.Fatal(env + " is not set")
 	}
+	return dialTarget(t, "passthrough:///"+endpoint, endpoint, ca)
+}
+
+// dialTarget connects to the gRPC target of endpoint, with TLS when ca
+// names the CA file.
+func dialTarget(t *testing.T, target, endpoint, ca string) *client {
+	t.Helper()
 	creds := insecure.NewCredentials()
 	var tlsConf *tls.Config
-	if ca := os.Getenv("TIGERSTORE_DIFF_CA"); ca != "" {
+	if ca != "" {
 		pem, err := os.ReadFile(ca)
 		if err != nil {
 			t.Fatal(err)
@@ -73,7 +92,7 @@ func dial(t *testing.T) *client {
 		tlsConf = &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 		creds = credentials.NewTLS(tlsConf)
 	}
-	conn, err := grpc.NewClient("passthrough:///"+endpoint,
+	conn, err := grpc.NewClient(target,
 		grpc.WithTransportCredentials(creds),
 		// Let requests above the server's limit reach the server.
 		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(64<<20), grpc.MaxCallRecvMsgSize(64<<20)),
@@ -88,10 +107,13 @@ func dial(t *testing.T) *client {
 		watch:    pb.NewWatchClient(conn),
 		lease:    pb.NewLeaseClient(conn),
 		maint:    pb.NewMaintenanceClient(conn),
+		cluster:  pb.NewClusterClient(conn),
 		health:   healthpb.NewHealthClient(conn),
 		lock:     v3lockpb.NewLockClient(conn),
 		election: epb.NewElectionClient(conn),
 		url:      "http://" + endpoint,
+		endpoint: endpoint,
+		tls:      tlsConf,
 		// Each transport gets its own TLS configuration: one set up for
 		// HTTP/2 adds h2 to the configuration's protocols.
 		http2: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConf.Clone(), ForceAttemptHTTP2: true}},
@@ -298,36 +320,49 @@ func (r *run) txn(do string, req *pb.TxnRequest) {
 	resp, err := r.c.kv.Txn(r.ctx, req)
 	var res any
 	if err == nil {
-		type opResult struct {
-			Range *rangeResult `json:"range,omitempty"`
-			// Revision is the header revision of a put or delete
-			// result, zero when the server sends no header.
-			Revision int64  `json:"revision,omitempty"`
-			PrevKV   *kv    `json:"prevKV,omitempty"`
-			Put      bool   `json:"put,omitempty"`
-			Deleted  *int64 `json:"deleted,omitempty"`
-		}
-		var ops []opResult
-		for _, o := range resp.Responses {
-			switch x := o.Response.(type) {
-			case *pb.ResponseOp_ResponseRange:
-				ops = append(ops, opResult{Range: r.rangeResult(x.ResponseRange)})
-			case *pb.ResponseOp_ResponsePut:
-				ops = append(ops, opResult{Put: true, Revision: r.rel(x.ResponsePut.GetHeader().GetRevision()), PrevKV: r.kv(x.ResponsePut.PrevKv)})
-			case *pb.ResponseOp_ResponseDeleteRange:
-				d := x.ResponseDeleteRange.Deleted
-				ops = append(ops, opResult{Revision: r.rel(x.ResponseDeleteRange.GetHeader().GetRevision()), Deleted: &d})
-			default:
-				r.t.Fatalf("%s: unexpected txn response %T", do, x)
-			}
-		}
-		res = struct {
-			Revision  int64      `json:"revision"`
-			Succeeded bool       `json:"succeeded"`
-			Ops       []opResult `json:"ops,omitempty"`
-		}{r.rel(resp.Header.Revision), resp.Succeeded, ops}
+		res = r.txnResult(do, resp)
 	}
 	r.record(do, res, err)
+}
+
+// txnResult is a transaction's response as recorded, with the responses
+// of nested transactions.
+type txnResult struct {
+	Revision  int64      `json:"revision"`
+	Succeeded bool       `json:"succeeded"`
+	Ops       []opResult `json:"ops,omitempty"`
+}
+
+type opResult struct {
+	Range *rangeResult `json:"range,omitempty"`
+	// Revision is the header revision of a put, delete or nested txn
+	// result, zero when the server sends no header.
+	Revision int64      `json:"revision,omitempty"`
+	PrevKV   *kv        `json:"prevKV,omitempty"`
+	Put      bool       `json:"put,omitempty"`
+	Deleted  *int64     `json:"deleted,omitempty"`
+	PrevKVs  []*kv      `json:"prevKVs,omitempty"`
+	Txn      *txnResult `json:"txn,omitempty"`
+}
+
+func (r *run) txnResult(do string, resp *pb.TxnResponse) *txnResult {
+	var ops []opResult
+	for _, o := range resp.Responses {
+		switch x := o.Response.(type) {
+		case *pb.ResponseOp_ResponseRange:
+			ops = append(ops, opResult{Range: r.rangeResult(x.ResponseRange)})
+		case *pb.ResponseOp_ResponsePut:
+			ops = append(ops, opResult{Put: true, Revision: r.rel(x.ResponsePut.GetHeader().GetRevision()), PrevKV: r.kv(x.ResponsePut.PrevKv)})
+		case *pb.ResponseOp_ResponseDeleteRange:
+			d := x.ResponseDeleteRange.Deleted
+			ops = append(ops, opResult{Revision: r.rel(x.ResponseDeleteRange.GetHeader().GetRevision()), Deleted: &d, PrevKVs: r.kvs(x.ResponseDeleteRange.PrevKvs)})
+		case *pb.ResponseOp_ResponseTxn:
+			ops = append(ops, opResult{Revision: r.rel(x.ResponseTxn.GetHeader().GetRevision()), Txn: r.txnResult(do, x.ResponseTxn)})
+		default:
+			r.t.Fatalf("%s: unexpected txn response %T", do, x)
+		}
+	}
+	return &txnResult{r.rel(resp.GetHeader().GetRevision()), resp.Succeeded, ops}
 }
 
 func (r *run) compact(do string, rev int64, physical bool) {
@@ -682,6 +717,7 @@ func (r *run) http(do string, hc *http.Client, method, path string) {
 		ContentType string `json:"contentType"`
 		NoSniff     string `json:"nosniff,omitempty"`
 		Allow       string `json:"allow,omitempty"`
+		CORS        string `json:"cors,omitempty"`
 		Body        string `json:"body"`
-	}{resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Content-Type-Options"), resp.Header.Get("Allow"), strings.Join(lines, "")}, nil)
+	}{resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Content-Type-Options"), resp.Header.Get("Allow"), resp.Header.Get("Access-Control-Allow-Origin"), strings.Join(lines, "")}, nil)
 }

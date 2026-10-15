@@ -30,7 +30,8 @@ import (
 // From half the budget on, the cleaner runs at most half the time. From
 // three quarters on, it runs without pause, and writes wait before the
 // node takes them, longer the fuller the disk. At the budget, the node
-// answers writes with etcd's NOSPACE error.
+// answers writes with etcd's NOSPACE error. Without a budget, the cleaner
+// cleans only for Defragment.
 
 const (
 	// cleanTick is how often the cleaner measures the disk.
@@ -91,17 +92,22 @@ func (c *cleaner) run(ctx context.Context) error {
 	tick := time.NewTicker(cleanTick)
 	defer tick.Stop()
 	for {
-		used, err := c.n.log.fs.Usage()
-		if err != nil {
-			return err
+		if budget > 0 {
+			used, err := c.n.log.fs.Usage()
+			if err != nil {
+				return err
+			}
+			c.n.log.used.Store(used)
 		}
-		c.n.log.used.Store(used)
 		if err := c.remove(); err != nil {
 			return err
 		}
-		if used >= budget/2 && c.pending == nil {
+		if used := c.n.log.used.Load(); budget > 0 && used >= budget/2 && c.pending == nil {
 			start := time.Now()
 			did, err := c.pass(ctx, used >= budget*3/4)
+			if errors.Is(err, errServing) {
+				did, err = false, nil
+			}
 			if err != nil {
 				return err
 			}
@@ -114,20 +120,91 @@ func (c *cleaner) run(ctx context.Context) error {
 		}
 		select {
 		case <-tick.C:
+		case done := <-c.n.defragQ:
+			err := c.defrag(ctx)
+			done <- err
+			if err != nil {
+				return err
+			}
 		case <-ctx.Done():
 			return nil
 		}
 	}
 }
 
+// defrag is Defragment: passes that take the segments below the oldest
+// checkpoint the node keeps, however much of them is live, until one
+// finds nothing more or a removal waits for a snapshot fetch to end. A
+// pass cannot run while a snapshot is served, so it waits for that to
+// end and tries again, as etcd's defragmentation waits for a snapshot it
+// sends.
+func (c *cleaner) defrag(ctx context.Context) error {
+	for c.pending == nil {
+		did, err := c.pass(ctx, true)
+		if errors.Is(err, errServing) {
+			if !sleep(ctx, 10*time.Millisecond) {
+				return ctx.Err()
+			}
+			continue
+		}
+		if err != nil || !did {
+			return err
+		}
+	}
+	return nil
+}
+
+// errServing is a pass's answer while a snapshot is served.
+var errServing = errors.New("node: a snapshot is being served")
+
+// Defragment is etcd's Maintenance.Defragment. etcd rewrites its database
+// file without the free pages; tigerstore's log has no free pages, and the
+// space it can give back is in the segments below the oldest checkpoint,
+// which a cleaning pass copies the live values out of.
+func (n *Node) Defragment(ctx context.Context) error {
+	m := n.cfg.Metrics
+	m.DefragInflight.Set(1)
+	defer m.DefragInflight.Set(0)
+	start := time.Now()
+	err := n.defragment(ctx)
+	if err == nil {
+		m.Defrag.Observe(time.Since(start).Seconds())
+	}
+	return err
+}
+
+func (n *Node) defragment(ctx context.Context) error {
+	done := make(chan error, 1)
+	select {
+	case n.defragQ <- done:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-n.done:
+		return rpctypes.ErrGRPCStopped
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-n.done:
+		return rpctypes.ErrGRPCStopped
+	}
+}
+
 // pass cleans once: it picks the files to replace, copies the values they
 // hold that the checkpoint names into a pack, has its root installed, and
 // removes them. short means that space is short: the oldest segments go
-// however much of them is live. It reports whether it changed anything.
+// however much of them is live. It reports whether it changed anything,
+// or errServing while a snapshot is served.
 func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	l := c.n.log
 	l.mu.Lock()
-	if l.serving > 0 || len(l.ckpts) == 0 {
+	if l.serving > 0 {
+		l.mu.Unlock()
+		return false, errServing
+	}
+	if len(l.ckpts) == 0 {
 		l.mu.Unlock()
 		return false, nil
 	}

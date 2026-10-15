@@ -5,12 +5,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"net/http"
 	"slices"
 	"sync/atomic"
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -27,8 +28,12 @@ type stream struct {
 	rpc        *method // nil for HTTP requests
 	needLeader bool    // etcd's "hasleader" metadata
 	gateway    bool    // grpcgateway-accept metadata: no certificate identity
+	token      string  // the call's auth token
+	encoding   string  // the call's grpc-encoding: gzip, identity or none
 	httpMethod string
 	httpPath   string
+	authority  string
+	httpFields []hpack.HeaderField
 
 	// Reader only: the gRPC message being received.
 	hdr  [5]byte
@@ -54,10 +59,10 @@ type stream struct {
 	deadline *time.Timer
 
 	// Guarded by c.mu.
-	in            [][]byte // streaming calls: messages not yet taken by Recv
-	inEOF         bool     // the client ended its side
-	recvCredit    int      // stream bytes taken by Recv and not yet credited back
-	recvUsed      int      // stream bytes received and not credited back
+	in            []inMsg // streaming calls and HTTP bodies: input not yet taken
+	inEOF         bool    // the client ended its side
+	recvCredit    int     // stream bytes taken by Recv and not yet credited back
+	recvUsed      int     // stream bytes received and not credited back
 	sendWin       int64
 	out           []outItem
 	queued        int  // message bytes in out
@@ -68,10 +73,23 @@ type stream struct {
 	// answered.
 	reqHeld, replyHeld int
 	// calls counts this call for /metrics; counted is set once its end is.
-	calls   *callMetrics
-	counted bool
-	ended   bool // the writer took the end of the stream
-	reset   bool // the stream or connection is gone; output is dropped
+	// began is when a timed call started, readonlyTxn marks a read-only
+	// Txn (metrics.go).
+	calls       *callMetrics
+	counted     bool
+	began       time.Time
+	readonlyTxn bool
+	// admitted is when the node got the request of a call it runs, for
+	// logSlow.
+	admitted time.Time
+	// trace is the context of the call's server span and traceBegan its
+	// start, span the inner span of a unary call; all are nil without
+	// tracing (tracing.go).
+	trace      context.Context
+	traceBegan time.Time
+	span       trace.Span
+	ended      bool // the writer took the end of the stream
+	reset      bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte
@@ -120,12 +138,12 @@ func (st *stream) receive(d []byte) error {
 			if st.hdrN < len(st.hdr) {
 				return nil
 			}
-			if st.hdr[0] != 0 {
-				return status.Error(codes.Unimplemented, "grpc: compressed messages are not supported")
+			if err := st.checkFlag(st.hdr[0]); err != nil {
+				return err
 			}
 			size := binary.BigEndian.Uint32(st.hdr[1:])
-			if size > maxRecvMsg {
-				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, maxRecvMsg)
+			if limit := st.c.s.maxRecvMsg; int64(size) > int64(limit) {
+				return status.Errorf(codes.ResourceExhausted, "grpc: received message larger than max (%d vs. %d)", size, limit)
 			}
 			st.msg = make([]byte, 0, size)
 		}
@@ -136,20 +154,37 @@ func (st *stream) receive(d []byte) error {
 			return nil
 		}
 		st.c.metrics.received.add(int64(len(st.msg)))
-		st.deliver(st.msg)
+		if st.calls != nil {
+			st.calls.received.add(1)
+		}
+		msg := st.msg
+		if st.hdr[0] == 1 {
+			var err error
+			if msg, err = gunzip(msg, st.c.s.maxRecvMsg); err != nil {
+				return err
+			}
+		}
+		st.deliver(msg, len(st.msg)+5)
 		st.msg, st.hdrN = nil, 0
 	}
 }
 
-func (st *stream) deliver(m []byte) {
-	if st.rpc.stream == nil {
+// inMsg is a message, or a piece of an HTTP body, and the stream bytes
+// it took, which go back to the client's window once it is taken.
+type inMsg struct {
+	b    []byte
+	wire int
+}
+
+func (st *stream) deliver(m []byte, wire int) {
+	if st.rpc != nil && st.rpc.stream == nil {
 		st.body = m
 		st.msgs++
 		return
 	}
 	c := st.c
 	c.mu.Lock()
-	st.in = append(st.in, m)
+	st.in = append(st.in, inMsg{b: m, wire: wire})
 	c.mu.Unlock()
 	select {
 	case st.inSignal <- struct{}{}:
@@ -181,35 +216,45 @@ func (st *stream) RecvOne(m proto.Message) error {
 // Recv takes the next request message of a streaming call. It returns
 // io.EOF once the client ended its side.
 func (st *stream) Recv(m proto.Message) error {
+	b, err := st.next()
+	if err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(b, m); err != nil {
+		return status.Errorf(codes.Internal, "grpc: failed to unmarshal the received message: %v", err)
+	}
+	return nil
+}
+
+// next takes the next input of the stream and credits its bytes back to
+// the client's window. It returns io.EOF once the client ended its side.
+func (st *stream) next() ([]byte, error) {
 	c := st.c
 	for {
 		c.mu.Lock()
 		if len(st.in) > 0 {
-			b := st.in[0]
-			st.in[0] = nil
+			in := st.in[0]
+			st.in[0] = inMsg{}
 			st.in = st.in[1:]
-			st.recvCredit += len(b) + 5
-			if st.recvCredit >= streamWindow/4 {
+			st.recvCredit += in.wire
+			if st.recvCredit >= c.s.streamWindow/4 {
 				c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(st.recvCredit)})
 				st.recvUsed -= st.recvCredit
 				st.recvCredit = 0
 			}
 			c.mu.Unlock()
 			c.signal()
-			if err := proto.Unmarshal(b, m); err != nil {
-				return status.Errorf(codes.Internal, "grpc: failed to unmarshal the received message: %v", err)
-			}
-			return nil
+			return in.b, nil
 		}
 		eof := st.inEOF
 		c.mu.Unlock()
 		if eof {
-			return io.EOF
+			return nil, io.EOF
 		}
 		select {
 		case <-st.inSignal:
 		case <-st.ctx.Done():
-			return st.ctx.Err()
+			return nil, st.ctx.Err()
 		}
 	}
 }
@@ -218,6 +263,9 @@ func (st *stream) Recv(m proto.Message) error {
 // the stream has too much output queued.
 func (st *stream) Send(m proto.Message) error {
 	b, err := marshal(m)
+	if err == nil {
+		b, err = st.compress(b)
+	}
 	if err != nil {
 		return err
 	}
@@ -242,6 +290,9 @@ func marshal(m proto.Message) ([]byte, error) {
 // reply ends a unary call with its response.
 func (st *stream) reply(m proto.Message) {
 	b, err := marshal(m)
+	if err == nil {
+		b, err = st.compress(b)
+	}
 	if err != nil {
 		st.finish(err)
 		return
@@ -301,11 +352,7 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 // signals the writer.
 func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	if end {
-		code := codes.OK
-		if s != nil {
-			code = s.Code()
-		}
-		st.countEnd(code)
+		st.countEnd(s)
 	}
 	if st.reset || st.c.closed {
 		return
@@ -316,8 +363,15 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	}
 	if msg != nil {
 		st.c.metrics.sent.add(int64(len(msg) - 5))
+		if st.calls != nil {
+			st.calls.sent.add(1)
+		}
 		if !st.headersQueued {
-			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
+			hdrs := grpcHeaders
+			if st.encoding == gzipName {
+				hdrs = gzipHeaders
+			}
+			st.out = append(st.out, outItem{kind: outHeaders, b: hdrs})
 			st.headersQueued = true
 		}
 		st.out = append(st.out, outItem{kind: outData, b: msg})
@@ -354,20 +408,6 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	st.c.list(st)
 }
 
-// pushHTTP queues a whole HTTP response.
-func (st *stream) pushHTTP(headers, body []byte) {
-	c := st.c
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if st.reset || c.closed {
-		return
-	}
-	st.out = append(st.out, outItem{kind: outHeaders, b: headers}, outItem{kind: outData, b: body, end: true})
-	st.queued += len(body)
-	c.list(st)
-	c.signal()
-}
-
 // runUnary runs a unary call once its request has arrived.
 func (c *conn) runUnary(st *stream) {
 	defer st.cancel()
@@ -379,13 +419,24 @@ func (c *conn) runUnary(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
+	began := time.Now()
 	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
+	c.logSlow(st, time.Since(began))
 	st.body = nil
 	if err != nil {
 		st.finish(err)
 		return
 	}
 	st.reply(resp)
+}
+
+// logSlow is etcd's logUnaryRequestStats, with fewer details: it logs a
+// unary call that took d, if that is more than
+// --warning-unary-request-duration.
+func (c *conn) logSlow(st *stream, d time.Duration) {
+	if d > c.s.slowUnary && c.s.cfg.Logf != nil {
+		c.s.cfg.Logf("request stats: %s from %s took %v, more than %v", methodPaths[st.rpc.idx], c.nc.RemoteAddr(), d, c.s.slowUnary)
+	}
 }
 
 // runStream runs a streaming call from its first headers.
@@ -432,16 +483,4 @@ func (st *stream) expire() {
 	if st.cancel != nil {
 		st.cancel()
 	}
-}
-
-// runHTTP answers an HTTP request on an HTTP/2 stream.
-func (c *conn) runHTTP(st *stream) {
-	defer st.cancel()
-	st.done.Store(true)
-	a := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
-	headers := httpHeaders(a)
-	if st.httpMethod == http.MethodHead {
-		a.body = ""
-	}
-	st.pushHTTP(headers, []byte(a.body))
 }

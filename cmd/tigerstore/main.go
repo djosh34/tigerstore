@@ -1,44 +1,37 @@
-// Command tigerstore runs one node of a tigerstore cluster. Its flags use
-// etcd's names.
+// Command tigerstore runs one node of a tigerstore cluster. Its command
+// line is etcd v3.7.2's (config.go).
 package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"flag"
 	"fmt"
-	"hash/fnv"
 	"log"
+	"maps"
 	"net"
-	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
-	"strings"
+	"slices"
 	"syscall"
 	"time"
 
+	"go.etcd.io/etcd/pkg/v3/featuregate"
+	"go.etcd.io/etcd/server/v3/embed"
+	"go.etcd.io/etcd/server/v3/etcdmain"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
+	"go.etcd.io/etcd/server/v3/features"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
+
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
 )
-
-type flags struct {
-	name, dataDir                             string
-	initialCluster, clusterToken              string
-	listenPeer, listenClient, advertiseClient string
-	certFile, keyFile, caFile                 string
-	clientCertAuth                            bool
-	peerCertFile, peerKeyFile, peerCAFile     string
-	peerAllowedCNs, peerAllowedHostnames      []string
-	progressInterval                          time.Duration
-	diskBudget                                int64
-	memoryBudget                              int64
-}
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
 // CPU or with GOMAXPROCS=1. An fsync blocks in a system call that can keep
@@ -56,9 +49,6 @@ const minProcs = 2
 // the measurements. The node's memory budget still caps the heap (run).
 const gcPercent = 400
 
-// tick is a node's Raft tick.
-const tick = 100 * time.Millisecond
-
 func main() {
 	if runtime.GOMAXPROCS(0) < minProcs {
 		runtime.GOMAXPROCS(minProcs)
@@ -66,188 +56,125 @@ func main() {
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(gcPercent)
 	}
-	logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
-	if err := run(os.Args[1:], logger); err != nil {
-		logger.Printf("error: %v", err)
-		os.Exit(1)
+	args := os.Args[1:]
+	if len(args) > 0 && (args[0] == "grpc-proxy" || args[0] == "gateway") {
+		// etcd's own commands, with etcd's flags: a gRPC proxy in front
+		// of the cluster's client URLs (--namespace among them), and a
+		// TCP gateway to them.
+		etcdmain.Main(os.Args)
+		return
 	}
+	if len(args) > 0 && args[0] == "snapshot" {
+		logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
+		if err := snapshotCommand(args[1:], logger); err != nil {
+			logger.Printf("error: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+	os.Exit(run(args))
 }
 
-func parse(args []string) (*flags, error) {
-	f := &flags{}
-	fs := flag.NewFlagSet("tigerstore", flag.ContinueOnError)
-	fs.StringVar(&f.name, "name", "", "name of this node in --initial-cluster")
-	fs.StringVar(&f.dataDir, "data-dir", "", "data directory (default <name>.tigerstore)")
-	fs.StringVar(&f.initialCluster, "initial-cluster", "", "all nodes as name=https://host:peerport, comma separated, the same on every node")
-	fs.StringVar(&f.clusterToken, "initial-cluster-token", "tigerstore", "token that sets the cluster ID")
-	fs.StringVar(&f.listenPeer, "listen-peer-urls", "", "URL to accept peers on (default this node's --initial-cluster URL)")
-	fs.StringVar(&f.listenClient, "listen-client-urls", "https://127.0.0.1:2379", "URL to accept clients on")
-	fs.StringVar(&f.advertiseClient, "advertise-client-urls", "", "client URL to report in MemberList (default --listen-client-urls)")
-	fs.StringVar(&f.certFile, "cert-file", "", "client server certificate")
-	fs.StringVar(&f.keyFile, "key-file", "", "client server key")
-	fs.StringVar(&f.caFile, "trusted-ca-file", "", "CA for client certificates")
-	fs.BoolVar(&f.clientCertAuth, "client-cert-auth", false, "require client certificates signed by --trusted-ca-file")
-	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
-	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
-	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
-	// As in etcd, each takes a comma-separated list, and a repeated flag
-	// replaces the list.
-	fs.Func("peer-cert-allowed-cn", "comma-separated CommonNames of the peer certificates to accept", func(s string) error {
-		f.peerAllowedCNs = strings.Split(s, ",")
-		return nil
-	})
-	fs.Func("peer-cert-allowed-hostname", "comma-separated SAN hostnames of the peer certificates to accept", func(s string) error {
-		f.peerAllowedHostnames = strings.Split(s, ",")
-		return nil
-	})
-	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
-	fs.Int64Var(&f.diskBudget, "disk-budget-bytes", 0, "bytes of the log's files at which writes get NOSPACE; cleaning keeps them below. Leave room above it for 64 MiB of writes in flight, a 64 MiB pack and a checkpoint; below two segments (128 MiB) plus the checkpoints and live values, writes stay at NOSPACE (0 means no budget)")
-	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
-	if err := fs.Parse(args); err != nil {
-		return nil, err
+// run runs a node with the command line args and returns the exit code:
+// 0 after --help or --version or a clean stop, 2 for flags that do not
+// parse, 1 for any other error, as etcd's.
+func run(args []string) int {
+	c := newConfig(os.Stderr)
+	err := c.parse(args, os.Stdout)
+	switch {
+	case errors.Is(err, errHelp):
+		return 0
+	case errors.Is(err, errUsage):
+		return 2
 	}
-	if f.name == "" || f.initialCluster == "" {
-		return nil, errors.New("--name and --initial-cluster are required")
-	}
-	if len(f.peerAllowedCNs) > 0 && len(f.peerAllowedHostnames) > 0 {
-		return nil, errors.New("--peer-cert-allowed-cn and --peer-cert-allowed-hostname cannot both be set")
-	}
-	if f.dataDir == "" {
-		f.dataDir = f.name + ".tigerstore"
-	}
-	if f.advertiseClient == "" {
-		f.advertiseClient = f.listenClient
-	}
-	// etcd takes comma-separated lists in these flags; tigerstore serves
-	// one URL each for now.
-	for _, fl := range []struct{ name, v string }{
-		{"listen-client-urls", f.listenClient}, {"advertise-client-urls", f.advertiseClient}, {"listen-peer-urls", f.listenPeer},
-	} {
-		if strings.Contains(fl.v, ",") {
-			return nil, fmt.Errorf("--%s takes one URL; lists are not supported yet: %q", fl.name, fl.v)
+	lg := c.ec.GetLogger()
+	if lg == nil {
+		var lerr error
+		if lg, lerr = zap.NewProduction(); lerr != nil {
+			fmt.Fprintf(os.Stderr, "error creating zap logger %v\n", lerr)
+			return 1
 		}
 	}
-	return f, nil
+	lg.Info("Running: ", zap.Strings("args", os.Args))
+	if err != nil {
+		lg.Warn("failed to verify flags", zap.Error(err))
+		return 1
+	}
+	c.ec.SetupGlobalLoggers()
+	if err := start(c, lg); err != nil {
+		lg.Error("tigerstore stopped", zap.Error(err))
+		return 1
+	}
+	return 0
 }
 
-// member is one entry of --initial-cluster. Raft IDs are positions in the
-// list, starting at 1, so every node must get the same list.
-type member struct {
-	id   uint64
-	name string
-	url  *url.URL
-}
-
-func parseCluster(s string) ([]member, error) {
-	var out []member
-	for i, part := range strings.Split(s, ",") {
-		name, raw, ok := strings.Cut(part, "=")
+// start runs the node until a signal or an error stops it.
+func start(c *config, lg *zap.Logger) error {
+	ec := &c.ec
+	logf := lg.Sugar().Infof
+	if host, err := ec.UpdateDefaultClusterFromName(c.defaultCluster); host != "" || err != nil {
+		lg.Info("detected default host for advertise", zap.String("host", host), zap.Error(err))
+	}
+	if ec.Dir == "" {
+		ec.Dir = ec.Name + ".etcd"
+		lg.Warn("'data-dir' was empty; using default", zap.String("data-dir", ec.Dir))
+	}
+	if ec.MemoryMlock {
+		// etcd locks its database's pages in memory; tigerstore's index
+		// and buffers are in its heap.
+		if err := unix.Mlockall(unix.MCL_CURRENT | unix.MCL_FUTURE); err != nil {
+			return fmt.Errorf("--memory-mlock: %w", err)
+		}
+	}
+	ident, started, err := readIdentity(ec.Dir)
+	if err != nil {
+		return err
+	}
+	var cluster clusterSpec
+	members := ident.members
+	if !started {
+		if cluster, err = resolveCluster(ec, lg); err != nil {
+			return err
+		}
+		members = initialMembers(cluster.members)
+	}
+	if err := checkPeerURLs(ec, members); err != nil {
+		return err
+	}
+	if err := ec.ClientSelfCert(); err != nil {
+		return err
+	}
+	// etcd ignores --peer-auto-tls when certificates are given.
+	selfSigned := ec.PeerAutoTLS && ec.PeerTLSInfo.Empty()
+	if err := ec.PeerSelfCert(); err != nil {
+		return err
+	}
+	pcfg, err := peerConfig(ec, selfSigned)
+	if err != nil {
+		return err
+	}
+	pcfg.Logf = logf
+	ctls, err := clientTLS(ec)
+	if err != nil {
+		return err
+	}
+	clientLns, err := clientListeners(ec, ctls != nil, lg)
+	if err != nil {
+		return err
+	}
+	ok := false
+	defer func() {
 		if !ok {
-			return nil, fmt.Errorf("--initial-cluster entry %q is not name=url", part)
+			closeListeners(clientLns, pcfg.Listeners, lg)
 		}
-		u, err := url.Parse(raw)
-		if err != nil {
-			return nil, err
-		}
-		if u.Scheme != "https" {
-			return nil, fmt.Errorf("peer URL %s must be https: node-to-node traffic is always encrypted", raw)
-		}
-		out = append(out, member{id: uint64(i + 1), name: name, url: u})
-	}
-	return out, nil
-}
-
-func loadCA(file string) (*x509.CertPool, error) {
-	b, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(b) {
-		return nil, fmt.Errorf("no certificates in %s", file)
-	}
-	return pool, nil
-}
-
-// clientTLS builds the client-side TLS config, or nil for http.
-func clientTLS(f *flags, u *url.URL) (*tls.Config, error) {
-	switch u.Scheme {
-	case "http":
-		return nil, nil
-	case "https":
-	default:
-		return nil, fmt.Errorf("client URL %s must be http or https", u)
-	}
-	cert, err := tls.LoadX509KeyPair(f.certFile, f.keyFile)
-	if err != nil {
-		return nil, fmt.Errorf("client certificate: %w", err)
-	}
-	cfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
-	if f.clientCertAuth {
-		if cfg.ClientCAs, err = loadCA(f.caFile); err != nil {
-			return nil, err
-		}
-		cfg.ClientAuth = tls.RequireAndVerifyClientCert
-	}
-	return cfg, nil
-}
-
-func run(args []string, logger *log.Logger) error {
-	f, err := parse(args)
-	if err != nil {
-		return err
-	}
-	members, err := parseCluster(f.initialCluster)
-	if err != nil {
-		return err
-	}
-	var self *member
-	var ids []uint64
-	peers := map[uint64]string{}
-	for i := range members {
-		m := &members[i]
-		ids = append(ids, m.id)
-		if m.name == f.name {
-			self = m
-			continue
-		}
-		peers[m.id] = m.url.Host
-	}
-	if self == nil {
-		return fmt.Errorf("--name %q is not in --initial-cluster", f.name)
-	}
-	listenPeer := self.url
-	if f.listenPeer != "" {
-		if listenPeer, err = url.Parse(f.listenPeer); err != nil {
+	}()
+	if !started {
+		if ident, err = newIdentity(ec, cluster, pcfg); err != nil {
 			return err
 		}
 	}
-	peerCert, err := tls.LoadX509KeyPair(f.peerCertFile, f.peerKeyFile)
-	if err != nil {
-		return fmt.Errorf("peer certificate (node-to-node traffic is always encrypted): %w", err)
-	}
-	peerCA, err := loadCA(f.peerCAFile)
-	if err != nil {
-		return fmt.Errorf("peer CA: %w", err)
-	}
-	clientURL, err := url.Parse(f.listenClient)
-	if err != nil {
-		return err
-	}
-	ctls, err := clientTLS(f, clientURL)
-	if err != nil {
-		return err
-	}
-
-	h := fnv.New64a()
-	h.Write([]byte(f.clusterToken + "/" + f.initialCluster))
-	ccfg := core.DefaultConfig(self.id, ids)
-	ccfg.ClusterID = h.Sum64()
-	// As in etcd, an interval of 0 or less keeps the default.
-	if f.progressInterval > 0 {
-		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
-	}
-	budget, from, err := node.MemoryBudget(os.DirFS("/"), f.memoryBudget)
+	ccfg := coreConfig(ec, ident)
+	budget, from, err := node.MemoryBudget(os.DirFS("/"), c.own.MemoryBudget)
 	if err != nil {
 		return err
 	}
@@ -255,47 +182,213 @@ func run(args []string, logger *log.Logger) error {
 	// the value cache takes what the rest leaves.
 	debug.SetMemoryLimit(budget)
 	ccfg.MemoryBytes = node.CacheMemory(budget)
-	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, Logf: logger.Printf})
+	logf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
+	compaction, err := node.ParseCompaction(ec.AutoCompactionMode, ec.AutoCompactionRetention)
 	if err != nil {
 		return err
 	}
-	t, err := peer.Start(peer.Config{
-		ID: self.id, Listen: listenPeer.Host, Peers: peers,
-		Certificate: peerCert, CA: peerCA,
-		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames,
-		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logger.Printf,
-	})
-	if err != nil {
+	gate := ec.ServerFeatureGate
+	ncfg := node.Config{
+		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
+		DiskBudget: c.own.DiskBudget, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
+		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
+	}
+	if gate.Enabled(features.CompactHashCheck) {
+		ncfg.CompactHashCheckTime = ec.CompactHashCheckTime
+	}
+	if ncfg.Metrics, err = metrics.New(featureMetrics(gate)); err != nil {
 		return err
 	}
-
-	var sm []server.Member
-	for _, m := range members {
-		sm = append(sm, server.Member{ID: m.id, Name: m.name, PeerURLs: []string{m.url.String()}})
-		if m.id == self.id {
-			sm[len(sm)-1].ClientURLs = []string{f.advertiseClient}
+	pcfg.Metrics = ncfg.Metrics
+	jwt, err := server.ParseAuthToken(ec.AuthToken)
+	if err != nil {
+		return fmt.Errorf("--auth-token %q: %w", ec.AuthToken, err)
+	}
+	var tp *sdktrace.TracerProvider
+	if ec.EnableDistributedTracing {
+		if tp, err = newTracerProvider(context.Background(), ec); err != nil {
+			return err
 		}
+		defer func() {
+			if err := tp.Shutdown(context.Background()); err != nil {
+				lg.Warn("stop distributed tracing", zap.Error(err))
+			}
+		}()
 	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls})
-	ln, err := net.Listen("tcp", clientURL.Host)
+	n, err := node.New(ncfg)
+	if err != nil {
+		return err
+	}
+	// The node hands the transport the members once it runs; until then,
+	// those it started with.
+	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(ident.members)
+	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
+	t, err := peer.Start(pcfg)
+	if err != nil {
+		return err
+	}
+	// etcd hands grpc-go each keepalive setting only when it is above 0.
+	var kaMin, kaTime, kaTimeout time.Duration
+	if ec.GRPCKeepAliveMinTime > 0 {
+		kaMin = ec.GRPCKeepAliveMinTime
+	}
+	if ec.GRPCKeepAliveInterval > 0 && ec.GRPCKeepAliveTimeout > 0 {
+		kaTime, kaTimeout = ec.GRPCKeepAliveInterval, ec.GRPCKeepAliveTimeout
+	}
+	g, err := server.New(n, server.Config{
+		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(ec.BcryptCost), JWT: jwt,
+		StopServiceOnDefrag: gate.Enabled(features.StopGRPCServiceOnDefrag),
+		NoGateway:           !ec.EnableGRPCGateway, CORS: ec.CORS, HostWhitelist: ec.HostWhitelist,
+		ExtensiveMetrics: ec.Metrics == "extensive", Pprof: ec.EnablePprof,
+		TracerProvider:  tracerProvider(tp),
+		MaxRequestBytes: int(ec.MaxRequestBytes), MaxConcurrentStreams: ec.MaxConcurrentStreams,
+		WarningUnaryRequestDuration: ec.WarningUnaryRequestDuration, Logf: logf,
+		KeepaliveMinTime: kaMin, KeepaliveTime: kaTime, KeepaliveTimeout: kaTimeout,
+	})
 	if err != nil {
 		return errors.Join(err, t.Close())
 	}
+	ok = true
+	msrvs, err := serveMetricsURLs(ec, ctls, g.MetricsHandler(), lg)
+	if err != nil {
+		closeListeners(clientLns, nil, lg)
+		return errors.Join(err, g.Stop(), t.Close())
+	}
+	defer func() {
+		for _, srv := range msrvs {
+			if err := srv.Close(); err != nil {
+				lg.Warn("close the metrics listener", zap.String("address", srv.Addr), zap.Error(err))
+			}
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	served := make(chan error, 1)
+	ran := make(chan error, 1)
 	go func() {
-		// A node that cannot serve clients stops instead of staying a
-		// silent Raft member.
-		served <- g.Serve(ln)
+		ran <- n.Run(ctx, t)
 		cancel()
 	}()
-	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
-	runErr := n.Run(ctx, t)
+	go func() {
+		if err := n.AdjustTicks(ctx, t.ActivePeers, ec.InitialElectionTickAdvance, rafthttp.ConnReadTimeout); err != nil && ctx.Err() == nil {
+			lg.Warn("adjust election ticks", zap.Error(err))
+		}
+	}()
+	if gate.Enabled(features.InitialCorruptCheck) {
+		// As in etcd, before it serves any client.
+		if err := n.InitialCheck(ctx, t); err != nil {
+			cancel()
+			closeListeners(clientLns, nil, lg)
+			return errors.Join(err, <-ran, g.Stop(), t.Close())
+		}
+		logf("initial corruption check passed")
+	}
+	if err := bootstrapDefrag(ctx, n, ec.BootstrapDefragThresholdMegabytes, lg); err != nil {
+		cancel()
+		closeListeners(clientLns, nil, lg)
+		return errors.Join(err, <-ran, g.Stop(), t.Close())
+	}
+	served := make(chan error, len(clientLns))
+	for _, l := range clientLns {
+		go func() {
+			// A node that cannot serve clients stops instead of staying
+			// a silent Raft member.
+			served <- g.ServeListener(l.Listener)
+			cancel()
+		}()
+		lg.Info("serving client traffic", zap.String("address", l.url.String()), zap.String("traffic", trafficName(l.Traffic)))
+	}
+	logf("node %s (raft ID %d) serving clients, peers on %v", ec.Name, ident.id, ec.ListenPeerUrls)
+	runErr := <-ran
 	stopErr := g.Stop()
-	return errors.Join(runErr, stopErr, <-served, t.Close())
+	for range clientLns {
+		stopErr = errors.Join(stopErr, <-served)
+	}
+	return errors.Join(runErr, stopErr, t.Close())
+}
+
+// featureMetrics are the feature gates for etcd_server_feature_enabled,
+// AllAlpha and AllBeta among them.
+func featureMetrics(gate featuregate.FeatureGate) []metrics.Feature {
+	specs := map[featuregate.Feature]featuregate.FeatureSpec{
+		"AllAlpha": {PreRelease: featuregate.Alpha},
+		"AllBeta":  {PreRelease: featuregate.Beta},
+	}
+	maps.Copy(specs, features.DefaultEtcdServerFeatureGates)
+	var out []metrics.Feature
+	for name, spec := range specs {
+		out = append(out, metrics.Feature{Name: string(name), Stage: string(spec.PreRelease), On: gate.Enabled(name)})
+	}
+	return out
+}
+
+// bootstrapDefrag is etcd's --bootstrap-defrag-threshold-megabytes: as it
+// starts, a node defragments when at least that many megabytes of its
+// files are free to reclaim.
+func bootstrapDefrag(ctx context.Context, n *node.Node, thresholdMB uint, lg *zap.Logger) error {
+	if thresholdMB == 0 {
+		return nil
+	}
+	m, err := n.Metrics(ctx)
+	if err != nil {
+		return err
+	}
+	threshold := int64(thresholdMB) * 1024 * 1024
+	if free := m.DbSize - m.DbSizeInUse; free < threshold {
+		lg.Info("skipping defragmentation", zap.Int64("current-db-size-bytes", m.DbSize), zap.Int64("current-db-size-in-use-bytes", m.DbSizeInUse), zap.Int64("defrag-threshold-bytes", threshold))
+		return nil
+	}
+	return n.Defragment(ctx)
+}
+
+// coreConfig is the core's configuration from etcd's.
+func coreConfig(ec *embed.Config, ident identity) core.Config {
+	ccfg := core.DefaultConfig(ident.id, nil)
+	ccfg.ClusterID = ident.cluster
+	if ec.IsNewCluster() {
+		ccfg.Members = ident.members
+		for _, m := range ccfg.Members {
+			ccfg.Peers = append(ccfg.Peers, m.ID)
+		}
+	} else {
+		ccfg.Join = true
+	}
+	ccfg.TickMillis = int64(ec.TickMs)
+	ccfg.ElectionTicks = ec.ElectionTicks()
+	ccfg.NoPreVote = !ec.PreVote
+	// etcd's request timeout: 5 s plus two election timeouts.
+	ccfg.RequestTicks = int((5000 + 2*int64(ec.ElectionMs)) / int64(ec.TickMs))
+	ccfg.Name = ec.Name
+	for _, u := range ec.AdvertiseClientUrls {
+		ccfg.ClientURLs = append(ccfg.ClientURLs, u.String())
+	}
+	ccfg.MaxLearners, ccfg.StrictReconfigCheck = ec.MaxLearners, ec.StrictReconfigCheck
+	ccfg.MaxRequestBytes, ccfg.MaxTxnOps = int(ec.MaxRequestBytes), int(ec.MaxTxnOps)
+	tick := time.Duration(ec.TickMs) * time.Millisecond
+	ccfg.AuthTokenTicks = int(time.Duration(ec.AuthTokenTTL) * time.Second / tick)
+	ccfg.QuotaBytes = ec.QuotaBackendBytes
+	if ec.ServerFeatureGate.Enabled(features.LeaseCheckpoint) {
+		// etcd v3.7.2 checkpoints every 5 minutes; no flag changes it.
+		ccfg.LeaseCheckpointTicks = int(5 * time.Minute / tick)
+	}
+	// As in etcd, an interval of 0 or less keeps the default.
+	if ec.WatchProgressNotifyInterval > 0 {
+		ccfg.ProgressTicks = max(1, int(ec.WatchProgressNotifyInterval/tick))
+	} else {
+		ccfg.ProgressTicks = int(10 * time.Minute / tick)
+	}
+	return ccfg
+}
+
+// closeListeners closes listeners that no server took.
+func closeListeners(client []clientListener, peers []net.Listener, lg *zap.Logger) {
+	lns := slices.Clone(peers)
+	for _, l := range client {
+		lns = append(lns, l)
+	}
+	if err := closeAll(lns); err != nil {
+		lg.Warn("close the listeners", zap.Error(err))
+	}
 }

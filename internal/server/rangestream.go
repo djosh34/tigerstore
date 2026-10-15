@@ -4,9 +4,9 @@ import (
 	"math"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -31,6 +31,14 @@ func (s *Server) rangeStream(st *stream) error {
 	if err := mvcc.CheckRangeStream(r); err != nil {
 		return err
 	}
+	span := st.startSpan("range_streaming",
+		attribute.String("range_begin", string(r.GetKey())),
+		attribute.String("range_end", string(r.GetRangeEnd())),
+		attribute.Int64("rev", r.GetRevision()),
+		attribute.Int64("limit", r.GetLimit()),
+		attribute.Bool("count_only", r.GetCountOnly()),
+	)
+	defer span.End()
 	if r.CountOnly {
 		resp, err := s.countRead(st, r)
 		if err != nil {
@@ -46,7 +54,7 @@ func (s *Server) rangeStream(st *stream) error {
 	var header *pb.ResponseHeader
 	count := int64(0)
 	for {
-		resp, err := s.n.RangeChunk(st.ctx, r)
+		resp, err := s.n.RangeChunk(st.ctx, st.c.callerOf(st), r)
 		if err != nil {
 			return toStatus(err)
 		}
@@ -90,14 +98,14 @@ func (s *Server) rangeStream(st *stream) error {
 			return nil
 		}
 		r.Key = next
-		r.Limit = min(nextChunk(r.Limit, size, core.MaxRequestBytes), total-count)
+		r.Limit = min(nextChunk(r.Limit, size, s.maxRequestBytes), total-count)
 	}
 }
 
 // countRead runs a count-only Range of a RangeStream on the node, with the
 // total count.
 func (s *Server) countRead(st *stream, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := s.n.Do(st.ctx, r)
+	resp, err := s.n.DoAs(st.ctx, st.c.callerOf(st), r)
 	if err != nil {
 		return nil, toStatus(err)
 	}

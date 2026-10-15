@@ -45,6 +45,9 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 	c := newClusterWith(t, func(c *cluster) {
 		c.tick = 100 * time.Millisecond
 		c.stallElections = 1
+		// Nothing compacts the overwritten values, which pass etcd's
+		// 2 GiB quota within the run on a fast machine.
+		c.coreConfig = func(cfg *core.Config) { cfg.QuotaBytes = -1 }
 	})
 	cert, _, _, err := c.ca.Issue("client", 92)
 	if err != nil {

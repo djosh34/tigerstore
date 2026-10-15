@@ -5,6 +5,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -71,7 +73,7 @@ func delivers(t *testing.T, ca *x509.CertPool, c1, c2 Config, wait time.Duration
 	}()
 	for i, c := range []Config{c1, c2} {
 		id, other := uint64(i+1), uint64(2-i)
-		c.ID, c.Listener, c.Peers, c.CA = id, lns[id], map[uint64]string{other: addrs[other]}, ca
+		c.ID, c.Listeners, c.Peers, c.CA = id, []net.Listener{lns[id]}, map[uint64]string{other: addrs[other]}, ca
 		c.Deliver = func(m *raftpb.Message) { got <- m }
 		c.Unreachable = func(uint64) {}
 		c.Logf = t.Logf
@@ -126,6 +128,61 @@ func TestAllowedCertificates(t *testing.T) {
 	for _, c := range cases {
 		// A refusal is checked for one second; a delivery usually takes
 		// milliseconds but gets longer on a loaded machine.
+		wait := time.Second
+		if c.ok {
+			wait = 10 * time.Second
+		}
+		if got := delivers(t, ca.Pool, c.c1, c.c2, wait); got != c.ok {
+			t.Errorf("%s: delivered = %v, want %v", c.name, got, c.ok)
+		}
+	}
+}
+
+// TestPeerTLSOptions checks etcd's --peer-crl-file, the SAN check of a
+// peer that dials in, and --peer-client-cert-file.
+func TestPeerTLSOptions(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := func(cn string, serial int64, ips ...net.IP) tls.Certificate {
+		if len(ips) == 0 {
+			ips = []net.IP{net.IPv4(127, 0, 0, 1)}
+		}
+		c, _, _, err := ca.IssueFor(cn, serial, ips, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	node1, node2 := issue("node1", 2), issue("node2", 3)
+	elsewhere := issue("node1", 4, net.IPv4(10, 9, 9, 9))
+	client1 := issue("client1", 5)
+	crl, err := ca.CRL(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crlFile := filepath.Join(t.TempDir(), "crl.der")
+	if err := os.WriteFile(crlFile, crl, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withClient := func(c tls.Certificate) func() (*tls.Certificate, error) {
+		return func() (*tls.Certificate, error) { return &c, nil }
+	}
+	cases := []struct {
+		name   string
+		c1, c2 Config
+		ok     bool
+	}{
+		{"CRL of another serial", Config{Certificate: node2}, Config{Certificate: node1, CRLFile: crlFile}, true},
+		{"revoked dialer", Config{Certificate: node1}, Config{Certificate: node2, CRLFile: crlFile}, false},
+		{"SAN of the dialer's address", Config{Certificate: node1}, Config{Certificate: node2, CheckClientSAN: true}, true},
+		{"SAN of another address", Config{Certificate: elsewhere}, Config{Certificate: node2, CheckClientSAN: true}, false},
+		{"SAN check off", Config{Certificate: elsewhere}, Config{Certificate: node2}, true},
+		{"client certificate allowed", Config{Certificate: node1, GetClientCertificate: withClient(client1)}, Config{Certificate: node2, AllowedCNs: []string{"client1"}}, true},
+		{"client certificate, not the peer one, checked", Config{Certificate: node1, GetClientCertificate: withClient(client1)}, Config{Certificate: node2, AllowedCNs: []string{"node1"}}, false},
+	}
+	for _, c := range cases {
 		wait := time.Second
 		if c.ok {
 			wait = 10 * time.Second

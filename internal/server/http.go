@@ -1,17 +1,13 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
-	"sync"
+	"slices"
 	"time"
 
-	"golang.org/x/net/http2/hpack"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -61,9 +57,7 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnsw
 	case "/health":
 		answer = s.health
 	case "/version":
-		answer = version
-	case "/metrics":
-		answer = s.metricsText
+		answer = s.version
 	default:
 		p, ok := checkPaths[u.Path]
 		if !ok {
@@ -74,7 +68,7 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnsw
 		}
 		return s.runChecks(ctx, p, u.Query())
 	}
-	if method != http.MethodGet && method != http.MethodHead {
+	if method != http.MethodGet {
 		return methodNotAllowed()
 	}
 	return answer(ctx, u.Query())
@@ -88,8 +82,11 @@ func methodNotAllowed() httpAnswer {
 }
 
 // version answers like etcd: the server, cluster and storage versions.
-func version(context.Context, url.Values) httpAnswer {
-	return httpAnswer{code: http.StatusOK, contentType: appJSON, body: `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + core.ClusterVersion + `","storage":"` + core.StorageVersion + `"}`}
+// The storage version follows the cluster version, which a downgrade
+// lowers.
+func (s *Server) version(context.Context, url.Values) httpAnswer {
+	v := s.n.EtcdVersion()
+	return httpAnswer{code: http.StatusOK, contentType: appJSON, body: `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + v + `","storage":"` + v + `"}`}
 }
 
 // health answers like etcd: without ?serializable=true it needs a leader,
@@ -97,6 +94,31 @@ func version(context.Context, url.Values) httpAnswer {
 // health is a JSON string, not a boolean. Failures are written as
 // http.Error writes them.
 func (s *Server) health(ctx context.Context, q url.Values) httpAnswer {
+	a := s.checkHealth(ctx, q)
+	if a.code == http.StatusOK {
+		s.metrics.set.HealthSuccess.Inc()
+	} else {
+		s.metrics.set.HealthFailures.Inc()
+	}
+	return a
+}
+
+func (s *Server) checkHealth(ctx context.Context, q url.Values) httpAnswer {
+	for _, a := range s.n.Alarms() {
+		if slices.Contains(q["exclude"], a.Alarm.String()) {
+			continue
+		}
+		reason := "ALARM UNKNOWN"
+		switch a.Alarm {
+		case pb.AlarmType_NOSPACE:
+			reason = "ALARM NOSPACE"
+		case pb.AlarmType_CORRUPT:
+			reason = "ALARM CORRUPT"
+		case pb.AlarmType_NONE:
+			// Never active; etcd's answer would be ALARM UNKNOWN.
+		}
+		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"`+reason+`"}`)
+	}
 	serializable := q.Get("serializable") == "true"
 	if !serializable && s.n.Leader() == 0 {
 		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RAFT NO LEADER"}`)
@@ -105,75 +127,4 @@ func (s *Server) health(ctx context.Context, q url.Values) httpAnswer {
 		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RANGE ERROR:`+err.Error()+`"}`)
 	}
 	return httpAnswer{code: http.StatusOK, contentType: textPlain, body: `{"health":"true","reason":""}`}
-}
-
-// httpHeaders is the HTTP/2 header block of an HTTP response.
-func httpHeaders(a httpAnswer) []byte {
-	fields := []hpack.HeaderField{
-		{Name: ":status", Value: strconv.Itoa(a.code)},
-		{Name: "content-type", Value: a.contentType},
-		{Name: "content-length", Value: strconv.Itoa(len(a.body))},
-	}
-	if a.allow != "" {
-		fields = append(fields, hpack.HeaderField{Name: "allow", Value: a.allow})
-	}
-	if a.nosniff {
-		fields = append(fields, hpack.HeaderField{Name: "x-content-type-options", Value: "nosniff"})
-	}
-	return headerBlock(fields...)
-}
-
-// http1Conn is a TLS client that did not offer h2. It gets /health and
-// /version over HTTP/1.1; gRPC needs HTTP/2.
-type http1Conn struct {
-	s    *Server
-	nc   net.Conn
-	raw  net.Conn
-	once sync.Once
-}
-
-func (h *http1Conn) goAway() { h.close() }
-
-func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
-
-func (h *http1Conn) serve() {
-	br := bufio.NewReader(h.nc)
-	bw := bufio.NewWriter(h.nc)
-	for {
-		if err := h.nc.SetReadDeadline(time.Now().Add(http1Idle)); err != nil {
-			return
-		}
-		req, err := http.ReadRequest(br)
-		if err != nil {
-			return
-		}
-		// The endpoints read no body; a small one is skipped.
-		if _, err := io.Copy(io.Discard, io.LimitReader(req.Body, 1<<16)); err != nil {
-			return
-		}
-		ctx, cancel := context.WithCancel(h.s.ctx)
-		a := h.s.answerHTTP(ctx, req.Method, req.RequestURI)
-		cancel()
-		if err := h.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-			return
-		}
-		_, _ = bw.WriteString("HTTP/1.1 " + strconv.Itoa(a.code) + " " + http.StatusText(a.code) + "\r\n" +
-			"Content-Type: " + a.contentType + "\r\nContent-Length: " + strconv.Itoa(len(a.body)) + "\r\n")
-		if a.allow != "" {
-			_, _ = bw.WriteString("Allow: " + a.allow + "\r\n")
-		}
-		if a.nosniff {
-			_, _ = bw.WriteString("X-Content-Type-Options: nosniff\r\n")
-		}
-		if req.Close {
-			_, _ = bw.WriteString("Connection: close\r\n")
-		}
-		_, _ = bw.WriteString("\r\n")
-		if req.Method != http.MethodHead {
-			_, _ = bw.WriteString(a.body)
-		}
-		if err := bw.Flush(); err != nil || req.Close {
-			return
-		}
-	}
 }

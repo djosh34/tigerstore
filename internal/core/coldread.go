@@ -131,6 +131,9 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 	if !n.settle(p) {
 		return
 	}
+	if p.refuse != nil {
+		r, fills = Reply{ID: r.ID, Err: p.refuse}, nil
+	}
 	if len(fills) == 0 {
 		n.out.Replies = append(n.out.Replies, r)
 		return

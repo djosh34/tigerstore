@@ -73,6 +73,7 @@ func (c *conn) writeLoop() error {
 					return err
 				}
 			} else {
+				c.wrote.Store(true)
 				hdr = frameHeader(hdr[:0], len(f.b), f.typ, f.flags, f.id)
 				_, _ = c.bw.Write(hdr)
 				_, _ = c.bw.Write(f.b)
@@ -200,8 +201,8 @@ func (c *conn) writeCtrl(f *ctrlFrame) error {
 	switch f.kind {
 	case ctrlSettings:
 		return c.fr.WriteSettings(
-			http2.Setting{ID: http2.SettingMaxConcurrentStreams, Val: maxStreams},
-			http2.Setting{ID: http2.SettingInitialWindowSize, Val: streamWindow})
+			http2.Setting{ID: http2.SettingMaxConcurrentStreams, Val: c.s.maxStreams},
+			http2.Setting{ID: http2.SettingInitialWindowSize, Val: uint32(c.s.streamWindow)})
 	case ctrlSettingsAck:
 		return c.fr.WriteSettingsAck()
 	case ctrlPingAck:
@@ -211,7 +212,9 @@ func (c *conn) writeCtrl(f *ctrlFrame) error {
 	case ctrlRST:
 		return c.fr.WriteRSTStream(f.id, http2.ErrCode(f.val))
 	case ctrlGoAway:
-		return c.fr.WriteGoAway(f.id, http2.ErrCode(f.val), nil)
+		return c.fr.WriteGoAway(f.id, http2.ErrCode(f.val), []byte(f.debug))
+	case ctrlPing:
+		return c.fr.WritePing(false, f.ping)
 	}
 	return nil
 }

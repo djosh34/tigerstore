@@ -1,4 +1,356 @@
 {
+  "alarms": [
+    {
+      "do": "put k",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "list with no alarm",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "activate NONE",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "activate NOSPACE for 7",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate NOSPACE for 7 again",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate NOSPACE for 8",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "activate alarm type 9 for 3",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          },
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          },
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          },
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "status with alarms",
+      "code": "OK",
+      "result": [
+        "memberID:3 alarm:9",
+        "memberID:7 alarm:NOSPACE",
+        "memberID:8 alarm:NOSPACE"
+      ]
+    },
+    {
+      "do": "put under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "txn with a put in its failure branch under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "txn with a delete under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 1,
+            "deleted": 0
+          }
+        ]
+      }
+    },
+    {
+      "do": "grant under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "range under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "compact under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "deactivate NOSPACE for 7",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "deactivate NOSPACE for 7 again",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put with NOSPACE still active for 8",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "deactivate NOSPACE for 8",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 8,
+            "alarm": "NOSPACE"
+          }
+        ]
+      }
+    },
+    {
+      "do": "deactivate alarm type 9 for 3",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "alarms": [
+          {
+            "member": 3,
+            "alarm": "9"
+          }
+        ]
+      }
+    },
+    {
+      "do": "put with no alarm",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "activate CORRUPT for 7",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "CORRUPT"
+          }
+        ]
+      }
+    },
+    {
+      "do": "put under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "delete under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "txn with a delete under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "read-only txn under CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 2,
+              "kvs": [
+                {
+                  "key": "k",
+                  "value": "v",
+                  "create": 1,
+                  "mod": 2,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range under CORRUPT",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "kvs": [
+          {
+            "key": "k",
+            "value": "v",
+            "create": 1,
+            "mod": 2,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "compact under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "grant under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "revoke under CORRUPT",
+      "code": "DataLoss",
+      "message": "etcdserver: corrupt cluster"
+    },
+    {
+      "do": "deactivate CORRUPT for 7",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "alarms": [
+          {
+            "member": 7,
+            "alarm": "CORRUPT"
+          }
+        ]
+      }
+    },
+    {
+      "do": "list after deactivating",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put after deactivating",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    }
+  ],
   "compact-above-current": [
     {
       "do": "put a=1",
@@ -618,6 +970,199 @@
             }
           }
         ]
+      }
+    }
+  ],
+  "compression": [
+    {
+      "do": "gzip put",
+      "code": "OK",
+      "result": 1
+    },
+    {
+      "do": "gzip range reads the value",
+      "code": "OK",
+      "result": true
+    },
+    {
+      "do": "range with an unknown encoding",
+      "code": "Unimplemented",
+      "message": "grpc: Decompressor is not installed for grpc-encoding \"plain\""
+    },
+    {
+      "do": "gzip watch sends the value",
+      "code": "OK",
+      "result": true
+    }
+  ],
+  "defragment": [
+    {
+      "do": "put before",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "defragment",
+      "code": "OK",
+      "result": {
+        "header": false
+      }
+    },
+    {
+      "do": "get after",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    }
+  ],
+  "downgrade": [
+    {
+      "do": "validate ",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate v3.6",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate 3.6.x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "validate 3.5",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 3.7",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 4.6",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "validate 3.6",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "validate 3.6.0",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "validate 3.6.9",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "cancel without a downgrade",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "unknown action",
+      "code": "Unknown",
+      "message": "etcdserver: unknown method"
+    },
+    {
+      "do": "status before",
+      "code": "OK",
+      "result": {
+        "enabled": false
+      }
+    },
+    {
+      "do": "enable 3.7",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid downgrade target version"
+    },
+    {
+      "do": "enable x",
+      "code": "InvalidArgument",
+      "message": "etcdserver: wrong downgrade target version format"
+    },
+    {
+      "do": "enable 3.6",
+      "code": "OK",
+      "result": {
+        "version": "3.7",
+        "header": true
+      }
+    },
+    {
+      "do": "enable 3.6 again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: cluster has a downgrade job in progress"
+    },
+    {
+      "do": "validate 3.6 during the downgrade",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: cluster has a downgrade job in progress"
+    },
+    {
+      "do": "status during the downgrade",
+      "code": "OK",
+      "result": {
+        "enabled": true,
+        "target": "3.6.0"
+      }
+    },
+    {
+      "do": "cancel",
+      "code": "OK",
+      "result": {
+        "header": true
+      }
+    },
+    {
+      "do": "status after the cancel",
+      "code": "OK",
+      "result": {
+        "enabled": false
+      }
+    },
+    {
+      "do": "cancel again",
+      "code": "OK",
+      "result": {
+        "header": true
       }
     }
   ],
@@ -1679,6 +2224,564 @@
       "message": "etcdserver: mvcc: required revision has been compacted"
     }
   ],
+  "fragments": [
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "watch with fragment",
+      "code": "OK",
+      "result": "e+ e+ e"
+    },
+    {
+      "do": "watch without fragment",
+      "code": "OK",
+      "result": "eee"
+    }
+  ],
+  "gateway": [
+    {
+      "do": "put",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "put again over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 2
+            },
+            "prev_kv": {
+              "create_revision": 1,
+              "key": "a",
+              "mod_revision": 1,
+              "value": "1",
+              "version": "1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            },
+            "kvs": [
+              {
+                "create_revision": 1,
+                "key": "a",
+                "mod_revision": 2,
+                "value": "1",
+                "version": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "range under /v3beta/",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "range with an unknown field",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "count": "1",
+            "header": {
+              "revision": 2
+            },
+            "kvs": [
+              {
+                "create_revision": 1,
+                "key": "a",
+                "mod_revision": 2,
+                "value": "1",
+                "version": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "range without a key",
+      "code": "OK",
+      "result": {
+        "status": 400,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 3,
+            "message": "etcdserver: key is not provided"
+          }
+        ]
+      }
+    },
+    {
+      "do": "range with bad JSON",
+      "code": "OK",
+      "result": {
+        "status": 400,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 3,
+            "message": "unexpected EOF"
+          }
+        ]
+      }
+    },
+    {
+      "do": "GET of range",
+      "code": "OK",
+      "result": {
+        "status": 501,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 12,
+            "message": "Method Not Allowed"
+          }
+        ]
+      }
+    },
+    {
+      "do": "unknown path",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "code": 5,
+            "message": "Not Found"
+          }
+        ]
+      }
+    },
+    {
+      "do": "OPTIONS",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "",
+        "cors": "*"
+      }
+    },
+    {
+      "do": "txn",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 2
+            },
+            "responses": [
+              {
+                "response_range": {
+                  "count": "1",
+                  "header": {
+                    "revision": 2
+                  },
+                  "kvs": [
+                    {
+                      "create_revision": 1,
+                      "key": "a",
+                      "mod_revision": 2,
+                      "value": "1",
+                      "version": "2"
+                    }
+                  ]
+                }
+              }
+            ],
+            "succeeded": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "deleted": "1",
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch from the first put",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "result": {
+              "created": true,
+              "header": {
+                "revision": 3
+              }
+            }
+          },
+          {
+            "result": {
+              "events": [
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 1,
+                    "value": "1",
+                    "version": "1"
+                  }
+                },
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 2,
+                    "value": "1",
+                    "version": "2"
+                  }
+                },
+                {
+                  "kv": {
+                    "key": "a",
+                    "mod_revision": 3
+                  },
+                  "type": "DELETE"
+                }
+              ],
+              "header": {
+                "revision": 3
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "watch over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "result": {
+              "created": true,
+              "header": {
+                "revision": 3
+              }
+            }
+          },
+          {
+            "result": {
+              "events": [
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 1,
+                    "value": "1",
+                    "version": "1"
+                  }
+                },
+                {
+                  "kv": {
+                    "create_revision": 1,
+                    "key": "a",
+                    "mod_revision": 2,
+                    "value": "1",
+                    "version": "2"
+                  }
+                },
+                {
+                  "kv": {
+                    "key": "a",
+                    "mod_revision": 3
+                  },
+                  "type": "DELETE"
+                }
+              ],
+              "header": {
+                "revision": 3
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "member list status",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*"
+      }
+    },
+    {
+      "do": "alarm list",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "auth status",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json",
+        "cors": "*",
+        "body": [
+          {
+            "authRevision": "1",
+            "header": {
+              "revision": 3
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "hashes": [
+    {
+      "do": "put a",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put b",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put a again",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "delete b",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "hashkv at 4",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": -39
+      }
+    },
+    {
+      "do": "hashkv at 4 again",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": -39,
+        "same": true
+      }
+    },
+    {
+      "do": "hashkv at revision 0",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "hashRevision": 4,
+        "compactRevision": -39,
+        "same": true
+      }
+    },
+    {
+      "do": "put c",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 4 after a put",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 4,
+        "compactRevision": -39,
+        "same": true
+      }
+    },
+    {
+      "do": "hashkv at revision 0 after a put",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": -39
+      }
+    },
+    {
+      "do": "hashkv at a future revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "compact at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 3 after compacting at 4",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision has been compacted"
+    },
+    {
+      "do": "hashkv at 4 after compacting at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 4,
+        "compactRevision": -39,
+        "same": true
+      }
+    },
+    {
+      "do": "hashkv at 5 after compacting at 4",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": 4
+      }
+    },
+    {
+      "do": "compact at 5",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "hashkv at 5 after compacting at 5",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "hashRevision": 5,
+        "compactRevision": 4
+      }
+    },
+    {
+      "do": "hash",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    }
+  ],
   "health": [
     {
       "do": "check the server",
@@ -1744,6 +2847,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -1754,6 +2858,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -1764,6 +2869,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -1774,6 +2880,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -1784,6 +2891,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\nok\n"
       }
     },
@@ -1794,6 +2902,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -1804,6 +2913,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]linearizable_read ok\nok\n"
       }
     },
@@ -1814,6 +2924,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -1824,6 +2935,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -1834,6 +2946,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -1844,6 +2957,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -1854,6 +2968,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -1864,6 +2979,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "ok\n"
       }
     },
@@ -1874,6 +2990,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]serializable_read ok\nok\n"
       }
     },
@@ -1884,6 +3001,7 @@
         "status": 404,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "404 page not found\n"
       }
     },
@@ -1895,6 +3013,7 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": ""
       }
     },
@@ -1906,6 +3025,7 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": "Method Not Allowed\n"
       }
     },
@@ -1916,6 +3036,7 @@
         "status": 200,
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
+        "cors": "*",
         "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
       }
     },
@@ -1927,7 +3048,17 @@
         "contentType": "text/plain; charset=utf-8",
         "nosniff": "nosniff",
         "allow": "GET",
+        "cors": "*",
         "body": "Method Not Allowed\n"
+      }
+    }
+  ],
+  "keepalive": [
+    {
+      "do": "pings without a stream",
+      "code": "OK",
+      "result": {
+        "pings": 10
       }
     }
   ],
@@ -3131,6 +4262,972 @@
       "message": "etcdserver: request is too large"
     }
   ],
+  "members": [
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "add a member with a bad URL",
+      "code": "InvalidArgument",
+      "message": "etcdserver: given member URLs are invalid"
+    },
+    {
+      "do": "add a member with a path in its URL",
+      "code": "InvalidArgument",
+      "message": "etcdserver: given member URLs are invalid"
+    },
+    {
+      "do": "add a learner",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:3",
+              "https://127.0.0.2:1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "add a second learner",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: too many learner members in cluster"
+    },
+    {
+      "do": "add a learner with a taken peer URL",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: Peer URLs already exists"
+    },
+    {
+      "do": "list with a learner",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:3",
+              "https://127.0.0.2:1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "update the learner's peer URLs",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:5"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "update a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "promote the learner that never started",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: can only promote a learner member which is in sync with leader"
+    },
+    {
+      "do": "promote a voter",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: can only promote a learner member"
+    },
+    {
+      "do": "promote a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "remove a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "remove the learner",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "remove the learner again",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "list after removing the learner",
+      "code": "OK",
+      "result": {}
+    }
+  ],
+  "metrics": [
+    {
+      "do": "families",
+      "code": "OK",
+      "result": {
+        "etcd_cluster_version": {
+          "type": "GAUGE",
+          "help": "Which version is running. 1 for 'cluster_version' label with current cluster version",
+          "labels": [
+            "cluster_version"
+          ]
+        },
+        "etcd_debugging_auth_revision": {
+          "type": "GAUGE",
+          "help": "The current revision of auth store."
+        },
+        "etcd_debugging_disk_backend_commit_rebalance_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of commit.rebalance called by bboltdb backend."
+        },
+        "etcd_debugging_disk_backend_commit_spill_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of commit.spill called by bboltdb backend."
+        },
+        "etcd_debugging_disk_backend_commit_write_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of commit.write called by bboltdb backend."
+        },
+        "etcd_debugging_lease_granted_total": {
+          "type": "COUNTER",
+          "help": "The total number of granted leases."
+        },
+        "etcd_debugging_lease_renewed_total": {
+          "type": "COUNTER",
+          "help": "The number of renewed leases seen by the leader."
+        },
+        "etcd_debugging_lease_revoked_total": {
+          "type": "COUNTER",
+          "help": "The total number of revoked leases."
+        },
+        "etcd_debugging_lease_ttl_total": {
+          "type": "HISTOGRAM",
+          "help": "Bucketed histogram of lease TTLs."
+        },
+        "etcd_debugging_mvcc_compact_revision": {
+          "type": "GAUGE",
+          "help": "The revision of the last compaction in store."
+        },
+        "etcd_debugging_mvcc_current_revision": {
+          "type": "GAUGE",
+          "help": "The current revision of store."
+        },
+        "etcd_debugging_mvcc_db_compaction_keys_total": {
+          "type": "COUNTER",
+          "help": "Total number of db keys compacted."
+        },
+        "etcd_debugging_mvcc_db_compaction_last": {
+          "type": "GAUGE",
+          "help": "The unix time of the last db compaction. Resets to 0 on start."
+        },
+        "etcd_debugging_mvcc_db_compaction_pause_duration_milliseconds": {
+          "type": "HISTOGRAM",
+          "help": "Bucketed histogram of db compaction pause duration."
+        },
+        "etcd_debugging_mvcc_db_compaction_total_duration_milliseconds": {
+          "type": "HISTOGRAM",
+          "help": "Bucketed histogram of db compaction total duration."
+        },
+        "etcd_debugging_mvcc_events_total": {
+          "type": "COUNTER",
+          "help": "Total number of events sent by this member."
+        },
+        "etcd_debugging_mvcc_index_compaction_pause_duration_milliseconds": {
+          "type": "HISTOGRAM",
+          "help": "Bucketed histogram of index compaction pause duration."
+        },
+        "etcd_debugging_mvcc_keys_total": {
+          "type": "GAUGE",
+          "help": "Total number of keys."
+        },
+        "etcd_debugging_mvcc_pending_events_total": {
+          "type": "GAUGE",
+          "help": "Total number of pending events to be sent."
+        },
+        "etcd_debugging_mvcc_slow_watcher_total": {
+          "type": "GAUGE",
+          "help": "Total number of unsynced slow watchers."
+        },
+        "etcd_debugging_mvcc_total_put_size_in_bytes": {
+          "type": "GAUGE",
+          "help": "The total size of put kv pairs seen by this member."
+        },
+        "etcd_debugging_mvcc_watch_stream_total": {
+          "type": "GAUGE",
+          "help": "Total number of watch streams."
+        },
+        "etcd_debugging_mvcc_watcher_total": {
+          "type": "GAUGE",
+          "help": "Total number of watchers."
+        },
+        "etcd_debugging_server_alarms": {
+          "type": "GAUGE",
+          "help": "Alarms for every member in cluster. 1 for 'server_id' label with current ID. 2 for 'alarm_type' label with type of this alarm",
+          "labels": [
+            "alarm_type",
+            "server_id"
+          ]
+        },
+        "etcd_debugging_server_lease_expired_total": {
+          "type": "COUNTER",
+          "help": "The total number of expired leases."
+        },
+        "etcd_debugging_server_watch_send_loop_control_stream_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The total duration in seconds of running through the send loop control stream response."
+        },
+        "etcd_debugging_server_watch_send_loop_progress_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The total duration in seconds of running through the progress loop control stream response."
+        },
+        "etcd_debugging_server_watch_send_loop_watch_stream_duration_per_event_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The average duration in seconds of running through the send loop watch stream response, per event."
+        },
+        "etcd_debugging_server_watch_send_loop_watch_stream_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The total duration in seconds of running through the send loop watch stream response all events."
+        },
+        "etcd_debugging_snap_save_marshalling_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The marshalling cost distributions of save called by snapshot."
+        },
+        "etcd_debugging_snap_save_total_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The total latency distributions of save called by snapshot."
+        },
+        "etcd_debugging_store_expires_total": {
+          "type": "COUNTER",
+          "help": "Total number of expired keys."
+        },
+        "etcd_debugging_store_reads_total": {
+          "type": "COUNTER",
+          "help": "Total number of reads action by (get/getRecursive), local to this member.",
+          "labels": [
+            "action"
+          ]
+        },
+        "etcd_debugging_store_watch_requests_total": {
+          "type": "COUNTER",
+          "help": "Total number of incoming watch requests (new or reestablished)."
+        },
+        "etcd_debugging_store_watchers": {
+          "type": "GAUGE",
+          "help": "Count of currently active watchers."
+        },
+        "etcd_debugging_store_writes_total": {
+          "type": "COUNTER",
+          "help": "Total number of writes (e.g. set/compareAndDelete) seen by this member.",
+          "labels": [
+            "action"
+          ]
+        },
+        "etcd_disk_backend_commit_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of commit called by backend."
+        },
+        "etcd_disk_backend_defrag_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distribution of backend defragmentation."
+        },
+        "etcd_disk_backend_snapshot_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distribution of backend snapshots."
+        },
+        "etcd_disk_defrag_inflight": {
+          "type": "GAUGE",
+          "help": "Whether or not defrag is active on the member. 1 means active, 0 means not."
+        },
+        "etcd_disk_wal_fsync_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of fsync called by WAL."
+        },
+        "etcd_disk_wal_write_bytes_total": {
+          "type": "GAUGE",
+          "help": "Total number of bytes written in WAL."
+        },
+        "etcd_disk_wal_write_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of write called by WAL."
+        },
+        "etcd_grpc_proxy_cache_hits_total": {
+          "type": "GAUGE",
+          "help": "Total number of cache hits"
+        },
+        "etcd_grpc_proxy_cache_keys_total": {
+          "type": "GAUGE",
+          "help": "Total number of keys/ranges cached"
+        },
+        "etcd_grpc_proxy_cache_misses_total": {
+          "type": "GAUGE",
+          "help": "Total number of cache misses"
+        },
+        "etcd_grpc_proxy_events_coalescing_total": {
+          "type": "COUNTER",
+          "help": "Total number of events coalescing"
+        },
+        "etcd_grpc_proxy_watchers_coalescing_total": {
+          "type": "GAUGE",
+          "help": "Total number of current watchers coalescing"
+        },
+        "etcd_mvcc_db_open_read_transactions": {
+          "type": "GAUGE",
+          "help": "The number of currently open read transactions"
+        },
+        "etcd_mvcc_db_total_size_in_bytes": {
+          "type": "GAUGE",
+          "help": "Total size of the underlying database physically allocated in bytes."
+        },
+        "etcd_mvcc_db_total_size_in_use_in_bytes": {
+          "type": "GAUGE",
+          "help": "Total size of the underlying database logically in use in bytes."
+        },
+        "etcd_mvcc_delete_total": {
+          "type": "COUNTER",
+          "help": "Total number of deletes seen by this member."
+        },
+        "etcd_mvcc_hash_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distribution of storage hash operation."
+        },
+        "etcd_mvcc_hash_rev_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distribution of storage hash by revision operation."
+        },
+        "etcd_mvcc_put_total": {
+          "type": "COUNTER",
+          "help": "Total number of puts seen by this member."
+        },
+        "etcd_mvcc_range_total": {
+          "type": "COUNTER",
+          "help": "Total number of ranges seen by this member."
+        },
+        "etcd_mvcc_txn_total": {
+          "type": "COUNTER",
+          "help": "Total number of txns seen by this member."
+        },
+        "etcd_network_client_grpc_received_bytes_total": {
+          "type": "COUNTER",
+          "help": "The total number of bytes received from grpc clients."
+        },
+        "etcd_network_client_grpc_sent_bytes_total": {
+          "type": "COUNTER",
+          "help": "The total number of bytes sent to grpc clients."
+        },
+        "etcd_network_known_peers": {
+          "type": "GAUGE",
+          "help": "The current number of known peers.",
+          "labels": [
+            "Local",
+            "Remote"
+          ]
+        },
+        "etcd_server_apply_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of v2 apply called by backend.",
+          "labels": [
+            "op",
+            "success",
+            "version"
+          ]
+        },
+        "etcd_server_client_requests_total": {
+          "type": "COUNTER",
+          "help": "The total number of client requests per client version.",
+          "labels": [
+            "client_api_version",
+            "type"
+          ]
+        },
+        "etcd_server_feature_enabled": {
+          "type": "GAUGE",
+          "help": "Whether or not a feature is enabled. 1 is enabled, 0 is not.",
+          "labels": [
+            "name",
+            "stage"
+          ]
+        },
+        "etcd_server_go_version": {
+          "type": "GAUGE",
+          "help": "Which Go version server is running with. 1 for 'server_go_version' label with current version.",
+          "labels": [
+            "server_go_version"
+          ]
+        },
+        "etcd_server_has_leader": {
+          "type": "GAUGE",
+          "help": "Whether or not a leader exists. 1 is existence, 0 is not."
+        },
+        "etcd_server_health_failures": {
+          "type": "COUNTER",
+          "help": "The total number of failed health checks"
+        },
+        "etcd_server_health_success": {
+          "type": "COUNTER",
+          "help": "The total number of successful health checks"
+        },
+        "etcd_server_healthcheck": {
+          "type": "GAUGE",
+          "help": "The result of each kind of healthcheck.",
+          "labels": [
+            "name",
+            "type"
+          ]
+        },
+        "etcd_server_healthchecks_total": {
+          "type": "COUNTER",
+          "help": "The total number of each kind of healthcheck.",
+          "labels": [
+            "name",
+            "status",
+            "type"
+          ]
+        },
+        "etcd_server_heartbeat_send_failures_total": {
+          "type": "COUNTER",
+          "help": "The total number of leader heartbeat send failures (likely overloaded from slow disk)."
+        },
+        "etcd_server_id": {
+          "type": "GAUGE",
+          "help": "Server or member ID in hexadecimal format. 1 for 'server_id' label with current ID.",
+          "labels": [
+            "server_id"
+          ]
+        },
+        "etcd_server_is_leader": {
+          "type": "GAUGE",
+          "help": "Whether or not this member is a leader. 1 if is, 0 otherwise."
+        },
+        "etcd_server_is_learner": {
+          "type": "GAUGE",
+          "help": "Whether or not this member is a learner. 1 if is, 0 otherwise."
+        },
+        "etcd_server_leader_changes_seen_total": {
+          "type": "COUNTER",
+          "help": "The number of leader changes seen."
+        },
+        "etcd_server_learner_promote_failures": {
+          "type": "COUNTER",
+          "help": "The total number of failed learner promotions (likely learner not ready) while this member is leader.",
+          "labels": [
+            "Reason"
+          ]
+        },
+        "etcd_server_learner_promote_successes": {
+          "type": "COUNTER",
+          "help": "The total number of successful learner promotions while this member is leader."
+        },
+        "etcd_server_proposals_applied_total": {
+          "type": "GAUGE",
+          "help": "The total number of consensus proposals applied."
+        },
+        "etcd_server_proposals_committed_total": {
+          "type": "GAUGE",
+          "help": "The total number of consensus proposals committed."
+        },
+        "etcd_server_proposals_failed_total": {
+          "type": "COUNTER",
+          "help": "The total number of failed proposals seen."
+        },
+        "etcd_server_proposals_pending": {
+          "type": "GAUGE",
+          "help": "The current number of pending proposals to commit."
+        },
+        "etcd_server_quota_backend_bytes": {
+          "type": "GAUGE",
+          "help": "Current backend storage quota size in bytes."
+        },
+        "etcd_server_range_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of txn.Range",
+          "labels": [
+            "success"
+          ]
+        },
+        "etcd_server_read_indexes_failed_total": {
+          "type": "COUNTER",
+          "help": "The total number of failed read indexes seen."
+        },
+        "etcd_server_request_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "Response latency distribution in seconds for each type.",
+          "labels": [
+            "success",
+            "type"
+          ]
+        },
+        "etcd_server_slow_apply_total": {
+          "type": "COUNTER",
+          "help": "The total number of slow apply requests (likely overloaded from slow disk)."
+        },
+        "etcd_server_slow_read_indexes_total": {
+          "type": "COUNTER",
+          "help": "The total number of pending read indexes not in sync with leader's or timed out read index requests."
+        },
+        "etcd_server_snapshot_apply_in_progress_total": {
+          "type": "GAUGE",
+          "help": "1 if the server is applying the incoming snapshot. 0 if none."
+        },
+        "etcd_server_version": {
+          "type": "GAUGE",
+          "help": "Which version is running. 1 for 'server_version' label with current version.",
+          "labels": [
+            "server_version"
+          ]
+        },
+        "etcd_snap_db_fsync_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of fsyncing .snap.db file"
+        },
+        "etcd_snap_db_save_total_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The total latency distributions of v3 snapshot save"
+        },
+        "etcd_snap_fsync_duration_seconds": {
+          "type": "HISTOGRAM",
+          "help": "The latency distributions of fsync called by snap."
+        },
+        "go_gc_duration_seconds": {
+          "type": "SUMMARY",
+          "help": "A summary of the wall-time pause (stop-the-world) duration in garbage collection cycles."
+        },
+        "go_gc_gogc_percent": {
+          "type": "GAUGE",
+          "help": "Heap size target percentage configured by the user, otherwise 100. This value is set by the GOGC environment variable, and the runtime/debug.SetGCPercent function. Sourced from /gc/gogc:percent."
+        },
+        "go_gc_gomemlimit_bytes": {
+          "type": "GAUGE",
+          "help": "Go runtime memory limit configured by the user, otherwise math.MaxInt64. This value is set by the GOMEMLIMIT environment variable, and the runtime/debug.SetMemoryLimit function. Sourced from /gc/gomemlimit:bytes."
+        },
+        "go_goroutines": {
+          "type": "GAUGE",
+          "help": "Number of goroutines that currently exist."
+        },
+        "go_info": {
+          "type": "GAUGE",
+          "help": "Information about the Go environment.",
+          "labels": [
+            "version"
+          ]
+        },
+        "go_memstats_alloc_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes allocated in heap and currently in use. Equals to /memory/classes/heap/objects:bytes."
+        },
+        "go_memstats_alloc_bytes_total": {
+          "type": "COUNTER",
+          "help": "Total number of bytes allocated in heap until now, even if released already. Equals to /gc/heap/allocs:bytes."
+        },
+        "go_memstats_buck_hash_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes used by the profiling bucket hash table. Equals to /memory/classes/profiling/buckets:bytes."
+        },
+        "go_memstats_frees_total": {
+          "type": "COUNTER",
+          "help": "Total number of heap objects frees. Equals to /gc/heap/frees:objects + /gc/heap/tiny/allocs:objects."
+        },
+        "go_memstats_gc_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes used for garbage collection system metadata. Equals to /memory/classes/metadata/other:bytes."
+        },
+        "go_memstats_heap_alloc_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes allocated and currently in use, same as go_memstats_alloc_bytes. Equals to /memory/classes/heap/objects:bytes."
+        },
+        "go_memstats_heap_idle_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes waiting to be used. Equals to /memory/classes/heap/released:bytes + /memory/classes/heap/free:bytes."
+        },
+        "go_memstats_heap_inuse_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes that are in use. Equals to /memory/classes/heap/objects:bytes + /memory/classes/heap/unused:bytes"
+        },
+        "go_memstats_heap_objects": {
+          "type": "GAUGE",
+          "help": "Number of currently allocated objects. Equals to /gc/heap/objects:objects."
+        },
+        "go_memstats_heap_released_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes released to OS. Equals to /memory/classes/heap/released:bytes."
+        },
+        "go_memstats_heap_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes obtained from system. Equals to /memory/classes/heap/objects:bytes + /memory/classes/heap/unused:bytes + /memory/classes/heap/released:bytes + /memory/classes/heap/free:bytes."
+        },
+        "go_memstats_last_gc_time_seconds": {
+          "type": "GAUGE",
+          "help": "Number of seconds since 1970 of last garbage collection."
+        },
+        "go_memstats_mallocs_total": {
+          "type": "COUNTER",
+          "help": "Total number of heap objects allocated, both live and gc-ed. Semantically a counter version for go_memstats_heap_objects gauge. Equals to /gc/heap/allocs:objects + /gc/heap/tiny/allocs:objects."
+        },
+        "go_memstats_mcache_inuse_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes in use by mcache structures. Equals to /memory/classes/metadata/mcache/inuse:bytes."
+        },
+        "go_memstats_mcache_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes used for mcache structures obtained from system. Equals to /memory/classes/metadata/mcache/inuse:bytes + /memory/classes/metadata/mcache/free:bytes."
+        },
+        "go_memstats_mspan_inuse_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes in use by mspan structures. Equals to /memory/classes/metadata/mspan/inuse:bytes."
+        },
+        "go_memstats_mspan_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes used for mspan structures obtained from system. Equals to /memory/classes/metadata/mspan/inuse:bytes + /memory/classes/metadata/mspan/free:bytes."
+        },
+        "go_memstats_next_gc_bytes": {
+          "type": "GAUGE",
+          "help": "Number of heap bytes when next garbage collection will take place. Equals to /gc/heap/goal:bytes."
+        },
+        "go_memstats_other_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes used for other system allocations. Equals to /memory/classes/other:bytes."
+        },
+        "go_memstats_stack_inuse_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes obtained from system for stack allocator in non-CGO environments. Equals to /memory/classes/heap/stacks:bytes."
+        },
+        "go_memstats_stack_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes obtained from system for stack allocator. Equals to /memory/classes/heap/stacks:bytes + /memory/classes/os-stacks:bytes."
+        },
+        "go_memstats_sys_bytes": {
+          "type": "GAUGE",
+          "help": "Number of bytes obtained from system. Equals to /memory/classes/total:byte."
+        },
+        "go_sched_gomaxprocs_threads": {
+          "type": "GAUGE",
+          "help": "The current runtime.GOMAXPROCS setting, or the number of operating system threads that can execute user-level Go code simultaneously. Sourced from /sched/gomaxprocs:threads."
+        },
+        "go_threads": {
+          "type": "GAUGE",
+          "help": "Number of OS threads created."
+        },
+        "grpc_server_handled_total": {
+          "type": "COUNTER",
+          "help": "Total number of RPCs completed on the server, regardless of success or failure.",
+          "labels": [
+            "grpc_code",
+            "grpc_method",
+            "grpc_service",
+            "grpc_type"
+          ]
+        },
+        "grpc_server_msg_received_total": {
+          "type": "COUNTER",
+          "help": "Total number of RPC stream messages received on the server.",
+          "labels": [
+            "grpc_method",
+            "grpc_service",
+            "grpc_type"
+          ]
+        },
+        "grpc_server_msg_sent_total": {
+          "type": "COUNTER",
+          "help": "Total number of gRPC stream messages sent by the server.",
+          "labels": [
+            "grpc_method",
+            "grpc_service",
+            "grpc_type"
+          ]
+        },
+        "grpc_server_started_total": {
+          "type": "COUNTER",
+          "help": "Total number of RPCs started on the server.",
+          "labels": [
+            "grpc_method",
+            "grpc_service",
+            "grpc_type"
+          ]
+        },
+        "os_fd_limit": {
+          "type": "GAUGE",
+          "help": "The file descriptor limit."
+        },
+        "os_fd_used": {
+          "type": "GAUGE",
+          "help": "The number of used file descriptors."
+        },
+        "process_cpu_seconds_total": {
+          "type": "COUNTER",
+          "help": "Total user and system CPU time spent in seconds."
+        },
+        "process_max_fds": {
+          "type": "GAUGE",
+          "help": "Maximum number of open file descriptors."
+        },
+        "process_network_receive_bytes_total": {
+          "type": "COUNTER",
+          "help": "Number of bytes received by the process over the network."
+        },
+        "process_network_transmit_bytes_total": {
+          "type": "COUNTER",
+          "help": "Number of bytes sent by the process over the network."
+        },
+        "process_open_fds": {
+          "type": "GAUGE",
+          "help": "Number of open file descriptors."
+        },
+        "process_resident_memory_bytes": {
+          "type": "GAUGE",
+          "help": "Resident memory size in bytes."
+        },
+        "process_start_time_seconds": {
+          "type": "GAUGE",
+          "help": "Start time of the process since unix epoch in seconds."
+        },
+        "process_virtual_memory_bytes": {
+          "type": "GAUGE",
+          "help": "Virtual memory size in bytes."
+        },
+        "process_virtual_memory_max_bytes": {
+          "type": "GAUGE",
+          "help": "Maximum amount of virtual memory available in bytes."
+        },
+        "promhttp_metric_handler_requests_in_flight": {
+          "type": "GAUGE",
+          "help": "Current number of scrapes being served."
+        },
+        "promhttp_metric_handler_requests_total": {
+          "type": "COUNTER",
+          "help": "Total number of scrapes by HTTP status code.",
+          "labels": [
+            "code"
+          ]
+        }
+      }
+    },
+    {
+      "do": "gRPC methods with series",
+      "code": "OK",
+      "result": [
+        "etcdserverpb.Auth/AuthDisable unary",
+        "etcdserverpb.Auth/AuthEnable unary",
+        "etcdserverpb.Auth/AuthStatus unary",
+        "etcdserverpb.Auth/Authenticate unary",
+        "etcdserverpb.Auth/RoleAdd unary",
+        "etcdserverpb.Auth/RoleDelete unary",
+        "etcdserverpb.Auth/RoleGet unary",
+        "etcdserverpb.Auth/RoleGrantPermission unary",
+        "etcdserverpb.Auth/RoleList unary",
+        "etcdserverpb.Auth/RoleRevokePermission unary",
+        "etcdserverpb.Auth/UserAdd unary",
+        "etcdserverpb.Auth/UserChangePassword unary",
+        "etcdserverpb.Auth/UserDelete unary",
+        "etcdserverpb.Auth/UserGet unary",
+        "etcdserverpb.Auth/UserGrantRole unary",
+        "etcdserverpb.Auth/UserList unary",
+        "etcdserverpb.Auth/UserRevokeRole unary",
+        "etcdserverpb.Cluster/MemberAdd unary",
+        "etcdserverpb.Cluster/MemberList unary",
+        "etcdserverpb.Cluster/MemberPromote unary",
+        "etcdserverpb.Cluster/MemberRemove unary",
+        "etcdserverpb.Cluster/MemberUpdate unary",
+        "etcdserverpb.KV/Compact unary",
+        "etcdserverpb.KV/DeleteRange unary",
+        "etcdserverpb.KV/Put unary",
+        "etcdserverpb.KV/Range unary",
+        "etcdserverpb.KV/RangeStream server_stream",
+        "etcdserverpb.KV/Txn unary",
+        "etcdserverpb.Lease/LeaseGrant unary",
+        "etcdserverpb.Lease/LeaseKeepAlive bidi_stream",
+        "etcdserverpb.Lease/LeaseLeases unary",
+        "etcdserverpb.Lease/LeaseRevoke unary",
+        "etcdserverpb.Lease/LeaseTimeToLive unary",
+        "etcdserverpb.Maintenance/Alarm unary",
+        "etcdserverpb.Maintenance/Defragment unary",
+        "etcdserverpb.Maintenance/Downgrade unary",
+        "etcdserverpb.Maintenance/Hash unary",
+        "etcdserverpb.Maintenance/HashKV unary",
+        "etcdserverpb.Maintenance/MoveLeader unary",
+        "etcdserverpb.Maintenance/Snapshot server_stream",
+        "etcdserverpb.Maintenance/Status unary",
+        "etcdserverpb.Watch/Watch bidi_stream",
+        "grpc.health.v1.Health/Check unary",
+        "grpc.health.v1.Health/List unary",
+        "grpc.health.v1.Health/Watch server_stream",
+        "v3electionpb.Election/Campaign unary",
+        "v3electionpb.Election/Leader unary",
+        "v3electionpb.Election/Observe server_stream",
+        "v3electionpb.Election/Proclaim unary",
+        "v3electionpb.Election/Resign unary",
+        "v3lockpb.Lock/Lock unary",
+        "v3lockpb.Lock/Unlock unary"
+      ]
+    },
+    {
+      "do": "put",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "range",
+      "code": "OK"
+    },
+    {
+      "do": "read-only txn",
+      "code": "OK"
+    },
+    {
+      "do": "txn with a put and a range",
+      "code": "OK"
+    },
+    {
+      "do": "lease grant",
+      "code": "OK"
+    },
+    {
+      "do": "lease revoke",
+      "code": "OK"
+    },
+    {
+      "do": "counters moved by the calls",
+      "code": "OK",
+      "result": {
+        "etcd_debugging_lease_granted_total{}": 1,
+        "etcd_debugging_lease_revoked_total{}": 1,
+        "etcd_debugging_lease_ttl_total{}": 1,
+        "etcd_debugging_mvcc_current_revision{}": 2,
+        "etcd_debugging_mvcc_keys_total{}": 2,
+        "etcd_debugging_mvcc_total_put_size_in_bytes{}": 61,
+        "etcd_mvcc_put_total{}": 2,
+        "etcd_mvcc_range_total{}": 3,
+        "etcd_mvcc_txn_total{}": 1,
+        "etcd_network_client_grpc_received_bytes_total{}": 181,
+        "etcd_server_apply_duration_seconds{op,LeaseGrant,success,true}": 1,
+        "etcd_server_apply_duration_seconds{op,LeaseRevoke,success,true}": 1,
+        "etcd_server_apply_duration_seconds{op,Put,success,true}": 1,
+        "etcd_server_apply_duration_seconds{op,Txn,success,true}": 1,
+        "etcd_server_client_requests_total{type,unary,client_api_version,unknown}": 6,
+        "etcd_server_range_duration_seconds{success,true}": 1,
+        "etcd_server_request_duration_seconds{type,LeaseGrant,success,true}": 1,
+        "etcd_server_request_duration_seconds{type,LeaseRevoke,success,true}": 1,
+        "etcd_server_request_duration_seconds{type,Put,success,true}": 1,
+        "etcd_server_request_duration_seconds{type,Range,success,true}": 1,
+        "etcd_server_request_duration_seconds{type,ReadonlyTxn,success,true}": 1,
+        "etcd_server_request_duration_seconds{type,Txn,success,true}": 1,
+        "grpc_server_handled_total{grpc_method,LeaseRevoke,grpc_code,OK}": 1,
+        "grpc_server_msg_received_total{grpc_method,Txn}": 2,
+        "grpc_server_msg_sent_total{grpc_method,Txn}": 2,
+        "grpc_server_started_total{grpc_method,Put}": 1
+      }
+    },
+    {
+      "do": "POST /metrics",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; version=0.0.4; charset=utf-8; escaping=underscores"
+      }
+    },
+    {
+      "do": "HEAD /health",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "cors": "*",
+        "body": ""
+      }
+    },
+    {
+      "do": "HEAD /version",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "cors": "*",
+        "body": ""
+      }
+    },
+    {
+      "do": "POST /debug/vars",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "cors": "*",
+        "body": "Method Not Allowed\n"
+      }
+    },
+    {
+      "do": "pprof is off",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "cors": "*",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "GET /debug/vars",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "application/json; charset=utf-8",
+        "vars": [
+          "cmdline",
+          "file_descriptor_limit",
+          "memstats",
+          "raft.status"
+        ],
+        "raft": [
+          "applied",
+          "commit",
+          "id",
+          "lead",
+          "leadtransferee",
+          "progress",
+          "raftState",
+          "term",
+          "vote"
+        ],
+        "voter": true
+      }
+    }
+  ],
+  "move-leader": [
+    {
+      "do": "move to itself",
+      "code": "OK",
+      "result": {
+        "header": false
+      }
+    },
+    {
+      "do": "move to a member that does not exist",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: bad leader transferee"
+    },
+    {
+      "do": "move to a learner",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: bad leader transferee"
+    }
+  ],
   "range-stream": [
     {
       "do": "put small key 0",
@@ -4071,6 +6168,23 @@
         ],
         "revision": 0,
         "count": 25
+      }
+    }
+  ],
+  "snapshot": [
+    {
+      "do": "snapshot",
+      "code": "OK",
+      "result": {
+        "mod512": 32,
+        "digest": true,
+        "versions": [
+          "3.7.0"
+        ],
+        "remaining": [
+          0,
+          0
+        ]
       }
     }
   ]

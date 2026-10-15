@@ -1,0 +1,45 @@
+{
+  "unix": [
+    {
+      "do": "put over the socket",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "get it back",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "serializable get",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    }
+  ]
+}

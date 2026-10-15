@@ -140,13 +140,15 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
 	})
-	_, err = pb.NewAuthClient(conn).Authenticate(context.Background(), &pb.AuthenticateRequest{})
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("Authenticate: %v", err)
-	}
-	err = conn.Invoke(context.Background(), "/nothing.Here/Call", &pb.RangeRequest{}, &pb.RangeResponse{})
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("unknown service: %v", err)
+	for path, want := range map[string]string{
+		"/nothing.Here/Call":        "unknown service nothing.Here",
+		"/etcdserverpb.KV/Nope":     "unknown method Nope for service etcdserverpb.KV",
+		"/etcdserverpb.Watch/Range": "unknown method Range for service etcdserverpb.Watch",
+	} {
+		err = conn.Invoke(context.Background(), path, &pb.RangeRequest{}, &pb.RangeResponse{})
+		if status.Code(err) != codes.Unimplemented || status.Convert(err).Message() != want {
+			t.Fatalf("%s: %v, want Unimplemented %q", path, err, want)
+		}
 	}
 	ms, err := pb.NewClusterClient(conn).MemberList(context.Background(), &pb.MemberListRequest{})
 	if err != nil || ms.Header.MemberId != 1 {
@@ -324,7 +326,7 @@ func TestRawFrames(t *testing.T) {
 	call(1, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("1")})
 	must(fr.WriteRSTStream(1, http2.ErrCodeCancel))
 	call(3, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("raw"), Value: []byte("2")})
-	call(5, "/etcdserverpb.Maintenance/Defragment", &pb.DefragmentRequest{})
+	call(5, "/etcdserverpb.Maintenance/Nothing", &pb.DefragmentRequest{})
 	// A second end of the same stream is a stream error, not a second put.
 	call(7, "/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("once"), Value: []byte("1")})
 	must(fr.WriteData(7, true, nil))

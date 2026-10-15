@@ -13,10 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -24,18 +27,12 @@ import (
 
 // HTTP/2 limits of one client connection.
 const (
-	// maxStreams is the limit of concurrent streams per connection. One
-	// kube-apiserver connection carries many watches; etcd advertises
-	// math.MaxUint32.
-	maxStreams = 1 << 20
-	// streamWindow is the receive window of each stream. It is above the
-	// largest request, so a unary request never waits for a window update.
-	streamWindow = 4 << 20
+	// minStreamWindow is the smallest receive window of a stream; see
+	// Server.streamWindow.
+	minStreamWindow = 4 << 20
 	// connWindow is the receive window of the connection. Data is credited
-	// back as it arrives; streamWindow bounds what one stream holds.
+	// back as it arrives; the stream window bounds what one stream holds.
 	connWindow = 16 << 20
-	// maxRecvMsg is etcd's request limit plus the room it leaves for gRPC.
-	maxRecvMsg = core.MaxRequestBytes + 512*1024
 	// sendQueue is how many encoded bytes one stream may queue for the
 	// writer before its Send waits.
 	sendQueue = 4 << 20
@@ -53,9 +50,16 @@ const (
 type conn struct {
 	s *Server
 	// metrics count this connection's calls for /metrics.
-	metrics *metrics
-	nc      net.Conn
-	raw     net.Conn // nc without TLS, closed to abort a stuck write
+	metrics *connMetrics
+	// apiVersion is the client API version of the last call, and
+	// apiCounters its client_requests_total counters; guarded by mu.
+	apiVersion  string
+	apiCounters [2]prometheus.Counter
+	nc          net.Conn
+	raw         net.Conn // nc without TLS, closed to abort a stuck write
+	// traffic is what the connection serves: gRPC alone answers HTTP
+	// requests as grpc-go does, HTTP alone takes gRPC calls as HTTP.
+	traffic Traffic
 	fr      *http2.Framer
 	br      *bufio.Reader
 	bw      *bufio.Writer
@@ -97,6 +101,15 @@ type conn struct {
 	waitingReplies atomic.Int64
 	// atNode is the calls the node has and has not answered.
 	atNode map[*stream]struct{}
+
+	// lastRead is when the reader last got a frame, in Unix nanoseconds,
+	// and wrote is set when the writer sends HEADERS or DATA, which
+	// forgives the client's pings (keepalive.go). lastPing and
+	// pingStrikes are the reader's.
+	lastRead    atomic.Int64
+	wrote       atomic.Bool
+	lastPing    time.Time
+	pingStrikes int
 }
 
 // ctrlKind is the kind of a frame other than HEADERS and DATA.
@@ -109,6 +122,7 @@ const (
 	ctrlWindowUpdate
 	ctrlRST
 	ctrlGoAway
+	ctrlPing
 )
 
 // ctrlFrame is a frame other than HEADERS and DATA.
@@ -117,6 +131,8 @@ type ctrlFrame struct {
 	id   uint32 // stream, or last stream for GOAWAY
 	val  uint32 // window increment or error code
 	ping [8]byte
+	// debug is the debug data of a GOAWAY.
+	debug string
 }
 
 // caller is the client of a connection as etcd's size limit for writes
@@ -138,7 +154,7 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newMetrics(),
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
@@ -149,6 +165,7 @@ func newConn(s *Server, nc, raw net.Conn) *conn {
 		initWin:  65535,
 		maxFrame: 16384,
 	}
+	c.lastRead.Store(time.Now().UnixNano())
 	c.caller = caller(s.cfg.TLS, nc)
 	c.fr = http2.NewFramer(c.bw, c.br)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
@@ -166,9 +183,16 @@ func (c *conn) serve() {
 		defer c.close()
 		_ = c.writeLoop()
 	})
+	if c.traffic == TrafficGRPC {
+		wg.Go(c.keepalive)
+	}
 	err := c.readLoop()
-	if ce, ok := errors.AsType[http2.ConnectionError](err); ok {
-		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ce)})
+	ga, ok := errors.AsType[goAwayError](err)
+	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {
+		ga, ok = goAwayError{code: http2.ErrCode(ce)}, true
+	}
+	if ok {
+		c.queueCtrl(ctrlFrame{kind: ctrlGoAway, id: c.lastID(), val: uint32(ga.code), debug: ga.debug})
 		c.mu.Lock()
 		c.goingAway = true
 		c.mu.Unlock()
@@ -189,7 +213,7 @@ func (c *conn) close() {
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
-			st.countEnd(codes.Canceled)
+			st.countEnd(canceled)
 			st.reset = true
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -290,6 +314,7 @@ func (c *conn) readLoop() error {
 		if err != nil {
 			return err
 		}
+		c.lastRead.Store(time.Now().UnixNano())
 		f, err := c.fr.ReadFrameForHeader(fh)
 		if err != nil {
 			if _, ok := errors.AsType[http2.StreamError](err); ok && fh.Type == http2.FrameHeaders {
@@ -328,6 +353,7 @@ func (c *conn) onFrame(f http2.Frame) error {
 	case *http2.PingFrame:
 		if !f.IsAck() {
 			c.queueCtrl(ctrlFrame{kind: ctrlPingAck, ping: f.Data})
+			return c.checkPing()
 		}
 	case *http2.RSTStreamFrame:
 		c.resetStream(f.StreamID, 0)
@@ -388,7 +414,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	st := c.streams[id]
 	if st != nil {
 		delete(c.streams, id)
-		st.countEnd(codes.Canceled)
+		st.countEnd(canceled)
 		st.reset = true
 		if st.deadline != nil {
 			st.deadline.Stop()
@@ -429,10 +455,24 @@ type reqHeaders struct {
 	// gateway: the call carries grpcgateway-accept metadata, for which
 	// etcd ignores the client certificate's identity.
 	gateway bool
-	size    int
-	regular bool  // a regular field came; pseudo-fields must come first
-	pseudo  uint8 // bits of the pseudo-fields seen
-	bad     bool  // a field broke HTTP/2's rules
+	// token is the call's auth token: etcd's "token" metadata, or its
+	// "authorization", without "Bearer " either way.
+	token string
+	// encoding is the call's grpc-encoding, and apiVersion its first
+	// client-api-version.
+	encoding      string
+	apiVersion    string
+	hasAPIVersion bool
+	// traceMD is the call's metadata that tracing reads (tracing.go).
+	traceMD metadata.MD
+	// authority is :authority, and fields the regular fields of an HTTP
+	// request; gRPC calls keep none.
+	authority string
+	fields    []hpack.HeaderField
+	size      int
+	regular   bool  // a regular field came; pseudo-fields must come first
+	pseudo    uint8 // bits of the pseudo-fields seen
+	bad       bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -504,7 +544,7 @@ func (c *conn) onField(f hpack.HeaderField) {
 		case ":scheme":
 			bit = 4
 		case ":authority":
-			bit = 8
+			bit, h.authority = 8, f.Value
 		default:
 			h.bad = true
 		}
@@ -520,6 +560,15 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.bad = true
 		return
 	}
+	if isHTTPPath(h.path) {
+		h.fields = append(h.fields, f)
+	}
+	if traceKey(f.Name) {
+		if h.traceMD == nil {
+			h.traceMD = metadata.MD{}
+		}
+		h.traceMD.Append(f.Name, f.Value)
+	}
 	switch f.Name {
 	case "content-type":
 		h.contentType = f.Value
@@ -529,6 +578,18 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.needLeader = h.needLeader || f.Value == "true"
 	case "grpcgateway-accept":
 		h.gateway = true
+	case "grpc-encoding":
+		h.encoding = f.Value
+	case "client-api-version":
+		if !h.hasAPIVersion {
+			h.apiVersion, h.hasAPIVersion = f.Value, true
+		}
+	case "token":
+		h.token = strings.TrimPrefix(f.Value, "Bearer ")
+	case "authorization":
+		if h.token == "" {
+			h.token = strings.TrimPrefix(f.Value, "Bearer ")
+		}
 	}
 }
 
@@ -565,15 +626,19 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 	}
 	c.mu.Lock()
 	c.maxID = id
-	refuse := c.goingAway || len(c.streams) >= maxStreams
+	refuse := c.goingAway || uint64(len(c.streams)) >= uint64(c.s.maxStreams)
 	c.mu.Unlock()
 	if refuse {
 		c.resetStream(id, http2.ErrCodeRefusedStream)
 		return nil
 	}
 	st := c.newStream(h)
-	if st.rpc == nil && st.httpPath == "" {
-		// gRPC to an unknown method; its error is already queued.
+	if st.done.Load() || (st.rpc == nil && st.httpPath == "") {
+		// Refused, or gRPC to an unknown method: its error is already
+		// queued, and no handler runs.
+		if st.cancel != nil {
+			st.cancel()
+		}
 		if h.ended {
 			return c.onEnd(st)
 		}
@@ -581,6 +646,9 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 	}
 	if st.rpc != nil && st.rpc.stream != nil {
 		go c.runStream(st)
+	}
+	if st.httpPath != "" {
+		go c.runHTTP(st)
 	}
 	if h.ended {
 		return c.onEnd(st)
@@ -590,8 +658,8 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway}
-	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
+	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
+	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc") && c.traffic != TrafficHTTP
 	if grpc {
 		st.rpc = methods[h.path]
 	} else {
@@ -599,6 +667,8 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		if st.httpPath == "" {
 			st.httpPath = "/"
 		}
+		st.authority, st.httpFields = h.authority, h.fields
+		st.inSignal, st.space = make(chan struct{}, 1), make(chan struct{}, 1)
 	}
 	// A call that the node runs needs no context of its own: the node
 	// answers it within its request timeout, the deadline timer below ends
@@ -621,7 +691,8 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	c.streams[id] = st
 	if st.rpc != nil {
 		st.calls = &c.metrics.calls[st.rpc.idx]
-		st.calls.started.add(1)
+		st.countStart()
+		st.beginTrace(h)
 	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
@@ -629,8 +700,23 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		st.deadline = time.AfterFunc(h.timeout, st.expire)
 	}
 	c.mu.Unlock()
-	if grpc && st.rpc == nil {
+	switch {
+	case grpc && st.rpc == nil:
 		st.finish(unknownMethod(h.path))
+	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
+		// grpc-go's answer before it runs a handler.
+		st.finish(status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding))
+	case st.rpc != nil && st.rpc.learner == learnerNever && c.s.learner():
+		// As etcd's interceptors, a learner serves only Status,
+		// serializable ranges and snapshots.
+		st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
+	case st.rpc != nil && validAPIVersion(h.apiVersion) != nil:
+		st.finish(validAPIVersion(h.apiVersion))
+	case st.rpc != nil:
+		// etcd's interceptor counts a call it lets through.
+		c.mu.Lock()
+		c.clientRequests(st.rpc.stream != nil, h.apiVersion).Inc()
+		c.mu.Unlock()
 	}
 	return st
 }
@@ -646,7 +732,7 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		// messages; a client that sends past it breaks flow control.
 		// Padding is never stored, so it is credited back at once.
 		st.recvUsed += len(f.Data())
-		overflow = st.recvUsed > streamWindow
+		overflow = st.recvUsed > c.s.streamWindow
 		if pad := int(f.Length) - len(f.Data()); pad > 0 && !overflow && !halfClosed {
 			c.addCtrl(ctrlFrame{kind: ctrlWindowUpdate, id: st.id, val: uint32(pad)})
 		}
@@ -663,7 +749,12 @@ func (c *conn) onData(f *http2.DataFrame) error {
 		c.resetStream(f.StreamID, http2.ErrCodeFlowControl)
 		return nil
 	}
-	if st.rpc != nil && !st.done.Load() {
+	switch {
+	case st.httpPath != "":
+		if d := f.Data(); len(d) > 0 {
+			st.deliver(append([]byte(nil), d...), len(d))
+		}
+	case st.rpc != nil && !st.done.Load():
 		if err := st.receive(f.Data()); err != nil {
 			st.finish(err)
 		}
@@ -687,9 +778,7 @@ func (c *conn) onEnd(st *stream) error {
 	default:
 	}
 	switch {
-	case st.done.Load():
-	case st.httpPath != "":
-		go c.runHTTP(st)
+	case st.done.Load(), st.httpPath != "":
 	case st.rpc.op != nil:
 		c.admit(st)
 	case st.rpc.unary != nil:
@@ -739,6 +828,10 @@ var (
 	grpcHeaders = headerBlock(
 		hpack.HeaderField{Name: ":status", Value: "200"},
 		hpack.HeaderField{Name: "content-type", Value: "application/grpc"})
+	gzipHeaders = headerBlock(
+		hpack.HeaderField{Name: ":status", Value: "200"},
+		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
+		hpack.HeaderField{Name: "grpc-encoding", Value: gzipName})
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 

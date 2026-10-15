@@ -1,0 +1,691 @@
+{
+  "auth": [
+    {
+      "do": "status of a new server",
+      "code": "OK",
+      "result": {
+        "enabled": false,
+        "revision": 1
+      }
+    },
+    {
+      "do": "enable without root",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: root user does not exist"
+    },
+    {
+      "do": "add root",
+      "code": "OK"
+    },
+    {
+      "do": "add root again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: user name already exists"
+    },
+    {
+      "do": "add a user without a name",
+      "code": "InvalidArgument",
+      "message": "etcdserver: user name is empty"
+    },
+    {
+      "do": "enable while root has no root role",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: root user does not have root role"
+    },
+    {
+      "do": "grant a role that does not exist",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: role name not found"
+    },
+    {
+      "do": "grant root the root role",
+      "code": "OK"
+    },
+    {
+      "do": "role list before the root role is added",
+      "code": "OK",
+      "result": null
+    },
+    {
+      "do": "add the root role",
+      "code": "OK"
+    },
+    {
+      "do": "add an empty role",
+      "code": "InvalidArgument",
+      "message": "etcdserver: role name is empty"
+    },
+    {
+      "do": "add role rw",
+      "code": "OK"
+    },
+    {
+      "do": "add role rw again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: role name already exists"
+    },
+    {
+      "do": "grant rw readwrite on [a, c)",
+      "code": "OK"
+    },
+    {
+      "do": "grant rw read on c",
+      "code": "OK"
+    },
+    {
+      "do": "grant rw write on d",
+      "code": "OK"
+    },
+    {
+      "do": "grant a permission with a bad range",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid auth management"
+    },
+    {
+      "do": "grant a permission to a missing role",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: role name not found"
+    },
+    {
+      "do": "add role reader",
+      "code": "OK"
+    },
+    {
+      "do": "grant reader read on the prefix p/",
+      "code": "OK"
+    },
+    {
+      "do": "add alice",
+      "code": "OK"
+    },
+    {
+      "do": "add the client's user without a password",
+      "code": "OK"
+    },
+    {
+      "do": "grant alice rw",
+      "code": "OK"
+    },
+    {
+      "do": "grant alice rw again",
+      "code": "OK"
+    },
+    {
+      "do": "grant client reader",
+      "code": "OK"
+    },
+    {
+      "do": "put while auth is off",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "status before enabling",
+      "code": "OK",
+      "result": {
+        "enabled": false,
+        "revision": 14
+      }
+    },
+    {
+      "do": "enable",
+      "code": "OK"
+    },
+    {
+      "do": "enable again",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "status after enabling",
+      "code": "OK",
+      "result": {
+        "enabled": true,
+        "revision": 14
+      }
+    },
+    {
+      "do": "client reads the prefix",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "p/x",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "client writes the prefix",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "client reads a",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "client gets itself",
+      "code": "OK",
+      "result": [
+        "reader"
+      ]
+    },
+    {
+      "do": "client lists the users",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "authenticate a user without a password",
+      "code": "Unknown",
+      "message": "auth: authentication failed, password was given for no password user"
+    },
+    {
+      "do": "authenticate with a wrong password",
+      "code": "InvalidArgument",
+      "message": "etcdserver: authentication failed, invalid user ID or password"
+    },
+    {
+      "do": "authenticate a missing user",
+      "code": "InvalidArgument",
+      "message": "etcdserver: authentication failed, invalid user ID or password"
+    },
+    {
+      "do": "authenticate alice",
+      "code": "OK",
+      "result": {
+        "form": "simple"
+      }
+    },
+    {
+      "do": "read with a bogus token",
+      "code": "Unauthenticated",
+      "message": "etcdserver: invalid auth token"
+    },
+    {
+      "do": "alice puts a",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "alice puts b with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "alice puts c",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice puts d",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "alice puts d with prev_kv",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice reads [a, c)",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "1",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "alice reads [a, c] as one range",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "1",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "alice reads [a, d)",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice reads d",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice reads everything",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice deletes b",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "alice deletes [a, d)",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice's txn within her keys",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 6,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "alice's txn comparing c",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "alice's txn comparing d",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice's txn with a put on c in the branch not taken",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice compacts",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice watches a",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "createdRevision": 6,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "1",
+              "create": 2,
+              "mod": 2,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "alice watches d",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "createdRevision": 6,
+        "canceled": true,
+        "cancelRevision": 6,
+        "cancelReason": "rpc error: code = PermissionDenied desc = etcdserver: permission denied"
+      }
+    },
+    {
+      "do": "alice grants a lease",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "lease": 1,
+        "ttl": 600
+      }
+    },
+    {
+      "do": "alice puts a with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "alice's lease time to live",
+      "code": "OK",
+      "result": 1
+    },
+    {
+      "do": "alice's status",
+      "code": "OK",
+      "result": true
+    },
+    {
+      "do": "alice's hash",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice lists the alarms",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "alice gets herself",
+      "code": "OK",
+      "result": [
+        "rw"
+      ]
+    },
+    {
+      "do": "alice gets root",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice gets her role",
+      "code": "OK",
+      "result": [
+        {
+          "type": "READWRITE",
+          "key": "/diff/000000000001/auth/a",
+          "end": "/diff/000000000001/auth/c"
+        },
+        {
+          "type": "READ",
+          "key": "/diff/000000000001/auth/c"
+        },
+        {
+          "type": "WRITE",
+          "key": "/diff/000000000001/auth/d"
+        }
+      ]
+    },
+    {
+      "do": "alice gets root's role",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice lists the users",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice enables",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "alice disables",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "authenticate root",
+      "code": "OK",
+      "result": {
+        "form": "simple"
+      }
+    },
+    {
+      "do": "root reads everything under the case",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 4
+      }
+    },
+    {
+      "do": "root lists the users",
+      "code": "OK",
+      "result": [
+        "alice",
+        "client",
+        "root"
+      ]
+    },
+    {
+      "do": "root lists the roles",
+      "code": "OK",
+      "result": [
+        "reader",
+        "root",
+        "rw"
+      ]
+    },
+    {
+      "do": "root gets the root role",
+      "code": "OK",
+      "result": [
+        {
+          "type": "READWRITE",
+          "key": "",
+          "end": "\u0000"
+        }
+      ]
+    },
+    {
+      "do": "root gets rw",
+      "code": "OK",
+      "result": [
+        {
+          "type": "READWRITE",
+          "key": "/diff/000000000001/auth/a",
+          "end": "/diff/000000000001/auth/c"
+        },
+        {
+          "type": "READ",
+          "key": "/diff/000000000001/auth/c"
+        },
+        {
+          "type": "WRITE",
+          "key": "/diff/000000000001/auth/d"
+        }
+      ]
+    },
+    {
+      "do": "root gets alice",
+      "code": "OK",
+      "result": [
+        "rw"
+      ]
+    },
+    {
+      "do": "root revokes rw's write on d",
+      "code": "OK"
+    },
+    {
+      "do": "root revokes it again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: permission is not granted to the role"
+    },
+    {
+      "do": "rw after the revoke",
+      "code": "OK",
+      "result": [
+        {
+          "type": "READWRITE",
+          "key": "/diff/000000000001/auth/a",
+          "end": "/diff/000000000001/auth/c"
+        },
+        {
+          "type": "READ",
+          "key": "/diff/000000000001/auth/c"
+        }
+      ]
+    },
+    {
+      "do": "root revokes root from root",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid auth management"
+    },
+    {
+      "do": "root deletes root",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid auth management"
+    },
+    {
+      "do": "root deletes the root role",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid auth management"
+    },
+    {
+      "do": "root changes alice's password",
+      "code": "OK"
+    },
+    {
+      "do": "root gives client a password",
+      "code": "OK"
+    },
+    {
+      "do": "alice's old token after the new password",
+      "code": "Unauthenticated",
+      "message": "etcdserver: invalid auth token"
+    },
+    {
+      "do": "authenticate alice with the old password",
+      "code": "InvalidArgument",
+      "message": "etcdserver: authentication failed, invalid user ID or password"
+    },
+    {
+      "do": "authenticate alice with the new password",
+      "code": "OK",
+      "result": {
+        "form": "simple"
+      }
+    },
+    {
+      "do": "alice puts d after the revoke",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "root revokes rw from alice",
+      "code": "OK"
+    },
+    {
+      "do": "root revokes it again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: role is not granted to the user"
+    },
+    {
+      "do": "alice puts a without a role",
+      "code": "PermissionDenied",
+      "message": "etcdserver: permission denied"
+    },
+    {
+      "do": "root deletes rw",
+      "code": "OK"
+    },
+    {
+      "do": "root deletes alice",
+      "code": "OK"
+    },
+    {
+      "do": "root deletes alice again",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: user name not found"
+    },
+    {
+      "do": "a deleted user's token",
+      "code": "Unauthenticated",
+      "message": "etcdserver: invalid auth token"
+    },
+    {
+      "do": "status before disabling",
+      "code": "OK",
+      "result": {
+        "enabled": true,
+        "revision": 20
+      }
+    },
+    {
+      "do": "root disables",
+      "code": "OK"
+    },
+    {
+      "do": "status after disabling",
+      "code": "OK",
+      "result": {
+        "enabled": false,
+        "revision": 21
+      }
+    },
+    {
+      "do": "put after disabling",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "user list after disabling",
+      "code": "OK",
+      "result": [
+        "client",
+        "root"
+      ]
+    },
+    {
+      "do": "authenticate after disabling",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: authentication is not enabled"
+    }
+  ]
+}

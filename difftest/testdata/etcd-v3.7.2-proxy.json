@@ -1,0 +1,217 @@
+{
+  "namespace": [
+    {
+      "do": "put a",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "get a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "the server has a under the namespace",
+      "code": "OK",
+      "result": {
+        "keys": [
+          "/ns/a=1"
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "range of the case's keys",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "2",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          }
+        ],
+        "count": 2
+      }
+    },
+    {
+      "do": "txn on a that puts c",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 3,
+            "put": true
+          },
+          {
+            "range": {
+              "revision": 3,
+              "kvs": [
+                {
+                  "key": "b",
+                  "value": "2",
+                  "create": 2,
+                  "mod": 2,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "count every key of the namespace",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "count": 3
+      }
+    },
+    {
+      "do": "watch the case's keys from its start",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "b",
+              "value": "2",
+              "create": 2,
+              "mod": 2,
+              "version": 1
+            }
+          },
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "c",
+              "value": "3",
+              "create": 3,
+              "mod": 3,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "grant",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "put d with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "time to live with keys",
+      "code": "OK",
+      "result": {
+        "grantedTTL": 60,
+        "keys": [
+          "d"
+        ]
+      }
+    },
+    {
+      "do": "revoke",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "d went with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "count": 0
+      }
+    },
+    {
+      "do": "delete the case's keys",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "deleted": 3,
+        "prevKVs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "2",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "3",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "the server has none of them left",
+      "code": "OK",
+      "result": {
+        "count": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "quota": [
+    {
+      "do": "put 100 KiB values until one is refused",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "alarms after the refusal",
+      "code": "OK",
+      "result": [
+        {
+          "alarm": "NOSPACE",
+          "own": true
+        }
+      ]
+    },
+    {
+      "do": "status",
+      "code": "OK",
+      "result": {
+        "quota": 1048576,
+        "errors": 1
+      }
+    },
+    {
+      "do": "small put under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "txn with a put under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "grant under NOSPACE",
+      "code": "ResourceExhausted",
+      "message": "etcdserver: mvcc: database space exceeded"
+    },
+    {
+      "do": "delete under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "get the deleted key under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "count": 0
+      }
+    },
+    {
+      "do": "compact under NOSPACE",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "deactivate the alarm",
+      "code": "OK",
+      "result": [
+        {
+          "alarm": "NOSPACE",
+          "own": true
+        }
+      ]
+    },
+    {
+      "do": "list after deactivating",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    }
+  ]
+}

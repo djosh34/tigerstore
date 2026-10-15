@@ -1,6 +1,7 @@
 package core
 
 import (
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -13,6 +14,14 @@ import (
 // kept alive after the leader decided (newExpiry). A new leader gives
 // every lease its full TTL again, so a leader change can make a lease live
 // longer, never shorter.
+//
+// With LeaseCheckpointTicks, as with etcd's LeaseCheckpoint feature, the
+// leader writes a lease's remaining TTL through Raft that long after it
+// armed it, again after each checkpoint, while more than that is left.
+// The remaining TTL is replicated state, held in checkpoints, and a new
+// leader arms a lease for it instead of its full TTL; a keepalive ends
+// it, and schedules a checkpoint if none is due. etcd checkpoints a lease
+// whose remaining TTL is below its TTL only.
 
 // leaseRetryTicks is how long the leader waits for an expiry revoke to
 // apply before it proposes it again; Raft may drop a proposal.
@@ -23,18 +32,71 @@ const leaseRetryTicks = 10
 // never expires early.
 func (n *Node) arm(id int64) {
 	if l, ok := n.state.leases[id]; ok {
-		l.expiry = n.now + l.ttl*int64(n.cfg.TicksPerSecond) + 1
+		l.expiry = n.now + n.cfg.ticksOf(l.left()) + 1
 		l.revokeAt = 0
 	}
 }
+
+// left is the TTL a lease gets when the leader arms it: the remaining
+// TTL of its last checkpoint, or else its TTL.
+func (l *lease) left() int64 {
+	if l.remaining > 0 {
+		return l.remaining
+	}
+	return l.ttl
+}
+
+// scheduleCheckpoint is etcd's scheduleCheckpointIfNeeded: on the leader,
+// a lease with more than LeaseCheckpointTicks left gets a checkpoint
+// then.
+func (n *Node) scheduleCheckpoint(id int64) {
+	every := int64(n.cfg.LeaseCheckpointTicks)
+	l, ok := n.state.leases[id]
+	if !ok || every == 0 || !n.isLeader || n.cfg.ticksOf(l.left()) <= every {
+		return
+	}
+	l.checkpointAt = n.now + every
+}
+
+// checkpointLeases proposes the checkpoints that are due, on the leader,
+// with each lease's remaining TTL in whole seconds, rounded up, as etcd's
+// findDueScheduledCheckpoints does.
+func (n *Node) checkpointLeases() {
+	if n.cfg.LeaseCheckpointTicks == 0 || !n.isLeader || !n.capable() {
+		return
+	}
+	var cps []*pb.LeaseCheckpoint
+	for _, l := range n.state.sortedLeases() {
+		if l.checkpointAt == 0 || l.checkpointAt > n.now || l.expiry == 0 {
+			continue
+		}
+		l.checkpointAt = 0
+		left := n.cfg.ceilSeconds(l.expiry - n.now - 1)
+		if left >= l.ttl {
+			continue
+		}
+		cps = append(cps, &pb.LeaseCheckpoint{ID: l.id, Remaining_TTL: left})
+		if len(cps) == maxLeaseCheckpoints {
+			n.proposeInternal(&pb.LeaseCheckpointRequest{Checkpoints: cps})
+			cps = nil
+		}
+	}
+	if len(cps) > 0 {
+		n.proposeInternal(&pb.LeaseCheckpointRequest{Checkpoints: cps})
+	}
+}
+
+// maxLeaseCheckpoints is etcd's maxLeaseCheckpointBatchSize.
+const maxLeaseCheckpoints = 1000
 
 // leadershipChanged arms every lease when this node becomes leader and
 // disarms them when it stops being leader.
 func (n *Node) leadershipChanged() {
 	for _, l := range n.state.sortedLeases() {
-		l.expiry, l.revokeAt = 0, 0
+		l.expiry, l.revokeAt, l.checkpointAt = 0, 0, 0
 		if n.isLeader {
 			n.arm(l.id)
+			n.scheduleCheckpoint(l.id)
 		}
 	}
 }
@@ -47,8 +109,7 @@ func (n *Node) remaining(id int64) int64 {
 	if !ok || !n.isLeader || l.expiry == 0 {
 		return -1
 	}
-	tps := int64(n.cfg.TicksPerSecond)
-	return max(0, (l.expiry-n.now-1)/tps)
+	return max(0, n.cfg.floorSeconds(l.expiry-n.now-1))
 }
 
 // expireLeases proposes the revoke of every expired lease, on the leader.

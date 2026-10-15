@@ -10,6 +10,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -44,7 +45,8 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	for _, e := range ents {
-		if len(e.GetData()) == 0 {
+		// Configuration changes, which start the log, change no key.
+		if len(e.GetData()) == 0 || e.GetType() != raftpb.EntryNormal {
 			continue
 		}
 		if err := core.DecodeBatch(e.GetData(), func(_, _, _ uint64, op proto.Message) error {

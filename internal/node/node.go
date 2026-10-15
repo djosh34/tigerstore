@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/fs"
 	"math/rand/v2"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -39,6 +42,20 @@ import (
 type Config struct {
 	Core    core.Config
 	DataDir string
+	// WalDir is etcd's --wal-dir: where the log goes instead of
+	// <DataDir>/wal.
+	WalDir string
+	// UnsafeNoFsync is etcd's --unsafe-no-fsync: the log never syncs, so
+	// a crash can lose acknowledged writes.
+	UnsafeNoFsync bool
+	// WarningApplyDuration is etcd's --warning-apply-duration: an apply
+	// that takes longer is logged and counted in
+	// etcd_server_slow_apply_total; 0 means 100 ms.
+	WarningApplyDuration time.Duration
+	// ForceNewCluster is etcd's --force-new-cluster: a node that restarts
+	// from its log removes every other member and goes on as a cluster of
+	// one (core.Node.ForceNewCluster).
+	ForceNewCluster bool
 	// Tick is the length of one Raft tick.
 	Tick time.Duration
 	// WatchQueue is how many responses a watch stream may fall behind
@@ -52,12 +69,27 @@ type Config struct {
 	// go.
 	SegmentBytes int64
 	// DiskBudget is how many bytes the log's files may take; 0 means no
-	// budget and no cleaning (clean.go).
+	// budget, and cleaning only for Defragment (clean.go).
 	DiskBudget int64
+	// AutoCompaction is etcd's --auto-compaction-mode and
+	// --auto-compaction-retention, as ParseCompaction gives them
+	// (compact.go).
+	AutoCompaction Compaction
+	// revisionEvery, if set, replaces the 5 minutes between revision
+	// compactions, for tests.
+	revisionEvery time.Duration
+	// CorruptCheckTime is etcd's --corrupt-check-time, and
+	// CompactHashCheckTime its --compact-hash-check-time with the
+	// CompactHashCheck feature gate on; 0 turns either check off
+	// (corrupt.go).
+	CorruptCheckTime, CompactHashCheckTime time.Duration
 	// BeforeRead, if set, runs before each read of a value from the log.
 	// Tests use it to stall those reads.
 	BeforeRead func()
 	Logf       func(format string, args ...any)
+	// Metrics are the metrics the node observes into; nil gives the node
+	// a set of its own.
+	Metrics *metrics.Set
 }
 
 // input is one event for the committer from a client, a peer or a helper
@@ -67,12 +99,20 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
-	watchOpen   *WatchStream
-	watchReq    *pb.WatchRequest
-	watchClose  bool
-	stream      uint64
-	status      chan *pb.StatusResponse
-	metrics     chan core.Metrics
+	// advance moves the election clock (AdjustTicks).
+	advance int
+	// removed is a peer's answer that the cluster removed this node.
+	removed    bool
+	authorize  *authorize
+	watchOpen  *WatchStream
+	watchReq   *pb.WatchRequest
+	watchClose bool
+	stream     uint64
+	status     chan *pb.StatusResponse
+	hashes     chan []mvcc.KVHash
+	// snapshotPoint asks where a client's snapshot starts.
+	snapshotPoint chan snapshotPoint
+	metrics       chan core.Metrics
 	// written is the index of a checkpoint the writer synced, or failed
 	// to write with writeErr.
 	written  uint64
@@ -105,6 +145,8 @@ var ErrSnapshotInstalled = status.Error(codes.Unavailable, "tigerstore: the node
 type WatchStream struct {
 	n  *Node
 	id uint64
+	// caller is the stream's client, for its permissions.
+	caller core.Caller
 	// C carries the responses in order. Whoever takes one calls Taken.
 	C chan *pb.WatchResponse
 	// queued is the size of the responses in C.
@@ -136,6 +178,30 @@ func (ws *WatchStream) Close() {
 	case ws.n.inbox <- input{watchClose: true, stream: ws.id}:
 	case <-ws.n.done:
 	}
+}
+
+// Authorize checks a call the server serves itself (Status, Snapshot)
+// against the caller's permissions.
+func (n *Node) Authorize(ctx context.Context, caller core.Caller, op proto.Message) error {
+	ch := make(chan error, 1)
+	if err := n.put(ctx, input{authorize: &authorize{caller: caller, op: op, reply: ch}}); err != nil {
+		return err
+	}
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-n.done:
+		return rpctypes.ErrGRPCStopped
+	}
+}
+
+// authorize is a check of Authorize for the committer.
+type authorize struct {
+	caller core.Caller
+	op     proto.Message
+	reply  chan error
 }
 
 // Status returns the node's Maintenance.Status answer.
@@ -176,9 +242,9 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	return m, err
 }
 
-// OpenWatch starts a watch stream.
-func (n *Node) OpenWatch(ctx context.Context) (*WatchStream, error) {
-	ws := &WatchStream{n: n, id: n.nextID.Add(1), C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
+// OpenWatch starts a watch stream of a client.
+func (n *Node) OpenWatch(ctx context.Context, c core.Caller) (*WatchStream, error) {
+	ws := &WatchStream{n: n, id: n.nextID.Add(1), caller: c, C: make(chan *pb.WatchResponse, cmp.Or(n.cfg.WatchQueue, watchQueue)), done: make(chan struct{})}
 	if err := n.put(ctx, input{watchOpen: ws}); err != nil {
 		return nil, err
 	}
@@ -271,13 +337,28 @@ type Node struct {
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
+	defragQ   chan chan error
 	readQ     chan *core.ValueRead
 	readDone  chan readDone
 	nextID    atomic.Uint64
 	done      chan struct{}
 
-	// leader is the leader the committer saw last, for readers outside it.
-	leader atomic.Uint64
+	// leader is the leader the committer saw last, for readers outside it,
+	// and learner whether this node is a learner.
+	leader  atomic.Uint64
+	learner atomic.Bool
+	// etcdVersion is etcd's cluster version the committer saw last, and
+	// authEnabled whether auth was on.
+	etcdVersion atomic.Pointer[string]
+	authEnabled atomic.Bool
+	// alarms are the active alarms the committer saw last, alarmsGen
+	// their core's change count.
+	alarms    atomic.Pointer[[]*pb.AlarmMember]
+	alarmsGen uint64
+	// transport is the peer.Transport Run got, for calls to peers.
+	transport atomic.Value
+	// members are the members' IDs the committer saw last.
+	members atomic.Pointer[[]uint64]
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -409,21 +490,52 @@ func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 
 // New recovers the node's state from its checkpoint and log on disk.
 func New(cfg Config) (*Node, error) {
-	path := filepath.Join(cfg.DataDir, "wal")
+	path := cmp.Or(cfg.WalDir, filepath.Join(cfg.DataDir, "wal"))
 	dir, err := osfs.New(path)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.UnsafeNoFsync {
+		dir = dir.WithoutSync()
+	}
+	if cfg.Metrics == nil {
+		if cfg.Metrics, err = metrics.New(nil); err != nil {
+			return nil, err
+		}
 	}
 	n := &Node{
 		cfg:   cfg,
 		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead},
 		inbox: make(chan input, 8192),
 		done:  make(chan struct{}),
+		// Defragment sends to it from gRPC goroutines, so a reload keeps
+		// it.
+		defragQ: make(chan chan error),
 	}
 	if err := n.open(); err != nil {
 		return nil, errors.Join(err, n.log.close())
 	}
+	if cfg.ForceNewCluster && n.core.Applied() > 0 {
+		if err := n.forceNewCluster(); err != nil {
+			return nil, errors.Join(err, n.log.close())
+		}
+	}
 	return n, nil
+}
+
+// forceNewCluster writes the entries that leave this node the only
+// member, committed, and starts the core again from the log.
+func (n *Node) forceNewCluster() error {
+	ents, hs, err := n.core.ForceNewCluster()
+	if err != nil || len(ents) == 0 {
+		return err
+	}
+	n.logf("forcing a new cluster: removing %d members after commit index %d", len(ents), n.core.Applied())
+	n.log.w.Append(&hs, ents)
+	if err := n.log.w.Sync(); err != nil {
+		return err
+	}
+	return n.open()
 }
 
 // open recovers the log and starts a core from it, with empty queues to
@@ -446,6 +558,8 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot = rand.Uint64()
+	cfg.ConnectedTicks = n.connectedTicks
+	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
 		return err
@@ -463,8 +577,28 @@ func (n *Node) open() error {
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
+	v := c.EtcdVersion()
+	n.etcdVersion.Store(&v)
+	n.authEnabled.Store(c.AuthEnabled())
+	n.setMembers(c.Members())
+	n.alarmsGen = 0
+	as, _ := c.Alarms()
+	as = slices.Clone(as)
+	n.alarms.Store(&as)
 	return nil
 }
+
+// loadAlarms copies the core's alarms if they changed.
+func (n *Node) loadAlarms() {
+	if as, gen := n.core.Alarms(); gen != n.alarmsGen {
+		n.alarmsGen = gen
+		as = slices.Clone(as)
+		n.alarms.Store(&as)
+	}
+}
+
+// Alarms are the active alarms, as this node applied them last.
+func (n *Node) Alarms() []*pb.AlarmMember { return *n.alarms.Load() }
 
 func (n *Node) logf(format string, args ...any) {
 	if n.cfg.Logf != nil {
@@ -478,8 +612,54 @@ func (n *Node) ID() uint64 { return n.cfg.Core.ID }
 // ClusterID is the cluster ID in the node's response headers.
 func (n *Node) ClusterID() uint64 { return n.cfg.Core.ClusterID }
 
+// Learner reports whether the node is a learner.
+func (n *Node) Learner() bool { return n.learner.Load() }
+
+// setMembers keeps the members' IDs for readers outside the committer.
+func (n *Node) setMembers(ms []*pb.Member) {
+	ids := make([]uint64, len(ms))
+	for i, m := range ms {
+		ids[i] = m.ID
+	}
+	n.members.Store(&ids)
+}
+
+// connectedTicks is how many ticks the transport has had a connection
+// to peer id, -1 while it has none or Run has not started.
+func (n *Node) connectedTicks(id uint64) int64 {
+	t, ok := n.transport.Load().(peer.Transport)
+	if !ok {
+		return -1
+	}
+	if since := t.ActiveSince(id); !since.IsZero() {
+		return int64(time.Since(since) / n.cfg.Tick)
+	}
+	return -1
+}
+
+// PeerAddrs are the host:port of each member's first peer URL, by Raft ID.
+func PeerAddrs(members []*pb.Member) map[uint64]string {
+	out := map[uint64]string{}
+	for _, m := range members {
+		if len(m.PeerURLs) == 0 {
+			continue
+		}
+		if u, err := url.Parse(m.PeerURLs[0]); err == nil {
+			out[m.ID] = u.Host
+		}
+	}
+	return out
+}
+
 // Leader is the leader the node knows of, or 0.
 func (n *Node) Leader() uint64 { return n.leader.Load() }
+
+// EtcdVersion is etcd's cluster version, which is also the storage
+// version, as /version and Snapshot report them.
+func (n *Node) EtcdVersion() string { return *n.etcdVersion.Load() }
+
+// AuthEnabled reports whether auth was on when the committer looked last.
+func (n *Node) AuthEnabled() bool { return n.authEnabled.Load() }
 
 // Done is closed when the node stopped.
 func (n *Node) Done() <-chan struct{} { return n.done }
@@ -501,6 +681,15 @@ func (n *Node) Unreachable(id uint64) {
 	}
 }
 
+// Removed tells the node that a peer answered that the cluster removed
+// it; the node stops, as etcd's does.
+func (n *Node) Removed() {
+	select {
+	case n.inbox <- input{removed: true}:
+	case <-n.done:
+	}
+}
+
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	return n.DoAs(ctx, core.Caller{}, op)
@@ -514,30 +703,40 @@ func (n *Node) DoAs(ctx context.Context, caller core.Caller, op proto.Message) (
 
 // RangeChunk reads one chunk of a RangeStream: a range that counts keys
 // only up to its limit, as etcd's chunks do.
-func (n *Node) RangeChunk(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, reply: make(chan core.Reply, 1)})
+func (n *Node) RangeChunk(ctx context.Context, caller core.Caller, r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, caller: caller, reply: make(chan core.Reply, 1)})
 	if err != nil {
 		return nil, err
 	}
 	return resp.(*pb.RangeResponse), nil
 }
 
+// DoReply runs one request of caller and returns the node's whole reply.
+func (n *Node) DoReply(ctx context.Context, caller core.Caller, op proto.Message) (core.Reply, error) {
+	return n.doReply(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan core.Reply, 1)})
+}
+
 func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
+	rep, err := n.doReply(ctx, r)
+	return rep.Resp, err
+}
+
+func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
 	if core.TakesSpace(core.Request{Op: r.op}) {
 		if err := n.throttle(ctx); err != nil {
-			return nil, err
+			return core.Reply{}, err
 		}
 	}
 	if err := n.put(ctx, input{req: r}); err != nil {
-		return nil, err
+		return core.Reply{}, err
 	}
 	select {
 	case rep := <-r.reply:
-		return rep.Resp, rep.Err
+		return rep, rep.Err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return core.Reply{}, ctx.Err()
 	case <-n.done:
-		return nil, rpctypes.ErrGRPCStopped
+		return core.Reply{}, rpctypes.ErrGRPCStopped
 	}
 }
 
@@ -564,6 +763,29 @@ var errReload = errors.New("node: the snapshot fetch failed")
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
+	n.transport.Store(t)
+	if n.cfg.CorruptCheckTime > 0 || n.cfg.CompactHashCheckTime > 0 {
+		ctx, cancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Go(func() { n.checkHashes(ctx, t) })
+		defer wg.Wait()
+		defer cancel()
+	}
+	// A negative retention, which etcd's parsing lets through, turns auto
+	// compaction off, as 0 does.
+	if c := n.cfg.AutoCompaction; c.Revisions > 0 || c.Period > 0 {
+		ctx, cancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if c.Revisions > 0 {
+				n.compactByRevision(ctx, c.Revisions, cmp.Or(n.cfg.revisionEvery, revisionInterval))
+				return
+			}
+			n.compactPeriodically(ctx, c.Period)
+		})
+		defer wg.Wait()
+		defer cancel()
+	}
 	for {
 		err := n.run(ctx, t)
 		if errors.Is(err, errReload) && ctx.Err() == nil {
@@ -585,9 +807,7 @@ func (n *Node) run(ctx context.Context, t peer.Transport) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { n.persist(ctx, t) })
 	wg.Go(func() { n.writeCheckpoints(ctx) })
-	if n.cfg.DiskBudget > 0 {
-		wg.Go(func() { n.clean(ctx) })
-	}
+	wg.Go(func() { n.clean(ctx) })
 	for range readers {
 		wg.Go(func() { n.readValues(ctx) })
 	}
@@ -702,6 +922,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				close(ws.done)
 			}
 		}
+		if eff.Members != nil {
+			n.setMembers(eff.Members)
+			t.SetPeers(PeerAddrs(eff.Members), n.core.RemovedMembers())
+			n.learner.Store(n.core.IsLearner())
+		}
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
@@ -738,6 +963,11 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.leader.Store(l)
 			term = tm
 		}
+		if v := n.core.EtcdVersion(); v != *n.etcdVersion.Load() {
+			n.etcdVersion.Store(&v)
+		}
+		n.authEnabled.Store(n.core.AuthEnabled())
+		n.loadAlarms()
 		if err != nil {
 			return err
 		}
@@ -809,11 +1039,17 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		in.status <- n.core.Status()
 	case in.metrics != nil:
 		in.metrics <- n.core.Metrics()
+	case in.hashes != nil:
+		in.hashes <- n.core.CompactHashes()
+	case in.snapshotPoint != nil:
+		var p snapshotPoint
+		p.info.Index, p.info.Term, p.info.Revision, p.err = n.core.SnapshotPoint()
+		in.snapshotPoint <- p
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:
 		if _, ok := streams[in.stream]; ok {
-			n.core.Watch(in.stream, in.watchReq)
+			n.core.Watch(in.stream, streams[in.stream].caller, in.watchReq)
 		}
 	case in.watchClose:
 		delete(streams, in.stream)
@@ -827,6 +1063,12 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.advance != 0:
+		n.core.AdvanceElection(in.advance)
+	case in.removed:
+		n.core.Removed()
+	case in.authorize != nil:
+		in.authorize.reply <- n.core.Authorize(in.authorize.caller, in.authorize.op)
 	case in.written != 0:
 		n.core.CheckpointWritten(in.written, in.writeErr)
 	case in.fetching:
@@ -898,8 +1140,18 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		if done.err == nil {
-			n.log.used.Add(w.Buffered())
-			err := w.Sync()
+			buffered := w.Buffered()
+			n.log.used.Add(buffered)
+			m := n.cfg.Metrics
+			wrote := time.Now()
+			err := w.Flush()
+			synced := time.Now()
+			m.WALWrite.Observe(synced.Sub(wrote).Seconds())
+			m.WALWriteBytes.Add(float64(buffered))
+			if err == nil {
+				err = w.Sync()
+				m.WALFsync.Observe(time.Since(synced).Seconds())
+			}
 			n.log.mu.Lock()
 			err = errors.Join(err, n.log.synced())
 			n.log.mu.Unlock()
@@ -950,13 +1202,27 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 // errReload: the core cannot drop the snapshot, a core started from the
 // log can.
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
+	m, from := n.cfg.Metrics, peerLabel(in.From)
+	m.SnapshotApplyInProgress.Set(1)
+	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
+	start := time.Now()
 	sink := &logSink{n: n}
 	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
 	if err == nil {
-		err = core.ReceiveSnapshot(r, sink, n.log, n.cfg.Core.Peers, in)
+		err = core.ReceiveSnapshot(r, sink, n.log, in)
 		err = errors.Join(err, r.Close())
 	}
 	err = errors.Join(err, sink.close())
+	m.SnapshotApplyInProgress.Set(0)
+	m.SnapshotReceiveInflights.WithLabelValues(from).Dec()
+	if err == nil {
+		d := time.Since(start).Seconds()
+		m.SnapDBSave.Observe(d)
+		m.SnapshotReceiveSeconds.WithLabelValues(from).Observe(d)
+		m.SnapshotReceive.WithLabelValues(from).Inc()
+	} else {
+		m.SnapshotReceiveFailures.WithLabelValues(from).Inc()
+	}
 	switch {
 	case err == nil:
 		n.logf("installed the snapshot at %d from %d, checkpoint %d", in.Index, in.From, in.Checkpoint.Index)
@@ -996,7 +1262,15 @@ func (s *logSink) wrote(n int) error {
 		return nil
 	}
 	s.pending = 0
-	return s.disk(s.n.log.w.Sync())
+	return s.disk(s.sync())
+}
+
+// sync syncs the log and times it as an fsync of the snapshot.
+func (s *logSink) sync() error {
+	start := time.Now()
+	err := s.n.log.w.Sync()
+	s.n.cfg.Metrics.SnapDBFsync.Observe(time.Since(start).Seconds())
+	return err
 }
 
 func (s *logSink) Entries(ents []*raftpb.Entry) error {
@@ -1079,6 +1353,8 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
+		m := n.cfg.Metrics
+		start := time.Now()
 		f, err := n.log.w.CreateCheckpoint(c.Index)
 		unsynced := 0
 		for err == nil {
@@ -1090,7 +1366,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 			// Synced a little at a time, so that one large flush does not
 			// hold up the log's fsyncs on the same disk.
 			if unsynced += len(c.Data); unsynced >= checkpointSyncBytes {
-				if err = f.Sync(); err != nil {
+				if err = syncTimed(f, m.SnapFsync); err != nil {
 					break
 				}
 				unsynced = 0
@@ -1107,12 +1383,15 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		}
 		if f != nil {
 			if err == nil {
-				err = f.Sync()
+				err = syncTimed(f, m.SnapFsync)
 			}
 			err = errors.Join(err, f.Close())
 		}
 		if err == nil {
 			err = n.log.w.SyncDir()
+		}
+		if err == nil {
+			m.SnapSave.Observe(time.Since(start).Seconds())
 		}
 		if ctx.Err() != nil {
 			return
@@ -1135,7 +1414,17 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.serving++
 	ckpts := slices.Clone(n.log.ckpts)
 	n.log.mu.Unlock()
+	m, to := n.cfg.Metrics, peerLabel(id)
+	m.SnapshotSendInflights.WithLabelValues(to).Inc()
+	start := time.Now()
 	err := core.ServeSnapshot(n.log, ckpts, first, last, w)
+	m.SnapshotSendInflights.WithLabelValues(to).Dec()
+	if err == nil {
+		m.SnapshotSend.WithLabelValues(to).Inc()
+		m.SnapshotSendSeconds.WithLabelValues(to).Observe(time.Since(start).Seconds())
+	} else {
+		m.SnapshotSendFailures.WithLabelValues(to).Inc()
+	}
 	n.log.mu.Lock()
 	n.log.serving--
 	n.log.mu.Unlock()

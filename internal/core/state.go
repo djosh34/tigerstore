@@ -3,9 +3,12 @@ package core
 import (
 	"bytes"
 	"cmp"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"maps"
 	"slices"
+	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -27,11 +30,18 @@ const maxLeaseTTL = 9_000_000_000
 // to the tick the lease expires at (0 when not armed) and the tick it
 // last proposed the lease's expiry.
 type lease struct {
-	id, ttl  int64
-	keys     map[string]struct{}
-	stamp    int64
-	expiry   int64
-	revokeAt int64
+	id, ttl int64
+	keys    map[string]struct{}
+	stamp   int64
+	// remaining is the remaining TTL in seconds the last checkpoint took,
+	// 0 for none (lease.go).
+	remaining int64
+	// expiry and revokeAt are the leader's ticks of the lease's expiry
+	// and of the last proposal of it, and checkpointAt of its next
+	// checkpoint, 0 for none.
+	expiry       int64
+	revokeAt     int64
+	checkpointAt int64
 }
 
 // newExpiry is the leader's decision that a lease expired. It goes in the
@@ -58,9 +68,28 @@ type State struct {
 	// voter announced (version.go).
 	version  uint32
 	supports map[uint64]uint32
+	// members are the cluster's members by ID, and removed the IDs it
+	// removed, which never come back (members.go).
+	members map[uint64]*pb.Member
+	removed map[uint64]bool
+	// auth is the auth store (auth.go), and who the identity of the write
+	// being applied.
+	auth *authState
+	who  authInfo
 	// changes are the key changes of the last applied write, none for a
 	// write that changed no key.
 	changes []mvcc.Change
+	// alarms are the active alarms in type and member order. noSpace and
+	// corrupt say whether a NOSPACE or a CORRUPT alarm is among them.
+	alarms []*pb.AlarmMember
+	// alarmsGen counts the changes of alarms.
+	alarmsGen        uint64
+	noSpace, corrupt bool
+	// etcdVersion is etcd's cluster version, and downgradeEnabled and
+	// downgradeTarget etcd's downgrade info (downgrade.go).
+	etcdVersion      string
+	downgradeEnabled bool
+	downgradeTarget  string
 }
 
 // Changes are the key changes of the last write Apply ran. The slice is
@@ -71,7 +100,10 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 // at least minTTL seconds, as etcd clamps them to 1.5 election timeouts
 // rounded up.
 func NewState(minTTL int64, v mvcc.Values) *State {
-	st := &State{kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{}}
+	st := &State{
+		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{},
+		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(), etcdVersion: ClusterVersion,
+	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
 }
@@ -80,8 +112,9 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 func (st *State) Store() *mvcc.Store { return st.kv }
 
 // Hash is a hash of the whole replicated state: the index, the leases
-// with their key counts, the lease stamps and the versions. The keys
-// themselves follow from the index.
+// with their key counts, the lease stamps, the versions, the alarms, the
+// members, auth and the downgrade info. The keys of the leases follow
+// from the index.
 func (st *State) Hash() uint64 {
 	h := st.kv.Hash()
 	mix := func(x uint64) {
@@ -93,6 +126,7 @@ func (st *State) Hash() uint64 {
 		mix(uint64(l.id))
 		mix(uint64(l.ttl))
 		mix(uint64(l.stamp))
+		mix(uint64(l.remaining))
 		mix(uint64(len(l.keys)))
 	}
 	mix(uint64(st.version))
@@ -100,7 +134,74 @@ func (st *State) Hash() uint64 {
 		mix(id)
 		mix(uint64(st.supports[id]))
 	}
+	for _, a := range st.alarms {
+		mix(a.MemberID)
+		mix(uint64(a.Alarm))
+	}
+	for _, m := range st.memberList() {
+		mix(m.ID)
+		b := binary.AppendUvarint(nil, uint64(len(m.Name)))
+		b = append(b, m.Name...)
+		for _, urls := range [][]string{m.PeerURLs, m.ClientURLs} {
+			b = binary.AppendUvarint(b, uint64(len(urls)))
+			for _, u := range urls {
+				b = binary.AppendUvarint(b, uint64(len(u)))
+				b = append(b, u...)
+			}
+		}
+		if m.IsLearner {
+			b = append(b, 1)
+		}
+		mix(uint64(crc32.Checksum(b, castagnoli)))
+	}
+	for _, id := range slices.Sorted(maps.Keys(st.removed)) {
+		mix(id)
+	}
+	mix(st.auth.revision)
+	if st.auth.enabled {
+		mix(1)
+	}
+	for _, name := range sortedKeys(st.auth.users) {
+		u := st.auth.users[name]
+		mix(uint64(crc32.Checksum(u.Name, castagnoli)))
+		mix(uint64(crc32.Checksum(u.Password, castagnoli)))
+		mix(uint64(crc32.Checksum([]byte(strings.Join(u.Roles, "\x00")), castagnoli)))
+		if u.Options != nil && u.Options.NoPassword {
+			mix(1)
+		}
+	}
+	for _, name := range sortedKeys(st.auth.roles) {
+		mix(uint64(crc32.Checksum([]byte(name), castagnoli)))
+		for _, p := range st.auth.roles[name].KeyPermission {
+			mix(uint64(crc32.Checksum(append(append([]byte(name+"\x00"), p.Key...), p.RangeEnd...), castagnoli)))
+			mix(uint64(p.PermType))
+		}
+	}
+	mix(uint64(crc32.Checksum([]byte(st.etcdVersion), castagnoli)))
+	if st.downgradeEnabled {
+		mix(1)
+	}
+	mix(uint64(crc32.Checksum([]byte(st.downgradeTarget), castagnoli)))
 	return h
+}
+
+// Hash32 answers Maintenance.Hash: a CRC-32C of every version in the
+// index (mvcc.Store.HashAll), the leases and the alarms. etcd hashes its whole
+// database file there, so the number differs from etcd's, but replicas
+// with the same state agree on it.
+func (st *State) Hash32() uint32 {
+	b := binary.BigEndian.AppendUint32(nil, st.kv.HashAll())
+	b = binary.AppendVarint(b, st.stamps)
+	for _, l := range st.sortedLeases() {
+		b = binary.AppendVarint(b, l.id)
+		b = binary.AppendVarint(b, l.ttl)
+		b = binary.AppendVarint(b, l.stamp)
+	}
+	for _, a := range st.alarms {
+		b = binary.AppendUvarint(b, a.MemberID)
+		b = binary.AppendVarint(b, int64(a.Alarm))
+	}
+	return crc32.Checksum(b, castagnoli)
 }
 
 // sortedLeases returns the leases in ID order, so that the core walks them
@@ -138,6 +239,12 @@ func (st *State) track() {
 // previous version if the put asked for it.
 func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 	st.changes = nil
+	if err := st.refused(true); err != nil {
+		return nil, err
+	}
+	if err := st.putAllowed(st.who, op.Key, op.Lease, op.PrevKv); err != nil {
+		return nil, err
+	}
 	prev, err := st.kv.PutKV(op)
 	if err != nil {
 		return nil, err
@@ -152,6 +259,12 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 // and are the same on every replica; any other error is a bug.
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	st.changes = nil
+	if err := st.refusedOp(op); err != nil {
+		return nil, err
+	}
+	if err := st.writeAllowed(st.who, op); err != nil {
+		return nil, err
+	}
 	switch op := op.(type) {
 	case *pb.PutRequest:
 		r, err := st.kv.Put(op)
@@ -191,8 +304,17 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 			resp.TTL = l.ttl
 			st.stamps++
 			l.stamp = st.stamps
+			// A renewal ends the checkpointed TTL, as etcd's does.
+			l.remaining = 0
 		}
 		return resp, nil
+	case *pb.LeaseCheckpointRequest:
+		for _, c := range op.Checkpoints {
+			if l, ok := st.leases[c.ID]; ok {
+				l.remaining = c.Remaining_TTL
+			}
+		}
+		return &pb.LeaseCheckpointResponse{Header: header(st.kv.Rev())}, nil
 	case *pb.LeaseCheckpoint:
 		// An expiry. A nil response means it no longer applies: the lease
 		// is gone or was renewed after the leader decided.
@@ -201,6 +323,11 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 			return nil, nil
 		}
 		return st.revoke(op.ID)
+	case *pb.AlarmRequest:
+		return st.alarm(op), nil
+	case *pb.Member:
+		st.applyAttributes(op)
+		return nil, nil
 	}
 	return nil, fmt.Errorf("%w: write of type %T", errInternal, op)
 }

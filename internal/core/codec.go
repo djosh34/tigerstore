@@ -21,8 +21,9 @@ import (
 //
 // That is entry format 1. Every later format starts with a 0 byte and its
 // number, then the batch; a format 1 batch never starts with 0, as it
-// holds at least one write. Format 2 adds only that header. Which format
-// a node writes is the cluster version (version.go).
+// holds at least one write. Format 2 adds only that header. Format 3
+// adds the kinds from kindAlarm on (featureVersion). Which format a node
+// writes is the cluster version (version.go).
 
 const (
 	kindPut     = 1
@@ -39,6 +40,20 @@ const (
 	// kindVersion is a node's announcement of the newest version it
 	// supports, a wrapperspb.UInt32Value. It changes no key.
 	kindVersion = 10
+	kindAlarm   = 11
+	// kindMember is a member's name and client URLs, which it publishes
+	// once it starts (members.go).
+	kindMember = 12
+	// kindAuth is an auth request, an InternalRaftRequest with the user
+	// and auth revision in its header (auth.go).
+	kindAuth = 13
+	// kindAuthed wraps a write with the identity it was taken with while
+	// auth is enabled: uvarint auth revision | uvarint length | user |
+	// u8 kind | the write.
+	kindAuthed = 14
+	// kindLeaseCheckpoint is the leader's checkpoint of leases' remaining
+	// TTLs, a LeaseCheckpointRequest (lease.go).
+	kindLeaseCheckpoint = 15
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -75,31 +90,67 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 			kind = kindExpiry
 		case *wrapperspb.UInt32Value:
 			kind = kindVersion
+		case *pb.AlarmRequest:
+			kind = kindAlarm
+		case *pb.Member:
+			kind = kindMember
+		case *pb.InternalRaftRequest:
+			kind = kindAuth
+		case *pb.LeaseCheckpointRequest:
+			kind = kindLeaseCheckpoint
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
 		buf = binary.AppendUvarint(buf, origin)
 		buf = binary.AppendUvarint(buf, boot)
 		buf = binary.AppendUvarint(buf, p.req.ID)
-		buf = append(buf, kind)
-		if p.req.Op == nil {
-			buf = binary.AppendUvarint(buf, uint64(len(p.req.Put.Wire)))
-			buf = append(buf, p.req.Put.Wire...)
-			continue
+		var body []byte
+		switch {
+		case p.req.Op == nil:
+			body = p.req.Put.Wire
+		case p.req.Wire != nil:
+			body = p.req.Wire
+		default:
+			var err error
+			if body, err = (proto.MarshalOptions{Deterministic: true}).Marshal(p.req.Op); err != nil {
+				return nil, err
+			}
 		}
-		if p.req.Wire != nil {
-			buf = binary.AppendUvarint(buf, uint64(len(p.req.Wire)))
-			buf = append(buf, p.req.Wire...)
-			continue
+		if w := p.who; w != nil {
+			head := binary.AppendUvarint(nil, w.revision)
+			head = binary.AppendUvarint(head, uint64(len(w.user)))
+			head = append(append(head, w.user...), kind)
+			buf = append(buf, kindAuthed)
+			buf = binary.AppendUvarint(buf, uint64(len(head)+len(body)))
+			buf = append(buf, head...)
+		} else {
+			buf = append(buf, kind)
+			buf = binary.AppendUvarint(buf, uint64(len(body)))
 		}
-		buf = binary.AppendUvarint(buf, uint64(proto.Size(p.req.Op)))
-		var err error
-		buf, err = proto.MarshalOptions{Deterministic: true, UseCachedSize: true}.MarshalAppend(buf, p.req.Op)
-		if err != nil {
-			return nil, err
-		}
+		buf = append(buf, body...)
 	}
 	return buf, nil
+}
+
+// unwrapAuth takes the identity off a write of kindAuthed, whose bytes b
+// start at offset at of the entry, and returns the write's kind, bytes
+// and offset, and the identity: the zero one for a write without it.
+func unwrapAuth(kind byte, b []byte, at int) (byte, []byte, int, authInfo, error) {
+	if kind != kindAuthed {
+		return kind, b, at, authInfo{}, nil
+	}
+	rest := b
+	rev, rest, ok := uvarint(rest)
+	if !ok {
+		return 0, nil, 0, authInfo{}, errBadBatch
+	}
+	n, rest, ok := uvarint(rest)
+	if !ok || n >= uint64(len(rest)) {
+		return 0, nil, 0, authInfo{}, errBadBatch
+	}
+	ai := authInfo{user: string(rest[:n]), revision: rev}
+	kind, rest = rest[n], rest[n+1:]
+	return kind, rest, at + len(b) - len(rest), ai, nil
 }
 
 // skipFormat returns the data of a Raft entry without its format header.
@@ -168,8 +219,12 @@ func refuseSpace(data []byte) ([]byte, error) {
 	}
 	out := append(make([]byte, 0, len(data)), data[:len(data)-len(batch)]...)
 	out = binary.AppendUvarint(out, n)
-	err = walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
-		if kind == kindPut || kind == kindTxn || kind == kindGrant {
+	err = walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, at int) error {
+		inner, _, _, _, err := unwrapAuth(kind, b, at)
+		if err != nil {
+			return err
+		}
+		if inner == kindPut || inner == kindTxn || inner == kindGrant {
 			kind, b = kindNoSpace, nil
 		}
 		out = binary.AppendUvarint(out, origin)
@@ -202,6 +257,14 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.LeaseKeepAliveRequest{}, nil
 	case kindExpiry:
 		return &pb.LeaseCheckpoint{}, nil
+	case kindAlarm:
+		return &pb.AlarmRequest{}, nil
+	case kindMember:
+		return &pb.Member{}, nil
+	case kindAuth:
+		return &pb.InternalRaftRequest{}, nil
+	case kindLeaseCheckpoint:
+		return &pb.LeaseCheckpointRequest{}, nil
 	}
 	return nil, errBadBatch
 }
@@ -210,7 +273,11 @@ func newOp(kind byte) (proto.Message, error) {
 // decoded, and skips refused writes and version announcements, which change no key. The
 // checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
-	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, at int) error {
+		kind, b, _, _, err := unwrapAuth(kind, b, at)
+		if err != nil {
+			return err
+		}
 		if kind == kindNoSpace || kind == kindVersion {
 			// A refused write did not apply, and an announcement changes
 			// no key.

@@ -15,6 +15,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -46,6 +47,22 @@ type cluster struct {
 	segmentBytes int64
 	// beforeRead, if set, runs before each value read from a log.
 	beforeRead func()
+	// join marks the nodes that join the running cluster instead of
+	// starting it, and removed those that may stop as removed.
+	join, removed map[uint64]bool
+	// nodeConfig, if set, changes the nodes' driver configuration, and
+	// wrap the transport each node runs with.
+	nodeConfig func(*node.Config)
+	wrap       func(id uint64, t peer.Transport) peer.Transport
+	// jwt, if set, makes the auth tokens, and serverConfig, if set,
+	// changes the servers' configuration.
+	jwt          *server.JWT
+	serverConfig func(*server.Config)
+	// nodes and transports are the running nodes and their transports by
+	// ID.
+	nodes      map[uint64]*node.Node
+	transports map[uint64]*peer.TCP
+	servers    map[uint64]*server.Server
 	// peerLns are the peer listeners of nodes not started yet, held open
 	// from the start so that no other process takes their ports.
 	peerLns map[uint64]net.Listener
@@ -108,6 +125,42 @@ func newClusterWith(t *testing.T, setup func(*cluster)) *cluster {
 	return c
 }
 
+// viaPeers keeps node from dialing its peers through the addresses in
+// cluster.via when the members change.
+type viaPeers struct {
+	peer.Transport
+	c    *cluster
+	from uint64
+}
+
+func (v viaPeers) SetPeers(peers map[uint64]string, removed []uint64) {
+	for to := range peers {
+		if a, ok := v.c.via[[2]uint64{v.from, to}]; ok {
+			peers[to] = a
+		}
+	}
+	v.Transport.SetPeers(peers, removed)
+}
+
+// joinNode starts node id, which joins the running cluster.
+func (c *cluster) joinNode(id uint64) {
+	if c.join == nil {
+		c.join, c.removed = map[uint64]bool{}, map[uint64]bool{}
+	}
+	c.join[id] = true
+	c.dirs[id] = c.t.TempDir()
+	c.start(id)
+}
+
+// members are the cluster's three members with their peer URLs.
+func (c *cluster) members() []*pb.Member {
+	var ms []*pb.Member
+	for id := uint64(1); id <= 3; id++ {
+		ms = append(ms, &pb.Member{ID: id, Name: fmt.Sprintf("node%d", id), PeerURLs: []string{"https://" + c.peerAddrs[id]}})
+	}
+	return ms
+}
+
 func (c *cluster) start(id uint64) {
 	t := c.t
 	cert, _, _, err := c.ca.Issue("node", int64(id+10))
@@ -116,11 +169,18 @@ func (c *cluster) start(id uint64) {
 	}
 	logf := func(format string, args ...any) { t.Logf("node %d: %s", id, fmt.Sprintf(format, args...)) }
 	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
+	cfg.Members = c.members()
+	cfg.Name = fmt.Sprintf("node%d", id)
+	cfg.Join = c.join[id]
 	cfg.CommitStallElections = c.stallElections
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
 	}
-	n, err := node.New(node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead})
+	ncfg := node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead}
+	if c.nodeConfig != nil {
+		c.nodeConfig(&ncfg)
+	}
+	n, err := node.New(ncfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,14 +199,27 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logf})
+	tr, err := peer.Start(peer.Config{ID: id, Listeners: []net.Listener{pln}, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := server.New(n, server.Config{TLS: &tls.Config{
-		Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
-		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
-	}})
+	scfg := server.Config{
+		TLS: &tls.Config{
+			Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
+			ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
+		},
+		PeerVersions: tr.Versions, JWT: c.jwt,
+		// bcrypt's default cost takes seconds of CPU under the race
+		// detector, which starves the nodes.
+		BcryptCost: bcrypt.MinCost,
+	}
+	if c.serverConfig != nil {
+		c.serverConfig(&scfg)
+	}
+	g, err := server.New(n, scfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -154,13 +227,24 @@ func (c *cluster) start(id uint64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ran := make(chan error, 1)
 	served := make(chan error, 1)
-	go func() { ran <- n.Run(ctx, tr) }()
+	var run peer.Transport = tr
+	if c.via != nil {
+		run = viaPeers{Transport: run, c: c, from: id}
+	}
+	if c.wrap != nil {
+		run = c.wrap(id, run)
+	}
+	if c.nodes == nil {
+		c.nodes, c.transports, c.servers = map[uint64]*node.Node{}, map[uint64]*peer.TCP{}, map[uint64]*server.Server{}
+	}
+	c.nodes[id], c.transports[id], c.servers[id] = n, tr, g
+	go func() { ran <- n.Run(ctx, run) }()
 	go func() { served <- g.Serve(ln) }()
 	var once sync.Once
 	stopNode := func() {
 		once.Do(func() {
 			cancel()
-			if err := <-ran; err != nil {
+			if err := <-ran; err != nil && (!c.removed[id] || !errors.Is(err, core.ErrRemoved)) {
 				t.Errorf("node %d: %v", id, err)
 			}
 		})
@@ -419,7 +503,8 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
 		t.Fatalf("/health = %d %q", code, body)
 	}
-	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
+	// etcd's /version answers GET only.
+	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusMethodNotAllowed || resp.ProtoMajor != 2 {
 		t.Fatalf("HEAD /version over HTTP/2: %v %v", resp, err)
 	} else if err := resp.Body.Close(); err != nil {
 		t.Fatal(err)
@@ -477,4 +562,38 @@ func TestManyStreamsOnOneConnection(t *testing.T) {
 			t.Fatalf("stream %d: %v %v", i, r, err)
 		}
 	}
+}
+
+// TestSlowRequestLogged checks that a Put, which the node runs, is logged
+// when it takes more than --warning-unary-request-duration, as a call the
+// server runs itself is.
+func TestSlowRequestLogged(t *testing.T) {
+	var mu sync.Mutex
+	var logged []string
+	c := newClusterWith(t, func(c *cluster) {
+		c.serverConfig = func(cfg *server.Config) {
+			cfg.WarningUnaryRequestDuration = time.Nanosecond
+			cfg.Logf = func(format string, args ...any) {
+				mu.Lock()
+				defer mu.Unlock()
+				logged = append(logged, fmt.Sprintf(format, args...))
+			}
+		}
+	})
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	for _, l := range logged {
+		if strings.Contains(l, "/etcdserverpb.KV/Put") {
+			return
+		}
+	}
+	t.Fatalf("no slow Put in the log: %q", logged)
 }

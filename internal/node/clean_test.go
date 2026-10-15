@@ -343,3 +343,74 @@ func TestChoose(t *testing.T) {
 		})
 	}
 }
+
+// TestDefragment writes cold keys once and then overwrites and compacts
+// hot keys on a node without a disk budget, so the cold values hold every
+// segment from the first on. Defragment must copy them out, so that the
+// old segments go, and every value must read back, also after a restart.
+func TestDefragment(t *testing.T) {
+	dir := t.TempDir()
+	r := runClean(t, dir, 0)
+	want := map[string]int{}
+	cold, hot := keys("c", 20), keys("h", 20)
+	if _, err := putAll(r.n, 0, cold...); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range cold {
+		want[k] = 0
+	}
+	for round := 1; round <= 40; round++ {
+		rev, err := putAll(r.n, round, hot...)
+		if err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		for _, k := range hot {
+			want[k] = round
+		}
+		if _, err := do(r.n, &pb.CompactionRequest{Revision: rev}); err != nil {
+			t.Fatalf("compact: %v", err)
+		}
+	}
+	before, _ := walFiles(t, dir)
+	if _, err := os.Stat(filepath.Join(dir, "wal", wal.SegmentName(1))); err != nil {
+		t.Fatalf("the first segment, with the cold values, is gone before Defragment: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// A snapshot served meanwhile holds Defragment back until it ends.
+	l := r.n.log
+	l.mu.Lock()
+	l.serving++
+	l.mu.Unlock()
+	defragged := make(chan error, 1)
+	go func() { defragged <- r.n.Defragment(ctx) }()
+	select {
+	case err := <-defragged:
+		t.Fatalf("Defragment answered %v while a snapshot was served", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	l.mu.Lock()
+	l.serving--
+	l.mu.Unlock()
+	if err := <-defragged; err != nil {
+		t.Fatal(err)
+	}
+	after, packs := walFiles(t, dir)
+	t.Logf("%d segments before Defragment, %d and %d packs after", before, after, packs)
+	if packs == 0 || after >= before/2 {
+		t.Fatalf("%d segments before Defragment, %d and %d packs after", before, after, packs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wal", wal.SegmentName(1))); !os.IsNotExist(err) {
+		t.Fatalf("the first segment is still there: %v", err)
+	}
+	if err := checkValues(r.n, want); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.stop(); err != nil {
+		t.Fatal(err)
+	}
+	r = runClean(t, dir, 0)
+	if err := checkValues(r.n, want); err != nil {
+		t.Fatalf("after a restart: %v", err)
+	}
+}

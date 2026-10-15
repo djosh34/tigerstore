@@ -10,7 +10,9 @@ import (
 
 	"go.etcd.io/raft/v3/raftpb"
 
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/testcert"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // listen listens on addr, or on a free port if addr is empty. The tests
@@ -74,7 +76,7 @@ func startWith(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string
 		ln = listen(t, addrs[id])
 	}
 	cfg := Config{
-		ID: id, Listener: ln, Peers: peers, Certificate: cert, CA: pool,
+		ID: id, Listeners: []net.Listener{ln}, Peers: peers, Certificate: cert, CA: pool,
 		Deliver:     func(m *raftpb.Message) { e.got <- m },
 		Unreachable: func(uint64) { e.unreachable.Add(1) },
 		Logf:        t.Logf,
@@ -141,6 +143,16 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 			t.Fatalf("message %d = %v", i, m)
 		}
 	}
+	// Both ends count the same frames, and node 1 has an active
+	// connection to node 2.
+	sent := testutil.ToFloat64(a.t.cfg.Metrics.PeerSent.WithLabelValues("2"))
+	received := testutil.ToFloat64(b.t.cfg.Metrics.PeerReceived.WithLabelValues("1"))
+	if sent == 0 || sent != received {
+		t.Fatalf("node 1 sent %g bytes to node 2, which received %g", sent, received)
+	}
+	if active := testutil.ToFloat64(a.t.cfg.Metrics.ActivePeers.WithLabelValues("1", "2")); active != 1 {
+		t.Fatalf("etcd_network_active_peers is %g", active)
+	}
 
 	// Node 2 goes away: sends are dropped and reported, never blocking.
 	if err := b.t.Close(); err != nil {
@@ -153,6 +165,9 @@ func TestSendInOrderAndReconnect(t *testing.T) {
 	}
 	if a.unreachable.Load() == 0 {
 		t.Fatal("no unreachable report while the peer was down")
+	}
+	if n := testutil.ToFloat64(a.t.cfg.Metrics.DisconnectedPeers.WithLabelValues("1", "2")); n == 0 {
+		t.Fatal("etcd_network_disconnected_peers_total did not count the lost peer")
 	}
 
 	// Node 2 comes back on the same address and gets new messages.
@@ -240,13 +255,21 @@ func TestQueueByType(t *testing.T) {
 
 func TestControlQueueIsCapped(t *testing.T) {
 	var dropped atomic.Int64
-	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }}}
-	s := &sender{t: tr, id: 2, ctrl: make(chan queued, controlQueue), data: make(chan queued, dataQueue)}
+	set, err := metrics.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := &TCP{cfg: Config{Unreachable: func(uint64) { dropped.Add(1) }, Metrics: set}}
+	s := &sender{t: tr, id: 2, ctrl: make(chan queued, controlQueue), data: make(chan queued, dataQueue), counters: tr.countersOf(2)}
 	big := make([]byte, 1<<20)
 	for range 100 {
 		s.send(&raftpb.Message{Type: raftpb.MsgHeartbeat.Enum(), Context: big})
 	}
 	if dropped.Load() == 0 || s.ctrlBytes.Load() > maxQueued {
 		t.Fatalf("queued %d bytes of heartbeats with %d drops; the cap is %d", s.ctrlBytes.Load(), dropped.Load(), maxQueued)
+	}
+	// Each drop is a send failure to the peer, as etcd counts them.
+	if got := testutil.ToFloat64(set.PeerSentFailures.WithLabelValues("2")); got != float64(dropped.Load()) {
+		t.Fatalf("etcd_network_peer_sent_failures_total is %g after %d drops", got, dropped.Load())
 	}
 }

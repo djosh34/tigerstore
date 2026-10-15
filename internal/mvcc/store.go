@@ -17,6 +17,7 @@ import (
 	"github.com/google/btree"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -236,6 +237,12 @@ type Store struct {
 	fills []Fill
 
 	counts Counts
+	// compactHash is the hash the last compaction took.
+	compactHash KVHash
+	// size is the bytes etcd's database would hold for the versions
+	// (rowBytes), the size the space quota counts.
+	size int64
+
 	// versions and keyBytes count the room for versions that the keys'
 	// arrays have and the key bytes in the index, for Bytes.
 	versions, keyBytes int64
@@ -299,7 +306,13 @@ func (k *keyIndex) current(r Ref) bool {
 // transactions. Ranges also count the reads etcd makes inside other
 // operations: one per compare, one per delete with prev_kv, and one per
 // put with prev_kv, ignore_value or ignore_lease, two in a transaction.
-type Counts struct{ Puts, Deletes, Ranges int64 }
+// Txns counts the requests with more than one of those, as etcd's
+// etcd_mvcc_txn_total does, PutBytes the key and value bytes of the puts
+// (etcd_debugging_mvcc_total_put_size_in_bytes) and Compacted the
+// versions compactions dropped (etcd_debugging_mvcc_db_compaction_keys_total).
+// Keys is the number of keys whose newest version is not a delete
+// (etcd_debugging_mvcc_keys_total).
+type Counts struct{ Puts, Deletes, Ranges, Txns, PutBytes, Compacted, Keys int64 }
 
 // New returns an empty store at revision 1, the revision etcd starts at,
 // that keeps its values in v.
@@ -316,6 +329,31 @@ func New(v Values) *Store {
 
 // Counts returns the operations the store has seen.
 func (s *Store) Counts() Counts { return s.counts }
+
+// Size is about the bytes etcd v3.7.2's database would hold for the
+// versions in the index: per version, the row etcd writes, a revision key
+// and the marshaled KeyValue. The versions a compaction drops no longer
+// count, even while a checkpoint copy keeps them. etcd's file also holds
+// free pages and its other buckets.
+func (s *Store) Size() int64 { return s.size }
+
+// rowBytes is the size of etcd's row for a version: its 17-byte revision
+// key, one more for a tombstone's mark, and the KeyValue, which for a
+// tombstone holds only the key.
+func rowBytes(key []byte, v *version) int64 {
+	n := 17 + protowire.SizeTag(1) + protowire.SizeBytes(len(key))
+	if v.ver == 0 {
+		return int64(n + 1)
+	}
+	n += 3*protowire.SizeTag(2) + protowire.SizeVarint(uint64(v.create)) + protowire.SizeVarint(uint64(v.mod.main)) + protowire.SizeVarint(uint64(v.ver))
+	if v.value.Len > 0 {
+		n += protowire.SizeTag(5) + protowire.SizeBytes(int(v.value.Len))
+	}
+	if v.lease != 0 {
+		n += protowire.SizeTag(6) + protowire.SizeVarint(uint64(v.lease))
+	}
+	return int64(n)
+}
 
 // Rev is the current revision.
 func (s *Store) Rev() int64 { return s.rev }
@@ -513,7 +551,8 @@ func InRange(key, start, end []byte) bool {
 // etcd's compaction does: per key, the newest version at or below rev
 // stays, unless it is a tombstone from before rev. A tombstone at rev
 // stays, so a watch from rev still gets that delete. Reads below rev then
-// fail with ErrCompacted. Compact does not change the revision.
+// fail with ErrCompacted. Compact does not change the revision. In the
+// same walk it takes the hash of rev (CompactHash).
 func (s *Store) Compact(rev int64) error {
 	switch {
 	case rev <= s.compactRev:
@@ -522,26 +561,32 @@ func (s *Store) Compact(rev int64) error {
 		return rpctypes.ErrGRPCFutureRev
 	}
 	s.changes = s.changes[:0]
-	if s.track {
-		var pending int64
-		if s.frozen != nil {
-			pending = s.frozen.compact
-		}
-		s.keys.Ascend(func(k *keyIndex) bool {
-			for i := k.dropped(pending); i < k.dropped(rev); i++ {
-				s.sum ^= versionHash(k.key, &k.vers[i])
-			}
-			return true
-		})
-	}
+	pending := s.pendingCompact()
+	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev
 	if s.frozen != nil {
 		// A checkpoint copy is under way and reads the versions in place;
-		// they go once it is done.
+		// they go once it is done, but no longer count.
 		s.frozen.compact = rev
-		return nil
 	}
-	s.drop(rev)
+	var gone []*keyIndex
+	s.keys.Ascend(func(k *keyIndex) bool {
+		from, to := k.dropped(pending), k.dropped(rev)
+		h.key(k, from)
+		s.counts.Compacted += int64(to - from)
+		for i := from; i < to; i++ {
+			s.size -= rowBytes(k.key, &k.vers[i])
+			if s.track {
+				s.sum ^= versionHash(k.key, &k.vers[i])
+			}
+		}
+		if s.frozen == nil && s.dropFirst(k, to) {
+			gone = append(gone, k)
+		}
+		return true
+	})
+	s.remove(gone)
+	s.compactHash = h.sum()
 	return nil
 }
 
@@ -561,21 +606,32 @@ func (k *keyIndex) dropped(rev int64) int {
 func (s *Store) drop(rev int64) {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
-		if i := k.dropped(rev); i > 0 {
-			c := cap(k.vers)
-			k.vers = slices.Delete(k.vers, 0, i)
-			// The array stays; a key that lost most of its versions gets a
-			// smaller one, so that the memory goes.
-			if len(k.vers) <= c/4 {
-				k.vers = slices.Clone(k.vers)
-			}
-			s.versions -= int64(c - cap(k.vers))
-		}
-		if len(k.vers) == 0 {
+		if s.dropFirst(k, k.dropped(rev)) {
 			gone = append(gone, k)
 		}
 		return true
 	})
+	s.remove(gone)
+}
+
+// dropFirst removes k's i oldest versions and reports whether none is
+// left.
+func (s *Store) dropFirst(k *keyIndex, i int) bool {
+	if i > 0 {
+		c := cap(k.vers)
+		k.vers = slices.Delete(k.vers, 0, i)
+		// The array stays; a key that lost most of its versions gets a
+		// smaller one, so that the memory goes.
+		if len(k.vers) <= c/4 {
+			k.vers = slices.Clone(k.vers)
+		}
+		s.versions -= int64(c - cap(k.vers))
+	}
+	return len(k.vers) == 0
+}
+
+// remove takes keys without versions out of the index.
+func (s *Store) remove(gone []*keyIndex) {
 	for _, k := range gone {
 		s.keys.Delete(k)
 		s.keyBytes -= int64(len(k.key))

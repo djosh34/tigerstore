@@ -7,14 +7,28 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // testConn is a connection with no socket, for the accounting of calls.
-func testConn() *conn {
+func testConn(t testing.TB) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &conn{ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newMetrics()}
+	return &conn{s: bareServer(t), ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), streams: map[uint32]*stream{}, atNode: map[*stream]struct{}{}, maxFrame: 16384, sendWin: 1 << 30, metrics: newConnMetrics()}
+}
+
+// bareServer is a server without a node, for tests of connections.
+func bareServer(t testing.TB) *Server {
+	t.Helper()
+	set, err := metrics.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := buildServerMetrics(set, false)
+	s := &Server{metrics: m}
+	s.setLimits()
+	return s
 }
 
 func testCall(c *conn, id uint32) *stream {
@@ -120,7 +134,7 @@ func TestCallCharges(t *testing.T) {
 			drain(c)
 		},
 	} {
-		c := testConn()
+		c := testConn(t)
 		st := testCall(c, 1)
 		run(c, st)
 		if c.held != 0 || st.reqHeld != 0 || st.replyHeld != 0 || c.waitingReplies.Load() != 0 || len(c.atNode) != 0 {

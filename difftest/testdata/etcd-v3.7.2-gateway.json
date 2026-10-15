@@ -1,0 +1,81 @@
+{
+  "gateway": [
+    {
+      "do": "put a",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "get a",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "watch a from the case's start",
+      "code": "OK",
+      "result": {
+        "created": true,
+        "createdRevision": 1,
+        "events": [
+          {
+            "type": "PUT",
+            "kv": {
+              "key": "a",
+              "value": "1",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "grant",
+      "code": "OK",
+      "result": {
+        "revision": 1,
+        "lease": 1,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "revoke",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "delete a",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "deleted": 1,
+        "prevKVs": [
+          {
+            "key": "a",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ]
+      }
+    }
+  ]
+}

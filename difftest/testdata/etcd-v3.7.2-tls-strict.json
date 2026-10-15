@@ -1,0 +1,27 @@
+{
+  "strict": [
+    {
+      "do": "TLS 1.3 with a client certificate for localhost",
+      "code": "OK",
+      "result": {
+        "served": true,
+        "version": "TLS 1.3",
+        "server": "node1"
+      }
+    },
+    {
+      "do": "TLS 1.2",
+      "code": "OK",
+      "result": {
+        "served": false
+      }
+    },
+    {
+      "do": "a client certificate for other.example",
+      "code": "OK",
+      "result": {
+        "served": false
+      }
+    }
+  ]
+}

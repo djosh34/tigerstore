@@ -59,6 +59,7 @@ func formats(n *Node) []byte {
 // moves to version 2 and later entries are in format 2.
 func TestVersionWaitsForEveryVoter(t *testing.T) {
 	c := newMemCluster(t, func(cfg *Config) {
+		cfg.MaxVersion = 2
 		if cfg.ID == 3 {
 			cfg.MaxVersion = 1
 		}
@@ -92,16 +93,16 @@ func TestVersionWaitsForEveryVoter(t *testing.T) {
 	// A restart with another binary, as far as the announcement goes.
 	c.nodes[1].cfg.MaxVersion = 1
 	run(1)
-	c.nodes[2].cfg.MaxVersion = 0
+	c.nodes[2].cfg.MaxVersion = 2
 	run(1)
-	c.nodes[1].cfg.MaxVersion = 0
+	c.nodes[1].cfg.MaxVersion = 2
 	run(2)
 	if c.replies != int(id) {
 		t.Fatalf("%d of %d writes answered", c.replies, id)
 	}
 }
 
-// TestOldBinaryRefusesToStart activates version 2 on a single node, then
+// TestOldBinaryRefusesToStart activates MaxVersion on a single node, then
 // restarts it with a binary that supports only version 1: from the log
 // alone and from a checkpoint cut after activation.
 func TestOldBinaryRefusesToStart(t *testing.T) {
@@ -118,7 +119,7 @@ func TestOldBinaryRefusesToStart(t *testing.T) {
 				s.n.Tick()
 				s.run()
 			}
-			if s.n.ActiveVersion() != 2 {
+			if s.n.ActiveVersion() != MaxVersion {
 				t.Fatalf("version %d after the announcement", s.n.ActiveVersion())
 			}
 			for id := uint64(1); ckpt && s.n.DurableCheckpoint().Index == 0; id++ {

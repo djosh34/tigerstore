@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 
@@ -28,9 +29,25 @@ type method struct {
 	// serverStream: stream is a server-streaming call, whose client sends
 	// one request.
 	serverStream bool
-	// idx is the method's place in methodPaths, for its metrics.
-	idx int
+	// idx is the method's place in methodPaths, for its metrics,
+	// reqType its requestType and labels its labels.
+	idx     int
+	reqType string
+	labels  [3]string
+	// learner says what a learner serves of the method, as etcd's
+	// isRPCSupportedForLearner: nothing by default.
+	learner learnerUse
 }
+
+// learnerUse is what a learner serves of a method.
+type learnerUse byte
+
+const (
+	learnerNever learnerUse = iota
+	learnerAlways
+	// learnerSerializable serves serializable ranges only.
+	learnerSerializable
+)
 
 // methodPaths are the paths of methods, sorted.
 var methodPaths = func() []string {
@@ -41,44 +58,92 @@ var methodPaths = func() []string {
 	slices.Sort(paths)
 	for i, p := range paths {
 		methods[p].idx = i
+		methods[p].reqType = requestType(p)
+		methods[p].labels = labels(p, methods[p])
 	}
 	return paths
 }()
 
-// methods are the methods that are served: etcd's and the gRPC health
-// service's. Every other method of etcd's services answers Unimplemented,
-// as grpc-go's generated Unimplemented servers do.
-var methods = map[string]*method{
-	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
-	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream, serverStream: true},
-	"/etcdserverpb.KV/Put":                {op: newOp[pb.PutRequest], wirePut: true},
-	"/etcdserverpb.KV/DeleteRange":        {op: newOp[pb.DeleteRangeRequest]},
-	"/etcdserverpb.KV/Txn":                {op: newOp[pb.TxnRequest]},
-	"/etcdserverpb.KV/Compact":            {op: newOp[pb.CompactionRequest]},
-	"/etcdserverpb.Lease/LeaseGrant":      {op: newOp[pb.LeaseGrantRequest]},
-	"/etcdserverpb.Lease/LeaseRevoke":     {op: newOp[pb.LeaseRevokeRequest]},
-	"/etcdserverpb.Lease/LeaseTimeToLive": {op: newOp[pb.LeaseTimeToLiveRequest]},
-	"/etcdserverpb.Lease/LeaseLeases":     {op: newOp[pb.LeaseLeasesRequest]},
-	"/etcdserverpb.Lease/LeaseKeepAlive":  {stream: (*Server).keepAlive},
-	"/etcdserverpb.Watch/Watch":           {stream: (*Server).watch},
-	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
-	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
-	"/etcdserverpb.Maintenance/Alarm":     {unary: alarm},
-	"/v3lockpb.Lock/Lock":                 {unary: lock},
-	"/v3lockpb.Lock/Unlock":               {unary: unlock},
-	"/v3electionpb.Election/Campaign":     {unary: campaign},
-	"/v3electionpb.Election/Proclaim":     {unary: electionProclaim},
-	"/v3electionpb.Election/Leader":       {unary: electionLeader},
-	"/v3electionpb.Election/Observe":      {stream: (*Server).observe, serverStream: true},
-	"/v3electionpb.Election/Resign":       {unary: electionResign},
-	"/grpc.health.v1.Health/Check":        {unary: healthCheck},
-	"/grpc.health.v1.Health/List":         {unary: healthList},
-	"/grpc.health.v1.Health/Watch":        {stream: (*Server).healthWatch, serverStream: true},
+// requestType is the type etcd's etcd_server_request_duration_seconds
+// gives the requests of the method at path, "" for one it does not time:
+// those that go through Raft and Range. A read-only Txn is a ReadonlyTxn.
+func requestType(path string) string {
+	service, name, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	switch service {
+	case "etcdserverpb.KV":
+		switch name {
+		case "Range", "Put", "DeleteRange", "Txn":
+			return name
+		case "Compact":
+			return "Compaction"
+		}
+	case "etcdserverpb.Lease":
+		if name == "LeaseGrant" || name == "LeaseRevoke" {
+			return name
+		}
+	case "etcdserverpb.Maintenance":
+		if name == "Alarm" {
+			return name
+		}
+	case "etcdserverpb.Auth":
+		if strings.HasPrefix(name, "User") || strings.HasPrefix(name, "Role") {
+			return "Auth" + name
+		}
+		return name
+	}
+	return ""
 }
 
-// services are etcd's gRPC services; their other methods are not
-// implemented.
-var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election"}
+// methods are the methods that are served: etcd's, with the Auth
+// service's in authMethods, and the gRPC health service's. Every other
+// method of etcd's services answers Unimplemented, as grpc-go's generated
+// Unimplemented servers do.
+var methods = withAuth(map[string]*method{
+	"/etcdserverpb.KV/Range":               {op: newOp[pb.RangeRequest], compact: true, learner: learnerSerializable},
+	"/etcdserverpb.KV/RangeStream":         {stream: (*Server).rangeStream, serverStream: true},
+	"/etcdserverpb.KV/Put":                 {op: newOp[pb.PutRequest], wirePut: true},
+	"/etcdserverpb.KV/DeleteRange":         {op: newOp[pb.DeleteRangeRequest]},
+	"/etcdserverpb.KV/Txn":                 {op: newOp[pb.TxnRequest]},
+	"/etcdserverpb.KV/Compact":             {op: newOp[pb.CompactionRequest]},
+	"/etcdserverpb.Lease/LeaseGrant":       {op: newOp[pb.LeaseGrantRequest]},
+	"/etcdserverpb.Lease/LeaseRevoke":      {op: newOp[pb.LeaseRevokeRequest]},
+	"/etcdserverpb.Lease/LeaseTimeToLive":  {op: newOp[pb.LeaseTimeToLiveRequest]},
+	"/etcdserverpb.Lease/LeaseLeases":      {op: newOp[pb.LeaseLeasesRequest]},
+	"/etcdserverpb.Lease/LeaseKeepAlive":   {stream: (*Server).keepAlive},
+	"/etcdserverpb.Watch/Watch":            {stream: (*Server).watch},
+	"/etcdserverpb.Cluster/MemberList":     {unary: nodeCall[pb.MemberListRequest]},
+	"/etcdserverpb.Cluster/MemberAdd":      {unary: memberAdd},
+	"/etcdserverpb.Cluster/MemberRemove":   {unary: nodeCall[pb.MemberRemoveRequest]},
+	"/etcdserverpb.Cluster/MemberUpdate":   {unary: nodeCall[pb.MemberUpdateRequest]},
+	"/etcdserverpb.Cluster/MemberPromote":  {unary: memberPromote},
+	"/etcdserverpb.Maintenance/Status":     {unary: maintenanceStatus, learner: learnerAlways},
+	"/etcdserverpb.Maintenance/Alarm":      {unary: nodeCall[pb.AlarmRequest]},
+	"/etcdserverpb.Maintenance/Hash":       {unary: nodeCall[pb.HashRequest]},
+	"/etcdserverpb.Maintenance/HashKV":     {unary: nodeCall[pb.HashKVRequest]},
+	"/etcdserverpb.Maintenance/Snapshot":   {stream: (*Server).snapshot, serverStream: true, learner: learnerAlways},
+	"/etcdserverpb.Maintenance/Defragment": {unary: defragment},
+	"/etcdserverpb.Maintenance/MoveLeader": {unary: nodeCall[pb.MoveLeaderRequest]},
+	"/etcdserverpb.Maintenance/Downgrade":  {unary: nodeCall[pb.DowngradeRequest]},
+	"/v3lockpb.Lock/Lock":                  {unary: lock},
+	"/v3lockpb.Lock/Unlock":                {unary: unlock},
+	"/v3electionpb.Election/Campaign":      {unary: campaign},
+	"/v3electionpb.Election/Proclaim":      {unary: electionProclaim},
+	"/v3electionpb.Election/Leader":        {unary: electionLeader},
+	"/v3electionpb.Election/Observe":       {stream: (*Server).observe, serverStream: true},
+	"/v3electionpb.Election/Resign":        {unary: electionResign},
+	"/grpc.health.v1.Health/Check":         {unary: healthCheck},
+	"/grpc.health.v1.Health/List":          {unary: healthList},
+	"/grpc.health.v1.Health/Watch":         {stream: (*Server).healthWatch, serverStream: true},
+})
+
+// withAuth adds authMethods to ms.
+func withAuth(ms map[string]*method) map[string]*method {
+	maps.Copy(ms, authMethods)
+	return ms
+}
+
+// services are the gRPC services etcd registers.
+var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election", healthService}
 
 // unknownMethod is grpc-go's answer for a method that is not served.
 func unknownMethod(path string) error {
@@ -87,10 +152,6 @@ func unknownMethod(path string) error {
 		return status.Errorf(codes.Unimplemented, "malformed method name: %q", path)
 	}
 	if slices.Contains(services, service) {
-		return status.Errorf(codes.Unimplemented, "method %s not implemented", name)
-	}
-	if service == healthService {
-		// The health service serves all of its methods.
 		return status.Errorf(codes.Unimplemented, "unknown method %v for service %v", name, service)
 	}
 	return status.Errorf(codes.Unimplemented, "unknown service %v", service)
@@ -99,9 +160,17 @@ func unknownMethod(path string) error {
 // unmarshal decodes a request message as grpc-go does, with its error.
 func unmarshal(b []byte, m proto.Message) error {
 	if err := proto.Unmarshal(b, m); err != nil {
-		return status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err)
+		return unmarshalError(err)
 	}
 	return nil
+}
+
+// unmarshalError is grpc-go's error for a request it cannot decode.
+// protobuf puts a no-break space after "proto:" in some builds, to keep
+// programs from comparing its messages; etcd v3.7.2's build has a space.
+func unmarshalError(err error) error {
+	msg := strings.Replace(err.Error(), "proto:\u00a0", "proto: ", 1)
+	return status.Errorf(codes.Internal, "grpc: error unmarshalling request: %s", msg)
 }
 
 // newOp returns a new request of type T.
@@ -112,49 +181,35 @@ func newOp[T any, P interface {
 	return P(new(T))
 }
 
-func memberList(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
-	if err := unmarshal(b, &pb.MemberListRequest{}); err != nil {
+// nodeCall decodes a request of type T and has the node answer it.
+func nodeCall[T any, P interface {
+	*T
+	proto.Message
+}](ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	req := P(new(T))
+	if err := unmarshal(b, req); err != nil {
 		return nil, err
 	}
-	return s.memberList(), nil
+	resp, err := s.n.DoAs(ctx, caller, req)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return resp, nil
 }
 
-func maintenanceStatus(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
-	if err := unmarshal(b, &pb.StatusRequest{}); err != nil {
+func maintenanceStatus(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	var r pb.StatusRequest
+	if err := unmarshal(b, &r); err != nil {
 		return nil, err
+	}
+	if err := s.n.Authorize(ctx, caller, &r); err != nil {
+		return nil, toStatus(err)
 	}
 	st, err := s.n.Status(ctx)
 	if err != nil {
 		return nil, toStatus(err)
 	}
 	return st, nil
-}
-
-// alarm answers Maintenance.Alarm. Tigerstore raises no alarms: it does
-// not enforce the space quota that Status reports, and it has no hash
-// check between members, so it never raises NOSPACE or CORRUPT. Past its
-// disk budget, a node answers writes with NOSPACE until cleaning makes
-// room, with no alarm to disarm. A failing disk stops the node, and a
-// corrupt log keeps it from starting. A GET
-// lists none, and a DEACTIVATE, or an ACTIVATE of NONE, finds nothing to
-// change, as etcd v3.7.2 answers when no alarm is active. etcd passes
-// every alarm request through Raft, so the answer is linearizable and its
-// header carries the revision: here a linearizable read gives both.
-// Activating NOSPACE or CORRUPT by hand, which would refuse writes, is
-// not supported.
-func alarm(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
-	var r pb.AlarmRequest
-	if err := unmarshal(b, &r); err != nil {
-		return nil, err
-	}
-	if r.Action == pb.AlarmRequest_ACTIVATE && r.Alarm != pb.AlarmType_NONE {
-		return nil, status.Errorf(codes.Unimplemented, "tigerstore does not support activating alarm %v", r.Alarm)
-	}
-	resp, err := s.n.Do(ctx, &pb.RangeRequest{Key: []byte{0}, CountOnly: true})
-	if err != nil {
-		return nil, toStatus(err)
-	}
-	return &pb.AlarmResponse{Header: resp.(*pb.RangeResponse).Header}, nil
 }
 
 // toStatus turns context errors into the status etcd returns for them.

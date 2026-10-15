@@ -21,7 +21,49 @@ import (
 
 // MaxVersion is the newest cluster version, and so entry format, this
 // build supports. It reads every format up to it.
-const MaxVersion = 2
+const MaxVersion = 3
+
+// featureVersion is the cluster version, and entry format, from which
+// entries may hold the writes of etcd's features that format 2 has no
+// kind for: alarm changes, members' attributes and member changes. Until it is active, such writes wait for it,
+// up to their deadline, as writes wait for a leader. A fresh cluster
+// activates it once every voter's announcement applied.
+const featureVersion = 3
+
+// capable reports whether the cluster version allows the kinds of
+// featureVersion.
+func (n *Node) capable() bool { return n.state.version >= featureVersion }
+
+// queueFeature queues a write that needs featureVersion, or keeps it
+// until that version is active.
+func (n *Node) queueFeature(p *pending) {
+	if n.capable() {
+		n.queueWrite(p)
+		return
+	}
+	p.early = true
+	n.early = append(n.early, p)
+}
+
+// releaseEarly queues the writes that waited for featureVersion once it
+// is active.
+func (n *Node) releaseEarly() {
+	if len(n.early) == 0 || !n.capable() {
+		return
+	}
+	for _, p := range n.early {
+		switch {
+		case p.done:
+		case p.conf != nil:
+			p.early = false
+			n.confs = append(n.confs, p)
+		default:
+			p.early = false
+			n.queueWrite(p)
+		}
+	}
+	n.early = nil
+}
 
 // ErrTooOld stops a node whose cluster runs a newer version than its
 // binary supports.
@@ -64,7 +106,7 @@ func (n *Node) applyVersion(origin uint64, b []byte) error {
 	if err := proto.Unmarshal(b, &v); err != nil {
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
-	n.state.announce(origin, v.Value, n.cfg.Peers)
+	n.state.announce(origin, v.Value, n.state.voters())
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))
 	}

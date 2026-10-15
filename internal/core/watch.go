@@ -16,6 +16,9 @@ import (
 // (server/etcdserver/api/v3rpc/watch.go and server/storage/mvcc).
 
 // WatchResponse is a response on one watch stream.
+// Resp.Fragment marks the response of a watcher created with fragment
+// set: the server splits it as etcd does when it is large, once its
+// values are read, and clears the mark.
 type WatchResponse struct {
 	Stream uint64
 	Resp   *pb.WatchResponse
@@ -43,6 +46,7 @@ type watcher struct {
 	noPut    bool
 	noDelete bool
 	progress bool
+	fragment bool
 	// start is the first revision the watcher delivers. Changes are
 	// matched after it is created, so later revisions are always newer;
 	// start only holds back a watcher that asked for a future revision.
@@ -64,7 +68,10 @@ type watcher struct {
 func (w *watcher) ahead(rev int64) bool { return rev < w.asked }
 
 type watchStream struct {
-	id     uint64
+	id uint64
+	// caller is the client of the stream, whose watches need its read
+	// permission while auth is enabled.
+	caller Caller
 	nextID int64
 	byID   map[int64]*watcher
 	// held are responses that wait for value reads, their own or those of
@@ -88,6 +95,7 @@ func (n *Node) watchHeader() *pb.ResponseHeader {
 // are done and every response before it went out.
 func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRead) {
 	r.Header = n.watchHeader()
+	n.counters.Events += int64(len(r.Events))
 	resp := WatchResponse{Stream: s.id, Resp: r}
 	waits = slices.DeleteFunc(waits, func(v *ValueRead) bool { return v.done })
 	if len(s.held) == 0 && len(waits) == 0 {
@@ -150,13 +158,13 @@ func addWait(waits []*ValueRead, r *ValueRead) []*ValueRead {
 
 // Watch handles one request on a watch stream. The stream exists from its
 // first request until CloseWatchStream.
-func (n *Node) Watch(stream uint64, r *pb.WatchRequest) {
+func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 	if n.err != nil {
 		return
 	}
 	s, ok := n.streams[stream]
 	if !ok {
-		s = &watchStream{id: stream, byID: map[int64]*watcher{}}
+		s = &watchStream{id: stream, byID: map[int64]*watcher{}, caller: c}
 		n.streams[stream] = s
 	}
 	switch {
@@ -251,6 +259,11 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	if len(key) == 0 {
 		key = []byte{0}
 	}
+	if err := n.watchAllowed(s.caller, key, c.RangeEnd); err != nil {
+		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, err.Error()
+		n.watchReply(s, created, nil)
+		return
+	}
 	fromKey := len(c.RangeEnd) == 1 && c.RangeEnd[0] == 0
 	if len(c.RangeEnd) != 0 && !fromKey && bytes.Compare(key, c.RangeEnd) >= 0 {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errEmptyWatchRange
@@ -269,7 +282,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		n.watchReply(s, created, nil)
 		return
 	}
-	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, start: c.StartRevision, asked: c.StartRevision}
+	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, fragment: c.Fragment, start: c.StartRevision, asked: c.StartRevision}
 	if planted.On("B07") && w.start > 1 {
 		w.start--
 	}
@@ -317,7 +330,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 			}
 			if r := ev.Kv.ModRevision; r != last {
 				if revs == catchUpRevs {
-					n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs}, waits)
+					n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits)
 					evs, waits, revs = nil, nil, 0
 				}
 				revs, last = revs+1, r
@@ -326,7 +339,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 			waits = addWait(waits, read)
 		}
 		if len(evs) > 0 {
-			n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs}, waits)
+			n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits)
 		}
 	}
 	s.byID[id] = w
@@ -401,7 +414,7 @@ func (n *Node) flushWatches() {
 		if w.dead || len(w.pending) == 0 {
 			continue
 		}
-		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Events: w.pending}, w.waits)
+		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Events: w.pending, Fragment: w.fragment && len(w.pending) > 1}, w.waits)
 		w.pending, w.waits = nil, nil
 		w.sent = true
 	}

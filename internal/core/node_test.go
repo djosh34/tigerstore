@@ -30,6 +30,8 @@ type single struct {
 	held []*ValueRead
 	// keep skips removals, as a node does while it serves a fetch.
 	keep bool
+	// as is the caller of the requests do submits.
+	as Caller
 }
 
 // newMember starts node 1 of peers on an empty simulated disk, without
@@ -157,7 +159,7 @@ func (s *single) writeCheckpoint(chunks []CheckpointChunk) {
 
 func (s *single) do(id uint64, op proto.Message) Reply {
 	s.t.Helper()
-	s.n.Submit(Request{ID: id, Op: op})
+	s.n.Submit(Request{ID: id, Op: op, Caller: s.as})
 	for _, r := range s.run() {
 		if r.ID == id {
 			return r

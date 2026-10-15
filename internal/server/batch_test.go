@@ -76,7 +76,7 @@ func TestHeaderDecodeAllocs(t *testing.T) {
 	first := encode()
 	// The same fields again are all indexed.
 	again := encode()
-	c := &conn{metrics: newMetrics()}
+	c := &conn{metrics: newConnMetrics()}
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	decode := func(b []byte) {
 		c.hdr = reqHeaders{}
@@ -102,7 +102,7 @@ func TestHeaderDecodeAllocs(t *testing.T) {
 // goes on after breaking a rule, or could decode past the limit, ends the
 // connection.
 func TestHeaderBlockRules(t *testing.T) {
-	c := testConn()
+	c := testConn(t)
 	c.hdec = hpack.NewDecoder(4096, c.onField)
 	c.hdec.SetMaxStringLength(maxHeaderList)
 	var buf bytes.Buffer

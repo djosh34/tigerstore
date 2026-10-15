@@ -50,7 +50,7 @@ func TestWatchCatchUpKeepsRevisionsWhole(t *testing.T) {
 			t.Fatal(r.Err)
 		}
 	}
-	s.n.Watch(1, create(&pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("c"), StartRevision: 1, PrevKv: true}))
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("c"), StartRevision: 1, PrevKv: true}))
 	s.run()
 	rs := s.responses()
 	if !rs[0].Created || rs[0].WatchId != 0 {
@@ -98,7 +98,7 @@ func TestWatchCreateRules(t *testing.T) {
 		{Key: []byte("a"), StartRevision: -1},
 	}
 	for _, r := range reqs {
-		s.n.Watch(1, create(r))
+		s.n.Watch(1, Caller{}, create(r))
 	}
 	s.run()
 	var got []string
@@ -119,8 +119,8 @@ func TestWatchCreateRules(t *testing.T) {
 
 func TestWatchFiltersAndCancel(t *testing.T) {
 	s := startSingle(t, simfs.New(), 1)
-	s.n.Watch(1, create(&pb.WatchCreateRequest{Key: []byte("a"), Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NOPUT}}))
-	s.n.Watch(1, create(&pb.WatchCreateRequest{Key: []byte("a"), Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NODELETE}}))
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NOPUT}}))
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), Filters: []pb.WatchCreateRequest_FilterType{pb.WatchCreateRequest_NODELETE}}))
 	s.run()
 	s.responses()
 	s.put(1, "1")
@@ -134,7 +134,7 @@ func TestWatchFiltersAndCancel(t *testing.T) {
 			}
 		}
 	}
-	s.n.Watch(1, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CancelRequest{CancelRequest: &pb.WatchCancelRequest{WatchId: 0}}})
+	s.n.Watch(1, Caller{}, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CancelRequest{CancelRequest: &pb.WatchCancelRequest{WatchId: 0}}})
 	s.run()
 	if rs := s.responses(); len(rs) != 1 || !rs[0].Canceled || rs[0].WatchId != 0 {
 		t.Fatalf("cancel = %v", rs)
@@ -151,23 +151,23 @@ func TestWatchProgress(t *testing.T) {
 	s := startSingle(t, simfs.New(), 1)
 	progress := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}
 	// A stream without watchers gets no answer.
-	s.n.Watch(1, progress)
+	s.n.Watch(1, Caller{}, progress)
 	s.run()
 	if rs := s.responses(); len(rs) != 0 {
 		t.Fatalf("progress on an empty stream = %v", rs)
 	}
 	s.put(1, "1")
 	rev := s.n.kv.Rev()
-	s.n.Watch(1, create(&pb.WatchCreateRequest{Key: []byte("a"), ProgressNotify: true}))
-	s.n.Watch(1, progress)
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), ProgressNotify: true}))
+	s.n.Watch(1, Caller{}, progress)
 	s.run()
 	if rs := s.responses(); len(rs) != 2 || rs[1].WatchId != -1 || rs[1].Header.Revision != rev {
 		t.Fatalf("progress = %v", rs)
 	}
 	// A watcher that starts above the current revision holds back the
 	// stream's progress, so a client never resumes below its start.
-	s.n.Watch(2, create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: rev + 10, ProgressNotify: true}))
-	s.n.Watch(2, progress)
+	s.n.Watch(2, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: rev + 10, ProgressNotify: true}))
+	s.n.Watch(2, Caller{}, progress)
 	s.run()
 	if rs := s.responses(); len(rs) != 1 || !rs[0].Created {
 		t.Fatalf("progress with a watcher ahead = %v", rs)
@@ -206,7 +206,7 @@ func TestWatchFromCompactedRevision(t *testing.T) {
 		canceled bool
 	}{{2, false, true}, {3, true, true}, {3, false, false}, {4, true, false}}
 	for i, c := range cases {
-		s.n.Watch(uint64(i+1), create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: c.start, PrevKv: c.prevKV}))
+		s.n.Watch(uint64(i+1), Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), StartRevision: c.start, PrevKv: c.prevKV}))
 		s.run()
 		rs := s.responses()
 		canceled := len(rs) == 2 && rs[1].Canceled && rs[1].CompactRevision == 3 && rs[1].Header.Revision == 0 && rs[1].CancelReason == ""

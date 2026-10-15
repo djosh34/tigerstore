@@ -33,6 +33,7 @@ func tinyLimits(cfg *core.Config) {
 // from what the nodes retain, for its checks.
 type logRec struct {
 	term uint64
+	typ  raftpb.EntryType
 	data []byte
 	// known is false when only the hash is known: the state came from a
 	// checkpoint.
@@ -53,7 +54,7 @@ func (s *Sim) record(n *node, a core.Applied) {
 	}
 	r, ok := log[a.Index]
 	if !ok {
-		log[a.Index] = logRec{term: a.Term, data: a.Data, known: !a.Checkpoint, hash: a.Hash, node: n.id}
+		log[a.Index] = logRec{term: a.Term, typ: a.Type, data: a.Data, known: !a.Checkpoint, hash: a.Hash, node: n.id}
 		s.maxLogged = max(s.maxLogged, a.Index)
 		return
 	}
@@ -62,7 +63,7 @@ func (s *Sim) record(n *node, a core.Applied) {
 		s.fail("node %d and node %d applied different entries at index %d", n.id, r.node, a.Index)
 		return
 	case !r.known && !a.Checkpoint:
-		r.data, r.known = a.Data, true
+		r.typ, r.data, r.known = a.Type, a.Data, true
 		log[a.Index] = r
 	}
 	if r.hash != a.Hash {
@@ -79,7 +80,7 @@ func (s *Sim) committed(last uint64) ([]*raftpb.Entry, error) {
 		if !ok || !r.known {
 			return nil, fmt.Errorf("the record of committed entries has no entry %d", i)
 		}
-		out = append(out, &raftpb.Entry{Term: new(r.term), Index: new(i), Data: r.data})
+		out = append(out, &raftpb.Entry{Term: new(r.term), Index: new(i), Type: r.typ.Enum(), Data: r.data})
 	}
 	return out, nil
 }
@@ -242,7 +243,7 @@ func (s *Sim) install(n *node, in *core.Install) error {
 		s.stats.SnapshotFlips++
 	}
 	s.mix(0x5a, uint64(n.idx), in.Index, uint64(len(data)))
-	err = core.ReceiveSnapshot(bytes.NewReader(data), &simSink{s: s, n: n}, n.log, []uint64{1, 2, 3}, in)
+	err = core.ReceiveSnapshot(bytes.NewReader(data), &simSink{s: s, n: n}, n.log, in)
 	if err == nil && in.Checkpoint.Index > 0 {
 		s.stats.CheckpointSnapshots++
 		if in.Checkpoint.Index < newest {

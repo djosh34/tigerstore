@@ -27,6 +27,14 @@ func (noPeers) Fetch(context.Context, uint64, uint64, uint64) (io.ReadCloser, er
 	return nil, errors.New("no peers")
 }
 
+func (noPeers) SetPeers(map[uint64]string, []uint64) {}
+
+func (noPeers) ActiveSince(uint64) time.Time { return time.Time{} }
+
+func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
+	return nil, errors.New("no peers")
+}
+
 // slowWatcherIsCut opens a watch stream with a queue of 8 responses on a
 // single node, never reads it, and writes 50 keys it watches, one at a
 // time. The stream must be closed as too slow, and a Put and a Range must
@@ -66,7 +74,7 @@ func slowWatcherIsCut(t *testing.T) error {
 			return errors.New("the node never took a write")
 		}
 	}
-	ws, err := n.OpenWatch(ctx)
+	ws, err := n.OpenWatch(ctx, core.Caller{})
 	if err != nil {
 		return err
 	}
@@ -145,7 +153,7 @@ func TestWatchBytesBound(t *testing.T) {
 			t.Fatal("the node never took a write")
 		}
 	}
-	ws, err := n.OpenWatch(ctx)
+	ws, err := n.OpenWatch(ctx, core.Caller{})
 	if err != nil {
 		t.Fatal(err)
 	}

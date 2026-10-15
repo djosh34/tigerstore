@@ -4,8 +4,10 @@ import (
 	"encoding/binary"
 	"math"
 	"slices"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.opentelemetry.io/otel/attribute"
 
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -62,7 +64,7 @@ func (c *conn) admit(st *stream) {
 		// Raft entry as it is.
 		put, err := core.ParsePut(st.body)
 		if err != nil {
-			st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+			st.finish(unmarshalError(err))
 			return
 		}
 		req.Put = put
@@ -75,8 +77,15 @@ func (c *conn) admit(st *stream) {
 		switch req.Op.(type) {
 		case *pb.TxnRequest, *pb.RangeRequest:
 			if err := core.DecodeAlias(st.body, req.Op); err != nil {
-				st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+				st.finish(unmarshalError(err))
 				return
+			}
+			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
+				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
+				return
+			}
+			if t, ok := req.Op.(*pb.TxnRequest); ok {
+				st.readonlyTxn = readonlyTxn(t)
 			}
 		default:
 			if err := unmarshal(st.body, req.Op); err != nil {
@@ -85,6 +94,8 @@ func (c *conn) admit(st *stream) {
 			}
 		}
 	}
+	c.startOpSpan(st, &req)
+	st.admitted = time.Now()
 	st.reqSize = len(st.body)
 	st.body = nil
 	c.batch.reqs = append(c.batch.reqs, req)
@@ -96,10 +107,16 @@ func (c *conn) admit(st *stream) {
 // AuthInfoFromTLS ignores the certificate of a request from its gRPC
 // gateway.
 func (c *conn) callerOf(st *stream) core.Caller {
+	caller := c.caller
 	if st.gateway {
-		return core.Caller{}
+		caller = core.Caller{}
 	}
-	return c.caller
+	caller.Token = st.token
+	if t := c.s.cfg.JWT; t != nil && caller.Token != "" {
+		caller.Verified = true
+		caller.User, caller.Revision, _ = t.info(caller.Token)
+	}
+	return caller
 }
 
 // batchDue reports whether the reader should hand its batch to the node
@@ -274,6 +291,8 @@ type finished struct {
 	st  *stream
 	msg []byte
 	err error
+	// granted is the ID of a lease the node granted, for its span.
+	granted int64
 }
 
 // complete encodes the replies the node handed over and queues them on
@@ -286,9 +305,14 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		n += len(cs)
 	}
 	out := make([]finished, 0, n)
+	now := time.Now()
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
+			c.logSlow(f.st, now.Sub(f.st.admitted))
+			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
+				f.granted = g.ID
+			}
 			switch {
 			case f.err != nil:
 			case f.st.rpc.wirePut:
@@ -303,6 +327,9 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
+			if f.err == nil {
+				f.msg, f.err = f.st.compress(f.msg)
+			}
 			out = append(out, f)
 		}
 	}
@@ -315,6 +342,9 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			continue
 		}
 		c.chargeLocked(&f.st.replyHeld, len(f.msg))
+		if f.st.span != nil && f.granted != 0 {
+			f.st.span.SetAttributes(attribute.Int64("id", f.granted))
+		}
 		var s *status.Status
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
@@ -484,4 +514,17 @@ func appendKV(b []byte, kv *mvcc.KV) []byte {
 		b = protowire.AppendVarint(b, uint64(kv.Lease))
 	}
 	return b
+}
+
+// readonlyTxn is etcd's IsTxnReadonly: a transaction whose branches only
+// range. One with a nested transaction is not.
+func readonlyTxn(r *pb.TxnRequest) bool {
+	for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
+		for _, op := range ops {
+			if op.GetRequestRange() == nil {
+				return false
+			}
+		}
+	}
+	return true
 }

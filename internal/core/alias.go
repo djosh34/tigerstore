@@ -11,7 +11,12 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-var errBadMessage = errors.New("core: malformed protobuf message")
+// The decoding errors are protobuf's, with the prefix etcd v3.7.2's
+// build of protobuf gives them, so a client sees the same message.
+var (
+	errBadMessage = errors.New("proto: cannot parse invalid wire-format data")
+	errBadUTF8    = errors.New("string field contains invalid UTF-8")
+)
 
 // UnmarshalAlias decodes b into m like proto.Unmarshal, merging into what
 // m holds, except that bytes fields are slices of b instead of copies. b
@@ -23,7 +28,7 @@ func UnmarshalAlias(b []byte, m proto.Message) error {
 }
 
 // errTooDeep is protobuf's error for messages nested past its limit.
-var errTooDeep = errors.New("core: exceeded maximum recursion depth")
+var errTooDeep = errors.New("proto: exceeded maximum recursion depth")
 
 // decodeAlias decodes into m; depth is how many more levels of nested
 // messages may follow, protobuf's recursion limit.
@@ -153,7 +158,7 @@ func scalar(b []byte, typ protowire.Type, fd protoreflect.FieldDescriptor) (prot
 		}
 		if fd.Kind() == protoreflect.StringKind {
 			if !utf8.Valid(x) {
-				return protoreflect.Value{}, 0, errBadMessage
+				return protoreflect.Value{}, 0, errBadUTF8
 			}
 			return protoreflect.ValueOfString(string(x)), n, nil
 		}
