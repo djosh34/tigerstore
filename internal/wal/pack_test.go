@@ -1,0 +1,282 @@
+package wal_test
+
+import (
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/wal"
+)
+
+// cleanable returns the segments and packs that cleaning may replace
+// below index.
+func cleanable(w *wal.WAL, below uint64) (segs, packs []uint64) {
+	for _, f := range w.Cleanable(below) {
+		if f.Pack {
+			packs = append(packs, f.N)
+		} else {
+			segs = append(segs, f.N)
+		}
+	}
+	return segs, packs
+}
+
+// writePack copies the values at positions into a new pack.
+func writePack(t *testing.T, w *wal.WAL, positions ...[3]uint32) *wal.Pack {
+	t.Helper()
+	pw, err := w.NewPack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range positions {
+		b, err := w.Value(uint64(p[0]), p[1], p[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := pw.Add(uint64(p[0]), p[1], b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := pw.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func wantValue(t *testing.T, w *wal.WAL, index uint64, off, n uint32, want string) {
+	t.Helper()
+	if b, err := w.Value(index, off, n); err != nil || string(b) != want {
+		t.Fatalf("value at %d+%d of entry %d = %q, %v; want %q", off, n, index, b, err, want)
+	}
+}
+
+func packFiles(t *testing.T, d *simfs.Disk) []string {
+	t.Helper()
+	names, err := d.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return slices.DeleteFunc(names, func(n string) bool { return !strings.HasPrefix(n, "pack-") })
+}
+
+// TestCleaningSteps cleans the segments below a checkpoint at 6 that
+// still names the values of entries 2 and 5, and checks after a crash at
+// each step that recovery finds both values and the entries after the
+// checkpoint, and keeps no pack that no root names.
+func TestCleaningSteps(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 8)
+	w.AppendRoot(wal.Root{Index: 6, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, 9, 10)
+
+	check := func(step string, d *simfs.Disk, packs int) {
+		t.Helper()
+		w, rec := open(t, d)
+		wantValue(t, w, 2, 1, 1, "2")
+		wantValue(t, w, 5, 0, 2, "v5")
+		if got := describe(read(t, w, rec)); got != "7/1:v7 8/1:v8 9/1:v9 10/1:v10 " {
+			t.Fatalf("%s: entries after the root: %s", step, got)
+		}
+		if got := packFiles(t, d); len(got) != packs {
+			t.Fatalf("%s: packs on disk %v, want %d", step, got, packs)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	segs, packs := cleanable(w, 6)
+	if len(segs) == 0 || len(packs) != 0 {
+		t.Fatalf("cleanable below 6: segments %v, packs %v", segs, packs)
+	}
+	p := writePack(t, w, [3]uint32{2, 1, 1}, [3]uint32{5, 0, 2})
+	check("pack written", d.Durable(), 0)
+	if err := w.InstallPacks(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	check("root buffered", d.Durable(), 0)
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	check("root synced", d.Durable(), 1)
+	if err := w.RemoveCleaned(segs[len(segs)-1], nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Entry(2); !errors.Is(err, wal.ErrNotOnDisk) {
+		t.Fatalf("entry 2 after cleaning: %v", err)
+	}
+	wantValue(t, w, 2, 1, 1, "2")
+	if where, ok := w.Where(5, 0, 2); !ok || !where.Pack || where.N != p.ID() {
+		t.Fatalf("value of entry 5 is in %+v, %v; want pack %d", where, ok, p.ID())
+	}
+	check("segments removed", d.Durable(), 1)
+	if _, err := w.Value(3, 1, 1); !errors.Is(err, wal.ErrNotOnDisk) {
+		t.Fatalf("value the checkpoint does not name: %v", err)
+	}
+}
+
+// TestPackMerge replaces a pack with one that keeps only part of it: the
+// old one goes only after the root that drops it.
+func TestPackMerge(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 8)
+	w.AppendRoot(wal.Root{Index: 6, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, 9, 10)
+	segs, _ := cleanable(w, 6)
+	p1 := writePack(t, w, [3]uint32{2, 0, 2}, [3]uint32{3, 0, 2}, [3]uint32{4, 0, 2})
+	if err := errors.Join(w.InstallPacks(p1, nil), w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
+		t.Fatal(err)
+	}
+	_, packs := cleanable(w, 6)
+	if !slices.Equal(packs, []uint64{p1.ID()}) {
+		t.Fatalf("cleanable packs %v", packs)
+	}
+	p2 := writePack(t, w, [3]uint32{3, 0, 2})
+	if err := w.InstallPacks(p2, []uint64{p1.ID()}); err != nil {
+		t.Fatal(err)
+	}
+	wantValue(t, w, 3, 0, 2, "v3")
+	if _, err := w.Value(2, 0, 2); !errors.Is(err, wal.ErrNotOnDisk) {
+		t.Fatalf("value only the dropped pack held: %v", err)
+	}
+	// Before the root is synced, recovery keeps the old pack.
+	crashed := d.Durable()
+	w2, _ := open(t, crashed)
+	wantValue(t, w2, 2, 0, 2, "v2")
+	if got := packFiles(t, crashed); len(got) != 1 {
+		t.Fatalf("packs after a crash before the root: %v", got)
+	}
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RemoveCleaned(0, []uint64{p2.ID()}); err == nil {
+		t.Fatal("removed a pack the root names")
+	}
+	if err := w.RemoveCleaned(0, []uint64{p1.ID()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, _ = open(t, d)
+	wantValue(t, w, 3, 0, 2, "v3")
+	if got := packFiles(t, d); len(got) != 1 {
+		t.Fatalf("packs after the merge: %v", got)
+	}
+	// A new pack gets a number no pack had.
+	pw, err := w.NewPack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pw.Abort(); err != nil {
+		t.Fatal(err)
+	}
+	if got := packFiles(t, d); !slices.Equal(got, []string{"pack-0000000000000001", "pack-0000000000000002"}) {
+		t.Fatalf("pack files %v, want packs 1 and a new 2", got)
+	}
+}
+
+// TestDamagedPackIsCorrupt flips each bit 0 of a pack that a synced root
+// names, or removes it: the node must not start.
+func TestDamagedPackIsCorrupt(t *testing.T) {
+	setup := func() (*simfs.Disk, string, int) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.SetSegmentBytes(1)
+		fill(t, w, 1, 4)
+		w.AppendRoot(wal.Root{Index: 3, Term: 1})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		p := writePack(t, w, [3]uint32{1, 0, 2}, [3]uint32{2, 0, 2})
+		if err := errors.Join(w.InstallPacks(p, nil), w.Sync(), w.Close()); err != nil {
+			t.Fatal(err)
+		}
+		name := packFiles(t, d)[0]
+		return d, name, len(d.DurableBytes(name))
+	}
+	// A flipped format version is a newer build's pack, as in a segment.
+	d, name, size := setup()
+	for off := 0; off < size; off++ {
+		if off >= 8 && off < 12 {
+			continue
+		}
+		d, name, _ = setup()
+		d.FlipDurable(name, off)
+		wantCorrupt(t, d)
+	}
+	d, name, _ = setup()
+	if err := errors.Join(d.Remove(name), d.SyncDir()); err != nil {
+		t.Fatal(err)
+	}
+	wantCorrupt(t, d)
+}
+
+// TestPackOutlivesRemoval checks that the root copied into each new
+// segment names the packs, so removing the segment with the root that
+// installed them keeps them.
+func TestPackOutlivesRemoval(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 4)
+	w.AppendRoot(wal.Root{Index: 3, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	p := writePack(t, w, [3]uint32{1, 0, 2})
+	if err := errors.Join(w.InstallPacks(p, nil), w.Sync()); err != nil {
+		t.Fatal(err)
+	}
+	fill(t, w, 5, 12)
+	w.AppendRoot(wal.Root{Index: 10, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RemoveBelow(11); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w, rec := open(t, d)
+	if rec.Root.Index != 10 {
+		t.Fatalf("recovered %+v", rec)
+	}
+	wantValue(t, w, 1, 0, 2, "v1")
+}
+
+// TestMapShrinks checks that the map of where values are shrinks when
+// cleaning removes the segments it replaced.
+func TestMapShrinks(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 200)
+	w.AppendRoot(wal.Root{Index: 199, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	before := w.MapBytes()
+	segs, _ := cleanable(w, 199)
+	p := writePack(t, w, [3]uint32{7, 0, 2})
+	if err := errors.Join(w.InstallPacks(p, nil), w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
+		t.Fatal(err)
+	}
+	if after := w.MapBytes(); after*4 > before {
+		t.Fatalf("map bytes went from %d to %d", before, after)
+	}
+}
