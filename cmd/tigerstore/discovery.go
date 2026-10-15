@@ -24,16 +24,13 @@ type clusterSpec struct {
 	token, key string
 }
 
-// resolveCluster finds the cluster as etcd does. A node that starts
-// from its data directory takes --initial-cluster as it is. A first
-// start takes it too, or with --discovery-endpoints registers with etcd's
-// v3 discovery and waits for the cluster it reports, or with
-// --discovery-srv looks the members up in DNS SRV records. Either way it
-// first runs etcd's checks of the cluster.
-func resolveCluster(ec *embed.Config, fresh bool, lg *zap.Logger) (clusterSpec, error) {
-	if !fresh {
-		return staticCluster(ec, ec.InitialClusterToken, ec.InitialCluster)
-	}
+// resolveCluster finds the cluster of a first start as etcd does: it
+// takes --initial-cluster as it is, or with --discovery-endpoints
+// registers with etcd's v3 discovery and waits for the cluster it
+// reports, or with --discovery-srv looks the members up in DNS SRV
+// records. Either way it first runs etcd's checks of the cluster. A
+// restart takes the members its identity file keeps instead.
+func resolveCluster(ec *embed.Config, lg *zap.Logger) (clusterSpec, error) {
 	urls, token, err := ec.PeerURLsMapAndToken("etcd")
 	if err != nil {
 		return clusterSpec{}, fmt.Errorf("error setting up initial cluster: %w", err)

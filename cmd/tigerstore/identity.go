@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -19,11 +20,29 @@ import (
 	"github.com/djosh34/tigerstore/internal/peer"
 )
 
-// identity is a node's Raft ID and its cluster's ID. A node keeps them in
-// <data-dir>/member from its first start on, so that a restart does not
-// depend on --initial-cluster, which a joined node's differs from the
-// first members'.
-type identity struct{ id, cluster uint64 }
+// identity is a node's Raft ID, its cluster's ID and the members it
+// started with: those of a new cluster, or those a joining node was told
+// of, with their real IDs. A node keeps it in <data-dir>/member from its
+// first start on, so a restart depends neither on --initial-cluster, which
+// a joined node's differs from the first members', nor on discovery; a
+// first start that fails after writing it starts the same way again.
+type identity struct {
+	id, cluster uint64
+	members     []*pb.Member
+}
+
+// identityJSON is the identity file's format.
+type identityJSON struct {
+	ID      uint64       `json:"id"`
+	Cluster uint64       `json:"cluster"`
+	Members []memberJSON `json:"members"`
+}
+
+type memberJSON struct {
+	ID       uint64   `json:"id"`
+	Name     string   `json:"name"`
+	PeerURLs []string `json:"peerURLs"`
+}
 
 // identityFile is where a data directory keeps the node's identity.
 func identityFile(dataDir string) string { return filepath.Join(dataDir, "member") }
@@ -32,33 +51,41 @@ func identityFile(dataDir string) string { return filepath.Join(dataDir, "member
 // the other members for theirs.
 const joinTimeout = 30 * time.Second
 
-// loadIdentity returns the identity the data directory keeps, or the one
-// of a first start: in a new cluster, the node's place in the cluster
-// and a hash of its token and key; in a running one
-// (--initial-cluster-state existing), what the other members answer for
-// any of the node's peer URLs.
-func loadIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (identity, error) {
-	var id identity
-	b, err := os.ReadFile(identityFile(ec.Dir))
-	switch {
-	case err == nil:
-		if _, err := fmt.Sscanf(string(b), "%x %x\n", &id.id, &id.cluster); err != nil {
-			return id, fmt.Errorf("%s: %w", identityFile(ec.Dir), err)
-		}
-		return id, nil
-	case !errors.Is(err, fs.ErrNotExist):
-		return id, err
+// readIdentity returns the identity the data directory keeps, and
+// whether it keeps one.
+func readIdentity(dataDir string) (identity, bool, error) {
+	b, err := os.ReadFile(identityFile(dataDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return identity{}, false, nil
 	}
+	if err != nil {
+		return identity{}, false, err
+	}
+	var j identityJSON
+	if err := json.Unmarshal(b, &j); err != nil {
+		return identity{}, false, fmt.Errorf("%s: %w", identityFile(dataDir), err)
+	}
+	id := identity{id: j.ID, cluster: j.Cluster}
+	for _, m := range j.Members {
+		id.members = append(id.members, &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
+	}
+	return id, true, nil
+}
+
+// newIdentity returns and saves the identity of a first start: in a new
+// cluster, the node's place in it, a hash of its token and key, and its
+// members; in a running one (--initial-cluster-state existing), the
+// members the others answer, the ID of the one with any of the node's
+// peer URLs, and their cluster ID.
+func newIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (identity, error) {
 	if cluster.self < 0 {
-		return id, fmt.Errorf("couldn't find local name %q in the initial cluster configuration", ec.Name)
+		return identity{}, fmt.Errorf("couldn't find local name %q in the initial cluster configuration", ec.Name)
 	}
-	self := cluster.members[cluster.self]
 	if ec.IsNewCluster() {
-		h := fnv.New64a()
-		h.Write([]byte(cluster.token + "/" + cluster.key))
-		id = identity{id: self.id, cluster: h.Sum64()}
+		id := clusterIdentity(cluster)
 		return id, saveIdentity(ec.Dir, id)
 	}
+	self := cluster.members[cluster.self]
 	var addrs []string
 	for i, m := range cluster.members {
 		if i == cluster.self {
@@ -67,7 +94,7 @@ func loadIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (iden
 		for _, raw := range m.urls {
 			u, err := url.Parse(raw)
 			if err != nil {
-				return id, err
+				return identity{}, err
 			}
 			addrs = append(addrs, u.Host)
 		}
@@ -76,9 +103,9 @@ func loadIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (iden
 	defer cancel()
 	ms, clusterID, err := node.RemoteMembers(ctx, pcfg, addrs)
 	if err != nil {
-		return id, err
+		return identity{}, err
 	}
-	id.cluster = clusterID
+	id := identity{cluster: clusterID, members: ms}
 	for _, m := range ms {
 		for _, u := range m.PeerURLs {
 			if slices.Contains(self.urls, u) {
@@ -92,8 +119,24 @@ func loadIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (iden
 	return id, saveIdentity(ec.Dir, id)
 }
 
+// clusterIdentity is the identity of the node cluster.self of a new
+// cluster.
+func clusterIdentity(cluster clusterSpec) identity {
+	h := fnv.New64a()
+	h.Write([]byte(cluster.token + "/" + cluster.key))
+	return identity{id: cluster.members[cluster.self].id, cluster: h.Sum64(), members: initialMembers(cluster.members)}
+}
+
 // saveIdentity writes the identity file and syncs it and its directory.
 func saveIdentity(dataDir string, id identity) error {
+	j := identityJSON{ID: id.id, Cluster: id.cluster}
+	for _, m := range id.members {
+		j.Members = append(j.Members, memberJSON{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs})
+	}
+	b, err := json.Marshal(j)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
@@ -102,7 +145,7 @@ func saveIdentity(dataDir string, id identity) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(f, "%x %x\n", id.id, id.cluster)
+	_, err = f.Write(append(b, '\n'))
 	if err = errors.Join(err, f.Sync(), f.Close()); err != nil {
 		return err
 	}

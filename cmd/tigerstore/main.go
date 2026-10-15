@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"syscall"
 	"time"
 
@@ -125,15 +126,18 @@ func start(c *config, lg *zap.Logger) error {
 			return fmt.Errorf("--memory-mlock: %w", err)
 		}
 	}
-	fresh, err := freshDataDir(ec.Dir)
+	ident, started, err := readIdentity(ec.Dir)
 	if err != nil {
 		return err
 	}
-	cluster, err := resolveCluster(ec, fresh, lg)
-	if err != nil {
-		return err
+	var cluster clusterSpec
+	members := ident.members
+	if !started {
+		if cluster, err = resolveCluster(ec, lg); err != nil {
+			return err
+		}
+		members = initialMembers(cluster.members)
 	}
-	members := cluster.members
 	if err := checkPeerURLs(ec, members); err != nil {
 		return err
 	}
@@ -164,11 +168,12 @@ func start(c *config, lg *zap.Logger) error {
 			closeListeners(clientLns, pcfg.Listeners, lg)
 		}
 	}()
-	ident, err := loadIdentity(ec, cluster, pcfg)
-	if err != nil {
-		return err
+	if !started {
+		if ident, err = newIdentity(ec, cluster, pcfg); err != nil {
+			return err
+		}
 	}
-	ccfg := coreConfig(ec, ident, members)
+	ccfg := coreConfig(ec, ident)
 	budget, from, err := node.MemoryBudget(os.DirFS("/"), c.own.MemoryBudget)
 	if err != nil {
 		return err
@@ -215,8 +220,8 @@ func start(c *config, lg *zap.Logger) error {
 		return err
 	}
 	// The node hands the transport the members once it runs; until then,
-	// those of --initial-cluster.
-	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(initialMembers(members))
+	// those it started with.
+	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(ident.members)
 	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {
@@ -339,11 +344,11 @@ func bootstrapDefrag(ctx context.Context, n *node.Node, thresholdMB uint, lg *za
 }
 
 // coreConfig is the core's configuration from etcd's.
-func coreConfig(ec *embed.Config, ident identity, members []member) core.Config {
+func coreConfig(ec *embed.Config, ident identity) core.Config {
 	ccfg := core.DefaultConfig(ident.id, nil)
 	ccfg.ClusterID = ident.cluster
 	if ec.IsNewCluster() {
-		ccfg.Members = initialMembers(members)
+		ccfg.Members = ident.members
 		for _, m := range ccfg.Members {
 			ccfg.Peers = append(ccfg.Peers, m.ID)
 		}
@@ -379,14 +384,11 @@ func coreConfig(ec *embed.Config, ident identity, members []member) core.Config 
 
 // closeListeners closes listeners that no server took.
 func closeListeners(client []clientListener, peers []net.Listener, lg *zap.Logger) {
+	lns := slices.Clone(peers)
 	for _, l := range client {
-		if err := l.Close(); err != nil {
-			lg.Warn("close a client listener", zap.Error(err))
-		}
+		lns = append(lns, l)
 	}
-	for _, l := range peers {
-		if err := l.Close(); err != nil {
-			lg.Warn("close a peer listener", zap.Error(err))
-		}
+	if err := closeAll(lns); err != nil {
+		lg.Warn("close the listeners", zap.Error(err))
 	}
 }

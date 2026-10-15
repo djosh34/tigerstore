@@ -14,7 +14,9 @@ import (
 
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/embed"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/server"
 	"github.com/djosh34/tigerstore/internal/testcert"
@@ -40,6 +42,20 @@ func TestPeerCertAllowedFlags(t *testing.T) {
 	}
 }
 
+// TestRaftTimeoutsRaised checks that --raft-read-timeout and
+// --raft-write-timeout below etcd's 5 s minimum are raised to it, as in
+// etcd.
+func TestRaftTimeoutsRaised(t *testing.T) {
+	read, write := rafthttp.ConnReadTimeout, rafthttp.ConnWriteTimeout
+	t.Cleanup(func() { rafthttp.ConnReadTimeout, rafthttp.ConnWriteTimeout = read, write })
+	if _, err := parseArgs(t, "--raft-read-timeout", "1s", "--raft-write-timeout", "2s"); err != nil {
+		t.Fatal(err)
+	}
+	if rafthttp.ConnReadTimeout != rafthttp.DefaultConnReadTimeout || rafthttp.ConnWriteTimeout != rafthttp.DefaultConnWriteTimeout {
+		t.Errorf("read %v, write %v; want both raised to 5 s", rafthttp.ConnReadTimeout, rafthttp.ConnWriteTimeout)
+	}
+}
+
 // TestEnvironment checks that ETCD_* variables set the flags not given
 // on the command line. (etcd exits when both set one.)
 func TestEnvironment(t *testing.T) {
@@ -60,12 +76,13 @@ func TestConfigFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("name: fromfile\nmax-txn-ops: 5\ndisk-budget-bytes: 1000\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c, err := parseArgs(t, "--config-file", path, "--max-txn-ops", "9")
+	c, err := parseArgs(t, "--config-file", path, "--max-txn-ops", "9", "--memory-budget-bytes", "7")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.ec.Name != "fromfile" || c.ec.MaxTxnOps != 5 || c.own.DiskBudget != 1000 {
-		t.Errorf("name %q, max-txn-ops %d, disk budget %d; want fromfile, 5 and 1000", c.ec.Name, c.ec.MaxTxnOps, c.own.DiskBudget)
+	if c.ec.Name != "fromfile" || c.ec.MaxTxnOps != 5 || c.own.DiskBudget != 1000 || c.own.MemoryBudget != 0 {
+		t.Errorf("name %q, max-txn-ops %d, disk budget %d, memory budget %d; want fromfile, 5, 1000 and 0",
+			c.ec.Name, c.ec.MaxTxnOps, c.own.DiskBudget, c.own.MemoryBudget)
 	}
 	t.Setenv("ETCD_CONFIG_FILE", path)
 	if c, err = parseArgs(t); err != nil || c.ec.Name != "fromfile" {
@@ -169,7 +186,7 @@ func TestCheckPeerURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := checkPeerURLs(&c.ec, ms); err == nil {
+	if err := checkPeerURLs(&c.ec, initialMembers(ms)); err == nil {
 		t.Error("etcd's default http peer URLs: no error")
 	}
 }
@@ -261,5 +278,35 @@ func TestSRVCluster(t *testing.T) {
 	}
 	if sa.self != 1 || sb.self != 0 || sa.members[1].urls[0] != "https://h2:2380" || sa.members[0].name != "" {
 		t.Errorf("members %+v, self %d and %d", sa.members, sa.self, sb.self)
+	}
+}
+
+// TestIdentityKeepsMembers saves the identity of a new cluster's node and
+// reads it back with its members, so that a restart needs neither
+// --initial-cluster nor discovery.
+func TestIdentityKeepsMembers(t *testing.T) {
+	dir := t.TempDir()
+	if _, started, err := readIdentity(dir); err != nil || started {
+		t.Fatalf("an empty data directory: started %v, %v", started, err)
+	}
+	ms, err := parseCluster("a=https://h1:2380,b=https://h2:2380,b=https://h2b:2380")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := clusterIdentity(clusterSpec{members: ms, self: 1, token: "tok", key: "k"})
+	if err := saveIdentity(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	got, started, err := readIdentity(dir)
+	if err != nil || !started {
+		t.Fatalf("started %v, %v", started, err)
+	}
+	if got.id != 2 || got.cluster != want.cluster || len(got.members) != 2 {
+		t.Fatalf("identity %+v, want %+v", got, want)
+	}
+	for i, m := range got.members {
+		if !proto.Equal(m, want.members[i]) {
+			t.Errorf("member %d: %v, want %v", i, m, want.members[i])
+		}
 	}
 }

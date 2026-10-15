@@ -12,6 +12,7 @@ import (
 	"go.etcd.io/etcd/pkg/v3/flags"
 	cconfig "go.etcd.io/etcd/server/v3/config"
 	"go.etcd.io/etcd/server/v3/embed"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
 	"sigs.k8s.io/yaml"
 
@@ -176,6 +177,14 @@ func (c *config) fromCmdLine() error {
 	if err := flags.SetFlagsFromEnv(lg, "ETCD", c.fs); err != nil {
 		return err
 	}
+	if rafthttp.ConnReadTimeout < rafthttp.DefaultConnReadTimeout {
+		rafthttp.ConnReadTimeout = rafthttp.DefaultConnReadTimeout
+		lg.Info(fmt.Sprintf("raft-read-timeout increased to minimum value: %v", rafthttp.DefaultConnReadTimeout))
+	}
+	if rafthttp.ConnWriteTimeout < rafthttp.DefaultConnWriteTimeout {
+		rafthttp.ConnWriteTimeout = rafthttp.DefaultConnWriteTimeout
+		lg.Info(fmt.Sprintf("raft-write-timeout increased to minimum value: %v", rafthttp.DefaultConnWriteTimeout))
+	}
 	fs := c.fs
 	c.ec.ListenPeerUrls = flags.UniqueURLsFromFlag(fs, "listen-peer-urls")
 	c.ec.AdvertisePeerUrls = flags.UniqueURLsFromFlag(fs, "initial-advertise-peer-urls")
@@ -220,6 +229,8 @@ func (c *config) fromFile(path string) error {
 	if err != nil {
 		return err
 	}
+	// The file replaces the command line, tigerstore's flags too.
+	c.own = ownFlags{}
 	return yaml.Unmarshal(b, &c.own)
 }
 

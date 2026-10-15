@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"go.etcd.io/etcd/client/pkg/v3/types"
@@ -54,22 +54,12 @@ func parseCluster(s string) ([]member, error) {
 	return out, nil
 }
 
-// freshDataDir reports whether the node has not started from the data
-// directory before, so bootstraps or joins.
-func freshDataDir(dir string) (bool, error) {
-	_, err := os.Stat(identityFile(dir))
-	if errors.Is(err, fs.ErrNotExist) {
-		return true, nil
-	}
-	return false, err
-}
-
 // checkPeerURLs refuses peer URLs that are not https: unlike etcd,
 // tigerstore always encrypts node-to-node traffic.
-func checkPeerURLs(ec *embed.Config, members []member) error {
+func checkPeerURLs(ec *embed.Config, members []*pb.Member) error {
 	urls := slices.Concat(ec.ListenPeerUrls, ec.AdvertisePeerUrls)
 	for _, m := range members {
-		for _, raw := range m.urls {
+		for _, raw := range m.PeerURLs {
 			u, err := url.Parse(raw)
 			if err != nil {
 				return err
