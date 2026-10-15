@@ -590,14 +590,18 @@ type tokenWait struct {
 }
 
 // retryTokenWaits submits again the requests that waited for their
-// token, once its entry applied; one that waited past its deadline fails
-// with ErrGRPCInvalidAuthToken, as etcd's does.
+// token, once its entry applied; one that waited past its first deadline
+// fails with ErrGRPCInvalidAuthToken, as etcd's does.
 func (n *Node) retryTokenWaits() {
 	waits := n.tokenWaits
 	n.tokenWaits = nil
 	for _, w := range waits {
 		if w.deadline <= n.now {
 			n.reply(w.req.ID, rpctypes.ErrGRPCInvalidAuthToken)
+			continue
+		}
+		if _, _, err := n.identify(w.req.Caller); errors.Is(err, errTokenNotApplied) {
+			n.tokenWaits = append(n.tokenWaits, w)
 			continue
 		}
 		n.submit(w.req, &pending{})
@@ -621,11 +625,11 @@ func (n *Node) authorize(op proto.Message, ai authInfo, ok bool) error {
 		*pb.MemberAddRequest, *pb.MemberRemoveRequest, *pb.MemberUpdateRequest, *pb.MemberPromoteRequest:
 		return a.admin(who)
 	case *pb.AlarmRequest:
-		if isAlarmChange(op) || op.Action != pb.AlarmRequest_GET {
+		if op.Action != pb.AlarmRequest_GET {
 			return a.admin(who)
 		}
 		return requireIdentity(ok)
-	case *pb.StatusRequest:
+	case *pb.StatusRequest, *pb.LeaseGrantRequest, *pb.LeaseRevokeRequest, *pb.MemberListRequest:
 		return requireIdentity(ok)
 	case *pb.LeaseKeepAliveRequest:
 		if !ok {
@@ -635,6 +639,10 @@ func (n *Node) authorize(op proto.Message, ai authInfo, ok bool) error {
 	case *pb.LeaseTimeToLiveRequest:
 		if !ok {
 			return rpctypes.ErrGRPCUserEmpty
+		}
+		// etcd checks the keys only when the request asks for them.
+		if !op.Keys {
+			return nil
 		}
 		return n.leaseKeysAllowed(ai, op.ID, false)
 	case *pb.LeaseLeasesRequest:
@@ -864,9 +872,6 @@ func (n *Node) Authorize(c Caller, op proto.Message) error {
 		return err
 	}
 	if _, snapshot := op.(*pb.SnapshotRequest); snapshot {
-		if !ok {
-			return n.state.auth.admin(nil)
-		}
 		return n.state.auth.admin(&ai)
 	}
 	return n.authorize(op, ai, ok)

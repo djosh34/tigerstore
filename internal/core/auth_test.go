@@ -135,8 +135,11 @@ func TestAuth(t *testing.T) {
 		&pb.PutRequest{Key: []byte("a"), Value: []byte("1")},
 		&pb.RangeRequest{Key: []byte("a")},
 		&pb.InternalRaftRequest{AuthRoleList: &pb.AuthRoleListRequest{}},
+		&pb.LeaseGrantRequest{TTL: 10},
+		&pb.LeaseRevokeRequest{ID: 1},
+		&pb.MemberListRequest{},
 	} {
-		if r := s.do(uint64(20+i), op); !errors.Is(r.Err, rpctypes.ErrGRPCUserEmpty) {
+		if r := s.do(uint64(200+i), op); !errors.Is(r.Err, rpctypes.ErrGRPCUserEmpty) {
 			t.Fatalf("%T without an identity: %v", op, r.Err)
 		}
 	}
@@ -199,6 +202,18 @@ func TestAuth(t *testing.T) {
 	}
 	if r := s.doAs(81, root, &pb.PutRequest{Key: []byte("z"), Value: []byte("1")}); r.Err != nil {
 		t.Fatalf("root put: %v", r.Err)
+	}
+	// etcd checks the keys of a lease for LeaseTimeToLive only when the
+	// request asks for them.
+	s.doAs(83, root, &pb.LeaseGrantRequest{ID: 7, TTL: 100})
+	if r := s.doAs(84, root, &pb.PutRequest{Key: []byte("z"), Value: []byte("1"), Lease: 7}); r.Err != nil {
+		t.Fatalf("root put with a lease: %v", r.Err)
+	}
+	if r := s.doAs(85, alice, &pb.LeaseTimeToLiveRequest{ID: 7}); r.Err != nil {
+		t.Fatalf("alice's time to live without keys: %v", r.Err)
+	}
+	if r := s.doAs(86, alice, &pb.LeaseTimeToLiveRequest{ID: 7, Keys: true}); !errors.Is(r.Err, rpctypes.ErrGRPCPermissionDenied) {
+		t.Fatalf("alice's time to live with keys: %v, want permission denied", r.Err)
 	}
 	if r := s.doAs(82, root, &pb.InternalRaftRequest{AuthUserRevokeRole: &pb.AuthUserRevokeRoleRequest{Name: "root", Role: "root"}}); !errors.Is(r.Err, rpctypes.ErrGRPCInvalidAuthMgmt) {
 		t.Fatalf("revoking root from root: %v", r.Err)
@@ -288,5 +303,37 @@ func TestAuth(t *testing.T) {
 	}
 	if r := s.do(127, &pb.PutRequest{Key: []byte("z"), Value: []byte("2")}); r.Err != nil {
 		t.Fatalf("put with auth disabled: %v", r.Err)
+	}
+}
+
+// TestTokenWaitTimesOut sends a request with a token whose Authenticate
+// entry is far ahead of the node. It waits for that entry until its
+// first deadline, then fails as etcd's does; a wait never renews its
+// deadline. A stopped node answers its waits.
+func TestTokenWaitTimesOut(t *testing.T) {
+	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.RequestTicks = 10 }).capable()
+	s.ok(1, &pb.InternalRaftRequest{AuthUserAdd: &pb.AuthUserAddRequest{Name: "root", HashedPassword: hashOf("pw")}})
+	s.ok(2, &pb.InternalRaftRequest{AuthUserGrantRole: &pb.AuthUserGrantRoleRequest{User: "root", Role: "root"}})
+	s.ok(3, &pb.InternalRaftRequest{AuthEnable: &pb.AuthEnableRequest{}})
+	future := Caller{Token: "prefixroot.1000000"}
+	s.n.Submit(Request{ID: 10, Op: &pb.RangeRequest{Key: []byte("a")}, Caller: future})
+	var got error
+	for i := 0; i < 30 && got == nil; i++ {
+		s.n.Tick()
+		for _, r := range s.run() {
+			if r.ID == 10 {
+				got = r.Err
+			}
+		}
+	}
+	if !errors.Is(got, rpctypes.ErrGRPCInvalidAuthToken) {
+		t.Fatalf("a wait for a future token: %v, want an invalid token", got)
+	}
+
+	s.n.Submit(Request{ID: 11, Op: &pb.RangeRequest{Key: []byte("a")}, Caller: future})
+	s.run()
+	s.n.stop()
+	if r := s.n.out.Replies; len(r) != 1 || r[0].ID != 11 || !errors.Is(r[0].Err, rpctypes.ErrGRPCStopped) {
+		t.Fatalf("replies of a stopped node: %v, want request 11 stopped", r)
 	}
 }

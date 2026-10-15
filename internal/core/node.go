@@ -1387,6 +1387,10 @@ func (n *Node) stop() {
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
+	for _, w := range n.tokenWaits {
+		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
+	}
+	n.tokenWaits = nil
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
