@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
@@ -192,6 +193,20 @@ func headerBlock(authority, path string) []byte {
 	return buf.Bytes()
 }
 
+// headerBlocks caches headerBlock by authority and path. A block uses no
+// dynamic table, so one copy serves every stream of every connection.
+var headerBlocks sync.Map
+
+func cachedHeaderBlock(authority, path string) []byte {
+	k := authority + " " + path
+	if b, ok := headerBlocks.Load(k); ok {
+		return b.([]byte)
+	}
+	b := headerBlock(authority, path)
+	headerBlocks.Store(k, b)
+	return b
+}
+
 // newTemplate frames m as the single request message of a gRPC call on path.
 // A unary call ends the stream with the request; a watch keeps it open.
 func newTemplate(authority, path string, m *msg, endStream bool) (*template, error) {
@@ -202,7 +217,7 @@ func newTemplate(authority, path string, m *msg, endStream bool) (*template, err
 	if payload > 60<<10 {
 		return nil, fmt.Errorf("request of %d bytes exceeds the 60 KiB generator limit", payload)
 	}
-	block := headerBlock(authority, path)
+	block := cachedHeaderBlock(authority, path)
 	t := &template{dataLen: payload, value: -1, rev: -1}
 	t.b = appendFrameHeader(t.b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
 	t.b = append(t.b, block...)
