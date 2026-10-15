@@ -15,6 +15,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -199,10 +200,16 @@ func (c *cluster) start(id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := server.New(n, server.Config{TLS: &tls.Config{
-		Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
-		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
-	}, PeerVersions: tr.Versions, JWT: c.jwt})
+	g := server.New(n, server.Config{
+		TLS: &tls.Config{
+			Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
+			ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
+		},
+		PeerVersions: tr.Versions, JWT: c.jwt,
+		// bcrypt's default cost takes seconds of CPU under the race
+		// detector, which starves the nodes.
+		BcryptCost: bcrypt.MinCost,
+	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
