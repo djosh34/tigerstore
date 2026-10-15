@@ -70,7 +70,12 @@ func main() {
 		debug.SetGCPercent(gcPercent)
 	}
 	logger := log.New(os.Stderr, "tigerstore ", log.LstdFlags|log.Lmicroseconds)
-	if err := run(os.Args[1:], logger); err != nil {
+	args := os.Args[1:]
+	run := run
+	if len(args) > 0 && args[0] == "snapshot" {
+		run, args = snapshotCommand, args[1:]
+	}
+	if err := run(args, logger); err != nil {
 		logger.Printf("error: %v", err)
 		os.Exit(1)
 	}

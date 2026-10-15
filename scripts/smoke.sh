@@ -93,6 +93,9 @@ ctl endpoint status -w json | grep -q '"version":"3.7.2"' || {
 etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
 	--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	snapshot save "$work/snap.db" | grep -q "Snapshot saved at"
+# tigerstore snapshot restore writes it into a new data directory.
+"$work/tigerstore" snapshot restore "$work/snap.db" --name node1 --data-dir "$work/restored" \
+	--initial-cluster node1=https://127.0.0.1:1,node2=https://127.0.0.1:2,node3=https://127.0.0.1:3 2>&1 | grep -q "restored the snapshot"
 version=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	"https://127.0.0.1:$((2379 + off))/version")
 if [ "$version" != '{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}' ]; then
