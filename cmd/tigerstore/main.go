@@ -280,7 +280,7 @@ func run(args []string, logger *log.Logger) error {
 			sm[len(sm)-1].ClientURLs = []string{f.advertiseClient}
 		}
 	}
-	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls})
+	g := server.New(n, server.Config{ClusterID: ccfg.ClusterID, Members: sm, TLS: ctls, PeerVersions: t.Versions})
 	ln, err := net.Listen("tcp", clientURL.Host)
 	if err != nil {
 		return errors.Join(err, t.Close())

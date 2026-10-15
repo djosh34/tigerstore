@@ -146,7 +146,7 @@ func (c *cluster) start(id uint64) {
 	g := server.New(n, server.Config{TLS: &tls.Config{
 		Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
 		ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
-	}})
+	}, PeerVersions: tr.Versions})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

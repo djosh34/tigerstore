@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +15,84 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
+
+// scrapeMetrics reads node id's /metrics into a map from series to value.
+func scrapeMetrics(t *testing.T, c *cluster, id uint64, cert tls.Certificate) map[string]float64 {
+	t.Helper()
+	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	}, ForceAttemptHTTP2: true}}
+	resp, err := hc.Get("https://" + c.running[id].addr + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // a test response
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" {
+		t.Fatalf("/metrics: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	out := map[string]float64{}
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.LastIndexByte(line, ' ')
+		v, err := strconv.ParseFloat(line[i+1:], 64)
+		if err != nil {
+			t.Fatalf("line %q: %v", line, err)
+		}
+		out[line[:i]] = v
+	}
+	return out
+}
+
+// TestVersionMetrics checks the versions of #145 on /metrics: the
+// cluster versions the binary supports and the active one, and the peer
+// protocol range and the version of each connection.
+func TestVersionMetrics(t *testing.T) {
+	c := newCluster(t)
+	cert, _, _, err := c.ca.Issue("client", 96)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]float64{
+		"tigerstore_cluster_version_min":       1,
+		"tigerstore_cluster_version_max":       core.MaxVersion,
+		"tigerstore_cluster_version":           core.MaxVersion,
+		"tigerstore_peer_protocol_min_version": 1,
+		"tigerstore_peer_protocol_max_version": 1,
+	}
+	for _, peer := range []string{"2", "3"} {
+		for _, dir := range []string{"in", "out"} {
+			want[`tigerstore_peer_protocol_version{direction="`+dir+`",peer="`+peer+`"}`] = 1
+		}
+	}
+	// The connections and the version announcements need a moment.
+	retry(t, func(context.Context) (map[string]float64, error) {
+		got := scrapeMetrics(t, c, 1, cert)
+		for k, v := range want {
+			if got[k] != v {
+				return nil, fmt.Errorf("%s is %g, want %g", k, got[k], v)
+			}
+		}
+		return got, nil
+	})
+	// The connection from a stopped peer ends. The one to it ends only
+	// when a write to it fails, and a follower may have nothing to send.
+	c.running[3].stop()
+	delete(c.running, 3)
+	retry(t, func(context.Context) (map[string]float64, error) {
+		got := scrapeMetrics(t, c, 1, cert)
+		if k := `tigerstore_peer_protocol_version{direction="in",peer="3"}`; got[k] != 0 {
+			return nil, fmt.Errorf("%s is %g with node 3 stopped", k, got[k])
+		}
+		return got, nil
+	})
+}
 
 // TestMetrics checks /metrics: Prometheus' text format under etcd's
 // names, a series for every code of every method, every started call
@@ -31,35 +109,7 @@ func TestMetrics(t *testing.T) {
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
 	})
-	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
-		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
-	}, ForceAttemptHTTP2: true}}
-	scrape := func() map[string]float64 {
-		t.Helper()
-		resp, err := hc.Get("https://" + c.running[1].addr + "/metrics")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close() //nolint:errcheck // a test response
-		if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" {
-			t.Fatalf("/metrics: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
-		}
-		out := map[string]float64{}
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			line := sc.Text()
-			if strings.HasPrefix(line, "#") {
-				continue
-			}
-			i := strings.LastIndexByte(line, ' ')
-			v, err := strconv.ParseFloat(line[i+1:], 64)
-			if err != nil {
-				t.Fatalf("line %q: %v", line, err)
-			}
-			out[line[:i]] = v
-		}
-		return out
-	}
+	scrape := func() map[string]float64 { return scrapeMetrics(t, c, 1, cert) }
 	const rangeOK = `grpc_server_handled_total{grpc_code="OK",grpc_method="Range",grpc_service="etcdserverpb.KV",grpc_type="unary"}`
 
 	// Bytes and handled counts follow one known call.

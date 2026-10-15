@@ -17,6 +17,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/node"
+	"github.com/djosh34/tigerstore/internal/peer"
 )
 
 // Member is one cluster member as MemberList reports it.
@@ -34,6 +35,9 @@ type Config struct {
 	// TLS is the client TLS configuration. Nil serves HTTP/2 without TLS
 	// (prior knowledge, no HTTP/1), which only tests should do.
 	TLS *tls.Config
+	// PeerVersions, if set, reports the peer transport's protocol
+	// versions for /metrics.
+	PeerVersions func() peer.Versions
 }
 
 // handshakeTimeout bounds the TLS handshake and the HTTP/2 preface.

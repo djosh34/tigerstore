@@ -3,13 +3,17 @@ package server
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // The /metrics endpoint answers in Prometheus' text format with the etcd
@@ -141,6 +145,7 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) httpAnswer {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)
 	}
+	s.versionMetrics(&b, metric, nm.ClusterVersion)
 	metric("grpc_server_started_total", "counter", "Total number of RPCs started on the server.")
 	for _, p := range methodPaths {
 		fmt.Fprintf(&b, "grpc_server_started_total{%s} %d\n", callLabels(p), sm.calls[methods[p].idx].started.load())
@@ -155,6 +160,36 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) httpAnswer {
 		}
 	}
 	return httpAnswer{code: http.StatusOK, contentType: "text/plain; version=0.0.4; charset=utf-8", body: b.String()}
+}
+
+// versionMetrics writes the versions of #145: the cluster versions this
+// binary supports and the active one, and the peer protocol versions it
+// speaks and those of its connections, by peer and direction.
+func (s *Server) versionMetrics(b *strings.Builder, metric func(name, typ, help string), active uint32) {
+	for _, g := range []struct {
+		name, help string
+		v          int64
+	}{
+		{"tigerstore_cluster_version_min", "The oldest cluster version this binary supports.", 1},
+		{"tigerstore_cluster_version_max", "The newest cluster version this binary supports.", core.MaxVersion},
+		{"tigerstore_cluster_version", "The cluster version this member has applied, which sets the entry format.", int64(active)},
+	} {
+		metric(g.name, "gauge", g.help)
+		fmt.Fprintf(b, "%s %d\n", g.name, g.v)
+	}
+	if s.cfg.PeerVersions == nil {
+		return
+	}
+	v := s.cfg.PeerVersions()
+	metric("tigerstore_peer_protocol_min_version", "gauge", "The oldest peer protocol version this binary speaks.")
+	fmt.Fprintf(b, "tigerstore_peer_protocol_min_version %d\n", v.Min)
+	metric("tigerstore_peer_protocol_max_version", "gauge", "The newest peer protocol version this binary speaks.")
+	fmt.Fprintf(b, "tigerstore_peer_protocol_max_version %d\n", v.Max)
+	metric("tigerstore_peer_protocol_version", "gauge", "The protocol version of the connection to (out) or from (in) a peer, 0 while there is none.")
+	for _, id := range slices.Sorted(maps.Keys(v.Out)) {
+		fmt.Fprintf(b, "tigerstore_peer_protocol_version{direction=\"out\",peer=\"%x\"} %d\n", id, v.Out[id])
+		fmt.Fprintf(b, "tigerstore_peer_protocol_version{direction=\"in\",peer=\"%x\"} %d\n", id, v.In[id])
+	}
 }
 
 // callLabels are grpc-prometheus' labels for the method at path.

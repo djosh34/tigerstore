@@ -67,6 +67,8 @@ type Metrics struct {
 	// hold now; CacheHits are the values it returned and CacheMisses those
 	// read from the log.
 	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
+	// ClusterVersion is the cluster version the node has applied.
+	ClusterVersion uint32
 }
 
 // Metrics returns the node's metrics.
@@ -84,5 +86,7 @@ func (n *Node) Metrics() Metrics {
 		CacheLimit:    max(n.cache.limit, 0),
 		CacheHits:     n.cache.hits,
 		CacheMisses:   n.cache.misses,
+
+		ClusterVersion: n.state.version,
 	}
 }
