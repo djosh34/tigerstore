@@ -389,13 +389,6 @@ type diskLog struct {
 	before func()
 }
 
-// isServing reports whether a snapshot fetch is under way.
-func (l *diskLog) isServing() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.serving > 0
-}
-
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -778,7 +771,9 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 		defer wg.Wait()
 		defer cancel()
 	}
-	if c := n.cfg.AutoCompaction; c != (Compaction{}) {
+	// A negative retention, which etcd's parsing lets through, turns auto
+	// compaction off, as 0 does.
+	if c := n.cfg.AutoCompaction; c.Revisions > 0 || c.Period > 0 {
 		ctx, cancel := context.WithCancel(ctx)
 		var wg sync.WaitGroup
 		wg.Go(func() {

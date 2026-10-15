@@ -105,6 +105,9 @@ func (c *cleaner) run(ctx context.Context) error {
 		if used := c.n.log.used.Load(); budget > 0 && used >= budget/2 && c.pending == nil {
 			start := time.Now()
 			did, err := c.pass(ctx, used >= budget*3/4)
+			if errors.Is(err, errServing) {
+				did, err = false, nil
+			}
 			if err != nil {
 				return err
 			}
@@ -132,22 +135,27 @@ func (c *cleaner) run(ctx context.Context) error {
 // defrag is Defragment: passes that take the segments below the oldest
 // checkpoint the node keeps, however much of them is live, until one
 // finds nothing more or a removal waits for a snapshot fetch to end. A
-// pass does nothing while a snapshot is served, so it first waits for
-// that to end, as etcd's defragmentation waits for a snapshot it sends.
+// pass cannot run while a snapshot is served, so it waits for that to
+// end and tries again, as etcd's defragmentation waits for a snapshot it
+// sends.
 func (c *cleaner) defrag(ctx context.Context) error {
-	for c.n.log.isServing() {
-		if !sleep(ctx, 10*time.Millisecond) {
-			return ctx.Err()
-		}
-	}
 	for c.pending == nil {
 		did, err := c.pass(ctx, true)
+		if errors.Is(err, errServing) {
+			if !sleep(ctx, 10*time.Millisecond) {
+				return ctx.Err()
+			}
+			continue
+		}
 		if err != nil || !did {
 			return err
 		}
 	}
 	return nil
 }
+
+// errServing is a pass's answer while a snapshot is served.
+var errServing = errors.New("node: a snapshot is being served")
 
 // Defragment is etcd's Maintenance.Defragment. etcd rewrites its database
 // file without the free pages; tigerstore's log has no free pages, and the
@@ -187,11 +195,16 @@ func (n *Node) defragment(ctx context.Context) error {
 // pass cleans once: it picks the files to replace, copies the values they
 // hold that the checkpoint names into a pack, has its root installed, and
 // removes them. short means that space is short: the oldest segments go
-// however much of them is live. It reports whether it changed anything.
+// however much of them is live. It reports whether it changed anything,
+// or errServing while a snapshot is served.
 func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	l := c.n.log
 	l.mu.Lock()
-	if l.serving > 0 || len(l.ckpts) == 0 {
+	if l.serving > 0 {
+		l.mu.Unlock()
+		return false, errServing
+	}
+	if len(l.ckpts) == 0 {
 		l.mu.Unlock()
 		return false, nil
 	}

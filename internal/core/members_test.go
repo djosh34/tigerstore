@@ -153,6 +153,9 @@ func TestStrictReconfigNeedsConnectedQuorum(t *testing.T) {
 	if r := s.do(1, &pb.MemberAddRequest{PeerURLs: []string{"https://4:1"}}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
 		t.Fatalf("adding a voter with one of three down: %v", r.Err)
 	}
+	if r := s.do(10, &pb.MemberAddRequest{PeerURLs: []string{"https://4:1"}, IsLearner: true}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
+		t.Fatalf("adding a learner with one of three down: %v", r.Err)
+	}
 	if r := s.do(2, &pb.MemberRemoveRequest{ID: 2}); !errors.Is(r.Err, rpctypes.ErrGRPCUnhealthy) {
 		t.Fatalf("removing a connected voter with another down: %v", r.Err)
 	}

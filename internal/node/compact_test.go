@@ -109,6 +109,23 @@ func TestAutoCompaction(t *testing.T) {
 	})
 }
 
+// TestNegativeRetention starts nodes with the negative retentions that
+// ParseCompaction lets through: they run and compact nothing.
+func TestNegativeRetention(t *testing.T) {
+	for _, c := range []Compaction{{Revisions: -5}, {Period: -time.Hour}} {
+		n := runCompacting(t, c)
+		for i := range 5 {
+			if _, err := do(n, &pb.PutRequest{Key: []byte("k"), Value: fmt.Appendf(nil, "%d", i)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+		if ok, err := compacted(n, 1); err != nil || ok {
+			t.Fatalf("%+v: compacted %v, %v", c, ok, err)
+		}
+	}
+}
+
 func TestParseCompaction(t *testing.T) {
 	for _, c := range []struct {
 		mode, retention string
@@ -125,6 +142,10 @@ func TestParseCompaction(t *testing.T) {
 		{"periodic", "soon", Compaction{}, true},
 		{"", "1", Compaction{}, true},
 		{"daily", "1", Compaction{}, true},
+		// etcd lets a negative duration through; the node then compacts
+		// nothing.
+		{"revision", "-5m", Compaction{Revisions: int64(-5 * time.Minute)}, false},
+		{"periodic", "-1h", Compaction{Period: -time.Hour}, false},
 	} {
 		got, err := ParseCompaction(c.mode, c.retention)
 		if (err != nil) != c.bad || got != c.want {

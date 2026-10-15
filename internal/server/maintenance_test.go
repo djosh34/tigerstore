@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -37,9 +38,11 @@ func TestMoveLeaderAndDefragment(t *testing.T) {
 	if err != nil || resp.Header != nil {
 		t.Fatalf("MoveLeader: %v %v", resp, err)
 	}
-	for id := uint64(1); id <= 3; id++ {
-		if l := c.nodes[id].Leader(); id == leader && l != target {
-			t.Fatalf("node %d sees %d lead after the move to %d", id, l, target)
+	// The node answers once Raft has the transferee lead; the leader it
+	// reports follows when the driver takes that in.
+	for deadline := time.Now().Add(time.Second); c.nodes[leader].Leader() != target; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("node %d sees %d lead after the move to %d", leader, c.nodes[leader].Leader(), target)
 		}
 	}
 	// The leader leads itself already.

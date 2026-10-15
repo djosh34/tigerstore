@@ -295,13 +295,14 @@ func (n *Node) submitMember(p *pending) {
 	switch r := p.req.Op.(type) {
 	case *pb.MemberAddRequest:
 		// The server checked and sorted the URLs.
-		op, m.ID, m.PeerURLs, m.IsLearner = confAdd, n.newMemberID(), r.PeerURLs, r.IsLearner
-		if !m.IsLearner && n.cfg.StrictReconfigCheck {
-			if err := n.mayAddVoter(); err != nil {
+		op, m.PeerURLs, m.IsLearner = confAdd, r.PeerURLs, r.IsLearner
+		if n.cfg.StrictReconfigCheck {
+			if err := n.mayAddMember(m.IsLearner); err != nil {
 				n.finish(p, err)
 				return
 			}
 		}
+		m.ID = n.newMemberID()
 	case *pb.MemberRemoveRequest:
 		op, m.ID = confRemove, r.ID
 		if have := n.state.members[r.ID]; have != nil && !have.IsLearner && n.cfg.StrictReconfigCheck {
@@ -416,13 +417,13 @@ func (n *Node) isDown(id uint64) bool {
 	return n.cfg.ConnectedTicks != nil && n.cfg.ConnectedTicks(id) < 0
 }
 
-// mayAddVoter is etcd's mayAddMember for a voter: enough started voters
-// (IsReadyToAddVotingMember), and a connected quorum that counts the new
-// member as down.
-func (n *Node) mayAddVoter() error {
+// mayAddMember is etcd's mayAddMember: for a voter, enough started
+// voters (IsReadyToAddVotingMember), and for a learner too, a connected
+// quorum that counts the new member as down.
+func (n *Node) mayAddMember(learner bool) error {
 	members, started := n.started(0)
 	members++
-	if (started != 1 || members != 2) && started < members/2+1 {
+	if !learner && (started != 1 || members != 2) && started < members/2+1 {
 		return rpctypes.ErrGRPCMemberNotEnoughStarted
 	}
 	if voters, connected := n.connected(); voters > 1 && connected < (voters+1)/2+1 {
