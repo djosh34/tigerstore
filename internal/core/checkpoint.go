@@ -242,8 +242,20 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		h.auth.enabled = enabled == 1
 	}
 	h.auth.revision = uv()
+	// A role grows with each permission granted, so a user or role has
+	// no size bound. ReadAll grows with the bytes actually there, so a
+	// damaged length cannot ask for a huge buffer.
 	msg := func(m proto.Message) {
-		b := []byte(str())
+		n := uv()
+		if err != nil {
+			return
+		}
+		var b []byte
+		// A length past MaxInt64 reads nothing and fails the check below.
+		b, err = io.ReadAll(io.LimitReader(r, int64(n)))
+		if err == nil && uint64(len(b)) != n {
+			err = io.ErrUnexpectedEOF
+		}
 		if err == nil {
 			err = proto.Unmarshal(b, m)
 		}

@@ -112,8 +112,9 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 func (st *State) Store() *mvcc.Store { return st.kv }
 
 // Hash is a hash of the whole replicated state: the index, the leases
-// with their key counts, the lease stamps the versions and the alarms. The keys
-// themselves follow from the index.
+// with their key counts, the lease stamps, the versions, the alarms, the
+// members, auth and the downgrade info. The keys of the leases follow
+// from the index.
 func (st *State) Hash() uint64 {
 	h := st.kv.Hash()
 	mix := func(x uint64) {
@@ -170,11 +171,17 @@ func (st *State) Hash() uint64 {
 		}
 	}
 	for _, name := range sortedKeys(st.auth.roles) {
+		mix(uint64(crc32.Checksum([]byte(name), castagnoli)))
 		for _, p := range st.auth.roles[name].KeyPermission {
 			mix(uint64(crc32.Checksum(append(append([]byte(name+"\x00"), p.Key...), p.RangeEnd...), castagnoli)))
 			mix(uint64(p.PermType))
 		}
 	}
+	mix(uint64(crc32.Checksum([]byte(st.etcdVersion), castagnoli)))
+	if st.downgradeEnabled {
+		mix(1)
+	}
+	mix(uint64(crc32.Checksum([]byte(st.downgradeTarget), castagnoli)))
 	return h
 }
 
@@ -235,7 +242,7 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 	if err := st.refused(true); err != nil {
 		return nil, err
 	}
-	if err := st.putAllowed(op.Key, op.Lease, op.PrevKv); err != nil {
+	if err := st.putAllowed(st.who, op.Key, op.Lease, op.PrevKv); err != nil {
 		return nil, err
 	}
 	prev, err := st.kv.PutKV(op)
@@ -255,7 +262,7 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 	if err := st.refusedOp(op); err != nil {
 		return nil, err
 	}
-	if err := st.writeAllowed(op); err != nil {
+	if err := st.writeAllowed(st.who, op); err != nil {
 		return nil, err
 	}
 	switch op := op.(type) {

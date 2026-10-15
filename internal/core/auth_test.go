@@ -1,8 +1,11 @@
 package core
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -335,5 +338,33 @@ func TestTokenWaitTimesOut(t *testing.T) {
 	s.n.stop()
 	if r := s.n.out.Replies; len(r) != 1 || r[0].ID != 11 || !errors.Is(r[0].Err, rpctypes.ErrGRPCStopped) {
 		t.Fatalf("replies of a stopped node: %v, want request 11 stopped", r)
+	}
+}
+
+// TestBigRoleInCheckpoint reads back a checkpoint header with a role far
+// above the bound of a name or URL: a role grows with every permission
+// granted, and its checkpoint must stay readable.
+func TestBigRoleInCheckpoint(t *testing.T) {
+	a := newAuthState()
+	ro := &authpb.Role{Name: []byte("big")}
+	for i := range 5000 {
+		ro.KeyPermission = append(ro.KeyPermission, &authpb.Permission{PermType: authpb.Permission_READ, Key: fmt.Appendf(nil, "/registry/key-%05d", i)})
+	}
+	a.roles["big"] = ro
+	b, err := (&ckptHeader{auth: a}).encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := readHeader(bufio.NewReader(bytes.NewReader(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.auth.roles["big"]; !proto.Equal(got, ro) {
+		t.Fatalf("role after the round trip has %d permissions, want %d", len(got.GetKeyPermission()), len(ro.KeyPermission))
+	}
+	// A damaged length past the bytes that follow fails without a huge
+	// buffer.
+	if _, err := readHeader(bufio.NewReader(bytes.NewReader(b[:len(b)/2]))); err == nil {
+		t.Fatal("a cut header read without an error")
 	}
 }

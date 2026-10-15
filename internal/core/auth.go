@@ -697,9 +697,7 @@ func (n *Node) readAllowed(p *pending) error {
 	case *pb.RangeRequest:
 		return a.permitted(ai, op.Key, op.RangeEnd, false)
 	case *pb.TxnRequest:
-		st := n.state
-		st.who = ai
-		return st.txnAllowed(op)
+		return n.state.txnAllowed(ai, op)
 	}
 	return nil
 }
@@ -733,36 +731,36 @@ func hashedPassword(hash string) []byte {
 	return b
 }
 
-// Writes are checked as they apply, with the identity they carry
+// Writes are checked as they apply, with the identity who they carry
 // (State.who), as etcd's authApplierV3 checks them.
 
 // putAllowed is etcd's checkPutAuth.
-func (st *State) putAllowed(key []byte, lease int64, prevKV bool) error {
+func (st *State) putAllowed(who authInfo, key []byte, lease int64, prevKV bool) error {
 	a := st.auth
 	if !a.enabled {
 		return nil
 	}
-	if err := a.permitted(st.who, key, nil, true); err != nil {
+	if err := a.permitted(who, key, nil, true); err != nil {
 		return err
 	}
-	if err := st.leaseAllowed(lease); err != nil {
+	if err := st.leaseAllowed(who, lease); err != nil {
 		return err
 	}
 	if prevKV {
-		return a.permitted(st.who, key, nil, false)
+		return a.permitted(who, key, nil, false)
 	}
 	return nil
 }
 
 // leaseAllowed is etcd's checkLeasePuts: a lease's keys must all be
 // writable, unless the user is an admin.
-func (st *State) leaseAllowed(id int64) error {
+func (st *State) leaseAllowed(who authInfo, id int64) error {
 	l := st.leases[id]
-	if l == nil || st.auth.admin(&st.who) == nil {
+	if l == nil || st.auth.admin(&who) == nil {
 		return nil
 	}
 	for _, k := range slices.Sorted(maps.Keys(l.keys)) {
-		if err := st.auth.permitted(st.who, []byte(k), nil, true); err != nil {
+		if err := st.auth.permitted(who, []byte(k), nil, true); err != nil {
 			return err
 		}
 	}
@@ -770,37 +768,37 @@ func (st *State) leaseAllowed(id int64) error {
 }
 
 // writeAllowed checks a write other than a put in wire form.
-func (st *State) writeAllowed(op proto.Message) error {
+func (st *State) writeAllowed(who authInfo, op proto.Message) error {
 	if !st.auth.enabled {
 		return nil
 	}
 	switch op := op.(type) {
 	case *pb.PutRequest:
-		return st.putAllowed(op.Key, op.Lease, op.PrevKv)
+		return st.putAllowed(who, op.Key, op.Lease, op.PrevKv)
 	case *pb.DeleteRangeRequest:
-		return st.deleteAllowed(op)
+		return st.deleteAllowed(who, op)
 	case *pb.TxnRequest:
-		return st.txnAllowed(op)
+		return st.txnAllowed(who, op)
 	case *pb.LeaseRevokeRequest:
-		return st.leaseAllowed(op.ID)
+		return st.leaseAllowed(who, op.ID)
 	}
 	return nil
 }
 
-func (st *State) deleteAllowed(d *pb.DeleteRangeRequest) error {
-	if err := st.auth.permitted(st.who, d.Key, d.RangeEnd, true); err != nil {
+func (st *State) deleteAllowed(who authInfo, d *pb.DeleteRangeRequest) error {
+	if err := st.auth.permitted(who, d.Key, d.RangeEnd, true); err != nil {
 		return err
 	}
 	if d.PrevKv {
-		return st.auth.permitted(st.who, d.Key, d.RangeEnd, false)
+		return st.auth.permitted(who, d.Key, d.RangeEnd, false)
 	}
 	return nil
 }
 
 // txnAllowed is etcd's checkTxnPermission.
-func (st *State) txnAllowed(t *pb.TxnRequest) error {
+func (st *State) txnAllowed(who authInfo, t *pb.TxnRequest) error {
 	for _, c := range t.Compare {
-		if err := st.auth.permitted(st.who, c.Key, c.RangeEnd, false); err != nil {
+		if err := st.auth.permitted(who, c.Key, c.RangeEnd, false); err != nil {
 			return err
 		}
 	}
@@ -809,21 +807,21 @@ func (st *State) txnAllowed(t *pb.TxnRequest) error {
 			var err error
 			switch r := o.Request.(type) {
 			case *pb.RequestOp_RequestRange:
-				err = st.auth.permitted(st.who, r.RequestRange.GetKey(), r.RequestRange.GetRangeEnd(), false)
+				err = st.auth.permitted(who, r.RequestRange.GetKey(), r.RequestRange.GetRangeEnd(), false)
 			case *pb.RequestOp_RequestPut:
-				err = st.putAllowed(r.RequestPut.GetKey(), r.RequestPut.GetLease(), r.RequestPut.GetPrevKv())
+				err = st.putAllowed(who, r.RequestPut.GetKey(), r.RequestPut.GetLease(), r.RequestPut.GetPrevKv())
 			case *pb.RequestOp_RequestDeleteRange:
 				if d := r.RequestDeleteRange; d != nil {
 					if d.PrevKv {
-						err = st.auth.permitted(st.who, d.Key, d.RangeEnd, false)
+						err = st.auth.permitted(who, d.Key, d.RangeEnd, false)
 					}
 					if err == nil {
-						err = st.auth.permitted(st.who, d.Key, d.RangeEnd, true)
+						err = st.auth.permitted(who, d.Key, d.RangeEnd, true)
 					}
 				}
 			case *pb.RequestOp_RequestTxn:
 				if r.RequestTxn != nil {
-					err = st.txnAllowed(r.RequestTxn)
+					err = st.txnAllowed(who, r.RequestTxn)
 				}
 			}
 			if err != nil {
