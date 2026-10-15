@@ -410,7 +410,9 @@ func (w *mixedLoad) message(st *stream, m []byte) error {
 			}
 		}
 		w.ledger.revisionMax(rev)
-		slices.SortFunc(live, func(a, b *mixedKey) int { return bytes.Compare(a.key, b.key) })
+		// A group's keys are already in key order: newKey appends names
+		// with rising zero-padded ids, and a re-created key keeps its
+		// place. TestMixedGroupKeysSorted holds that.
 		return checkMixedRange(m, live, 500)
 	}
 	ok, err := varintField(m, txnSucceeded)

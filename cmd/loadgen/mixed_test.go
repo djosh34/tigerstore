@@ -90,6 +90,25 @@ func TestMixedScopes(t *testing.T) {
 	}
 }
 
+func TestMixedGroupKeysSorted(t *testing.T) {
+	cfg := config{keys: 20000, conns: 6, mix: defaultMix, seed: 1}
+	wk := newWorker(nil, 1)
+	w, err := newMixedLoad(wk, cfg, 0, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 5000 {
+		w.newKey()
+	}
+	for _, g := range w.groups {
+		for i := 1; i < len(g.keys); i++ {
+			if bytes.Compare(g.keys[i-1].key, g.keys[i].key) >= 0 {
+				t.Fatalf("group %s: %s before %s", g.prefix, g.keys[i-1].key, g.keys[i].key)
+			}
+		}
+	}
+}
+
 func TestMixedOwnership(t *testing.T) {
 	seen := map[string]int{}
 	cfg := config{keys: 2000, conns: 6, mix: defaultMix, seed: 1}
