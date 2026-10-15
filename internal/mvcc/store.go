@@ -237,6 +237,8 @@ type Store struct {
 	fills []Fill
 
 	counts Counts
+	// compactHash is the hash the last compaction took.
+	compactHash KVHash
 	// size is the bytes etcd's database would hold for the versions
 	// (rowBytes), the size the space quota counts.
 	size int64
@@ -543,7 +545,8 @@ func InRange(key, start, end []byte) bool {
 // etcd's compaction does: per key, the newest version at or below rev
 // stays, unless it is a tombstone from before rev. A tombstone at rev
 // stays, so a watch from rev still gets that delete. Reads below rev then
-// fail with ErrCompacted. Compact does not change the revision.
+// fail with ErrCompacted. Compact does not change the revision. In the
+// same walk it takes the hash of rev (CompactHash).
 func (s *Store) Compact(rev int64) error {
 	switch {
 	case rev <= s.compactRev:
@@ -553,6 +556,7 @@ func (s *Store) Compact(rev int64) error {
 	}
 	s.changes = s.changes[:0]
 	pending := s.pendingCompact()
+	h := newRevHash(rev, s.compactRev)
 	s.compactRev = rev
 	if s.frozen != nil {
 		// A checkpoint copy is under way and reads the versions in place;
@@ -562,6 +566,7 @@ func (s *Store) Compact(rev int64) error {
 	var gone []*keyIndex
 	s.keys.Ascend(func(k *keyIndex) bool {
 		from, to := k.dropped(pending), k.dropped(rev)
+		h.key(k, from)
 		for i := from; i < to; i++ {
 			s.size -= rowBytes(k.key, &k.vers[i])
 			if s.track {
@@ -574,6 +579,7 @@ func (s *Store) Compact(rev int64) error {
 		return true
 	})
 	s.remove(gone)
+	s.compactHash = h.sum()
 	return nil
 }
 

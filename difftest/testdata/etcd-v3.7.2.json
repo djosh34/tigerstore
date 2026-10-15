@@ -2139,7 +2139,8 @@
       "result": {
         "revision": 5,
         "hashRevision": 4,
-        "compactRevision": 4
+        "compactRevision": -39,
+        "same": true
       }
     },
     {
@@ -2164,7 +2165,7 @@
       "result": {
         "revision": 5,
         "hashRevision": 5,
-        "compactRevision": 5
+        "compactRevision": 4
       }
     },
     {

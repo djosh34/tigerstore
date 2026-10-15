@@ -14,7 +14,12 @@
 // A follower fetches a snapshot on a connection of its own: its preface
 // carries its Raft ID with the top bit set. After the reply it writes the
 // first and the last index it needs, 8 bytes each, and reads the snapshot
-// stream until the other end closes.
+// stream until the other end closes. A node asks another a question (Call)
+// on a connection of its own too: its preface carries its Raft ID with
+// the second bit from the top set; then it writes the request, and the
+// other end writes the answer, each a 4-byte length and the bytes. An
+// answer starts with 0 and the answer's bytes, or with 1, a 4-byte gRPC
+// code and the error's message.
 package peer
 
 import (
@@ -45,6 +50,9 @@ type Transport interface {
 	// Fetch asks peer id for the snapshot stream of the entries first to
 	// last. The caller reads it to the end and closes it.
 	Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser, error)
+	// Call sends peer id a request, which its Config.Answer answers, and
+	// returns the answer.
+	Call(ctx context.Context, id uint64, req []byte) ([]byte, error)
 	Close() error
 }
 
@@ -78,6 +86,9 @@ type Config struct {
 	// Serve writes to w the snapshot stream that peer id asked for, the
 	// entries first to last.
 	Serve func(id, first, last uint64, w io.Writer) error
+	// Answer answers a request that peer id sent with Call. An error that
+	// is a gRPC status reaches the caller with its code and message.
+	Answer func(id uint64, req []byte) ([]byte, error)
 	// Logf logs connection errors.
 	Logf func(format string, args ...any)
 
@@ -358,15 +369,21 @@ func (t *TCP) receive(c net.Conn) error {
 		return err
 	}
 	r := bufio.NewReaderSize(c, ioBuffer)
-	from, fetch, v, err := t.handshake(c, r)
+	from, mode, v, err := t.handshake(c, r)
 	if err != nil {
 		if t.ctx.Err() == nil {
 			t.logHandshake("from "+remoteHost(c), err)
 		}
 		return nil
 	}
-	if fetch {
+	switch mode {
+	case fetchBit:
 		return t.serve(c, r, from)
+	case callBit:
+		return t.answer(c, r, from)
+	case 0:
+	default:
+		return fmt.Errorf("peer %d asks for a fetch and a call at once", from)
 	}
 	t.mu.Lock()
 	t.inbound[c] = inbound{id: from, version: v}
@@ -407,31 +424,32 @@ func (t *TCP) receive(c net.Conn) error {
 
 // handshake checks the ALPN version and the preface of an inbound
 // connection and writes the reply. It returns the dialer's Raft ID,
-// whether the connection fetches a snapshot, and the protocol version.
-func (t *TCP) handshake(c net.Conn, r io.Reader) (id uint64, fetch bool, v byte, err error) {
+// the connection's mode (fetchBit, callBit or 0 for messages), and the
+// protocol version.
+func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err error) {
 	tc, ok := c.(*tls.Conn)
 	if !ok {
-		return 0, false, 0, fmt.Errorf("a %T is not a TLS connection", c)
+		return 0, 0, 0, fmt.Errorf("a %T is not a TLS connection", c)
 	}
 	if err := tc.Handshake(); err != nil {
-		return 0, false, 0, err
+		return 0, 0, 0, err
 	}
 	name := tc.ConnectionState().NegotiatedProtocol
 	if name == "" {
-		return 0, false, 0, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
+		return 0, 0, 0, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
 	}
 	var p [12]byte
 	if _, err := io.ReadFull(r, p[:]); err != nil {
-		return 0, false, 0, err
+		return 0, 0, 0, err
 	}
 	if p[0] != magic[0] || p[1] != magic[1] {
-		return 0, false, 0, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
+		return 0, 0, 0, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
 	}
 	id = binary.BigEndian.Uint64(p[4:])
-	fetch = id&fetchBit != 0
-	id &^= fetchBit
+	mode = id & (fetchBit | callBit)
+	id &^= fetchBit | callBit
 	if _, ok := t.senders[id]; !ok {
-		return 0, false, 0, fmt.Errorf("unknown peer %d", id)
+		return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
 	}
 	v = pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
 	switch {
@@ -442,12 +460,12 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id uint64, fetch bool, v byte,
 		v = 0
 	}
 	if werr := c.SetWriteDeadline(writeDeadline()); werr != nil {
-		return 0, false, 0, errors.Join(err, werr)
+		return 0, 0, 0, errors.Join(err, werr)
 	}
 	if _, werr := c.Write([]byte{v}); werr != nil {
-		return 0, false, 0, errors.Join(err, werr)
+		return 0, 0, 0, errors.Join(err, werr)
 	}
-	return id, fetch, v, err
+	return id, mode, v, err
 }
 
 // remoteHost is the host of c's remote address. Unlike the port, it stays

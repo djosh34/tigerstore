@@ -27,6 +27,10 @@ func (noPeers) Fetch(context.Context, uint64, uint64, uint64) (io.ReadCloser, er
 	return nil, errors.New("no peers")
 }
 
+func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
+	return nil, errors.New("no peers")
+}
+
 // slowWatcherIsCut opens a watch stream with a queue of 8 responses on a
 // single node, never reads it, and writes 50 keys it watches, one at a
 // time. The stream must be closed as too slow, and a Put and a Range must

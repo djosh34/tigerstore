@@ -24,6 +24,10 @@ func (noPeers) Fetch(context.Context, uint64, uint64, uint64) (io.ReadCloser, er
 	return nil, errors.New("no peers")
 }
 
+func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
+	return nil, errors.New("no peers")
+}
+
 // TestWatchEventsResumes holds the first event that watchEvents hands
 // on while 20 more puts land. The node's watch queue holds one response,
 // so it drops the stream as too slow. watchEvents must watch again after

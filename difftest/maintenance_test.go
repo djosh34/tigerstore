@@ -45,11 +45,13 @@ func hashes(r *run) {
 	r.hashKV("hashkv at 4 after a put", r.abs(4), &at4)
 	r.hashKV("hashkv at revision 0 after a put", 0, &now)
 	r.hashKV("hashkv at a future revision", r.abs(100), nil)
-	r.compact("compact at 4", r.abs(4), false)
+	// A physical compaction returns once etcd took its hash, which
+	// HashKV of that revision then answers.
+	r.compact("compact at 4", r.abs(4), true)
 	r.hashKV("hashkv at 3 after compacting at 4", r.abs(3), nil)
 	r.hashKV("hashkv at 4 after compacting at 4", r.abs(4), &at4)
 	r.hashKV("hashkv at 5 after compacting at 4", r.abs(5), nil)
-	r.compact("compact at 5", r.abs(5), false)
+	r.compact("compact at 5", r.abs(5), true)
 	r.hashKV("hashkv at 5 after compacting at 5", r.abs(5), nil)
 	resp, err := r.c.maint.Hash(r.ctx, &pb.HashRequest{})
 	var res any

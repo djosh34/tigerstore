@@ -77,6 +77,10 @@ func (p memPeer) Send(msg *raftpb.Message) {
 
 func (p memPeer) Close() error { return nil }
 
+func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
+	return nil, errors.New("memPeer answers no calls")
+}
+
 func (p memPeer) Fetch(_ context.Context, id, first, last uint64) (io.ReadCloser, error) {
 	p.net.mu.Lock()
 	src := p.net.nodes[id]

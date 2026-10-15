@@ -135,3 +135,26 @@ func TestHashKVNoLiveKey(t *testing.T) {
 		t.Fatalf("HashKV(4) after compacting at the tombstone = %x, want the empty hash", got.Hash)
 	}
 }
+
+// TestCompactHash checks that a compaction takes HashKV of its revision
+// as it was before the compaction, as etcd does, also while a checkpoint
+// copy holds the compaction back.
+func TestCompactHash(t *testing.T) {
+	for _, frozen := range []bool{false, true} {
+		s := history(t)
+		if err := s.Compact(3); err != nil {
+			t.Fatal(err)
+		}
+		if frozen {
+			s.Freeze()
+		}
+		put(t, s, "c", "2")
+		want := hashKV(t, s, 6)
+		if err := s.Compact(6); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.CompactHash(); got != want || got.CompactRevision != 3 {
+			t.Fatalf("frozen %v: compaction hash %+v, HashKV before %+v", frozen, got, want)
+		}
+	}
+}

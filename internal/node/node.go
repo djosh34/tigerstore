@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/planted"
@@ -54,6 +55,11 @@ type Config struct {
 	// DiskBudget is how many bytes the log's files may take; 0 means no
 	// budget and no cleaning (clean.go).
 	DiskBudget int64
+	// CorruptCheckTime is etcd's --corrupt-check-time, and
+	// CompactHashCheckTime its --compact-hash-check-time with the
+	// CompactHashCheck feature gate on; 0 turns either check off
+	// (corrupt.go).
+	CorruptCheckTime, CompactHashCheckTime time.Duration
 	// BeforeRead, if set, runs before each read of a value from the log.
 	// Tests use it to stall those reads.
 	BeforeRead func()
@@ -72,6 +78,7 @@ type input struct {
 	watchClose  bool
 	stream      uint64
 	status      chan *pb.StatusResponse
+	hashes      chan []mvcc.KVHash
 	metrics     chan core.Metrics
 	// written is the index of a checkpoint the writer synced, or failed
 	// to write with writeErr.
@@ -564,6 +571,13 @@ var errReload = errors.New("node: the snapshot fetch failed")
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
+	if n.cfg.CorruptCheckTime > 0 || n.cfg.CompactHashCheckTime > 0 {
+		ctx, cancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Go(func() { n.checkHashes(ctx, t) })
+		defer wg.Wait()
+		defer cancel()
+	}
 	for {
 		err := n.run(ctx, t)
 		if errors.Is(err, errReload) && ctx.Err() == nil {
@@ -809,6 +823,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		in.status <- n.core.Status()
 	case in.metrics != nil:
 		in.metrics <- n.core.Metrics()
+	case in.hashes != nil:
+		in.hashes <- n.core.CompactHashes()
 	case in.watchOpen != nil:
 		streams[in.watchOpen.id] = in.watchOpen
 	case in.watchReq != nil:

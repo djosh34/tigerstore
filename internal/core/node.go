@@ -406,6 +406,8 @@ type Node struct {
 	paused, resume *pausedWrite
 	readInline     bool
 
+	// hashes are the hashes the last compactions took, oldest first.
+	hashes []mvcc.KVHash
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -1317,7 +1319,7 @@ func (n *Node) serveRead(p *pending) {
 		resp = r
 	case *pb.HashKVRequest:
 		var h mvcc.KVHash
-		if h, err = n.kv.HashKV(op.Revision); err == nil {
+		if h, err = n.hashKV(op.Revision); err == nil {
 			r := &pb.HashKVResponse{Header: header(n.kv.Rev()), Hash: h.Hash, CompactRevision: h.CompactRevision, HashRevision: h.Revision}
 			n.fillHeader(r.Header)
 			resp = r
@@ -1516,6 +1518,9 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if h, ok := resp.(interface{ GetHeader() *pb.ResponseHeader }); ok {
 		n.fillHeader(h.GetHeader())
+	}
+	if _, ok := op.(*pb.CompactionRequest); ok {
+		n.keepHash(n.kv.CompactHash())
 	}
 	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
 		n.out.Expired = append(n.out.Expired, e.ID)

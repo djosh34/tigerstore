@@ -37,6 +37,8 @@ type flags struct {
 	peerAllowedCNs, peerAllowedHostnames      []string
 	progressInterval                          time.Duration
 	quotaBackendBytes                         int64
+	corruptCheck, compactHashCheck            time.Duration
+	features                                  featureGates
 	diskBudget                                int64
 	memoryBudget                              int64
 }
@@ -91,6 +93,10 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerCertFile, "peer-cert-file", "", "peer certificate, used as server and client")
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
+	f.features = newFeatureGates()
+	fs.Var(f.features, "feature-gates", "comma-separated etcd server feature gates, such as InitialCorruptCheck=true,CompactHashCheck=true")
+	fs.DurationVar(&f.corruptCheck, "corrupt-check-time", 0, "interval of the leader's corruption checks of every member; 0 turns them off")
+	fs.DurationVar(&f.compactHashCheck, "compact-hash-check-time", time.Minute, "interval of the leader's checks of the hashes compactions took, with the CompactHashCheck feature gate")
 	fs.Int64Var(&f.quotaBackendBytes, "quota-backend-bytes", 0, "raise the NOSPACE alarm when the data reaches this size; 0 means 2 GiB, a negative value no quota")
 	// As in etcd, each takes a comma-separated list, and a repeated flag
 	// replaces the list.
@@ -107,6 +113,9 @@ func parse(args []string) (*flags, error) {
 	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+	if f.compactHashCheck <= 0 {
+		return nil, fmt.Errorf("--compact-hash-check-time must be >0 (set to %v)", f.compactHashCheck)
 	}
 	if f.name == "" || f.initialCluster == "" {
 		return nil, errors.New("--name and --initial-cluster are required")
@@ -259,7 +268,11 @@ func run(args []string, logger *log.Logger) error {
 	debug.SetMemoryLimit(budget)
 	ccfg.MemoryBytes = node.CacheMemory(budget)
 	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
-	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, Logf: logger.Printf})
+	ncfg := node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, CorruptCheckTime: f.corruptCheck, Logf: logger.Printf}
+	if f.features["CompactHashCheck"] {
+		ncfg.CompactHashCheckTime = f.compactHashCheck
+	}
+	n, err := node.New(ncfg)
 	if err != nil {
 		return err
 	}
@@ -267,7 +280,7 @@ func run(args []string, logger *log.Logger) error {
 		ID: self.id, Listen: listenPeer.Host, Peers: peers,
 		Certificate: peerCert, CA: peerCA,
 		AllowedCNs: f.peerAllowedCNs, AllowedHostnames: f.peerAllowedHostnames,
-		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logger.Printf,
+		Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Logf: logger.Printf,
 	})
 	if err != nil {
 		return err
@@ -290,6 +303,19 @@ func run(args []string, logger *log.Logger) error {
 	defer stop()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	ran := make(chan error, 1)
+	go func() {
+		ran <- n.Run(ctx, t)
+		cancel()
+	}()
+	if f.features["InitialCorruptCheck"] {
+		// As in etcd, before it serves any client.
+		if err := n.InitialCheck(ctx, t); err != nil {
+			cancel()
+			return errors.Join(err, <-ran, ln.Close(), t.Close())
+		}
+		logger.Printf("initial corruption check passed")
+	}
 	served := make(chan error, 1)
 	go func() {
 		// A node that cannot serve clients stops instead of staying a
@@ -298,7 +324,7 @@ func run(args []string, logger *log.Logger) error {
 		cancel()
 	}()
 	logger.Printf("node %s (raft ID %d) serving clients on %s, peers on %s", f.name, self.id, clientURL, listenPeer.Host)
-	runErr := n.Run(ctx, t)
+	runErr := <-ran
 	stopErr := g.Stop()
 	return errors.Join(runErr, stopErr, <-served, t.Close())
 }

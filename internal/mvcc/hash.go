@@ -39,34 +39,59 @@ func (s *Store) HashKV(rev int64) (KVHash, error) {
 	case rev == 0:
 		rev = s.rev
 	}
-	// etcd's rule for versions at or below C depends on whether any key
-	// exists at rev, which is known only at the end: both sums are kept.
-	live, dead := newKVHasher(), newKVHasher()
-	anyLive := false
+	h := newRevHash(rev, c)
 	pending := s.pendingCompact()
 	s.keys.Ascend(func(k *keyIndex) bool {
-		seen := k.at(rev)
-		if seen >= 0 && k.vers[seen].ver != 0 {
-			anyLive = true
-		}
-		for i := k.dropped(pending); i < len(k.vers); i++ {
-			v := &k.vers[i]
-			if v.mod.main > rev || (v.mod.main == c && v.ver == 0) {
-				continue
-			}
-			if v.mod.main > c || (i == seen && v.ver != 0) {
-				live.add(k.key, v)
-			}
-			dead.add(k.key, v)
-		}
+		h.key(k, k.dropped(pending))
 		return true
 	})
-	h := dead
-	if anyLive {
-		h = live
-	}
-	return KVHash{Hash: h.sum, CompactRevision: c, Revision: rev}, nil
+	return h.sum(), nil
 }
+
+// revHash sums the versions up to rev with HashKV's rules, a key at a
+// time, with c as the compaction revision.
+type revHash struct {
+	rev, c     int64
+	live, dead *kvHasher
+	anyLive    bool
+}
+
+func newRevHash(rev, c int64) *revHash {
+	return &revHash{rev: rev, c: c, live: newKVHasher(), dead: newKVHasher()}
+}
+
+// key adds k's versions from its from-th on. etcd's rule for versions at
+// or below c depends on whether any key exists at rev, which is known
+// only at the end: both sums are kept.
+func (h *revHash) key(k *keyIndex, from int) {
+	seen := k.at(h.rev)
+	if seen >= 0 && k.vers[seen].ver != 0 {
+		h.anyLive = true
+	}
+	for i := from; i < len(k.vers); i++ {
+		v := &k.vers[i]
+		if v.mod.main > h.rev || (v.mod.main == h.c && v.ver == 0) {
+			continue
+		}
+		if v.mod.main > h.c || (i == seen && v.ver != 0) {
+			h.live.add(k.key, v)
+		}
+		h.dead.add(k.key, v)
+	}
+}
+
+func (h *revHash) sum() KVHash {
+	s := h.dead
+	if h.anyLive {
+		s = h.live
+	}
+	return KVHash{Hash: s.sum, CompactRevision: h.c, Revision: h.rev}
+}
+
+// CompactHash is the hash the last compaction took: HashKV of its
+// revision with the compaction revision before it, as etcd computes while
+// it compacts.
+func (s *Store) CompactHash() KVHash { return s.compactHash }
 
 // pendingCompact is the compaction a checkpoint copy holds back, whose
 // versions are gone for every reader but the copy, or 0.

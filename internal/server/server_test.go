@@ -46,6 +46,14 @@ type cluster struct {
 	segmentBytes int64
 	// beforeRead, if set, runs before each value read from a log.
 	beforeRead func()
+	// nodeConfig, if set, changes the nodes' driver configuration, and
+	// wrap the transport each node runs with.
+	nodeConfig func(*node.Config)
+	wrap       func(id uint64, t peer.Transport) peer.Transport
+	// nodes and transports are the running nodes and their transports by
+	// ID.
+	nodes      map[uint64]*node.Node
+	transports map[uint64]*peer.TCP
 	// peerLns are the peer listeners of nodes not started yet, held open
 	// from the start so that no other process takes their ports.
 	peerLns map[uint64]net.Listener
@@ -120,7 +128,11 @@ func (c *cluster) start(id uint64) {
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
 	}
-	n, err := node.New(node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead})
+	ncfg := node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead}
+	if c.nodeConfig != nil {
+		c.nodeConfig(&ncfg)
+	}
+	n, err := node.New(ncfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +151,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Logf: logf})
+	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +166,15 @@ func (c *cluster) start(id uint64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ran := make(chan error, 1)
 	served := make(chan error, 1)
-	go func() { ran <- n.Run(ctx, tr) }()
+	var run peer.Transport = tr
+	if c.wrap != nil {
+		run = c.wrap(id, tr)
+	}
+	if c.nodes == nil {
+		c.nodes, c.transports = map[uint64]*node.Node{}, map[uint64]*peer.TCP{}
+	}
+	c.nodes[id], c.transports[id] = n, tr
+	go func() { ran <- n.Run(ctx, run) }()
 	go func() { served <- g.Serve(ln) }()
 	var once sync.Once
 	stopNode := func() {
