@@ -77,7 +77,7 @@ func (p memPeer) Send(msg *raftpb.Message) {
 
 func (p memPeer) Close() error { return nil }
 
-func (p memPeer) SetPeers(map[uint64]string) {}
+func (p memPeer) SetPeers(map[uint64]string, []uint64) {}
 
 func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
 	return nil, errors.New("memPeer answers no calls")

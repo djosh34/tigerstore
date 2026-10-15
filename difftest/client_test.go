@@ -33,12 +33,13 @@ import (
 // client is a raw etcd v3 gRPC client, with HTTP clients for the
 // endpoints of the client port.
 type client struct {
-	conn   *grpc.ClientConn
-	kv     pb.KVClient
-	watch  pb.WatchClient
-	lease  pb.LeaseClient
-	maint  pb.MaintenanceClient
-	health healthpb.HealthClient
+	conn    *grpc.ClientConn
+	kv      pb.KVClient
+	watch   pb.WatchClient
+	lease   pb.LeaseClient
+	maint   pb.MaintenanceClient
+	cluster pb.ClusterClient
+	health  healthpb.HealthClient
 	// lock and election are etcd's Lock and Election services.
 	lock     v3lockpb.LockClient
 	election epb.ElectionClient
@@ -88,6 +89,7 @@ func dial(t *testing.T) *client {
 		watch:    pb.NewWatchClient(conn),
 		lease:    pb.NewLeaseClient(conn),
 		maint:    pb.NewMaintenanceClient(conn),
+		cluster:  pb.NewClusterClient(conn),
 		health:   healthpb.NewHealthClient(conn),
 		lock:     v3lockpb.NewLockClient(conn),
 		election: epb.NewElectionClient(conn),

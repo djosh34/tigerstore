@@ -3628,6 +3628,114 @@
       "message": "etcdserver: request is too large"
     }
   ],
+  "members": [
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "add a member with a bad URL",
+      "code": "InvalidArgument",
+      "message": "etcdserver: given member URLs are invalid"
+    },
+    {
+      "do": "add a member with a path in its URL",
+      "code": "InvalidArgument",
+      "message": "etcdserver: given member URLs are invalid"
+    },
+    {
+      "do": "add a learner",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:3",
+              "https://127.0.0.2:1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "add a second learner",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: too many learner members in cluster"
+    },
+    {
+      "do": "add a learner with a taken peer URL",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: Peer URLs already exists"
+    },
+    {
+      "do": "list with a learner",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:3",
+              "https://127.0.0.2:1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "update the learner's peer URLs",
+      "code": "OK",
+      "result": {
+        "learners": [
+          {
+            "peerURLs": [
+              "https://127.0.0.1:5"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "do": "update a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "promote the learner that never started",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: can only promote a learner member which is in sync with leader"
+    },
+    {
+      "do": "promote a voter",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: can only promote a learner member"
+    },
+    {
+      "do": "promote a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "remove a member that does not exist",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "remove the learner",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "remove the learner again",
+      "code": "NotFound",
+      "message": "etcdserver: member not found"
+    },
+    {
+      "do": "list after removing the learner",
+      "code": "OK",
+      "result": {}
+    }
+  ],
   "range-stream": [
     {
       "do": "put small key 0",

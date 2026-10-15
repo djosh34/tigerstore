@@ -74,12 +74,14 @@ type input struct {
 	batch       *batch
 	msg         *raftpb.Message
 	unreachable uint64
-	watchOpen   *WatchStream
-	watchReq    *pb.WatchRequest
-	watchClose  bool
-	stream      uint64
-	status      chan *pb.StatusResponse
-	hashes      chan []mvcc.KVHash
+	// removed is a peer's answer that the cluster removed this node.
+	removed    bool
+	watchOpen  *WatchStream
+	watchReq   *pb.WatchRequest
+	watchClose bool
+	stream     uint64
+	status     chan *pb.StatusResponse
+	hashes     chan []mvcc.KVHash
 	// snapshotPoint asks where a client's snapshot starts.
 	snapshotPoint chan snapshotPoint
 	metrics       chan core.Metrics
@@ -532,6 +534,15 @@ func (n *Node) Unreachable(id uint64) {
 	}
 }
 
+// Removed tells the node that a peer answered that the cluster removed
+// it; the node stops, as etcd's does.
+func (n *Node) Removed() {
+	select {
+	case n.inbox <- input{removed: true}:
+	case <-n.done:
+	}
+}
+
 // Do runs one request and waits for its reply.
 func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) {
 	return n.DoAs(ctx, core.Caller{}, op)
@@ -742,7 +753,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 		}
 		if eff.Members != nil {
-			t.SetPeers(PeerAddrs(eff.Members))
+			t.SetPeers(PeerAddrs(eff.Members), n.core.RemovedMembers())
 			n.learner.Store(n.core.IsLearner())
 		}
 		for _, m := range eff.Send {
@@ -876,6 +887,8 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 		}
 	case in.unreachable != 0:
 		n.core.Unreachable(in.unreachable)
+	case in.removed:
+		n.core.Removed()
 	case in.written != 0:
 		n.core.CheckpointWritten(in.written, in.writeErr)
 	case in.fetching:

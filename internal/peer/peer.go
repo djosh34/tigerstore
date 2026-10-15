@@ -53,8 +53,9 @@ type Transport interface {
 	// Call sends peer id a request, which its Config.Answer answers, and
 	// returns the answer.
 	Call(ctx context.Context, id uint64, req []byte) ([]byte, error)
-	// SetPeers sets the peers by Raft ID and host:port.
-	SetPeers(peers map[uint64]string)
+	// SetPeers sets the peers by Raft ID and host:port, and the IDs the
+	// cluster removed, which it tells that they were.
+	SetPeers(peers map[uint64]string, removed []uint64)
 	Close() error
 }
 
@@ -88,6 +89,9 @@ type Config struct {
 	// Serve writes to w the snapshot stream that peer id asked for, the
 	// entries first to last.
 	Serve func(id, first, last uint64, w io.Writer) error
+	// Removed is called when a peer answers that the cluster removed this
+	// node.
+	Removed func()
 	// Answer answers a request that peer id sent with Call. An error that
 	// is a gRPC status reaches the caller with its code and message.
 	Answer func(id uint64, req []byte) ([]byte, error)
@@ -166,6 +170,7 @@ type TCP struct {
 	// senders are the peers by Raft ID, replaced whole by SetPeers;
 	// peersMu orders the replacements.
 	senders atomic.Pointer[map[uint64]*sender]
+	removed atomic.Pointer[map[uint64]bool]
 	peersMu sync.Mutex
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -218,7 +223,7 @@ func Start(cfg Config) (*TCP, error) {
 		logged:  map[string]time.Time{},
 	}
 	t.senders.Store(&map[uint64]*sender{})
-	t.SetPeers(cfg.Peers)
+	t.SetPeers(cfg.Peers, nil)
 	t.wg.Go(t.accept)
 	return t, nil
 }
@@ -232,10 +237,15 @@ func (t *TCP) peer(id uint64) (*sender, bool) {
 // SetPeers makes peers the nodes the transport sends to and accepts
 // connections from, by Raft ID and host:port. A peer that is new or has
 // a new address gets a writer; one that is gone loses its writer and its
-// connection.
-func (t *TCP) SetPeers(peers map[uint64]string) {
+// connection. A removed node that connects hears that it was removed.
+func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 	t.peersMu.Lock()
 	defer t.peersMu.Unlock()
+	gone := map[uint64]bool{}
+	for _, id := range removed {
+		gone[id] = true
+	}
+	t.removed.Store(&gone)
 	old := *t.senders.Load()
 	next := make(map[uint64]*sender, len(peers))
 	for id, addr := range peers {
@@ -498,6 +508,14 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	mode = id & (fetchBit | callBit)
 	id &^= fetchBit | callBit
 	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
+		if (*t.removed.Load())[id] {
+			// As etcd's peers answer a removed member, so that it stops.
+			if werr := c.SetWriteDeadline(writeDeadline()); werr == nil {
+				_, werr = c.Write([]byte{removedReply})
+				err = werr
+			}
+			return 0, 0, 0, errors.Join(fmt.Errorf("peer %d was removed from the cluster", id), err)
+		}
 		return 0, 0, 0, fmt.Errorf("unknown peer %d", id)
 	}
 	v = pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
@@ -535,6 +553,14 @@ func (t *TCP) preface(id uint64) []byte {
 	binary.BigEndian.PutUint64(p[4:], id)
 	return p
 }
+
+// removedReply is the acceptor's reply to a node the cluster removed, in
+// place of a version.
+const removedReply = 0xff
+
+// errRemoved is what a node hears when it dials a peer after the cluster
+// removed it.
+var errRemoved = errors.New("peer: the member has been permanently removed from the cluster")
 
 // fetchBit marks the dialer's ID on a connection that fetches a
 // snapshot.
@@ -757,6 +783,9 @@ func (s *sender) run() {
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
+		if errors.Is(err, errRemoved) && s.t.cfg.Removed != nil {
+			s.t.cfg.Removed()
+		}
 		if err != nil {
 			s.drop()
 			select {
@@ -837,6 +866,8 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 	}
 	v := reply[0]
 	switch {
+	case v == removedReply:
+		return 0, errRemoved
 	case v == 0:
 		return 0, errors.New("the peer refused the preface with reply 0")
 	case name != alpn(v):

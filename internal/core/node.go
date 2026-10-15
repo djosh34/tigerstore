@@ -533,7 +533,11 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 			return nil, err
 		}
 	}
-	n.out.Members = n.state.cloneMembers()
+	// A node that joins knows no members until the log or a snapshot
+	// brings them; its driver keeps the peers it was started with.
+	if len(n.state.members) > 0 {
+		n.out.Members = n.state.cloneMembers()
+	}
 	return n, nil
 }
 

@@ -44,6 +44,7 @@ var cases = []testCase{
 	{"hashes", hashes},
 	{"alarms", alarms},
 	{"snapshot", snapshot},
+	{"members", members},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After

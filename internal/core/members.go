@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -456,3 +457,12 @@ func (st *State) applyAttributes(a *pb.Member) bool {
 	m.Name, m.ClientURLs = a.Name, a.ClientURLs
 	return true
 }
+
+// RemovedMembers are the IDs the cluster removed.
+func (n *Node) RemovedMembers() []uint64 {
+	return slices.Sorted(maps.Keys(n.state.removed))
+}
+
+// Removed stops a node that a peer told the cluster removed it, as
+// etcd's does.
+func (n *Node) Removed() { n.fail(ErrRemoved) }

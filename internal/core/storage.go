@@ -78,7 +78,8 @@ func (s *storage) pruneConfs(index uint64) {
 }
 
 // Snapshot is what a follower behind the window gets: the state at the
-// window's start, or at the newest durable checkpoint if that is later.
+// window's start, at the newest durable checkpoint, or at the newest
+// configuration change, whichever is latest.
 // It carries no data; the follower's driver fetches what it lacks.
 func (s *storage) Snapshot() (*raftpb.Snapshot, error) {
 	index := s.first - 1
@@ -88,6 +89,15 @@ func (s *storage) Snapshot() (*raftpb.Snapshot, error) {
 	}
 	if s.ckpt.Index > index {
 		index, term = s.ckpt.Index, s.ckpt.Term
+	}
+	// A node that the newest configuration added must find itself in the
+	// snapshot's, or Raft drops it there: the snapshot is at least at that
+	// change, which is applied, so in memory or on disk.
+	if n := len(s.confs); n > 0 && s.confs[n-1].index > index {
+		index = s.confs[n-1].index
+		if term, err = s.Term(index); err != nil {
+			return nil, err
+		}
 	}
 	if index == 0 {
 		return nil, raft.ErrSnapshotTemporarilyUnavailable

@@ -46,6 +46,9 @@ type cluster struct {
 	segmentBytes int64
 	// beforeRead, if set, runs before each value read from a log.
 	beforeRead func()
+	// join marks the nodes that join the running cluster instead of
+	// starting it, and removed those that may stop as removed.
+	join, removed map[uint64]bool
 	// nodeConfig, if set, changes the nodes' driver configuration, and
 	// wrap the transport each node runs with.
 	nodeConfig func(*node.Config)
@@ -124,13 +127,23 @@ type viaPeers struct {
 	from uint64
 }
 
-func (v viaPeers) SetPeers(peers map[uint64]string) {
+func (v viaPeers) SetPeers(peers map[uint64]string, removed []uint64) {
 	for to := range peers {
 		if a, ok := v.c.via[[2]uint64{v.from, to}]; ok {
 			peers[to] = a
 		}
 	}
-	v.Transport.SetPeers(peers)
+	v.Transport.SetPeers(peers, removed)
+}
+
+// joinNode starts node id, which joins the running cluster.
+func (c *cluster) joinNode(id uint64) {
+	if c.join == nil {
+		c.join, c.removed = map[uint64]bool{}, map[uint64]bool{}
+	}
+	c.join[id] = true
+	c.dirs[id] = c.t.TempDir()
+	c.start(id)
 }
 
 // members are the cluster's three members with their peer URLs.
@@ -152,6 +165,7 @@ func (c *cluster) start(id uint64) {
 	cfg := core.DefaultConfig(id, []uint64{1, 2, 3})
 	cfg.Members = c.members()
 	cfg.Name = fmt.Sprintf("node%d", id)
+	cfg.Join = c.join[id]
 	cfg.CommitStallElections = c.stallElections
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
@@ -179,7 +193,7 @@ func (c *cluster) start(id uint64) {
 		// A restart: the stopped transport closed its listener.
 		pln = listenPeer(t, c.peerAddrs[id])
 	}
-	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Logf: logf})
+	tr, err := peer.Start(peer.Config{ID: id, Listener: pln, Peers: peers, Certificate: cert, CA: c.ca.Pool, Deliver: n.Deliver, Unreachable: n.Unreachable, Serve: n.Serve, Answer: n.Answer, Removed: n.Removed, Logf: logf})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +225,7 @@ func (c *cluster) start(id uint64) {
 	stopNode := func() {
 		once.Do(func() {
 			cancel()
-			if err := <-ran; err != nil {
+			if err := <-ran; err != nil && (!c.removed[id] || !errors.Is(err, core.ErrRemoved)) {
 				t.Errorf("node %d: %v", id, err)
 			}
 		})

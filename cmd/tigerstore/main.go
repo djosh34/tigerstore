@@ -303,7 +303,7 @@ func run(args []string, logger *log.Logger) error {
 	// The node hands the transport the members once it runs; until then,
 	// those of --initial-cluster.
 	pcfg.ID, pcfg.Peers = ident.id, node.PeerAddrs(initialMembers(members))
-	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer = n.Deliver, n.Unreachable, n.Serve, n.Answer
+	pcfg.Deliver, pcfg.Unreachable, pcfg.Serve, pcfg.Answer, pcfg.Removed = n.Deliver, n.Unreachable, n.Serve, n.Answer, n.Removed
 	t, err := peer.Start(pcfg)
 	if err != nil {
 		return err
