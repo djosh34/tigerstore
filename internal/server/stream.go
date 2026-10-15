@@ -193,6 +193,16 @@ func (st *stream) Recv(m proto.Message) error {
 	}
 }
 
+// recvRequest takes the request of a server-streaming call.
+func recvRequest(st *stream, m proto.Message) error {
+	err := st.Recv(m)
+	if errors.Is(err, io.EOF) {
+		// grpc-go's answer to a server-streaming call without a request.
+		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
+	}
+	return err
+}
+
 // Send queues one response message of a streaming call. It waits while
 // the stream has too much output queued.
 func (st *stream) Send(m proto.Message) error {
@@ -417,10 +427,10 @@ func (st *stream) expire() {
 func (c *conn) runHTTP(st *stream) {
 	defer st.cancel()
 	st.done.Store(true)
-	code, contentType, body := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
-	headers := httpHeaders(code, contentType, len(body))
+	a := c.s.answerHTTP(st.ctx, st.httpMethod, st.httpPath)
+	headers := httpHeaders(a)
 	if st.httpMethod == http.MethodHead {
-		body = ""
+		a.body = ""
 	}
-	st.pushHTTP(headers, []byte(body))
+	st.pushHTTP(headers, []byte(a.body))
 }

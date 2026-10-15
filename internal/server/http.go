@@ -11,9 +11,7 @@ import (
 	"sync"
 	"time"
 
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"golang.org/x/net/http2/hpack"
-	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -35,14 +33,29 @@ const (
 	appJSON   = "application/json"
 )
 
-// answerHTTP answers one HTTP request with a status code, content type and
-// body, as net/http's ServeMux and etcd's handlers do.
-func (s *Server) answerHTTP(ctx context.Context, method, target string) (int, string, string) {
+// httpAnswer is the status code, content type and body of an HTTP
+// response, with the headers that some answers add.
+type httpAnswer struct {
+	code        int
+	contentType string
+	body        string
+	allow       string // the Allow header
+	nosniff     bool   // X-Content-Type-Options: nosniff
+}
+
+// httpError answers as http.Error writes an error.
+func httpError(code int, msg string) httpAnswer {
+	return httpAnswer{code: code, contentType: textPlain, body: msg + "\n", nosniff: true}
+}
+
+// answerHTTP answers one HTTP request as net/http's ServeMux and etcd's
+// handlers do.
+func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnswer {
 	u, err := url.ParseRequestURI(target)
 	if err != nil {
-		return http.StatusBadRequest, textPlain, "400 Bad Request\n"
+		return httpError(http.StatusBadRequest, "400 Bad Request")
 	}
-	var answer func(context.Context, url.Values) (int, string, string)
+	var answer func(context.Context, url.Values) httpAnswer
 	switch u.Path {
 	case "/health":
 		answer = s.health
@@ -51,49 +64,59 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) (int, st
 	case "/metrics":
 		answer = s.metricsText
 	default:
-		return http.StatusNotFound, textPlain, "404 page not found\n"
+		p, ok := checkPaths[u.Path]
+		if !ok {
+			return httpError(http.StatusNotFound, "404 page not found")
+		}
+		if method != http.MethodGet {
+			return methodNotAllowed()
+		}
+		return s.runChecks(ctx, p, u.Query())
 	}
 	if method != http.MethodGet && method != http.MethodHead {
-		return http.StatusMethodNotAllowed, textPlain, "Method Not Allowed\n"
+		return methodNotAllowed()
 	}
 	return answer(ctx, u.Query())
 }
 
+// methodNotAllowed is etcd's answer to a method other than GET.
+func methodNotAllowed() httpAnswer {
+	a := httpError(http.StatusMethodNotAllowed, "Method Not Allowed")
+	a.allow = http.MethodGet
+	return a
+}
+
 // version answers like etcd: the server, cluster and storage versions.
-func version(context.Context, url.Values) (int, string, string) {
-	return http.StatusOK, appJSON, `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + core.ClusterVersion + `","storage":"` + core.StorageVersion + `"}`
+func version(context.Context, url.Values) httpAnswer {
+	return httpAnswer{code: http.StatusOK, contentType: appJSON, body: `{"etcdserver":"` + core.ServerVersion + `","etcdcluster":"` + core.ClusterVersion + `","storage":"` + core.StorageVersion + `"}`}
 }
 
 // health answers like etcd: without ?serializable=true it needs a leader,
 // then it reads one key, linearizable unless serializable was asked for.
 // health is a JSON string, not a boolean. Failures are written as
 // http.Error writes them.
-func (s *Server) health(ctx context.Context, q url.Values) (int, string, string) {
+func (s *Server) health(ctx context.Context, q url.Values) httpAnswer {
 	serializable := q.Get("serializable") == "true"
 	if !serializable && s.n.Leader() == 0 {
-		return http.StatusServiceUnavailable, textPlain, `{"health":"false","reason":"RAFT NO LEADER"}` + "\n"
+		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RAFT NO LEADER"}`)
 	}
-	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
-	defer cancel()
-	if _, err := s.n.Do(ctx, &pb.RangeRequest{Key: []byte("health"), KeysOnly: true, Limit: 1, Serializable: serializable}); err != nil {
-		// etcd reports its internal error text, without gRPC's wrapper.
-		msg := err.Error()
-		if st, ok := status.FromError(err); ok {
-			msg = st.Message()
-		}
-		return http.StatusServiceUnavailable, textPlain, `{"health":"false","reason":"RANGE ERROR:` + msg + `"}` + "\n"
+	if err := s.healthRead(ctx, serializable); err != nil {
+		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RANGE ERROR:`+err.Error()+`"}`)
 	}
-	return http.StatusOK, textPlain, `{"health":"true","reason":""}`
+	return httpAnswer{code: http.StatusOK, contentType: textPlain, body: `{"health":"true","reason":""}`}
 }
 
 // httpHeaders is the HTTP/2 header block of an HTTP response.
-func httpHeaders(code int, contentType string, length int) []byte {
+func httpHeaders(a httpAnswer) []byte {
 	fields := []hpack.HeaderField{
-		{Name: ":status", Value: strconv.Itoa(code)},
-		{Name: "content-type", Value: contentType},
-		{Name: "content-length", Value: strconv.Itoa(length)},
+		{Name: ":status", Value: strconv.Itoa(a.code)},
+		{Name: "content-type", Value: a.contentType},
+		{Name: "content-length", Value: strconv.Itoa(len(a.body))},
 	}
-	if code != http.StatusOK {
+	if a.allow != "" {
+		fields = append(fields, hpack.HeaderField{Name: "allow", Value: a.allow})
+	}
+	if a.nosniff {
 		fields = append(fields, hpack.HeaderField{Name: "x-content-type-options", Value: "nosniff"})
 	}
 	return headerBlock(fields...)
@@ -128,14 +151,17 @@ func (h *http1Conn) serve() {
 			return
 		}
 		ctx, cancel := context.WithCancel(h.s.ctx)
-		code, contentType, body := h.s.answerHTTP(ctx, req.Method, req.RequestURI)
+		a := h.s.answerHTTP(ctx, req.Method, req.RequestURI)
 		cancel()
 		if err := h.nc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 			return
 		}
-		_, _ = bw.WriteString("HTTP/1.1 " + strconv.Itoa(code) + " " + http.StatusText(code) + "\r\n" +
-			"Content-Type: " + contentType + "\r\nContent-Length: " + strconv.Itoa(len(body)) + "\r\n")
-		if code != http.StatusOK {
+		_, _ = bw.WriteString("HTTP/1.1 " + strconv.Itoa(a.code) + " " + http.StatusText(a.code) + "\r\n" +
+			"Content-Type: " + a.contentType + "\r\nContent-Length: " + strconv.Itoa(len(a.body)) + "\r\n")
+		if a.allow != "" {
+			_, _ = bw.WriteString("Allow: " + a.allow + "\r\n")
+		}
+		if a.nosniff {
 			_, _ = bw.WriteString("X-Content-Type-Options: nosniff\r\n")
 		}
 		if req.Close {
@@ -143,7 +169,7 @@ func (h *http1Conn) serve() {
 		}
 		_, _ = bw.WriteString("\r\n")
 		if req.Method != http.MethodHead {
-			_, _ = bw.WriteString(body)
+			_, _ = bw.WriteString(a.body)
 		}
 		if err := bw.Flush(); err != nil || req.Close {
 			return

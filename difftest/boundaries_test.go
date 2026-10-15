@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -39,6 +40,7 @@ var cases = []struct {
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
 	{"range-stream", rangeStream},
+	{"health", health},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
@@ -555,4 +557,38 @@ func boundarySizes(r *run, prefix string, first int64, target int) []int {
 	}
 	r.t.Fatalf("no value sizes give a first chunk of %d bytes", target)
 	return nil
+}
+
+// health checks the gRPC health service, /readyz and /livez of a healthy
+// server.
+func health(r *run) {
+	r.healthCheck("check the server", "")
+	r.healthCheck("check a service", "etcdserverpb.KV")
+	r.healthList("list")
+	r.healthWatch("watch the server", "")
+	r.healthWatch("watch a service", "etcdserverpb.KV")
+	r.invoke("call an unknown health method", "/grpc.health.v1.Health/Nothing")
+	for _, path := range []string{
+		"/readyz",
+		"/readyz?verbose",
+		"/readyz?exclude=linearizable_read&exclude=nothing&verbose",
+		"/readyz?exclude=data_corruption&exclude=serializable_read&exclude=linearizable_read&exclude=non_learner",
+		"/readyz/data_corruption?verbose",
+		"/readyz/serializable_read?verbose",
+		"/readyz/linearizable_read?exclude=linearizable_read&verbose",
+		"/readyz/non_learner",
+		"/readyz/",
+		"/readyz/nothing",
+		"/livez",
+		"/livez?verbose",
+		"/livez?exclude=serializable_read&verbose",
+		"/livez/serializable_read?verbose",
+		"/livez/linearizable_read",
+	} {
+		r.http("GET "+path, r.c.http2, http.MethodGet, path)
+	}
+	r.http("HEAD /readyz", r.c.http2, http.MethodHead, "/readyz")
+	r.http("POST /livez", r.c.http2, http.MethodPost, "/livez")
+	r.http("GET /readyz?verbose over HTTP/1.1", r.c.http1, http.MethodGet, "/readyz?verbose")
+	r.http("POST /livez over HTTP/1.1", r.c.http1, http.MethodPost, "/livez")
 }

@@ -96,12 +96,12 @@ func (st *stream) countEnd(code codes.Code) {
 }
 
 // metricsText answers /metrics.
-func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, string) {
+func (s *Server) metricsText(ctx context.Context, _ url.Values) httpAnswer {
 	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
 	defer cancel()
 	nm, err := s.n.Metrics(ctx)
 	if err != nil {
-		return http.StatusServiceUnavailable, textPlain, err.Error() + "\n"
+		return httpError(http.StatusServiceUnavailable, err.Error())
 	}
 	sm := s.total()
 	var b strings.Builder
@@ -144,7 +144,7 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 			fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
 		}
 	}
-	return http.StatusOK, "text/plain; version=0.0.4; charset=utf-8", b.String()
+	return httpAnswer{code: http.StatusOK, contentType: "text/plain; version=0.0.4; charset=utf-8", body: b.String()}
 }
 
 // callLabels are grpc-prometheus' labels for the method at path.

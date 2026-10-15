@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,15 +23,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// client is a raw etcd v3 gRPC client.
+// client is a raw etcd v3 gRPC client, with HTTP clients for the
+// endpoints of the client port.
 type client struct {
-	kv    pb.KVClient
-	watch pb.WatchClient
-	lease pb.LeaseClient
-	maint pb.MaintenanceClient
+	conn   *grpc.ClientConn
+	kv     pb.KVClient
+	watch  pb.WatchClient
+	lease  pb.LeaseClient
+	maint  pb.MaintenanceClient
+	health healthpb.HealthClient
+	// url is the endpoint's base URL. http2 offers HTTP/2, http1 does not.
+	url          string
+	http2, http1 *http.Client
 }
 
 // dial connects to TIGERSTORE_DIFF_ENDPOINT. A missing endpoint fails the
@@ -41,6 +51,7 @@ func dial(t *testing.T) *client {
 		t.Fatal("TIGERSTORE_DIFF_ENDPOINT is not set")
 	}
 	creds := insecure.NewCredentials()
+	var tlsConf *tls.Config
 	if ca := os.Getenv("TIGERSTORE_DIFF_CA"); ca != "" {
 		pem, err := os.ReadFile(ca)
 		if err != nil {
@@ -54,7 +65,8 @@ func dial(t *testing.T) *client {
 		if err != nil {
 			t.Fatal(err)
 		}
-		creds = credentials.NewTLS(&tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+		tlsConf = &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+		creds = credentials.NewTLS(tlsConf)
 	}
 	conn, err := grpc.NewClient("passthrough:///"+endpoint,
 		grpc.WithTransportCredentials(creds),
@@ -66,10 +78,21 @@ func dial(t *testing.T) *client {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	c := &client{
-		kv:    pb.NewKVClient(conn),
-		watch: pb.NewWatchClient(conn),
-		lease: pb.NewLeaseClient(conn),
-		maint: pb.NewMaintenanceClient(conn),
+		conn:   conn,
+		kv:     pb.NewKVClient(conn),
+		watch:  pb.NewWatchClient(conn),
+		lease:  pb.NewLeaseClient(conn),
+		maint:  pb.NewMaintenanceClient(conn),
+		health: healthpb.NewHealthClient(conn),
+		url:    "http://" + endpoint,
+		// Each transport gets its own TLS configuration: one set up for
+		// HTTP/2 adds h2 to the configuration's protocols.
+		http2: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConf.Clone(), ForceAttemptHTTP2: true}},
+		// A non-nil empty map turns HTTP/2 off.
+		http1: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConf.Clone(), TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}}},
+	}
+	if tlsConf != nil {
+		c.url = "https://" + endpoint
 	}
 	// A fresh server may still be electing a leader.
 	var err2 error
@@ -518,4 +541,95 @@ func (r *run) rangeStream(do string, req *pb.RangeRequest) {
 		}{chunks, r.rel(last.Header.GetRevision()), last.Count, last.More}
 	}
 	r.record(do, res, err)
+}
+
+func (r *run) healthCheck(do, service string) {
+	r.t.Helper()
+	resp, err := r.c.health.Check(r.ctx, &healthpb.HealthCheckRequest{Service: service})
+	var res any
+	if err == nil {
+		res = struct {
+			Status string `json:"status"`
+		}{resp.Status.String()}
+	}
+	r.record(do, res, err)
+}
+
+func (r *run) healthList(do string) {
+	r.t.Helper()
+	resp, err := r.c.health.List(r.ctx, &healthpb.HealthListRequest{})
+	var res any
+	if err == nil {
+		statuses := map[string]string{}
+		for name, st := range resp.Statuses {
+			statuses[name] = st.Status.String()
+		}
+		res = struct {
+			Statuses map[string]string `json:"statuses"`
+		}{statuses}
+	}
+	r.record(do, res, err)
+}
+
+// healthWatch records the first status a health Watch sends and whether
+// the stream then stays open for the rest of a second.
+func (r *run) healthWatch(do, service string) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(r.ctx, time.Second)
+	defer cancel()
+	w, err := r.c.health.Watch(ctx, &healthpb.HealthCheckRequest{Service: service})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	first, err := w.Recv()
+	if err != nil {
+		r.record(do, nil, err)
+		return
+	}
+	res := struct {
+		Status string `json:"status"`
+		Then   string `json:"then"`
+	}{first.Status.String(), "open"}
+	if next, err := w.Recv(); err == nil {
+		res.Then = "status " + next.Status.String()
+	} else if status.Code(err) != codes.DeadlineExceeded {
+		res.Then = err.Error()
+	}
+	r.record(do, res, nil)
+}
+
+// invoke records a unary call to a method by its path, with an empty
+// request.
+func (r *run) invoke(do, path string) {
+	r.t.Helper()
+	r.record(do, nil, r.c.conn.Invoke(r.ctx, path, &emptypb.Empty{}, &emptypb.Empty{}))
+}
+
+// http records an HTTP request to the client port: the status, the body,
+// and the headers that etcd's handlers set. The lines of the body are
+// sorted, since etcd runs the checks of /readyz in map order.
+func (r *run) http(do string, hc *http.Client, method, path string) {
+	r.t.Helper()
+	req, err := http.NewRequestWithContext(r.ctx, method, r.c.url+path, nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		r.t.Fatalf("%s: %v", do, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // closing a test response
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		r.t.Fatalf("%s: %v", do, err)
+	}
+	lines := strings.SplitAfter(string(b), "\n")
+	slices.Sort(lines)
+	r.record(do, struct {
+		Status      int    `json:"status"`
+		ContentType string `json:"contentType"`
+		NoSniff     string `json:"nosniff,omitempty"`
+		Allow       string `json:"allow,omitempty"`
+		Body        string `json:"body"`
+	}{resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Content-Type-Options"), resp.Header.Get("Allow"), strings.Join(lines, "")}, nil)
 }

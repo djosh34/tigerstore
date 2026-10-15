@@ -1,12 +1,7 @@
 package server
 
 import (
-	"errors"
-	"io"
 	"math"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
@@ -30,11 +25,7 @@ const initialChunk = 10
 // stream midway, as in etcd.
 func (s *Server) rangeStream(st *stream) error {
 	r := &pb.RangeRequest{}
-	if err := st.Recv(r); err != nil {
-		if errors.Is(err, io.EOF) {
-			// grpc-go's answer to a server-streaming call without a request.
-			return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
-		}
+	if err := recvRequest(st, r); err != nil {
 		return err
 	}
 	if err := mvcc.CheckRangeStream(r); err != nil {
