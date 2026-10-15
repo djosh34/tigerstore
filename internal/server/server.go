@@ -1,9 +1,9 @@
-// Package server serves the etcd v3 gRPC API of one node, and etcd's
-// /health and /version, on the client port. It speaks HTTP/2 and gRPC
-// itself, on x/net's Framer and HPACK: a reader goroutine per connection
-// decodes frames, a writer goroutine per connection encodes them, and
-// handlers hand requests to the node's committer. Nothing here touches
-// the store.
+// Package server serves the etcd v3 gRPC API and the gRPC health service
+// of one node, and etcd's /health, /readyz, /livez, /version and /metrics,
+// on the client port. It speaks HTTP/2 and gRPC itself, on x/net's Framer
+// and HPACK: a reader goroutine per connection decodes frames, a writer
+// goroutine per connection encodes them, and handlers hand requests to the
+// node's committer. Nothing here touches the store.
 package server
 
 import (

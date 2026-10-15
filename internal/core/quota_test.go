@@ -16,7 +16,7 @@ import (
 // which then refuses puts and grants while deletes and compactions go
 // on; deactivating it after a compaction lets puts in again.
 func TestQuota(t *testing.T) {
-	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.QuotaBytes = 4000 })
+	s := startSingleWith(t, simfs.New(), 1, func(cfg *Config) { cfg.QuotaBytes = 4000 }).capable()
 	value := make([]byte, 500)
 	var id uint64
 	var refused Reply

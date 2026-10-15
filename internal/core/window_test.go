@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -25,6 +26,8 @@ type memCluster struct {
 	holdAcks bool
 	holdDisk [3]bool
 	replies  int
+	// noSpace counts NOSPACE answers, the one error a node may give.
+	noSpace int
 }
 
 func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
@@ -60,6 +63,10 @@ func (c *memCluster) step() {
 		c.jobs[i] = append(c.jobs[i], eff.Persist...)
 		c.msgs = append(c.msgs, eff.Send...)
 		for _, r := range eff.Replies {
+			if errors.Is(r.Err, rpctypes.ErrGRPCNoSpace) {
+				c.noSpace++
+				continue
+			}
 			if r.Err != nil {
 				c.t.Fatalf("node %d answered %d with %v", i+1, r.ID, r.Err)
 			}

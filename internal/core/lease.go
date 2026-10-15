@@ -1,7 +1,7 @@
 package core
 
 import (
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -80,7 +80,7 @@ func (n *Node) expireLeases() {
 
 // proposeInternal queues a write that no client waits for. It carries
 // request ID 0, which no client request has.
-func (n *Node) proposeInternal(op *pb.LeaseCheckpoint) {
+func (n *Node) proposeInternal(op proto.Message) {
 	n.queueWrite(&pending{req: Request{ID: 0, Op: op}})
 }
 

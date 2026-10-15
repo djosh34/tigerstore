@@ -28,8 +28,11 @@ func TestAlarm(t *testing.T) {
 		t.Fatalf("list with no alarm: %v, %v", resp, err)
 	}
 	nospace := &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: 2}
-	if resp, err = m2.Alarm(ctx, nospace); err != nil || len(resp.Alarms) != 1 || resp.Alarms[0].MemberID != 2 {
-		t.Fatalf("activate: %v, %v", resp, err)
+	// Alarm changes need the cluster version every member announces
+	// after the first election; until then they are not capable.
+	resp = retry(t, func(ctx context.Context) (*pb.AlarmResponse, error) { return m2.Alarm(ctx, nospace) })
+	if len(resp.Alarms) != 1 || resp.Alarms[0].MemberID != 2 {
+		t.Fatalf("activate: %v", resp)
 	}
 	if resp, err = m3.Alarm(ctx, &pb.AlarmRequest{Action: pb.AlarmRequest_GET}); err != nil || len(resp.Alarms) != 1 {
 		t.Fatalf("list on another member: %v, %v", resp, err)

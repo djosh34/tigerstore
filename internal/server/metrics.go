@@ -96,12 +96,12 @@ func (st *stream) countEnd(code codes.Code) {
 }
 
 // metricsText answers /metrics.
-func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, string) {
+func (s *Server) metricsText(ctx context.Context, _ url.Values) httpAnswer {
 	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
 	defer cancel()
 	nm, err := s.n.Metrics(ctx)
 	if err != nil {
-		return http.StatusServiceUnavailable, textPlain, err.Error() + "\n"
+		return httpError(http.StatusServiceUnavailable, err.Error())
 	}
 	sm := s.total()
 	var b strings.Builder
@@ -127,6 +127,16 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 		{"etcd_mvcc_range_total", "counter", "Total number of ranges seen by this member.", nm.Ranges},
 		{"etcd_network_client_grpc_received_bytes_total", "counter", "The total number of bytes received from grpc clients.", sm.received.load()},
 		{"etcd_network_client_grpc_sent_bytes_total", "counter", "The total number of bytes sent to grpc clients.", sm.sent.load()},
+		{"tigerstore_index_bytes", "gauge", "Estimated memory of the key index.", nm.IndexBytes},
+		{"tigerstore_window_bytes", "gauge", "Data bytes of the Raft entries in memory.", nm.WindowBytes},
+		{"tigerstore_map_bytes", "gauge", "Estimated memory of the map of where entries and values are on disk.", nm.MapBytes},
+		{"tigerstore_disk_bytes", "gauge", "Size of the log's files: segments, packs and checkpoints.", nm.DiskBytes},
+		{"tigerstore_disk_budget_bytes", "gauge", "The disk budget of the log's files; 0 means none.", nm.DiskBudget},
+		{"tigerstore_cleaned_bytes_total", "counter", "Bytes that cleaning wrote into packs.", nm.CleanedBytes},
+		{"tigerstore_cache_bytes", "gauge", "Bytes of values in the value cache.", nm.CacheBytes},
+		{"tigerstore_cache_limit_bytes", "gauge", "Bytes the value cache may hold now: the memory that the index and the entries in memory leave.", nm.CacheLimit},
+		{"tigerstore_cache_hits_total", "counter", "Values read from the value cache.", nm.CacheHits},
+		{"tigerstore_cache_misses_total", "counter", "Values read from the log on disk.", nm.CacheMisses},
 	} {
 		metric(g.name, g.typ, g.help)
 		fmt.Fprintf(&b, "%s %d\n", g.name, g.v)
@@ -144,7 +154,7 @@ func (s *Server) metricsText(ctx context.Context, _ url.Values) (int, string, st
 			fmt.Fprintf(&b, "grpc_server_handled_total{grpc_code=%q,%s} %d\n", codes.Code(code).String(), callLabels(p), n)
 		}
 	}
-	return http.StatusOK, "text/plain; version=0.0.4; charset=utf-8", b.String()
+	return httpAnswer{code: http.StatusOK, contentType: "text/plain; version=0.0.4; charset=utf-8", body: b.String()}
 }
 
 // callLabels are grpc-prometheus' labels for the method at path.

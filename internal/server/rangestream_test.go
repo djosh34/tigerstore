@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -234,23 +233,34 @@ func TestRangeStreamPinnedAndCompacted(t *testing.T) {
 	}
 }
 
-// TestRangeStreamWithoutRequest checks grpc-go's answer to a RangeStream
-// call that ends without a request.
-func TestRangeStreamWithoutRequest(t *testing.T) {
+// TestRangeStreamRequestCount checks grpc-go's answers to a RangeStream
+// call that ends without a request or with two.
+func TestRangeStreamRequestCount(t *testing.T) {
 	c := newCluster(t)
 	cert, _, _, err := c.ca.Issue("client", 99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := c.dial(1, cert).NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/etcdserverpb.KV/RangeStream")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CloseSend(); err != nil {
-		t.Fatal(err)
-	}
-	err = s.RecvMsg(&pb.RangeStreamResponse{})
-	if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "cardinality violation") {
-		t.Fatalf("a call without a request: %v", err)
+	conn := c.dial(1, cert)
+	for n, want := range map[int]string{
+		0: "cardinality violation: received no request message from non-client-streaming RPC",
+		2: "cardinality violation: received multiple request messages for non-client-streaming RPC",
+	} {
+		s, err := conn.NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}, "/etcdserverpb.KV/RangeStream")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range n {
+			if err := s.SendMsg(&pb.RangeRequest{Key: []byte("a")}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.CloseSend(); err != nil {
+			t.Fatal(err)
+		}
+		err = s.RecvMsg(&pb.RangeStreamResponse{})
+		if status.Code(err) != codes.Internal || status.Convert(err).Message() != want {
+			t.Fatalf("a call with %d requests: %v", n, err)
+		}
 	}
 }

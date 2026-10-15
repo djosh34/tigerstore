@@ -77,9 +77,9 @@ func (n *Node) quotaLeft(cost int64) bool {
 	return n.kv.Size()+cost < quota
 }
 
-// noSpace refuses a request that does not fit the quota, and raises the
+// refuseNoSpace refuses a request that does not fit the quota, and raises the
 // node's NOSPACE alarm.
-func (n *Node) noSpace(id uint64) {
+func (n *Node) refuseNoSpace(id uint64) {
 	n.raiseNoSpace()
 	n.reply(id, rpctypes.ErrGRPCNoSpace)
 }
@@ -95,7 +95,7 @@ func (n *Node) overQuota() error {
 // has not applied. A node that replays its log or installs a snapshot
 // proposes nothing: it raised the alarm when it applied the entry first.
 func (n *Node) raiseNoSpace() {
-	if n.rn == nil || n.readInline {
+	if n.rn == nil || n.readInline || !n.capable() {
 		return
 	}
 	for _, a := range n.state.alarms {

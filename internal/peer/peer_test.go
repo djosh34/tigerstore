@@ -57,6 +57,12 @@ type end struct {
 // is nil.
 func start(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string, cert tls.Certificate, pool *x509.CertPool) *end {
 	t.Helper()
+	return startWith(t, id, ln, addrs, cert, pool, func(*Config) {})
+}
+
+// startWith is start with set applied to the config.
+func startWith(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string, cert tls.Certificate, pool *x509.CertPool, set func(*Config)) *end {
+	t.Helper()
 	e := &end{got: make(chan *raftpb.Message, 1000)}
 	peers := map[uint64]string{}
 	for pid, a := range addrs {
@@ -67,12 +73,14 @@ func start(t *testing.T, id uint64, ln net.Listener, addrs map[uint64]string, ce
 	if ln == nil {
 		ln = listen(t, addrs[id])
 	}
-	tr, err := Start(Config{
+	cfg := Config{
 		ID: id, Listener: ln, Peers: peers, Certificate: cert, CA: pool,
 		Deliver:     func(m *raftpb.Message) { e.got <- m },
 		Unreachable: func(uint64) { e.unreachable.Add(1) },
 		Logf:        t.Logf,
-	})
+	}
+	set(&cfg)
+	tr, err := Start(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ package osfs
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -47,6 +48,27 @@ func (d Dir) List() ([]string, error) {
 		names[i] = e.Name()
 	}
 	return names, nil
+}
+
+// Usage is the size of the files in the directory.
+func (d Dir) Usage() (int64, error) {
+	ents, err := os.ReadDir(d.path)
+	if err != nil {
+		return 0, err
+	}
+	var n int64
+	for _, e := range ents {
+		info, err := e.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			// Removed since the listing.
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		n += info.Size()
+	}
+	return n, nil
 }
 
 // Create makes a new empty file.

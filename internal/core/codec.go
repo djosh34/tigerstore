@@ -7,6 +7,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // A Raft entry carries a batch of writes:
@@ -17,6 +18,12 @@ import (
 //
 // The origin node, boot and request ID let the node that received the
 // request answer it once the entry applies.
+//
+// That is entry format 1. Every later format starts with a 0 byte and its
+// number, then the batch; a format 1 batch never starts with 0, as it
+// holds at least one write. Format 2 adds only that header. Format 3
+// adds the kinds from kindAlarm on (featureVersion). Which format a node
+// writes is the cluster version (version.go).
 
 const (
 	kindPut     = 1
@@ -27,15 +34,26 @@ const (
 	kindRevoke  = 6
 	kindRenew   = 7
 	kindExpiry  = 8
-	kindAlarm   = 9
+	// kindNoSpace stands for a forwarded write that the leader refused
+	// because its disk is past its budget. It has no request.
+	kindNoSpace = 9
+	// kindVersion is a node's announcement of the newest version it
+	// supports, a wrapperspb.UInt32Value. It changes no key.
+	kindVersion = 10
+	kindAlarm   = 11
 )
 
 var errBadBatch = errors.New("core: malformed batch")
 
-// encodeBatch packs writes into the data of one Raft entry. A write in
-// wire form goes in as the client sent it; other writes are marshaled.
-func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
-	buf := binary.AppendUvarint(make([]byte, 0, size+binary.MaxVarintLen64), uint64(len(ps)))
+// encodeBatch packs writes into the data of one Raft entry of a format. A
+// write in wire form goes in as the client sent it; other writes are
+// marshaled.
+func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([]byte, error) {
+	buf := make([]byte, 0, 2+binary.MaxVarintLen64+size)
+	if format > 1 {
+		buf = append(buf, 0, byte(format))
+	}
+	buf = binary.AppendUvarint(buf, uint64(len(ps)))
 	for _, p := range ps {
 		var kind byte
 		switch p.req.Op.(type) {
@@ -57,6 +75,8 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 			kind = kindRenew
 		case *pb.LeaseCheckpoint:
 			kind = kindExpiry
+		case *wrapperspb.UInt32Value:
+			kind = kindVersion
 		case *pb.AlarmRequest:
 			kind = kindAlarm
 		default:
@@ -86,10 +106,28 @@ func encodeBatch(origin, boot uint64, ps []*pending, size int) ([]byte, error) {
 	return buf, nil
 }
 
+// skipFormat returns the data of a Raft entry without its format header.
+func skipFormat(data []byte) ([]byte, error) {
+	if len(data) == 0 || data[0] != 0 {
+		return data, nil
+	}
+	if len(data) < 2 {
+		return nil, errBadBatch
+	}
+	if f := data[1]; f < 2 || f > MaxVersion {
+		return nil, fmt.Errorf("%w: entry format %d; this build reads formats up to %d", errBadBatch, f, MaxVersion)
+	}
+	return data[2:], nil
+}
+
 // walkBatch calls fn for every write in the data of a Raft entry, with
 // the write's bytes in place and where they start in data.
 func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte, at int) error) error {
 	whole := data
+	data, err := skipFormat(data)
+	if err != nil {
+		return err
+	}
 	n, data, ok := uvarint(data)
 	if !ok {
 		return errBadBatch
@@ -120,6 +158,35 @@ func walkBatch(data []byte, fn func(origin, boot, id uint64, kind byte, b []byte
 	return nil
 }
 
+// refuseSpace returns the data of a Raft entry with every write that
+// TakesSpace replaced by a kindNoSpace record. A transaction in an entry
+// is never read-only, so all of them take space.
+func refuseSpace(data []byte) ([]byte, error) {
+	batch, err := skipFormat(data)
+	if err != nil {
+		return nil, err
+	}
+	n, _, ok := uvarint(batch)
+	if !ok {
+		return nil, errBadBatch
+	}
+	out := append(make([]byte, 0, len(data)), data[:len(data)-len(batch)]...)
+	out = binary.AppendUvarint(out, n)
+	err = walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindPut || kind == kindTxn || kind == kindGrant {
+			kind, b = kindNoSpace, nil
+		}
+		out = binary.AppendUvarint(out, origin)
+		out = binary.AppendUvarint(out, boot)
+		out = binary.AppendUvarint(out, id)
+		out = append(out, kind)
+		out = binary.AppendUvarint(out, uint64(len(b)))
+		out = append(out, b...)
+		return nil
+	})
+	return out, err
+}
+
 // newOp returns an empty request of an entry kind.
 func newOp(kind byte) (proto.Message, error) {
 	switch kind {
@@ -146,9 +213,15 @@ func newOp(kind byte) (proto.Message, error) {
 }
 
 // DecodeBatch calls fn for every write in the data of a Raft entry,
-// decoded. The checks use it; the core applies writes in place.
+// decoded, and skips refused writes and version announcements, which change no key. The
+// checks use it; the core applies writes in place.
 func DecodeBatch(data []byte, fn func(origin, boot, id uint64, op proto.Message) error) error {
 	return walkBatch(data, func(origin, boot, id uint64, kind byte, b []byte, _ int) error {
+		if kind == kindNoSpace || kind == kindVersion {
+			// A refused write did not apply, and an announcement changes
+			// no key.
+			return nil
+		}
 		op, err := newOp(kind)
 		if err != nil {
 			return err

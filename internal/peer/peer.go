@@ -1,14 +1,20 @@
 // Package peer carries Raft messages between nodes: framed TLS 1.3 over
 // TCP, one connection per directed pair of nodes.
 //
-// After the TLS handshake, the dialing node writes its Raft ID as 8 bytes.
-// Then each frame is a 4-byte length and a protobuf raftpb.Message. Both
-// ends verify the other's certificate against the peer CA.
+// Both ends verify the other's certificate against the peer CA and, when
+// set, the allowed CommonNames or hostnames. Both ends also offer the
+// protocol versions they speak in TLS ALPN, as "tigerstore-peer/<version>".
+// After the TLS handshake, the dialing node writes a 12-byte preface: the
+// magic "TS", the lowest and the highest version it speaks, and its Raft
+// ID as 8 bytes. The accepting node replies with 1 byte: the highest
+// version both speak, which must be the one ALPN chose, or 0 if there is
+// none, after which it closes. Then each frame is a 4-byte length and a
+// protobuf raftpb.Message.
 //
-// A follower fetches a snapshot on a connection of its own: it writes its
-// Raft ID with the top bit set, then the first and the last index it
-// needs, 8 bytes each, and reads the snapshot stream until the other end
-// closes.
+// A follower fetches a snapshot on a connection of its own: its preface
+// carries its Raft ID with the top bit set. After the reply it writes the
+// first and the last index it needs, 8 bytes each, and reads the snapshot
+// stream until the other end closes.
 package peer
 
 import (
@@ -58,6 +64,12 @@ type Config struct {
 	// and verifies both ends.
 	Certificate tls.Certificate
 	CA          *x509.CertPool
+	// AllowedCNs and AllowedHostnames are etcd's --peer-cert-allowed-cn
+	// and --peer-cert-allowed-hostname: when one is set, the other node's
+	// certificate must also have one of these CommonNames, or be valid
+	// for one of these hostnames. At most one of them may be set.
+	AllowedCNs       []string
+	AllowedHostnames []string
 	// Deliver gets every message received from a peer. It may block,
 	// which slows down that peer's connection.
 	Deliver func(*raftpb.Message)
@@ -68,6 +80,47 @@ type Config struct {
 	Serve func(id, first, last uint64, w io.Writer) error
 	// Logf logs connection errors.
 	Logf func(format string, args ...any)
+
+	// minVersion and maxVersion override the protocol versions this node
+	// speaks, for tests. Zero means the package's.
+	minVersion, maxVersion byte
+}
+
+const (
+	// minVersion and maxVersion are the protocol versions this binary
+	// speaks. Version 0 stands for the unversioned protocol from before
+	// version 1, which this binary does not speak. A release that raises
+	// maxVersion keeps minVersion at or below the previous release's
+	// maxVersion, so that nodes can be upgraded one at a time.
+	minVersion = 1
+	maxVersion = 1
+)
+
+// magic starts the preface.
+var magic = [2]byte{'T', 'S'}
+
+// alpn is the TLS ALPN name of protocol version v.
+func alpn(v byte) string { return fmt.Sprintf("tigerstore-peer/%d", v) }
+
+// alpns lists the ALPN names of the versions lo to hi, highest first. The
+// acceptor takes the first of its names that the dialer offers, so both
+// ends land on the highest version they share.
+func alpns(lo, hi byte) []string {
+	var names []string
+	for v := int(hi); v >= int(lo); v-- {
+		names = append(names, alpn(byte(v)))
+	}
+	return names
+}
+
+// pick returns the highest version in both the dialer's range dmin to
+// dmax and the acceptor's amin to amax, or 0 if the ranges do not meet.
+func pick(dmin, dmax, amin, amax byte) byte {
+	v := min(dmax, amax)
+	if v < max(dmin, amin) {
+		return 0
+	}
+	return v
 }
 
 const (
@@ -87,11 +140,15 @@ const (
 	slowQueue   = 100 * time.Millisecond
 	dialTimeout = 3 * time.Second
 	ioBuffer    = 256 << 10
+	// handshakeLogEvery is how often a failed handshake with one peer is
+	// logged. A dialer retries every second.
+	handshakeLogEvery = time.Minute
 )
 
 // TCP is the transport over TLS on TCP.
 type TCP struct {
 	cfg     Config
+	verify  func([][]byte, [][]*x509.Certificate) error
 	ln      net.Listener
 	senders map[uint64]*sender
 	ctx     context.Context
@@ -100,13 +157,23 @@ type TCP struct {
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
+
+	// logged holds when a failed handshake was last logged, by peer.
+	logMu  sync.Mutex
+	logged map[string]time.Time
 }
 
 // Start listens for peers and starts one writer per peer.
 func Start(cfg Config) (*TCP, error) {
+	if cfg.minVersion == 0 {
+		cfg.minVersion, cfg.maxVersion = minVersion, maxVersion
+	}
+	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	if err != nil {
+		return nil, err
+	}
 	raw := cfg.Listener
 	if raw == nil {
-		var err error
 		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
 			return nil, err
 		}
@@ -116,15 +183,20 @@ func Start(cfg Config) (*TCP, error) {
 		ClientCAs:    cfg.CA,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS13,
+		NextProtos:   alpns(cfg.minVersion, cfg.maxVersion),
+		// The CA check runs first; verify only narrows it.
+		VerifyPeerCertificate: verify,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
 		cfg:     cfg,
+		verify:  verify,
 		ln:      ln,
 		senders: map[uint64]*sender{},
 		ctx:     ctx,
 		cancel:  cancel,
 		conns:   map[net.Conn]struct{}{},
+		logged:  map[string]time.Time{},
 	}
 	for id, addr := range cfg.Peers {
 		s := &sender{
@@ -148,6 +220,28 @@ func (t *TCP) logf(format string, args ...any) {
 	if t.cfg.Logf != nil {
 		t.cfg.Logf(format, args...)
 	}
+}
+
+// logHandshake logs a failed handshake with a peer, unless one with the
+// same peer was logged within handshakeLogEvery. The dialer names the
+// peer by its ID. The acceptor does not know the ID before the preface,
+// so it names the peer by its host.
+func (t *TCP) logHandshake(peer string, err error) {
+	now := time.Now()
+	t.logMu.Lock()
+	if at, ok := t.logged[peer]; ok && now.Sub(at) < handshakeLogEvery {
+		t.logMu.Unlock()
+		return
+	}
+	for p, at := range t.logged {
+		if now.Sub(at) >= handshakeLogEvery {
+			delete(t.logged, p)
+		}
+	}
+	t.logged[peer] = now
+	t.logMu.Unlock()
+	t.logf("peer: handshake %s failed, this node speaks versions %d-%d: %v",
+		peer, t.cfg.minVersion, t.cfg.maxVersion, err)
 }
 
 // Send queues a message for its peer.
@@ -223,21 +317,19 @@ func (t *TCP) accept() {
 }
 
 // receive reads frames from one inbound connection until it fails. It
-// returns the error that ended it, nil after a snapshot was served.
+// returns the error that ended it, nil after a snapshot was served or
+// after a failed handshake, which it logs itself.
 func (t *TCP) receive(c net.Conn) error {
 	if err := c.SetReadDeadline(time.Now().Add(dialTimeout)); err != nil {
 		return err
 	}
 	r := bufio.NewReaderSize(c, ioBuffer)
-	var hdr [8]byte
-	if _, err := io.ReadFull(r, hdr[:]); err != nil {
-		return err
-	}
-	from := binary.BigEndian.Uint64(hdr[:])
-	fetch := from&fetchBit != 0
-	from &^= fetchBit
-	if _, ok := t.senders[from]; !ok {
-		return fmt.Errorf("unknown peer %d", from)
+	from, fetch, err := t.handshake(c, r)
+	if err != nil {
+		if t.ctx.Err() == nil {
+			t.logHandshake("from "+remoteHost(c), err)
+		}
+		return nil
 	}
 	if fetch {
 		return t.serve(c, r, from)
@@ -245,12 +337,13 @@ func (t *TCP) receive(c net.Conn) error {
 	if err := c.SetReadDeadline(time.Time{}); err != nil {
 		return err
 	}
+	var hdr [4]byte
 	var buf []byte
 	for {
-		if _, err := io.ReadFull(r, hdr[:4]); err != nil {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
 			return err
 		}
-		n := binary.BigEndian.Uint32(hdr[:4])
+		n := binary.BigEndian.Uint32(hdr[:])
 		if n > maxFrame {
 			return fmt.Errorf("frame of %d bytes from peer %d is over the limit", n, from)
 		}
@@ -273,6 +366,70 @@ func (t *TCP) receive(c net.Conn) error {
 		}
 		t.cfg.Deliver(m)
 	}
+}
+
+// handshake checks the ALPN version and the preface of an inbound
+// connection and writes the reply. It returns the dialer's Raft ID and
+// whether the connection fetches a snapshot.
+func (t *TCP) handshake(c net.Conn, r io.Reader) (id uint64, fetch bool, err error) {
+	tc, ok := c.(*tls.Conn)
+	if !ok {
+		return 0, false, fmt.Errorf("a %T is not a TLS connection", c)
+	}
+	if err := tc.Handshake(); err != nil {
+		return 0, false, err
+	}
+	name := tc.ConnectionState().NegotiatedProtocol
+	if name == "" {
+		return 0, false, errors.New("the dialer offers no version in ALPN; it may be a node from before version 1")
+	}
+	var p [12]byte
+	if _, err := io.ReadFull(r, p[:]); err != nil {
+		return 0, false, err
+	}
+	if p[0] != magic[0] || p[1] != magic[1] {
+		return 0, false, fmt.Errorf("the preface starts with %#x, not the magic \"TS\"", p[:2])
+	}
+	id = binary.BigEndian.Uint64(p[4:])
+	fetch = id&fetchBit != 0
+	id &^= fetchBit
+	if _, ok := t.senders[id]; !ok {
+		return 0, false, fmt.Errorf("unknown peer %d", id)
+	}
+	v := pick(p[2], p[3], t.cfg.minVersion, t.cfg.maxVersion)
+	switch {
+	case v == 0:
+		err = fmt.Errorf("peer %d speaks versions %d-%d", id, p[2], p[3])
+	case name != alpn(v):
+		err = fmt.Errorf("peer %d chose %s in ALPN, but its preface picks version %d", id, name, v)
+		v = 0
+	}
+	if werr := c.SetWriteDeadline(writeDeadline()); werr != nil {
+		return 0, false, errors.Join(err, werr)
+	}
+	if _, werr := c.Write([]byte{v}); werr != nil {
+		return 0, false, errors.Join(err, werr)
+	}
+	return id, fetch, err
+}
+
+// remoteHost is the host of c's remote address. Unlike the port, it stays
+// the same when a peer dials again.
+func remoteHost(c net.Conn) string {
+	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		return a.IP.String()
+	}
+	return c.RemoteAddr().String()
+}
+
+// preface is what a dialer writes after the TLS handshake: the magic, the
+// lowest and the highest version it speaks, and id.
+func (t *TCP) preface(id uint64) []byte {
+	p := make([]byte, 12)
+	copy(p, magic[:])
+	p[2], p[3] = t.cfg.minVersion, t.cfg.maxVersion
+	binary.BigEndian.PutUint64(p[4:], id)
+	return p
 }
 
 // fetchBit marks the dialer's ID on a connection that fetches a
@@ -314,19 +471,18 @@ func (t *TCP) Fetch(ctx context.Context, id, first, last uint64) (io.ReadCloser,
 	if !ok {
 		return nil, fmt.Errorf("peer: unknown peer %d", id)
 	}
-	c, err := s.dial(ctx)
+	c, err := s.dial(ctx, t.cfg.ID|fetchBit)
 	if err != nil {
 		return nil, err
 	}
-	var hdr [24]byte
-	binary.BigEndian.PutUint64(hdr[:], t.cfg.ID|fetchBit)
-	binary.BigEndian.PutUint64(hdr[8:], first)
-	binary.BigEndian.PutUint64(hdr[16:], last)
+	var span [16]byte
+	binary.BigEndian.PutUint64(span[:], first)
+	binary.BigEndian.PutUint64(span[8:], last)
 	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
 		t.untrack(c)
 		return nil, err
 	}
-	if _, err := c.Write(hdr[:]); err != nil {
+	if _, err := c.Write(span[:]); err != nil {
 		t.untrack(c)
 		return nil, err
 	}
@@ -490,7 +646,7 @@ func (s *sender) run() {
 	ctx := s.t.ctx
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
-		c, err := s.dial(ctx)
+		c, err := s.dial(ctx, s.t.cfg.ID)
 		if err != nil {
 			s.drop()
 			select {
@@ -511,41 +667,73 @@ func (s *sender) run() {
 	}
 }
 
-func (s *sender) dial(ctx context.Context) (net.Conn, error) {
+// dial connects to the peer and runs the handshake, with id in the
+// preface. A failed TCP dial is not logged, since that is how a peer that
+// is down looks. A failed handshake is.
+func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(s.addr)
 	if err != nil {
 		return nil, err
 	}
-	d := &tls.Dialer{
-		NetDialer: &net.Dialer{Timeout: dialTimeout},
-		Config: &tls.Config{
-			Certificates: []tls.Certificate{s.t.cfg.Certificate},
-			RootCAs:      s.t.cfg.CA,
-			ServerName:   host,
-			MinVersion:   tls.VersionTLS13,
-		},
-	}
-	c, err := d.DialContext(ctx, "tcp", s.addr)
+	raw, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", s.addr)
 	if err != nil {
 		return nil, err
 	}
+	c := tls.Client(raw, &tls.Config{
+		Certificates: []tls.Certificate{s.t.cfg.Certificate},
+		RootCAs:      s.t.cfg.CA,
+		ServerName:   host,
+		MinVersion:   tls.VersionTLS13,
+		NextProtos:   alpns(s.t.cfg.minVersion, s.t.cfg.maxVersion),
+		// As in etcd, a dialing node checks the allowed names too.
+		VerifyPeerCertificate: s.t.verify,
+	})
 	if !s.t.track(c) {
 		return nil, errors.Join(net.ErrClosed, c.Close())
 	}
+	if err := s.handshake(ctx, c, id); err != nil {
+		if ctx.Err() == nil {
+			s.t.logHandshake(fmt.Sprintf("with %d", s.id), err)
+		}
+		s.t.untrack(c)
+		return nil, err
+	}
 	return c, nil
+}
+
+// handshake runs the TLS handshake, writes the preface with id and checks
+// the reply against the version ALPN chose.
+func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) error {
+	if err := c.SetDeadline(time.Now().Add(dialTimeout)); err != nil {
+		return err
+	}
+	if err := c.HandshakeContext(ctx); err != nil {
+		return err
+	}
+	name := c.ConnectionState().NegotiatedProtocol
+	if name == "" {
+		return errors.New("the peer chose no version in ALPN; it may be a node from before version 1")
+	}
+	if _, err := c.Write(s.t.preface(id)); err != nil {
+		return err
+	}
+	var reply [1]byte
+	if _, err := io.ReadFull(c, reply[:]); err != nil {
+		return err
+	}
+	switch v := reply[0]; {
+	case v == 0:
+		return errors.New("the peer refused the preface with reply 0")
+	case name != alpn(v):
+		return fmt.Errorf("the peer replied version %d, but chose %s in ALPN", v, name)
+	}
+	return c.SetDeadline(time.Time{})
 }
 
 // write sends frames until the connection fails or the transport closes.
 func (s *sender) write(ctx context.Context, c net.Conn) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
-	var hdr [8]byte
-	binary.BigEndian.PutUint64(hdr[:], s.t.cfg.ID)
-	if err := c.SetWriteDeadline(writeDeadline()); err != nil {
-		return err
-	}
-	if _, err := w.Write(hdr[:]); err != nil {
-		return err
-	}
+	var hdr [4]byte
 	var buf []byte
 	for {
 		if !s.pending() {
@@ -569,11 +757,11 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		if err != nil {
 			return err
 		}
-		binary.BigEndian.PutUint32(hdr[:4], uint32(len(buf)))
+		binary.BigEndian.PutUint32(hdr[:], uint32(len(buf)))
 		if err := c.SetWriteDeadline(writeDeadline()); err != nil {
 			return err
 		}
-		if _, err := w.Write(hdr[:4]); err != nil {
+		if _, err := w.Write(hdr[:]); err != nil {
 			return err
 		}
 		if _, err := w.Write(buf); err != nil {

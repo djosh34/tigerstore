@@ -44,6 +44,21 @@ func restartFromCheckpoint(t *testing.T, s *single, disk *simfs.Disk, boot uint6
 	return s
 }
 
+// capable ticks the node until its announcement of its version applied,
+// so that it writes the kinds of featureVersion.
+func (s *single) capable() *single {
+	s.t.Helper()
+	for range 50 {
+		if s.n.capable() {
+			return s
+		}
+		s.n.Tick()
+		s.run()
+	}
+	s.t.Fatal("the node never reached the version of its features")
+	return nil
+}
+
 func alarmReq(action pb.AlarmRequest_AlarmAction, typ pb.AlarmType, member uint64) *pb.AlarmRequest {
 	return &pb.AlarmRequest{Action: action, Alarm: typ, MemberID: member}
 }
@@ -68,7 +83,7 @@ func sameAlarms(got []*pb.AlarmMember, want ...*pb.AlarmMember) bool {
 // restart from a checkpoint.
 func TestAlarms(t *testing.T) {
 	disk := simfs.New()
-	s := startSingleWith(t, disk, 1, tinyCheckpoints)
+	s := startSingleWith(t, disk, 1, tinyCheckpoints).capable()
 	nospace7 := &pb.AlarmMember{MemberID: 7, Alarm: pb.AlarmType_NOSPACE}
 	corrupt3 := &pb.AlarmMember{MemberID: 3, Alarm: pb.AlarmType_CORRUPT}
 	g := s.ok(1, &pb.LeaseGrantRequest{ID: 5, TTL: 600})
