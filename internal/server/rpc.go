@@ -51,7 +51,6 @@ const (
 
 // methodPaths are the paths of methods, sorted.
 var methodPaths = func() []string {
-	maps.Copy(methods, authMethods)
 	paths := make([]string, 0, len(methods))
 	for p := range methods {
 		paths = append(paths, p)
@@ -95,10 +94,11 @@ func requestType(path string) string {
 	return ""
 }
 
-// methods are the methods that are served: etcd's and the gRPC health
-// service's. Every other method of etcd's services answers Unimplemented,
-// as grpc-go's generated Unimplemented servers do.
-var methods = map[string]*method{
+// methods are the methods that are served: etcd's, with the Auth
+// service's in authMethods, and the gRPC health service's. Every other
+// method of etcd's services answers Unimplemented, as grpc-go's generated
+// Unimplemented servers do.
+var methods = withAuth(map[string]*method{
 	"/etcdserverpb.KV/Range":               {op: newOp[pb.RangeRequest], compact: true, learner: learnerSerializable},
 	"/etcdserverpb.KV/RangeStream":         {stream: (*Server).rangeStream, serverStream: true},
 	"/etcdserverpb.KV/Put":                 {op: newOp[pb.PutRequest], wirePut: true},
@@ -134,6 +134,12 @@ var methods = map[string]*method{
 	"/grpc.health.v1.Health/Check":         {unary: healthCheck},
 	"/grpc.health.v1.Health/List":          {unary: healthList},
 	"/grpc.health.v1.Health/Watch":         {stream: (*Server).healthWatch, serverStream: true},
+})
+
+// withAuth adds authMethods to ms.
+func withAuth(ms map[string]*method) map[string]*method {
+	maps.Copy(ms, authMethods)
+	return ms
 }
 
 // services are the gRPC services etcd registers.

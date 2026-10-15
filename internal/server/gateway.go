@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -75,7 +76,7 @@ func (s *Server) newGateway() (http.Handler, *grpc.ClientConn, error) {
 	mux := gw.NewServeMux(gw.WithMarshalerOption(gw.MIMEWildcard, &gw.HTTPBodyMarshaler{Marshaler: m}))
 	for _, register := range gatewayHandlers {
 		if err := register(s.ctx, mux, conn); err != nil {
-			return nil, nil, err
+			return nil, nil, errors.Join(err, conn.Close())
 		}
 	}
 	// etcd's streams take websockets too, as POST.

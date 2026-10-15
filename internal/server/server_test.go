@@ -563,3 +563,37 @@ func TestManyStreamsOnOneConnection(t *testing.T) {
 		}
 	}
 }
+
+// TestSlowRequestLogged checks that a Put, which the node runs, is logged
+// when it takes more than --warning-unary-request-duration, as a call the
+// server runs itself is.
+func TestSlowRequestLogged(t *testing.T) {
+	var mu sync.Mutex
+	var logged []string
+	c := newClusterWith(t, func(c *cluster) {
+		c.serverConfig = func(cfg *server.Config) {
+			cfg.WarningUnaryRequestDuration = time.Nanosecond
+			cfg.Logf = func(format string, args ...any) {
+				mu.Lock()
+				defer mu.Unlock()
+				logged = append(logged, fmt.Sprintf(format, args...))
+			}
+		}
+	})
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := c.client(1, cert)
+	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("k"), Value: []byte("v")})
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	for _, l := range logged {
+		if strings.Contains(l, "/etcdserverpb.KV/Put") {
+			return
+		}
+	}
+	t.Fatalf("no slow Put in the log: %q", logged)
+}

@@ -196,24 +196,28 @@ func (h *http1Conn) goAway() { h.close() }
 
 func (h *http1Conn) close() { h.once.Do(func() { _ = h.raw.Close() }) }
 
-// serve serves the connection until it closes.
+// serve serves the connection until it closes: net/http closes it, or
+// the handler that hijacked it, a gateway websocket.
 func (h *http1Conn) serve() {
-	done := make(chan struct{})
-	var once sync.Once
-	srv := &http.Server{
-		Handler: h.s, IdleTimeout: http1Idle, ReadHeaderTimeout: http1Idle,
-		ConnState: func(_ net.Conn, st http.ConnState) {
-			if st == http.StateClosed || st == http.StateHijacked {
-				once.Do(func() { close(done) })
-			}
-		},
-	}
-	ln := &oneConn{c: h.nc}
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, errOneConn) {
+	nc := &closedConn{Conn: h.nc, done: make(chan struct{})}
+	srv := &http.Server{Handler: h.s, IdleTimeout: http1Idle, ReadHeaderTimeout: http1Idle}
+	if err := srv.Serve(&oneConn{c: nc}); err != nil && !errors.Is(err, errOneConn) {
 		h.close()
 		return
 	}
-	<-done
+	<-nc.done
+}
+
+// closedConn closes done when it is closed.
+type closedConn struct {
+	net.Conn
+	once sync.Once
+	done chan struct{}
+}
+
+func (c *closedConn) Close() error {
+	c.once.Do(func() { close(c.done) })
+	return c.Conn.Close()
 }
 
 // errOneConn ends Serve on a oneConn after its connection.

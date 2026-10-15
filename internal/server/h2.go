@@ -631,8 +631,12 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 		return nil
 	}
 	st := c.newStream(h)
-	if st.rpc == nil && st.httpPath == "" {
-		// gRPC to an unknown method; its error is already queued.
+	if st.done.Load() || (st.rpc == nil && st.httpPath == "") {
+		// Refused, or gRPC to an unknown method: its error is already
+		// queued, and no handler runs.
+		if st.cancel != nil {
+			st.cancel()
+		}
 		if h.ended {
 			return c.onEnd(st)
 		}

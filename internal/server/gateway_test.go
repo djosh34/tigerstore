@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // gatewayClient is an HTTPS client of node id's client port with cert.
@@ -103,6 +105,32 @@ func TestGateway(t *testing.T) {
 	_ = resp.Body.Close()
 	if len(lines) != 2 || !strings.Contains(lines[0], `"created":true`) || !strings.Contains(lines[1], `"events"`) {
 		t.Fatalf("watch: %q", lines)
+	}
+
+	// The same over a websocket on HTTP/1.1, which the handler takes
+	// over from net/http: the stream must outlive the upgrade.
+	dialer := websocket.Dialer{TLSClientConfig: &tls.Config{Certificates: []tls.Certificate{named}, RootCAs: c.ca.Pool, ServerName: "localhost"}}
+	ws, _, err := dialer.Dial("wss://"+c.running[1].addr+"/v3/watch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close() //nolint:errcheck // closing a test connection
+	if err := ws.WriteMessage(websocket.TextMessage, []byte(`{"create_request":{"key":"`+k+`"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, created, err := ws.ReadMessage()
+	if err != nil || !strings.Contains(string(created), `"created":true`) {
+		t.Fatalf("websocket watch created: %s %v", created, err)
+	}
+	if code, body := post(t, c.gatewayClient(named, true), base+"/v3/kv/put", `{"key":"`+k+`","value":"`+v+`"}`); code != http.StatusOK {
+		t.Fatalf("put for the websocket watch: %d %s", code, body)
+	}
+	_, event, err := ws.ReadMessage()
+	if err != nil || !strings.Contains(string(event), `"events"`) {
+		t.Fatalf("websocket watch event: %s %v", event, err)
 	}
 
 	// Auth: root with the root role, enabled through the gateway.

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"slices"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.opentelemetry.io/otel/attribute"
@@ -94,6 +95,7 @@ func (c *conn) admit(st *stream) {
 		}
 	}
 	c.startOpSpan(st, &req)
+	st.admitted = time.Now()
 	st.reqSize = len(st.body)
 	st.body = nil
 	c.batch.reqs = append(c.batch.reqs, req)
@@ -303,9 +305,11 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 		n += len(cs)
 	}
 	out := make([]finished, 0, n)
+	now := time.Now()
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
+			c.logSlow(f.st, now.Sub(f.st.admitted))
 			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
 				f.granted = g.ID
 			}

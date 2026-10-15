@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -108,6 +109,9 @@ type serverMetrics struct {
 	readonlyTxn [2]prometheus.Observer
 	handling    []prometheus.Observer
 	handlingVec *prometheus.HistogramVec
+	// scrape lets one /metrics request at a time set the core's metrics
+	// and read them back.
+	scrape sync.Mutex
 }
 
 // lazyService reports whether etcd's gRPC metrics leave a service's
@@ -240,11 +244,13 @@ func (st *stream) countEnd(s *status.Status) {
 func (s *Server) serveMetrics(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
 	defer cancel()
-	set := s.metrics.set
-	if nm, err := s.n.Metrics(ctx); err == nil {
-		set.SetNode(&nm)
+	nm, err := s.n.Metrics(ctx)
+	s.metrics.scrape.Lock()
+	defer s.metrics.scrape.Unlock()
+	if err == nil {
+		s.metrics.set.SetNode(&nm)
 	} else {
-		set.SetNode(nil)
+		s.metrics.set.SetNode(nil)
 	}
 	s.metrics.handler.ServeHTTP(w, r)
 }

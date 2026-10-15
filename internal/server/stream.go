@@ -79,6 +79,9 @@ type stream struct {
 	counted     bool
 	began       time.Time
 	readonlyTxn bool
+	// admitted is when the node got the request of a call it runs, for
+	// logSlow.
+	admitted time.Time
 	// trace is the context of the call's server span and traceBegan its
 	// start, span the inner span of a unary call; all are nil without
 	// tracing (tracing.go).
@@ -418,16 +421,22 @@ func (c *conn) runUnary(st *stream) {
 	}
 	began := time.Now()
 	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
-	if d := time.Since(began); d > c.s.slowUnary && c.s.cfg.Logf != nil {
-		// etcd's logUnaryRequestStats, with fewer details.
-		c.s.cfg.Logf("request stats: %s from %s took %v, more than %v", methodPaths[st.rpc.idx], c.nc.RemoteAddr(), d, c.s.slowUnary)
-	}
+	c.logSlow(st, time.Since(began))
 	st.body = nil
 	if err != nil {
 		st.finish(err)
 		return
 	}
 	st.reply(resp)
+}
+
+// logSlow is etcd's logUnaryRequestStats, with fewer details: it logs a
+// unary call that took d, if that is more than
+// --warning-unary-request-duration.
+func (c *conn) logSlow(st *stream, d time.Duration) {
+	if d > c.s.slowUnary && c.s.cfg.Logf != nil {
+		c.s.cfg.Logf("request stats: %s from %s took %v, more than %v", methodPaths[st.rpc.idx], c.nc.RemoteAddr(), d, c.s.slowUnary)
+	}
 }
 
 // runStream runs a streaming call from its first headers.

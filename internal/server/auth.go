@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -81,12 +82,7 @@ func (s *Server) hash(password string) (string, error) {
 }
 
 // bcryptCost is etcd's --bcrypt-cost: bcrypt's default cost unless set.
-func (s *Server) bcryptCost() int {
-	if c := s.cfg.BcryptCost; c >= bcrypt.MinCost && c <= bcrypt.MaxCost {
-		return c
-	}
-	return bcrypt.DefaultCost
-}
+func (s *Server) bcryptCost() int { return cmp.Or(s.cfg.BcryptCost, bcrypt.DefaultCost) }
 
 func userAdd(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
 	var r pb.AuthUserAddRequest

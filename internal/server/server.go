@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 
@@ -142,6 +143,13 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		// HTTP/1.1 stays for /health and /version probes that do not
 		// speak HTTP/2; gRPC needs h2.
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
+	}
+	if c := cfg.BcryptCost; c != 0 && (c < bcrypt.MinCost || c > bcrypt.MaxCost) {
+		// etcd's NewAuthStore warns and takes the default too.
+		if cfg.Logf != nil {
+			cfg.Logf("use default bcrypt cost %d instead of the invalid given cost %d (min %d, max %d)", bcrypt.DefaultCost, c, bcrypt.MinCost, bcrypt.MaxCost)
+		}
+		cfg.BcryptCost = 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{n: n, cfg: cfg, grpcTLS: grpcTLS(cfg.TLS), gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
