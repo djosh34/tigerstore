@@ -157,6 +157,16 @@ func (st *stream) deliver(m []byte) {
 	}
 }
 
+// RecvOne takes the request of a server-streaming call. A call without
+// one gets grpc-go's answer.
+func (st *stream) RecvOne(m proto.Message) error {
+	err := st.Recv(m)
+	if errors.Is(err, io.EOF) {
+		return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
+	}
+	return err
+}
+
 // Recv takes the next request message of a streaming call. It returns
 // io.EOF once the client ended its side.
 func (st *stream) Recv(m proto.Message) error {
@@ -358,7 +368,7 @@ func (c *conn) runUnary(st *stream) {
 		st.finish(rpctypes.ErrGRPCNoLeader)
 		return
 	}
-	resp, err := st.rpc.unary(st.ctx, c.s, st.body)
+	resp, err := st.rpc.unary(st.ctx, c.s, c.callerOf(st), st.body)
 	st.body = nil
 	if err != nil {
 		st.finish(err)

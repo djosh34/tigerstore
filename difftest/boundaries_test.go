@@ -39,6 +39,8 @@ var cases = []struct {
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
 	{"range-stream", rangeStream},
+	{"lock", lockCase},
+	{"election", electionCase},
 }
 
 // stricter lists the steps where tigerstore must not copy etcd v3.7.2. After
