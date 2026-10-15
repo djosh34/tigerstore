@@ -15,6 +15,16 @@ ctl() {
 		--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 		--command-timeout=5s "$@"
 }
+# has runs a command and greps its whole output for pattern. A pipe into
+# grep -q would fail with SIGPIPE under pipefail when grep exits before
+# the command's last write.
+has() {
+	local pattern=$1
+	shift
+	local out
+	out=$("$@")
+	grep -q -- "$pattern" <<<"$out"
+}
 expect() {
 	local want=$1
 	shift
@@ -64,38 +74,39 @@ if [ "$(cat "$work/watch.out")" != "$want" ]; then
 fi
 # Leases, with the keepalive stream, and compaction.
 lease=$(ctl lease grant 60 | awk '{print $2}')
-ctl lease keep-alive --once "$lease" | grep -q "keepalived with TTL(60)" || {
+has "keepalived with TTL(60)" ctl lease keep-alive --once "$lease" || {
 	echo "lease keep-alive did not renew $lease"
 	exit 1
 }
 expect OK put --lease="$lease" leased v
-ctl lease timetolive "$lease" --keys | grep -q leased || {
+has leased ctl lease timetolive "$lease" --keys || {
 	echo "lease timetolive does not list the leased key"
 	exit 1
 }
-ctl lease revoke "$lease" | grep -q revoked
+has revoked ctl lease revoke "$lease"
 expect "" get leased
 rev=$(ctl put c0 marker -w json | grep -o '"revision":[0-9]*' | cut -d: -f2)
-ctl compaction "$rev" | grep -q "compacted revision $rev"
-ctl member list | grep -q started
+has "compacted revision $rev" ctl compaction "$rev"
+has started ctl member list
 # endpoint health reads a key and then lists the alarms on every node.
 ctl endpoint health
 expect "" alarm list
 # endpoint status reads Maintenance.Status from every node; the table
 # divides by the database size, so a zero size would crash etcdctl.
 ctl endpoint status -w table
-ctl endpoint status -w json | grep -q '"version":"3.7.2"' || {
+has '"version":"3.7.2"' ctl endpoint status -w json || {
 	echo "endpoint status does not report version 3.7.2"
 	exit 1
 }
 # etcdctl checks that the snapshot ends with the SHA-256 of what comes
 # before it, after a multiple of 512 bytes.
-etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
+has "Snapshot saved at" etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) \
 	--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
-	snapshot save "$work/snap.db" | grep -q "Snapshot saved at"
+	snapshot save "$work/snap.db"
 # tigerstore snapshot restore writes it into a new data directory.
-"$work/tigerstore" snapshot restore "$work/snap.db" --name node1 --data-dir "$work/restored" \
-	--initial-cluster node1=https://127.0.0.1:1,node2=https://127.0.0.1:2,node3=https://127.0.0.1:3 2>&1 | grep -q "restored the snapshot"
+restored=$("$work/tigerstore" snapshot restore "$work/snap.db" --name node1 --data-dir "$work/restored" \
+	--initial-cluster node1=https://127.0.0.1:1,node2=https://127.0.0.1:2,node3=https://127.0.0.1:3 2>&1)
+grep -q "restored the snapshot" <<<"$restored"
 version=$(curl -sf --cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 	"https://127.0.0.1:$((2379 + off))/version")
 if [ "$version" != '{"etcdserver":"3.7.2","etcdcluster":"3.7.0","storage":"3.7.0"}' ]; then
