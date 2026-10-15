@@ -140,9 +140,15 @@ func TestDeadlinesLeaderAndUnknownMethods(t *testing.T) {
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
 	})
-	err = conn.Invoke(context.Background(), "/nothing.Here/Call", &pb.RangeRequest{}, &pb.RangeResponse{})
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("unknown service: %v", err)
+	for path, want := range map[string]string{
+		"/nothing.Here/Call":        "unknown service nothing.Here",
+		"/etcdserverpb.KV/Nope":     "unknown method Nope for service etcdserverpb.KV",
+		"/etcdserverpb.Watch/Range": "unknown method Range for service etcdserverpb.Watch",
+	} {
+		err = conn.Invoke(context.Background(), path, &pb.RangeRequest{}, &pb.RangeResponse{})
+		if status.Code(err) != codes.Unimplemented || status.Convert(err).Message() != want {
+			t.Fatalf("%s: %v, want Unimplemented %q", path, err, want)
+		}
 	}
 	ms, err := pb.NewClusterClient(conn).MemberList(context.Background(), &pb.MemberListRequest{})
 	if err != nil || ms.Header.MemberId != 1 {

@@ -307,36 +307,49 @@ func (r *run) txn(do string, req *pb.TxnRequest) {
 	resp, err := r.c.kv.Txn(r.ctx, req)
 	var res any
 	if err == nil {
-		type opResult struct {
-			Range *rangeResult `json:"range,omitempty"`
-			// Revision is the header revision of a put or delete
-			// result, zero when the server sends no header.
-			Revision int64  `json:"revision,omitempty"`
-			PrevKV   *kv    `json:"prevKV,omitempty"`
-			Put      bool   `json:"put,omitempty"`
-			Deleted  *int64 `json:"deleted,omitempty"`
-		}
-		var ops []opResult
-		for _, o := range resp.Responses {
-			switch x := o.Response.(type) {
-			case *pb.ResponseOp_ResponseRange:
-				ops = append(ops, opResult{Range: r.rangeResult(x.ResponseRange)})
-			case *pb.ResponseOp_ResponsePut:
-				ops = append(ops, opResult{Put: true, Revision: r.rel(x.ResponsePut.GetHeader().GetRevision()), PrevKV: r.kv(x.ResponsePut.PrevKv)})
-			case *pb.ResponseOp_ResponseDeleteRange:
-				d := x.ResponseDeleteRange.Deleted
-				ops = append(ops, opResult{Revision: r.rel(x.ResponseDeleteRange.GetHeader().GetRevision()), Deleted: &d})
-			default:
-				r.t.Fatalf("%s: unexpected txn response %T", do, x)
-			}
-		}
-		res = struct {
-			Revision  int64      `json:"revision"`
-			Succeeded bool       `json:"succeeded"`
-			Ops       []opResult `json:"ops,omitempty"`
-		}{r.rel(resp.Header.Revision), resp.Succeeded, ops}
+		res = r.txnResult(do, resp)
 	}
 	r.record(do, res, err)
+}
+
+// txnResult is a transaction's response as recorded, with the responses
+// of nested transactions.
+type txnResult struct {
+	Revision  int64      `json:"revision"`
+	Succeeded bool       `json:"succeeded"`
+	Ops       []opResult `json:"ops,omitempty"`
+}
+
+type opResult struct {
+	Range *rangeResult `json:"range,omitempty"`
+	// Revision is the header revision of a put, delete or nested txn
+	// result, zero when the server sends no header.
+	Revision int64      `json:"revision,omitempty"`
+	PrevKV   *kv        `json:"prevKV,omitempty"`
+	Put      bool       `json:"put,omitempty"`
+	Deleted  *int64     `json:"deleted,omitempty"`
+	PrevKVs  []*kv      `json:"prevKVs,omitempty"`
+	Txn      *txnResult `json:"txn,omitempty"`
+}
+
+func (r *run) txnResult(do string, resp *pb.TxnResponse) *txnResult {
+	var ops []opResult
+	for _, o := range resp.Responses {
+		switch x := o.Response.(type) {
+		case *pb.ResponseOp_ResponseRange:
+			ops = append(ops, opResult{Range: r.rangeResult(x.ResponseRange)})
+		case *pb.ResponseOp_ResponsePut:
+			ops = append(ops, opResult{Put: true, Revision: r.rel(x.ResponsePut.GetHeader().GetRevision()), PrevKV: r.kv(x.ResponsePut.PrevKv)})
+		case *pb.ResponseOp_ResponseDeleteRange:
+			d := x.ResponseDeleteRange.Deleted
+			ops = append(ops, opResult{Revision: r.rel(x.ResponseDeleteRange.GetHeader().GetRevision()), Deleted: &d, PrevKVs: r.kvs(x.ResponseDeleteRange.PrevKvs)})
+		case *pb.ResponseOp_ResponseTxn:
+			ops = append(ops, opResult{Revision: r.rel(x.ResponseTxn.GetHeader().GetRevision()), Txn: r.txnResult(do, x.ResponseTxn)})
+		default:
+			r.t.Fatalf("%s: unexpected txn response %T", do, x)
+		}
+	}
+	return &txnResult{r.rel(resp.GetHeader().GetRevision()), resp.Succeeded, ops}
 }
 
 func (r *run) compact(do string, rev int64, physical bool) {

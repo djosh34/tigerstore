@@ -136,9 +136,8 @@ var methods = map[string]*method{
 	"/grpc.health.v1.Health/Watch":         {stream: (*Server).healthWatch, serverStream: true},
 }
 
-// services are etcd's gRPC services; their other methods are not
-// implemented.
-var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election"}
+// services are the gRPC services etcd registers.
+var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election", healthService}
 
 // unknownMethod is grpc-go's answer for a method that is not served.
 func unknownMethod(path string) error {
@@ -147,10 +146,6 @@ func unknownMethod(path string) error {
 		return status.Errorf(codes.Unimplemented, "malformed method name: %q", path)
 	}
 	if slices.Contains(services, service) {
-		return status.Errorf(codes.Unimplemented, "method %s not implemented", name)
-	}
-	if service == healthService {
-		// The health service serves all of its methods.
 		return status.Errorf(codes.Unimplemented, "unknown method %v for service %v", name, service)
 	}
 	return status.Errorf(codes.Unimplemented, "unknown service %v", service)
@@ -159,9 +154,17 @@ func unknownMethod(path string) error {
 // unmarshal decodes a request message as grpc-go does, with its error.
 func unmarshal(b []byte, m proto.Message) error {
 	if err := proto.Unmarshal(b, m); err != nil {
-		return status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err)
+		return unmarshalError(err)
 	}
 	return nil
+}
+
+// unmarshalError is grpc-go's error for a request it cannot decode.
+// protobuf puts a no-break space after "proto:" in some builds, to keep
+// programs from comparing its messages; etcd v3.7.2's build has a space.
+func unmarshalError(err error) error {
+	msg := strings.Replace(err.Error(), "proto:\u00a0", "proto: ", 1)
+	return status.Errorf(codes.Internal, "grpc: error unmarshalling request: %s", msg)
 }
 
 // newOp returns a new request of type T.

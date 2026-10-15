@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -97,7 +98,7 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 			for name, decode := range txnDecoders {
 				got := &pb.TxnRequest{}
 				err := decode(in[:cut], got)
-				if (err != nil) != (wantErr != nil) {
+				if !sameError(err, wantErr) {
 					t.Fatalf("%s, case %d cut %d: error %v, protobuf error %v", name, i, cut, err, wantErr)
 				}
 				if err == nil && (!proto.Equal(got, want) || proto.Size(got) != proto.Size(want)) {
@@ -106,6 +107,15 @@ func TestUnmarshalAliasMatchesProtobuf(t *testing.T) {
 			}
 		}
 	}
+}
+
+// sameError reports whether err is protobuf's error want, with a space
+// after "proto:" where this build of protobuf may put a no-break space.
+func sameError(err, want error) bool {
+	if err == nil || want == nil {
+		return err == nil && want == nil
+	}
+	return err.Error() == strings.Replace(want.Error(), "proto:\u00a0", "proto: ", 1)
 }
 
 // txnDecoders are the decoders that must match proto.Unmarshal on
@@ -172,7 +182,7 @@ func TestUnmarshalAliasDepth(t *testing.T) {
 			wantErr := proto.Unmarshal(b, &pb.TxnRequest{})
 			for name, decode := range txnDecoders {
 				err := decode(b, &pb.TxnRequest{})
-				if (err != nil) != (wantErr != nil) {
+				if !sameError(err, wantErr) {
 					t.Fatalf("%d levels: %s error %v, protobuf error %v", levels, name, err, wantErr)
 				}
 			}

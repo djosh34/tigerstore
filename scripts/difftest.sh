@@ -24,6 +24,7 @@ server=${1:?usage: scripts/difftest.sh etcd|tigerstore [record]}
 record=${2:-}
 suites=(
 	"TestBoundaries|"
+	"TestSweep|"
 	"TestQuota|--quota-backend-bytes 1048576"
 	"TestAuth|"
 	"TestAuthJWT|--auth-token jwt,priv-key=@CERTS@/jwt.pem,sign-method=RS256"

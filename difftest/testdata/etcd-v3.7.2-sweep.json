@@ -1,0 +1,4490 @@
+{
+  "lease-forms": [
+    {
+      "do": "grant with a negative TTL",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 1,
+        "ttl": 2
+      }
+    },
+    {
+      "do": "revoke it",
+      "code": "OK",
+      "result": {
+        "revision": 0
+      }
+    },
+    {
+      "do": "grant with the largest TTL",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 2,
+        "ttl": 9000000000
+      }
+    },
+    {
+      "do": "revoke that",
+      "code": "OK",
+      "result": {
+        "revision": 0
+      }
+    },
+    {
+      "do": "grant",
+      "code": "OK",
+      "result": {
+        "revision": 0,
+        "lease": 3,
+        "asAsked": true,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "put k with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put j with the lease",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "time to live",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "lease": 3,
+        "ttl": "near granted",
+        "grantedTTL": 60
+      }
+    },
+    {
+      "do": "time to live with keys",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "lease": 3,
+        "ttl": "near granted",
+        "grantedTTL": 60,
+        "keys": [
+          "j",
+          "k"
+        ]
+      }
+    },
+    {
+      "do": "time to live of a missing lease",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "lease": 4,
+        "ttl": "-1s",
+        "grantedTTL": 0
+      }
+    },
+    {
+      "do": "time to live of lease 0",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "lease": 0,
+        "ttl": "-1s",
+        "grantedTTL": 0
+      }
+    },
+    {
+      "do": "keep alive",
+      "code": "OK",
+      "result": [
+        {
+          "revision": 2,
+          "lease": 3,
+          "ttl": 60
+        },
+        {
+          "revision": 2,
+          "lease": 4,
+          "ttl": 0
+        },
+        {
+          "revision": 2,
+          "lease": 0,
+          "ttl": 0
+        },
+        {
+          "revision": 2,
+          "lease": 3,
+          "ttl": 60
+        }
+      ]
+    },
+    {
+      "do": "move j to no lease",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "time to live with keys after the move",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "lease": 3,
+        "ttl": "near granted",
+        "grantedTTL": 60,
+        "keys": [
+          "k"
+        ]
+      }
+    },
+    {
+      "do": "delete k",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "time to live with keys after the delete",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "lease": 3,
+        "ttl": "near granted",
+        "grantedTTL": 60
+      }
+    },
+    {
+      "do": "leases",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "leases": [
+          3
+        ]
+      }
+    },
+    {
+      "do": "revoke",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "time to live after the revoke",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "lease": 3,
+        "ttl": "-1s",
+        "grantedTTL": 0
+      }
+    },
+    {
+      "do": "keep alive after the revoke",
+      "code": "OK",
+      "result": [
+        {
+          "revision": 4,
+          "lease": 3,
+          "ttl": 0
+        }
+      ]
+    },
+    {
+      "do": "leases after the revoke",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "leases": null
+      }
+    },
+    {
+      "do": "put with the revoked lease",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "put with a negative lease",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    }
+  ],
+  "range-forms": [
+    {
+      "do": "put e=1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put b=5",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put d=2",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "put a=4",
+      "code": "OK",
+      "result": {
+        "revision": 4
+      }
+    },
+    {
+      "do": "put b=3",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "put b=6",
+      "code": "OK",
+      "result": {
+        "revision": 6
+      }
+    },
+    {
+      "do": "put c=0",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "sort by KEY NONE",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by KEY NONE, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by KEY ASCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by KEY ASCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by KEY DESCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by KEY DESCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VERSION NONE",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VERSION NONE, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VERSION ASCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VERSION ASCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VERSION DESCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VERSION DESCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by CREATE NONE",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by CREATE NONE, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by CREATE ASCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by CREATE ASCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by CREATE DESCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by CREATE DESCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by MOD NONE",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by MOD NONE, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by MOD ASCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by MOD ASCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by MOD DESCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by MOD DESCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VALUE NONE",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VALUE NONE, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VALUE ASCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VALUE ASCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort by VALUE DESCEND",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "sort by VALUE DESCEND, limit 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "sort order 3",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid sort option"
+    },
+    {
+      "do": "sort target 5 ascending",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid sort option"
+    },
+    {
+      "do": "sort target 5 descending",
+      "code": "InvalidArgument",
+      "message": "etcdserver: invalid sort option"
+    },
+    {
+      "do": "min mod revision 4",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "max mod revision 4",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "min create revision 3",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "max create revision 3",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "mod revisions 3 to 5",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "min mod revision 4, limit 1",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "min mod revision 4, count only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 5
+      }
+    },
+    {
+      "do": "min mod revision 4, keys only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "min mod revision 4, sorted by value",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "min mod revision 4 at revision 5",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "3",
+            "create": 2,
+            "mod": 5,
+            "version": 2
+          }
+        ],
+        "count": 4
+      }
+    },
+    {
+      "do": "min mod revision -1",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "max mod revision -1",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 5
+      }
+    },
+    {
+      "do": "keys only, count only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 5
+      }
+    },
+    {
+      "do": "keys only, limit 3",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "limit 5 of 5",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "limit 6 of 5",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 5
+      }
+    },
+    {
+      "do": "limit 4 of 5",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          },
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          }
+        ],
+        "count": 5,
+        "more": true
+      }
+    },
+    {
+      "do": "limit 1 at revision 3",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "5",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          }
+        ],
+        "count": 3,
+        "more": true
+      }
+    },
+    {
+      "do": "serializable at revision 4",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "4",
+            "create": 4,
+            "mod": 4,
+            "version": 1
+          },
+          {
+            "key": "b",
+            "value": "5",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          },
+          {
+            "key": "d",
+            "value": "2",
+            "create": 3,
+            "mod": 3,
+            "version": 1
+          },
+          {
+            "key": "e",
+            "value": "1",
+            "create": 1,
+            "mod": 1,
+            "version": 1
+          }
+        ],
+        "count": 4
+      }
+    },
+    {
+      "do": "serializable count only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 5
+      }
+    },
+    {
+      "do": "from c to the end",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 3
+      }
+    },
+    {
+      "do": "from c to d",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "from c to c",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 0
+      }
+    },
+    {
+      "do": "key c with an empty end",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "c",
+            "value": "0",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "every key, count only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 5
+      }
+    },
+    {
+      "do": "key \\x00 alone",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 0
+      }
+    },
+    {
+      "do": "a missing key",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 0
+      }
+    },
+    {
+      "do": "a missing key, count only",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 0
+      }
+    },
+    {
+      "do": "b at revision 2",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "5",
+            "create": 2,
+            "mod": 2,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "b at revision 1, before it was written",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "count": 0
+      }
+    },
+    {
+      "do": "b at the current revision",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "b",
+            "value": "6",
+            "create": 2,
+            "mod": 6,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "b at the next revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    }
+  ],
+  "txn-forms": [
+    {
+      "do": "put a=5",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put b=5",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put b=7",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "value(a) EQUAL 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) EQUAL 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) EQUAL 6",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) EQUAL ",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(missing) EQUAL empty",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "VERSION(missing) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(b) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(missing) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(b) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(missing) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(b) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(b) EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(missing) EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) GREATER 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) GREATER 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) GREATER 6",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) GREATER ",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(missing) GREATER empty",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "VERSION(b) GREATER 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "VERSION(b) GREATER 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(missing) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(b) GREATER 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(b) GREATER 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(missing) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(b) GREATER 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(b) GREATER 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(missing) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) GREATER 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) GREATER 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(missing) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) LESS 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) LESS 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) LESS 6",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) LESS ",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(missing) LESS empty",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) LESS 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) LESS 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(missing) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) LESS 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) LESS 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(missing) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) LESS 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) LESS 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(missing) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) LESS 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(b) LESS 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(missing) LESS 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) NOT_EQUAL 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) NOT_EQUAL 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a) NOT_EQUAL 6",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(a) NOT_EQUAL ",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "value(missing) NOT_EQUAL empty",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(b) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "VERSION(b) NOT_EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "VERSION(b) NOT_EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "VERSION(missing) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(b) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(b) NOT_EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "CREATE(b) NOT_EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "CREATE(missing) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "MOD(b) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(b) NOT_EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(b) NOT_EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "MOD(missing) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "LEASE(b) NOT_EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(b) NOT_EQUAL 2",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "LEASE(missing) NOT_EQUAL 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a..) EQUAL 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "value(a..) GREATER 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "version(a..) LESS 3",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "version(a..) EQUAL 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "mod(a..) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "version(c..d) EQUAL 0, no keys",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "version(b to the end) GREATER 0",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "compare result 4",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "compare target 5",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "compare VALUE without a value",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "compare VERSION with a mod revision",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "compare an empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "two compares, both true",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 3,
+              "kvs": [
+                {
+                  "key": "a",
+                  "value": "5",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "two compares, one false",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false,
+        "ops": [
+          {
+            "range": {
+              "revision": 3,
+              "kvs": [
+                {
+                  "key": "b",
+                  "value": "7",
+                  "create": 2,
+                  "mod": 3,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "empty txn",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true
+      }
+    },
+    {
+      "do": "txn with a nil operation",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key not found"
+    },
+    {
+      "do": "txn putting an empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "txn ranging an empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "txn deleting an empty key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "txn putting with a missing lease",
+      "code": "NotFound",
+      "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "txn putting ignore_value on a missing key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key not found"
+    },
+    {
+      "do": "txn ranging at a future revision",
+      "code": "OutOfRange",
+      "message": "etcdserver: mvcc: required revision is a future revision"
+    },
+    {
+      "do": "txn ranging in the branch not taken at a future revision",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": false
+      }
+    },
+    {
+      "do": "txn putting a key and deleting its range",
+      "code": "InvalidArgument",
+      "message": "etcdserver: duplicate key given in txn request"
+    },
+    {
+      "do": "txn deleting a range and putting a key outside it",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 3,
+            "deleted": 0
+          },
+          {
+            "revision": 4,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn deleting one key twice",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 4,
+            "deleted": 0
+          },
+          {
+            "revision": 4,
+            "deleted": 0
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn putting one key in both branches",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 5,
+            "put": true
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn with prev_kv operations",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 6,
+            "prevKV": {
+              "key": "a",
+              "value": "5",
+              "create": 1,
+              "mod": 1,
+              "version": 1
+            },
+            "put": true
+          },
+          {
+            "revision": 6,
+            "deleted": 1,
+            "prevKVs": [
+              {
+                "key": "b",
+                "value": "8",
+                "create": 2,
+                "mod": 4,
+                "version": 3
+              }
+            ]
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "a",
+                  "value": "6",
+                  "create": 1,
+                  "mod": 6,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "txn with ranges of every form",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 6,
+              "count": 2
+            }
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "c",
+                  "create": 5,
+                  "mod": 5,
+                  "version": 1
+                },
+                {
+                  "key": "a",
+                  "create": 1,
+                  "mod": 6,
+                  "version": 2
+                }
+              ],
+              "count": 2
+            }
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "a",
+                  "value": "5",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 2,
+              "more": true
+            }
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "a",
+                  "value": "6",
+                  "create": 1,
+                  "mod": 6,
+                  "version": 2
+                },
+                {
+                  "key": "c",
+                  "value": "1",
+                  "create": 5,
+                  "mod": 5,
+                  "version": 1
+                }
+              ],
+              "count": 2
+            }
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "a",
+                  "value": "6",
+                  "create": 1,
+                  "mod": 6,
+                  "version": 2
+                },
+                {
+                  "key": "c",
+                  "value": "1",
+                  "create": 5,
+                  "mod": 5,
+                  "version": 1
+                }
+              ],
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "nested txn",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 7,
+            "put": true
+          },
+          {
+            "txn": {
+              "revision": 0,
+              "succeeded": true,
+              "ops": [
+                {
+                  "revision": 7,
+                  "put": true
+                }
+              ]
+            }
+          },
+          {
+            "range": {
+              "revision": 7,
+              "count": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "nested txn two levels deep",
+      "code": "OK",
+      "result": {
+        "revision": 8,
+        "succeeded": true,
+        "ops": [
+          {
+            "txn": {
+              "revision": 0,
+              "succeeded": true,
+              "ops": [
+                {
+                  "txn": {
+                    "revision": 0,
+                    "succeeded": true,
+                    "ops": [
+                      {
+                        "revision": 8,
+                        "put": true
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "nested txn putting a key of the outer one",
+      "code": "InvalidArgument",
+      "message": "etcdserver: duplicate key given in txn request"
+    },
+    {
+      "do": "nested txns putting one key in different branches",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "succeeded": true,
+        "ops": [
+          {
+            "txn": {
+              "revision": 0,
+              "succeeded": true,
+              "ops": [
+                {
+                  "revision": 9,
+                  "put": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "two nested txns putting one key",
+      "code": "InvalidArgument",
+      "message": "etcdserver: duplicate key given in txn request"
+    },
+    {
+      "do": "nested txn with an error",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "nested read-only txn",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "succeeded": true,
+        "ops": [
+          {
+            "txn": {
+              "revision": 0,
+              "succeeded": true,
+              "ops": [
+                {
+                  "range": {
+                    "revision": 9,
+                    "kvs": [
+                      {
+                        "key": "a",
+                        "value": "6",
+                        "create": 1,
+                        "mod": 6,
+                        "version": 2
+                      }
+                    ],
+                    "count": 1
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "nested txn with 128 operations",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "nested txn with 129 operations",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "txn with 129 compares",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "txn with 129 operations in failure",
+      "code": "InvalidArgument",
+      "message": "etcdserver: too many operations in txn request"
+    },
+    {
+      "do": "what is left",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "kvs": [
+          {
+            "key": "a",
+            "value": "6",
+            "create": 1,
+            "mod": 6,
+            "version": 2
+          },
+          {
+            "key": "c",
+            "value": "1",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          },
+          {
+            "key": "n1",
+            "value": "1",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "n2",
+            "value": "2",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          },
+          {
+            "key": "n4",
+            "value": "4",
+            "create": 8,
+            "mod": 8,
+            "version": 1
+          },
+          {
+            "key": "n6",
+            "value": "1",
+            "create": 9,
+            "mod": 9,
+            "version": 1
+          }
+        ],
+        "count": 6
+      }
+    }
+  ],
+  "unknown-methods": [
+    {
+      "do": "KV.Nope",
+      "code": "Unimplemented",
+      "message": "unknown method Nope for service etcdserverpb.KV"
+    },
+    {
+      "do": "Watch.Range",
+      "code": "Unimplemented",
+      "message": "unknown method Range for service etcdserverpb.Watch"
+    },
+    {
+      "do": "Lease.Nope",
+      "code": "Unimplemented",
+      "message": "unknown method Nope for service etcdserverpb.Lease"
+    },
+    {
+      "do": "Nope.Range",
+      "code": "Unimplemented",
+      "message": "unknown service etcdserverpb.Nope"
+    },
+    {
+      "do": "a method without a service",
+      "code": "Unimplemented",
+      "message": "malformed method name: \"/Range\""
+    },
+    {
+      "do": "KV.Range with an empty request",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "Lease.LeaseGrant with an empty request",
+      "code": "OK"
+    },
+    {
+      "do": "KV.Range with a malformed request",
+      "code": "Internal",
+      "message": "grpc: error unmarshalling request: proto: cannot parse invalid wire-format data"
+    },
+    {
+      "do": "KV.Put with a field of the wrong wire type",
+      "code": "InvalidArgument",
+      "message": "etcdserver: key is not provided"
+    },
+    {
+      "do": "KV.Range with an unknown field",
+      "code": "OK"
+    }
+  ],
+  "watch-forms": [
+    {
+      "do": "watch a",
+      "code": "OK",
+      "result": {
+        "0": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch the case's keys without puts, with prev_kv",
+      "code": "OK",
+      "result": {
+        "1": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch the case's keys without deletes",
+      "code": "OK",
+      "result": {
+        "2": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch the case's keys without puts and deletes",
+      "code": "OK",
+      "result": {
+        "3": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch from b to the end",
+      "code": "OK",
+      "result": {
+        "4": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch every key",
+      "code": "OK",
+      "result": {
+        "5": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "watch filter 2",
+      "code": "OK",
+      "result": {
+        "6": {
+          "created": true
+        }
+      }
+    },
+    {
+      "do": "put a=1",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "5": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "6": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "put b=1",
+      "code": "OK",
+      "result": {
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "1",
+                "create": 2,
+                "mod": 2,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "4": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "1",
+                "create": 2,
+                "mod": 2,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "5": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "1",
+                "create": 2,
+                "mod": 2,
+                "version": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "put a=2",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "5": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "6": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "delete a",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "DELETE",
+              "kv": {
+                "key": "a",
+                "create": 0,
+                "mod": 4,
+                "version": 0
+              }
+            }
+          ]
+        },
+        "1": {
+          "events": [
+            {
+              "type": "DELETE",
+              "kv": {
+                "key": "a",
+                "create": 0,
+                "mod": 4,
+                "version": 0
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "5": {
+          "events": [
+            {
+              "type": "DELETE",
+              "kv": {
+                "key": "a",
+                "create": 0,
+                "mod": 4,
+                "version": 0
+              }
+            }
+          ]
+        },
+        "6": {
+          "events": [
+            {
+              "type": "DELETE",
+              "kv": {
+                "key": "a",
+                "create": 0,
+                "mod": 4,
+                "version": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "ask for progress",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "progress": [
+            4
+          ]
+        }
+      }
+    },
+    {
+      "do": "cancel watch 0",
+      "code": "OK",
+      "result": {
+        "0": {
+          "canceled": true
+        }
+      }
+    },
+    {
+      "do": "put a=3 after the cancel",
+      "code": "OK",
+      "result": {
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "3",
+                "create": 5,
+                "mod": 5,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "5": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "3",
+                "create": 5,
+                "mod": 5,
+                "version": 1
+              }
+            }
+          ]
+        },
+        "6": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "3",
+                "create": 5,
+                "mod": 5,
+                "version": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "cancel watch 0 again",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "cancel watch 99, which does not exist",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "an empty request",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "a create request without a body",
+      "code": "OK",
+      "result": {
+        "7": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "a cancel request without a body",
+      "code": "OK",
+      "result": {}
+    },
+    {
+      "do": "ask for progress again",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "progress": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "do": "watch a as ID 7",
+      "code": "OK",
+      "result": {
+        "7": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "watch b as ID 7 too",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "created": true,
+          "createdRevision": 5,
+          "canceled": true,
+          "cancelReason": "mvcc: duplicate watch ID provided on the WatchStream"
+        }
+      }
+    },
+    {
+      "do": "watch b with the next automatic ID",
+      "code": "OK",
+      "result": {
+        "0": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "watch a as ID 1",
+      "code": "OK",
+      "result": {
+        "1": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "watch b with the next automatic ID again",
+      "code": "OK",
+      "result": {
+        "2": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "watch a as ID -5",
+      "code": "OK",
+      "result": {
+        "-5": {
+          "created": true,
+          "createdRevision": 5
+        }
+      }
+    },
+    {
+      "do": "put a=4",
+      "code": "OK",
+      "result": {
+        "-5": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "4",
+                "create": 5,
+                "mod": 6,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "1": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "4",
+                "create": 5,
+                "mod": 6,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "7": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "4",
+                "create": 5,
+                "mod": 6,
+                "version": 2
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "cancel ID 7",
+      "code": "OK",
+      "result": {
+        "7": {
+          "canceled": true
+        }
+      }
+    },
+    {
+      "do": "watch b as ID 7 again",
+      "code": "OK",
+      "result": {
+        "7": {
+          "created": true,
+          "createdRevision": 6
+        }
+      }
+    },
+    {
+      "do": "put b=2",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "2",
+                "create": 2,
+                "mod": 7,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "2",
+                "create": 2,
+                "mod": 7,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "7": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "b",
+                "value": "2",
+                "create": 2,
+                "mod": 7,
+                "version": 2
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "watch an empty range",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "created": true,
+          "createdRevision": 7,
+          "canceled": true,
+          "cancelReason": "mvcc: watcher range is empty"
+        }
+      }
+    },
+    {
+      "do": "watch from a to a",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "created": true,
+          "createdRevision": 7,
+          "canceled": true,
+          "cancelReason": "mvcc: watcher range is empty"
+        }
+      }
+    },
+    {
+      "do": "watch a with an empty end",
+      "code": "OK",
+      "result": {
+        "0": {
+          "created": true,
+          "createdRevision": 7
+        }
+      }
+    },
+    {
+      "do": "watch a from revision 1 with prev_kv",
+      "code": "OK",
+      "result": {
+        "1": {
+          "created": true,
+          "createdRevision": 7,
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            },
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "1",
+                "create": 1,
+                "mod": 1,
+                "version": 1
+              }
+            },
+            {
+              "type": "DELETE",
+              "kv": {
+                "key": "a",
+                "create": 0,
+                "mod": 4,
+                "version": 0
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "2",
+                "create": 1,
+                "mod": 3,
+                "version": 2
+              }
+            },
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "3",
+                "create": 5,
+                "mod": 5,
+                "version": 1
+              }
+            },
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "4",
+                "create": 5,
+                "mod": 6,
+                "version": 2
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "3",
+                "create": 5,
+                "mod": 5,
+                "version": 1
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "watch a from the current revision",
+      "code": "OK",
+      "result": {
+        "2": {
+          "created": true,
+          "createdRevision": 7
+        }
+      }
+    },
+    {
+      "do": "watch a from 2 ahead",
+      "code": "OK",
+      "result": {
+        "3": {
+          "created": true,
+          "createdRevision": 7
+        }
+      }
+    },
+    {
+      "do": "watch a with progress_notify and fragment",
+      "code": "OK",
+      "result": {
+        "4": {
+          "created": true,
+          "createdRevision": 7
+        }
+      }
+    },
+    {
+      "do": "put a=5",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "5",
+                "create": 5,
+                "mod": 8,
+                "version": 3
+              }
+            }
+          ]
+        },
+        "1": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "5",
+                "create": 5,
+                "mod": 8,
+                "version": 3
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "4",
+                "create": 5,
+                "mod": 6,
+                "version": 2
+              }
+            }
+          ]
+        },
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "5",
+                "create": 5,
+                "mod": 8,
+                "version": 3
+              }
+            }
+          ]
+        },
+        "4": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "5",
+                "create": 5,
+                "mod": 8,
+                "version": 3
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "put a=6",
+      "code": "OK",
+      "result": {
+        "0": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "6",
+                "create": 5,
+                "mod": 9,
+                "version": 4
+              }
+            }
+          ]
+        },
+        "1": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "6",
+                "create": 5,
+                "mod": 9,
+                "version": 4
+              },
+              "prevKV": {
+                "key": "a",
+                "value": "5",
+                "create": 5,
+                "mod": 8,
+                "version": 3
+              }
+            }
+          ]
+        },
+        "2": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "6",
+                "create": 5,
+                "mod": 9,
+                "version": 4
+              }
+            }
+          ]
+        },
+        "3": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "6",
+                "create": 5,
+                "mod": 9,
+                "version": 4
+              }
+            }
+          ]
+        },
+        "4": {
+          "events": [
+            {
+              "type": "PUT",
+              "kv": {
+                "key": "a",
+                "value": "6",
+                "create": 5,
+                "mod": 9,
+                "version": 4
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "do": "ask for progress",
+      "code": "OK",
+      "result": {
+        "-1": {
+          "progress": [
+            9
+          ]
+        }
+      }
+    }
+  ],
+  "write-forms": [
+    {
+      "do": "put k with prev_kv, new",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put k with an empty value",
+      "code": "OK",
+      "result": {
+        "revision": 2,
+        "prevKV": {
+          "key": "k",
+          "value": "1",
+          "create": 1,
+          "mod": 1,
+          "version": 1
+        }
+      }
+    },
+    {
+      "do": "put k ignore_value with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "prevKV": {
+          "key": "k",
+          "create": 1,
+          "mod": 2,
+          "version": 2
+        }
+      }
+    },
+    {
+      "do": "put k ignore_lease with a lease",
+      "code": "InvalidArgument",
+      "message": "etcdserver: lease is provided"
+    },
+    {
+      "do": "put k ignore_value and ignore_lease",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "prevKV": {
+          "key": "k",
+          "create": 1,
+          "mod": 3,
+          "version": 3
+        }
+      }
+    },
+    {
+      "do": "put key \\x00",
+      "code": "OK",
+      "result": {
+        "revision": 5
+      }
+    },
+    {
+      "do": "get key \\x00",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "kvs": [
+          {
+            "key": "\u0000",
+            "value": "zero",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "delete key \\x00",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "deleted": 1,
+        "prevKVs": [
+          {
+            "key": "\u0000",
+            "value": "zero",
+            "create": 5,
+            "mod": 5,
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "put a binary key",
+      "code": "OK",
+      "result": {
+        "revision": 7
+      }
+    },
+    {
+      "do": "get the binary key",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "�\u0000�",
+            "value": "\u0000\u0001",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "put a",
+      "code": "OK",
+      "result": {
+        "revision": 8
+      }
+    },
+    {
+      "do": "put b",
+      "code": "OK",
+      "result": {
+        "revision": 9
+      }
+    },
+    {
+      "do": "put c",
+      "code": "OK",
+      "result": {
+        "revision": 10
+      }
+    },
+    {
+      "do": "put d",
+      "code": "OK",
+      "result": {
+        "revision": 11
+      }
+    },
+    {
+      "do": "delete b to d with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 12,
+        "deleted": 2,
+        "prevKVs": [
+          {
+            "key": "b",
+            "value": "b",
+            "create": 9,
+            "mod": 9,
+            "version": 1
+          },
+          {
+            "key": "c",
+            "value": "c",
+            "create": 10,
+            "mod": 10,
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "delete from d to c",
+      "code": "OK",
+      "result": {
+        "revision": 12,
+        "deleted": 0
+      }
+    },
+    {
+      "do": "delete from c to c",
+      "code": "OK",
+      "result": {
+        "revision": 12,
+        "deleted": 0
+      }
+    },
+    {
+      "do": "delete with an empty end",
+      "code": "OK",
+      "result": {
+        "revision": 13,
+        "deleted": 1
+      }
+    },
+    {
+      "do": "delete a missing key with prev_kv",
+      "code": "OK",
+      "result": {
+        "revision": 13,
+        "deleted": 0
+      }
+    },
+    {
+      "do": "delete from d to the end",
+      "code": "OK",
+      "result": {
+        "revision": 14,
+        "deleted": 3,
+        "prevKVs": [
+          {
+            "key": "d",
+            "value": "d",
+            "create": 11,
+            "mod": 11,
+            "version": 1
+          },
+          {
+            "key": "k",
+            "create": 1,
+            "mod": 4,
+            "version": 4
+          },
+          {
+            "key": "�\u0000�",
+            "value": "\u0000\u0001",
+            "create": 7,
+            "mod": 7,
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "do": "what is left",
+      "code": "OK",
+      "result": {
+        "revision": 14,
+        "count": 0
+      }
+    }
+  ]
+}

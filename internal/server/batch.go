@@ -63,7 +63,7 @@ func (c *conn) admit(st *stream) {
 		// Raft entry as it is.
 		put, err := core.ParsePut(st.body)
 		if err != nil {
-			st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+			st.finish(unmarshalError(err))
 			return
 		}
 		req.Put = put
@@ -76,7 +76,7 @@ func (c *conn) admit(st *stream) {
 		switch req.Op.(type) {
 		case *pb.TxnRequest, *pb.RangeRequest:
 			if err := core.DecodeAlias(st.body, req.Op); err != nil {
-				st.finish(status.Errorf(codes.Internal, "grpc: error unmarshalling request: %v", err))
+				st.finish(unmarshalError(err))
 				return
 			}
 			if r, ok := req.Op.(*pb.RangeRequest); ok && st.rpc.learner == learnerSerializable && !r.Serializable && c.s.learner() {
