@@ -81,7 +81,9 @@ type State struct {
 	changes []mvcc.Change
 	// alarms are the active alarms in type and member order. noSpace and
 	// corrupt say whether a NOSPACE or a CORRUPT alarm is among them.
-	alarms           []*pb.AlarmMember
+	alarms []*pb.AlarmMember
+	// alarmsGen counts the changes of alarms.
+	alarmsGen        uint64
 	noSpace, corrupt bool
 	// etcdVersion is etcd's cluster version, and downgradeEnabled and
 	// downgradeTarget etcd's downgrade info (downgrade.go).

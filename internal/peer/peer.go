@@ -39,6 +39,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
@@ -97,6 +98,9 @@ type Config struct {
 	Answer func(id uint64, req []byte) ([]byte, error)
 	// Logf logs connection errors.
 	Logf func(format string, args ...any)
+	// Metrics count the traffic with peers; nil gives the transport a
+	// set of its own.
+	Metrics *metrics.Set
 
 	// minVersion and maxVersion override the protocol versions this node
 	// speaks, for tests. Zero means the package's.
@@ -196,6 +200,11 @@ func Start(cfg Config) (*TCP, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Metrics == nil {
+		if cfg.Metrics, err = metrics.New(nil); err != nil {
+			return nil, err
+		}
+	}
 	raw := cfg.Listener
 	if raw == nil {
 		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
@@ -258,13 +267,14 @@ func (t *TCP) SetPeers(peers map[uint64]string, removed []uint64) {
 		}
 		ctx, cancel := context.WithCancel(t.ctx)
 		s := &sender{
-			t:      t,
-			id:     id,
-			addr:   addr,
-			ctx:    ctx,
-			cancel: cancel,
-			ctrl:   make(chan queued, controlQueue),
-			data:   make(chan queued, dataQueue),
+			t:        t,
+			id:       id,
+			addr:     addr,
+			ctx:      ctx,
+			cancel:   cancel,
+			ctrl:     make(chan queued, controlQueue),
+			data:     make(chan queued, dataQueue),
+			counters: t.countersOf(id),
 		}
 		next[id] = s
 		t.wg.Go(s.run)
@@ -450,6 +460,18 @@ func (t *TCP) receive(c net.Conn) error {
 	if err := c.SetReadDeadline(time.Time{}); err != nil {
 		return err
 	}
+	cs := t.countersOf(from)
+	// frames ends only with an error.
+	err = t.frames(r, from, cs)
+	if !errors.Is(err, io.EOF) && t.ctx.Err() == nil {
+		cs.receiveFailures.Inc()
+	}
+	return err
+}
+
+// frames reads and delivers the messages of an inbound connection until
+// it fails.
+func (t *TCP) frames(r io.Reader, from uint64, cs *counters) error {
 	var hdr [4]byte
 	var buf []byte
 	for {
@@ -477,6 +499,7 @@ func (t *TCP) receive(c net.Conn) error {
 		if m.GetFrom() != from {
 			return fmt.Errorf("peer %d sent a message from %d", from, m.GetFrom())
 		}
+		cs.received.Add(float64(len(hdr) + len(buf)))
 		t.cfg.Deliver(m)
 	}
 }
@@ -652,7 +675,8 @@ type sender struct {
 	ctrlBytes, dataBytes atomic.Int64
 	// version is the protocol version of the connection to the peer, 0
 	// while there is none.
-	version atomic.Uint32
+	version  atomic.Uint32
+	counters *counters
 	// Writer only: messages that waited longer than slowQueue since the
 	// last report, the longest wait among them, the last one's type, and
 	// the report's time.
@@ -699,6 +723,7 @@ func (s *sender) send(m *raftpb.Message) {
 	n := size(m)
 	if budget.Add(n) > maxQueued {
 		budget.Add(-n)
+		s.counters.sendFailures.Inc()
 		s.t.cfg.Unreachable(s.id)
 		return
 	}
@@ -706,6 +731,7 @@ func (s *sender) send(m *raftpb.Message) {
 	case q <- queued{m, time.Now()}:
 	default:
 		budget.Add(-n)
+		s.counters.sendFailures.Inc()
 		s.t.cfg.Unreachable(s.id)
 	}
 }
@@ -769,8 +795,10 @@ func (s *sender) drop() {
 		select {
 		case q := <-s.ctrl:
 			s.ctrlBytes.Add(-size(q.m))
+			s.counters.sendFailures.Inc()
 		case q := <-s.data:
 			s.dataBytes.Add(-size(q.m))
+			s.counters.sendFailures.Inc()
 		default:
 			s.t.cfg.Unreachable(s.id)
 			return
@@ -797,10 +825,13 @@ func (s *sender) run() {
 		}
 		backoff = 50 * time.Millisecond
 		s.version.Store(uint32(v))
+		s.counters.active.Inc()
 		err = s.write(ctx, c)
+		s.counters.active.Dec()
 		s.version.Store(0)
 		s.reportWaits()
 		if err != nil && ctx.Err() == nil {
+			s.counters.disconnected.Inc()
 			s.t.logf("peer: send to %d: %v", s.id, err)
 			s.drop()
 		}
@@ -913,6 +944,7 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		if _, err := w.Write(buf); err != nil {
 			return err
 		}
+		s.counters.sent.Add(float64(len(hdr) + len(buf)))
 	}
 }
 

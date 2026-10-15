@@ -29,8 +29,11 @@ type method struct {
 	// serverStream: stream is a server-streaming call, whose client sends
 	// one request.
 	serverStream bool
-	// idx is the method's place in methodPaths, for its metrics.
-	idx int
+	// idx is the method's place in methodPaths, for its metrics,
+	// reqType its requestType and labels its labels.
+	idx     int
+	reqType string
+	labels  [3]string
 	// learner says what a learner serves of the method, as etcd's
 	// isRPCSupportedForLearner: nothing by default.
 	learner learnerUse
@@ -56,9 +59,41 @@ var methodPaths = func() []string {
 	slices.Sort(paths)
 	for i, p := range paths {
 		methods[p].idx = i
+		methods[p].reqType = requestType(p)
+		methods[p].labels = labels(p, methods[p])
 	}
 	return paths
 }()
+
+// requestType is the type etcd's etcd_server_request_duration_seconds
+// gives the requests of the method at path, "" for one it does not time:
+// those that go through Raft and Range. A read-only Txn is a ReadonlyTxn.
+func requestType(path string) string {
+	service, name, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	switch service {
+	case "etcdserverpb.KV":
+		switch name {
+		case "Range", "Put", "DeleteRange", "Txn":
+			return name
+		case "Compact":
+			return "Compaction"
+		}
+	case "etcdserverpb.Lease":
+		if name == "LeaseGrant" || name == "LeaseRevoke" {
+			return name
+		}
+	case "etcdserverpb.Maintenance":
+		if name == "Alarm" {
+			return name
+		}
+	case "etcdserverpb.Auth":
+		if strings.HasPrefix(name, "User") || strings.HasPrefix(name, "Role") {
+			return "Auth" + name
+		}
+		return name
+	}
+	return ""
+}
 
 // methods are the methods that are served: etcd's and the gRPC health
 // service's. Every other method of etcd's services answers Unimplemented,

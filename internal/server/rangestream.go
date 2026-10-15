@@ -4,6 +4,7 @@ import (
 	"math"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -31,6 +32,14 @@ func (s *Server) rangeStream(st *stream) error {
 	if err := mvcc.CheckRangeStream(r); err != nil {
 		return err
 	}
+	span := st.startSpan("range_streaming",
+		attribute.String("range_begin", string(r.GetKey())),
+		attribute.String("range_end", string(r.GetRangeEnd())),
+		attribute.Int64("rev", r.GetRevision()),
+		attribute.Int64("limit", r.GetLimit()),
+		attribute.Bool("count_only", r.GetCountOnly()),
+	)
+	defer span.End()
 	if r.CountOnly {
 		resp, err := s.countRead(st, r)
 		if err != nil {

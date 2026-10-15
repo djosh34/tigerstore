@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -72,10 +73,20 @@ type stream struct {
 	// answered.
 	reqHeld, replyHeld int
 	// calls counts this call for /metrics; counted is set once its end is.
-	calls   *callMetrics
-	counted bool
-	ended   bool // the writer took the end of the stream
-	reset   bool // the stream or connection is gone; output is dropped
+	// began is when a timed call started, readonlyTxn marks a read-only
+	// Txn (metrics.go).
+	calls       *callMetrics
+	counted     bool
+	began       time.Time
+	readonlyTxn bool
+	// trace is the context of the call's server span and traceBegan its
+	// start, span the inner span of a unary call; all are nil without
+	// tracing (tracing.go).
+	trace      context.Context
+	traceBegan time.Time
+	span       trace.Span
+	ended      bool // the writer took the end of the stream
+	reset      bool // the stream or connection is gone; output is dropped
 }
 
 type outKind byte
@@ -140,6 +151,9 @@ func (st *stream) receive(d []byte) error {
 			return nil
 		}
 		st.c.metrics.received.add(int64(len(st.msg)))
+		if st.calls != nil {
+			st.calls.received.add(1)
+		}
 		msg := st.msg
 		if st.hdr[0] == 1 {
 			var err error
@@ -335,11 +349,7 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 // signals the writer.
 func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	if end {
-		code := codes.OK
-		if s != nil {
-			code = s.Code()
-		}
-		st.countEnd(code)
+		st.countEnd(s)
 	}
 	if st.reset || st.c.closed {
 		return
@@ -350,6 +360,9 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	}
 	if msg != nil {
 		st.c.metrics.sent.add(int64(len(msg) - 5))
+		if st.calls != nil {
+			st.calls.sent.add(1)
+		}
 		if !st.headersQueued {
 			hdrs := grpcHeaders
 			if st.encoding == gzipName {

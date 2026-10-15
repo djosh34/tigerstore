@@ -144,6 +144,8 @@ type Config struct {
 	// MaxVersion is the newest cluster version the node supports; 0 means
 	// MaxVersion. Tests set it lower to run an older binary.
 	MaxVersion uint32
+	// Timer, if set, times applies and ranges for the metrics.
+	Timer Timer
 }
 
 // DefaultConfig returns the timeouts of etcd with 100 ms ticks.
@@ -387,7 +389,11 @@ type Node struct {
 	// leaderChanges counts the leaders this node has seen, as etcd's
 	// etcd_server_leader_changes_seen_total does.
 	leaderChanges int64
-	leaseSeq      uint64
+	counters      Counters
+	timed         timedApply
+	// membershipAt is where Counters.membershipSnapshot last counted.
+	membershipAt uint64
+	leaseSeq     uint64
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
 	// voteTerm and vote are the newest term and vote sent to disk.
@@ -520,6 +526,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 		}
 		n.setState(state)
 		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
+		n.membershipAt = root.Index
 		n.record(root.Index, root.Term)
 		st.setConf(root.Index, state.confState())
 	}
@@ -624,6 +631,10 @@ func (n *Node) setState(st *State) {
 	if n.cfg.Record {
 		st.kv.TrackHash()
 	}
+	if n.state != nil {
+		// The new state's alarms count as a change.
+		st.alarmsGen = n.state.alarmsGen + 1
+	}
 	n.state, n.kv = st, st.Store()
 	if n.cfg.MemoryBytes > 0 {
 		n.kv.TrackWritten()
@@ -723,6 +734,9 @@ func (n *Node) Tick() {
 func (n *Node) retryReads(now bool) {
 	for _, b := range n.readBatches {
 		if b.index == 0 && (now || n.now-b.sent >= readRetryTicks) {
+			if !now {
+				n.counters.SlowReadIndexes++
+			}
 			b.sent = n.now
 			n.rn.ReadIndex(readCtx(n.cfg.Boot, b.ctx))
 		}
@@ -1060,6 +1074,11 @@ func (n *Node) expire() {
 		}
 		if p.deadline > n.now {
 			break
+		}
+		if _, write := n.waiting[p.req.ID]; write {
+			n.counters.ProposalsFailed++
+		} else {
+			n.counters.ReadIndexFailed++
 		}
 		if p.early {
 			early = true
@@ -1472,6 +1491,10 @@ func (n *Node) serveRead(p *pending) {
 		n.finish(p, err)
 		return
 	}
+	var start int64
+	if n.cfg.Timer != nil {
+		start = n.cfg.Timer.Now()
+	}
 	switch op := p.req.Op.(type) {
 	case *pb.AuthenticateRequest:
 		resp, err = n.credentials(op)
@@ -1533,6 +1556,16 @@ func (n *Node) serveRead(p *pending) {
 		n.fetch(cold.Need).read = p
 		return
 	}
+	if t := n.cfg.Timer; t != nil {
+		switch p.req.Op.(type) {
+		case *pb.RangeRequest:
+			t.Read("Range", err == nil, t.Now()-start)
+		case *pb.HashRequest:
+			t.Read("Hash", err == nil, t.Now()-start)
+		case *pb.HashKVRequest:
+			t.Read("HashKV", err == nil, t.Now()-start)
+		}
+	}
 	if err != nil && !isAnswer(err) {
 		// A value that cannot be read, or does not match its checksum,
 		// never reaches a client: the node stops.
@@ -1565,6 +1598,10 @@ func (n *Node) apply(ents []*raftpb.Entry) error {
 			return nil
 		}
 		n.applied = e.GetIndex()
+		if n.applied > n.membershipAt+membershipSnapshotEntries {
+			n.membershipAt = n.applied
+			n.counters.membershipSnapshot(n.state)
+		}
 		n.sinceCkpt += int64(len(e.GetData()))
 		if n.cfg.Record {
 			n.out.Applied = append(n.out.Applied, Applied{Index: e.GetIndex(), Term: e.GetTerm(), Type: e.GetType(), Data: e.GetData(), Hash: n.state.Hash()})
@@ -1598,78 +1635,96 @@ func (n *Node) applyEntry(e *raftpb.Entry) error {
 		if k++; k < skip {
 			return nil
 		}
-		var p *pending
-		if origin == n.cfg.ID && boot == n.cfg.Boot {
-			p = n.waiting[id]
+		t := n.cfg.Timer
+		if t == nil {
+			return n.applyWrite(e, k, origin, boot, id, kind, b, at)
 		}
-		n.values.reset()
-		kind, b, at, who, err := unwrapAuth(kind, b, at)
-		if err != nil {
-			return err
+		start := t.Now()
+		n.timed = timedApply{}
+		err := n.applyWrite(e, k, origin, boot, id, kind, b, at)
+		if err == nil && n.paused == nil {
+			t.Applied(n.timed.op, n.timed.err == nil || errors.Is(n.timed.err, rpctypes.ErrGRPCCompacted), t.Now()-start)
 		}
-		n.state.who = who
-		switch kind {
-		case kindPut:
-			return n.applyPut(b, at, p)
-		case kindAuth:
-			return n.applyAuthEntry(b, e.GetIndex(), p)
-		case kindNoSpace:
-			if p != nil {
-				n.finish(p, rpctypes.ErrGRPCNoSpace)
-			}
-			return nil
-		case kindVersion:
-			return n.applyVersion(origin, b)
-		}
-		op, err := newOp(kind)
-		if err != nil {
-			return err
-		}
-		// The op's values are slices of the entry; the index names them
-		// by where they are in it.
-		if txn, ok := op.(*pb.TxnRequest); ok {
-			err = decodeTxnPlaced(b, txn, at, &n.values.placer)
-		} else {
-			err = DecodeAlias(b, op)
-		}
-		if err != nil {
-			return fmt.Errorf("%w: %w", errBadBatch, err)
-		}
-		room := n.quotaLeft(quotaCost(op))
-		resp, err := n.applyOp(op)
-		var cold *mvcc.ColdError
-		for errors.As(err, &cold) {
-			if !n.readInline {
-				n.pause(e.GetIndex(), k, cold.Need)
-				return errPaused
-			}
-			if err := n.readNow(cold.Need); err != nil {
-				return err
-			}
-			resp, err = n.applyOp(op)
-		}
-		if n.readInline {
-			n.values.fetched = nil
-		}
-		if errors.Is(err, errInternal) {
-			return err
-		}
-		fills := n.kv.TakeFills()
-		if err == nil {
-			n.matchWatches()
-			if !room {
-				resp, err, fills = nil, n.overQuota(), nil
-			}
-		}
-		if p != nil {
-			n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
-		}
-		return nil
+		return err
 	})
 	if errors.Is(err, errPaused) {
 		return nil
 	}
 	return err
+}
+
+// applyWrite applies the k-th write of entry e.
+func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind byte, b []byte, at int) error {
+	var p *pending
+	if origin == n.cfg.ID && boot == n.cfg.Boot {
+		p = n.waiting[id]
+	}
+	n.values.reset()
+	kind, b, at, who, err := unwrapAuth(kind, b, at)
+	if err != nil {
+		return err
+	}
+	n.state.who = who
+	switch kind {
+	case kindPut:
+		return n.applyPut(b, at, p)
+	case kindAuth:
+		return n.applyAuthEntry(b, e.GetIndex(), p)
+	case kindNoSpace:
+		n.timed = timedApply{op: "NoSpace", err: rpctypes.ErrGRPCNoSpace}
+		if p != nil {
+			n.finish(p, rpctypes.ErrGRPCNoSpace)
+		}
+		return nil
+	case kindVersion:
+		n.timed.op = "VersionAnnounce"
+		return n.applyVersion(origin, b)
+	}
+	op, err := newOp(kind)
+	if err != nil {
+		return err
+	}
+	// The op's values are slices of the entry; the index names them
+	// by where they are in it.
+	if txn, ok := op.(*pb.TxnRequest); ok {
+		err = decodeTxnPlaced(b, txn, at, &n.values.placer)
+	} else {
+		err = DecodeAlias(b, op)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %w", errBadBatch, err)
+	}
+	room := n.quotaLeft(quotaCost(op))
+	resp, err := n.applyOp(op)
+	var cold *mvcc.ColdError
+	for errors.As(err, &cold) {
+		if !n.readInline {
+			n.pause(e.GetIndex(), k, cold.Need)
+			return errPaused
+		}
+		if err := n.readNow(cold.Need); err != nil {
+			return err
+		}
+		resp, err = n.applyOp(op)
+	}
+	if n.readInline {
+		n.values.fetched = nil
+	}
+	if errors.Is(err, errInternal) {
+		return err
+	}
+	fills := n.kv.TakeFills()
+	if err == nil {
+		n.matchWatches()
+		if !room {
+			resp, err, fills = nil, n.overQuota(), nil
+		}
+	}
+	n.timed = timedApply{op: opName(op), err: err}
+	if p != nil {
+		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
+	}
+	return nil
 }
 
 var errInternal = errors.New("core: internal error")
@@ -1695,6 +1750,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 			err = n.overQuota()
 		}
 	}
+	n.timed = timedApply{op: "Put", err: err}
 	if p == nil || p.done {
 		return nil
 	}
@@ -1728,11 +1784,37 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
 	}
-	if e, ok := op.(*pb.LeaseCheckpoint); ok && resp != nil {
-		n.out.Expired = append(n.out.Expired, e.ID)
+	switch op := op.(type) {
+	case *pb.LeaseGrantRequest:
+		if g, ok := resp.(*pb.LeaseGrantResponse); ok {
+			n.counters.granted(g.TTL)
+		}
+	case *pb.LeaseRevokeRequest:
+		n.counters.LeaseRevoked++
+	case *pb.LeaseKeepAliveRequest:
+		if k, ok := resp.(*pb.LeaseKeepAliveResponse); ok && n.isLeader && k.TTL > 0 {
+			n.counters.LeaseRenewed++
+		}
+	case *pb.LeaseCheckpoint:
+		if resp != nil {
+			n.out.Expired = append(n.out.Expired, op.ID)
+			n.counters.LeaseRevoked++
+			if n.isLeader {
+				n.counters.LeaseExpired++
+			}
+		}
 	}
 	if _, ok := op.(*pb.Member); ok {
 		n.membersChanged()
+	}
+	if a, ok := op.(*pb.AlarmRequest); ok {
+		if r, ok := resp.(*pb.AlarmResponse); ok && len(r.Alarms) > 0 {
+			d := int64(1)
+			if a.Action == pb.AlarmRequest_DEACTIVATE {
+				d = -1
+			}
+			n.counters.alarm(a.MemberID, a.Alarm, d)
+		}
 	}
 	if a, ok := op.(*pb.AlarmRequest); ok && a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID {
 		// The proposal raiseNoSpace waits for has applied, or the alarm

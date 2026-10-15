@@ -842,6 +842,7 @@ func (n *Node) applyAuthEntry(b []byte, index uint64, p *pending) error {
 	if err != nil && !isAnswer(err) {
 		return err
 	}
+	n.timed = timedApply{op: internalName(&r), err: err}
 	if p != nil {
 		rep := Reply{ID: p.req.ID, Resp: resp, Err: err, Rev: int64(n.state.auth.revision)}
 		n.answer(p, rep, nil)

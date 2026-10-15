@@ -4,7 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -55,8 +58,6 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnsw
 		answer = s.health
 	case "/version":
 		answer = s.version
-	case "/metrics":
-		answer = s.metricsText
 	default:
 		p, ok := checkPaths[u.Path]
 		if !ok {
@@ -67,7 +68,7 @@ func (s *Server) answerHTTP(ctx context.Context, method, target string) httpAnsw
 		}
 		return s.runChecks(ctx, p, u.Query())
 	}
-	if method != http.MethodGet && method != http.MethodHead {
+	if method != http.MethodGet {
 		return methodNotAllowed()
 	}
 	return answer(ctx, u.Query())
@@ -93,6 +94,31 @@ func (s *Server) version(context.Context, url.Values) httpAnswer {
 // health is a JSON string, not a boolean. Failures are written as
 // http.Error writes them.
 func (s *Server) health(ctx context.Context, q url.Values) httpAnswer {
+	a := s.checkHealth(ctx, q)
+	if a.code == http.StatusOK {
+		s.metrics.set.HealthSuccess.Inc()
+	} else {
+		s.metrics.set.HealthFailures.Inc()
+	}
+	return a
+}
+
+func (s *Server) checkHealth(ctx context.Context, q url.Values) httpAnswer {
+	for _, a := range s.n.Alarms() {
+		if slices.Contains(q["exclude"], a.Alarm.String()) {
+			continue
+		}
+		reason := "ALARM UNKNOWN"
+		switch a.Alarm {
+		case pb.AlarmType_NOSPACE:
+			reason = "ALARM NOSPACE"
+		case pb.AlarmType_CORRUPT:
+			reason = "ALARM CORRUPT"
+		case pb.AlarmType_NONE:
+			// Never active; etcd's answer would be ALARM UNKNOWN.
+		}
+		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"`+reason+`"}`)
+	}
 	serializable := q.Get("serializable") == "true"
 	if !serializable && s.n.Leader() == 0 {
 		return httpError(http.StatusServiceUnavailable, `{"health":"false","reason":"RAFT NO LEADER"}`)

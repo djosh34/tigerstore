@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,23 +16,25 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/server"
 )
 
-// scrapeMetrics reads node id's /metrics into a map from series to value.
-func scrapeMetrics(t *testing.T, c *cluster, id uint64, cert tls.Certificate) map[string]float64 {
+// scrapeMetrics reads node 1's /metrics into a map from series to value.
+func scrapeMetrics(t *testing.T, c *cluster, cert tls.Certificate) map[string]float64 {
 	t.Helper()
 	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
 	}, ForceAttemptHTTP2: true}}
-	resp, err := hc.Get("https://" + c.running[id].addr + "/metrics")
+	resp, err := hc.Get("https://" + c.running[1].addr + "/metrics")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // a test response
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" {
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8; escaping=underscores" {
 		t.Fatalf("/metrics: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 	out := map[string]float64{}
@@ -73,7 +77,7 @@ func TestVersionMetrics(t *testing.T) {
 	}
 	// The connections and the version announcements need a moment.
 	retry(t, func(context.Context) (map[string]float64, error) {
-		got := scrapeMetrics(t, c, 1, cert)
+		got := scrapeMetrics(t, c, cert)
 		for k, v := range want {
 			if got[k] != v {
 				return nil, fmt.Errorf("%s is %g, want %g", k, got[k], v)
@@ -86,7 +90,7 @@ func TestVersionMetrics(t *testing.T) {
 	c.running[3].stop()
 	delete(c.running, 3)
 	retry(t, func(context.Context) (map[string]float64, error) {
-		got := scrapeMetrics(t, c, 1, cert)
+		got := scrapeMetrics(t, c, cert)
 		if k := `tigerstore_peer_protocol_version{direction="in",peer="3"}`; got[k] != 0 {
 			return nil, fmt.Errorf("%s is %g with node 3 stopped", k, got[k])
 		}
@@ -109,7 +113,7 @@ func TestMetrics(t *testing.T) {
 	retry(t, func(ctx context.Context) (*pb.PutResponse, error) {
 		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
 	})
-	scrape := func() map[string]float64 { return scrapeMetrics(t, c, 1, cert) }
+	scrape := func() map[string]float64 { return scrapeMetrics(t, c, cert) }
 	const rangeOK = `grpc_server_handled_total{grpc_code="OK",grpc_method="Range",grpc_service="etcdserverpb.KV",grpc_type="unary"}`
 
 	// Bytes and handled counts follow one known call.
@@ -227,5 +231,111 @@ func TestMetrics(t *testing.T) {
 	if m["etcd_server_has_leader"] != 1 || m["etcd_server_leader_changes_seen_total"] < 1 || m["etcd_server_proposals_committed_total"] < 1 ||
 		m["etcd_server_proposals_applied_total"] < 1 || m["etcd_mvcc_delete_total"] != 0 || m["process_start_time_seconds"] <= 0 {
 		t.Fatalf("server metrics: %v", m)
+	}
+}
+
+// TestEtcdMetrics checks etcd's metrics beyond the gRPC counts: request
+// and apply times by type, client requests by API version, the core's
+// counts of leases, keys and transactions, the log's fsyncs, the gRPC
+// handling times of --metrics=extensive, /debug/vars and pprof.
+func TestEtcdMetrics(t *testing.T) {
+	c := newClusterWith(t, func(c *cluster) {
+		c.serverConfig = func(cfg *server.Config) { cfg.ExtensiveMetrics, cfg.Pprof = true, true }
+	})
+	cert, _, _, err := c.ca.Issue("client", 97)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := c.dial(1, cert)
+	kv, lease := pb.NewKVClient(conn), pb.NewLeaseClient(conn)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "client-api-version", "3.7")
+	retry(t, func(context.Context) (*pb.PutResponse, error) {
+		return kv.Put(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("1")})
+	})
+	if _, err := kv.Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kv.Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{
+		{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("b"), Value: []byte("2")}}},
+		{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: []byte("a")}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lease.LeaseGrant(ctx, &pb.LeaseGrantRequest{TTL: 60}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]func(float64) bool{
+		`etcd_server_client_requests_total{client_api_version="3.7",type="unary"}`:                               func(v float64) bool { return v >= 4 },
+		`etcd_server_request_duration_seconds_count{success="true",type="Put"}`:                                  func(v float64) bool { return v >= 1 },
+		`etcd_server_request_duration_seconds_count{success="true",type="ReadonlyTxn"}`:                          func(v float64) bool { return v == 1 },
+		`etcd_server_request_duration_seconds_count{success="true",type="Txn"}`:                                  func(v float64) bool { return v == 1 },
+		`etcd_server_request_duration_seconds_count{success="true",type="LeaseGrant"}`:                           func(v float64) bool { return v == 1 },
+		`etcd_server_apply_duration_seconds_count{op="Put",success="true",version="v3"}`:                         func(v float64) bool { return v >= 1 },
+		`etcd_server_apply_duration_seconds_count{op="LeaseGrant",success="true",version="v3"}`:                  func(v float64) bool { return v == 1 },
+		`grpc_server_handling_seconds_count{grpc_method="Put",grpc_service="etcdserverpb.KV",grpc_type="unary"}`: func(v float64) bool { return v >= 1 },
+		`grpc_server_msg_received_total{grpc_method="Txn",grpc_service="etcdserverpb.KV",grpc_type="unary"}`:     func(v float64) bool { return v == 2 },
+		`grpc_server_msg_sent_total{grpc_method="Txn",grpc_service="etcdserverpb.KV",grpc_type="unary"}`:         func(v float64) bool { return v == 2 },
+		`etcd_debugging_lease_granted_total`:                                                                     func(v float64) bool { return v == 1 },
+		`etcd_debugging_lease_ttl_total_bucket{le="64"}`:                                                         func(v float64) bool { return v == 1 },
+		`etcd_mvcc_txn_total`:                                func(v float64) bool { return v == 1 },
+		`etcd_debugging_mvcc_keys_total`:                     func(v float64) bool { return v == 2 },
+		`etcd_debugging_mvcc_total_put_size_in_bytes`:        func(v float64) bool { return v == 4 },
+		`etcd_disk_wal_fsync_duration_seconds_count`:         func(v float64) bool { return v >= 1 },
+		`etcd_disk_wal_write_bytes_total`:                    func(v float64) bool { return v > 0 },
+		`etcd_server_version{server_version="3.7.2"}`:        func(v float64) bool { return v == 1 },
+		`etcd_cluster_version{cluster_version="3.7"}`:        func(v float64) bool { return v == 1 },
+		`etcd_server_quota_backend_bytes`:                    func(v float64) bool { return v == 2<<30 },
+		`etcd_debugging_mvcc_current_revision`:               func(v float64) bool { return v == 3 },
+		`go_goroutines`:                                      func(v float64) bool { return v > 0 },
+		`process_open_fds`:                                   func(v float64) bool { return v > 0 },
+		`promhttp_metric_handler_requests_total{code="200"}`: func(v float64) bool { return v >= 0 },
+	}
+	retry(t, func(context.Context) (map[string]float64, error) {
+		got := scrapeMetrics(t, c, cert)
+		for k, ok := range want {
+			if v, found := got[k]; !found || !ok(v) {
+				return nil, fmt.Errorf("%s is %g (found %v)", k, v, found)
+			}
+		}
+		return got, nil
+	})
+
+	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
+	}, ForceAttemptHTTP2: true}}
+	get := func(path string) (int, string) {
+		resp, err := hc.Get("https://" + c.running[1].addr + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close() //nolint:errcheck // a test response
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode, string(b)
+	}
+	code, body := get("/debug/vars")
+	var vars map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &vars); code != 200 || err != nil {
+		t.Fatalf("/debug/vars: %d %v %q", code, err, body)
+	}
+	for _, k := range []string{"cmdline", "memstats", "file_descriptor_limit", "raft.status"} {
+		if _, ok := vars[k]; !ok {
+			t.Errorf("/debug/vars has no %s", k)
+		}
+	}
+	var raft struct {
+		ID    string `json:"id"`
+		State string `json:"raftState"`
+	}
+	if err := json.Unmarshal(vars["raft.status"], &raft); err != nil || raft.ID != "1" {
+		t.Errorf("raft.status %s: %v", vars["raft.status"], err)
+	}
+	if code, body := get("/debug/pprof/"); code != 200 || !strings.Contains(body, "goroutine") {
+		t.Errorf("/debug/pprof/: %d %q", code, body)
+	}
+	if code, _ := get("/debug/pprof/goroutine?debug=1"); code != 200 {
+		t.Errorf("/debug/pprof/goroutine: %d", code)
 	}
 }

@@ -306,7 +306,13 @@ func (k *keyIndex) current(r Ref) bool {
 // transactions. Ranges also count the reads etcd makes inside other
 // operations: one per compare, one per delete with prev_kv, and one per
 // put with prev_kv, ignore_value or ignore_lease, two in a transaction.
-type Counts struct{ Puts, Deletes, Ranges int64 }
+// Txns counts the requests with more than one of those, as etcd's
+// etcd_mvcc_txn_total does, PutBytes the key and value bytes of the puts
+// (etcd_debugging_mvcc_total_put_size_in_bytes) and Compacted the
+// versions compactions dropped (etcd_debugging_mvcc_db_compaction_keys_total).
+// Keys is the number of keys whose newest version is not a delete
+// (etcd_debugging_mvcc_keys_total).
+type Counts struct{ Puts, Deletes, Ranges, Txns, PutBytes, Compacted, Keys int64 }
 
 // New returns an empty store at revision 1, the revision etcd starts at,
 // that keeps its values in v.
@@ -567,6 +573,7 @@ func (s *Store) Compact(rev int64) error {
 	s.keys.Ascend(func(k *keyIndex) bool {
 		from, to := k.dropped(pending), k.dropped(rev)
 		h.key(k, from)
+		s.counts.Compacted += int64(to - from)
 		for i := from; i < to; i++ {
 			s.size -= rowBytes(k.key, &k.vers[i])
 			if s.track {

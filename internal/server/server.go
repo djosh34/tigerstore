@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 
 	"github.com/djosh34/tigerstore/internal/node"
@@ -43,6 +44,15 @@ type Config struct {
 	// CORS and HostWhitelist are etcd's --cors and --host-whitelist; nil
 	// means etcd's default, which allows all.
 	CORS, HostWhitelist map[string]struct{}
+	// ExtensiveMetrics is etcd's --metrics=extensive: the gRPC handling
+	// time histograms too.
+	ExtensiveMetrics bool
+	// Pprof is etcd's --enable-pprof: the Go profiles under
+	// /debug/pprof/.
+	Pprof bool
+	// TracerProvider, if set, traces the gRPC calls as etcd's
+	// --enable-distributed-tracing does (tracing.go).
+	TracerProvider trace.TracerProvider
 }
 
 // handshakeTimeout bounds the TLS handshake and the HTTP/2 preface.
@@ -56,10 +66,16 @@ type Server struct {
 	n   *node.Node
 	cfg Config
 	// gone sums the metrics of closed connections; guarded by mu.
-	gone *metrics
+	gone *connMetrics
+	// metrics are what the server observes (metrics.go).
+	metrics *serverMetrics
 	// gateway serves /v3/ over HTTP (gateway.go) through gwConn.
 	gateway http.Handler
-	gwConn  *grpc.ClientConn
+	// pprof serves /debug/pprof/ with Config.Pprof (debug.go).
+	pprof  http.Handler
+	gwConn *grpc.ClientConn
+	// tracing is set with Config.TracerProvider.
+	tracing *tracing
 	// cluster and member go in every response header.
 	cluster, member uint64
 	// serving is the gRPC health service's status.
@@ -92,7 +108,15 @@ func New(n *node.Node, cfg Config) (*Server, error) {
 		cfg.TLS.NextProtos = []string{"h2", "http/1.1"}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{n: n, cfg: cfg, gone: newMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	s := &Server{n: n, cfg: cfg, gone: newConnMetrics(), cluster: n.ClusterID(), member: n.ID(), ctx: ctx, cancel: cancel, conns: map[closer]struct{}{}, serving: newHealthState()}
+	if err := s.newServerMetrics(); err != nil {
+		cancel()
+		return nil, err
+	}
+	if cfg.Pprof {
+		s.pprof = pprofMux()
+	}
+	s.tracing = newTracing(cfg.TracerProvider)
 	if !cfg.NoGateway {
 		var err error
 		if s.gateway, s.gwConn, err = s.newGateway(); err != nil {

@@ -11,6 +11,7 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -74,7 +75,12 @@ func memberPromote(ctx context.Context, s *Server, caller core.Caller, b []byte)
 	}
 	resp, err := s.n.Promote(ctx, caller, &r)
 	if err != nil {
-		return nil, toStatus(err)
+		err = toStatus(err)
+		if !errors.Is(err, rpctypes.ErrGRPCNotLeader) {
+			s.metrics.set.LearnerPromoteFailures.WithLabelValues(status.Convert(err).Message()).Inc()
+		}
+		return nil, err
 	}
+	s.metrics.set.LearnerPromotes.Inc()
 	return resp, nil
 }

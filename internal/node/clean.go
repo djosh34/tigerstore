@@ -147,6 +147,18 @@ func (c *cleaner) defrag(ctx context.Context) error {
 // space it can give back is in the segments below the oldest checkpoint,
 // which a cleaning pass copies the live values out of.
 func (n *Node) Defragment(ctx context.Context) error {
+	m := n.cfg.Metrics
+	m.DefragInflight.Set(1)
+	defer m.DefragInflight.Set(0)
+	start := time.Now()
+	err := n.defragment(ctx)
+	if err == nil {
+		m.Defrag.Observe(time.Since(start).Seconds())
+	}
+	return err
+}
+
+func (n *Node) defragment(ctx context.Context) error {
 	done := make(chan error, 1)
 	select {
 	case n.defragQ <- done:

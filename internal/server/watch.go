@@ -1,11 +1,15 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"io"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -32,6 +36,7 @@ func (s *Server) watch(st *stream) error {
 				return
 			}
 			if err != nil {
+				s.streamFailed(st, "receive", "watch", err)
 				recvErr <- err
 				return
 			}
@@ -49,12 +54,15 @@ func (s *Server) watch(st *stream) error {
 		select {
 		case r := <-ws.C:
 			ws.Taken(r)
+			start := time.Now()
 			if err := sendFragments(st, r); err != nil {
 				if errors.Is(err, errAborted) {
 					return ws.Err()
 				}
+				s.streamFailed(st, "send", "watch", err)
 				return err
 			}
+			s.watchSent(r, time.Since(start))
 		case <-ws.Done():
 			return ws.Err()
 		case <-s.n.Done():
@@ -109,4 +117,29 @@ func sendFragments(st *stream, r *pb.WatchResponse) error {
 		}
 	}
 	return nil
+}
+
+// watchSent times a watch response as etcd's send loop does: one with
+// events per response and per event, a created or canceled one as a
+// control response, and an empty one as a progress notification.
+func (s *Server) watchSent(r *pb.WatchResponse, d time.Duration) {
+	m := s.metrics.set
+	switch {
+	case len(r.Events) > 0:
+		m.WatchStream.Observe(d.Seconds())
+		m.WatchStreamPerEvent.Observe(d.Seconds() / float64(len(r.Events)))
+	case r.Created || r.Canceled:
+		m.WatchControl.Observe(d.Seconds())
+	default:
+		m.WatchProgress.Observe(d.Seconds())
+	}
+}
+
+// streamFailed counts a failed send or receive of a stream, unless the
+// client ended the call, as etcd's isClientCtxErr tells.
+func (s *Server) streamFailed(st *stream, dir, api string, err error) {
+	if st.ctx.Err() != nil || status.Code(err) == codes.Canceled || errors.Is(err, context.Canceled) {
+		return
+	}
+	s.metrics.set.StreamFailures.WithLabelValues(dir, api).Inc()
 }

@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
+
+	"github.com/djosh34/tigerstore/internal/metrics"
 )
 
 // featureGates are etcd v3.7.2's server feature gates
@@ -63,12 +66,22 @@ func (g featureGates) Set(value string) error {
 			g[name] = all
 		}
 	}
-	for k, b := range set {
-		if k != "AllAlpha" && k != "AllBeta" {
-			g[k] = b
-		}
-	}
+	maps.Copy(g, set)
 	return nil
+}
+
+// metrics are the gates for etcd_server_feature_enabled, AllAlpha and
+// AllBeta included, which are on only if set so.
+func (g featureGates) metrics() []metrics.Feature {
+	fs := []metrics.Feature{{Name: "AllAlpha", Stage: "ALPHA", On: g["AllAlpha"]}, {Name: "AllBeta", Stage: "BETA", On: g["AllBeta"]}}
+	for name, spec := range gateSpecs {
+		stage := "BETA"
+		if spec.alpha {
+			stage = "ALPHA"
+		}
+		fs = append(fs, metrics.Feature{Name: name, Stage: stage, On: g[name]})
+	}
+	return fs
 }
 
 func (g featureGates) String() string {

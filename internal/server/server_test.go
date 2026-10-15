@@ -54,8 +54,10 @@ type cluster struct {
 	// wrap the transport each node runs with.
 	nodeConfig func(*node.Config)
 	wrap       func(id uint64, t peer.Transport) peer.Transport
-	// jwt, if set, makes the auth tokens.
-	jwt *server.JWT
+	// jwt, if set, makes the auth tokens, and serverConfig, if set,
+	// changes the servers' configuration.
+	jwt          *server.JWT
+	serverConfig func(*server.Config)
 	// nodes and transports are the running nodes and their transports by
 	// ID.
 	nodes      map[uint64]*node.Node
@@ -200,7 +202,7 @@ func (c *cluster) start(id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := server.New(n, server.Config{
+	scfg := server.Config{
 		TLS: &tls.Config{
 			Certificates: []tls.Certificate{cert}, ClientCAs: c.ca.Pool,
 			ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12,
@@ -209,7 +211,11 @@ func (c *cluster) start(id uint64) {
 		// bcrypt's default cost takes seconds of CPU under the race
 		// detector, which starves the nodes.
 		BcryptCost: bcrypt.MinCost,
-	})
+	}
+	if c.serverConfig != nil {
+		c.serverConfig(&scfg)
+	}
+	g, err := server.New(n, scfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +502,8 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 	if code, body := get("/health"); code != 200 || body != `{"health":"true","reason":""}` {
 		t.Fatalf("/health = %d %q", code, body)
 	}
-	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
+	// etcd's /version answers GET only.
+	if resp, err := hc.Head("https://" + c.running[1].addr + "/version"); err != nil || resp.StatusCode != http.StatusMethodNotAllowed || resp.ProtoMajor != 2 {
 		t.Fatalf("HEAD /version over HTTP/2: %v %v", resp, err)
 	} else if err := resp.Body.Close(); err != nil {
 		t.Fatal(err)

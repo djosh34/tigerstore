@@ -30,6 +30,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	"github.com/djosh34/tigerstore/internal/peer"
@@ -73,6 +74,9 @@ type Config struct {
 	// Tests use it to stall those reads.
 	BeforeRead func()
 	Logf       func(format string, args ...any)
+	// Metrics are the metrics the node observes into; nil gives the node
+	// a set of its own.
+	Metrics *metrics.Set
 }
 
 // input is one event for the committer from a client, a peer or a helper
@@ -332,6 +336,10 @@ type Node struct {
 	// authEnabled whether auth was on.
 	etcdVersion atomic.Pointer[string]
 	authEnabled atomic.Bool
+	// alarms are the active alarms the committer saw last, alarmsGen
+	// their core's change count.
+	alarms    atomic.Pointer[[]*pb.AlarmMember]
+	alarmsGen uint64
 	// transport is the peer.Transport Run got, for calls to peers.
 	transport atomic.Value
 }
@@ -470,6 +478,11 @@ func New(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Metrics == nil {
+		if cfg.Metrics, err = metrics.New(nil); err != nil {
+			return nil, err
+		}
+	}
 	n := &Node{
 		cfg:   cfg,
 		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead},
@@ -502,6 +515,7 @@ func (n *Node) open() error {
 	}
 	cfg := n.cfg.Core
 	cfg.Boot = rand.Uint64()
+	cfg.Timer = newTimer(n.cfg.Metrics)
 	c, err := core.New(cfg, rec, n.log)
 	if err != nil {
 		return err
@@ -523,8 +537,24 @@ func (n *Node) open() error {
 	v := c.EtcdVersion()
 	n.etcdVersion.Store(&v)
 	n.authEnabled.Store(c.AuthEnabled())
+	n.alarmsGen = 0
+	as, _ := c.Alarms()
+	as = slices.Clone(as)
+	n.alarms.Store(&as)
 	return nil
 }
+
+// loadAlarms copies the core's alarms if they changed.
+func (n *Node) loadAlarms() {
+	if as, gen := n.core.Alarms(); gen != n.alarmsGen {
+		n.alarmsGen = gen
+		as = slices.Clone(as)
+		n.alarms.Store(&as)
+	}
+}
+
+// Alarms are the active alarms, as this node applied them last.
+func (n *Node) Alarms() []*pb.AlarmMember { return *n.alarms.Load() }
 
 func (n *Node) logf(format string, args ...any) {
 	if n.cfg.Logf != nil {
@@ -868,6 +898,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.etcdVersion.Store(&v)
 		}
 		n.authEnabled.Store(n.core.AuthEnabled())
+		n.loadAlarms()
 		if err != nil {
 			return err
 		}
@@ -1038,8 +1069,18 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		if done.err == nil {
-			n.log.used.Add(w.Buffered())
-			err := w.Sync()
+			buffered := w.Buffered()
+			n.log.used.Add(buffered)
+			m := n.cfg.Metrics
+			wrote := time.Now()
+			err := w.Flush()
+			synced := time.Now()
+			m.WALWrite.Observe(synced.Sub(wrote).Seconds())
+			m.WALWriteBytes.Add(float64(buffered))
+			if err == nil {
+				err = w.Sync()
+				m.WALFsync.Observe(time.Since(synced).Seconds())
+			}
 			n.log.mu.Lock()
 			err = errors.Join(err, n.log.synced())
 			n.log.mu.Unlock()
@@ -1090,6 +1131,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 // errReload: the core cannot drop the snapshot, a core started from the
 // log can.
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
+	m, from := n.cfg.Metrics, peerLabel(in.From)
+	m.SnapshotApplyInProgress.Set(1)
+	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
+	start := time.Now()
 	sink := &logSink{n: n}
 	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
 	if err == nil {
@@ -1097,6 +1142,16 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 		err = errors.Join(err, r.Close())
 	}
 	err = errors.Join(err, sink.close())
+	m.SnapshotApplyInProgress.Set(0)
+	m.SnapshotReceiveInflights.WithLabelValues(from).Dec()
+	if err == nil {
+		d := time.Since(start).Seconds()
+		m.SnapDBSave.Observe(d)
+		m.SnapshotReceiveSeconds.WithLabelValues(from).Observe(d)
+		m.SnapshotReceive.WithLabelValues(from).Inc()
+	} else {
+		m.SnapshotReceiveFailures.WithLabelValues(from).Inc()
+	}
 	switch {
 	case err == nil:
 		n.logf("installed the snapshot at %d from %d, checkpoint %d", in.Index, in.From, in.Checkpoint.Index)
@@ -1136,7 +1191,15 @@ func (s *logSink) wrote(n int) error {
 		return nil
 	}
 	s.pending = 0
-	return s.disk(s.n.log.w.Sync())
+	return s.disk(s.sync())
+}
+
+// sync syncs the log and times it as an fsync of the snapshot.
+func (s *logSink) sync() error {
+	start := time.Now()
+	err := s.n.log.w.Sync()
+	s.n.cfg.Metrics.SnapDBFsync.Observe(time.Since(start).Seconds())
+	return err
 }
 
 func (s *logSink) Entries(ents []*raftpb.Entry) error {
@@ -1219,6 +1282,8 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
+		m := n.cfg.Metrics
+		start := time.Now()
 		f, err := n.log.w.CreateCheckpoint(c.Index)
 		unsynced := 0
 		for err == nil {
@@ -1230,7 +1295,7 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 			// Synced a little at a time, so that one large flush does not
 			// hold up the log's fsyncs on the same disk.
 			if unsynced += len(c.Data); unsynced >= checkpointSyncBytes {
-				if err = f.Sync(); err != nil {
+				if err = syncTimed(f, m.SnapFsync); err != nil {
 					break
 				}
 				unsynced = 0
@@ -1247,12 +1312,15 @@ func (n *Node) writeCheckpoints(ctx context.Context) {
 		}
 		if f != nil {
 			if err == nil {
-				err = f.Sync()
+				err = syncTimed(f, m.SnapFsync)
 			}
 			err = errors.Join(err, f.Close())
 		}
 		if err == nil {
 			err = n.log.w.SyncDir()
+		}
+		if err == nil {
+			m.SnapSave.Observe(time.Since(start).Seconds())
 		}
 		if ctx.Err() != nil {
 			return
@@ -1275,7 +1343,17 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.serving++
 	ckpts := slices.Clone(n.log.ckpts)
 	n.log.mu.Unlock()
+	m, to := n.cfg.Metrics, peerLabel(id)
+	m.SnapshotSendInflights.WithLabelValues(to).Inc()
+	start := time.Now()
 	err := core.ServeSnapshot(n.log, ckpts, first, last, w)
+	m.SnapshotSendInflights.WithLabelValues(to).Dec()
+	if err == nil {
+		m.SnapshotSend.WithLabelValues(to).Inc()
+		m.SnapshotSendSeconds.WithLabelValues(to).Observe(time.Since(start).Seconds())
+	} else {
+		m.SnapshotSendFailures.WithLabelValues(to).Inc()
+	}
 	n.log.mu.Lock()
 	n.log.serving--
 	n.log.mu.Unlock()

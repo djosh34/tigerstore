@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/sha256"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -22,6 +23,7 @@ func (s *Server) snapshot(st *stream) error {
 	if err := s.n.Authorize(st.ctx, st.c.callerOf(st), &r); err != nil {
 		return toStatus(err)
 	}
+	start := time.Now()
 	w := &snapshotWriter{st: st, version: s.n.EtcdVersion()}
 	_, sum, err := s.n.Snapshot(st.ctx, w, func(size int64) error {
 		// RemainingBytes counts the file without its digest.
@@ -34,7 +36,11 @@ func (s *Server) snapshot(st *stream) error {
 	if err != nil {
 		return toStatus(err)
 	}
-	return st.Send(&pb.SnapshotResponse{Blob: sum, Version: w.version})
+	if err := st.Send(&pb.SnapshotResponse{Blob: sum, Version: w.version}); err != nil {
+		return err
+	}
+	s.metrics.set.BackendSnapshot.Observe(time.Since(start).Seconds())
+	return nil
 }
 
 // snapshotWriter sends what is written to it in messages of

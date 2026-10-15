@@ -121,11 +121,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if s.gateway != nil && strings.HasPrefix(r.URL.Path, "/v3/") {
+	switch {
+	case s.gateway != nil && strings.HasPrefix(r.URL.Path, "/v3/"):
 		s.gateway.ServeHTTP(w, r)
 		return
+	case r.URL.Path == "/metrics":
+		s.serveMetrics(w, r)
+		return
+	case r.URL.Path == "/debug/vars":
+		s.serveVars(w, r)
+		return
+	case s.pprof != nil && isPprof(r.URL.Path):
+		s.pprof.ServeHTTP(w, r)
+		return
 	}
-	a := s.answerHTTP(r.Context(), r.Method, r.URL.RequestURI())
+	writeAnswer(w, r, s.answerHTTP(r.Context(), r.Method, r.URL.RequestURI()))
+}
+
+// MetricsHandler serves what etcd serves on --listen-metrics-urls:
+// /metrics, /health, /livez and /readyz, without CORS headers.
+func (s *Server) MetricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, check := checkPaths[r.URL.Path]
+		switch {
+		case r.URL.Path == "/metrics":
+			s.serveMetrics(w, r)
+		case r.URL.Path == "/health" || check:
+			writeAnswer(w, r, s.answerHTTP(r.Context(), r.Method, r.URL.RequestURI()))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// writeAnswer writes an answer of answerHTTP.
+func writeAnswer(w http.ResponseWriter, r *http.Request, a httpAnswer) {
 	h := w.Header()
 	h.Set("Content-Type", a.contentType)
 	h.Set("Content-Length", strconv.Itoa(len(a.body)))

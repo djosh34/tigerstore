@@ -112,7 +112,7 @@ func (n *Node) install(in *Install) error {
 	if (n.applied != in.Index || term != in.Term) && !planted.On("B23") {
 		return fmt.Errorf("core: the snapshot at %d term %d left the state at %d term %d", in.Index, in.Term, n.applied, term)
 	}
-	n.applied = in.Index
+	n.applied, n.membershipAt = in.Index, in.Index
 	return nil
 }
 

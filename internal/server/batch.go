@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.opentelemetry.io/otel/attribute"
 
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -82,6 +83,9 @@ func (c *conn) admit(st *stream) {
 				st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
 				return
 			}
+			if t, ok := req.Op.(*pb.TxnRequest); ok {
+				st.readonlyTxn = readonlyTxn(t)
+			}
 		default:
 			if err := unmarshal(st.body, req.Op); err != nil {
 				st.finish(err)
@@ -89,6 +93,7 @@ func (c *conn) admit(st *stream) {
 			}
 		}
 	}
+	c.startOpSpan(st, &req)
 	st.reqSize = len(st.body)
 	st.body = nil
 	c.batch.reqs = append(c.batch.reqs, req)
@@ -284,6 +289,8 @@ type finished struct {
 	st  *stream
 	msg []byte
 	err error
+	// granted is the ID of a lease the node granted, for its span.
+	granted int64
 }
 
 // complete encodes the replies the node handed over and queues them on
@@ -299,6 +306,9 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	for _, cs := range batches {
 		for _, cp := range cs {
 			f := finished{st: cp.Tag.(*stream), err: cp.Err}
+			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
+				f.granted = g.ID
+			}
 			switch {
 			case f.err != nil:
 			case f.st.rpc.wirePut:
@@ -328,6 +338,9 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			continue
 		}
 		c.chargeLocked(&f.st.replyHeld, len(f.msg))
+		if f.st.span != nil && f.granted != 0 {
+			f.st.span.SetAttributes(attribute.Int64("id", f.granted))
+		}
 		var s *status.Status
 		if f.err != nil {
 			s = status.Convert(toStatus(f.err))
@@ -497,4 +510,17 @@ func appendKV(b []byte, kv *mvcc.KV) []byte {
 		b = protowire.AppendVarint(b, uint64(kv.Lease))
 	}
 	return b
+}
+
+// readonlyTxn is etcd's IsTxnReadonly: a transaction whose branches only
+// range. One with a nested transaction is not.
+func readonlyTxn(r *pb.TxnRequest) bool {
+	for _, ops := range [][]*pb.RequestOp{r.Success, r.Failure} {
+		for _, op := range ops {
+			if op.GetRequestRange() == nil {
+				return false
+			}
+		}
+	}
+	return true
 }

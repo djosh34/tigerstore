@@ -95,6 +95,7 @@ func (n *Node) watchHeader() *pb.ResponseHeader {
 // are done and every response before it went out.
 func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRead) {
 	r.Header = n.watchHeader()
+	n.counters.Events += int64(len(r.Events))
 	resp := WatchResponse{Stream: s.id, Resp: r}
 	waits = slices.DeleteFunc(waits, func(v *ValueRead) bool { return v.done })
 	if len(s.held) == 0 && len(waits) == 0 {

@@ -5,6 +5,7 @@ import (
 	"io"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // keepAlive serves Lease.LeaseKeepAlive: it renews leases one request at
@@ -17,13 +18,17 @@ func (s *Server) keepAlive(st *stream) error {
 			return nil
 		}
 		if err != nil {
+			s.streamFailed(st, "receive", "lease-keepalive", err)
 			return err
 		}
+		span := st.startSpan("lease_renew", attribute.Int64("id", r.ID))
 		resp, err := s.n.DoAs(st.ctx, st.c.callerOf(st), r)
+		span.End()
 		if err != nil {
 			return toStatus(err)
 		}
 		if err := st.Send(resp); err != nil {
+			s.streamFailed(st, "send", "lease-keepalive", err)
 			return err
 		}
 	}

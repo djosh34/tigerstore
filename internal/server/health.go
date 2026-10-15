@@ -106,19 +106,22 @@ var (
 	}
 )
 
-// checkPath is what one path of /readyz or /livez runs.
+// checkPath is what one path of /readyz or /livez runs, and its kind,
+// livez or readyz, for etcd_server_healthcheck.
 type checkPath struct {
 	checks []namedCheck
 	root   bool // only the root path takes ?exclude
+	kind   string
 }
 
 // checkPaths are the paths of /readyz and /livez.
 var checkPaths = func() map[string]checkPath {
 	paths := map[string]checkPath{}
 	for root, checks := range map[string][]namedCheck{"/livez": livezChecks, "/readyz": readyzChecks} {
-		paths[root] = checkPath{checks: checks, root: true}
+		kind := strings.TrimPrefix(root, "/")
+		paths[root] = checkPath{checks: checks, root: true, kind: kind}
 		for _, c := range checks {
-			paths[root+"/"+c.name] = checkPath{checks: []namedCheck{c}}
+			paths[root+"/"+c.name] = checkPath{checks: []namedCheck{c}, kind: kind}
 		}
 	}
 	return paths
@@ -133,12 +136,16 @@ func (s *Server) runChecks(ctx context.Context, p checkPath, q url.Values) httpA
 		if p.root && slices.Contains(q["exclude"], c.name) {
 			continue
 		}
+		set, status := s.metrics.set, "success"
 		if err := c.check(s, ctx); err != nil {
-			failed = true
+			failed, status = true, "error"
 			fmt.Fprintf(&lines, "[-]%s failed: %v\n", c.name, err)
+			set.HealthCheck.WithLabelValues(p.kind, c.name).Set(0)
 		} else {
 			fmt.Fprintf(&lines, "[+]%s ok\n", c.name)
+			set.HealthCheck.WithLabelValues(p.kind, c.name).Set(1)
 		}
+		set.HealthChecks.WithLabelValues(p.kind, c.name, status).Inc()
 	}
 	if failed {
 		return httpError(http.StatusServiceUnavailable, lines.String())
@@ -150,12 +157,23 @@ func (s *Server) runChecks(ctx context.Context, p checkPath, q url.Values) httpA
 	return httpAnswer{code: http.StatusOK, contentType: textPlain, body: body, nosniff: true}
 }
 
-// noCorruptAlarm passes while no CORRUPT alarm is active. Tigerstore
-// raises no alarms (see alarm).
-func noCorruptAlarm(*Server, context.Context) error { return nil }
+// noCorruptAlarm passes while no CORRUPT alarm is active.
+func noCorruptAlarm(s *Server, _ context.Context) error {
+	for _, a := range s.n.Alarms() {
+		if a.Alarm == pb.AlarmType_CORRUPT {
+			return fmt.Errorf("alarm activated: %s", a.Alarm)
+		}
+	}
+	return nil
+}
 
-// nonLearner passes on a voting member. Tigerstore has no learners.
-func nonLearner(*Server, context.Context) error { return nil }
+// nonLearner passes on a voting member.
+func nonLearner(s *Server, _ context.Context) error {
+	if s.n.Learner() {
+		return errors.New("not supported for learner")
+	}
+	return nil
+}
 
 func serializableRead(s *Server, ctx context.Context) error { return s.healthRead(ctx, true) }
 

@@ -2,8 +2,10 @@ package core
 
 import (
 	"cmp"
+	"slices"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/raft/v3"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
@@ -71,12 +73,36 @@ type Metrics struct {
 	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
 	// ClusterVersion is the cluster version the node has applied.
 	ClusterVersion uint32
+
+	Counters
+	// ID is this node's member ID, Members those of every member.
+	ID      uint64
+	Members []uint64
+	// IsLeader and IsLearner say what this node is.
+	IsLeader, IsLearner bool
+	// EtcdVersion is the etcd cluster version, such as 3.7.0.
+	EtcdVersion string
+	// Rev and CompactRev are the store's revision and its compacted
+	// revision, AuthRevision the auth store's.
+	Rev, CompactRev int64
+	AuthRevision    uint64
+	// DbSize, DbSizeInUse and QuotaBytes are Maintenance.Status's.
+	DbSize, DbSizeInUse, QuotaBytes int64
+	// ProposalsPending are the writes waiting for their entry to apply.
+	ProposalsPending int64
+	// Watchers and WatchStreams are the live watchers and their streams.
+	// HeldWatchers are the watchers of streams whose responses wait for
+	// values from the log, and HeldEvents the events of those responses:
+	// tigerstore's slow watchers and pending events.
+	Watchers, WatchStreams, HeldWatchers, HeldEvents int64
+	// Raft is Raft's status, for etcd's raft.status in /debug/vars.
+	Raft raft.Status
 }
 
 // Metrics returns the node's metrics.
 func (n *Node) Metrics() Metrics {
 	st := n.rn.BasicStatus()
-	return Metrics{
+	m := Metrics{
 		HasLeader:     st.Lead != 0,
 		LeaderChanges: n.leaderChanges,
 		Committed:     st.GetCommit(),
@@ -90,5 +116,47 @@ func (n *Node) Metrics() Metrics {
 		CacheMisses:   n.cache.misses,
 
 		ClusterVersion: n.state.version,
+
+		Counters:         n.counters,
+		ID:               n.cfg.ID,
+		Members:          n.memberIDs(),
+		IsLeader:         n.isLeader,
+		IsLearner:        n.IsLearner(),
+		EtcdVersion:      n.state.etcdVersion,
+		Rev:              n.kv.Rev(),
+		CompactRev:       n.kv.CompactRev(),
+		AuthRevision:     n.state.auth.revision,
+		DbSize:           max(n.logBytes, 1),
+		DbSizeInUse:      n.kv.Size(),
+		QuotaBytes:       cmp.Or(n.cfg.QuotaBytes, QuotaBytes),
+		ProposalsPending: int64(len(n.waiting)),
+		Raft:             n.rn.Status(),
 	}
+	m.AlarmGauges = slices.Clone(m.AlarmGauges)
+	for _, s := range n.streams {
+		m.WatchStreams++
+		for _, w := range s.byID {
+			if w.dead {
+				continue
+			}
+			m.Watchers++
+			if len(s.held) > 0 {
+				m.HeldWatchers++
+			}
+		}
+		for _, h := range s.held {
+			m.HeldEvents += int64(len(h.resp.Resp.Events))
+		}
+	}
+	return m
+}
+
+// memberIDs are the members' IDs, in order.
+func (n *Node) memberIDs() []uint64 {
+	ids := make([]uint64, 0, len(n.state.members))
+	for id := range n.state.members {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }

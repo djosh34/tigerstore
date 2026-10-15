@@ -84,6 +84,7 @@ func compareAlarm(a *pb.AlarmMember, r *pb.AlarmRequest) int {
 
 // alarmsChanged sets noSpace and corrupt from the alarms.
 func (st *State) alarmsChanged() {
+	st.alarmsGen++
 	st.noSpace, st.corrupt = false, false
 	for _, a := range st.alarms {
 		st.noSpace = st.noSpace || a.Alarm == pb.AlarmType_NOSPACE
@@ -134,3 +135,8 @@ func txnPuts(t *pb.TxnRequest) bool {
 	}
 	return false
 }
+
+// Alarms returns the active alarms and a count of their changes, which
+// tells a caller whether they changed since it last asked. The slice is
+// the node's own: the caller copies it before the node goes on.
+func (n *Node) Alarms() ([]*pb.AlarmMember, uint64) { return n.state.alarms, n.state.alarmsGen }

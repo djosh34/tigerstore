@@ -431,7 +431,10 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 		}
 		v.create = prev.create
 		v.ver = prev.ver + 1
-	} else if planted.On("B09b") && k != nil && len(k.vers) >= 2 && k.vers[len(k.vers)-2].ver != 0 {
+	} else {
+		w.s.counts.Keys++
+	}
+	if prev == nil && planted.On("B09b") && k != nil && len(k.vers) >= 2 && k.vers[len(k.vers)-2].ver != 0 {
 		old := k.vers[len(k.vers)-2]
 		v.create, v.ver = old.create, old.ver+1
 	}
@@ -442,6 +445,7 @@ func (w *writer) put(p *PutOp) (*mvccpb.KeyValue, error) {
 		w.s.keyBytes += int64(len(k.key))
 	}
 	w.add(k, v)
+	w.s.counts.PutBytes += int64(len(p.Key)) + int64(v.value.Len)
 	if w.s.trackWritten && v.value.Len > 0 && (!p.IgnoreValue || prev == nil) {
 		w.s.written = append(w.s.written, written{k: k, ref: v.value})
 	}
@@ -499,6 +503,7 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 	for _, k := range del {
 		w.add(k, version{})
 	}
+	w.s.counts.Keys -= int64(len(del))
 	resp.Deleted = int64(len(del))
 	resp.Header = header(w.cur())
 	return resp, nil
@@ -509,6 +514,12 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	w := s.start()
+	ops := s.counts.Puts + s.counts.Deletes + s.counts.Ranges
+	defer func() {
+		if s.counts.Puts+s.counts.Deletes+s.counts.Ranges-ops > 1 {
+			s.counts.Txns++
+		}
+	}()
 	path, err := w.compareToPath(r)
 	if err != nil {
 		return nil, err

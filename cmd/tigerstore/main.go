@@ -11,19 +11,23 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/metrics"
 	"github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/peer"
 	"github.com/djosh34/tigerstore/internal/server"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 type flags struct {
@@ -50,6 +54,13 @@ type flags struct {
 	compaction                                time.Duration
 	jwt                                       *server.JWT
 	bcryptCost, authTokenTTL                  uint
+	metrics                                   string
+	pprof                                     bool
+	metricsURLs                               []*url.URL
+	// tracing and the rest are etcd's distributed tracing flags.
+	tracing                                         bool
+	tracingAddress, tracingService, tracingInstance string
+	tracingRate                                     int
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -119,6 +130,18 @@ func parse(args []string) (*flags, error) {
 	fs.DurationVar(&f.corruptCheck, "corrupt-check-time", 0, "interval of the leader's corruption checks of every member; 0 turns them off")
 	fs.DurationVar(&f.compactHashCheck, "compact-hash-check-time", time.Minute, "interval of the leader's checks of the hashes compactions took, with the CompactHashCheck feature gate")
 	fs.BoolVar(&f.gateway, "enable-grpc-gateway", true, "Enable GRPC gateway.")
+	fs.StringVar(&f.metrics, "metrics", "basic", "Set level of detail for exported metrics, specify 'extensive' to include server side grpc histogram metrics")
+	fs.BoolVar(&f.pprof, "enable-pprof", false, "Enable runtime profiling data via HTTP server. Address is at client URL + \"/debug/pprof/\"")
+	fs.Func("listen-metrics-urls", "List of URLs to listen on for the metrics and health endpoints.", func(s string) error {
+		urls, err := uniqueURLs(s)
+		f.metricsURLs = urls
+		return err
+	})
+	fs.BoolVar(&f.tracing, "enable-distributed-tracing", false, "Enable distributed tracing using OpenTelemetry Tracing.")
+	fs.StringVar(&f.tracingAddress, "distributed-tracing-address", "localhost:4317", "Address for distributed tracing used for OpenTelemetry Tracing (if enabled with enable-distributed-tracing flag).")
+	fs.StringVar(&f.tracingService, "distributed-tracing-service-name", "etcd", "Configures service name for distributed tracing to be used to define service name for OpenTelemetry Tracing (if enabled with enable-distributed-tracing flag). 'etcd' is the default service name. Use the same service name for all instances of etcd.")
+	fs.StringVar(&f.tracingInstance, "distributed-tracing-instance-id", "", "Configures service instance ID for distributed tracing to be used to define service instance ID key for OpenTelemetry Tracing (if enabled with enable-distributed-tracing flag). There is no default value set. This ID must be unique per etcd instance.")
+	fs.IntVar(&f.tracingRate, "distributed-tracing-sampling-rate", 0, "Number of samples to collect per million spans for OpenTelemetry Tracing (if enabled with enable-distributed-tracing flag).")
 	f.cors, f.hostWhitelist = map[string]struct{}{"*": {}}, map[string]struct{}{"*": {}}
 	fs.Func("cors", "Comma-separated white list of origins for CORS, or cross-origin resource sharing, (empty or * means allow all)", func(s string) error {
 		f.cors = uniqueStrings(s)
@@ -159,6 +182,11 @@ func parse(args []string) (*flags, error) {
 	}
 	if f.compactHashCheck <= 0 {
 		return nil, fmt.Errorf("--compact-hash-check-time must be >0 (set to %v)", f.compactHashCheck)
+	}
+	if f.tracing {
+		if err := validateTracing(f.tracingRate); err != nil {
+			return nil, err
+		}
 	}
 	if f.name == "" || f.initialCluster == "" {
 		return nil, errors.New("--name and --initial-cluster are required")
@@ -286,6 +314,17 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
+	var tp *sdktrace.TracerProvider
+	if f.tracing {
+		if tp, err = newTracerProvider(context.Background(), f); err != nil {
+			return err
+		}
+		defer func() {
+			if err := tp.Shutdown(context.Background()); err != nil {
+				logger.Printf("stop distributed tracing: %v", err)
+			}
+		}()
+	}
 
 	pcfg := peer.Config{
 		Listen: listenPeer.Host, Certificate: peerCert, CA: peerCA,
@@ -333,6 +372,10 @@ func run(args []string, logger *log.Logger) error {
 	if f.features["CompactHashCheck"] {
 		ncfg.CompactHashCheckTime = f.compactHashCheck
 	}
+	if ncfg.Metrics, err = metrics.New(f.features.metrics()); err != nil {
+		return err
+	}
+	pcfg.Metrics = ncfg.Metrics
 	n, err := node.New(ncfg)
 	if err != nil {
 		return err
@@ -349,6 +392,8 @@ func run(args []string, logger *log.Logger) error {
 		ClusterID: ccfg.ClusterID, TLS: ctls, PeerVersions: t.Versions, BcryptCost: int(f.bcryptCost), JWT: f.jwt,
 		StopServiceOnDefrag: f.features["StopGRPCServiceOnDefrag"],
 		NoGateway:           !f.gateway, CORS: f.cors, HostWhitelist: f.hostWhitelist,
+		ExtensiveMetrics: f.metrics == "extensive", Pprof: f.pprof,
+		TracerProvider: tracerProvider(tp),
 	})
 	if err != nil {
 		return errors.Join(err, t.Close())
@@ -357,6 +402,17 @@ func run(args []string, logger *log.Logger) error {
 	if err != nil {
 		return errors.Join(err, t.Close())
 	}
+	msrvs, err := serveMetricsURLs(f, g.MetricsHandler(), logger)
+	if err != nil {
+		return errors.Join(err, ln.Close(), t.Close())
+	}
+	defer func() {
+		for _, srv := range msrvs {
+			if err := srv.Close(); err != nil {
+				logger.Printf("close the metrics listener %s: %v", srv.Addr, err)
+			}
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -386,6 +442,81 @@ func run(args []string, logger *log.Logger) error {
 	runErr := <-ran
 	stopErr := g.Stop()
 	return errors.Join(runErr, stopErr, <-served, t.Close())
+}
+
+// uniqueURLs is etcd's UniqueURLsValue: the comma-separated URLs, each
+// once, sorted.
+func uniqueURLs(s string) ([]*url.URL, error) {
+	seen := map[string]bool{}
+	var urls []*url.URL
+	for v := range strings.SplitSeq(s, ",") {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		u, err := url.Parse(v)
+		if err != nil {
+			return nil, err
+		}
+		if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "unix" && u.Scheme != "unixs" {
+			return nil, fmt.Errorf("URL scheme must be http, https, unix, or unixs: %s", v)
+		}
+		if _, _, err := net.SplitHostPort(u.Host); err != nil {
+			return nil, fmt.Errorf(`URL address does not have the form "host:port": %s`, v)
+		}
+		if u.Path != "" {
+			return nil, fmt.Errorf("URL must not contain a path: %s", v)
+		}
+		urls = append(urls, u)
+	}
+	slices.SortFunc(urls, func(a, b *url.URL) int { return strings.Compare(a.String(), b.String()) })
+	return urls, nil
+}
+
+// serveMetricsURLs serves the metrics and health endpoints on each
+// --listen-metrics-urls URL, as etcd does: over TLS with the client
+// certificate for https.
+func serveMetricsURLs(f *flags, h http.Handler, logger *log.Logger) ([]*http.Server, error) {
+	var srvs []*http.Server
+	closeAll := func(err error) ([]*http.Server, error) {
+		for _, srv := range srvs {
+			err = errors.Join(err, srv.Close())
+		}
+		return nil, err
+	}
+	for _, u := range f.metricsURLs {
+		var cfg *tls.Config
+		switch u.Scheme {
+		case "http":
+		case "https":
+			if f.certFile == "" || f.keyFile == "" {
+				return closeAll(errors.New("client TLS key/cert (--cert-file, --key-file) must be provided for metrics secure url"))
+			}
+			var err error
+			if cfg, err = clientTLS(f, u); err != nil {
+				return closeAll(err)
+			}
+			cfg.NextProtos = []string{"h2", "http/1.1"}
+		default:
+			return closeAll(fmt.Errorf("metrics URL %s must be http or https", u))
+		}
+		ln, err := net.Listen("tcp", u.Host)
+		if err != nil {
+			return closeAll(err)
+		}
+		if cfg != nil {
+			ln = tls.NewListener(ln, cfg)
+		}
+		srv := &http.Server{Addr: u.Host, Handler: h, ReadHeaderTimeout: time.Minute}
+		srvs = append(srvs, srv)
+		go func() {
+			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Printf("serve metrics on %s: %v", u, err)
+			}
+		}()
+		logger.Printf("serving metrics on %s", u)
+	}
+	return srvs, nil
 }
 
 // uniqueStrings is etcd's UniqueStringsValue: the comma-separated values,

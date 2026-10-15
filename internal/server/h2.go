@@ -13,11 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/core"
@@ -54,12 +56,16 @@ const (
 type conn struct {
 	s *Server
 	// metrics count this connection's calls for /metrics.
-	metrics *metrics
-	nc      net.Conn
-	raw     net.Conn // nc without TLS, closed to abort a stuck write
-	fr      *http2.Framer
-	br      *bufio.Reader
-	bw      *bufio.Writer
+	metrics *connMetrics
+	// apiVersion is the client API version of the last call, and
+	// apiCounters its client_requests_total counters; guarded by mu.
+	apiVersion  string
+	apiCounters [2]prometheus.Counter
+	nc          net.Conn
+	raw         net.Conn // nc without TLS, closed to abort a stuck write
+	fr          *http2.Framer
+	br          *bufio.Reader
+	bw          *bufio.Writer
 	// caller sizes this client's writes as etcd would.
 	caller core.Caller
 	// cluster and member go in every response header.
@@ -139,7 +145,7 @@ func caller(cfg *tls.Config, nc net.Conn) core.Caller {
 func newConn(s *Server, nc, raw net.Conn) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &conn{
-		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newMetrics(),
+		s: s, nc: nc, raw: raw, ctx: ctx, cancel: cancel, metrics: newConnMetrics(),
 		cluster: s.cluster, member: s.member,
 		bw:       bufio.NewWriterSize(nc, ioBuffer),
 		wake:     make(chan struct{}, 1),
@@ -190,7 +196,7 @@ func (c *conn) close() {
 		c.mu.Lock()
 		c.closed = true
 		for _, st := range c.streams {
-			st.countEnd(codes.Canceled)
+			st.countEnd(canceled)
 			st.reset = true
 			if st.deadline != nil {
 				st.deadline.Stop()
@@ -389,7 +395,7 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 	st := c.streams[id]
 	if st != nil {
 		delete(c.streams, id)
-		st.countEnd(codes.Canceled)
+		st.countEnd(canceled)
 		st.reset = true
 		if st.deadline != nil {
 			st.deadline.Stop()
@@ -433,8 +439,13 @@ type reqHeaders struct {
 	// token is the call's auth token: etcd's "token" metadata, or its
 	// "authorization", without "Bearer " either way.
 	token string
-	// encoding is the call's grpc-encoding.
-	encoding string
+	// encoding is the call's grpc-encoding, and apiVersion its first
+	// client-api-version.
+	encoding      string
+	apiVersion    string
+	hasAPIVersion bool
+	// traceMD is the call's metadata that tracing reads (tracing.go).
+	traceMD metadata.MD
 	// authority is :authority, and fields the regular fields of an HTTP
 	// request; gRPC calls keep none.
 	authority string
@@ -533,6 +544,12 @@ func (c *conn) onField(f hpack.HeaderField) {
 	if isHTTPPath(h.path) {
 		h.fields = append(h.fields, f)
 	}
+	if traceKey(f.Name) {
+		if h.traceMD == nil {
+			h.traceMD = metadata.MD{}
+		}
+		h.traceMD.Append(f.Name, f.Value)
+	}
 	switch f.Name {
 	case "content-type":
 		h.contentType = f.Value
@@ -544,6 +561,10 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.gateway = true
 	case "grpc-encoding":
 		h.encoding = f.Value
+	case "client-api-version":
+		if !h.hasAPIVersion {
+			h.apiVersion, h.hasAPIVersion = f.Value, true
+		}
 	case "token":
 		h.token = strings.TrimPrefix(f.Value, "Bearer ")
 	case "authorization":
@@ -647,7 +668,8 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	c.streams[id] = st
 	if st.rpc != nil {
 		st.calls = &c.metrics.calls[st.rpc.idx]
-		st.calls.started.add(1)
+		st.countStart()
+		st.beginTrace(h)
 	}
 	if grpc && h.hasTimeout {
 		// The deadline ends the call whether or not its request is
@@ -665,6 +687,13 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 		// As etcd's interceptors, a learner serves only Status,
 		// serializable ranges and snapshots.
 		st.finish(rpctypes.ErrGRPCNotSupportedForLearner)
+	case st.rpc != nil && validAPIVersion(h.apiVersion) != nil:
+		st.finish(validAPIVersion(h.apiVersion))
+	case st.rpc != nil:
+		// etcd's interceptor counts a call it lets through.
+		c.mu.Lock()
+		c.clientRequests(st.rpc.stream != nil, h.apiVersion).Inc()
+		c.mu.Unlock()
 	}
 	return st
 }
