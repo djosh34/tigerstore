@@ -45,9 +45,9 @@ var methodPaths = func() []string {
 	return paths
 }()
 
-// methods are the etcd methods that are served. Every other method of
-// etcd's services answers Unimplemented, as grpc-go's generated
-// Unimplemented servers do.
+// methods are the methods that are served: etcd's and the gRPC health
+// service's. Every other method of etcd's services answers Unimplemented,
+// as grpc-go's generated Unimplemented servers do.
 var methods = map[string]*method{
 	"/etcdserverpb.KV/Range":              {op: newOp[pb.RangeRequest], compact: true},
 	"/etcdserverpb.KV/RangeStream":        {stream: (*Server).rangeStream, serverStream: true},
@@ -71,6 +71,9 @@ var methods = map[string]*method{
 	"/v3electionpb.Election/Leader":       {unary: electionLeader},
 	"/v3electionpb.Election/Observe":      {stream: (*Server).observe, serverStream: true},
 	"/v3electionpb.Election/Resign":       {unary: electionResign},
+	"/grpc.health.v1.Health/Check":        {unary: healthCheck},
+	"/grpc.health.v1.Health/List":         {unary: healthList},
+	"/grpc.health.v1.Health/Watch":        {stream: (*Server).healthWatch, serverStream: true},
 }
 
 // services are etcd's gRPC services; their other methods are not
@@ -85,6 +88,10 @@ func unknownMethod(path string) error {
 	}
 	if slices.Contains(services, service) {
 		return status.Errorf(codes.Unimplemented, "method %s not implemented", name)
+	}
+	if service == healthService {
+		// The health service serves all of its methods.
+		return status.Errorf(codes.Unimplemented, "unknown method %v for service %v", name, service)
 	}
 	return status.Errorf(codes.Unimplemented, "unknown service %v", service)
 }

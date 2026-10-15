@@ -1679,6 +1679,258 @@
       "message": "etcdserver: mvcc: required revision has been compacted"
     }
   ],
+  "health": [
+    {
+      "do": "check the server",
+      "code": "OK",
+      "result": {
+        "status": "SERVING"
+      }
+    },
+    {
+      "do": "check a service",
+      "code": "NotFound",
+      "message": "unknown service"
+    },
+    {
+      "do": "list",
+      "code": "OK",
+      "result": {
+        "statuses": {
+          "": "SERVING"
+        }
+      }
+    },
+    {
+      "do": "watch the server",
+      "code": "OK",
+      "result": {
+        "status": "SERVING",
+        "then": "open"
+      }
+    },
+    {
+      "do": "watch a service",
+      "code": "OK",
+      "result": {
+        "status": "SERVICE_UNKNOWN",
+        "then": "open"
+      }
+    },
+    {
+      "do": "watch with no request",
+      "code": "Internal",
+      "message": "cardinality violation: received no request message from non-client-streaming RPC"
+    },
+    {
+      "do": "watch with two requests",
+      "code": "Internal",
+      "message": "cardinality violation: received multiple request messages for non-client-streaming RPC"
+    },
+    {
+      "do": "watch before the client ends its side",
+      "code": "OK",
+      "result": "nothing"
+    },
+    {
+      "do": "call an unknown health method",
+      "code": "Unimplemented",
+      "message": "unknown method Nothing for service grpc.health.v1.Health"
+    },
+    {
+      "do": "GET /readyz",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?exclude=linearizable_read\u0026exclude=nothing\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz?exclude=data_corruption\u0026exclude=serializable_read\u0026exclude=linearizable_read\u0026exclude=non_learner",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/data_corruption?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/serializable_read?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/linearizable_read?exclude=linearizable_read\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]linearizable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/non_learner",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /readyz/",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "GET /readyz/nothing",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "GET /livez",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /livez?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /livez?exclude=serializable_read\u0026verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "ok\n"
+      }
+    },
+    {
+      "do": "GET /livez/serializable_read?verbose",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "GET /livez/linearizable_read",
+      "code": "OK",
+      "result": {
+        "status": 404,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "404 page not found\n"
+      }
+    },
+    {
+      "do": "HEAD /readyz",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": ""
+      }
+    },
+    {
+      "do": "POST /livez",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": "Method Not Allowed\n"
+      }
+    },
+    {
+      "do": "GET /readyz?verbose over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "body": "[+]data_corruption ok\n[+]linearizable_read ok\n[+]non_learner ok\n[+]serializable_read ok\nok\n"
+      }
+    },
+    {
+      "do": "POST /livez over HTTP/1.1",
+      "code": "OK",
+      "result": {
+        "status": 405,
+        "contentType": "text/plain; charset=utf-8",
+        "nosniff": "nosniff",
+        "allow": "GET",
+        "body": "Method Not Allowed\n"
+      }
+    }
+  ],
   "kubernetes-shapes": [
     {
       "do": "create a: mod(a) = 0",
