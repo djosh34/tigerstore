@@ -71,14 +71,13 @@ type Config struct {
 	// DiskBudget is how many bytes the log's files may take; 0 means no
 	// budget, and cleaning only for Defragment (clean.go).
 	DiskBudget int64
-	// AutoCompactionMode and AutoCompactionRetention are etcd's
-	// --auto-compaction-mode and --auto-compaction-retention, the latter
-	// as ParseCompaction gives it; a retention of 0 turns auto compaction
-	// off (compact.go). RevisionCompactEvery, if set, replaces the 5
-	// minutes between revision compactions, for tests.
-	AutoCompactionMode      string
-	AutoCompactionRetention time.Duration
-	RevisionCompactEvery    time.Duration
+	// AutoCompaction is etcd's --auto-compaction-mode and
+	// --auto-compaction-retention, as ParseCompaction gives them
+	// (compact.go).
+	AutoCompaction Compaction
+	// revisionEvery, if set, replaces the 5 minutes between revision
+	// compactions, for tests.
+	revisionEvery time.Duration
 	// CorruptCheckTime is etcd's --corrupt-check-time, and
 	// CompactHashCheckTime its --compact-hash-check-time with the
 	// CompactHashCheck feature gate on; 0 turns either check off
@@ -390,6 +389,13 @@ type diskLog struct {
 	before func()
 }
 
+// isServing reports whether a snapshot fetch is under way.
+func (l *diskLog) isServing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.serving > 0
+}
+
 func (l *diskLog) Entry(index uint64) (*raftpb.Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -509,6 +515,9 @@ func New(cfg Config) (*Node, error) {
 		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead},
 		inbox: make(chan input, 8192),
 		done:  make(chan struct{}),
+		// Defragment sends to it from gRPC goroutines, so a reload keeps
+		// it.
+		defragQ: make(chan chan error),
 	}
 	if err := n.open(); err != nil {
 		return nil, errors.Join(err, n.log.close())
@@ -572,7 +581,6 @@ func (n *Node) open() error {
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
-	n.defragQ = make(chan chan error)
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
@@ -770,15 +778,15 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 		defer wg.Wait()
 		defer cancel()
 	}
-	if r := n.cfg.AutoCompactionRetention; r > 0 {
+	if c := n.cfg.AutoCompaction; c != (Compaction{}) {
 		ctx, cancel := context.WithCancel(ctx)
 		var wg sync.WaitGroup
 		wg.Go(func() {
-			if n.cfg.AutoCompactionMode == CompactRevision {
-				n.compactByRevision(ctx, int64(r), cmp.Or(n.cfg.RevisionCompactEvery, revisionInterval))
+			if c.Revisions > 0 {
+				n.compactByRevision(ctx, c.Revisions, cmp.Or(n.cfg.revisionEvery, revisionInterval))
 				return
 			}
-			n.compactPeriodically(ctx, r)
+			n.compactPeriodically(ctx, c.Period)
 		})
 		defer wg.Wait()
 		defer cancel()

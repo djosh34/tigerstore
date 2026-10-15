@@ -131,8 +131,15 @@ func (c *cleaner) run(ctx context.Context) error {
 
 // defrag is Defragment: passes that take the segments below the oldest
 // checkpoint the node keeps, however much of them is live, until one
-// finds nothing more or a removal waits for a snapshot fetch to end.
+// finds nothing more or a removal waits for a snapshot fetch to end. A
+// pass does nothing while a snapshot is served, so it first waits for
+// that to end, as etcd's defragmentation waits for a snapshot it sends.
 func (c *cleaner) defrag(ctx context.Context) error {
+	for c.n.log.isServing() {
+		if !sleep(ctx, 10*time.Millisecond) {
+			return ctx.Err()
+		}
+	}
 	for c.pending == nil {
 		did, err := c.pass(ctx, true)
 		if err != nil || !did {

@@ -34,31 +34,43 @@ const (
 // revisionInterval is how often the revision compactor runs.
 const revisionInterval = 5 * time.Minute
 
+// Compaction is an auto compaction setting: a Period to keep in periodic
+// mode, or a count of Revisions to keep in revision mode. The zero
+// Compaction turns auto compaction off.
+type Compaction struct {
+	Period    time.Duration
+	Revisions int64
+}
+
 // ParseCompaction is etcd's parseCompactionRetention with its check of
 // the mode: a number is hours in periodic mode and revisions in revision
-// mode; anything else is a duration. 0 turns auto compaction off.
-func ParseCompaction(mode, retention string) (time.Duration, error) {
+// mode; anything else is a duration, which revision mode takes as its
+// count of nanoseconds, as etcd does. 0 turns auto compaction off.
+func ParseCompaction(mode, retention string) (Compaction, error) {
 	switch mode {
 	case CompactPeriodic, CompactRevision:
 	case "":
-		return 0, errors.New("undefined auto-compaction-mode")
+		return Compaction{}, errors.New("undefined auto-compaction-mode")
 	default:
-		return 0, fmt.Errorf("unknown auto-compaction-mode %q", mode)
+		return Compaction{}, fmt.Errorf("unknown auto-compaction-mode %q", mode)
 	}
 	if retention == "" {
 		retention = "0"
 	}
-	if h, err := strconv.Atoi(retention); err == nil && h >= 0 {
-		if mode == CompactRevision {
-			return time.Duration(h), nil
-		}
-		return time.Duration(h) * time.Hour, nil
-	}
 	d, err := time.ParseDuration(retention)
-	if err != nil {
-		return 0, fmt.Errorf("error parsing CompactionRetention: %w", err)
+	if h, aerr := strconv.Atoi(retention); aerr == nil && h >= 0 {
+		d, err = time.Duration(h), nil
+		if mode == CompactPeriodic {
+			d *= time.Hour
+		}
 	}
-	return d, nil
+	if err != nil {
+		return Compaction{}, fmt.Errorf("error parsing CompactionRetention: %w", err)
+	}
+	if mode == CompactRevision {
+		return Compaction{Revisions: int64(d)}, nil
+	}
+	return Compaction{Period: d}, nil
 }
 
 // leads reports whether this node is the leader, which alone compacts.

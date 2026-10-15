@@ -10,7 +10,6 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
@@ -48,24 +47,15 @@ type peerHash struct {
 
 // peerHashes asks every other member for its HashKV of rev.
 func (n *Node) peerHashes(ctx context.Context, t peer.Transport, rev int64) []peerHash {
-	req, err := proto.Marshal(&pb.HashKVRequest{Revision: rev})
-	if err != nil {
-		return nil
-	}
-	req = append([]byte{callHashKV}, req...)
 	var out []peerHash
 	for _, id := range *n.members.Load() {
 		if id == n.ID() {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(ctx, n.requestTimeout())
-		b, err := t.Call(ctx, id, req)
+		p := peerHash{id: id, resp: &pb.HashKVResponse{}}
+		p.err = call(ctx, t, id, callHashKV, &pb.HashKVRequest{Revision: rev}, p.resp)
 		cancel()
-		p := peerHash{id: id, err: err}
-		if err == nil {
-			p.resp = &pb.HashKVResponse{}
-			p.err = proto.Unmarshal(b, p.resp)
-		}
 		if p.err != nil {
 			p.resp = nil
 			n.logf("corruption check: the hash of %d from peer %x: %v", rev, id, p.err)

@@ -377,7 +377,22 @@ func TestDefragment(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := r.n.Defragment(ctx); err != nil {
+	// A snapshot served meanwhile holds Defragment back until it ends.
+	l := r.n.log
+	l.mu.Lock()
+	l.serving++
+	l.mu.Unlock()
+	defragged := make(chan error, 1)
+	go func() { defragged <- r.n.Defragment(ctx) }()
+	select {
+	case err := <-defragged:
+		t.Fatalf("Defragment answered %v while a snapshot was served", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	l.mu.Lock()
+	l.serving--
+	l.mu.Unlock()
+	if err := <-defragged; err != nil {
 		t.Fatal(err)
 	}
 	after, packs := walFiles(t, dir)

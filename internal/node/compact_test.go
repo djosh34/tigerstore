@@ -15,11 +15,11 @@ import (
 )
 
 // runCompacting starts a single node with auto compaction.
-func runCompacting(t *testing.T, mode string, retention time.Duration) *Node {
+func runCompacting(t *testing.T, c Compaction) *Node {
 	t.Helper()
 	n, err := New(Config{
 		Core: core.DefaultConfig(1, []uint64{1}), DataDir: t.TempDir(), Tick: 10 * time.Millisecond, Logf: t.Logf,
-		AutoCompactionMode: mode, AutoCompactionRetention: retention, RevisionCompactEvery: 100 * time.Millisecond,
+		AutoCompaction: c, revisionEvery: 100 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func compacted(n *Node, rev int64) (bool, error) {
 // less the retention.
 func TestAutoCompaction(t *testing.T) {
 	t.Run("periodic", func(t *testing.T) {
-		n := runCompacting(t, CompactPeriodic, time.Second)
+		n := runCompacting(t, Compaction{Period: time.Second})
 		var early int64
 		for i := 0; ; i++ {
 			r, err := do(n, &pb.PutRequest{Key: []byte("k"), Value: fmt.Appendf(nil, "%d", i)})
@@ -82,7 +82,7 @@ func TestAutoCompaction(t *testing.T) {
 		}
 	})
 	t.Run("revision", func(t *testing.T) {
-		n := runCompacting(t, CompactRevision, 5)
+		n := runCompacting(t, Compaction{Revisions: 5})
 		var rev int64
 		for i := range 20 {
 			r, err := do(n, &pb.PutRequest{Key: []byte("k"), Value: fmt.Appendf(nil, "%d", i)})
@@ -112,19 +112,19 @@ func TestAutoCompaction(t *testing.T) {
 func TestParseCompaction(t *testing.T) {
 	for _, c := range []struct {
 		mode, retention string
-		want            time.Duration
+		want            Compaction
 		bad             bool
 	}{
-		{"periodic", "0", 0, false},
-		{"periodic", "", 0, false},
-		{"periodic", "2", 2 * time.Hour, false},
-		{"periodic", "5m", 5 * time.Minute, false},
-		{"revision", "1000", 1000, false},
-		{"revision", "1m", time.Minute, false},
-		{"periodic", "-1", 0, true},
-		{"periodic", "soon", 0, true},
-		{"", "1", 0, true},
-		{"daily", "1", 0, true},
+		{"periodic", "0", Compaction{}, false},
+		{"periodic", "", Compaction{}, false},
+		{"periodic", "2", Compaction{Period: 2 * time.Hour}, false},
+		{"periodic", "5m", Compaction{Period: 5 * time.Minute}, false},
+		{"revision", "1000", Compaction{Revisions: 1000}, false},
+		{"revision", "1m", Compaction{Revisions: int64(time.Minute)}, false},
+		{"periodic", "-1", Compaction{}, true},
+		{"periodic", "soon", Compaction{}, true},
+		{"", "1", Compaction{}, true},
+		{"daily", "1", Compaction{}, true},
 	} {
 		got, err := ParseCompaction(c.mode, c.retention)
 		if (err != nil) != c.bad || got != c.want {

@@ -185,8 +185,7 @@ func start(c *config, lg *zap.Logger) error {
 	gate := ec.ServerFeatureGate
 	ncfg := node.Config{
 		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
-		DiskBudget: c.own.DiskBudget, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf,
-		AutoCompactionMode: ec.AutoCompactionMode, AutoCompactionRetention: compaction,
+		DiskBudget: c.own.DiskBudget, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
 		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
 	}
 	if gate.Enabled(features.CompactHashCheck) {

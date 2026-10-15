@@ -113,27 +113,12 @@ func (st *State) refusedOp(op proto.Message) error {
 	case *pb.PutRequest, *pb.LeaseGrantRequest:
 		return st.refused(true)
 	case *pb.TxnRequest:
-		return st.refused(txnPuts(op))
+		// A transaction costs quota only if it puts.
+		return st.refused(txnCost(op) > 0)
 	case *pb.DeleteRangeRequest, *pb.CompactionRequest, *pb.LeaseRevokeRequest, *pb.LeaseCheckpoint:
 		return st.refused(false)
 	}
 	return nil
-}
-
-// txnPuts reports whether either branch of a transaction, nested ones
-// included, holds a put: etcd's quota counts the larger branch.
-func txnPuts(t *pb.TxnRequest) bool {
-	for _, ops := range [][]*pb.RequestOp{t.Success, t.Failure} {
-		for _, o := range ops {
-			if o.GetRequestPut() != nil {
-				return true
-			}
-			if n := o.GetRequestTxn(); n != nil && txnPuts(n) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // Alarms returns the active alarms and a count of their changes, which
