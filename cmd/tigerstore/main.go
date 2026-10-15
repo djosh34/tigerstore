@@ -35,6 +35,7 @@ type flags struct {
 	clientCertAuth                            bool
 	peerCertFile, peerKeyFile, peerCAFile     string
 	progressInterval                          time.Duration
+	memoryBudget                              int64
 }
 
 // minProcs is the fewest Go processors tigerstore runs with, even on one
@@ -50,7 +51,7 @@ const minProcs = 2
 // Design E keeps values in the log on disk, so the heap is mostly the
 // index, whose pointers every collection scans, and at Go's default of
 // 100 a node under load collects every few seconds; docs/design.md has
-// the measurements. GOMEMLIMIT, when set, still caps the heap.
+// the measurements. The node's memory budget still caps the heap (run).
 const gcPercent = 400
 
 // tick is a node's Raft tick.
@@ -88,6 +89,7 @@ func parse(args []string) (*flags, error) {
 	fs.StringVar(&f.peerKeyFile, "peer-key-file", "", "peer key")
 	fs.StringVar(&f.peerCAFile, "peer-trusted-ca-file", "", "CA for peer certificates")
 	fs.DurationVar(&f.progressInterval, "watch-progress-notify-interval", 10*time.Minute, "interval of progress notifications to watchers that ask for them")
+	fs.Int64Var(&f.memoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -229,6 +231,15 @@ func run(args []string, logger *log.Logger) error {
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
 	}
+	budget, from, err := node.MemoryBudget(os.DirFS("/"), f.memoryBudget)
+	if err != nil {
+		return err
+	}
+	// The garbage collector works harder as the heap nears the budget;
+	// the value cache takes what the rest leaves.
+	debug.SetMemoryLimit(budget)
+	ccfg.MemoryBytes = node.CacheMemory(budget)
+	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
 	n, err := node.New(node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, Logf: logger.Printf})
 	if err != nil {
 		return err
