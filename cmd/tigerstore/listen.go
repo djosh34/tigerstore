@@ -17,7 +17,6 @@ import (
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"go.etcd.io/etcd/client/pkg/v3/types"
-	cconfig "go.etcd.io/etcd/server/v3/config"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.uber.org/zap"
@@ -63,24 +62,6 @@ func freshDataDir(dir string) (bool, error) {
 		return true, nil
 	}
 	return false, err
-}
-
-// verifyBootstrap is etcd's check of a first start: the node's name is
-// in --initial-cluster, its URLs there are --initial-advertise-peer-urls
-// in a new cluster, and no URL is twice in it.
-func verifyBootstrap(ec *embed.Config, lg *zap.Logger) error {
-	urls, _, err := ec.PeerURLsMapAndToken("etcd")
-	if err != nil {
-		return fmt.Errorf("error setting up initial cluster: %w", err)
-	}
-	sc := &cconfig.ServerConfig{
-		Name: ec.Name, InitialPeerURLsMap: urls, PeerURLs: ec.AdvertisePeerUrls, Logger: lg,
-		DiscoveryCfg: ec.DiscoveryCfg,
-	}
-	if ec.IsNewCluster() {
-		return sc.VerifyBootstrap()
-	}
-	return sc.VerifyJoinExisting()
 }
 
 // checkPeerURLs refuses peer URLs that are not https: unlike etcd,

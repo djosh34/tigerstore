@@ -118,9 +118,6 @@ func start(c *config, lg *zap.Logger) error {
 		ec.Dir = ec.Name + ".etcd"
 		lg.Warn("'data-dir' was empty; using default", zap.String("data-dir", ec.Dir))
 	}
-	if ec.DNSCluster != "" || ec.DNSClusterServiceName != "" || len(ec.DiscoveryCfg.Endpoints) > 0 {
-		return errors.New("discovery is not supported yet")
-	}
 	if ec.MemoryMlock {
 		// etcd locks its database's pages in memory; tigerstore's index
 		// and buffers are in its heap.
@@ -128,19 +125,15 @@ func start(c *config, lg *zap.Logger) error {
 			return fmt.Errorf("--memory-mlock: %w", err)
 		}
 	}
-	members, err := parseCluster(ec.InitialCluster)
-	if err != nil {
-		return err
-	}
 	fresh, err := freshDataDir(ec.Dir)
 	if err != nil {
 		return err
 	}
-	if fresh {
-		if err := verifyBootstrap(ec, lg); err != nil {
-			return err
-		}
+	cluster, err := resolveCluster(ec, fresh, lg)
+	if err != nil {
+		return err
 	}
+	members := cluster.members
 	if err := checkPeerURLs(ec, members); err != nil {
 		return err
 	}
@@ -171,7 +164,7 @@ func start(c *config, lg *zap.Logger) error {
 			closeListeners(clientLns, pcfg.Listeners, lg)
 		}
 	}()
-	ident, err := loadIdentity(ec, members, pcfg)
+	ident, err := loadIdentity(ec, cluster, pcfg)
 	if err != nil {
 		return err
 	}

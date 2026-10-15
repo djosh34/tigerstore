@@ -33,11 +33,11 @@ func identityFile(dataDir string) string { return filepath.Join(dataDir, "member
 const joinTimeout = 30 * time.Second
 
 // loadIdentity returns the identity the data directory keeps, or the one
-// of a first start: in a new cluster, the node's place in
-// --initial-cluster and a hash of the token and that list; in a running
-// one (--initial-cluster-state existing), what the other members answer
-// for any of the node's peer URLs.
-func loadIdentity(ec *embed.Config, members []member, pcfg peer.Config) (identity, error) {
+// of a first start: in a new cluster, the node's place in the cluster
+// and a hash of its token and key; in a running one
+// (--initial-cluster-state existing), what the other members answer for
+// any of the node's peer URLs.
+func loadIdentity(ec *embed.Config, cluster clusterSpec, pcfg peer.Config) (identity, error) {
 	var id identity
 	b, err := os.ReadFile(identityFile(ec.Dir))
 	switch {
@@ -49,20 +49,19 @@ func loadIdentity(ec *embed.Config, members []member, pcfg peer.Config) (identit
 	case !errors.Is(err, fs.ErrNotExist):
 		return id, err
 	}
-	i := slices.IndexFunc(members, func(m member) bool { return m.name == ec.Name })
-	if i < 0 {
+	if cluster.self < 0 {
 		return id, fmt.Errorf("couldn't find local name %q in the initial cluster configuration", ec.Name)
 	}
-	self := members[i]
+	self := cluster.members[cluster.self]
 	if ec.IsNewCluster() {
 		h := fnv.New64a()
-		h.Write([]byte(ec.InitialClusterToken + "/" + ec.InitialCluster))
+		h.Write([]byte(cluster.token + "/" + cluster.key))
 		id = identity{id: self.id, cluster: h.Sum64()}
 		return id, saveIdentity(ec.Dir, id)
 	}
 	var addrs []string
-	for _, m := range members {
-		if m.name == ec.Name {
+	for i, m := range cluster.members {
+		if i == cluster.self {
 			continue
 		}
 		for _, raw := range m.urls {
@@ -75,11 +74,11 @@ func loadIdentity(ec *embed.Config, members []member, pcfg peer.Config) (identit
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), joinTimeout)
 	defer cancel()
-	ms, cluster, err := node.RemoteMembers(ctx, pcfg, addrs)
+	ms, clusterID, err := node.RemoteMembers(ctx, pcfg, addrs)
 	if err != nil {
 		return id, err
 	}
-	id.cluster = cluster
+	id.cluster = clusterID
 	for _, m := range ms {
 		for _, u := range m.PeerURLs {
 			if slices.Contains(self.urls, u) {

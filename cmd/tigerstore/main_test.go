@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
+	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 
@@ -238,5 +240,26 @@ func TestTLSFlags(t *testing.T) {
 	}
 	if _, err := clientTLS(&c.ec); err == nil {
 		t.Error("an unknown cipher suite: no error")
+	}
+}
+
+// TestSRVCluster checks that two nodes that read the same SRV records,
+// each with its own name and numbers for the others, as etcd names them,
+// get the same members in the same order and the same cluster key.
+func TestSRVCluster(t *testing.T) {
+	a, err := types.NewURLsMap("a=https://h2:2380,0=https://h1:2380,1=https://h3:2380")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := types.NewURLsMap("0=https://h3:2380,b=https://h1:2380,1=https://h2:2380")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sa, sb := srvCluster(a, "a", "tok"), srvCluster(b, "b", "tok")
+	if !reflect.DeepEqual(sa.members, sb.members) || sa.key != sb.key {
+		t.Fatalf("different clusters:\n%+v %q\n%+v %q", sa.members, sa.key, sb.members, sb.key)
+	}
+	if sa.self != 1 || sb.self != 0 || sa.members[1].urls[0] != "https://h2:2380" || sa.members[0].name != "" {
+		t.Errorf("members %+v, self %d and %d", sa.members, sa.self, sb.self)
 	}
 }

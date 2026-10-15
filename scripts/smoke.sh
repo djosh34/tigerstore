@@ -184,4 +184,34 @@ for _ in $(seq 50); do
 	sleep 0.2
 done
 expect $'viagateway\n1' get viagateway
+# etcd's v3 discovery: three new nodes find each other through the
+# cluster above, which serves as the discovery service.
+ctl put /_etcd/registry/smoke/_config/size 3 >/dev/null
+mkdir -p "$work/disc"
+for i in 1 2 3; do
+	c=$((2390 + 10 * i + off))
+	"$work/tigerstore" --name "d$i" --data-dir "$work/disc/d$i" \
+		--listen-peer-urls "https://127.0.0.1:$((c + 1))" --initial-advertise-peer-urls "https://127.0.0.1:$((c + 1))" \
+		--listen-client-urls "https://127.0.0.1:$c" --advertise-client-urls "https://127.0.0.1:$c" \
+		--cert-file "$work/certs/node$i.pem" --key-file "$work/certs/node$i-key.pem" \
+		--trusted-ca-file "$work/certs/ca.pem" --client-cert-auth \
+		--peer-cert-file "$work/certs/node$i.pem" --peer-key-file "$work/certs/node$i-key.pem" \
+		--peer-trusted-ca-file "$work/certs/ca.pem" \
+		--discovery-endpoints "127.0.0.1:$((2379 + off))" --discovery-token smoke \
+		--discovery-cacert "$work/certs/ca.pem" --discovery-cert "$work/certs/client.pem" \
+		--discovery-key "$work/certs/client-key.pem" >"$work/disc/d$i.log" 2>&1 &
+	echo $! >"$work/data/disc$i.pid"
+done
+members=""
+for _ in $(seq 100); do
+	members=$(etcdctl --endpoints="https://127.0.0.1:$((2400 + off))" --cacert "$work/certs/ca.pem" \
+		--cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" --command-timeout=2s member list 2>/dev/null) &&
+		[ "$(grep -c ', started, d[123], ' <<<"$members")" = 3 ] && break
+	sleep 0.2
+done
+if [ "$(grep -c ', started, d[123], ' <<<"$members")" != 3 ]; then
+	echo "the cluster from discovery has members [$members]"
+	for f in "$work"/disc/*.log; do echo "== $f"; tail -20 "$f"; done
+	exit 1
+fi
 echo "smoke test passed"
