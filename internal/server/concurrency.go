@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/node"
 )
 
@@ -19,6 +20,19 @@ import (
 // client of itself, running the recipes of clientv3's concurrency
 // package. The functions here do the same requests in the same order on
 // the node, so a client sees the same keys, revisions and errors.
+
+// client runs the requests of one Lock or Election call on the node as
+// the call's caller. etcd's in-process client runs them with the call's
+// context, so the caller's certificate counts in the size limit of its
+// writes as it does for a KV write.
+type client struct {
+	s      *Server
+	caller core.Caller
+}
+
+func (c client) do(ctx context.Context, op proto.Message) (proto.Message, error) {
+	return c.s.n.DoAs(ctx, c.caller, op)
+}
 
 // sessionTTL is the TTL of the lease that etcd's concurrency session
 // grants when a request names lease 0.
@@ -28,11 +42,11 @@ const sessionTTL = 60
 // make for a request: the request's lease, or a new lease of 60 s for
 // lease 0. etcd orphans the session at once, so nothing keeps that lease
 // alive, and it does not check that the request's lease exists.
-func (s *Server) sessionLease(ctx context.Context, lease int64) (int64, error) {
+func (c client) sessionLease(ctx context.Context, lease int64) (int64, error) {
 	if lease != 0 {
 		return lease, nil
 	}
-	resp, err := s.n.Do(ctx, &pb.LeaseGrantRequest{TTL: sessionTTL})
+	resp, err := c.do(ctx, &pb.LeaseGrantRequest{TTL: sessionTTL})
 	if err != nil {
 		return 0, err
 	}
@@ -89,16 +103,16 @@ func firstCreated(prefix []byte) *pb.RangeRequest {
 	return &pb.RangeRequest{Key: prefix, RangeEnd: prefixEnd(prefix), Limit: 1, SortOrder: pb.RangeRequest_ASCEND, SortTarget: pb.RangeRequest_CREATE}
 }
 
-func (s *Server) txn(ctx context.Context, r *pb.TxnRequest) (*pb.TxnResponse, error) {
-	resp, err := s.n.Do(ctx, r)
+func (c client) txn(ctx context.Context, r *pb.TxnRequest) (*pb.TxnResponse, error) {
+	resp, err := c.do(ctx, r)
 	if err != nil {
 		return nil, err
 	}
 	return resp.(*pb.TxnResponse), nil
 }
 
-func (s *Server) get(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := s.n.Do(ctx, r)
+func (c client) get(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
+	resp, err := c.do(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -108,16 +122,16 @@ func (s *Server) get(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse
 // waitDeletes waits until every key under prefix created at or before
 // maxCreate is deleted, as the concurrency package's waitDeletes does:
 // it waits for the newest of them to go, then looks again.
-func (s *Server) waitDeletes(ctx context.Context, prefix []byte, maxCreate int64) error {
+func (c client) waitDeletes(ctx context.Context, prefix []byte, maxCreate int64) error {
 	for {
-		resp, err := s.get(ctx, &pb.RangeRequest{Key: prefix, RangeEnd: prefixEnd(prefix), Limit: 1, SortOrder: pb.RangeRequest_DESCEND, SortTarget: pb.RangeRequest_CREATE, MaxCreateRevision: maxCreate})
+		resp, err := c.get(ctx, &pb.RangeRequest{Key: prefix, RangeEnd: prefixEnd(prefix), Limit: 1, SortOrder: pb.RangeRequest_DESCEND, SortTarget: pb.RangeRequest_CREATE, MaxCreateRevision: maxCreate})
 		if err != nil {
 			return err
 		}
 		if len(resp.Kvs) == 0 {
 			return nil
 		}
-		err = s.watchEvents(ctx, &pb.WatchCreateRequest{Key: resp.Kvs[0].Key, StartRevision: resp.Header.Revision}, func(w *pb.WatchResponse) bool {
+		err = c.watchEvents(ctx, &pb.WatchCreateRequest{Key: resp.Kvs[0].Key, StartRevision: resp.Header.Revision}, func(w *pb.WatchResponse) bool {
 			for _, ev := range w.Events {
 				if ev.Type == mvccpb.DELETE {
 					return true
@@ -136,10 +150,10 @@ func (s *Server) waitDeletes(ctx context.Context, prefix []byte, maxCreate int64
 // When the node drops the watch stream, because it fell behind or the
 // node installed a snapshot, it watches again after the last event, as
 // clientv3 resumes a watch.
-func (s *Server) watchEvents(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
+func (c client) watchEvents(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
 	req = proto.CloneOf(req)
 	for {
-		err := s.watchOnce(ctx, req, f)
+		err := c.watchOnce(ctx, req, f)
 		if !errors.Is(err, node.ErrWatchTooSlow) && !errors.Is(err, node.ErrSnapshotInstalled) {
 			return err
 		}
@@ -148,8 +162,8 @@ func (s *Server) watchEvents(ctx context.Context, req *pb.WatchCreateRequest, f 
 
 // watchOnce runs watchEvents on one watch stream. It moves the start of
 // req past each event it hands f.
-func (s *Server) watchOnce(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
-	ws, err := s.n.OpenWatch(ctx)
+func (c client) watchOnce(ctx context.Context, req *pb.WatchCreateRequest, f func(*pb.WatchResponse) bool) error {
+	ws, err := c.s.n.OpenWatch(ctx)
 	if err != nil {
 		return err
 	}
@@ -173,7 +187,7 @@ func (s *Server) watchOnce(ctx context.Context, req *pb.WatchCreateRequest, f fu
 			}
 		case <-ws.Done():
 			return ws.Err()
-		case <-s.n.Done():
+		case <-c.s.n.Done():
 			return rpctypes.ErrGRPCStopped
 		case <-ctx.Done():
 			return ctx.Err()

@@ -3,6 +3,7 @@
 package difftest
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -393,4 +394,38 @@ func electionCase(r *run) {
 	r.observed("observe f", obsF, 1)
 	r.leader("leader of f", "f")
 	r.campaign("campaign with a missing lease", &epb.CampaignRequest{Name: r.key("g"), Lease: 0x7a11, Value: []byte("g")})
+
+	// The size limit of the service's writes counts the client
+	// certificate's identity, as a KV write's does. The lease has a fixed
+	// ID, because its hex is in the key.
+	h := r.grant("grant h with an ID", 0x5f00, 60)
+	campH := r.campaign("campaign h", &epb.CampaignRequest{Name: r.key("h"), Lease: h, Value: []byte("h")})
+	if campH == nil {
+		return
+	}
+	accepts := func(n int) bool {
+		_, err := r.c.election.Proclaim(r.ctx, &epb.ProclaimRequest{Leader: campH.Leader, Value: bytes.Repeat([]byte("x"), n)})
+		if err != nil && !strings.Contains(err.Error(), "too large") && !strings.Contains(err.Error(), "larger than max") {
+			r.t.Fatalf("proclaim of %d bytes: %v", n, err)
+		}
+		return err == nil
+	}
+	lo, hi := 0, 4<<20
+	if !accepts(lo) || accepts(hi) {
+		r.t.Fatalf("the limit is not between %d and %d bytes", lo, hi)
+	}
+	for hi-lo > 1 {
+		mid := (lo + hi) / 2
+		if accepts(mid) {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	// The probes wrote revisions; count from here.
+	r.rebase()
+	r.record("largest proclaim value for h", lo, nil)
+	for _, size := range []int{lo - 1, lo, lo + 1} {
+		r.proclaim("proclaim "+relSize(size-lo)+" of the largest size", &epb.ProclaimRequest{Leader: campH.Leader, Value: bytes.Repeat([]byte("x"), size)})
+	}
 }

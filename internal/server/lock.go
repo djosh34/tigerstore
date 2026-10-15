@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // errSessionExpired is etcd's answer to a Lock whose key went away, with
@@ -19,19 +21,20 @@ var errSessionExpired = status.Error(codes.Unknown, "mutex: session is expired")
 // in hex. The oldest key under that prefix holds the lock; the others
 // wait for every older key to go. A wait that fails deletes the caller's
 // key again.
-func lock(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func lock(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	c := client{s: s, caller: caller}
 	var r v3lockpb.LockRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
 	}
-	lease, err := s.sessionLease(ctx, r.Lease)
+	lease, err := c.sessionLease(ctx, r.Lease)
 	if err != nil {
 		return nil, clientErr(err)
 	}
 	prefix := []byte(string(r.Name) + "/")
 	key := sessionKey(prefix, lease)
 	owner := rangeOp(firstCreated(prefix))
-	resp, err := s.txn(ctx, &pb.TxnRequest{
+	resp, err := c.txn(ctx, &pb.TxnRequest{
 		Compare: []*pb.Compare{createdIs(key, 0)},
 		Success: []*pb.RequestOp{putOp(key, nil, lease), owner},
 		Failure: []*pb.RequestOp{rangeOp(&pb.RangeRequest{Key: key}), owner},
@@ -47,14 +50,14 @@ func lock(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
 	if len(first) == 0 || first[0].CreateRevision == rev {
 		return &v3lockpb.LockResponse{Header: resp.Header, Key: key}, nil
 	}
-	if err := s.waitDeletes(ctx, prefix, rev-1); err != nil {
-		s.release(ctx, key)
+	if err := c.waitDeletes(ctx, prefix, rev-1); err != nil {
+		c.release(ctx, key)
 		return nil, clientErr(err)
 	}
 	// The key may have gone with its lease while the lock was taken.
-	get, err := s.get(ctx, &pb.RangeRequest{Key: key})
+	get, err := c.get(ctx, &pb.RangeRequest{Key: key})
 	if err != nil {
-		s.release(ctx, key)
+		c.release(ctx, key)
 		return nil, clientErr(err)
 	}
 	if len(get.Kvs) == 0 {
@@ -66,17 +69,18 @@ func lock(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
 // release deletes the key of a Lock that failed, even when the caller
 // has gone. Like etcd, it ignores the answer: a key it could not delete
 // still goes with its lease.
-func (s *Server) release(ctx context.Context, key []byte) {
-	_, _ = s.n.Do(context.WithoutCancel(ctx), &pb.DeleteRangeRequest{Key: key})
+func (c client) release(ctx context.Context, key []byte) {
+	_, _ = c.do(context.WithoutCancel(ctx), &pb.DeleteRangeRequest{Key: key})
 }
 
 // unlock serves Lock.Unlock: it deletes the key, whatever it is.
-func unlock(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func unlock(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	c := client{s: s, caller: caller}
 	var r v3lockpb.UnlockRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err
 	}
-	resp, err := s.n.Do(ctx, &pb.DeleteRangeRequest{Key: r.Key})
+	resp, err := c.do(ctx, &pb.DeleteRangeRequest{Key: r.Key})
 	if err != nil {
 		return nil, clientErr(err)
 	}

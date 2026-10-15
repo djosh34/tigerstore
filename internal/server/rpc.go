@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // method serves one gRPC method. A request the node runs (op) is decoded
@@ -21,7 +23,7 @@ type method struct {
 	// compact: op is a range whose answer the writer encodes from the
 	// index's values, without building a RangeResponse.
 	compact bool
-	unary   func(ctx context.Context, s *Server, req []byte) (proto.Message, error)
+	unary   func(ctx context.Context, s *Server, caller core.Caller, req []byte) (proto.Message, error)
 	stream  func(s *Server, st *stream) error
 	// serverStream: stream is a server-streaming call, whose client sends
 	// one request.
@@ -103,14 +105,14 @@ func newOp[T any, P interface {
 	return P(new(T))
 }
 
-func memberList(_ context.Context, s *Server, b []byte) (proto.Message, error) {
+func memberList(_ context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &pb.MemberListRequest{}); err != nil {
 		return nil, err
 	}
 	return s.memberList(), nil
 }
 
-func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func maintenanceStatus(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	if err := unmarshal(b, &pb.StatusRequest{}); err != nil {
 		return nil, err
 	}
@@ -132,7 +134,7 @@ func maintenanceStatus(ctx context.Context, s *Server, b []byte) (proto.Message,
 // header carries the revision: here a linearizable read gives both.
 // Activating NOSPACE or CORRUPT by hand, which would refuse writes, is
 // not supported.
-func alarm(ctx context.Context, s *Server, b []byte) (proto.Message, error) {
+func alarm(ctx context.Context, s *Server, _ core.Caller, b []byte) (proto.Message, error) {
 	var r pb.AlarmRequest
 	if err := unmarshal(b, &r); err != nil {
 		return nil, err

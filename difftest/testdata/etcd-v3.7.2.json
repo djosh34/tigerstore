@@ -928,6 +928,53 @@
       "do": "campaign with a missing lease",
       "code": "Unknown",
       "message": "etcdserver: requested lease not found"
+    },
+    {
+      "do": "grant h with an ID",
+      "code": "OK",
+      "result": {
+        "revision": 9,
+        "lease": 4,
+        "asAsked": true,
+        "ttl": 60
+      }
+    },
+    {
+      "do": "campaign h",
+      "code": "OK",
+      "result": {
+        "revision": 10,
+        "leader": {
+          "name": "h",
+          "key": "h/\u003clease 4\u003e",
+          "rev": 10,
+          "lease": 4
+        }
+      }
+    },
+    {
+      "do": "largest proclaim value for h",
+      "code": "OK",
+      "result": 1572741
+    },
+    {
+      "do": "proclaim one byte below of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "proclaim exactly of the largest size",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "proclaim one byte above of the largest size",
+      "code": "Unknown",
+      "message": "etcdserver: request is too large"
     }
   ],
   "error-codes": [
