@@ -40,9 +40,39 @@ type Values interface {
 	// writes, without its Sum. value is not empty. Place may keep it as
 	// it is.
 	Place(value []byte) (Ref, error)
-	// Read returns the bytes r names. The caller may keep them, as a
+	// Read returns the bytes r names if they are in memory, and false if
+	// only the log on disk has them. The caller may keep the bytes, as a
 	// response or a watch event does, but must not change them.
-	Read(r Ref) ([]byte, error)
+	Read(r Ref) ([]byte, bool, error)
+}
+
+// Fill is a value a response or a watch event waits for because only the
+// log on disk has it: the bytes Ref names go to *Dst. The committer never
+// reads the disk; a helper reads them and calls Set.
+type Fill struct {
+	Key []byte
+	Ref Ref
+	Dst *[]byte
+}
+
+// Set checks b, the bytes read for f, against the checksum and stores
+// them in *Dst.
+func (f Fill) Set(b []byte) error {
+	if err := check(f.Key, f.Ref, b); err != nil {
+		return err
+	}
+	*f.Dst = b
+	return nil
+}
+
+// ColdError is the answer of an operation that needs values at once, to
+// compare or sort them, that only the log on disk has. The store is
+// unchanged. The operation runs again once the values in Need are read
+// and Values.Read returns them; their Dst is nil.
+type ColdError struct{ Need []Fill }
+
+func (e *ColdError) Error() string {
+	return fmt.Sprintf("mvcc: %d values must be read from disk first", len(e.Need))
 }
 
 // ErrBadValue means that the bytes read for a value do not match its
@@ -62,11 +92,11 @@ func (h *Heap) Place(value []byte) (Ref, error) {
 }
 
 // Read returns a value Place kept.
-func (h *Heap) Read(r Ref) ([]byte, error) {
+func (h *Heap) Read(r Ref) ([]byte, bool, error) {
 	if r.Index == 0 || r.Index > uint64(len(h.vals)) {
-		return nil, fmt.Errorf("mvcc: no value %d in memory", r.Index)
+		return nil, false, fmt.Errorf("mvcc: no value %d in memory", r.Index)
 	}
-	return h.vals[r.Index-1], nil
+	return h.vals[r.Index-1], true, nil
 }
 
 // version is one state of a key. ver is 0 for a tombstone.
@@ -108,40 +138,74 @@ func (k *keyIndex) live(r int64) (*version, bool) {
 	return &k.vers[i], true
 }
 
-// kvValue returns a version without its value, which readValues adds.
+// kvValue returns a version without its value, which fill adds.
 func (k *keyIndex) kvValue(v *version) KV {
 	return KV{Key: k.key, CreateRevision: v.create, ModRevision: v.mod.main, Version: v.ver, Lease: v.lease, ref: v.value}
 }
 
+// kv returns a version with its value, or with a Fill for it.
 func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
-	val, err := s.value(k.key, v.value)
-	if err != nil {
-		return nil, err
-	}
-	return &mvccpb.KeyValue{
+	kv := &mvccpb.KeyValue{
 		Key:            k.key,
 		CreateRevision: v.create,
 		ModRevision:    v.mod.main,
 		Version:        v.ver,
 		Lease:          v.lease,
-		Value:          val,
-	}, nil
+	}
+	if err := s.fill(k.key, v.value, &kv.Value); err != nil {
+		return nil, err
+	}
+	return kv, nil
 }
 
-// value reads the bytes of a value of key k and checks them against the
-// checksum.
-func (s *Store) value(key []byte, r Ref) ([]byte, error) {
-	if r.Len == 0 {
-		return nil, nil
-	}
-	b, err := s.values.Read(r)
+// fill stores the value r names in *dst if it is in memory. Otherwise the
+// store keeps a Fill for it, which TakeFills hands out.
+func (s *Store) fill(key []byte, r Ref, dst *[]byte) error {
+	b, ok, err := s.value(key, r)
 	if err != nil {
-		return nil, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
+		return err
 	}
+	if !ok {
+		s.fills = append(s.fills, Fill{Key: key, Ref: r, Dst: dst})
+		return nil
+	}
+	*dst = b
+	return nil
+}
+
+// TakeFills returns the values that the responses and events built since
+// the last call wait for, and forgets them. The caller owns the slice.
+func (s *Store) TakeFills() []Fill {
+	f := s.fills
+	s.fills = nil
+	return f
+}
+
+// value returns the bytes of a value of key k, checked against the
+// checksum, if they are in memory, and false if only the disk has them.
+func (s *Store) value(key []byte, r Ref) ([]byte, bool, error) {
+	if r.Len == 0 {
+		return nil, true, nil
+	}
+	b, ok, err := s.values.Read(r)
+	if err != nil {
+		return nil, false, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	if err := check(key, r, b); err != nil {
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+// check checks the bytes read for a value of key against its Ref.
+func check(key []byte, r Ref, b []byte) error {
 	if uint32(len(b)) != r.Len || (crc32.Checksum(b, castagnoli) != r.Sum && !planted.On("B25")) {
-		return nil, fmt.Errorf("%w: key %q, entry %d, offset %d", ErrBadValue, key, r.Index, r.Off)
+		return fmt.Errorf("%w: key %q, entry %d, offset %d", ErrBadValue, key, r.Index, r.Off)
 	}
-	return b, nil
+	return nil
 }
 
 // Store is the key index with every revision since the last compaction.
@@ -164,6 +228,8 @@ type Store struct {
 
 	// changes collects the changes of the request being applied.
 	changes []Change
+	// fills are the values that responses and events wait for.
+	fills []Fill
 
 	counts Counts
 	// versions and keyBytes count the versions and the key bytes in the
@@ -248,7 +314,9 @@ func (c Change) PrevLease() int64 {
 }
 
 // Event builds the watch event of the change. The previous value is set
-// when withPrev is true and the key existed before.
+// when withPrev is true and the key existed before. Values that only the
+// disk has come as Fills, from TakeFills; the event holds their positions,
+// so a later compaction does not change it.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
 	v := &c.k.vers[c.i]

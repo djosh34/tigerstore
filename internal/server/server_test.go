@@ -44,6 +44,8 @@ type cluster struct {
 	// segmentBytes their segment size.
 	coreConfig   func(*core.Config)
 	segmentBytes int64
+	// beforeRead, if set, runs before each value read from a log.
+	beforeRead func()
 	// peerLns are the peer listeners of nodes not started yet, held open
 	// from the start so that no other process takes their ports.
 	peerLns map[uint64]net.Listener
@@ -118,7 +120,7 @@ func (c *cluster) start(id uint64) {
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
 	}
-	n, err := node.New(node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes})
+	n, err := node.New(node.Config{Core: cfg, DataDir: c.dirs[id], Tick: c.tick, Logf: logf, SegmentBytes: c.segmentBytes, BeforeRead: c.beforeRead})
 	if err != nil {
 		t.Fatal(err)
 	}

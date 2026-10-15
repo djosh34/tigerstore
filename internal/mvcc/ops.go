@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"math"
@@ -26,6 +27,13 @@ type writer struct {
 
 func (s *Store) start() *writer {
 	s.changes = s.changes[:0]
+	s.fills = nil
+	return &writer{s: s, begin: s.rev}
+}
+
+// reader starts a read outside any write.
+func (s *Store) reader() *writer {
+	s.fills = nil
 	return &writer{s: s, begin: s.rev}
 }
 
@@ -66,28 +74,48 @@ type RangeResult struct {
 	KVs   []KV
 	Count int64
 	More  bool
+	// values is set when the KVs still need their values.
+	values bool
 }
 
 // Range reads keys at the current or a past revision.
 func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	w := &writer{s: s, begin: s.rev}
-	return w.rangeKeys(r)
+	return s.reader().rangeKeys(r, true)
 }
 
 // RangeKVs is Range without building protobuf messages: one slice of
 // values instead of a message per key, for drivers that encode the
 // response themselves.
 func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
-	w := &writer{s: s, begin: s.rev}
-	return w.rangeResult(r, true)
+	w := s.reader()
+	res, err := w.rangeResult(r, true)
+	if err != nil || !res.values {
+		return res, err
+	}
+	for i := range res.KVs {
+		kv := &res.KVs[i]
+		if err := s.fill(kv.Key, kv.ref, &kv.Value); err != nil {
+			return RangeResult{}, err
+		}
+	}
+	return res, nil
 }
 
-func (w *writer) rangeKeys(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, true)
+// rangeKeys answers r as etcd's message. Without total, as rangeResult.
+func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
+	res, err := w.rangeResult(r, total)
 	if err != nil {
 		return nil, err
 	}
-	return res.Response(), nil
+	resp := res.Response()
+	if res.values {
+		for i := range res.KVs {
+			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return resp, nil
 }
 
 // Response is the range's answer as etcd's message, with the revision in
@@ -113,16 +141,12 @@ func (res *RangeResult) Response() *pb.RangeResponse {
 // plus one keys, and Count holds the keys it saw, not every key in the
 // range.
 func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	w := &writer{s: s, begin: s.rev}
-	res, err := w.rangeResult(r, false)
-	if err != nil {
-		return nil, err
-	}
-	return res.Response(), nil
+	return s.reader().rangeKeys(r, false)
 }
 
-// rangeResult answers r. Without total, the walk stops at the pushed-down
-// limit and Count holds only the keys it saw.
+// rangeResult answers r without the values, unless it sorts by them, and
+// sets values if they are still to be read. Without total, the walk stops
+// at the pushed-down limit and Count holds only the keys it saw.
 func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error) {
 	w.s.counts.Ranges++
 	cur := w.cur()
@@ -164,19 +188,18 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 	kvs = filterKVs(kvs, r)
 	byValue := r.SortTarget == pb.RangeRequest_VALUE
 	if byValue {
-		if err := w.s.readValues(kvs); err != nil {
+		if err := w.s.readNow(kvs); err != nil {
 			return RangeResult{}, err
 		}
 	}
 	sortKVs(kvs, r)
 
-	res := RangeResult{Rev: cur, Count: count}
+	res := RangeResult{Rev: cur, Count: count, values: !r.KeysOnly && !byValue}
 	if r.Limit > 0 && int64(len(kvs)) > r.Limit {
 		kvs = kvs[:r.Limit]
 		res.More = true
 	}
-	switch {
-	case r.KeysOnly:
+	if r.KeysOnly {
 		// Without a sort on values, etcd reads only the key index, which
 		// has no lease.
 		for i := range kvs {
@@ -185,24 +208,28 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 				kvs[i].Lease = 0
 			}
 		}
-	case !byValue:
-		if err := w.s.readValues(kvs); err != nil {
-			return RangeResult{}, err
-		}
 	}
 	res.KVs = kvs
 	return res, nil
 }
 
-// readValues reads the value of every KV.
-func (s *Store) readValues(kvs []KV) error {
+// readNow reads the value of every KV at once, for a sort on them. If
+// some are only on disk, it returns a ColdError that needs them all.
+func (s *Store) readNow(kvs []KV) error {
+	var cold []Fill
 	for i := range kvs {
 		kv := &kvs[i]
-		b, err := s.value(kv.Key, kv.ref)
+		b, ok, err := s.value(kv.Key, kv.ref)
 		if err != nil {
 			return err
 		}
+		if !ok {
+			cold = append(cold, Fill{Key: kv.Key, Ref: kv.ref})
+		}
 		kv.Value = b
+	}
+	if len(cold) > 0 {
+		return &ColdError{Need: cold}
 	}
 	return nil
 }
@@ -481,6 +508,12 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	}
 	resp, _, err := w.executeTxn(r, path)
 	if err != nil {
+		if cold := (*ColdError)(nil); errors.As(err, &cold) {
+			// checkTxn found every value it sorts by in memory; the
+			// transaction may have changed keys already, so it cannot run
+			// again.
+			return nil, fmt.Errorf("mvcc: a transaction needs %d values from disk after its check", len(cold.Need))
+		}
 		return nil, err
 	}
 	resp.Header = header(w.cur())
@@ -527,6 +560,9 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	matched := false
 	ok := true
 	var err error
+	// cold are the values only the disk has. Any key that fails the
+	// compare decides it without them.
+	var cold []Fill
 	w.s.ascend(c.Key, end, func(k *keyIndex) bool {
 		v, live := k.live(w.cur())
 		if !live {
@@ -536,8 +572,13 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		kv := k.kvValue(v)
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
-			if kv.Value, err = w.s.value(k.key, v.value); err != nil {
+			var in bool
+			if kv.Value, in, err = w.s.value(k.key, v.value); err != nil {
 				return false
+			}
+			if !in {
+				cold = append(cold, Fill{Key: k.key, Ref: v.value})
+				return true
 			}
 		}
 		if !compareKV(c, &kv) {
@@ -548,6 +589,9 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	})
 	if err != nil {
 		return false, err
+	}
+	if ok && len(cold) > 0 {
+		return false, &ColdError{Need: cold}
 	}
 	if !matched {
 		// A missing key has no value to compare, so VALUE compares fail.
@@ -611,7 +655,9 @@ func (w *writer) checkTxn(r *pb.TxnRequest, path []bool) (int, error) {
 		var err error
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
-			err = w.checkRange(t.RequestRange)
+			if err = w.checkRange(t.RequestRange); err == nil {
+				err = w.checkSortValues(t.RequestRange)
+			}
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
 			// etcd's check of a put in a transaction reads the previous
@@ -643,6 +689,29 @@ func (w *writer) checkRange(r *pb.RangeRequest) error {
 	return nil
 }
 
+// checkSortValues returns a ColdError if a range that sorts by value
+// would need values only the disk has, so that the transaction waits for
+// them before it changes anything. Its own writes are in memory; the keys
+// it reads otherwise are those at r's revision, or before the
+// transaction.
+func (w *writer) checkSortValues(r *pb.RangeRequest) error {
+	if r.SortTarget != pb.RangeRequest_VALUE || r.CountOnly {
+		return nil
+	}
+	at := r.Revision
+	if at <= 0 {
+		at = w.begin
+	}
+	var kvs []KV
+	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
+		if v, ok := k.live(at); ok {
+			kvs = append(kvs, k.kvValue(v))
+		}
+		return true
+	})
+	return w.s.readNow(kvs)
+}
+
 // executeTxn runs the chosen branch and returns its response and the
 // number of nested transactions in it. Nested responses keep an empty
 // header, as in etcd.
@@ -658,7 +727,7 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 		var out pb.ResponseOp
 		switch t := op.Request.(type) {
 		case *pb.RequestOp_RequestRange:
-			rr, err := w.rangeKeys(t.RequestRange)
+			rr, err := w.rangeKeys(t.RequestRange, true)
 			if err != nil {
 				return nil, 0, err
 			}
