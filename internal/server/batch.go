@@ -313,6 +313,9 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
+			if f.err == nil {
+				f.msg, f.err = f.st.compress(f.msg)
+			}
 			out = append(out, f)
 		}
 	}

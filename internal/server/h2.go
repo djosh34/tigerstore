@@ -432,11 +432,13 @@ type reqHeaders struct {
 	gateway bool
 	// token is the call's auth token: etcd's "token" metadata, or its
 	// "authorization", without "Bearer " either way.
-	token   string
-	size    int
-	regular bool  // a regular field came; pseudo-fields must come first
-	pseudo  uint8 // bits of the pseudo-fields seen
-	bad     bool  // a field broke HTTP/2's rules
+	token string
+	// encoding is the call's grpc-encoding.
+	encoding string
+	size     int
+	regular  bool  // a regular field came; pseudo-fields must come first
+	pseudo   uint8 // bits of the pseudo-fields seen
+	bad      bool  // a field broke HTTP/2's rules
 }
 
 // maxHeaderList bounds the decoded size of one header block, as
@@ -533,6 +535,8 @@ func (c *conn) onField(f hpack.HeaderField) {
 		h.needLeader = h.needLeader || f.Value == "true"
 	case "grpcgateway-accept":
 		h.gateway = true
+	case "grpc-encoding":
+		h.encoding = f.Value
 	case "token":
 		h.token = strings.TrimPrefix(f.Value, "Bearer ")
 	case "authorization":
@@ -600,7 +604,7 @@ func (c *conn) onHeaders(h *reqHeaders) error {
 
 func (c *conn) newStream(h *reqHeaders) *stream {
 	id := h.id
-	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token}
+	st := &stream{c: c, id: id, needLeader: h.needLeader, gateway: h.gateway, token: h.token, encoding: h.encoding}
 	grpc := h.method == "POST" && strings.HasPrefix(h.contentType, "application/grpc")
 	if grpc {
 		st.rpc = methods[h.path]
@@ -642,6 +646,9 @@ func (c *conn) newStream(h *reqHeaders) *stream {
 	switch {
 	case grpc && st.rpc == nil:
 		st.finish(unknownMethod(h.path))
+	case grpc && h.encoding != "" && h.encoding != identity && h.encoding != gzipName:
+		// grpc-go's answer before it runs a handler.
+		st.finish(status.Errorf(codes.Unimplemented, "grpc: Decompressor is not installed for grpc-encoding %q", h.encoding))
 	case st.rpc != nil && st.rpc.learner == learnerNever && c.s.learner():
 		// As etcd's interceptors, a learner serves only Status,
 		// serializable ranges and snapshots.
@@ -754,6 +761,10 @@ var (
 	grpcHeaders = headerBlock(
 		hpack.HeaderField{Name: ":status", Value: "200"},
 		hpack.HeaderField{Name: "content-type", Value: "application/grpc"})
+	gzipHeaders = headerBlock(
+		hpack.HeaderField{Name: ":status", Value: "200"},
+		hpack.HeaderField{Name: "content-type", Value: "application/grpc"},
+		hpack.HeaderField{Name: "grpc-encoding", Value: gzipName})
 	okTrailers = headerBlock(hpack.HeaderField{Name: "grpc-status", Value: "0"})
 )
 

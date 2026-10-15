@@ -28,6 +28,7 @@ type stream struct {
 	needLeader bool    // etcd's "hasleader" metadata
 	gateway    bool    // grpcgateway-accept metadata: no certificate identity
 	token      string  // the call's auth token
+	encoding   string  // the call's grpc-encoding: gzip, identity or none
 	httpMethod string
 	httpPath   string
 
@@ -121,8 +122,8 @@ func (st *stream) receive(d []byte) error {
 			if st.hdrN < len(st.hdr) {
 				return nil
 			}
-			if st.hdr[0] != 0 {
-				return status.Error(codes.Unimplemented, "grpc: compressed messages are not supported")
+			if err := st.checkFlag(st.hdr[0]); err != nil {
+				return err
 			}
 			size := binary.BigEndian.Uint32(st.hdr[1:])
 			if size > maxRecvMsg {
@@ -137,7 +138,14 @@ func (st *stream) receive(d []byte) error {
 			return nil
 		}
 		st.c.metrics.received.add(int64(len(st.msg)))
-		st.deliver(st.msg)
+		msg := st.msg
+		if st.hdr[0] == 1 {
+			var err error
+			if msg, err = gunzip(msg); err != nil {
+				return err
+			}
+		}
+		st.deliver(msg)
 		st.msg, st.hdrN = nil, 0
 	}
 }
@@ -219,6 +227,9 @@ func (st *stream) Recv(m proto.Message) error {
 // the stream has too much output queued.
 func (st *stream) Send(m proto.Message) error {
 	b, err := marshal(m)
+	if err == nil {
+		b, err = st.compress(b)
+	}
 	if err != nil {
 		return err
 	}
@@ -243,6 +254,9 @@ func marshal(m proto.Message) ([]byte, error) {
 // reply ends a unary call with its response.
 func (st *stream) reply(m proto.Message) {
 	b, err := marshal(m)
+	if err == nil {
+		b, err = st.compress(b)
+	}
 	if err != nil {
 		st.finish(err)
 		return
@@ -318,7 +332,11 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 	if msg != nil {
 		st.c.metrics.sent.add(int64(len(msg) - 5))
 		if !st.headersQueued {
-			st.out = append(st.out, outItem{kind: outHeaders, b: grpcHeaders})
+			hdrs := grpcHeaders
+			if st.encoding == gzipName {
+				hdrs = gzipHeaders
+			}
+			st.out = append(st.out, outItem{kind: outHeaders, b: hdrs})
 			st.headersQueued = true
 		}
 		st.out = append(st.out, outItem{kind: outData, b: msg})

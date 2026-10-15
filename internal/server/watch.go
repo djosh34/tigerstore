@@ -6,6 +6,9 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/core"
 )
 
 // watch serves one Watch stream. A goroutine reads client requests into
@@ -46,7 +49,7 @@ func (s *Server) watch(st *stream) error {
 		select {
 		case r := <-ws.C:
 			ws.Taken(r)
-			if err := st.Send(r); err != nil {
+			if err := sendFragments(st, r); err != nil {
 				if errors.Is(err, errAborted) {
 					return ws.Err()
 				}
@@ -66,4 +69,44 @@ func (s *Server) watch(st *stream) error {
 			return toStatus(err)
 		}
 	}
+}
+
+// maxWatchBytes is etcd's MaxRequestBytesWithOverhead: --max-request-bytes
+// and 512 KiB of gRPC overhead, the size from which etcd splits the
+// responses of a watcher that asked for fragments.
+const maxWatchBytes = core.MaxRequestBytes + 512<<10
+
+// sendFragments is etcd's: a response the node marked for a watcher that
+// asked for fragments goes out in parts of fewer than maxWatchBytes, each
+// of at least one event and all but the last marked as fragments, if it
+// is that large and has more than one event.
+func sendFragments(st *stream, r *pb.WatchResponse) error {
+	if !r.Fragment {
+		return st.Send(r)
+	}
+	r.Fragment = false
+	if proto.Size(r) < maxWatchBytes {
+		return st.Send(r)
+	}
+	for evs := r.Events; len(evs) > 0; {
+		cur := &pb.WatchResponse{
+			Header: r.Header, WatchId: r.WatchId, Created: r.Created, Canceled: r.Canceled,
+			CompactRevision: r.CompactRevision, CancelReason: r.CancelReason, Fragment: true,
+		}
+		n := 0
+		for n < len(evs) {
+			cur.Events = evs[:n+1]
+			if n > 0 && proto.Size(cur) >= maxWatchBytes {
+				break
+			}
+			n++
+		}
+		cur.Events = evs[:n]
+		evs = evs[n:]
+		cur.Fragment = len(evs) > 0
+		if err := st.Send(cur); err != nil {
+			return err
+		}
+	}
+	return nil
 }

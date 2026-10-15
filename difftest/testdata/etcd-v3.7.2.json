@@ -973,6 +973,28 @@
       }
     }
   ],
+  "compression": [
+    {
+      "do": "gzip put",
+      "code": "OK",
+      "result": 1
+    },
+    {
+      "do": "gzip range reads the value",
+      "code": "OK",
+      "result": true
+    },
+    {
+      "do": "range with an unknown encoding",
+      "code": "Unimplemented",
+      "message": "grpc: Decompressor is not installed for grpc-encoding \"plain\""
+    },
+    {
+      "do": "gzip watch sends the value",
+      "code": "OK",
+      "result": true
+    }
+  ],
   "defragment": [
     {
       "do": "put before",
@@ -2200,6 +2222,39 @@
       "do": "compact at revision -1",
       "code": "OutOfRange",
       "message": "etcdserver: mvcc: required revision has been compacted"
+    }
+  ],
+  "fragments": [
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put 1 MiB",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "watch with fragment",
+      "code": "OK",
+      "result": "e+ e+ e"
+    },
+    {
+      "do": "watch without fragment",
+      "code": "OK",
+      "result": "eee"
     }
   ],
   "hashes": [
