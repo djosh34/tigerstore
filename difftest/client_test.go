@@ -46,6 +46,10 @@ type client struct {
 	// url is the endpoint's base URL. http2 offers HTTP/2, http1 does not.
 	url          string
 	http2, http1 *http.Client
+	// endpoint is the address dialed, and tls the client's TLS
+	// configuration, nil without TLS.
+	endpoint string
+	tls      *tls.Config
 }
 
 // dial connects to TIGERSTORE_DIFF_ENDPOINT. A missing endpoint fails the
@@ -63,6 +67,13 @@ func dialAt(t *testing.T, env, ca string) *client {
 	if endpoint == "" {
 		t.Fatal(env + " is not set")
 	}
+	return dialTarget(t, "passthrough:///"+endpoint, endpoint, ca)
+}
+
+// dialTarget connects to the gRPC target of endpoint, with TLS when ca
+// names the CA file.
+func dialTarget(t *testing.T, target, endpoint, ca string) *client {
+	t.Helper()
 	creds := insecure.NewCredentials()
 	var tlsConf *tls.Config
 	if ca != "" {
@@ -81,7 +92,7 @@ func dialAt(t *testing.T, env, ca string) *client {
 		tlsConf = &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 		creds = credentials.NewTLS(tlsConf)
 	}
-	conn, err := grpc.NewClient("passthrough:///"+endpoint,
+	conn, err := grpc.NewClient(target,
 		grpc.WithTransportCredentials(creds),
 		// Let requests above the server's limit reach the server.
 		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(64<<20), grpc.MaxCallRecvMsgSize(64<<20)),
@@ -101,6 +112,8 @@ func dialAt(t *testing.T, env, ca string) *client {
 		lock:     v3lockpb.NewLockClient(conn),
 		election: epb.NewElectionClient(conn),
 		url:      "http://" + endpoint,
+		endpoint: endpoint,
+		tls:      tlsConf,
 		// Each transport gets its own TLS configuration: one set up for
 		// HTTP/2 adds h2 to the configuration's protocols.
 		http2: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConf.Clone(), ForceAttemptHTTP2: true}},

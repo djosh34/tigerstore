@@ -25,5 +25,7 @@
 //
 // TIGERSTORE_DIFF_SERVER (etcd or tigerstore) and TIGERSTORE_DIFF_ENDPOINT are
 // required. For a TLS endpoint, set TIGERSTORE_DIFF_CA, TIGERSTORE_DIFF_CERT
-// and TIGERSTORE_DIFF_KEY to PEM files.
+// and TIGERSTORE_DIFF_KEY to PEM files. The TLS tests read and replace the
+// certificates in TIGERSTORE_DIFF_CERTS, and TestUnix finds the server's
+// socket in TIGERSTORE_DIFF_WORK.
 package difftest

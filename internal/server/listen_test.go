@@ -152,10 +152,13 @@ func TestLargeRequestLimit(t *testing.T) {
 	})
 }
 
-// TestKeepalive checks grpc-go's keepalive with etcd's settings: a client
-// that pings too often without a call open gets GOAWAY ENHANCE_YOUR_CALM
-// "too_many_pings", and one that stays silent gets the server's ping and
-// is dropped when it does not answer within the timeout.
+// TestKeepalive checks grpc-go's keepalive with etcd's settings on a
+// connection without TLS, which etcd serves with grpc-go's server: a
+// client that pings too often without a call open gets GOAWAY
+// ENHANCE_YOUR_CALM "too_many_pings", and one that stays silent gets the
+// server's ping and is dropped when it does not answer within the
+// timeout. On the TLS port that serves gRPC and HTTP, as in etcd, every
+// ping is answered.
 func TestKeepalive(t *testing.T) {
 	c := newClusterWith(t, func(c *cluster) {
 		c.serverConfig = func(cfg *server.Config) {
@@ -225,5 +228,42 @@ func TestKeepalive(t *testing.T) {
 	}
 	if d := time.Since(began); d > 5*time.Second {
 		t.Errorf("a silent client was dropped after %v", d)
+	}
+
+	cert, _, _, err := c.ca.Issue("client", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc, err := tls.Dial("tcp", c.running[1].addr, &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost", NextProtos: []string{"h2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tc.Close() }) //nolint:errcheck // closing a test connection
+	if err := tc.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tc, http2.ClientPreface); err != nil {
+		t.Fatal(err)
+	}
+	fr = http2.NewFramer(tc, tc)
+	if err := fr.WriteSettings(); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		if err := fr.WritePing(false, [8]byte{byte(i)}); err != nil {
+			t.Fatal(err)
+		}
+		for acked := false; !acked; {
+			f, err := fr.ReadFrame()
+			if err != nil {
+				t.Fatalf("ping %d over TLS: %v", i, err)
+			}
+			switch f := f.(type) {
+			case *http2.PingFrame:
+				acked = f.IsAck() && f.Data[0] == byte(i)
+			case *http2.GoAwayFrame:
+				t.Fatalf("ping %d over TLS: GOAWAY %v %q", i, f.ErrCode, f.DebugData())
+			}
+		}
 	}
 }

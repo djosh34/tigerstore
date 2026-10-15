@@ -8,7 +8,10 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"net/url"
+	"os"
 	"slices"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
@@ -204,6 +207,74 @@ func defragment(r *run) {
 	}
 	r.record("defragment", res, err)
 	r.get("get after", &pb.RangeRequest{Key: r.key("a")})
+}
+
+// moveLeader moves the leadership to the endpoint first, which etcd's
+// single node has already, then records MoveLeader's answers there: to
+// itself, to a member that does not exist and to a learner.
+func moveLeader(r *run) {
+	st, err := r.c.maint.Status(r.ctx, &pb.StatusRequest{})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	self := st.Header.MemberId
+	if st.Leader != self {
+		r.lead(self, st.Leader)
+	}
+	move := func(do string, target uint64) {
+		resp, err := r.c.maint.MoveLeader(r.ctx, &pb.MoveLeaderRequest{TargetID: target})
+		var res any
+		if err == nil {
+			res = struct {
+				Header bool `json:"header"`
+			}{resp.Header != nil}
+		}
+		r.record(do, res, err)
+	}
+	move("move to itself", self)
+	move("move to a member that does not exist", 0x5eed)
+	add, err := r.c.cluster.MemberAdd(r.ctx, &pb.MemberAddRequest{PeerURLs: []string{"https://127.0.0.1:7"}, IsLearner: true})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	move("move to a learner", add.Member.ID)
+	if _, err := r.c.cluster.MemberRemove(r.ctx, &pb.MemberRemoveRequest{ID: add.Member.ID}); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+// lead has the leader move the leadership to member self, the
+// endpoint's, through the leader's client URL.
+func (r *run) lead(self, leader uint64) {
+	r.t.Helper()
+	ms, err := r.c.cluster.MemberList(r.ctx, &pb.MemberListRequest{Linearizable: true})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	for _, m := range ms.Members {
+		if m.ID != leader || len(m.ClientURLs) == 0 {
+			continue
+		}
+		u, err := url.Parse(m.ClientURLs[0])
+		if err != nil {
+			r.t.Fatal(err)
+		}
+		lc := dialTarget(r.t, "passthrough:///"+u.Host, u.Host, os.Getenv("TIGERSTORE_DIFF_CA"))
+		if _, err := lc.maint.MoveLeader(r.ctx, &pb.MoveLeaderRequest{TargetID: self}); err != nil {
+			r.t.Fatal(err)
+		}
+		for {
+			st, err := r.c.maint.Status(r.ctx, &pb.StatusRequest{})
+			if err != nil {
+				r.t.Fatal(err)
+			}
+			if st.Leader == self {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	r.t.Fatalf("no client URL of the leader %x in %v", leader, ms.Members)
 }
 
 // downgrade records a Downgrade's answer: its version, unless version is

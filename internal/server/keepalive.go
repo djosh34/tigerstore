@@ -12,6 +12,12 @@ import (
 // --grpc-keepalive-timeout are the server's pings. etcd hands grpc-go
 // each setting only when it is above 0, so grpc-go's defaults take the
 // others' place.
+//
+// etcd serves gRPC with grpc-go's own server only where it serves gRPC
+// alone: on a client URL without TLS, and on one with TLS when
+// --listen-client-http-urls takes the HTTP traffic. A TLS client URL that
+// serves both runs gRPC inside net/http's HTTP/2 server, which answers
+// every ping and sends none; so does tigerstore on such a connection.
 
 const (
 	// maxPingStrikes and idlePingTime are grpc-go's: the third ping too
@@ -35,8 +41,11 @@ var errTooManyPings = goAwayError{code: http2.ErrCodeEnhanceYourCalm, debug: "to
 // checkPing counts a client's ping against it when it comes sooner than
 // the minimum time after the last one, or, with no call open, sooner than
 // two hours after it; a HEADERS or DATA frame sent since forgives every
-// count. Reader only.
+// count. Only a connection that serves gRPC alone counts. Reader only.
 func (c *conn) checkPing() error {
+	if c.traffic != TrafficGRPC {
+		return nil
+	}
 	now := time.Now()
 	defer func() { c.lastPing = now }()
 	if c.wrote.CompareAndSwap(true, false) {

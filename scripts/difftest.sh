@@ -8,10 +8,15 @@
 #                                     the same, and rewrites tigerstore's answers to
 #                                     the steps it does not match yet
 #
+# ONLY, a regular expression, runs only the tests whose names match it.
+#
 # Each test in suites runs on a fresh server started with the flags next to
 # it, on top of the ones below; @CERTS@ in a flag is the directory of the
-# certificates and keys, and @METRICS@ the port of --listen-metrics-urls,
-# which the tests get in TIGERSTORE_DIFF_METRICS.
+# certificates and keys, which the tests get in TIGERSTORE_DIFF_CERTS,
+# @METRICS@ the port of --listen-metrics-urls, which they get in
+# TIGERSTORE_DIFF_METRICS, and @CLIENT@ the server's client port. Servers
+# run in the work directory, where a unix socket URL puts its socket; the
+# tests get it in TIGERSTORE_DIFF_WORK.
 #
 # ETCD is the etcd v3.7.2 binary, etcd on PATH by default. etcd runs on fixed
 # ports, because its member ID comes from its peer URL and the largest
@@ -32,6 +37,9 @@ suites=(
 	"TestDebug|--enable-pprof --metrics extensive --listen-metrics-urls http://127.0.0.1:@METRICS@"
 	"TestProxy|"
 	"TestGateway|"
+	"TestTLS|--cipher-suites TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 --client-crl-file @CERTS@/crl.der"
+	"TestTLSStrict|--tls-min-version TLS1.3 --client-cert-allowed-hostname localhost"
+	"TestUnix|--listen-client-urls https://127.0.0.1:@CLIENT@,unixs://localhost:@CLIENT@"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are
@@ -103,9 +111,30 @@ esac
 
 # The key of the JWT suite.
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/certs/jwt.pem" 2>/dev/null
+# The client certificates of the TLS suites: revoked, named client but in
+# crl.der, and other, named other for other.example only.
+(
+	cd "$work/certs"
+	for cert in "revoked|/CN=client|IP:127.0.0.1,DNS:localhost" "other|/CN=other|DNS:other.example"; do
+		IFS='|' read -r name subj san <<<"$cert"
+		openssl ecparam -name prime256v1 -genkey -noout -out "$name-key.pem"
+		openssl req -new -key "$name-key.pem" -subj "$subj" -out "$name.csr"
+		printf 'subjectAltName=%s\nextendedKeyUsage=clientAuth\n' "$san" >"$name.ext"
+		openssl x509 -req -in "$name.csr" -CA ca.pem -CAkey ca-key.pem -CAcreateserial \
+			-days 30 -extfile "$name.ext" -out "$name.pem" 2>/dev/null
+	done
+	printf '[ca]\ndefault_ca = dev\n[dev]\ndatabase = index.txt\ncrlnumber = crlnumber\ndefault_md = sha256\ndefault_crl_days = 30\n' >ca.cnf
+	: >index.txt
+	echo 01 >crlnumber
+	openssl ca -config ca.cnf -keyfile ca-key.pem -cert ca.pem -revoke revoked.pem 2>/dev/null
+	openssl ca -config ca.cnf -keyfile ca-key.pem -cert ca.pem -gencrl -out crl.pem 2>/dev/null
+	# etcd reads a CRL in DER.
+	openssl crl -in crl.pem -outform DER -out crl.der
+)
 
 for suite in "${suites[@]}"; do
 	test=${suite%%|*}
+	[[ $test =~ ${ONLY:-.} ]] || continue
 	read -r -a flags <<<"${suite#*|}"
 	flags=("${flags[@]//@CERTS@/$work/certs}")
 	echo "== $test ${flags[*]}"
@@ -118,15 +147,17 @@ for suite in "${suites[@]}"; do
 			fi
 		done
 		rm -rf "$work/etcd"
-		"$etcd" --name diff --data-dir "$work/etcd" \
+		etcdflags=("${flags[@]//@METRICS@/23791}")
+		(cd "$work" && exec "$etcd" --name diff --data-dir "$work/etcd" \
 			--listen-client-urls https://127.0.0.1:23790 --advertise-client-urls https://127.0.0.1:23790 \
 			--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
 			--trusted-ca-file "$work/certs/ca.pem" --client-cert-auth \
 			--listen-peer-urls http://127.0.0.1:23800 --initial-advertise-peer-urls http://127.0.0.1:23800 \
-			--initial-cluster diff=http://127.0.0.1:23800 --log-level warn "${flags[@]//@METRICS@/23791}" >"$work/etcd.log" 2>&1 &
+			--initial-cluster diff=http://127.0.0.1:23800 --log-level warn "${etcdflags[@]//@CLIENT@/23790}") >"$work/etcd.log" 2>&1 &
 		echo $! >"$work/etcd.pid"
 		proxy "$etcd" 127.0.0.1:23790 23792 23793
 		TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 TIGERSTORE_DIFF_METRICS=127.0.0.1:23791 \
+			TIGERSTORE_DIFF_CERTS=$work/certs TIGERSTORE_DIFF_WORK=$work \
 			TIGERSTORE_DIFF_PROXY=127.0.0.1:23792 TIGERSTORE_DIFF_GATEWAY=127.0.0.1:23793 \
 			TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 			go test "${args[@]}" -run "^$test\$" ||
@@ -144,6 +175,7 @@ for suite in "${suites[@]}"; do
 		(cd "$work" && TIGERSTORE=./tigerstore CERTS=certs OFFSET=$off "$OLDPWD/scripts/local-cluster.sh" "${flags[@]}")
 		proxy "$work/tigerstore" 127.0.0.1:$((2379 + off)) $((2383 + off)) $((2384 + off))
 		TIGERSTORE_DIFF_SERVER=tigerstore TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) TIGERSTORE_DIFF_METRICS=127.0.0.1:$((2381 + off)) \
+			TIGERSTORE_DIFF_CERTS=$work/certs TIGERSTORE_DIFF_WORK=$work \
 			TIGERSTORE_DIFF_PROXY=127.0.0.1:$((2383 + off)) TIGERSTORE_DIFF_GATEWAY=127.0.0.1:$((2384 + off)) \
 			TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 			go test "${args[@]}" -run "^$test\$" ||

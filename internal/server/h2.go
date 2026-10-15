@@ -183,7 +183,9 @@ func (c *conn) serve() {
 		defer c.close()
 		_ = c.writeLoop()
 	})
-	wg.Go(c.keepalive)
+	if c.traffic == TrafficGRPC {
+		wg.Go(c.keepalive)
+	}
 	err := c.readLoop()
 	ga, ok := errors.AsType[goAwayError](err)
 	if ce, isCE := errors.AsType[http2.ConnectionError](err); isCE {

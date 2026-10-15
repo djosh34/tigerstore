@@ -3053,6 +3053,15 @@
       }
     }
   ],
+  "keepalive": [
+    {
+      "do": "pings without a stream",
+      "code": "OK",
+      "result": {
+        "pings": 10
+      }
+    }
+  ],
   "kubernetes-shapes": [
     {
       "do": "create a: mod(a) = 0",
@@ -5198,6 +5207,25 @@
         ],
         "voter": true
       }
+    }
+  ],
+  "move-leader": [
+    {
+      "do": "move to itself",
+      "code": "OK",
+      "result": {
+        "header": false
+      }
+    },
+    {
+      "do": "move to a member that does not exist",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: bad leader transferee"
+    },
+    {
+      "do": "move to a learner",
+      "code": "FailedPrecondition",
+      "message": "etcdserver: bad leader transferee"
     }
   ],
   "range-stream": [

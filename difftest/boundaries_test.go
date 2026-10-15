@@ -46,6 +46,8 @@ var cases = []testCase{
 	{"snapshot", snapshot},
 	{"members", members},
 	{"defragment", defragment},
+	{"move-leader", moveLeader},
+	{"keepalive", keepalive},
 	{"compression", compression},
 	{"fragments", fragments},
 	{"gateway", gatewayCase},
