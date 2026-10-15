@@ -110,7 +110,9 @@ func TestAutoCompaction(t *testing.T) {
 }
 
 // TestNegativeRetention starts nodes with the negative retentions that
-// ParseCompaction lets through: they run and compact nothing.
+// ParseCompaction lets through: they run and compact nothing. etcd v3.7.2
+// does the same in revision mode, and in periodic mode compacts at about
+// the current revision without pause.
 func TestNegativeRetention(t *testing.T) {
 	for _, c := range []Compaction{{Revisions: -5}, {Period: -time.Hour}} {
 		n := runCompacting(t, c)
@@ -142,8 +144,10 @@ func TestParseCompaction(t *testing.T) {
 		{"periodic", "soon", Compaction{}, true},
 		{"", "1", Compaction{}, true},
 		{"daily", "1", Compaction{}, true},
-		// etcd lets a negative duration through; the node then compacts
-		// nothing.
+		// etcd lets a negative duration through. In revision mode it
+		// then compacts nothing, as tigerstore does; in periodic mode it
+		// compacts in a loop that never waits, which tigerstore does not
+		// copy (docs/design.md).
 		{"revision", "-5m", Compaction{Revisions: int64(-5 * time.Minute)}, false},
 		{"periodic", "-1h", Compaction{Period: -time.Hour}, false},
 	} {
