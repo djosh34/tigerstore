@@ -188,8 +188,9 @@ expect $'viagateway\n1' get viagateway
 # cluster above, which serves as the discovery service.
 ctl put /_etcd/registry/smoke/_config/size 3 >/dev/null
 mkdir -p "$work/disc"
-for i in 1 2 3; do
-	c=$((2390 + 10 * i + off))
+# disc starts node d$1 of that cluster.
+disc() {
+	local i=$1 c=$((2390 + 10 * $1 + off))
 	"$work/tigerstore" --name "d$i" --data-dir "$work/disc/d$i" \
 		--listen-peer-urls "https://127.0.0.1:$((c + 1))" --initial-advertise-peer-urls "https://127.0.0.1:$((c + 1))" \
 		--listen-client-urls "https://127.0.0.1:$c" --advertise-client-urls "https://127.0.0.1:$c" \
@@ -199,8 +200,11 @@ for i in 1 2 3; do
 		--peer-trusted-ca-file "$work/certs/ca.pem" \
 		--discovery-endpoints "127.0.0.1:$((2379 + off))" --discovery-token smoke \
 		--discovery-cacert "$work/certs/ca.pem" --discovery-cert "$work/certs/client.pem" \
-		--discovery-key "$work/certs/client-key.pem" >"$work/disc/d$i.log" 2>&1 &
+		--discovery-key "$work/certs/client-key.pem" >>"$work/disc/d$i.log" 2>&1 &
 	echo $! >"$work/data/disc$i.pid"
+}
+for i in 1 2 3; do
+	disc "$i"
 done
 members=""
 for _ in $(seq 100); do
@@ -212,6 +216,22 @@ done
 if [ "$(grep -c ', started, d[123], ' <<<"$members")" != 3 ]; then
 	echo "the cluster from discovery has members [$members]"
 	for f in "$work"/disc/*.log; do echo "== $f"; tail -20 "$f"; done
+	exit 1
+fi
+# A restart takes the members from the data directory; the discovery
+# cluster is full by now.
+kill "$(cat "$work/data/disc1.pid")"
+while kill -0 "$(cat "$work/data/disc1.pid")" 2>/dev/null; do sleep 0.1; done
+disc 1
+for _ in $(seq 100); do
+	etcdctl --endpoints="https://127.0.0.1:$((2400 + off))" --cacert "$work/certs/ca.pem" \
+		--cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" --command-timeout=2s put afterrestart 1 >/dev/null 2>&1 && break
+	sleep 0.2
+done
+if ! etcdctl --endpoints="https://127.0.0.1:$((2400 + off))" --cacert "$work/certs/ca.pem" \
+	--cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" --command-timeout=2s get afterrestart | grep -q '^1$'; then
+	echo "d1 did not serve after its restart"
+	tail -20 "$work/disc/d1.log"
 	exit 1
 fi
 echo "smoke test passed"
