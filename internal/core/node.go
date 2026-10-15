@@ -34,15 +34,15 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// ErrDiskStalled stops a leader whose local append took longer than
-// StallTicks election timeouts.
+// ErrDiskStalled stops a leader with other voters whose local append took
+// longer than StallTicks election timeouts.
 var ErrDiskStalled = errors.New("core: the leader's disk stalled; stopping so that another node can lead")
 
 // StallTicks is how many election timeouts a leader's append may take.
 const StallTicks = 2
 
-// ErrCommitStalled stops a leader whose own entries have not committed for
-// CommitStallTicks election timeouts.
+// ErrCommitStalled stops a leader with other voters whose own entries have
+// not committed for CommitStallTicks election timeouts.
 var ErrCommitStalled = errors.New("core: the leader's entries stopped committing; stopping so that another node can lead")
 
 // CommitStallTicks is how many election timeouts a leader's entry may wait
@@ -530,14 +530,17 @@ func (n *Node) Tick() {
 	n.now++
 	n.rn.Tick()
 	n.expire()
-	if !planted.On("B17") && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
+	// A lone voter has no one to lead in its place, so stopping would only
+	// turn a slow disk into an outage; it waits for its disk instead.
+	alone := len(n.cfg.Peers) == 1
+	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
 		// A leader whose disk stalls still heartbeats, so the others would
 		// never elect a replacement. It stops instead; the healthy pair
 		// elects, and a restart brings it back from its log.
 		n.fail(ErrDiskStalled)
 		return
 	}
-	if n.isLeader && n.commitStalled() {
+	if n.isLeader && n.commitStalled() && !alone {
 		// The same for a gray leader whose heartbeats get through but
 		// whose appends do not: Raft's quorum check sees a live quorum,
 		// yet nothing commits.
