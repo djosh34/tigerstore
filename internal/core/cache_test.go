@@ -13,15 +13,17 @@ import (
 // the cache is past its limit, and that a value it drops or that does
 // not fit is gone.
 func TestCacheLRU(t *testing.T) {
+	const size = 1000
 	c := newCache()
-	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
-	c.add(ref(1), make([]byte, 10))
+	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: size} }
+	c.add(ref(1), make([]byte, size))
 	if len(c.items) != 0 {
 		t.Fatal("a cache without a limit kept a value")
 	}
-	c.setLimit(2 * (10 + cachedOverhead))
+	// Room for two values and four map slots.
+	c.setLimit(2*(size+cachedOverhead) + 4*slotOverhead)
 	for i := uint64(1); i <= 3; i++ {
-		c.add(ref(i), make([]byte, 10))
+		c.add(ref(i), make([]byte, size))
 	}
 	if _, ok := c.get(ref(1)); ok {
 		t.Fatal("the oldest value stayed past the limit")
@@ -30,33 +32,53 @@ func TestCacheLRU(t *testing.T) {
 		t.Fatal("value 2 is gone")
 	}
 	// 2 is now the newest, so 3 goes for 4.
-	c.add(ref(4), make([]byte, 10))
+	c.add(ref(4), make([]byte, size))
 	if _, ok := c.get(ref(3)); ok {
 		t.Fatal("value 3 stayed, though 2 was used after it")
 	}
+	if _, ok := c.get(ref(4)); !ok {
+		t.Fatal("value 4 is gone")
+	}
 	c.drop(ref(2))
-	if _, ok := c.get(ref(2)); ok || c.bytes != 10+cachedOverhead {
+	if _, ok := c.get(ref(2)); ok || c.bytes != size+cachedOverhead+slotOverhead {
 		t.Fatalf("after a drop: value 2 there %v, %d bytes", ok, c.bytes)
 	}
 	c.setLimit(0)
 	if len(c.items) != 0 || c.bytes != 0 || c.head.next != &c.head {
 		t.Fatalf("a limit of 0 left %d values, %d bytes", len(c.items), c.bytes)
 	}
-	if c.hits != 1 {
-		t.Fatalf("%d hits, want 1", c.hits)
+	if c.hits != 2 {
+		t.Fatalf("%d hits, want 2", c.hits)
 	}
-	// The map is made again once it holds half its most, so that the
-	// memory of the values that went is freed.
+}
+
+// TestCacheMapSlots checks that the slots of the map count up to the
+// most values it held, until it holds half of that and is made again,
+// so that the memory of the values that went is freed.
+func TestCacheMapSlots(t *testing.T) {
+	c := newCache()
 	c.setLimit(1 << 20)
+	ref := func(i uint64) mvcc.Ref { return mvcc.Ref{Index: i, Len: 10} }
+	want := func(values, slots int) {
+		t.Helper()
+		if len(c.items) != values || c.peak != slots || c.bytes != int64(values*(10+cachedOverhead)+slots*slotOverhead) {
+			t.Fatalf("%d values, peak %d, %d bytes; want %d values and %d slots", len(c.items), c.peak, c.bytes, values, slots)
+		}
+	}
 	for i := uint64(1); i <= 100; i++ {
 		c.add(ref(i), make([]byte, 10))
 	}
-	for i := uint64(1); i <= 50; i++ {
+	want(100, 100)
+	for i := uint64(1); i <= 40; i++ {
 		c.drop(ref(i))
 	}
-	if c.peak != 50 || len(c.items) != 50 {
-		t.Fatalf("after 50 of 100 values went: peak %d, %d values", c.peak, len(c.items))
+	want(60, 100)
+	for i := uint64(41); i <= 50; i++ {
+		c.drop(ref(i))
 	}
+	want(50, 50)
+	c.clear()
+	want(0, 0)
 }
 
 // cached reports whether the newest value of key is in the cache.
