@@ -13,6 +13,7 @@ require (
 	github.com/prometheus/common v0.67.5
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75
 	go.etcd.io/etcd/api/v3 v3.7.2
+	go.etcd.io/etcd/client/pkg/v3 v3.7.2
 	go.etcd.io/etcd/pkg/v3 v3.7.2
 	go.etcd.io/etcd/server/v3 v3.7.2
 	go.etcd.io/raft/v3 v3.7.0
@@ -24,6 +25,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0
+	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.11
 	sigs.k8s.io/yaml v1.6.0
@@ -43,16 +45,17 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xiang90/probing v0.0.0-20221125231312-a49e3df8f510 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.2 // indirect
 	go.etcd.io/etcd/client/v3 v3.7.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0 // indirect
@@ -60,7 +63,6 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800 // indirect

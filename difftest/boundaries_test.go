@@ -118,8 +118,12 @@ func TestBoundaries(t *testing.T) { runCases(t, "etcd-v3.7.2.json", cases) }
 // expected failures are in testdata/<golden> with "etcd-v3.7.2" replaced
 // by "tigerstore-known".
 func runCases(t *testing.T, golden string, cases []testCase) {
+	runCasesOn(t, golden, dial(t), cases)
+}
+
+// runCasesOn is runCases on the client c.
+func runCasesOn(t *testing.T, golden string, c *client, cases []testCase) {
 	srv := server(t)
-	c := dial(t)
 	goldenFile := "testdata/" + golden
 	knownFile := "testdata/" + strings.Replace(golden, "etcd-v3.7.2", "tigerstore-known", 1)
 	if *recordFlag && srv == "etcd" {

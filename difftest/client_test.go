@@ -52,13 +52,20 @@ type client struct {
 // test: these tests only build with the difftest tag, so they never skip.
 func dial(t *testing.T) *client {
 	t.Helper()
-	endpoint := os.Getenv("TIGERSTORE_DIFF_ENDPOINT")
+	return dialAt(t, "TIGERSTORE_DIFF_ENDPOINT", os.Getenv("TIGERSTORE_DIFF_CA"))
+}
+
+// dialAt connects to the endpoint in the environment variable env, with
+// TLS when ca names the CA file.
+func dialAt(t *testing.T, env, ca string) *client {
+	t.Helper()
+	endpoint := os.Getenv(env)
 	if endpoint == "" {
-		t.Fatal("TIGERSTORE_DIFF_ENDPOINT is not set")
+		t.Fatal(env + " is not set")
 	}
 	creds := insecure.NewCredentials()
 	var tlsConf *tls.Config
-	if ca := os.Getenv("TIGERSTORE_DIFF_CA"); ca != "" {
+	if ca != "" {
 		pem, err := os.ReadFile(ca)
 		if err != nil {
 			t.Fatal(err)

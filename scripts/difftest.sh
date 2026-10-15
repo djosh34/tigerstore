@@ -29,6 +29,7 @@ suites=(
 	"TestAuthJWT|--auth-token jwt,priv-key=@CERTS@/jwt.pem,sign-method=RS256"
 	"TestAutoCompaction|--auto-compaction-mode periodic --auto-compaction-retention 2s"
 	"TestDebug|--enable-pprof --metrics extensive --listen-metrics-urls http://127.0.0.1:@METRICS@"
+	"TestProxy|"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are
@@ -57,6 +58,14 @@ alive() {
 			exit 1
 		fi
 	done
+}
+# proxy starts the gRPC proxy of TestProxy, with --namespace /ns/, in
+# front of the server's client URL $2 on port $3, with binary $1.
+proxy() {
+	[ "$test" = TestProxy ] || return 0
+	"$1" grpc-proxy start --endpoints="$2" --listen-addr="127.0.0.1:$3" --namespace=/ns/ \
+		--cacert "$work/certs/ca.pem" --cert "$work/certs/proxy.pem" --key "$work/certs/proxy-key.pem" >"$work/proxy.log" 2>&1 &
+	echo $! >"$work/proxy.pid"
 }
 args=(-count=1 -tags difftest ./difftest)
 [ "$record" = record ] && args+=(-record)
@@ -90,7 +99,7 @@ for suite in "${suites[@]}"; do
 	echo "== $test ${flags[*]}"
 	case $server in
 	etcd)
-		for port in 23790 23791 23800; do
+		for port in 23790 23791 23792 23800; do
 			if in_use $port; then
 				echo "port $port is in use, so the tests would not reach a fresh etcd"
 				exit 1
@@ -104,14 +113,15 @@ for suite in "${suites[@]}"; do
 			--listen-peer-urls http://127.0.0.1:23800 --initial-advertise-peer-urls http://127.0.0.1:23800 \
 			--initial-cluster diff=http://127.0.0.1:23800 --log-level warn "${flags[@]//@METRICS@/23791}" >"$work/etcd.log" 2>&1 &
 		echo $! >"$work/etcd.pid"
-		TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 TIGERSTORE_DIFF_METRICS=127.0.0.1:23791 \
+		proxy "$etcd" 127.0.0.1:23790 23792
+		TIGERSTORE_DIFF_SERVER=etcd TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:23790 TIGERSTORE_DIFF_METRICS=127.0.0.1:23791 TIGERSTORE_DIFF_PROXY=127.0.0.1:23792 \
 			TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 			go test "${args[@]}" -run "^$test\$" ||
-			{ tail -50 "$work/etcd.log"; exit 1; }
+			{ tail -n 50 "$work/etcd.log" "$work"/proxy.log; exit 1; }
 		;;
 	tigerstore)
 		off=${OFFSET:-$((RANDOM % 2000 + 1))}
-		for port in $((2379 + off)) $((22379 + off)) $((32379 + off)) $((2380 + off)) $((22380 + off)) $((32380 + off)) $((2381 + off)) $((22381 + off)) $((32381 + off)); do
+		for port in $((2379 + off)) $((22379 + off)) $((32379 + off)) $((2380 + off)) $((22380 + off)) $((32380 + off)) $((2381 + off)) $((22381 + off)) $((32381 + off)) $((2383 + off)); do
 			if in_use $port; then
 				echo "port $port is in use"
 				exit 1
@@ -119,10 +129,11 @@ for suite in "${suites[@]}"; do
 		done
 		rm -rf "$work/data"
 		(cd "$work" && TIGERSTORE=./tigerstore CERTS=certs OFFSET=$off "$OLDPWD/scripts/local-cluster.sh" "${flags[@]}")
-		TIGERSTORE_DIFF_SERVER=tigerstore TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) TIGERSTORE_DIFF_METRICS=127.0.0.1:$((2381 + off)) \
+		proxy "$work/tigerstore" 127.0.0.1:$((2379 + off)) $((2383 + off))
+		TIGERSTORE_DIFF_SERVER=tigerstore TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) TIGERSTORE_DIFF_METRICS=127.0.0.1:$((2381 + off)) TIGERSTORE_DIFF_PROXY=127.0.0.1:$((2383 + off)) \
 			TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 			go test "${args[@]}" -run "^$test\$" ||
-			{ for f in "$work"/data/*.log; do echo "== $f"; tail -30 "$f"; done; exit 1; }
+			{ for f in "$work"/data/*.log "$work"/proxy.log; do [ -e "$f" ] && echo "== $f" && tail -30 "$f"; done; exit 1; }
 		;;
 	esac
 	alive

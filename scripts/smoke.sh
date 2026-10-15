@@ -150,4 +150,26 @@ if etcdctl --endpoints=https://127.0.0.1:$((2379 + off)) --cacert "$work/certs/c
 	echo "a client without a client certificate was served"
 	exit 1
 fi
+# etcd's gRPC proxy, which tigerstore runs, keeps the keys of its
+# --namespace under that prefix. It dials with a certificate without a
+# CommonName, as etcd requires.
+proxy=$((2383 + off))
+"$work/tigerstore" grpc-proxy start --endpoints=127.0.0.1:$((2379 + off)) --listen-addr=127.0.0.1:$proxy \
+	--cacert "$work/certs/ca.pem" --cert "$work/certs/proxy.pem" --key "$work/certs/proxy-key.pem" \
+	--namespace=/ns/ >"$work/proxy.log" 2>&1 &
+echo $! >"$work/data/proxy.pid"
+pctl() {
+	etcdctl --endpoints=127.0.0.1:$proxy --command-timeout=5s "$@"
+}
+for _ in $(seq 50); do
+	pctl put viaproxy 1 >/dev/null 2>&1 && break
+	sleep 0.2
+done
+expect $'/ns/viaproxy\n1' get /ns/viaproxy
+proxied=$(pctl get viaproxy)
+if [ "$proxied" != $'viaproxy\n1' ]; then
+	echo "get through the gRPC proxy: got [$proxied]"
+	tail -20 "$work/proxy.log"
+	exit 1
+fi
 echo "smoke test passed"
