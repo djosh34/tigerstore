@@ -119,7 +119,7 @@ func TestAuthTokenOptions(t *testing.T) {
 		if user, rev, ok := j.info(tok); !ok || user != "alice" || rev != 7 {
 			t.Fatalf("%q: info %q %d %v", c.opts, user, rev, ok)
 		}
-		if _, _, ok := j.info(tok[:len(tok)-2] + "xx"); ok {
+		if _, _, ok := j.info(breakSignature(tok)); ok {
 			t.Fatalf("%q takes a token with a broken signature", c.opts)
 		}
 	}
@@ -175,4 +175,17 @@ func TestAuthTokenOptions(t *testing.T) {
 	if _, _, ok := nop.info(tok); ok {
 		t.Fatal("no tokens takes one")
 	}
+}
+
+// breakSignature changes a character well inside a token's signature, all
+// of whose bits count, unlike those of its last character.
+func breakSignature(tok string) string {
+	b := []byte(tok)
+	i := len(b) - 5
+	if b[i] == 'A' {
+		b[i] = 'B'
+	} else {
+		b[i] = 'A'
+	}
+	return string(b)
 }
