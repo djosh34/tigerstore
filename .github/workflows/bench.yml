@@ -98,7 +98,7 @@ jobs:
             if [ "$BENCHMARK" = mixed-k8s ]; then
               echo "mixed-k8s: 1M preloaded keys, <=128 puts and <=60 KiB per Txn at 300 Txns/s, fitted beta sizes, all endpoints, default mix plus resource watches; both stores GOMEMLIMIT=3GiB; rate is half etcd median max"
             fi
-            echo "etcd only: --quota-backend-bytes 8 GiB, --log-level warn, --peer-client-cert-auth, default safe persistence"
+            echo "both stores: --quota-backend-bytes 8 GiB; etcd only: --log-level warn, --peer-client-cert-auth, default safe persistence"
             echo "tigerstore: at least two Go processors on its one CPU (its own rule), peer certificates always verified"
             echo '```'
           } | tee results/runner.md

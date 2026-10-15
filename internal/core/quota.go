@@ -77,16 +77,18 @@ func (n *Node) quotaLeft(cost int64) bool {
 	return n.kv.Size()+cost < quota
 }
 
-// refuseNoSpace refuses a request that does not fit the quota, and raises the
-// node's NOSPACE alarm.
+// refuseNoSpace refuses request id, which does not fit the quota, and
+// raises the node's NOSPACE alarm. Like etcd's gRPC layer, it answers
+// once the alarm applied, if it proposes it.
 func (n *Node) refuseNoSpace(id uint64) {
-	n.raiseNoSpace()
-	n.reply(id, rpctypes.ErrGRPCNoSpace)
+	if !n.raiseNoSpace(id) {
+		n.reply(id, rpctypes.ErrGRPCNoSpace)
+	}
 }
 
 // overQuota is the answer to a write that applied past the quota.
 func (n *Node) overQuota() error {
-	n.raiseNoSpace()
+	n.raiseNoSpace(0)
 	return rpctypes.ErrGRPCNoSpace
 }
 
@@ -94,18 +96,29 @@ func (n *Node) overQuota() error {
 // a proposal of it is under way: one from the last leaseRetryTicks that
 // has not applied. A node that replays its log or installs a snapshot
 // proposes nothing: it raised the alarm when it applied the entry first.
-func (n *Node) raiseNoSpace() {
-	if n.rn == nil || n.readInline || !n.capable() {
-		return
+// If it proposes the alarm and id is not 0, request id gets ErrNoSpace
+// once the alarm applied.
+func (n *Node) raiseNoSpace(id uint64) bool {
+	if n.rn == nil || n.readInline {
+		return false
 	}
 	for _, a := range n.state.alarms {
 		if a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID {
-			return
+			return false
 		}
 	}
 	if n.noSpaceAt >= 0 && n.now-n.noSpaceAt < leaseRetryTicks {
-		return
+		return false
 	}
 	n.noSpaceAt = n.now
-	n.queueWrite(&pending{req: Request{Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}}})
+	p := &pending{
+		req:      Request{ID: id, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
+		deadline: n.now + int64(n.cfg.RequestTicks),
+		refuse:   rpctypes.ErrGRPCNoSpace,
+	}
+	n.queueFeature(p)
+	if id != 0 {
+		n.timeouts = append(n.timeouts, p)
+	}
+	return id != 0
 }

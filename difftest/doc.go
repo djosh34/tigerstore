@@ -7,9 +7,12 @@
 //	scripts/difftest.sh etcd          single-node etcd v3.7.2, ETCD is its binary
 //	scripts/difftest.sh tigerstore    3-node tigerstore built from this checkout
 //
-// testdata/etcd-v3.7.2.json holds etcd v3.7.2's answers. The tests compare the
-// endpoint's answers with it, step by step. `scripts/difftest.sh etcd record`
-// writes the file again and refuses an endpoint that is not etcd 3.7.2.
+// Each test runs on a fresh server, started with the flags scripts/difftest.sh
+// lists for it. testdata/etcd-v3.7.2.json holds etcd v3.7.2's answers to
+// TestBoundaries, and testdata/etcd-v3.7.2-<name>.json those to the other
+// tests. The tests compare the endpoint's answers with them, step by step.
+// `scripts/difftest.sh etcd record` writes the files again and refuses an
+// endpoint that is not etcd 3.7.2.
 //
 // Two lists in boundaries_test.go say where tigerstore may differ. stricter
 // holds the watch steps where etcd sends an update without its previous

@@ -111,15 +111,15 @@ start() {
 	for i in 1 2 3; do
 		local client="https://127.0.0.1:$((port + 10 * i))"
 		local peer="https://127.0.0.1:$((port + 10 * i + 1))"
-		# etcd-only flags: tigerstore always verifies peer certificates,
-		# has no quota and logs little. The quota is etcd's suggested
-		# maximum, so long write runs do not hit etcd's 2 GiB default.
-		local extra=()
+		# The quota is etcd's suggested maximum, so long write runs do not
+		# hit the 2 GiB default. etcd-only flags: tigerstore always
+		# verifies peer certificates and logs little.
+		local extra=(--quota-backend-bytes $((8 << 30)))
 		if [ "$kind" = etcd ]; then
-			extra=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
-				--quota-backend-bytes $((8 << 30)) --log-level warn --peer-client-cert-auth)
+			extra+=(--initial-advertise-peer-urls "$peer" --initial-cluster-state new
+				--log-level warn --peer-client-cert-auth)
 		elif [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
-			extra=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
+			extra+=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
 		fi
 		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \

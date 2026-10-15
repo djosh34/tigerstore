@@ -292,6 +292,11 @@ type pending struct {
 	// fetched holds the values read from the log for a read that needed
 	// them at once.
 	fetched map[mvcc.Ref][]byte
+	// early marks a write in Node.early.
+	early bool
+	// refuse, if set, answers the request once its write applied: the
+	// NOSPACE alarm a refused write raised (quota.go).
+	refuse error
 }
 
 // readBatch is the set of reads that share one ReadIndex request.
@@ -355,7 +360,9 @@ type Node struct {
 	waiting           map[uint64]*pending // writes by request ID
 	timeouts          []*pending          // every waiting request in deadline order
 
-	proposals   []*pending
+	proposals []*pending
+	// early are writes that need featureVersion, which wait for it.
+	early       []*pending
 	propBytes   int
 	reads       []*pending
 	readBatches []*readBatch
@@ -738,11 +745,7 @@ func (n *Node) submit(r Request, p *pending) {
 			n.reads = append(n.reads, p)
 			break
 		}
-		if !n.capable() {
-			n.reply(r.ID, rpctypes.ErrGRPCNotCapable)
-			return
-		}
-		n.queueWrite(p)
+		n.queueFeature(p)
 	case *pb.LeaseGrantRequest:
 		if op.ID == 0 {
 			// The node that takes the request picks the ID, so every
@@ -884,7 +887,7 @@ var errNotProposed = status.Error(codes.DeadlineExceeded, context.DeadlineExceed
 // they were proposed leave the queue at once, so a node without a leader
 // holds only writes that may still go out.
 func (n *Node) expire() {
-	i, dropped := 0, false
+	i, dropped, early := 0, false, false
 	for ; i < len(n.timeouts); i++ {
 		p := n.timeouts[i]
 		if p.done {
@@ -892,6 +895,11 @@ func (n *Node) expire() {
 		}
 		if p.deadline > n.now {
 			break
+		}
+		if p.early {
+			early = true
+			n.finish(p, errNotProposed)
+			continue
 		}
 		if p.queued {
 			dropped = true
@@ -904,6 +912,9 @@ func (n *Node) expire() {
 	n.timeouts = n.timeouts[i:]
 	if dropped {
 		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool { return p.done })
+	}
+	if early {
+		n.early = slices.DeleteFunc(n.early, func(p *pending) bool { return p.done })
 	}
 }
 
@@ -1101,6 +1112,7 @@ func (n *Node) Process() (Effects, error) {
 		// the append is durable. Nothing else waits, and with no append in
 		// flight a write goes out at once, so one client sees no delay.
 		// The byte cap still sends a full entry early (queueWrite).
+		n.releaseEarly()
 		if !n.isLeader || n.durable >= n.ownIndex {
 			n.propose()
 		}
@@ -1139,7 +1151,7 @@ func (n *Node) stop() {
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
-	n.timeouts, n.proposals, n.reads, n.readBatches = nil, nil, nil, nil
+	n.timeouts, n.proposals, n.reads, n.readBatches, n.early = nil, nil, nil, nil, nil
 }
 
 func (n *Node) handleReady(rd raft.Ready) {
