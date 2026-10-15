@@ -62,11 +62,18 @@ var methods = map[string]*method{
 	"/etcdserverpb.Cluster/MemberList":    {unary: memberList},
 	"/etcdserverpb.Maintenance/Status":    {unary: maintenanceStatus},
 	"/etcdserverpb.Maintenance/Alarm":     {unary: alarm},
+	"/v3lockpb.Lock/Lock":                 {unary: lock},
+	"/v3lockpb.Lock/Unlock":               {unary: unlock},
+	"/v3electionpb.Election/Campaign":     {unary: campaign},
+	"/v3electionpb.Election/Proclaim":     {unary: electionProclaim},
+	"/v3electionpb.Election/Leader":       {unary: electionLeader},
+	"/v3electionpb.Election/Observe":      {stream: (*Server).observe, serverStream: true},
+	"/v3electionpb.Election/Resign":       {unary: electionResign},
 }
 
 // services are etcd's gRPC services; their other methods are not
 // implemented.
-var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth"}
+var services = []string{"etcdserverpb.KV", "etcdserverpb.Watch", "etcdserverpb.Lease", "etcdserverpb.Cluster", "etcdserverpb.Maintenance", "etcdserverpb.Auth", "v3lockpb.Lock", "v3electionpb.Election"}
 
 // unknownMethod is grpc-go's answer for a method that is not served.
 func unknownMethod(path string) error {

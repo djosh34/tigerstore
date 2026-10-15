@@ -17,6 +17,8 @@ import (
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	epb "go.etcd.io/etcd/server/v3/etcdserver/api/v3election/v3electionpb"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/v3lock/v3lockpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -30,6 +32,9 @@ type client struct {
 	watch pb.WatchClient
 	lease pb.LeaseClient
 	maint pb.MaintenanceClient
+	// lock and election are etcd's Lock and Election services.
+	lock     v3lockpb.LockClient
+	election epb.ElectionClient
 }
 
 // dial connects to TIGERSTORE_DIFF_ENDPOINT. A missing endpoint fails the
@@ -66,10 +71,12 @@ func dial(t *testing.T) *client {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	c := &client{
-		kv:    pb.NewKVClient(conn),
-		watch: pb.NewWatchClient(conn),
-		lease: pb.NewLeaseClient(conn),
-		maint: pb.NewMaintenanceClient(conn),
+		kv:       pb.NewKVClient(conn),
+		watch:    pb.NewWatchClient(conn),
+		lease:    pb.NewLeaseClient(conn),
+		maint:    pb.NewMaintenanceClient(conn),
+		lock:     v3lockpb.NewLockClient(conn),
+		election: epb.NewElectionClient(conn),
 	}
 	// A fresh server may still be electing a leader.
 	var err2 error
