@@ -36,6 +36,7 @@ import (
 //	uvarint cluster version | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
 //	uvarint lease count | per lease: varint ID | varint TTL | varint stamp |
+//	varint checkpointed remaining TTL |
 //	uvarint alarm count | per alarm: uvarint member ID | varint type |
 //	u8 auth enabled | uvarint auth revision |
 //	uvarint user count | per user: bytes authpb.User |
@@ -114,6 +115,7 @@ func (h *ckptHeader) encode() ([]byte, error) {
 		b = binary.AppendVarint(b, l.id)
 		b = binary.AppendVarint(b, l.ttl)
 		b = binary.AppendVarint(b, l.stamp)
+		b = binary.AppendVarint(b, l.remaining)
 	}
 	b = binary.AppendUvarint(b, uint64(len(h.alarms)))
 	for _, a := range h.alarms {
@@ -226,7 +228,7 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	h.rev, h.compact, h.stamps, h.base = sv(), sv(), sv(), sv()
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
-		l := &lease{id: sv(), ttl: sv(), stamp: sv(), keys: map[string]struct{}{}}
+		l := &lease{id: sv(), ttl: sv(), stamp: sv(), remaining: sv(), keys: map[string]struct{}{}}
 		h.leases = append(h.leases, l)
 	}
 	n = uv()

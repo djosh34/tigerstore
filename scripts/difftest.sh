@@ -26,6 +26,7 @@ suites=(
 	"TestQuota|--quota-backend-bytes 1048576"
 	"TestAuth|"
 	"TestAuthJWT|--auth-token jwt,priv-key=@CERTS@/jwt.pem,sign-method=RS256"
+	"TestAutoCompaction|--auto-compaction-mode periodic --auto-compaction-retention 2s"
 )
 work=$(mktemp -d)
 # stop ends every server this script started and waits until they are

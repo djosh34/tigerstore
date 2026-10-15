@@ -1,0 +1,32 @@
+{
+  "periodic": [
+    {
+      "do": "put",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "the first revision at once",
+      "code": "OK",
+      "result": {
+        "compacted": false
+      }
+    },
+    {
+      "do": "the first revision after 4 s",
+      "code": "OK",
+      "result": {
+        "compacted": true
+      }
+    },
+    {
+      "do": "the newest revision after 4 s",
+      "code": "OK",
+      "result": {
+        "compacted": false
+      }
+    }
+  ]
+}

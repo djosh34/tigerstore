@@ -30,11 +30,18 @@ const maxLeaseTTL = 9_000_000_000
 // to the tick the lease expires at (0 when not armed) and the tick it
 // last proposed the lease's expiry.
 type lease struct {
-	id, ttl  int64
-	keys     map[string]struct{}
-	stamp    int64
-	expiry   int64
-	revokeAt int64
+	id, ttl int64
+	keys    map[string]struct{}
+	stamp   int64
+	// remaining is the remaining TTL in seconds the last checkpoint took,
+	// 0 for none (lease.go).
+	remaining int64
+	// expiry and revokeAt are the leader's ticks of the lease's expiry
+	// and of the last proposal of it, and checkpointAt of its next
+	// checkpoint, 0 for none.
+	expiry       int64
+	revokeAt     int64
+	checkpointAt int64
 }
 
 // newExpiry is the leader's decision that a lease expired. It goes in the
@@ -116,6 +123,7 @@ func (st *State) Hash() uint64 {
 		mix(uint64(l.id))
 		mix(uint64(l.ttl))
 		mix(uint64(l.stamp))
+		mix(uint64(l.remaining))
 		mix(uint64(len(l.keys)))
 	}
 	mix(uint64(st.version))
@@ -287,8 +295,17 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 			resp.TTL = l.ttl
 			st.stamps++
 			l.stamp = st.stamps
+			// A renewal ends the checkpointed TTL, as etcd's does.
+			l.remaining = 0
 		}
 		return resp, nil
+	case *pb.LeaseCheckpointRequest:
+		for _, c := range op.Checkpoints {
+			if l, ok := st.leases[c.ID]; ok {
+				l.remaining = c.Remaining_TTL
+			}
+		}
+		return &pb.LeaseCheckpointResponse{Header: header(st.kv.Rev())}, nil
 	case *pb.LeaseCheckpoint:
 		// An expiry. A nil response means it no longer applies: the lease
 		// is gone or was renewed after the leader decided.

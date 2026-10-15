@@ -44,6 +44,8 @@ type flags struct {
 	maxLearners                               int
 	strictReconfig                            bool
 	authToken                                 string
+	compactionMode, compactionRetention       string
+	compaction                                time.Duration
 	jwt                                       *server.JWT
 	bcryptCost, authTokenTTL                  uint
 }
@@ -114,6 +116,8 @@ func parse(args []string) (*flags, error) {
 	fs.Var(f.features, "feature-gates", "comma-separated etcd server feature gates, such as InitialCorruptCheck=true,CompactHashCheck=true")
 	fs.DurationVar(&f.corruptCheck, "corrupt-check-time", 0, "interval of the leader's corruption checks of every member; 0 turns them off")
 	fs.DurationVar(&f.compactHashCheck, "compact-hash-check-time", time.Minute, "interval of the leader's checks of the hashes compactions took, with the CompactHashCheck feature gate")
+	fs.StringVar(&f.compactionRetention, "auto-compaction-retention", "0", "Auto compaction retention for mvcc key value store. 0 means disable auto compaction.")
+	fs.StringVar(&f.compactionMode, "auto-compaction-mode", "periodic", "interpret 'auto-compaction-retention' one of: periodic|revision. 'periodic' for duration based retention, defaulting to hours if no time unit is provided (e.g. '5m'). 'revision' for revision number based retention.")
 	fs.Int64Var(&f.quotaBackendBytes, "quota-backend-bytes", 0, "raise the NOSPACE alarm when the data reaches this size; 0 means 2 GiB, a negative value no quota")
 	// As in etcd, each takes a comma-separated list, and a repeated flag
 	// replaces the list.
@@ -132,6 +136,9 @@ func parse(args []string) (*flags, error) {
 		return nil, err
 	}
 	var err error
+	if f.compaction, err = node.ParseCompaction(f.compactionMode, f.compactionRetention); err != nil {
+		return nil, err
+	}
 	if f.jwt, err = server.ParseAuthToken(f.authToken); err != nil {
 		return nil, fmt.Errorf("--auth-token %q: %w", f.authToken, err)
 	}
@@ -290,6 +297,10 @@ func run(args []string, logger *log.Logger) error {
 	ccfg.MaxLearners, ccfg.StrictReconfigCheck = f.maxLearners, f.strictReconfig
 	ccfg.AuthTokenTicks = int(f.authTokenTTL) * int(time.Second/tick)
 	ccfg.QuotaBytes = f.quotaBackendBytes
+	if f.features["LeaseCheckpoint"] {
+		// etcd v3.7.2 checkpoints every 5 minutes; no flag changes it.
+		ccfg.LeaseCheckpointTicks = int(5 * time.Minute / tick)
+	}
 	// As in etcd, an interval of 0 or less keeps the default.
 	if f.progressInterval > 0 {
 		ccfg.ProgressTicks = max(1, int(f.progressInterval/tick))
@@ -303,7 +314,10 @@ func run(args []string, logger *log.Logger) error {
 	debug.SetMemoryLimit(budget)
 	ccfg.MemoryBytes = node.CacheMemory(budget)
 	logger.Printf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
-	ncfg := node.Config{Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, CorruptCheckTime: f.corruptCheck, Logf: logger.Printf}
+	ncfg := node.Config{
+		Core: ccfg, DataDir: f.dataDir, Tick: tick, DiskBudget: f.diskBudget, CorruptCheckTime: f.corruptCheck, Logf: logger.Printf,
+		AutoCompactionMode: f.compactionMode, AutoCompactionRetention: f.compaction,
+	}
 	if f.features["CompactHashCheck"] {
 		ncfg.CompactHashCheckTime = f.compactHashCheck
 	}

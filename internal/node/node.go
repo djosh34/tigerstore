@@ -54,8 +54,16 @@ type Config struct {
 	// go.
 	SegmentBytes int64
 	// DiskBudget is how many bytes the log's files may take; 0 means no
-	// budget and no cleaning (clean.go).
+	// budget, and cleaning only for Defragment (clean.go).
 	DiskBudget int64
+	// AutoCompactionMode and AutoCompactionRetention are etcd's
+	// --auto-compaction-mode and --auto-compaction-retention, the latter
+	// as ParseCompaction gives it; a retention of 0 turns auto compaction
+	// off (compact.go). RevisionCompactEvery, if set, replaces the 5
+	// minutes between revision compactions, for tests.
+	AutoCompactionMode      string
+	AutoCompactionRetention time.Duration
+	RevisionCompactEvery    time.Duration
 	// CorruptCheckTime is etcd's --corrupt-check-time, and
 	// CompactHashCheckTime its --compact-hash-check-time with the
 	// CompactHashCheck feature gate on; 0 turns either check off
@@ -658,6 +666,19 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 		ctx, cancel := context.WithCancel(ctx)
 		var wg sync.WaitGroup
 		wg.Go(func() { n.checkHashes(ctx, t) })
+		defer wg.Wait()
+		defer cancel()
+	}
+	if r := n.cfg.AutoCompactionRetention; r > 0 {
+		ctx, cancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if n.cfg.AutoCompactionMode == CompactRevision {
+				n.compactByRevision(ctx, int64(r), cmp.Or(n.cfg.RevisionCompactEvery, revisionInterval))
+				return
+			}
+			n.compactPeriodically(ctx, r)
+		})
 		defer wg.Wait()
 		defer cancel()
 	}

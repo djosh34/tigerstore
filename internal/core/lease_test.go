@@ -183,3 +183,56 @@ func TestLeaseNeverExpiresEarly(t *testing.T) {
 		t.Fatal("a 2 s lease lived 2.3 s")
 	}
 }
+
+// ttlLeft is what TimeToLive answers for lease id.
+func (s *single) ttlLeft(id uint64, lease int64) int64 {
+	s.t.Helper()
+	r, ok := s.ok(id, &pb.LeaseTimeToLiveRequest{ID: lease}).(*pb.LeaseTimeToLiveResponse)
+	if !ok {
+		s.t.Fatal("not a TimeToLive response")
+	}
+	return r.TTL
+}
+
+// TestLeaseCheckpoint follows etcd's LeaseCheckpoint feature: the leader
+// checkpoints a lease's remaining TTL through Raft, a leader that takes
+// over, here after a restart, arms the lease for that instead of its full
+// TTL, and a keepalive ends the checkpointed TTL. A lease with no more
+// than the interval left gets no checkpoint.
+func TestLeaseCheckpoint(t *testing.T) {
+	disk := simfs.New()
+	every := func(cfg *Config) { cfg.LeaseCheckpointTicks = 2 * cfg.TicksPerSecond }
+	s := startSingleWith(t, disk, 1, every).capable()
+	tps := s.n.cfg.TicksPerSecond
+	s.ok(1, &pb.LeaseGrantRequest{ID: 7, TTL: 30})
+	s.ok(2, &pb.LeaseGrantRequest{ID: 8, TTL: 2})
+	for range 5*tps + 1 {
+		s.n.Tick()
+		s.run()
+	}
+	if l := s.n.state.leases[7]; l.remaining < 25 || l.remaining > 28 {
+		t.Fatalf("checkpointed remaining TTL %d after 5 s of 30", l.remaining)
+	}
+	if l, ok := s.n.state.leases[8]; ok && l.remaining != 0 {
+		t.Fatalf("a lease of 2 s took a checkpoint of %d", l.remaining)
+	}
+	checkpointed := s.n.state.leases[7].remaining
+	if err := s.log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = startSingleWith(t, disk, 2, every)
+	if got := s.ttlLeft(10, 7); got > checkpointed || got < checkpointed-2 {
+		t.Fatalf("TimeToLive %d after a restart, checkpointed %d", got, checkpointed)
+	}
+	s.ok(11, &pb.LeaseKeepAliveRequest{ID: 7})
+	if l := s.n.state.leases[7]; l.remaining != 0 {
+		t.Fatalf("checkpointed remaining TTL %d after a keepalive", l.remaining)
+	}
+	if err := s.log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = startSingleWith(t, disk, 3, nil)
+	if got := s.ttlLeft(12, 7); got < 28 {
+		t.Fatalf("TimeToLive %d after a keepalive and a restart, want the full 30 s", got)
+	}
+}

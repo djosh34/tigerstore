@@ -137,6 +137,10 @@ type Config struct {
 	// QuotaBytes is etcd's --quota-backend-bytes: 0 means etcd's default
 	// of 2 GiB, a negative value no quota (quota.go).
 	QuotaBytes int64
+	// LeaseCheckpointTicks, if set, makes the leader checkpoint the
+	// remaining TTL of each lease that long after it armed it, as etcd's
+	// LeaseCheckpoint feature does every 5 minutes (lease.go).
+	LeaseCheckpointTicks int
 	// MaxVersion is the newest cluster version the node supports; 0 means
 	// MaxVersion. Tests set it lower to run an older binary.
 	MaxVersion uint32
@@ -706,6 +710,7 @@ func (n *Node) Tick() {
 	}
 	n.snapshotProgress()
 	n.expireLeases()
+	n.checkpointLeases()
 	n.announceVersion()
 	n.monitorVersion()
 	if n.cfg.ProgressTicks > 0 && n.now%int64(n.cfg.ProgressTicks) == 0 {
@@ -1740,7 +1745,14 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 			n.arm(op.ID)
 		case *pb.LeaseKeepAliveRequest:
 			n.arm(op.ID)
+		case *pb.LeaseCheckpointRequest:
+			for _, c := range op.Checkpoints {
+				n.scheduleCheckpoint(c.ID)
+			}
 		}
+	}
+	if g, ok := op.(*pb.LeaseGrantRequest); ok && n.isLeader {
+		n.scheduleCheckpoint(g.ID)
 	}
 	return resp, nil
 }

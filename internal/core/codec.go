@@ -51,6 +51,9 @@ const (
 	// auth is enabled: uvarint auth revision | uvarint length | user |
 	// u8 kind | the write.
 	kindAuthed = 14
+	// kindLeaseCheckpoint is the leader's checkpoint of leases' remaining
+	// TTLs, a LeaseCheckpointRequest (lease.go).
+	kindLeaseCheckpoint = 15
 )
 
 var errBadBatch = errors.New("core: malformed batch")
@@ -93,6 +96,8 @@ func encodeBatch(format uint32, origin, boot uint64, ps []*pending, size int) ([
 			kind = kindMember
 		case *pb.InternalRaftRequest:
 			kind = kindAuth
+		case *pb.LeaseCheckpointRequest:
+			kind = kindLeaseCheckpoint
 		default:
 			return nil, fmt.Errorf("core: cannot propose %T", p.req.Op)
 		}
@@ -258,6 +263,8 @@ func newOp(kind byte) (proto.Message, error) {
 		return &pb.Member{}, nil
 	case kindAuth:
 		return &pb.InternalRaftRequest{}, nil
+	case kindLeaseCheckpoint:
+		return &pb.LeaseCheckpointRequest{}, nil
 	}
 	return nil, errBadBatch
 }
