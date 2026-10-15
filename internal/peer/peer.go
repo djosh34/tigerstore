@@ -3,7 +3,8 @@
 //
 // After the TLS handshake, the dialing node writes its Raft ID as 8 bytes.
 // Then each frame is a 4-byte length and a protobuf raftpb.Message. Both
-// ends verify the other's certificate against the peer CA.
+// ends verify the other's certificate against the peer CA and, when set,
+// the allowed CommonNames or hostnames.
 //
 // A follower fetches a snapshot on a connection of its own: it writes its
 // Raft ID with the top bit set, then the first and the last index it
@@ -58,6 +59,12 @@ type Config struct {
 	// and verifies both ends.
 	Certificate tls.Certificate
 	CA          *x509.CertPool
+	// AllowedCNs and AllowedHostnames are etcd's --peer-cert-allowed-cn
+	// and --peer-cert-allowed-hostname: when one is set, the other node's
+	// certificate must also have one of these CommonNames, or be valid
+	// for one of these hostnames. At most one of them may be set.
+	AllowedCNs       []string
+	AllowedHostnames []string
 	// Deliver gets every message received from a peer. It may block,
 	// which slows down that peer's connection.
 	Deliver func(*raftpb.Message)
@@ -92,6 +99,7 @@ const (
 // TCP is the transport over TLS on TCP.
 type TCP struct {
 	cfg     Config
+	verify  func([][]byte, [][]*x509.Certificate) error
 	ln      net.Listener
 	senders map[uint64]*sender
 	ctx     context.Context
@@ -104,9 +112,12 @@ type TCP struct {
 
 // Start listens for peers and starts one writer per peer.
 func Start(cfg Config) (*TCP, error) {
+	verify, err := verifyPeer(cfg.AllowedCNs, cfg.AllowedHostnames)
+	if err != nil {
+		return nil, err
+	}
 	raw := cfg.Listener
 	if raw == nil {
-		var err error
 		if raw, err = net.Listen("tcp", cfg.Listen); err != nil {
 			return nil, err
 		}
@@ -116,10 +127,13 @@ func Start(cfg Config) (*TCP, error) {
 		ClientCAs:    cfg.CA,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS13,
+		// The CA check runs first; verify only narrows it.
+		VerifyPeerCertificate: verify,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &TCP{
 		cfg:     cfg,
+		verify:  verify,
 		ln:      ln,
 		senders: map[uint64]*sender{},
 		ctx:     ctx,
@@ -523,6 +537,8 @@ func (s *sender) dial(ctx context.Context) (net.Conn, error) {
 			RootCAs:      s.t.cfg.CA,
 			ServerName:   host,
 			MinVersion:   tls.VersionTLS13,
+			// As in etcd, a dialing node checks the allowed names too.
+			VerifyPeerCertificate: s.t.verify,
 		},
 	}
 	c, err := d.DialContext(ctx, "tcp", s.addr)
