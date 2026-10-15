@@ -477,6 +477,7 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 		}
 		pend[i] = pending{sh: sh, old: old, had: had, key: key}
 	}
+	var wake []*watcher
 	if len(muts) > 0 {
 		s.seq.Lock()
 		rev = s.rev.Add(1)
@@ -521,14 +522,18 @@ func (s *store) txnReq(req []byte) ([]byte, error) {
 					w.mu.Lock()
 					w.events = append(w.events, event)
 					w.last = rev
-					w.cond.Signal()
 					w.mu.Unlock()
+					wake = append(wake, w)
 				}
 			}
 		}
 	}
 	if len(muts) > 0 {
 		s.seq.Unlock()
+	}
+	// Wake the senders outside seq: a wakeup can cost a futex call.
+	for _, w := range wake {
+		w.cond.Signal()
 	}
 	for _, p := range pend {
 		if p.put != nil {

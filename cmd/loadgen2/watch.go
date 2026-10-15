@@ -22,6 +22,7 @@ type wstream struct {
 	unacked   int64
 	gotHdr    bool
 	log       []rec
+	foreign   int64
 	events    int64
 	winEvents int64
 }
@@ -36,6 +37,9 @@ type watcher struct {
 	s1, s2  []byte
 	final   chan []int64 // expected events per resource, sent once at the end
 	fatal   error
+	// Owners of this instance's keys. Events of other instances are checked
+	// inline and hashed like ours but not joined.
+	ownLo, ownHi int
 }
 
 func newWatcher(c *h2) *watcher {
@@ -65,7 +69,7 @@ func (w *watcher) add(res int, start int64) {
 	out = append(out, 0)
 	out = binary.BigEndian.AppendUint32(out, uint32(len(msg)))
 	w.c.out = append(out, msg...)
-	w.streams = append(w.streams, &wstream{id: id, res: res, prefix: prefix, last: start - 1})
+	w.streams = append(w.streams, &wstream{id: id, res: res, prefix: prefix, last: max(start-1, 0)})
 }
 
 func (w *watcher) allCreated() bool {
@@ -268,6 +272,10 @@ func (w *watcher) event(s *wstream, e []byte) error {
 			return err
 		}
 	}
+	var hp uint64
+	if hasPrev {
+		hp = kvHash(cprev)
+	}
 	if int64(mod) <= s.last {
 		return errors.New("event revision not increasing")
 	}
@@ -275,15 +283,16 @@ func (w *watcher) event(s *wstream, e []byte) error {
 		return errors.New("event key outside prefix")
 	}
 	s.last = int64(mod)
+	fp := fingerprint(typ, kvHash(ckv), hp, hasPrev)
+	if o := ownerOf(key[len(s.prefix):]); o < w.ownLo || o >= w.ownHi {
+		s.foreign++
+		return nil
+	}
 	if fault == "drop" && s.events == 500 {
 		s.events++
 		return nil
 	}
-	var hp uint64
-	if hasPrev {
-		hp = kvHash(cprev)
-	}
-	s.log = append(s.log, rec{int64(mod), fingerprint(typ, kvHash(ckv), hp, hasPrev)})
+	s.log = append(s.log, rec{int64(mod), fp})
 	s.events++
 	return nil
 }
@@ -340,4 +349,19 @@ func (w *watcher) run() {
 			w.c.tc.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
 		}
 	}
+}
+
+// ownerOf parses OOO from "bench-OOO-...", -1 if absent.
+func ownerOf(rest []byte) int {
+	if len(rest) < 10 || string(rest[:6]) != "bench-" {
+		return -1
+	}
+	n := 0
+	for _, c := range rest[6:9] {
+		if c < '0' || c > '9' {
+			return -1
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }

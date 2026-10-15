@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"net"
+	"time"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -79,6 +81,10 @@ type worker struct {
 	t1, t2    int64
 	stopping  bool
 	owed      int
+	t0        int64
+	rate      float64 // ops per ns, 0 for closed loop
+	issued    int64
+	behind    int64 // schedule slots that found all streams busy
 	mixCum    [5]int
 
 	// results, read by main after the worker returns
@@ -783,7 +789,7 @@ func (w *worker) end(sl *slot) {
 	sl.used = false
 	sl.val = nil
 	w.inflight--
-	if op != opPre && !w.stopping {
+	if op != opPre && !w.stopping && w.rate == 0 {
 		w.issue()
 	}
 }
@@ -798,6 +804,19 @@ func (w *worker) round() error {
 		w.issue()
 	}
 	return nil
+}
+
+// issueDue starts the requests the fixed-rate schedule wants by now.
+func (w *worker) issueDue() {
+	due := int64(float64(w.tnow-w.t0) * w.rate)
+	for w.issued < due && w.inflight < w.S {
+		w.issue()
+		w.issued++
+	}
+	if w.issued < due {
+		w.behind += due - w.issued
+		w.issued = due // drop, do not burst later
+	}
 }
 
 // more reads what is already there without blocking; if nothing is, it
@@ -815,6 +834,18 @@ func (w *worker) more() error {
 	}
 	if err := w.c.flush(); err != nil {
 		return err
+	}
+	if w.rate > 0 && w.inflight == 0 {
+		next := w.t0 + int64(float64(w.issued+1)/w.rate)
+		w.c.tc.SetReadDeadline(epoch.Add(time.Duration(next)))
+		err := w.c.fill()
+		w.c.tc.SetReadDeadline(time.Time{})
+		w.tnow = now()
+		var ne net.Error
+		if err != nil && !(errors.As(err, &ne) && ne.Timeout()) {
+			return err
+		}
+		return nil
 	}
 	if err := w.c.fill(); err != nil {
 		return err
@@ -848,12 +879,17 @@ func (w *worker) preload() error {
 func (w *worker) run(start <-chan struct{}) error {
 	<-start
 	w.tnow = now()
-	for range w.S {
-		w.issue()
+	if w.rate == 0 {
+		for range w.S {
+			w.issue()
+		}
 	}
 	for {
 		if !w.stopping && w.tnow >= w.t2 {
 			w.stopping = true
+		}
+		if w.rate > 0 && !w.stopping {
+			w.issueDue()
 		}
 		if err := w.round(); err != nil {
 			return err

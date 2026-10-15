@@ -80,6 +80,9 @@ type result struct {
 	CheckedItems map[string]int     `json:"checked"`
 	Load1        string             `json:"load1"`
 	GCs          uint32             `json:"gc_cycles_window"`
+	Rate          float64            `json:"target_rate"`
+	ForeignEvents int64              `json:"foreign_watch_events"`
+	Behind       int64              `json:"behind_schedule"`
 	Extra        map[string]float64 `json:"extra,omitempty"`
 }
 
@@ -101,6 +104,8 @@ func main() {
 	instance := flag.Int("instance", 0, "instance number; key owners are disjoint across instances")
 	mixS := flag.String("mix", "25,10,40,15,10", "get,currev,update,create,delete")
 	label := flag.String("label", "", "label")
+	watchNow := flag.Bool("watch-now", false, "start watches at the current revision, for several instances on one server")
+	rate := flag.Float64("rate", 0, "fixed total rate in ops/s (0: closed loop at max)")
 	flag.IntVar(&maxBatch, "max-batch", 64<<10, "flush once this many request bytes are pending even if more answers are readable (0: flush after every read)")
 	flag.Parse()
 
@@ -171,9 +176,14 @@ func main() {
 			log.Fatal(err)
 		}
 		watchers[i] = newWatcher(c)
+		watchers[i].ownLo, watchers[i].ownHi = *instance**nw, (*instance+1)**nw
+	}
+	from := preRev + 1
+	if *watchNow {
+		from = 0 // other instances may have written since our preload
 	}
 	for r := range resources {
-		watchers[r%len(watchers)].add(r, preRev+1)
+		watchers[r%len(watchers)].add(r, from)
 	}
 	for _, w := range watchers {
 		if err := w.waitCreated(); err != nil {
@@ -185,7 +195,8 @@ func main() {
 	t1 := t0 + int64(*warmup)
 	t2 := t1 + int64(*dur)
 	for _, w := range workers {
-		w.t1, w.t2 = t1, t2
+		w.t0, w.t1, w.t2 = t0, t1, t2
+		w.rate = *rate / float64(*nw) / 1e9
 	}
 	var wwg sync.WaitGroup
 	for _, w := range watchers {
@@ -256,6 +267,7 @@ func main() {
 		wlog = append(wlog, w.wlog...)
 		revs = append(revs, w.plog...)
 		res.LiveKeys += len(w.live)
+		res.Behind += w.behind
 	}
 	for _, w := range watchers {
 		w.final <- expect
@@ -272,6 +284,7 @@ func main() {
 		}
 		for _, s := range w.streams {
 			wseen = append(wseen, s.log...)
+			res.ForeignEvents += s.foreign
 			res.WatchEvents += s.winEvents
 		}
 	}
@@ -309,6 +322,7 @@ func main() {
 			j++
 		}
 	}
+	res.Rate = *rate
 	res.Writes = len(wlog)
 	res.WatchSeen = len(wseen)
 	res.CheckedItems["writes_joined"] = len(wlog)
