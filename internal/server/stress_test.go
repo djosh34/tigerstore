@@ -103,6 +103,6 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("node %d: longest put %v, longest commit wait %v (%d ticks), longest log write %v",
-			id, time.Duration(longest[id-1].Load()), time.Duration(m.MaxCommitWait)*c.tick, m.MaxCommitWait, m.MaxLogWrite)
+			id, time.Duration(longest[id-1].Load()), time.Duration(m.MaxCommitWait)*c.tick, m.MaxCommitWait, time.Duration(m.MaxLogWriteNanos))
 	}
 }

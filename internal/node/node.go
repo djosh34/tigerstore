@@ -239,7 +239,7 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	n.log.mu.Unlock()
 	used, err := n.log.fs.Usage()
 	m.DiskBytes, m.DiskBudget, m.CleanedBytes = used, n.cfg.DiskBudget, n.log.cleaned.Load()
-	m.MaxLogWrite = time.Duration(n.log.maxWrite.Load())
+	m.MaxLogWriteNanos = n.log.maxWrite.Load()
 	return m, err
 }
 
