@@ -29,6 +29,7 @@ func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
 		lb: map[int]int64{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		failed: map[failedKey]struct{}{}, pastRevs: map[int64]bool{},
 	}
 	if err := r.index(); err != nil {
 		return err
@@ -83,6 +84,14 @@ type revisionOrder struct {
 	ready     map[int]bool
 	// top is the highest revision any client saw.
 	top int64
+	// failed holds the gaps whose every candidate failed, by revision,
+	// state, ops used and the past states that later reads ask for: the
+	// search does not explore the same again (see failedKey). usedSum
+	// and pastSum fold the ops used and those past states, and pastRevs
+	// are the revisions that reads of acked ops ask for.
+	failed           map[failedKey]struct{}
+	usedSum, pastSum uint64
+	pastRevs         map[int64]bool
 	// failure is the failure at the highest revision reached, and at its
 	// revision.
 	failure error
@@ -120,6 +129,9 @@ func (r *revisionOrder) index() error {
 		op := &h.Ops[i]
 		if op.Resp != nil {
 			r.top = max(r.top, op.Resp.Revision)
+			for _, q := range pastReads(op.Req) {
+				r.pastRevs[q.Revision] = true
+			}
 		}
 		switch {
 		case op.Req.Range != nil && op.Req.Range.Serializable:
@@ -298,6 +310,22 @@ func (r *revisionOrder) boundAt(t int64) int64 {
 		return 1
 	}
 	return r.highest[n-1]
+}
+
+// pastReads lists the reads of a request at a past revision.
+func pastReads(req history.Request) []*history.RangeRequest {
+	var out []*history.RangeRequest
+	if req.Range != nil && req.Range.Revision > 0 {
+		out = append(out, req.Range)
+	}
+	if req.Txn != nil {
+		for _, o := range slices.Concat(req.Txn.Success, req.Txn.Failure) {
+			if o.Range != nil && o.Range.Revision > 0 {
+				out = append(out, o.Range)
+			}
+		}
+	}
+	return out
 }
 
 // putsOf lists the key and value of every put a request can make.
@@ -533,6 +561,9 @@ func (r *revisionOrder) scheduleOptional() {
 	}
 }
 
+// maxFailed bounds the failed gaps the search remembers.
+const maxFailed = 1 << 21
+
 // maxSlotOrder bounds the acked mutations of one revision whose orders
 // slotOrder tries.
 const maxSlotOrder = 6
@@ -603,7 +634,7 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
 			r.expire(w.h.Ops[o.op].Call, 0)
 			w.apply(o.op, w.reqs[o.op])
-			r.used[o.op] = true
+			r.use(o.op)
 		}
 	}
 }
@@ -654,7 +685,7 @@ func (r *revisionOrder) expire(call, rev int64) {
 	for _, o := range r.due(call, rev) {
 		if r.takes(w.live.clone(), o) {
 			w.apply(o.op, w.reqs[o.op])
-			r.used[o.op] = true
+			r.use(o.op)
 		}
 	}
 }
@@ -680,20 +711,81 @@ type mark struct {
 	events, appended, placed int
 	live                     *state
 	used                     map[int]bool
+	usedSum, pastSum         uint64
 }
 
 // frame is a gap of the search: its revision, the candidates to write it,
-// and the next one to try.
+// and the next one to try. key is what the gap's subtree depends on, and
+// end is set once a path under it reached the final placement, which
+// depends on every state before, so its failure is not remembered.
 type frame struct {
 	rev   int64
 	cands []int
 	next  int
 	mark  mark
+	key   failedKey
+	end   bool
+}
+
+// failedKey names a point of the search by what the rest of it depends
+// on: the revision, the store, the ops used, and the past states that
+// later reads ask for. Two independent 64-bit hashes make a collision,
+// which would wrongly cut a branch, negligible.
+type failedKey struct {
+	rev        int64
+	a, b, used uint64
+}
+
+// use marks op i used.
+func (r *revisionOrder) use(i int) {
+	r.used[i] = true
+	r.usedSum ^= mix64(uint64(i) + 1)
+}
+
+// mix64 is splitmix64's finalizer.
+func mix64(x uint64) uint64 {
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	return x ^ x>>31
+}
+
+// sum hashes the state exactly, values included, from seed.
+func (s *state) sum2(seed uint64) uint64 {
+	h := mix64(seed)
+	add := func(v uint64) { h = mix64(h ^ v) }
+	add(uint64(s.rev))
+	add(uint64(s.compacted))
+	for _, l := range s.leases {
+		add(uint64(l))
+	}
+	add(uint64(len(s.leases)))
+	for _, kv := range s.kvs {
+		add(uint64(kv.Version))
+		add(uint64(kv.ModRevision))
+		add(uint64(kv.CreateRevision))
+		add(uint64(kv.Lease))
+		add(uint64(len(kv.Value)))
+		for k := 0; k < len(kv.Value); k += 8 {
+			var v uint64
+			for j := k; j < min(k+8, len(kv.Value)); j++ {
+				v = v<<8 | uint64(kv.Value[j])
+			}
+			add(v)
+		}
+	}
+	return h
+}
+
+func (r *revisionOrder) key(rev int64) failedKey {
+	l := r.w.live
+	return failedKey{rev: rev, a: l.sum2(r.pastSum), b: l.sum2(r.pastSum ^ 0x9e3779b97f4a7c15), used: r.usedSum}
 }
 
 func (r *revisionOrder) save() mark {
 	w := r.w
-	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone(), used: maps.Clone(r.used)}
+	return mark{events: len(w.events), appended: len(w.appended), placed: len(w.placed), live: w.live.clone(), used: maps.Clone(r.used), usedSum: r.usedSum, pastSum: r.pastSum}
 }
 
 func (r *revisionOrder) restore(m mark) {
@@ -718,6 +810,7 @@ func (r *revisionOrder) restore(m mark) {
 	w.kvsRev = -1
 	clear(r.ready)
 	r.used = maps.Clone(m.used)
+	r.usedSum, r.pastSum = m.usedSum, m.pastSum
 }
 
 // dead notes why the search cannot go on at revision rev.
@@ -744,6 +837,9 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
+			for _, f := range stack {
+				f.end = true
+			}
 			r.expire(math.MaxInt64, math.MaxInt64)
 			err := w.observe()
 			if err == nil {
@@ -760,6 +856,11 @@ func (r *revisionOrder) search() error {
 			ok = r.write(rev, &stack) && r.finish(rev)
 		}
 		if ok {
+			if r.pastRevs[rev] {
+				// A read asks for the keys as they are now, at the end
+				// of rev, so what follows depends on them.
+				r.pastSum = mix64(r.pastSum ^ r.w.live.sum2(uint64(rev)))
+			}
 			rev++
 			continue
 		}
@@ -788,7 +889,7 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 		if r.fits(i, rev) {
 			r.expire(w.h.Ops[i].Call, 0)
 			w.apply(i, w.reqs[i])
-			r.used[i] = true
+			r.use(i)
 			return true
 		}
 		return r.dead(rev, fmt.Errorf("%s, whose value a client saw at revision %d, cannot write it in the order so far; the order around it: %s", w.describe(i), rev, w.around(len(w.events))))
@@ -797,7 +898,12 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 	if n := len(*stack); n > 0 && (*stack)[n-1].rev == rev {
 		f = (*stack)[n-1]
 	} else {
-		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev)}
+		k := r.key(rev)
+		if _, ok := r.failed[k]; ok {
+			// The same gap failed before in every candidate.
+			return false
+		}
+		f = &frame{rev: rev, mark: r.save(), cands: r.candidates(rev), key: k}
 		*stack = append(*stack, f)
 	}
 	for ; f.next < len(f.cands); f.next++ {
@@ -807,11 +913,14 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 		}
 		r.expire(w.h.Ops[i].Call, 0)
 		w.apply(i, w.reqs[i])
-		r.used[i] = true
+		r.use(i)
 		f.next++
 		return true
 	}
 	*stack = (*stack)[:len(*stack)-1]
+	if !f.end && len(r.failed) < maxFailed {
+		r.failed[f.key] = struct{}{}
+	}
 	return r.dead(rev, fmt.Errorf("no acked op wrote revision %d, and no ambiguous mutation or acked revoke can have written it in the order so far; the order before it: %s", rev, w.around(len(w.events))))
 }
 
@@ -910,7 +1019,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
 		}
-		r.used[i] = true
+		r.use(i)
 		r.insertOptional(rev)
 	}
 	r.expire(0, rev)
