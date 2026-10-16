@@ -73,6 +73,8 @@ type RangeResult struct {
 	Rev   int64
 	KVs   []KV
 	Count int64
+	// Bytes is the size of the keys and values of KVs, set by RangeKVs.
+	Bytes int64
 	More  bool
 	// values is set when the KVs still need their values.
 	values bool
@@ -89,12 +91,33 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	w := s.reader()
 	res, err := w.rangeResult(r, true)
-	if err != nil || !res.values {
+	if err != nil {
 		return res, err
+	}
+	// Values still to read count by their length; values a sort already
+	// read count as they are.
+	values := 0
+	for i := range res.KVs {
+		kv := &res.KVs[i]
+		res.Bytes += int64(len(kv.Key) + len(kv.Value))
+		if res.values {
+			values += int(kv.ref.Len)
+		}
+	}
+	res.Bytes += int64(values)
+	if !res.values {
+		return res, nil
+	}
+	// The values of an answer with several take one allocation; make
+	// zeroes it, which a copy of one value alone does not need.
+	var arena *[]byte
+	if len(res.KVs) > 1 {
+		b := make([]byte, 0, values)
+		arena = &b
 	}
 	for i := range res.KVs {
 		kv := &res.KVs[i]
-		if err := s.fill(kv.Key, kv.ref, &kv.Value); err != nil {
+		if err := s.fill(kv.Key, kv.ref, &kv.Value, arena); err != nil {
 			return RangeResult{}, err
 		}
 	}
@@ -110,7 +133,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, e
 	resp := res.Response()
 	if res.values {
 		for i := range res.KVs {
-			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value); err != nil {
+			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -219,7 +242,7 @@ func (s *Store) readNow(kvs []KV) error {
 	var cold []Fill
 	for i := range kvs {
 		kv := &kvs[i]
-		b, ok, err := s.value(kv.Key, kv.ref)
+		b, ok, err := s.value(kv.Key, kv.ref, nil)
 		if err != nil {
 			return err
 		}
@@ -347,7 +370,7 @@ func (w *writer) checkPut(p *PutOp) error {
 		return rpctypes.ErrGRPCLeaseNotFound
 	}
 	if p.IgnoreValue || p.IgnoreLease {
-		k, ok := w.s.keys.Get(&keyIndex{key: p.Key})
+		k, ok := w.s.get(p.Key)
 		if !ok {
 			return rpctypes.ErrGRPCKeyNotFound
 		}
@@ -368,7 +391,7 @@ func (w *writer) countPrevRead(p *PutOp) {
 
 // latest returns the newest version of key if the key exists now.
 func (w *writer) latest(key []byte) (*keyIndex, *version) {
-	k, ok := w.s.keys.Get(&keyIndex{key: key})
+	k, ok := w.s.get(key)
 	if !ok {
 		return nil, nil
 	}
@@ -594,7 +617,7 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
 			var in bool
-			if kv.Value, in, err = w.s.value(k.key, v.value); err != nil {
+			if kv.Value, in, err = w.s.value(k.key, v.value, nil); err != nil {
 				return false
 			}
 			if !in {

@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -15,11 +16,11 @@ type coldHeap struct {
 	disk uint64
 }
 
-func (h *coldHeap) Read(r Ref) ([]byte, bool, error) {
+func (h *coldHeap) Read(r Ref, arena *[]byte) ([]byte, bool, error) {
 	if r.Index <= h.disk {
 		return nil, false, nil
 	}
-	return h.Heap.Read(r)
+	return h.Heap.Read(r, arena)
 }
 
 // evict puts every value so far on disk only.
@@ -31,7 +32,7 @@ func fillAll(t *testing.T, s *Store, h *coldHeap) int {
 	t.Helper()
 	fills := s.TakeFills()
 	for _, f := range fills {
-		b, _, err := h.Heap.Read(f.Ref)
+		b, _, err := h.Heap.Read(f.Ref, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,6 +130,10 @@ func TestColdEventAndRangeKVs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The key and the value on disk, by its length.
+	if res.Bytes != 2 {
+		t.Fatalf("a range of one key and value of 1 byte counts %d bytes", res.Bytes)
+	}
 	fillAll(t, s, h)
 	if string(res.KVs[0].Value) != "2" {
 		t.Fatalf("range without messages: %q", res.KVs[0].Value)
@@ -215,5 +220,30 @@ func TestFillChecksum(t *testing.T) {
 	}
 	if *f.Dst != nil {
 		t.Fatal("a fill kept bytes that failed their checksum")
+	}
+}
+
+// TestRangeKVsBytes counts the keys and values of an answer, also when a
+// sort by value has already read the values, and no values for KeysOnly:
+// the writer charges a reply by these bytes before it encodes it.
+func TestRangeKVsBytes(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "a", strings.Repeat("v", 1<<20))
+	put(t, s, "b", "12")
+	for _, c := range []struct {
+		r    *pb.RangeRequest
+		want int64
+	}{
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}, 2 + 1<<20 + 2},
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), SortTarget: pb.RangeRequest_VALUE}, 2 + 1<<20 + 2},
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}, 2},
+	} {
+		res, err := s.RangeKVs(c.r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Bytes != c.want {
+			t.Errorf("%v: %d bytes, want %d", c.r, res.Bytes, c.want)
+		}
 	}
 }

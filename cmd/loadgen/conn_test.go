@@ -113,7 +113,7 @@ func fakeRun(t *testing.T, fs *fakeServer, path string, valueSize int, rate floa
 	// answers the server's pings until wk.run starts, and building the
 	// value pool takes over 50 ms under -race (#102).
 	ks := makeKeys(100)
-	tpl, err := newTemplate(fs.addr, path, putRequest(ks.size, valueSize), true)
+	tpl, err := newTemplate(path, putRequest(ks.size, valueSize), true)
 	if err != nil {
 		t.Fatal(err)
 	}

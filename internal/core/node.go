@@ -1005,10 +1005,12 @@ const sizeRequestID = 1 << 63
 // InternalRaftRequest whose size etcd's server limits for a write, or nil
 // for a request that does not go through Raft.
 func validate(op proto.Message, maxTxnOps int) (*pb.InternalRaftRequest, error) {
+	if r, ok := op.(*pb.RangeRequest); ok {
+		// Reads are not sized; they make no request to size.
+		return nil, mvcc.CheckRange(r)
+	}
 	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
-	case *pb.RangeRequest:
-		return nil, mvcc.CheckRange(op)
 	case *pb.PutRequest:
 		r.Put = op
 		return r, mvcc.CheckPut(op)
@@ -1047,11 +1049,22 @@ func validate(op proto.Message, maxTxnOps int) (*pb.InternalRaftRequest, error) 
 // checkSize limits a write as etcd's server does: the marshaled
 // InternalRaftRequest with the client's identity (extra) to limit bytes.
 func checkSize(r *pb.InternalRaftRequest, extra, limit int) error {
-	if proto.Size(r)+extra > limit {
+	var size int
+	if r.Txn != nil {
+		// validate sets the header and the transaction, nothing else.
+		size = txnRequestBytes + protowire.SizeBytes(txnSize(r.Txn))
+	} else {
+		size = proto.Size(r)
+	}
+	if size+extra > limit {
 		return rpctypes.ErrGRPCRequestTooLarge
 	}
 	return nil
 }
+
+// txnRequestBytes is the size of etcd's InternalRaftRequest around a
+// transaction without the transaction itself: the header and the tag.
+var txnRequestBytes = proto.Size(&pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}) + protowire.SizeTag(6)
 
 // putRequestBytes is the size of etcd's InternalRaftRequest around a put
 // without the put itself: the header with sizeRequestID, and the put's tag.

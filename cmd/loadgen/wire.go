@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/hpack"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -151,12 +150,13 @@ func putRevision(b []byte, v int64) []byte {
 
 func patchRevision(b []byte, v int64) { putRevision(b[:0], v) }
 
-// template is a prebuilt gRPC request: HEADERS and one or more DATA
-// frames. Patchable fixed-size requests fit one DATA frame. Mixed builds
-// the variable-size message before framing, so no patch crosses a frame.
+// template is a prebuilt gRPC request: its path and one or more DATA
+// frames; each connection encodes the HEADERS (conn.startStream).
+// Patchable fixed-size requests fit one DATA frame. Mixed builds the
+// variable-size message before framing, so no patch crosses a frame.
 type template struct {
-	b       []byte
-	data    int // offset of the DATA frame header
+	b       []byte // the DATA frames
+	path    string
 	dataLen int // DATA payload bytes, which count against flow control
 	keys    []int
 	value   int
@@ -172,29 +172,9 @@ const (
 	maxDataFrame = 16384
 )
 
-// headerBlock encodes the request headers of a gRPC call. Every field is
-// marked sensitive, so the encoder never adds to its dynamic table and the
-// block can be sent unchanged on any stream of any connection.
-func headerBlock(authority, path string) []byte {
-	var buf bytes.Buffer
-	enc := hpack.NewEncoder(&buf)
-	for _, f := range [][2]string{
-		{":method", "POST"},
-		{":scheme", "http"},
-		{":path", path},
-		{":authority", authority},
-		{"content-type", "application/grpc"},
-		{"te", "trailers"},
-	} {
-		// Writing to a bytes.Buffer cannot fail.
-		_ = enc.WriteField(hpack.HeaderField{Name: f[0], Value: f[1], Sensitive: true})
-	}
-	return buf.Bytes()
-}
-
 // newTemplate frames m as the single request message of a gRPC call on path.
 // A unary call ends the stream with the request; a watch keeps it open.
-func newTemplate(authority, path string, m *msg, endStream bool) (*template, error) {
+func newTemplate(path string, m *msg, endStream bool) (*template, error) {
 	payload := grpcPrefixLen + len(m.b)
 	if payload > maxDataFrame && (len(m.keys) > 0 || m.value >= 0 || m.rev >= 0) {
 		return nil, errors.New("patchable request must fit one DATA frame")
@@ -202,11 +182,7 @@ func newTemplate(authority, path string, m *msg, endStream bool) (*template, err
 	if payload > 60<<10 {
 		return nil, fmt.Errorf("request of %d bytes exceeds the 60 KiB generator limit", payload)
 	}
-	block := headerBlock(authority, path)
-	t := &template{dataLen: payload, value: -1, rev: -1}
-	t.b = appendFrameHeader(t.b, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
-	t.b = append(t.b, block...)
-	t.data = len(t.b)
+	t := &template{path: path, dataLen: payload, value: -1, rev: -1}
 	p := binary.BigEndian.AppendUint32([]byte{0}, uint32(len(m.b)))
 	p = append(p, m.b...)
 	for pos := 0; pos < len(p); {
@@ -222,10 +198,7 @@ func newTemplate(authority, path string, m *msg, endStream bool) (*template, err
 	}
 	// Patchable fields must not cross a frame boundary. Mixed requests
 	// carry their key/value bytes before framing and need no patches.
-	offset := func(pos int) int {
-		p := pos + grpcPrefixLen
-		return t.data + frameHeaderLen + p
-	}
+	offset := func(pos int) int { return frameHeaderLen + grpcPrefixLen + pos }
 	for _, k := range m.keys {
 		t.keys = append(t.keys, offset(k))
 	}

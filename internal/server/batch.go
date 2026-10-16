@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/binary"
-	"math"
 	"slices"
 	"time"
 
@@ -240,9 +239,12 @@ func estimate(cp *node.Completion) int64 {
 	case cp.Err != nil:
 		return replyEstimate
 	case cp.Resp != nil:
+		if t, ok := cp.Resp.(*pb.TxnResponse); ok {
+			return 5 + int64(txnRespSize(t))
+		}
 		return int64(proto.Size(cp.Resp))
 	case cp.Tag.(*stream).rpc.compact:
-		return 5 + int64(rangeReplySize(math.MaxUint64, math.MaxUint64, cp.Term, &cp.Range))
+		return 5 + rangeReplyBound(&cp.Range)
 	}
 	return replyEstimate
 }
@@ -325,7 +327,11 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 			case f.st.rpc.compact && cp.Resp == nil:
 				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
 			default:
-				f.msg, f.err = marshal(cp.Resp)
+				if t, ok := cp.Resp.(*pb.TxnResponse); ok {
+					f.msg, f.err = appendTxnReply(t)
+				} else {
+					f.msg, f.err = marshal(cp.Resp)
+				}
 			}
 			if f.err == nil {
 				f.msg, f.err = f.st.compress(f.msg)
@@ -428,6 +434,19 @@ func headerSize(cluster, member uint64, rev int64, term uint64) int {
 	return n
 }
 
+// kvOverhead is the most a KeyValue message adds to its key and value in
+// a RangeResponse: its tag and length, the key's and the value's tags and
+// lengths, three revisions and a lease.
+const kvOverhead = 2*(1+binary.MaxVarintLen32) + 2*(1+binary.MaxVarintLen32) + 4*(1+binary.MaxVarintLen64)
+
+// rangeReplyBound is at least the size of the RangeResponse
+// appendRangeReply encodes, from the size of the keys and values that
+// RangeKVs counted, without a pass over the KVs.
+func rangeReplyBound(res *mvcc.RangeResult) int64 {
+	header := 1 + 1 + 4*(1+binary.MaxVarintLen64)
+	return int64(header) + res.Bytes + int64(len(res.KVs))*kvOverhead + 2 + 1 + binary.MaxVarintLen64
+}
+
 // rangeReplySize is the size of the RangeResponse appendRangeReply
 // encodes.
 func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) int {
@@ -446,15 +465,18 @@ func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) 
 
 // appendRangeReply encodes the gRPC message of a RangeResponse built from
 // the index's values: the value bytes are copied once, here, into the
-// reply, with no KeyValue message per key.
+// reply, with no KeyValue message per key. It sizes each KV once, and
+// fills in the message length, which has a fixed width, at the end.
 func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
-	size := rangeReplySize(cluster, member, term, res)
-	if size > 1<<31-1 {
-		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+	bound := rangeReplyBound(res)
+	if bound > 1<<31-1 {
+		size := rangeReplySize(cluster, member, term, res)
+		if size > 1<<31-1 {
+			return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
+		}
+		bound = int64(size)
 	}
-	b := make([]byte, 0, 5+size)
-	b = append(b, 0)
-	b = binary.BigEndian.AppendUint32(b, uint32(size))
+	b := make([]byte, 5, 5+bound)
 	b = appendHeader(b, cluster, member, res.Rev, term)
 	for i := range res.KVs {
 		kv := &res.KVs[i]
@@ -470,6 +492,7 @@ func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult
 		b = protowire.AppendTag(b, 4, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(res.Count))
 	}
+	binary.BigEndian.PutUint32(b[1:], uint32(len(b)-5))
 	return b, nil
 }
 

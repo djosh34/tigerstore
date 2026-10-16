@@ -47,6 +47,8 @@ const minProcs = 2
 // index, whose pointers every collection scans, and at Go's default of
 // 100 a node under load collects every few seconds; docs/design.md has
 // the measurements. The node's memory budget still caps the heap (run).
+// GOGC 100 cost 1.6% to 6.4% of max throughput and put its Put p99 at
+// half load from 2.6 to 36 ms (#157).
 const gcPercent = 400
 
 func main() {

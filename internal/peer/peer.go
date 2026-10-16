@@ -992,7 +992,6 @@ func (s *sender) handshake(ctx context.Context, c *tls.Conn, id uint64) (byte, e
 // write sends frames until the connection fails or the transport closes.
 func (s *sender) write(ctx context.Context, c net.Conn) error {
 	w := bufio.NewWriterSize(c, ioBuffer)
-	var hdr [4]byte
 	var buf []byte
 	for {
 		if !s.pending() {
@@ -1004,29 +1003,30 @@ func (s *sender) write(ctx context.Context, c net.Conn) error {
 		if !ok {
 			return nil
 		}
-		if n := proto.Size(m); n > maxFrame {
+		n := proto.Size(m)
+		if n > maxFrame {
 			// The receiver would refuse it; Raft sends again in smaller
 			// pieces after the unreachable report.
 			s.t.logf("peer: dropping a %s of %d bytes to %d, over the frame limit", m.GetType(), n, s.id)
 			s.t.cfg.Unreachable(s.id)
 			continue
 		}
+		// The length and the message go out in one write, so a frame
+		// larger than the buffer skips the copy into it; the size is
+		// known from Size.
+		buf = binary.BigEndian.AppendUint32(buf[:0], uint32(n))
 		var err error
-		buf, err = proto.MarshalOptions{}.MarshalAppend(buf[:0], m)
+		buf, err = proto.MarshalOptions{UseCachedSize: true}.MarshalAppend(buf, m)
 		if err != nil {
 			return err
 		}
-		binary.BigEndian.PutUint32(hdr[:], uint32(len(buf)))
 		if err := c.SetWriteDeadline(s.t.writeDeadline()); err != nil {
-			return err
-		}
-		if _, err := w.Write(hdr[:]); err != nil {
 			return err
 		}
 		if _, err := w.Write(buf); err != nil {
 			return err
 		}
-		s.counters.sent.Add(float64(len(hdr) + len(buf)))
+		s.counters.sent.Add(float64(len(buf)))
 	}
 }
 

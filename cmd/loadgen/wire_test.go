@@ -24,22 +24,55 @@ func TestPaddedRevision(t *testing.T) {
 	}
 }
 
-func TestCASTemplate(t *testing.T) {
-	ks := makeKeys(3)
-	tpl, err := newTemplate("h:1", "/etcdserverpb.KV/Txn", casRequest(ks.size, 16), true)
+// TestHeadersIndexed starts two calls on one connection: the first adds
+// its fields to the table, as grpc-go's encoder does, and the second sends
+// only references to them, which decode to the same headers.
+func TestHeadersIndexed(t *testing.T) {
+	c := &conn{addr: "h:1", nextID: 1, streams: map[uint32]*stream{}}
+	tpl, err := newTemplate("/etcdserverpb.KV/Range", putRequest(4, 8), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := bytes.Clone(tpl.b)
-	binary.BigEndian.PutUint32(r[5:], 7)
-	binary.BigEndian.PutUint32(r[tpl.data+5:], 7)
+	dec := hpack.NewDecoder(4096, nil)
+	var blocks [][]byte
+	for range 3 {
+		c.out = c.out[:0]
+		c.startStream(&stream{}, tpl)
+		fr := http2.NewFramer(nil, bytes.NewReader(c.out))
+		f, err := fr.ReadFrame()
+		if err != nil {
+			t.Fatal(err)
+		}
+		block := bytes.Clone(f.(*http2.HeadersFrame).HeaderBlockFragment())
+		hdrs, err := dec.DecodeFull(block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(hdrs) != 6 || hdrs[2].Value != "/etcdserverpb.KV/Range" || hdrs[3].Value != "h:1" {
+			t.Fatalf("headers %v", hdrs)
+		}
+		blocks = append(blocks, block)
+	}
+	if len(blocks[1]) != 6 || !bytes.Equal(blocks[1], blocks[2]) {
+		t.Fatalf("later blocks %x and %x, want 6 one-byte references", blocks[1], blocks[2])
+	}
+}
+
+func TestCASTemplate(t *testing.T) {
+	ks := makeKeys(3)
+	tpl, err := newTemplate("/etcdserverpb.KV/Txn", casRequest(ks.size, 16), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &conn{addr: "h:1", nextID: 7, streams: map[uint32]*stream{}}
+	r := c.startStream(&stream{}, tpl)
 	for _, off := range tpl.keys {
 		copy(r[off:], ks.key(2))
 	}
 	copy(r[tpl.value:], "0123456789abcdef")
 	patchRevision(r[tpl.rev:], 4242)
 
-	fr := http2.NewFramer(nil, bytes.NewReader(r))
+	fr := http2.NewFramer(nil, bytes.NewReader(c.out))
 	f, err := fr.ReadFrame()
 	if err != nil {
 		t.Fatal(err)
@@ -64,6 +97,9 @@ func TestCASTemplate(t *testing.T) {
 		t.Fatalf("second frame %v", f)
 	}
 	m := df.Data()[grpcPrefixLen:]
+	if binary.BigEndian.Uint32(df.Data()[1:]) != uint32(len(m)) {
+		t.Fatal("wrong gRPC message length")
+	}
 
 	// Walk the Txn: compare, success put, failure range.
 	key := string(ks.key(2))
@@ -90,7 +126,7 @@ func TestCASTemplate(t *testing.T) {
 }
 
 func TestTooLargeRequest(t *testing.T) {
-	if _, err := newTemplate("h:1", "/p", putRequest(50, maxDataFrame), true); err == nil {
+	if _, err := newTemplate("/p", putRequest(50, maxDataFrame), true); err == nil {
 		t.Fatal("a request larger than one DATA frame was accepted")
 	}
 }
