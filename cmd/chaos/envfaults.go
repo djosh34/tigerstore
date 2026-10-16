@@ -333,7 +333,7 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 	case recoveryCrash:
 		return r.withProbes(others(target), rec, func() error { return r.crashInRecovery(ctx, s, target, rec) })
 	case installCrash:
-		return r.crashInInstall(ctx, s, lead, target, rec)
+		return r.crashInInstall(ctx, lead, target, rec)
 	case slowWatcher:
 		return r.withProbes([]int{0, 1, 2}, rec, func() error { return r.slowWatch(ctx, s, target, rec) })
 	case severalAtOnce:
@@ -620,7 +620,7 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // crashInInstall stops follower target, writes until the leader's log
 // moved past it, resumes it so that it fetches a snapshot, and kills it
 // once the fetch started; it then starts it again, which must recover.
-func (r *runner) crashInInstall(ctx context.Context, s step, lead, target int, rec *record) error {
+func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
 	if target == lead {
 		target = others(lead)[0]
 	}
@@ -1003,10 +1003,9 @@ func rejoinArgs(args []string) []string {
 }
 
 func lastLine(text, with string) string {
-	lines := strings.Split(text, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(lines[i], with) {
-			return lines[i]
+	for _, line := range slices.Backward(strings.Split(text, "\n")) {
+		if strings.Contains(line, with) {
+			return line
 		}
 	}
 	return ""
