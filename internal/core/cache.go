@@ -151,5 +151,5 @@ func (n *Node) fillCache(index uint64) {
 // fitCache sets the cache's limit to the memory that the index and the
 // entries in memory leave.
 func (n *Node) fitCache() {
-	n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes())
+	n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes() - n.replyBytes)
 }

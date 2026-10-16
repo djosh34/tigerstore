@@ -940,6 +940,13 @@ func merged(dir string, i int) (string, error) {
 	return filepath.Dir(to), nil
 }
 
+// mayHaveApplied reports whether a failed member change may still apply.
+// clientv3 returns a call that ran out of time as the plain context error,
+// which carries no gRPC code, so transientWatch alone misses it.
+func mayHaveApplied(err error) bool {
+	return transientWatch(err) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+}
+
 // replaceMember is the safe way back for a member whose disk was erased
 // or whose log a restart refuses (#161). Erased: every node loses power
 // at once, the target's disk is erased, and the other two start again
@@ -1025,7 +1032,7 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 			if err == nil {
 				return nil
 			}
-			ambiguous = ambiguous || transientWatch(err)
+			ambiguous = ambiguous || mayHaveApplied(err)
 		}
 		return fmt.Errorf("%s: %w", what, err)
 	}

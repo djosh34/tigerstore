@@ -41,6 +41,8 @@ type ValueRead struct {
 	// when ordered apply waits for them.
 	read  *pending
 	apply bool
+	// held reserves candidate values needed by a compact Range's sort.
+	held int64
 }
 
 // Run reads every value from the log and checks it against its checksum.
@@ -129,9 +131,11 @@ func (n *Node) readNow(need []mvcc.Fill) error {
 // the log has, once a helper read them.
 func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 	if !n.settle(p) {
+		n.ReleaseReplyBytes(r.Held)
 		return
 	}
 	if p.refuse != nil {
+		n.ReleaseReplyBytes(r.Held)
 		r, fills = Reply{ID: r.ID, Err: p.refuse}, nil
 	}
 	if len(fills) == 0 {
@@ -177,6 +181,11 @@ func (n *Node) runApply() {
 // Run. The replies and watch responses that waited for it go out, and a
 // write or read that needed its values runs again.
 func (n *Node) ValuesRead(r *ValueRead, err error) {
+	// A sort retries immediately below and reserves its whole answer
+	// again, including these fetched values. If it cannot fit now, it
+	// drops them before waiting for space.
+	n.ReleaseReplyBytes(r.held)
+	r.held = 0
 	if n.err != nil {
 		return
 	}
@@ -228,6 +237,7 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 // replaced the state, and ends the watch streams that waited for it.
 func (n *Node) replaced(r *ValueRead) {
 	for _, rep := range r.replies {
+		n.ReleaseReplyBytes(rep.Held)
 		n.out.Replies = append(n.out.Replies, Reply{ID: rep.ID, Err: errStateReplaced})
 	}
 	if p := r.read; p != nil {
