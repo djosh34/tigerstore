@@ -1,0 +1,46 @@
+name: exp-146-journal
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        default: work/146-disk
+      baseline:
+        default: main
+jobs:
+  journal:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+          BASELINE: ${{ inputs.baseline }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          mkdir -p bin && cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+          go build -o bin/loadgen ./cmd/loadgen
+          for target in baseline candidate; do
+            ref=$BASELINE
+            if [ "$target" = candidate ]; then ref=$CANDIDATE; fi
+            git worktree add --detach "$RUNNER_TEMP/$target" "origin/$ref"
+            (cd "$RUNNER_TEMP/$target" && go build -o "$GITHUB_WORKSPACE/bin/$target" ./cmd/tigerstore)
+            echo "$target $ref $(git -C "$RUNNER_TEMP/$target" rev-parse HEAD)" | tee -a commits.txt
+          done
+      - run: scripts/dev-certs.sh certs
+      - name: Run
+        run: |
+          sudo mount -o remount,barrier=1 /
+          DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)") BINS=bin CERTS=certs DATA="$RUNNER_TEMP/data" exp146/journal.sh out
+          cp commits.txt out/
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: journal
+          path: out
