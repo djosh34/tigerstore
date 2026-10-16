@@ -169,12 +169,19 @@ func hashBytes(b []byte) uint64 {
 	return h
 }
 
-// removed carries out a synced root's removals.
+// removed carries out a synced root's removals. The first root a run
+// syncs and its first removal of a segment each take an erase-one-disk
+// copy at once, so that the cold restarts check E's steps (#163).
 func (s *Sim) removed(n *node, j core.PersistJob) bool {
 	n.root, n.roots = j.Root.Index, append(n.roots, *j.Root)
+	if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
+		s.stats.ErasedAtRoot++
+		s.takeCheckpoint()
+	}
 	if j.RemoveBelow == 0 {
 		return true
 	}
+	oldest := n.log.Oldest()
 	if s.stepCrash(n) {
 		return false
 	}
@@ -190,6 +197,10 @@ func (s *Sim) removed(n *node, j core.PersistJob) bool {
 		return false
 	}
 	n.roots = []wal.Root{*j.Root}
+	if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRemoval == 0 && n.log.Oldest() > oldest {
+		s.stats.ErasedAtRemoval++
+		s.takeCheckpoint()
+	}
 	return true
 }
 

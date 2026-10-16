@@ -83,6 +83,8 @@ func TestSeeds(t *testing.T) {
 			total.Asymmetric += st.Asymmetric
 			total.GrayLeaderStops += st.GrayLeaderStops
 			total.RecoveryCrashes += st.RecoveryCrashes
+			total.ErasedAtRoot += st.ErasedAtRoot
+			total.ErasedAtRemoval += st.ErasedAtRemoval
 			checkers(t, a)
 			t.Logf("trace %016x: %+v, %d committed writes", a.Trace, st, len(a.Log))
 			if out != nil {
@@ -96,9 +98,9 @@ func TestSeeds(t *testing.T) {
 	// times slower than its other direction are rare in one run, but a set
 	// of seeds must see each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
-		total.RecoveryCrashes == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery; each must happen",
-			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes)
+		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0) {
+		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
+			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
 	}
 	// A gray leader stopped by the commit watchdog is rarer: 22 of seeds 1
 	// to 2000 had one, 1.1%, as gray periods on the leader mostly end

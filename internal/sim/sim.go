@@ -525,7 +525,10 @@ type Stats struct {
 	// values damaged under a running node, and CheckpointsDuringInstall
 	// checkpoints finished while an install was on its way to disk (#182).
 	Checkpoints, Snapshots, CheckpointSnapshots, OlderCheckpoints, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, InstallFailures, StepCrashes, Rots int
-	CheckpointsDuringInstall                                                                                                                                   int
+	// ErasedAtRoot and ErasedAtRemoval count the erase-one-disk copies
+	// taken right after a root synced and right after a segment removal.
+	ErasedAtRoot, ErasedAtRemoval int
+	CheckpointsDuringInstall      int
 }
 
 // Result is the outcome of a run.
