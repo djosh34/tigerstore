@@ -169,7 +169,7 @@ The first long run on `main` ([38909081059](https://github.com/djosh34/tigerstor
 
 # Simulator seed campaign
 
-`sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. A process of 2,000 seeds or more also requires a stopped gray leader (#183).
+`sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. Each process of at least 64 seeds also runs the deliberate stalled-leader handoff and gray-leader stop scenarios. Their watchdog deadlines and client-liveness checks must pass. The exploratory seeds still count both events, but no shard or campaign process requires either rare event to occur randomly (#183, #218).
 
 # Soak
 
