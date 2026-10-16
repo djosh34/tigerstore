@@ -18,6 +18,8 @@ git -C .jepsen/etcd checkout b47cc401f27bfb7c28afd9ac088b5f0dca4501b8
 git clone https://github.com/nurturenature/jepsen-docker.git .jepsen/docker
 git -C .jepsen/docker checkout 4b5707813a0a24966082ae4fd2dd223da447e499
 python3 scripts/jepsen/patch-db.py .jepsen/etcd
+mkdir -p .jepsen/etcd/test/jepsen/etcd
+cp scripts/jepsen/pause_test.clj .jepsen/etcd/test/jepsen/etcd/pause_test.clj
 git -C .jepsen/etcd diff > "$out/upstream.patch"
 if [[ $STORE == etcd ]]; then
   curl -fsSL --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-amd64.tar.gz -o .jepsen/etcd.tar.gz
@@ -123,6 +125,7 @@ observer=$!
 docker exec jepsen-control java -version
 docker exec -w /jepsen/etcd jepsen-control lein version
 timeout --signal=TERM --kill-after=15s 360s docker exec -e LEIN_ROOT=true -w /jepsen/etcd jepsen-control lein deps
+timeout --signal=TERM --kill-after=15s 120s docker exec -e LEIN_ROOT=true -w /jepsen/etcd jepsen-control lein test jepsen.etcd.pause-test
 extra=()
 if [[ $NEMESIS == lazyfs ]]; then
   NEMESIS=kill

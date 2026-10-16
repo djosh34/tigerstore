@@ -50,7 +50,12 @@ They retain these pins:
 
 The adapter changes server installation, startup flags, primary lookup,
 readiness and checker scheduling. It preserves upstream clients, models,
-generators and fault implementations. Each artifact includes `upstream.patch`.
+generators and fault implementations, except that pause/resume signals the
+server PID file rather than matching command lines. Broad matching once stopped
+the nemesis's own `xargs` process and prevented resume, recorded in
+[#217](https://github.com/djosh34/tigerstore/issues/217). The adapter regression
+checks the exact signal target and propagation of signal errors before traffic.
+Each artifact includes `upstream.patch`.
 Client endpoints use plain gRPC. Peers use mutual TLS. Unlike plan 1's
 adapter, this one sets `--initial-advertise-peer-urls` for tigerstore too.
 Current tigerstore rejects the default HTTP peer URL. Readiness has a

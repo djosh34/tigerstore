@@ -67,6 +67,13 @@ s = s.replace('(client/await-node-ready c)', '''(util/timeout 60000
                              (if (< (System/nanoTime) deadline) false (throw e))))
               (Thread/sleep 100)
               (recur))))''')
+# Broad pgrep can select a sibling pipeline process before it execs xargs.
+# Stopping that process blocks the nemesis before it can issue resume (#217).
+for signal, flag in [('stop', 'STOP'), ('cont', 'CONT')]:
+    old = f'(cu/grepkill! :{signal} "etcd")'
+    if s.count(old) != 1:
+        raise ValueError(f'expected one {signal} command')
+    s = s.replace(old, f'(c/exec :kill :-{flag} (str/trim (c/exec :cat pidfile)))')
 p.write_text(s)
 # Keep the versioned register model and every operation unchanged. Run only
 # one independent key checker at once, with Knossos WGL instead of competition.
