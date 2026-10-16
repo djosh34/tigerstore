@@ -8,6 +8,8 @@
 name: soak
 
 on:
+  push:
+    branches: [work/148-soak]
   workflow_dispatch:
     inputs:
       duration:
@@ -38,8 +40,8 @@ jobs:
           nproc; free -m; df -h "$RUNNER_TEMP"
       - name: Soak
         env:
-          DURATION: ${{ inputs.duration }}
-          SEED: ${{ inputs.seed }}
+          DURATION: ${{ inputs.duration || '15m' }}
+          SEED: ${{ inputs.seed || '1' }}
         # 600,000 objects hold about 0.9 GB of values. The preloaded
         # events go with their leases after 2 minutes, which leaves about
         # 0.6 GB, still above the value cache's share of each node's
