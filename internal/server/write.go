@@ -3,6 +3,7 @@ package server
 import (
 	"time"
 
+	"github.com/djosh34/tigerstore/internal/node"
 	"golang.org/x/net/http2"
 )
 
@@ -13,6 +14,7 @@ type wframe struct {
 	id    uint32
 	b     []byte
 	ctrl  *ctrlFrame // set for frames other than HEADERS and DATA
+	hold  *node.ReplyHold
 }
 
 // maxTake bounds the data bytes of one write, so flow-controlled streams
@@ -32,6 +34,7 @@ func (c *conn) list(st *stream) {
 // the connection.
 func (c *conn) writeLoop() error {
 	var frames []wframe
+	defer func() { releaseFrames(frames) }()
 	var ctrl []ctrlFrame
 	var hdr []byte
 	nodeDone := c.s.n.Done()
@@ -67,7 +70,7 @@ func (c *conn) writeLoop() error {
 				return err
 			}
 		}
-		for i, f := range frames {
+		for _, f := range frames {
 			if f.ctrl != nil {
 				if err := c.writeCtrl(f.ctrl); err != nil {
 					return err
@@ -78,15 +81,22 @@ func (c *conn) writeLoop() error {
 				_, _ = c.bw.Write(hdr)
 				_, _ = c.bw.Write(f.b)
 			}
-			frames[i] = wframe{}
 		}
 		// bufio.Writer keeps the first write error and returns it here.
 		if err := c.bw.Flush(); err != nil {
 			return err
 		}
+		releaseFrames(frames)
 		if drained {
 			return nil
 		}
+	}
+}
+
+func releaseFrames(frames []wframe) {
+	for i := range frames {
+		frames[i].hold.Release()
+		frames[i] = wframe{}
 	}
 }
 
@@ -155,7 +165,8 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				if last && it.end {
 					flags = http2.FlagDataEndStream
 				}
-				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n]})
+				st.replyHold.Retain()
+				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n], hold: st.replyHold})
 				it.b = it.b[n:]
 				it.started = true
 				c.sendWin -= int64(n)
@@ -191,6 +202,8 @@ func (c *conn) endStream(st *stream, frames []wframe) []wframe {
 		st.deadline.Stop()
 	}
 	c.releaseLocked(&st.replyHeld)
+	st.replyHold.Release()
+	st.replyHold = nil
 	if !st.inEOF {
 		frames = append(frames, wframe{ctrl: &ctrlFrame{kind: ctrlRST, id: st.id, val: uint32(http2.ErrCodeNo)}})
 	}

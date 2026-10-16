@@ -13,12 +13,10 @@ import (
 )
 
 // The cluster version is the entry format every node writes. Each node
-// announces through Raft the newest version it supports, and once every
-// voter has announced, the cluster version rises to the lowest of their
-// versions. It is replicated state, held in checkpoints, and never goes
-// down: a node whose announcement of a lower version applies before then
-// holds it back, and a binary older than the cluster version refuses to
-// start.
+// announces through Raft the newest version it supports. Before raising
+// the version, every voter must confirm the same set of announcements.
+// A stopped voter cannot approve an upgrade using its earlier support.
+// The version never goes down; an older binary refuses to start.
 
 // MaxVersion is the newest cluster version, and so entry format, this
 // build supports. It reads every format up to it.
@@ -28,7 +26,7 @@ const MaxVersion = 3
 // entries may hold the writes of etcd's features that format 2 has no
 // kind for: alarm changes, members' attributes and member changes. Until it is active, such writes wait for it,
 // up to their deadline, as writes wait for a leader. A fresh cluster
-// activates it once every voter's announcement applied.
+// activates it once every voter has confirmed its support.
 const featureVersion = 3
 
 // capable reports whether the cluster version allows the kinds of
@@ -75,15 +73,16 @@ func tooOld(cluster, own uint32) error {
 		ErrTooOld, cluster, own, cluster)
 }
 
-// An announcement is a wrapperspb.UInt32Value with the version, and in
-// field 2 the number of the run of the node that proposed it (Config.Run),
-// which a parser of the plain message keeps as an unknown field. A run's
-// announcement can reach the leader late, after the node restarted with
-// another binary and announced again, and apply before or after the newer
-// one; the run number tells them apart (#174).
-const announceRunField = 2
+// Announcements extend UInt32Value with the durable run number and the
+// epoch of the support table the sender has applied. The latter prevents
+// support from a stopped run from activating a later upgrade (#174).
+const (
+	announceRunField   = 2
+	announceEpochField = 3
+)
 
-// announcement is the announcement of version v by run run.
+// announcement is the announcement format used before confirmations.
+// Keep it for replay of old logs.
 func announcement(v uint32, run uint64) *wrapperspb.UInt32Value {
 	m := wrapperspb.UInt32(v)
 	b := protowire.AppendTag(nil, announceRunField, protowire.VarintType)
@@ -91,59 +90,104 @@ func announcement(v uint32, run uint64) *wrapperspb.UInt32Value {
 	return m
 }
 
-// parseAnnouncement returns the version and run of an announcement, and
-// whether it has a run: one from a build before #174 has none.
-func parseAnnouncement(b []byte) (v uint32, run uint64, hasRun bool, err error) {
+func confirmation(v uint32, run, epoch uint64) *wrapperspb.UInt32Value {
+	m := announcement(v, run)
+	b := protowire.AppendTag(m.ProtoReflect().GetUnknown(), announceEpochField, protowire.VarintType)
+	m.ProtoReflect().SetUnknown(protowire.AppendVarint(b, epoch))
+	return m
+}
+
+type versionAnnouncement struct {
+	version          uint32
+	run, epoch       uint64
+	hasRun, hasEpoch bool
+}
+
+func parseAnnouncement(b []byte) (a versionAnnouncement, err error) {
 	var m wrapperspb.UInt32Value
 	if err := proto.Unmarshal(b, &m); err != nil {
-		return 0, 0, false, fmt.Errorf("%w: %w", errBadBatch, err)
+		return a, fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	for u := m.ProtoReflect().GetUnknown(); len(u) > 0; {
 		num, typ, n := protowire.ConsumeTag(u)
 		if n < 0 {
-			return 0, 0, false, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
+			return a, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
 		}
 		u = u[n:]
-		if num == announceRunField && typ == protowire.VarintType {
+		if (num == announceRunField || num == announceEpochField) && typ == protowire.VarintType {
 			x, n := protowire.ConsumeVarint(u)
 			if n < 0 {
-				return 0, 0, false, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
+				return a, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
 			}
-			run, hasRun, u = x, true, u[n:]
+			if num == announceRunField {
+				a.run, a.hasRun = x, true
+			} else {
+				a.epoch, a.hasEpoch = x, true
+			}
+			u = u[n:]
 			continue
 		}
 		n = protowire.ConsumeFieldValue(num, typ, u)
 		if n < 0 {
-			return 0, 0, false, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
+			return a, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
 		}
 		u = u[n:]
 	}
-	return m.Value, run, hasRun, nil
+	a.version = m.Value
+	return a, nil
 }
 
-// announce records the newest version a voter supports, from an
-// announcement by its run run, and raises the cluster version to the
-// lowest version of all voters, once each has announced one. One from an
-// earlier run than the voter's current announcement changes nothing,
-// whenever it applies. One without a run, from a build before #174,
-// always counts, as it did there.
-func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, voters []uint64) {
+// recordVersion rejects superseded runs. Any change of support or run
+// invalidates all confirmations, including ones delayed in the network.
+// Use its log index, not a counter of changes: old checkpoints contain no
+// epoch, so a counter would differ between checkpoint and full-log replay.
+// Legacy announcements use zero and keep their original apply semantics.
+func (st *State) recordVersion(id uint64, v uint32, run uint64, hasRun bool, voters []uint64, index uint64) bool {
 	if !slices.Contains(voters, id) || hasRun && run < st.runs[id] {
-		return
+		return false
+	}
+	if st.supports[id] != v || hasRun && st.runs[id] != run || index != 0 && st.versionEpoch == 0 {
+		st.versionEpoch = index
+		clear(st.confirmed)
 	}
 	st.supports[id] = v
 	if hasRun {
 		st.runs[id] = run
 	}
-	low := v
+	return true
+}
+
+func (st *State) supportedVersion(voters []uint64) uint32 {
+	if len(voters) == 0 {
+		return st.version
+	}
+	low := st.supports[voters[0]]
+	for _, id := range voters[1:] {
+		low = min(low, st.supports[id])
+	}
+	return low
+}
+
+// announce preserves the apply semantics of entries written before the
+// confirmation protocol. Replaying an old log must activate its formats
+// at the same entries as the build that wrote it.
+func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, voters []uint64) {
+	if st.recordVersion(id, v, run, hasRun, voters, 0) {
+		st.version = max(st.version, st.supportedVersion(voters))
+	}
+}
+
+func (st *State) confirmVersion(index, id uint64, a versionAnnouncement, voters []uint64) {
+	if !st.recordVersion(id, a.version, a.run, a.hasRun, voters, index) || a.epoch != st.versionEpoch {
+		return
+	}
+	st.confirmed[id] = a.epoch
 	for _, voter := range voters {
-		s, ok := st.supports[voter]
-		if !ok {
+		if st.confirmed[voter] != st.versionEpoch {
 			return
 		}
-		low = min(low, s)
 	}
-	st.version = max(st.version, low)
+	st.version = max(st.version, st.supportedVersion(voters))
 }
 
 // ownVersion is the newest version this node supports.
@@ -152,34 +196,39 @@ func ownVersion(cfg Config) uint32 { return cmp.Or(cfg.MaxVersion, MaxVersion) }
 // ActiveVersion is the cluster version this node has applied.
 func (n *Node) ActiveVersion() uint32 { return n.state.version }
 
-// applyVersion applies a node's announcement. A node whose binary is
-// older than the version it makes active stops.
-func (n *Node) applyVersion(origin uint64, b []byte) error {
-	v, run, hasRun, err := parseAnnouncement(b)
+func (n *Node) applyVersion(index, origin uint64, b []byte) error {
+	a, err := parseAnnouncement(b)
 	if err != nil {
 		return err
 	}
-	n.state.announce(origin, v, run, hasRun, n.state.voters())
+	if a.hasEpoch {
+		n.state.confirmVersion(index, origin, a, n.state.voters())
+	} else {
+		n.state.announce(origin, a.version, a.run, a.hasRun, n.state.voters())
+	}
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))
 	}
 	return nil
 }
 
-// announceVersion proposes the newest version this node supports until
-// the state holds it, from this run, again after each election timeout,
-// as Raft may drop a proposal.
+// announceVersion retries after each election timeout, as Raft may drop
+// proposals. Once all voters support a newer format, each must confirm
+// that epoch. A node that has rolled back sends its lower support instead.
 func (n *Node) announceVersion() {
 	own := ownVersion(n.cfg)
-	// A new run announces even an unchanged version, so that its run
-	// supersedes those before it: a late announcement of an earlier one
-	// must not count.
-	if n.state.supports[n.cfg.ID] == own && n.state.runs[n.cfg.ID] >= n.cfg.Run || n.leader == raft.None {
+	st := n.state
+	if n.leader == raft.None || st.runs[n.cfg.ID] > n.cfg.Run {
+		return
+	}
+	unchanged := st.supports[n.cfg.ID] == own && st.runs[n.cfg.ID] == n.cfg.Run
+	needsConfirmation := st.supportedVersion(st.voters()) > st.version && (st.versionEpoch == 0 || st.confirmed[n.cfg.ID] != st.versionEpoch)
+	if unchanged && !needsConfirmation {
 		return
 	}
 	if n.announcedAt != 0 && n.now-n.announcedAt < int64(n.cfg.ElectionTicks) {
 		return
 	}
 	n.announcedAt = n.now
-	n.proposeInternal(announcement(own, n.cfg.Run))
+	n.proposeInternal(confirmation(own, n.cfg.Run, st.versionEpoch))
 }

@@ -506,6 +506,21 @@ func TestRotInAnEntryRecord(t *testing.T) {
 	checkers(t, res)
 }
 
+// TestSnapshotFromCorruptLeader runs a seed in which a node serves a
+// snapshot from a damaged old record. Serving it must stop that node, so
+// the follower can catch up from a healthy node instead of reloading on
+// every fetch (#201). It was #201's seed 3314 until #220 moved that
+// seed off this edge; seed 47 has it. A change to the simulator's random
+// draws can move this seed too, and the test then fails.
+func TestSnapshotFromCorruptLeader(t *testing.T) {
+	res := run(t, DefaultConfig(47))
+	if res.Stats.ServeFailures == 0 || res.Stats.Fenced == 0 {
+		t.Fatalf("the run did not fail a serve and fence a damaged node: %+v", res.Stats)
+	}
+	checkers(t, res)
+	t.Logf("trace %016x: %+v", res.Trace, res.Stats)
+}
+
 // TestAmbiguousWritesInTheLog runs seed 1320469923, whose history has 8
 // ambiguous writes, all in the committed log, in its first 7.3 s. Each
 // one Porcupine had to fork into took effect or not, at any time after
