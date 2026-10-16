@@ -22,6 +22,7 @@ sectors() { awk -v d="$DISK" '$3 == d {print $10}' /proc/diskstats; }
 # jbd2 reports per journal how many transactions it committed and their
 # average size in blocks; their product is the journal's blocks.
 journal() { cat /proc/fs/jbd2/"$DISK"-*/info; }
+sudo sh -c 'echo 65536 > /sys/kernel/tracing/buffer_size_kb'
 for rep in 1 2; do
 	for target in baseline candidate; do
 		name=$target-$rep dir=$DATA/$target
@@ -42,12 +43,22 @@ for rep in 1 2; do
 		compactor=$!
 		s0=$(sectors)
 		journal >"$out/$name.jbd0"
+		# Every committed journal transaction of the disk, with the blocks
+		# it logged, from the kernel's jbd2_run_stats tracepoint.
+		sudo sh -c 'echo > /sys/kernel/tracing/trace; echo 1 > /sys/kernel/tracing/events/jbd2/jbd2_run_stats/enable'
+		sudo cat /sys/kernel/tracing/trace_pipe |
+			awk -v d="$DISK" '$0 ~ "dev " { n++; for (i = 1; i <= NF; i++) if ($i ~ /^blocks_logged/) { split($i, a, "="); b += a[2] } } END { print n, b }' >"$out/$name.jbdtrace" &
+		tracer=$!
 		taskset -c 3 "$BINS/loadgen" -endpoints "$(cat "$dir/leader")" \
 			-cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
 			-pids "$(cat "$dir/pids")" -workload put -value-size 1024 -keys 200000 -rate "$rate" \
 			-warmup 0s -duration "$dur" -disk "$DISK" -seed "$rep" -out "$out/$name.json" || echo "$name loadgen failed" | tee -a "$out/failed"
 		s1=$(sectors)
 		journal >"$out/$name.jbd1"
+		sudo sh -c 'echo 0 > /sys/kernel/tracing/events/jbd2/jbd2_run_stats/enable'
+		sleep 1
+		sudo pkill -f 'cat /sys/kernel/tracing/trace_pipe' || true
+		wait "$tracer" || true
 		kill "$compactor"
 		scrape "$dir" "$out/$name.m1"
 		echo "$((s1 - s0))" >"$out/$name.sectors"
