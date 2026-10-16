@@ -9,7 +9,8 @@ gh workflow run jepsen.yml --repo djosh34/tigerstore --ref prep/148-jepsen \
 ```
 
 The workflow builds the specified product commit, not the workflow branch's
-server code. The default is main at the start of this prework,
+server code. The default is main at the final matrix launch,
+`e6c654e8253674f972d4227aea157fa907102363`. The initial probes used
 `40e7c0a009a08d6ba80f369dd2e66c9735512dbb`. Every job has its own fresh three-node
 cluster and uploads logs and histories even when it fails. Choose `jepsen` or
 `robustness` to run only that suite, or `tools` for the parser regressions.
@@ -47,7 +48,10 @@ They retain these pins:
 The adapter changes server installation, startup flags, primary lookup,
 readiness and checker scheduling. It preserves upstream clients, models,
 generators and fault implementations. Each artifact includes `upstream.patch`.
-Client endpoints use plain gRPC. Peers use mutual TLS.
+Client endpoints use plain gRPC. Peers use mutual TLS. Unlike plan 1's
+adapter, this one sets `--initial-advertise-peer-urls` for tigerstore too.
+Current tigerstore rejects the default HTTP peer URL. Readiness has a
+60-second bound so failed startup retains server logs rather than hanging.
 
 Fault checks require completed injection and healing records, plus observed
 replacement PIDs, stopped processes, or DROP counters with packet hits.
