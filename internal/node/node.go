@@ -1216,9 +1216,9 @@ type syncedGroup struct {
 
 // persist writes every queued job, hands the group to syncGroups, and
 // writes the next group while that one syncs, so the disk always has the
-// next group to take. Groups come back from syncGroups in order, and
-// persist reports their jobs on their own channel, so it never waits for
-// the committer's inbox. A failed write or sync stops the node; it is
+// next group to take. syncGroups reports durable jobs to the committer
+// before returning them here: a later blocked Flush must not hold back
+// an earlier append's response. A failed write or sync stops the node; it is
 // never retried, and no later group is reported. A job with a snapshot
 // first fetches it from the leader into the log, and a failed fetch ends
 // the run for a reload; a job with a root removes what the root made
@@ -1229,15 +1229,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
-	var wg sync.WaitGroup
-	wg.Go(func() { n.syncGroups(toSync, synced) })
-	defer func() {
-		close(toSync)
-		wg.Wait()
-	}()
-	inFlight := 0
-	// report hands a group back, and reports whether the node goes on.
-	report := func(g written, err error) bool {
+	// report runs on the sync goroutine, or here after drain. Rotation,
+	// snapshot installation and cleaning wait for it before changing
+	// the segment or the roots it reads in afterSync.
+	report := func(g written, err error) error {
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
@@ -1252,14 +1247,21 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():
-			return false
+			return errors.Join(err, ctx.Err())
 		}
-		return err == nil
+		return err
 	}
-	// drain waits for every group in flight.
+	var wg sync.WaitGroup
+	wg.Go(func() { n.syncGroups(toSync, synced, report) })
+	defer func() {
+		close(toSync)
+		wg.Wait()
+	}()
+	inFlight := 0
+	// drain waits until every earlier group was reported to the committer.
 	drain := func() bool {
 		for ; inFlight > 0; inFlight-- {
-			if s := <-synced; !report(s.g, s.err) {
+			if s := <-synced; s.err != nil {
 				return false
 			}
 		}
@@ -1284,7 +1286,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		case jobs = <-queue:
 		case s := <-synced:
 			inFlight--
-			if !report(s.g, s.err) {
+			if s.err != nil {
 				return
 			}
 			continue
@@ -1383,7 +1385,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		if syncTime > n.cfg.Tick {
 			n.logf("slow log rotation: %v", syncTime)
 		}
-		if !report(g, err) {
+		if report(g, err) != nil {
 			return
 		}
 	}
@@ -1391,9 +1393,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 
 // syncGroups syncs the written groups in order and hands them back. One
 // sync covers every group written before it started, so it takes all the
-// groups queued at once. After a failed sync it syncs nothing more and
-// hands every later group back with that error.
-func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
+// groups queued at once. It reports each result before returning the
+// group to the writer. After a failed sync or report it syncs nothing more
+// and hands every later group back with that error.
+func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, report func(written, error) error) {
 	var failed error
 	for g := range groups {
 		batch := []written{g}
@@ -1428,10 +1431,11 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
 				n.logf("slow log sync: %v", syncTime)
 			}
 		}
-		failed = err
 		for _, g := range batch {
+			err = report(g, err)
 			synced <- syncedGroup{g: g, err: err}
 		}
+		failed = err
 	}
 }
 
