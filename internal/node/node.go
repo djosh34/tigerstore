@@ -239,6 +239,7 @@ func (n *Node) Metrics(ctx context.Context) (core.Metrics, error) {
 	n.log.mu.Unlock()
 	used, err := n.log.fs.Usage()
 	m.DiskBytes, m.DiskBudget, m.CleanedBytes = used, n.cfg.DiskBudget, n.log.cleaned.Load()
+	m.MaxLogWriteNanos = n.log.maxWrite.Load()
 	return m, err
 }
 
@@ -383,8 +384,9 @@ type diskLog struct {
 	serving int
 	// used is the size of the log's files when the cleaner measured them
 	// last, plus what the disk goroutines wrote since, and cleaned the
-	// bytes that cleaning wrote.
-	used, cleaned atomic.Int64
+	// bytes that cleaning wrote. maxWrite is the longest write and sync
+	// of a group, in nanoseconds.
+	used, cleaned, maxWrite atomic.Int64
 	// before runs before each value read; see Config.BeforeRead.
 	before func()
 }
@@ -1138,7 +1140,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
-		if d := time.Since(g.start); err == nil && d > n.cfg.Tick {
+		d := time.Since(g.start)
+		if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
+			n.log.maxWrite.Store(int64(d))
+		}
+		if err == nil && d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
 		}
 		done := persistDone{jobs: g.jobs, err: err}

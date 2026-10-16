@@ -438,7 +438,9 @@ type Node struct {
 	appending []int64
 	// uncommitted holds the last index and the tick of each local append
 	// with entries since this node became leader, until they commit.
-	uncommitted []proposedAt
+	// maxCommitWait is the most ticks one of them waited to commit.
+	uncommitted   []proposedAt
+	maxCommitWait int64
 	// own holds the last index of each append not yet durable that
 	// carries a batch of the leader's own writes, oldest first. While
 	// ownDepth of them are on their way, new writes wait. awaitOwn marks
@@ -1937,6 +1939,7 @@ func (n *Node) commitStalled() bool {
 	commit := n.rn.BasicStatus().GetCommit()
 	i := 0
 	for i < len(n.uncommitted) && n.uncommitted[i].index <= commit {
+		n.maxCommitWait = max(n.maxCommitWait, n.now-n.uncommitted[i].at)
 		i++
 	}
 	n.uncommitted = n.uncommitted[i:]

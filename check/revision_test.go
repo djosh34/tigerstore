@@ -76,6 +76,18 @@ func TestRevisionsBroken(t *testing.T) {
 			kv.CreateRevision, kv.ModRevision = 3, 3
 			return h
 		}},
+		{"watch misses one key of a multi-key delete", "has no delete event of key", func(t *testing.T) *history.History {
+			b := newBuilder(t, "a", "b")
+			b.watch(0, "a", history.AllKeys, false)
+			b.put(1, "a", "1")
+			b.put(1, "b", "1")
+			b.do(1, history.Request{Delete: &history.DeleteRequest{Key: "a", End: history.AllKeys, PrevKV: true}})
+			h := b.done()
+			w := &h.Watches[0]
+			last := &w.Responses[len(w.Responses)-1]
+			last.Events = last.Events[1:]
+			return h
+		}},
 		{"version kept after delete and recreate", "was deleted at revision", func(t *testing.T) *history.History {
 			b := newBuilder(t, "a")
 			b.put(0, "a", "1")
