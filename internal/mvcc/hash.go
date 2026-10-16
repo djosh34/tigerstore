@@ -20,9 +20,9 @@ type KVHash struct {
 // versions count: one above rev never does; one at or below the
 // compaction revision C counts only if it is the version a read at rev
 // sees, unless no key exists at rev; a tombstone at C never does. So
-// replicas that compacted at different revisions agree on the hash of a
-// revision at or above both. A rev below C is ErrCompacted, one above the
-// current revision ErrFutureRev.
+// replicas agree on the hash of a revision only at the same C, as etcd's
+// corruption check compares them. A rev below C is ErrCompacted, one
+// above the current revision ErrFutureRev.
 //
 // etcd hashes its database rows in revision order, each a revision key and
 // the marshaled KeyValue. This walks the index in key order instead, and

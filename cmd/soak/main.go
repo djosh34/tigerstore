@@ -533,7 +533,7 @@ func (s *soak) hashes(ctx context.Context) error {
 			}
 		}
 		if hs[0].CompactRevision != hs[1].CompactRevision || hs[0].CompactRevision != hs[2].CompactRevision {
-			if try == 10 {
+			if try == 9 {
 				return fmt.Errorf("at revision %d the nodes hash after compactions %d, %d and %d, ten times in a row", rev, hs[0].CompactRevision, hs[1].CompactRevision, hs[2].CompactRevision)
 			}
 			time.Sleep(time.Second)
