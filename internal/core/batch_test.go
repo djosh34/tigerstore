@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // writesIn counts the client writes in the entries of persist jobs.
@@ -31,40 +32,36 @@ func writesIn(t *testing.T, jobs []PersistJob) []int {
 	return out
 }
 
-// TestWritesWaitForTheLeadersAppend holds the leader's append on its way
-// to disk: writes that arrive meanwhile go out as one entry once it is
-// durable, and a write with no append in flight goes out at once.
-func TestWritesWaitForTheLeadersAppend(t *testing.T) {
+// TestWritesWaitForTheLeadersAppends holds the leader's appends on their
+// way to disk: a write with fewer than ownDepth appends in flight goes out
+// at once, and writes that arrive while ownDepth are in flight go out as
+// one entry once the oldest is durable.
+func TestWritesWaitForTheLeadersAppends(t *testing.T) {
 	s := startSingle(t, simfs.New(), 1)
-	s.n.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("0")}})
-	eff, err := s.n.Process()
-	if err != nil {
-		t.Fatal(err)
+	var held [][]PersistJob
+	for i := range ownDepth {
+		s.n.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("0")}})
+		eff, err := s.n.Process()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := writesIn(t, eff.Persist); fmt.Sprint(got) != "[1]" {
+			t.Fatalf("write %d went out as %v, want at once in one entry", i, got)
+		}
+		held = append(held, eff.Persist)
 	}
-	if got := writesIn(t, eff.Persist); fmt.Sprint(got) != "[1]" {
-		t.Fatalf("first write went out as %v, want at once in one entry", got)
-	}
-	held := eff.Persist
 	for i := range 50 {
-		s.n.Submit(Request{ID: uint64(i + 2), Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("x")}})
+		s.n.Submit(Request{ID: uint64(ownDepth + i + 1), Op: &pb.PutRequest{Key: []byte("a"), Value: []byte("x")}})
 		e, err := s.n.Process()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got := writesIn(t, e.Persist); len(got) != 0 {
-			t.Fatalf("write %d went out while the append was in flight: %v", i, got)
+			t.Fatalf("write %d went out while %d appends were in flight: %v", i, ownDepth, got)
 		}
 	}
-	for _, j := range held {
-		s.log.Append(j.HardState, j.Entries)
-	}
-	if err := s.log.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	for _, j := range held {
-		s.n.Persisted(j)
-	}
-	eff, err = s.n.Process()
+	s.persistAll(held[0])
+	eff, err := s.n.Process()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,24 +69,18 @@ func TestWritesWaitForTheLeadersAppend(t *testing.T) {
 		t.Fatalf("held writes went out as %v, want one entry of 50", got)
 	}
 	// Finish everything; every write is answered.
-	for _, j := range eff.Persist {
-		s.log.Append(j.HardState, j.Entries)
-	}
-	if err := s.log.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	for _, j := range eff.Persist {
-		s.n.Persisted(j)
-	}
 	replies := len(eff.Replies)
+	for _, jobs := range append(held[1:], eff.Persist) {
+		s.persistAll(jobs)
+	}
 	for _, r := range s.run() {
 		if r.Err != nil {
 			t.Fatal(r.Err)
 		}
 		replies++
 	}
-	if replies != 51 {
-		t.Fatalf("%d replies, want 51", replies)
+	if replies != 50+ownDepth {
+		t.Fatalf("%d replies, want %d", replies, 50+ownDepth)
 	}
 }
 
@@ -213,5 +204,23 @@ func TestHardStateAppendHoldsNothing(t *testing.T) {
 	}
 	if got := writesIn(t, eff.Persist); fmt.Sprint(got) != "[1]" {
 		t.Fatalf("write behind a hard-state append went out as %v, want at once", got)
+	}
+}
+
+// TestMustSync syncs every job but one that only moves the commit index.
+func TestMustSync(t *testing.T) {
+	for _, c := range []struct {
+		job  PersistJob
+		want bool
+	}{
+		{PersistJob{HardState: &wal.HardState{Term: 2, Commit: 9}}, false},
+		{PersistJob{HardState: &wal.HardState{Term: 2, Commit: 9}, newVote: true}, true},
+		{PersistJob{Entries: []*raftpb.Entry{{}}}, true},
+		{PersistJob{Root: &wal.Root{Index: 5}}, true},
+		{PersistJob{Install: &Install{}}, true},
+	} {
+		if got := c.job.MustSync(); got != c.want {
+			t.Errorf("MustSync of %+v = %v, want %v", c.job, got, c.want)
+		}
 	}
 }

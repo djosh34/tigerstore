@@ -1109,9 +1109,13 @@ func (s *Sim) diskDone(e *event) {
 		return
 	}
 	n.syncing = nil
-	if err := n.log.Sync(); err != nil {
-		s.diskFailed(n, err)
-		return
+	// A group of jobs that only move the commit index is not synced, as
+	// the real node does; the planted early reports carry no jobs.
+	if e.jobs == nil || slices.ContainsFunc(e.jobs, core.PersistJob.MustSync) {
+		if err := n.log.Sync(); err != nil {
+			s.diskFailed(n, err)
+			return
+		}
 	}
 	n.diskBusy = false
 	if e.grayDisk {

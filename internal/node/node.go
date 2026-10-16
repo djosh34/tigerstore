@@ -546,8 +546,15 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	segment := int64(wal.SegmentBytes)
 	if n.cfg.SegmentBytes > 0 {
-		w.SetSegmentBytes(n.cfg.SegmentBytes)
+		segment = n.cfg.SegmentBytes
+		w.SetSegmentBytes(segment)
+	}
+	if n.cfg.DiskBudget > 0 {
+		// Spare segment files count against the budget: at most an
+		// eighth of it.
+		w.SetSpares(int(min(wal.MaxSpares, n.cfg.DiskBudget/8/segment)))
 	}
 	n.log.mu.Lock()
 	err = n.log.close()
@@ -1085,24 +1092,98 @@ type persistDone struct {
 	err  error
 }
 
-// persist writes every queued job, syncs once, and reports the jobs back
-// on their own channel, so it never waits for the committer's inbox. A
-// failed write or sync stops the node; it is never retried. A job with a
-// snapshot first fetches it from the leader into the log, and a failed
-// fetch ends the run for a reload; a job with a root removes what the
-// root made obsolete once it is synced.
+// syncsInFlight is how many written groups may wait for their sync.
+const syncsInFlight = 4
+
+// written is a group of jobs written to the log: f is the segment to sync
+// for it, nil when no job must be synced (core.PersistJob.MustSync).
+type written struct {
+	jobs           []core.PersistJob
+	f              wal.File
+	start          time.Time
+	entries, bytes int
+}
+
+// syncedGroup is a written group after its sync, or after the error that
+// stops the node.
+type syncedGroup struct {
+	g   written
+	err error
+}
+
+// persist writes every queued job, hands the group to syncGroups, and
+// writes the next group while that one syncs, so the disk always has the
+// next group to take. Groups come back from syncGroups in order, and
+// persist reports their jobs on their own channel, so it never waits for
+// the committer's inbox. A failed write or sync stops the node; it is
+// never retried, and no later group is reported. A job with a snapshot
+// first fetches it from the leader into the log, and a failed fetch ends
+// the run for a reload; a job with a root removes what the root made
+// obsolete once it is synced. Whatever starts a new segment or syncs on
+// its own (a full segment, a snapshot, a cleaning root) first waits for
+// every group in flight.
 func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
+	toSync := make(chan written, syncsInFlight)
+	synced := make(chan syncedGroup, syncsInFlight)
+	var wg sync.WaitGroup
+	wg.Go(func() { n.syncGroups(toSync, synced) })
+	defer func() {
+		close(toSync)
+		wg.Wait()
+	}()
+	inFlight := 0
+	// report hands a group back, and reports whether the node goes on.
+	report := func(g written, err error) bool {
+		if err == nil {
+			err = n.afterSync(g.jobs)
+		}
+		if d := time.Since(g.start); err == nil && d > n.cfg.Tick {
+			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
+		}
+		done := persistDone{jobs: g.jobs, err: err}
+		select {
+		case n.persisted <- done:
+		case <-ctx.Done():
+			return false
+		}
+		return err == nil
+	}
+	// drain waits for every group in flight.
+	drain := func() bool {
+		for ; inFlight > 0; inFlight-- {
+			if s := <-synced; !report(s.g, s.err) {
+				return false
+			}
+		}
+		return true
+	}
+	fail := func(err error) {
+		select {
+		case n.persisted <- persistDone{err: err}:
+		case <-ctx.Done():
+		}
+	}
 	for {
 		var jobs []core.PersistJob
+		queue, cleanQ := n.persistQ, n.cleanQ
+		if inFlight == syncsInFlight {
+			queue = nil
+		}
+		if inFlight > 0 {
+			cleanQ = nil
+		}
 		select {
-		case jobs = <-n.persistQ:
-		case pr := <-n.cleanQ:
+		case jobs = <-queue:
+		case s := <-synced:
+			inFlight--
+			if !report(s.g, s.err) {
+				return
+			}
+			continue
+		case pr := <-cleanQ:
 			if err := n.installPacks(pr); err != nil {
-				select {
-				case n.persisted <- persistDone{err: fmt.Errorf("install the root of a pack: %w", err)}:
-				case <-ctx.Done():
-				}
+				fail(fmt.Errorf("install the root of a pack: %w", err))
 				return
 			}
 			continue
@@ -1118,14 +1199,15 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				break more
 			}
 		}
-		start := time.Now()
-		entries, bytes := 0, 0
-		done := persistDone{jobs: jobs}
+		g := written{jobs: jobs, start: time.Now()}
 		for _, j := range jobs {
 			if j.Install != nil {
+				if !drain() {
+					return
+				}
 				if err := n.install(ctx, t, j.Install); err != nil {
-					done = persistDone{err: fmt.Errorf("install the snapshot at %d from %d: %w", j.Install.Index, j.Install.From, err)}
-					break
+					fail(fmt.Errorf("install the snapshot at %d from %d: %w", j.Install.Index, j.Install.From, err))
+					return
 				}
 			}
 			n.log.mu.Lock()
@@ -1134,66 +1216,107 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				w.AppendRoot(*j.Root)
 			}
 			n.log.mu.Unlock()
-			entries += len(j.Entries)
+			g.entries += len(j.Entries)
 			for _, e := range j.Entries {
-				bytes += len(e.Data)
+				g.bytes += len(e.Data)
 			}
 		}
-		if done.err == nil {
-			buffered := w.Buffered()
-			n.log.used.Add(buffered)
-			m := n.cfg.Metrics
-			wrote := time.Now()
-			err := w.Flush()
-			synced := time.Now()
-			m.WALWrite.Observe(synced.Sub(wrote).Seconds())
-			m.WALWriteBytes.Add(float64(buffered))
-			if err == nil {
-				err = w.Sync()
-				m.WALFsync.Observe(time.Since(synced).Seconds())
-			}
-			n.log.mu.Lock()
-			err = errors.Join(err, n.log.synced())
-			n.log.mu.Unlock()
-			if err != nil {
-				done = persistDone{err: err}
-			}
-		}
-		for _, j := range jobs {
-			if done.err != nil {
-				break
-			}
-			n.log.mu.Lock()
-			if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
-				n.log.ckpts = []wal.Root{in.Checkpoint}
-			}
-			var err error
-			if j.Root != nil {
-				n.log.ckpts = append(n.log.ckpts, *j.Root)
-				// A fetch under way may read what the removal would take;
-				// the next root removes it.
-				if j.RemoveBelow > 0 && n.log.serving == 0 {
-					err = errors.Join(w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
-					n.log.ckpts = []wal.Root{*j.Root}
-				}
-			}
-			n.log.mu.Unlock()
-			if err != nil {
-				done = persistDone{err: err}
-			}
-		}
-		if d := time.Since(start); d > n.cfg.Tick {
-			n.logf("slow write to the log: %d entries, %d bytes in %v", entries, bytes, d)
-		}
-		select {
-		case n.persisted <- done:
-		case <-ctx.Done():
+		buffered := w.Buffered()
+		n.log.used.Add(buffered)
+		m := n.cfg.Metrics
+		wrote := time.Now()
+		err := w.Flush()
+		m.WALWrite.Observe(time.Since(wrote).Seconds())
+		m.WALWriteBytes.Add(float64(buffered))
+		if err != nil {
+			fail(err)
 			return
 		}
-		if done.err != nil {
+		mustSync := slices.ContainsFunc(jobs, core.PersistJob.MustSync)
+		if !w.Full() {
+			if mustSync {
+				g.f = w.Segment()
+			}
+			toSync <- g
+			inFlight++
+			continue
+		}
+		// The segment is full: once the groups in flight are synced, Sync
+		// syncs this one and starts the next segment.
+		if !drain() {
+			return
+		}
+		syncStart := time.Now()
+		err = w.Sync()
+		m.WALFsync.Observe(time.Since(syncStart).Seconds())
+		if !report(g, err) {
 			return
 		}
 	}
+}
+
+// syncGroups syncs the written groups in order and hands them back. One
+// sync covers every group written before it started, so it takes all the
+// groups queued at once. After a failed sync it syncs nothing more and
+// hands every later group back with that error.
+func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
+	var failed error
+	for g := range groups {
+		batch := []written{g}
+	more:
+		for {
+			select {
+			case g, ok := <-groups:
+				if !ok {
+					break more
+				}
+				batch = append(batch, g)
+			default:
+				break more
+			}
+		}
+		err := failed
+		var f wal.File
+		for _, g := range batch {
+			if g.f != nil {
+				f = g.f
+			}
+		}
+		if err == nil && f != nil {
+			start := time.Now()
+			err = f.Sync()
+			n.cfg.Metrics.WALFsync.Observe(time.Since(start).Seconds())
+		}
+		failed = err
+		for _, g := range batch {
+			synced <- syncedGroup{g: g, err: err}
+		}
+	}
+}
+
+// afterSync notes what a synced group changed: the segments that no
+// longer change, a snapshot's checkpoint, and a root, which removes what
+// it made obsolete.
+func (n *Node) afterSync(jobs []core.PersistJob) error {
+	w := n.log.w
+	n.log.mu.Lock()
+	defer n.log.mu.Unlock()
+	err := n.log.synced()
+	for _, j := range jobs {
+		if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
+			n.log.ckpts = []wal.Root{in.Checkpoint}
+		}
+		if j.Root != nil {
+			n.log.ckpts = append(n.log.ckpts, *j.Root)
+			// A fetch under way may read what the removal would take;
+			// the next root removes it.
+			if j.RemoveBelow > 0 && n.log.serving == 0 {
+				err = errors.Join(err, w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
+				n.log.ckpts = []wal.Root{*j.Root}
+			}
+		}
+	}
+	return err
 }
 
 // install fetches a snapshot from its leader and writes it to the log.

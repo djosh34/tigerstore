@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -479,8 +480,8 @@ func TestHardStateSurvivesRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(names) > 4 {
-		t.Fatalf("segments left: %v", names)
+	if segs := slices.DeleteFunc(names, func(n string) bool { return !strings.HasSuffix(n, ".wal") }); len(segs) > 4 {
+		t.Fatalf("segments left: %v", segs)
 	}
 	_, rec := open(t, d)
 	if rec.HardState.Term != 7 || rec.HardState.Vote != 3 || rec.Root.Index != 5 || rec.Last != 6 {
@@ -591,9 +592,9 @@ func TestCheckpointFiles(t *testing.T) {
 func TestOtherFormatVersion(t *testing.T) {
 	d := simfs.New()
 	names := segments(t, d, 2)
-	rewrite(t, d, names[0], func(b []byte) []byte { b[8] = 2; return b })
-	if _, _, err := wal.Open(d); err == nil || !strings.Contains(err.Error(), "format version 2") {
-		t.Fatalf("open of version 2: %v", err)
+	rewrite(t, d, names[0], func(b []byte) []byte { b[8] = wal.Version + 1; return b })
+	if _, _, err := wal.Open(d); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("format version %d", wal.Version+1)) {
+		t.Fatalf("open of version %d: %v", wal.Version+1, err)
 	}
 }
 

@@ -275,9 +275,14 @@ type Reply struct {
 	Range mvcc.RangeResult
 }
 
+// ownDepth is how many appends of the leader's own writes may be on their
+// way to disk at once.
+const ownDepth = 2
+
 // PersistJob is one disk write: entries and a hard state to append and
 // sync. The driver runs jobs in order and calls Persisted for each, in the
-// same order, once it is durable.
+// same order, once it is durable: synced, if MustSync says so, else
+// written after every job before it was synced.
 type PersistJob struct {
 	// Install, if set, is a snapshot from Raft. The driver first brings
 	// its log to the snapshot's index (ReceiveSnapshot), then appends the
@@ -296,6 +301,15 @@ type PersistJob struct {
 	newVote bool
 	// bytes is the entry data of the job.
 	bytes int64
+}
+
+// MustSync reports whether the job counts as durable only once synced: it
+// has entries, a new term or vote, a snapshot or a root. A job with only a
+// moved commit index need not be, as in etcd (raft.MustSync): after a
+// crash the node relearns its commit from the leader. Its responses still
+// wait for every job before it, which the driver syncs first.
+func (j PersistJob) MustSync() bool {
+	return len(j.Entries) > 0 || j.newVote || j.Install != nil || j.Root != nil
 }
 
 // Effects is what the core asks its driver to do.
@@ -425,15 +439,15 @@ type Node struct {
 	// uncommitted holds the last index and the tick of each local append
 	// with entries since this node became leader, until they commit.
 	uncommitted []proposedAt
-	// ownIndex is the last index of the append that carries the leader's
-	// last batch of writes, and durable the last index on disk. While
-	// ownIndex is ahead, new writes wait. awaitOwn marks that the next
-	// append with entries carries a batch just proposed. Appends of
-	// forwarded proposals do not hold anything.
-	ownIndex, durable uint64
-	awaitOwn          bool
-	waiting           map[uint64]*pending // writes by request ID
-	timeouts          []*pending          // every waiting request in deadline order
+	// own holds the last index of each append not yet durable that
+	// carries a batch of the leader's own writes, oldest first. While
+	// ownDepth of them are on their way, new writes wait. awaitOwn marks
+	// that the next append with entries carries a batch just proposed.
+	// Appends of forwarded proposals do not hold anything.
+	own      []uint64
+	awaitOwn bool
+	waiting  map[uint64]*pending // writes by request ID
+	timeouts []*pending          // every waiting request in deadline order
 
 	proposals []*pending
 	// early are writes that need featureVersion, which wait for it.
@@ -1259,8 +1273,8 @@ func (n *Node) proposeEntry(props []*pending, size int) {
 		return
 	}
 	// On the leader, the next local append with entries carries this
-	// batch; writes wait until it is durable (ownIndex). A follower only
-	// forwards, so nothing waits.
+	// batch; writes wait while ownDepth such appends are on their way
+	// (own). A follower only forwards, so nothing waits.
 	n.awaitOwn = n.isLeader
 }
 
@@ -1307,7 +1321,10 @@ func (n *Node) Persisted(job PersistJob) {
 		n.logBytes += wal.EntryRecordBytes(e)
 	}
 	if len(job.Entries) > 0 {
-		n.durable = job.Entries[len(job.Entries)-1].GetIndex()
+		durable := job.Entries[len(job.Entries)-1].GetIndex()
+		for len(n.own) > 0 && n.own[0] <= durable {
+			n.own = n.own[1:]
+		}
 		n.appending = n.appending[1:]
 	}
 	if job.newVote {
@@ -1339,16 +1356,19 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 // stopped; the effects are still valid and carry its last replies.
 func (n *Node) Process() (Effects, error) {
 	if n.err == nil {
-		// Self-clocked batching: while the leader's own append is on its
-		// way to disk, writes wait and join one entry, which goes out when
-		// the append is durable. Nothing else waits, and with no append in
-		// flight a write goes out at once, so one client sees no delay.
-		// The byte cap still sends a full entry early (queueWrite).
+		// Self-clocked batching: while ownDepth of the leader's own
+		// appends are on their way to disk, writes wait and join one
+		// entry, which goes out when the oldest is durable. With two, the
+		// disk takes the next append as soon as it synced one, instead of
+		// standing idle until the leader proposes again. Nothing else
+		// waits, and with no append in flight a write goes out at once,
+		// so one client sees no delay. The byte cap still sends a full
+		// entry early (queueWrite).
 		n.releaseEarly()
 		if len(n.tokenWaits) > 0 {
 			n.retryTokenWaits()
 		}
-		if !n.isLeader || n.durable >= n.ownIndex {
+		if !n.isLeader || len(n.own) < ownDepth {
 			n.propose()
 		}
 		n.proposeConfs()
@@ -1402,7 +1422,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			n.isLeader = leader
 			// A batch from an earlier leadership may have been replaced
 			// and never reach the disk; wait for nothing from it.
-			n.ownIndex, n.awaitOwn = 0, false
+			n.own, n.awaitOwn = nil, false
 			n.uncommitted = nil
 			n.leadershipChanged()
 		}
@@ -1456,7 +1476,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 				}
 			}
 			if len(job.Entries) > 0 && n.awaitOwn {
-				n.ownIndex = job.Entries[len(job.Entries)-1].GetIndex()
+				n.own = append(n.own, job.Entries[len(job.Entries)-1].GetIndex())
 				n.awaitOwn = false
 			}
 		case raft.LocalApplyThread:
