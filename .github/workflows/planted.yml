@@ -9,7 +9,6 @@ on:
     paths:
       - "check/**"
       - "internal/sim/**"
-      - "internal/planted/**"
       - "cmd/chaos/**"
       - "chaos/**"
       - ".github/workflows/planted.yml"
@@ -47,7 +46,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') || status=1
+          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') || { status=1; echo "::error::TestPlantedInventory failed"; }
           for bug in $BUGS; do
             echo "::group::$bug"
             for pkg in sim node peer; do
