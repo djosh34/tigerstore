@@ -1910,11 +1910,12 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
-		// Under a NOSPACE alarm, which every member has applied too, a
-		// compaction cuts a checkpoint, so that cleaning can drop the
-		// values it freed; the size rule may not cut one for long, as
-		// little new data comes in (#167).
-		n.cutNow = n.cutNow || n.state.noSpace
+		// A compaction under NOSPACE cuts a checkpoint so cleaning can
+		// drop the freed values (#167). Before alarms are supported,
+		// local disk pressure can already refuse writes, so compacting
+		// must also cut without an alarm (#213). Both conditions come
+		// from replicated state; every member cuts at the same entry.
+		n.cutNow = n.cutNow || n.state.noSpace || !n.capable()
 	}
 	switch op := op.(type) {
 	case *pb.LeaseGrantRequest:
