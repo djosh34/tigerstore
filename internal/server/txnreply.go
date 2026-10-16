@@ -16,11 +16,6 @@ import (
 // value are left out, a set message field is written even when empty, and
 // fields go in number order.
 
-func isTxn(m any) bool {
-	_, ok := m.(*pb.TxnResponse)
-	return ok
-}
-
 // appendTxnReply encodes the gRPC message of a TxnResponse.
 func appendTxnReply(r *pb.TxnResponse) ([]byte, error) {
 	size := txnRespSize(r)
@@ -85,18 +80,14 @@ func appendBytes(b []byte, num protowire.Number, v []byte) []byte {
 }
 
 func respHeaderSize(h *pb.ResponseHeader) int {
-	return sizeVarint(h.ClusterId) + sizeVarint(h.MemberId) + sizeVarint(uint64(h.Revision)) + sizeVarint(h.RaftTerm)
+	return headerSize(h.ClusterId, h.MemberId, h.Revision, h.RaftTerm)
 }
 
 func appendRespHeader(b []byte, h *pb.ResponseHeader) []byte {
 	if h == nil {
 		return b
 	}
-	b = appendMsgHeader(b, 1, respHeaderSize(h))
-	b = appendVarint(b, 1, h.ClusterId)
-	b = appendVarint(b, 2, h.MemberId)
-	b = appendVarint(b, 3, uint64(h.Revision))
-	return appendVarint(b, 4, h.RaftTerm)
+	return appendHeader(b, h.ClusterId, h.MemberId, h.Revision, h.RaftTerm)
 }
 
 // headerField is the size of an optional header field 1.
@@ -154,26 +145,28 @@ func txnRespSize(r *pb.TxnResponse) int {
 	return n
 }
 
+// respOpSize is the size of a ResponseOp. A set member of its oneof
+// counts even when nil, as an empty message, as protobuf writes it.
 func respOpSize(op *pb.ResponseOp) int {
 	switch r := op.Response.(type) {
 	case *pb.ResponseOp_ResponseRange:
-		if r.ResponseRange != nil {
-			return sizeMsg(rangeRespSize(r.ResponseRange))
-		}
+		return sizeMsg(rangeRespSize(orEmpty(r.ResponseRange)))
 	case *pb.ResponseOp_ResponsePut:
-		if r.ResponsePut != nil {
-			return sizeMsg(putRespSize(r.ResponsePut))
-		}
+		return sizeMsg(putRespSize(orEmpty(r.ResponsePut)))
 	case *pb.ResponseOp_ResponseDeleteRange:
-		if r.ResponseDeleteRange != nil {
-			return sizeMsg(deleteRespSize(r.ResponseDeleteRange))
-		}
+		return sizeMsg(deleteRespSize(orEmpty(r.ResponseDeleteRange)))
 	case *pb.ResponseOp_ResponseTxn:
-		if r.ResponseTxn != nil {
-			return sizeMsg(txnRespSize(r.ResponseTxn))
-		}
+		return sizeMsg(txnRespSize(orEmpty(r.ResponseTxn)))
 	}
 	return 0
+}
+
+// orEmpty returns m, or an empty message for a nil one.
+func orEmpty[M any](m *M) *M {
+	if m == nil {
+		return new(M)
+	}
+	return m
 }
 
 func appendTxnResp(b []byte, r *pb.TxnResponse) []byte {
@@ -189,37 +182,33 @@ func appendTxnResp(b []byte, r *pb.TxnResponse) []byte {
 func appendRespOp(b []byte, op *pb.ResponseOp) []byte {
 	switch r := op.Response.(type) {
 	case *pb.ResponseOp_ResponseRange:
-		if rr := r.ResponseRange; rr != nil {
-			b = appendMsgHeader(b, 1, rangeRespSize(rr))
-			b = appendRespHeader(b, rr.Header)
-			for _, kv := range rr.Kvs {
-				b = appendKeyValue(b, 2, kv)
-			}
-			b = appendBool(b, 3, rr.More)
-			b = appendVarint(b, 4, uint64(rr.Count))
+		rr := orEmpty(r.ResponseRange)
+		b = appendMsgHeader(b, 1, rangeRespSize(rr))
+		b = appendRespHeader(b, rr.Header)
+		for _, kv := range rr.Kvs {
+			b = appendKeyValue(b, 2, kv)
 		}
+		b = appendBool(b, 3, rr.More)
+		b = appendVarint(b, 4, uint64(rr.Count))
 	case *pb.ResponseOp_ResponsePut:
-		if pr := r.ResponsePut; pr != nil {
-			b = appendMsgHeader(b, 2, putRespSize(pr))
-			b = appendRespHeader(b, pr.Header)
-			if pr.PrevKv != nil {
-				b = appendKeyValue(b, 2, pr.PrevKv)
-			}
+		pr := orEmpty(r.ResponsePut)
+		b = appendMsgHeader(b, 2, putRespSize(pr))
+		b = appendRespHeader(b, pr.Header)
+		if pr.PrevKv != nil {
+			b = appendKeyValue(b, 2, pr.PrevKv)
 		}
 	case *pb.ResponseOp_ResponseDeleteRange:
-		if dr := r.ResponseDeleteRange; dr != nil {
-			b = appendMsgHeader(b, 3, deleteRespSize(dr))
-			b = appendRespHeader(b, dr.Header)
-			b = appendVarint(b, 2, uint64(dr.Deleted))
-			for _, kv := range dr.PrevKvs {
-				b = appendKeyValue(b, 3, kv)
-			}
+		dr := orEmpty(r.ResponseDeleteRange)
+		b = appendMsgHeader(b, 3, deleteRespSize(dr))
+		b = appendRespHeader(b, dr.Header)
+		b = appendVarint(b, 2, uint64(dr.Deleted))
+		for _, kv := range dr.PrevKvs {
+			b = appendKeyValue(b, 3, kv)
 		}
 	case *pb.ResponseOp_ResponseTxn:
-		if tr := r.ResponseTxn; tr != nil {
-			b = appendMsgHeader(b, 4, txnRespSize(tr))
-			b = appendTxnResp(b, tr)
-		}
+		tr := orEmpty(r.ResponseTxn)
+		b = appendMsgHeader(b, 4, txnRespSize(tr))
+		b = appendTxnResp(b, tr)
 	}
 	return b
 }

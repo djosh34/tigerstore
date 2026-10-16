@@ -326,10 +326,12 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 				}
 			case f.st.rpc.compact && cp.Resp == nil:
 				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
-			case isTxn(cp.Resp):
-				f.msg, f.err = appendTxnReply(cp.Resp.(*pb.TxnResponse))
 			default:
-				f.msg, f.err = marshal(cp.Resp)
+				if t, ok := cp.Resp.(*pb.TxnResponse); ok {
+					f.msg, f.err = appendTxnReply(t)
+				} else {
+					f.msg, f.err = marshal(cp.Resp)
+				}
 			}
 			if f.err == nil {
 				f.msg, f.err = f.st.compress(f.msg)
@@ -468,10 +470,11 @@ func rangeReplySize(cluster, member uint64, term uint64, res *mvcc.RangeResult) 
 func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult) ([]byte, error) {
 	bound := rangeReplyBound(res)
 	if bound > 1<<31-1 {
-		if size := rangeReplySize(cluster, member, term, res); size > 1<<31-1 {
+		size := rangeReplySize(cluster, member, term, res)
+		if size > 1<<31-1 {
 			return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 		}
-		bound = 1<<31 - 1
+		bound = int64(size)
 	}
 	b := make([]byte, 5, 5+bound)
 	b = appendHeader(b, cluster, member, res.Rev, term)
@@ -488,9 +491,6 @@ func appendRangeReply(cluster, member uint64, term uint64, res *mvcc.RangeResult
 	if res.Count != 0 {
 		b = protowire.AppendTag(b, 4, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(res.Count))
-	}
-	if size := len(b) - 5; size > 1<<31-1 {
-		return nil, status.Errorf(codes.ResourceExhausted, "grpc: message of %d bytes is too large to send", size)
 	}
 	binary.BigEndian.PutUint32(b[1:], uint32(len(b)-5))
 	return b, nil

@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -219,5 +220,30 @@ func TestFillChecksum(t *testing.T) {
 	}
 	if *f.Dst != nil {
 		t.Fatal("a fill kept bytes that failed their checksum")
+	}
+}
+
+// TestRangeKVsBytes counts the keys and values of an answer, also when a
+// sort by value has already read the values, and no values for KeysOnly:
+// the writer charges a reply by these bytes before it encodes it.
+func TestRangeKVsBytes(t *testing.T) {
+	s := New(&Heap{})
+	put(t, s, "a", strings.Repeat("v", 1<<20))
+	put(t, s, "b", "12")
+	for _, c := range []struct {
+		r    *pb.RangeRequest
+		want int64
+	}{
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}, 2 + 1<<20 + 2},
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), SortTarget: pb.RangeRequest_VALUE}, 2 + 1<<20 + 2},
+		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}, 2},
+	} {
+		res, err := s.RangeKVs(c.r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Bytes != c.want {
+			t.Errorf("%v: %d bytes, want %d", c.r, res.Bytes, c.want)
+		}
 	}
 }

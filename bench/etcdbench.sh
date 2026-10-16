@@ -41,11 +41,20 @@ for rep in $(seq "$reps"); do
 			dir=$data/$target
 			"$here/cluster.sh" stop "$dir"
 			"$here/cluster.sh" start "$kind" "$bins/$target" "$dir" "${layout[@]:1}"
-			"$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" put k v >/dev/null
+			# The key the range tests read, with a 1 KiB value.
+			"$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" \
+				put k "$(head -c 1024 /dev/zero | tr '\0' v)" >/dev/null
 			read -r -a t <<<"${tests[i]}"
 			taskset -c "${layout[0]}" "$tool" --endpoints "$(cat "$dir/leader")" \
 				--cacert "$certs/ca.pem" --cert "$certs/client.pem" --key "$certs/client-key.pem" \
 				--conns 100 --clients 1000 "${t[@]}" >"$out/$target-$i-$rep.txt" 2>&1
+			# The tool reports failed requests in an error distribution and
+			# leaves them out of its statistics; such a run is invalid.
+			if grep -q 'Error distribution' "$out/$target-$i-$rep.txt" || ! grep -q 'Requests/sec' "$out/$target-$i-$rep.txt"; then
+				echo "$target ${tests[i]} repetition $rep failed:" >&2
+				tail -n 20 "$out/$target-$i-$rep.txt" >&2
+				exit 1
+			fi
 			"$here/cluster.sh" check "$dir"
 			"$here/cluster.sh" stop "$dir"
 		done

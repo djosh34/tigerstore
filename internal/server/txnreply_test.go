@@ -37,7 +37,7 @@ func randTxnResp(r *rand.Rand, depth int) *pb.TxnResponse {
 	t := &pb.TxnResponse{Header: randHeader(r), Succeeded: r.IntN(2) == 0}
 	for range r.IntN(4) {
 		op := &pb.ResponseOp{}
-		switch k := r.IntN(5); {
+		switch k := r.IntN(6); {
 		case k == 0:
 			op.Response = &pb.ResponseOp_ResponseRange{ResponseRange: &pb.RangeResponse{Header: randHeader(r), Kvs: randKVs(r), More: r.IntN(2) == 0, Count: r.Int64N(3) - 1}}
 		case k == 1:
@@ -50,6 +50,18 @@ func randTxnResp(r *rand.Rand, depth int) *pb.TxnResponse {
 			op.Response = &pb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &pb.DeleteRangeResponse{Header: randHeader(r), Deleted: r.Int64N(3), PrevKvs: randKVs(r)}}
 		case k == 3 && depth > 0:
 			op.Response = &pb.ResponseOp_ResponseTxn{ResponseTxn: randTxnResp(r, depth-1)}
+		case k == 4:
+			// A set member that is nil, which protobuf writes empty.
+			switch r.IntN(4) {
+			case 0:
+				op.Response = &pb.ResponseOp_ResponseRange{}
+			case 1:
+				op.Response = &pb.ResponseOp_ResponsePut{}
+			case 2:
+				op.Response = &pb.ResponseOp_ResponseDeleteRange{}
+			default:
+				op.Response = &pb.ResponseOp_ResponseTxn{}
+			}
 		}
 		t.Responses = append(t.Responses, op)
 	}

@@ -59,19 +59,20 @@ row() {
 	echo "$wl: $(jq '.throughput | floor' "$out/$wl.json") ops/s, leader $us us/op, $total ms sampled"
 	echo "| Step | Share | us/op |"
 	echo "|---|---:|---:|"
-	step "client TLS read and decrypt" 'server.\(\*conn\).readLoop' 'onFrame|readFrame'
-	step "HTTP/2 frames and HPACK" 'server.\(\*conn\).onFrame|server.\(\*conn\).readFrame' 'admit|flush'
+	# The filters do not overlap: each sample counts in one step at most.
+	step "client TLS read and decrypt" 'crypto/tls.\(\*Conn\).Read' 'internal/peer'
+	step "HTTP/2 frames, HPACK and the request body" 'server.\(\*conn\).readLoop' 'crypto/tls.\(\*Conn\).Read|server.\(\*conn\).(admit|flush)'
 	step "request decode and batch" 'server.\(\*conn\).(admit|flush)'
-	step "committer: Raft" 'node.\(\*Node\).commit' 'core.\(\*Node\).(apply|runApply|serveRead|SubmitAll|handle)|encodeBatch|Complete|completeAll'
-	step "committer: checks and queue" 'core.\(\*Node\).SubmitAll|node.\(\*Node\).handle'
+	step "committer: Raft and the rest of its loop" 'node.\(\*Node\).commit' 'node.\(\*Node\).handle|core.encodeBatch|core.\(\*Node\).(runApply|serveRead)|node.completeAll'
+	step "committer: checks and queue" 'node.\(\*Node\).handle'
 	step "committer: entry encode" 'core.encodeBatch'
 	step "committer: apply and reads" 'core.\(\*Node\).(runApply|serveRead)'
-	step "committer: completions" 'node.completeAll|server.\(\*conn\).Complete'
+	step "committer: completions" 'node.completeAll'
 	step "log write and sync" 'node.\(\*Node\).(persist|syncGroups)'
 	step "peer send" 'peer.\(\*sender\)'
-	step "peer receive" 'peer.\(\*TCP\).*receive|peer.*readLoop|peer.\(\*receiver\)'
-	step "reply encode" 'server.\(\*conn\).complete(Waiting)?$|server.\(\*conn\).complete\b' 'tls'
-	step "reply TLS encrypt and write" 'server.\(\*conn\).writeLoop' 'completeWaiting'
+	step "peer receive" 'peer.\(\*TCP\).(receive|frames|accept)'
+	step "reply encode" 'server.\(\*conn\).completeWaiting'
+	step "reply TLS encrypt and write" 'server.\(\*conn\).writeLoop' 'server.\(\*conn\).completeWaiting'
 	step "garbage collection" 'runtime.gcBgMarkWorker|runtime.bgsweep|runtime.bgscavenge'
 	row "everything else" "$(awk -v t="$total" -v c="$counted" 'BEGIN {print t - c}')"
 } | tee "$out/$wl.steps.md"

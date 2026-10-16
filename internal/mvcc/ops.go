@@ -94,11 +94,14 @@ func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	if err != nil {
 		return res, err
 	}
+	// Values still to read count by their length; values a sort already
+	// read count as they are.
 	values := 0
 	for i := range res.KVs {
-		res.Bytes += int64(len(res.KVs[i].Key))
+		kv := &res.KVs[i]
+		res.Bytes += int64(len(kv.Key) + len(kv.Value))
 		if res.values {
-			values += int(res.KVs[i].ref.Len)
+			values += int(kv.ref.Len)
 		}
 	}
 	res.Bytes += int64(values)
