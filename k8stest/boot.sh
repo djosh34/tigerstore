@@ -47,10 +47,12 @@ docker network create kind --subnet 172.30.0.0/16 --gateway "$gateway"
 CERT_IPS=$gateway bash scripts/dev-certs.sh "$root/certs"
 # Do not mount the CA key or peer keys in Kubernetes nodes.
 cp "$root/certs/ca.pem" "$root/certs/client.pem" "$root/certs/client-key.pem" "$root/client-certs/"
-initial="n1=https://$gateway:20011,n2=https://$gateway:20021,n3=https://$gateway:20031"
+# Peers are host processes. Loopback avoids Docker's host-to-bridge SNAT,
+# which otherwise changes the source address checked against the peer SANs.
+initial="n1=https://127.0.0.1:20011,n2=https://127.0.0.1:20021,n3=https://127.0.0.1:20031"
 for i in 1 2 3; do
   client="https://$gateway:$((20000 + 10 * i))"
-  peer="https://$gateway:$((20001 + 10 * i))"
+  peer="https://127.0.0.1:$((20001 + 10 * i))"
   extra=()
   if [ "$store" = tigerstore ]; then extra+=(--memory-budget-bytes 1073741824); fi
   "$root/bin/$store" --name "n$i" --data-dir "$root/data/n$i" \
