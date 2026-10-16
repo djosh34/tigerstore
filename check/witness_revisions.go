@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"sort"
 
@@ -90,11 +91,18 @@ type revisionOrder struct {
 
 // optional is an ambiguous mutation that changes no key and may go in
 // from revision from on, once the first after acked mutations by return
-// time are placed: those that returned before its call.
+// time are placed: those that returned before its call. A late one, an
+// expiry that a rejection found gone by time gone, goes in as late as
+// that allows: before the event of the first op called after gone, and
+// by the end of revision by, the lowest header revision of an acked op
+// called after gone.
 type optional struct {
 	op    int
 	from  int64
 	after int
+	late  bool
+	gone  int64
+	by    int64
 }
 
 // life is what one observation of a key shows: created at c, last
@@ -272,15 +280,14 @@ func (r *revisionOrder) lowerBounds() {
 	}
 }
 
-// boundBefore is the revision before the lowest header revision of an
-// acked op called after time t, or the top revision: an op that returned
-// at t comes before every state from that op's revision on.
-func (r *revisionOrder) boundBefore(t int64) int64 {
+// lowestAfter is the lowest header revision of an acked op called after
+// time t, or the top revision.
+func (r *revisionOrder) lowestAfter(t int64) int64 {
 	n := sort.Search(len(r.calls), func(k int) bool { return r.calls[k] > t })
 	if n == len(r.calls) {
 		return r.top
 	}
-	return r.lowest[n] - 1
+	return r.lowest[n]
 }
 
 // boundAt is the highest header revision of an acked op that returned
@@ -477,6 +484,7 @@ func (r *revisionOrder) scheduleOptional() {
 		// Not before the revision of the ops that returned before its
 		// call; insertOptional also waits for their events.
 		at := r.lb[i]
+		o := optional{op: i}
 		switch {
 		case op.Req.LeaseRevoke != nil:
 			id := op.Req.LeaseRevoke.ID
@@ -486,13 +494,19 @@ func (r *revisionOrder) scheduleOptional() {
 				continue
 			}
 			revoking[id] = true
-			// As late as the answers allow: in the revision before the
-			// first op called after a rejection that found the lease
-			// gone returned, as that rejection, which may take effect
-			// up to its return, comes before that op. An ambiguous put
-			// may still have used the lease until then, and an expiry
-			// never returns, so real time allows any later place.
-			at = max(at, present[id], r.boundBefore(goneAt))
+			// As late as the answers allow, for an ambiguous put may
+			// still have used the lease: a rejection that found the lease
+			// gone, which may take effect up to its return, comes before
+			// every op called after it returned. So the expiry goes in
+			// before the event of the first such op, acked or not, and by
+			// the end of the lowest header revision of an acked one,
+			// which may have changed nothing. Where the first event is
+			// depends on where the search puts the ambiguous ops, so
+			// expire puts it in as the search goes, and a wrong guess is
+			// undone with the rest. An expiry never returns, so real time
+			// allows any later place.
+			at = max(at, present[id])
+			o.late, o.gone, o.by = true, goneAt, r.lowestAfter(goneAt)
 		case op.Req.LeaseGrant != nil:
 			id := op.Req.LeaseGrant.ID
 			if _, ok := present[id]; !ok || granted[id] {
@@ -513,8 +527,9 @@ func (r *revisionOrder) scheduleOptional() {
 		default:
 			continue
 		}
-		after := sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= op.Call })
-		r.optional = append(r.optional, optional{op: i, from: at, after: after})
+		o.from = at
+		o.after = sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= op.Call })
+		r.optional = append(r.optional, o)
 	}
 }
 
@@ -581,17 +596,63 @@ func (r *revisionOrder) answered(ops []int) bool {
 func (r *revisionOrder) insertOptional(rev int64) {
 	w := r.w
 	for _, o := range r.optional {
-		if o.from > rev || r.used[o.op] {
+		if o.late || o.from > rev || r.used[o.op] || !r.isReady(o) {
 			continue
-		}
-		if !r.ready[o.op] {
-			if slices.ContainsFunc(r.mutations[:o.after], func(j int) bool { return !w.at[j].set }) {
-				continue
-			}
-			r.ready[o.op] = true
 		}
 		s := w.live.clone()
 		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
+			r.expire(w.h.Ops[o.op].Call, 0)
+			w.apply(o.op, w.reqs[o.op])
+			r.used[o.op] = true
+		}
+	}
+}
+
+// isReady reports whether the acked mutations that optional o must
+// follow are all placed.
+func (r *revisionOrder) isReady(o optional) bool {
+	if r.ready[o.op] {
+		return true
+	}
+	w := r.w
+	if slices.ContainsFunc(r.mutations[:o.after], func(j int) bool { return !w.at[j].set }) {
+		return false
+	}
+	r.ready[o.op] = true
+	return true
+}
+
+// due lists the late optional mutations not yet placed that must go in
+// before the event of an op called at time call, or by the end of
+// revision rev; all of them if call is past every op.
+func (r *revisionOrder) due(call, rev int64) []optional {
+	var out []optional
+	for _, o := range r.optional {
+		if o.late && !r.used[o.op] && (o.gone < call || o.by <= rev) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// takes steps s through late optional o if it may go in now and the
+// model takes it without a write.
+func (r *revisionOrder) takes(s *state, o optional) bool {
+	if o.from > s.rev || !r.isReady(o) {
+		return false
+	}
+	rev := s.rev
+	out := s.step(r.w.reqs[o.op], false)
+	return out.err == nil && s.rev == rev
+}
+
+// expire puts in the late optional mutations due before the event of an
+// op called at time call, or by the end of revision rev. One that cannot
+// go in now stays out, and the answer that needs it fails.
+func (r *revisionOrder) expire(call, rev int64) {
+	w := r.w
+	for _, o := range r.due(call, rev) {
+		if r.takes(w.live.clone(), o) {
 			w.apply(o.op, w.reqs[o.op])
 			r.used[o.op] = true
 		}
@@ -683,6 +744,7 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
+			r.expire(math.MaxInt64, math.MaxInt64)
 			err := w.observe()
 			if err == nil {
 				err = w.verify()
@@ -715,6 +777,7 @@ func (r *revisionOrder) search() error {
 func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 	w := r.w
 	if i, ok := r.writers[rev]; ok {
+		r.expire(w.h.Ops[i].Call, 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s, which wrote revision %d, gets %s from the model in the order so far; the order around it: %s", w.describe(i), rev, outputOf(o), w.around(len(w.events))))
@@ -723,6 +786,7 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 	}
 	if i, ok := r.resolved[rev]; ok && !r.used[i] && r.lb[i] < rev {
 		if r.fits(i, rev) {
+			r.expire(w.h.Ops[i].Call, 0)
 			w.apply(i, w.reqs[i])
 			r.used[i] = true
 			return true
@@ -741,6 +805,7 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 		if r.used[i] || !r.fits(i, rev) {
 			continue
 		}
+		r.expire(w.h.Ops[i].Call, 0)
 		w.apply(i, w.reqs[i])
 		r.used[i] = true
 		f.next++
@@ -769,12 +834,18 @@ func (r *revisionOrder) candidates(rev int64) []int {
 	return append(out, amb...)
 }
 
-// fits reports whether op i can write revision rev next: the model says
-// it writes exactly rev, it changes no key that a client saw unchanged at
-// rev, and an acked revoke gets its answer.
+// fits reports whether op i can write revision rev next, after the
+// expiries due before it: the model says it writes exactly rev, it changes
+// no key that a client saw unchanged at rev, and an acked revoke gets its
+// answer.
 func (r *revisionOrder) fits(i int, rev int64) bool {
 	w := r.w
 	s := w.live.clone()
+	for _, e := range r.due(w.h.Ops[i].Call, 0) {
+		if t := s.clone(); r.takes(t, e) {
+			s = t
+		}
+	}
 	o := s.step(w.reqs[i], true)
 	if o.err != nil || s.rev != rev {
 		return false
@@ -834,6 +905,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		if r.used[i] {
 			continue
 		}
+		r.expire(w.h.Ops[i].Call, 0)
 		o := w.apply(i, w.reqs[i])
 		if o.err != nil || !matches(o, w.h.Ops[i].Resp) {
 			return r.dead(rev, fmt.Errorf("acked %s gets %s from the model in the order so far; the order around it: %s", w.describe(i), outputOf(o), w.around(len(w.events))))
@@ -841,6 +913,7 @@ func (r *revisionOrder) finish(rev int64) bool {
 		r.used[i] = true
 		r.insertOptional(rev)
 	}
+	r.expire(0, rev)
 	first := len(w.states) - 1
 	for first > 0 && w.states[first-1].rev == rev {
 		first--
