@@ -54,7 +54,7 @@ func TestFetchHardCases(t *testing.T) {
 		// Within the header, the checkpoint and the entries after it,
 		// before and after the 16 KiB at which the log syncs what came.
 		c.net.mu.Lock()
-		c.net.cuts = []int{20, 2 << 10, 15 << 10, 17 << 10, 40 << 10}
+		c.net.cuts = []int{20, 2 << 10, 8 << 10, 15 << 10, 17 << 10}
 		c.net.mu.Unlock()
 		n3, err := c.start(3)
 		if err != nil {
@@ -112,7 +112,7 @@ func TestFetchHardCases(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.net.mu.Lock()
-		c.net.cuts = []int{2 << 10, 16 << 10, 40 << 10}
+		c.net.cuts = []int{2 << 10, 8 << 10, 16 << 10}
 		c.net.mu.Unlock()
 		n3, err := c.start(3)
 		if err != nil {
