@@ -186,11 +186,12 @@ func start(c *config, lg *zap.Logger) error {
 	if err != nil {
 		return err
 	}
-	// The garbage collector works harder as the heap nears the budget;
+	// The garbage collector works harder as the heap nears the Go limit;
 	// the value cache takes what the rest leaves.
-	debug.SetMemoryLimit(budget)
-	ccfg.MemoryBytes = node.CacheMemory(budget)
-	logf("memory budget %d bytes (from %s), %d of them for the index, the entries in memory and the value cache", budget, from, ccfg.MemoryBytes)
+	limit := node.GoMemory(budget, from)
+	debug.SetMemoryLimit(limit)
+	ccfg.MemoryBytes = node.CacheMemory(limit)
+	logf("memory budget %d bytes (from %s), Go memory limit %d, %d of them for the index, the entries in memory and the value cache", budget, from, limit, ccfg.MemoryBytes)
 	compaction, err := node.ParseCompaction(ec.AutoCompactionMode, ec.AutoCompactionRetention)
 	if err != nil {
 		return err

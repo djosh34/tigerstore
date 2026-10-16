@@ -79,6 +79,17 @@ func TestMemoryBudget(t *testing.T) {
 	}
 }
 
+func TestGoMemory(t *testing.T) {
+	for _, from := range []string{"flag", "cgroup", "host"} {
+		if got := GoMemory(640<<20, from); got != 560<<20 {
+			t.Errorf("GoMemory(640 MiB, %s) = %d, want 560 MiB", from, got)
+		}
+	}
+	if got := GoMemory(3<<30, "GOMEMLIMIT"); got != 3<<30 {
+		t.Errorf("GoMemory(3 GiB, GOMEMLIMIT) = %d, want 3 GiB", got)
+	}
+}
+
 func TestCacheMemory(t *testing.T) {
 	if got := CacheMemory(1 << 30); got != 3<<28-BufferBytes {
 		t.Errorf("CacheMemory(1 GiB) = %d", got)
