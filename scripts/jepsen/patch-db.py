@@ -51,6 +51,10 @@ s = s[:a] + '''    ; Both binaries are pre-built/downloaded by the runner, never
       (c/exec :chmod "755" (str dir "/etcd")))
 
 ''' + s[b:]
+# The pinned node image already built LazyFS 0.3.0. The runner verifies its
+# revision and executable before this setup. Keep upstream mounting and faults.
+s = s.replace('(db/setup! (lazyfs node) test node)',
+              '(lazyfs/mount! (:lazyfs (lazyfs node)))')
 s = s.replace('(client/await-node-ready c)', '''(client/await-node-ready c)
         ; MemberList can succeed before the first leader election. SetClient's
         ; setup writes without retrying. Readiness must include consensus.
