@@ -2,9 +2,10 @@
 # create, update and mass-delete churn, without client rate limits, on a
 # one-node kind cluster that uses each store as external etcd (a 3-node TLS
 # cluster on the runner, as the benchmarks run it). bench/kind/run.sh has
-# the details. Started by hand. At 500 iterations and more, the update job
-# sends 15,000 patches at once, and the one API server of kind lets thousands
-# of them run into kube-burner's 60 s request timeout with either store.
+# the details. Started by hand. The update job patches every ConfigMap once,
+# all at once: with 5,000 at once (500 iterations) or 6,000 (200 iterations,
+# three patches each), kind's one API server closes connections or lets
+# requests run into kube-burner's 60 s timeout, with either store.
 name: kubeburner
 
 on:

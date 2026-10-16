@@ -19,7 +19,7 @@ jobs:
         replicas: 5
   - name: update
     jobType: patch
-    jobIterations: 3
+    jobIterations: 1
     qps: 100000
     burst: 100000
     objects:
