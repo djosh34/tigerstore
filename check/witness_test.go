@@ -474,6 +474,20 @@ func TestWitnessedAmbiguousCases(t *testing.T) {
 			Log: []history.Request{grant, put("k", "v", 42), revoke, put("z", "1", 0)},
 		},
 	}
+	// An expiry that only an ambiguous put's later life shows came after
+	// that put: it must not go in right after the grant (seed 1797098110).
+	cases["expiry after an ambiguous put that used the lease"] = &history.History{
+		Ops: []history.Op{
+			acked(0, 1, grant, &history.Response{Revision: 1, LeaseGrant: &history.LeaseGrantResponse{ID: 42, TTL: 60}}),
+			{Client: 9, Call: 1, Return: 1, Req: revoke, Err: errUnavailable},
+			amb(1, 3, put("a", "x", 42)),
+			acked(2, 5, put("a", "y", 0), &history.Response{Revision: 3, Put: &history.PutResponse{}}),
+			acked(2, 7, history.Request{Range: &history.RangeRequest{Key: "a"}},
+				&history.Response{Revision: 3, Range: &history.RangeResponse{Count: 1, KVs: []history.KeyValue{{Key: "a", Value: "y", CreateRevision: 2, ModRevision: 3, Version: 2}}}}),
+			{Client: 3, Call: 9, Return: 10, Req: put("c", "z", 42), Err: errLeaseNotFound},
+		},
+		Log: []history.Request{grant, put("a", "x", 42), put("a", "y", 0), revoke},
+	}
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
 			mustPass(t, "Linearizable", Linearizable(h, timeout))

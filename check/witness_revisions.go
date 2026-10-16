@@ -51,6 +51,9 @@ type revisionOrder struct {
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
 	lb        map[int]int64
+	// returns and highest are the return times of the acked ops, in
+	// order, and the highest header revision of those up to each.
+	returns, highest []int64
 	// resolved are the ambiguous ops that a client saw write a revision,
 	// and reserved the same by op: no other revision's candidate.
 	resolved map[int64]int
@@ -241,21 +244,28 @@ func (r *revisionOrder) lowerBounds() {
 		}
 	}
 	slices.SortFunc(acked, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
-	highest := make([]int64, len(acked))
+	r.highest = make([]int64, len(acked))
+	r.returns = make([]int64, len(acked))
 	for k, i := range acked {
-		highest[k] = h.Ops[i].Resp.Revision
+		r.returns[k] = h.Ops[i].Return
+		r.highest[k] = h.Ops[i].Resp.Revision
 		if k > 0 {
-			highest[k] = max(highest[k], highest[k-1])
+			r.highest[k] = max(r.highest[k], r.highest[k-1])
 		}
 	}
 	for _, i := range r.ambiguous {
-		n := sort.Search(len(acked), func(k int) bool { return h.Ops[acked[k]].Return >= h.Ops[i].Call })
-		if n > 0 {
-			r.lb[i] = highest[n-1]
-		} else {
-			r.lb[i] = 1
-		}
+		r.lb[i] = r.boundAt(h.Ops[i].Call)
 	}
+}
+
+// boundAt is the highest header revision of an acked op that returned
+// before time t, or 1.
+func (r *revisionOrder) boundAt(t int64) int64 {
+	n := sort.Search(len(r.returns), func(k int) bool { return r.returns[k] >= t })
+	if n == 0 {
+		return 1
+	}
+	return r.highest[n-1]
 }
 
 // putsOf lists the key and value of every put a request can make.
@@ -370,7 +380,10 @@ func (r *revisionOrder) unchanged(key string, rev int64) bool {
 func (r *revisionOrder) scheduleOptional() {
 	h := r.w.h
 	// What the answers need of each lease and of compaction.
-	present, gone := map[int64]int64{}, map[int64]bool{}
+	// present is, per lease, the highest revision at which an answer
+	// shows it in use, and gone the earliest call of a rejection that
+	// found it gone.
+	present, gone := map[int64]int64{}, map[int64]int64{}
 	granted, revoked := map[int64]bool{}, map[int64]bool{}
 	var compacted []int64
 	keep := map[int64]int64{}
@@ -405,11 +418,14 @@ func (r *revisionOrder) scheduleOptional() {
 		}
 		switch {
 		case sameError(op.Err, errLeaseNotFound):
-			for _, lease := range leasesOf(op.Req) {
-				gone[lease] = true
-			}
+			leases := leasesOf(op.Req)
 			if op.Req.LeaseRevoke != nil {
-				gone[op.Req.LeaseRevoke.ID] = true
+				leases = append(leases, op.Req.LeaseRevoke.ID)
+			}
+			for _, lease := range leases {
+				if at, ok := gone[lease]; !ok || op.Call < at {
+					gone[lease] = op.Call
+				}
 			}
 		case sameError(op.Err, errLeaseExists):
 			note(op.Req.LeaseGrant.ID, 1)
@@ -440,11 +456,17 @@ func (r *revisionOrder) scheduleOptional() {
 		case op.Req.LeaseRevoke != nil:
 			id := op.Req.LeaseRevoke.ID
 			// An acked revoke explains a lease found gone.
-			if !gone[id] || revoked[id] || revoking[id] {
+			goneAt, ok := gone[id]
+			if !ok || revoked[id] || revoking[id] {
 				continue
 			}
 			revoking[id] = true
-			at = max(at, present[id])
+			// As late as the answers allow: in the revision of the ops
+			// that returned before the first rejection that found the
+			// lease gone. An ambiguous put may still have used it until
+			// then, and an expiry never returns, so real time allows
+			// any later place.
+			at = max(at, present[id], r.boundAt(goneAt))
 		case op.Req.LeaseGrant != nil:
 			id := op.Req.LeaseGrant.ID
 			if _, ok := present[id]; !ok || granted[id] {
