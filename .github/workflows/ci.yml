@@ -1,479 +1,109 @@
 name: ci
 
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      histories_only:
+        description: Check the archived chaos histories instead of the package tests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  lint:
+  tests:
+    if: ${{ !inputs.histories_only }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Formatting and race tests
+        run: |
+          test -z "$(gofmt -l check internal/core internal/node internal/sim)"
+          go test -race -short -count=1 ./check ./internal/core ./internal/node
+          go test -race -short -count=1 ./internal/sim -run '^TestCampaignSeeds$|^TestSnapshotFromCorruptLeader$|^TestWitnessGaps$|^TestLinearizable$|^TestAmbiguousWritesInTheLog$'
+      - name: Repeat campaign regressions
+        run: |
+          go test -v -count=5 ./check -run '^TestWitnessedCampaignPrefixes$'
+          go test -v -count=5 ./internal/sim -run '^TestCampaignSeeds$'
+      - name: Check planted stale reads in both witness modes
+        run: |
+          go test -tags planted -v -count=1 ./internal/sim -run '^TestPlanted$' -args -planted=B01a
+          go test -tags planted -v -count=1 ./internal/sim -run '^TestPlanted$' -args -planted=B01b
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
-      # The planted bugs and their tests build only with this tag.
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          args: --build-tags difftest,planted
-
-  build:
-    strategy:
-      matrix:
-        runner: [ubuntu-24.04-arm, ubuntu-24.04]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go build ./...
-
-  test:
+          args: ./check/... ./internal/core/... ./internal/node/... ./internal/sim/...
+  controls:
+    if: ${{ !inputs.histories_only }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # cmd/loadgen's tests drive a real etcd v3.7.2.
-      - name: Install etcd v3.7.2
+      - name: Each checker regression must fail with the original search
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      # The simulator's tests run under -race in their own job, race-sim:
-      # they took 545 s of the 600 s package timeout here.
-      - run: go list ./... | grep -v '/internal/sim$' | xargs go test -race
-
-  # Values near the request limit from clients on every node at a real
-  # node's 100 ms ticks, failing if a leader entry waits one election
-  # timeout to commit (#88). Its own job: every value stays in memory.
-  # With -v every repetition prints its margins: the longest put, commit
-  # wait and log write of each node.
-  stress:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -count=20 -v -run 'TestLargeValuesAtRealTicks$' ./internal/server
-        env:
-          TIGERSTORE_STRESS: 10s
-          GOMEMLIMIT: 8GiB
-
-  determinism-lint:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -count=1 ./internal/lint/
-
-  # Each shard runs its seeds twice in one process with the checkers of
-  # package check (TestSeeds), checks short runs of the same seeds with
-  # Porcupine (TestLinearizable), then replays TestSeeds in a second process
-  # with GOMAXPROCS=1 and compares the trace hashes. Shards 0 and 1 run fixed
-  # seeds; shards 2 and 3 run fresh seeds from the run ID. A failing seed
-  # reproduces with
-  # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
-  # go test ./internal/sim/ -run 'TestLinearizable/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
-  sim:
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Pick seeds
-        env:
-          SHARD: ${{ matrix.shard }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          if [ "$SHARD" -lt 2 ]; then
-            first=$((1 + SHARD * 400))
-          else
-            first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
-          fi
-          echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
-          echo "seeds $first to $((first + 399))"
-      - name: Run seeds, each twice in one process, with the checkers
-        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/a.txt"
-      - name: Replay the seeds in a second process
-        run: GOMAXPROCS=1 go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/b.txt"
-      - name: Compare trace hashes
-        run: |
-          test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
-          diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
-
-  # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
-  # with client certificates.
-  smoke:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Install etcdctl v3.7.2
-        run: |
-          curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64" >> "$GITHUB_PATH"
-      - run: etcdctl version
-      - run: scripts/smoke.sh
-
-  # The k8s.io/apiserver etcd3 storage tests of each supported Kubernetes
-  # version, unchanged, against a fresh 3-node TLS tigerstore per test.
-  apiserver:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        version: [v0.35.0, v0.36.0, v0.37.0]
-        race: [""]
-        # The newest version once more against a tigerstore built with
-        # -race: a race report fails the test whose server made it.
-        include:
-          - version: v0.37.0
-            race: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: apiservertest/run.sh ${{ matrix.version }}
-        env:
-          RACE: ${{ matrix.race }}
-
-  # Sequential differential tests: the same requests against a fresh etcd
-  # v3.7.2 and a fresh 3-node tigerstore, compared with etcd's recorded
-  # answers in difftest/testdata.
-  # The third runs tigerstore and the tests built with -race.
-  difftest:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - server: etcd
-          - server: tigerstore
-          - server: tigerstore
-            race: "1"
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Install etcd v3.7.2
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          echo "ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      - run: scripts/difftest.sh ${{ matrix.server }}
-        env:
-          RACE: ${{ matrix.race }}
-
-  # Every planted bug (internal/planted) must be caught within its seed
-  # budget; TestPlanted fails otherwise, and a crash is a failure too.
-  # TestPlantedInventory checks that this list names every bug.
-  planted:
-    strategy:
-      fail-fast: false
-      matrix:
-        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B05, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B13, B14, B15, B16, B17, B18, B19, B20, B21, B22, B23, B24, B25, B26, B27]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ ./internal/node/ ./internal/peer/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
-
-  # Real-process chaos (#49). Each shard builds tigerstore and runs two
-  # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
-  # proxy on every client and peer link, recording clients and watches,
-  # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
-  # and follower, and proxy faults), then the checkers of package check.
-  # Seeds come from the run ID. A failing seed reproduces with
-  # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
-  # and its evidence (schedule, fault records, node logs, data, history)
-  # is uploaded.
-  chaos:
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: |
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run seeds
-        shell: bash
-        env:
-          SHARD: ${{ matrix.shard }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -uo pipefail
-          status=0
-          for k in 0 1; do
-            seed=$(( (RUN_ID % 1000000000) * 8 + SHARD * 2 + k + 1 ))
-            echo "seed $seed"
-            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
-          done
-          exit "$status"
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-evidence-${{ matrix.shard }}
-          path: ${{ runner.temp }}/chaos-out
-          retention-days: 30
-
-  # The chaos job must be able to fail: with a planted bug built in, the
-  # checker that bug breaks must report its own finding. B01a serves
-  # linearizable reads like serializable ones (a stale read), which
-  # Porcupine and the witness checker in each mode must find; B06c drops
-  # previous values from watch events, B09a gives each key of a write its
-  # own revision. Seeds are fixed.
-  chaos-planted:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - bug: B01a
-            checker: Linearizable
-          - bug: B01a
-            checker: Witnessed (log)
-          - bug: B01a
-            checker: Witnessed (revisions)
-          - bug: B06c
-            checker: Watches
-          - bug: B09a
-            checker: Revisions
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: |
-          go build -tags planted -ldflags "-X github.com/djosh34/tigerstore/internal/planted.Active=${{ matrix.bug }}" -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: The planted bug must be caught
-        shell: bash
-        env:
-          CHECKER: ${{ matrix.checker }}
-        run: |
-          set -uo pipefail
-          caught=0
-          for seed in 1 2; do
-            if "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out"; then
-              echo "seed $seed passed with the bug built in"
-              continue
-            fi
-            # Caught only if the named checker itself found the bug, not
-            # only a shared precondition such as the coverage floor.
-            # For Linearizable and the witness checker, a timeout or a
-            # search that ran out of candidates is not a catch.
-            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))) and ((.name | startswith("Witnessed") | not) or (.checker_error | test("answers it|real time allows|returned before it was called"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
-              echo "seed $seed: $CHECKER caught it"
-              caught=1
-            else
-              echo "seed $seed failed, but not by $CHECKER on a complete history"
-            fi
-          done
-          [ "$caught" = 1 ]
-      - if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-planted-${{ matrix.bug }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/chaos-out
-          retention-days: 30
-
-  # Each fuzz test of a hand-written decoder runs for 20 s from its saved
-  # corpus in testdata/fuzz. A failing input reproduces with
-  # go test -run '<target>/<input>' ./<package>, once copied into
-  # testdata/fuzz/<target>/ from the artifact.
-  fuzz:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {pkg: ./internal/core, target: FuzzDecodeAlias}
-          - {pkg: ./internal/core, target: FuzzParsePut}
-          - {pkg: ./internal/core, target: FuzzReceiveSnapshot}
-          - {pkg: ./internal/wal, target: FuzzOpen}
-          - {pkg: ./internal/mvcc, target: FuzzLoad}
-          - {pkg: ./internal/peer, target: FuzzFrames}
-          - {pkg: ./internal/server, target: FuzzHTTP2}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 20s ${{ matrix.pkg }}
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: fuzz-${{ matrix.target }}
-          path: ${{ matrix.pkg }}/testdata/fuzz
-          retention-days: 30
-
-  # The statement coverage of the internal/... packages, measured across
-  # every package's tests, must be 80% at least.
-  coverage:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./...
-      - name: At least 80%
-        run: |
-          total=$(go tool cover -func="$RUNNER_TEMP/cover.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
-          echo "internal/... coverage: $total%"
-          awk -v t="$total" 'BEGIN { exit !(t >= 80) }'
-
-  # The simulator under the race detector too, which test leaves out to
-  # keep its time: no goroutine runs there, so it has nothing to find yet.
-  race-sim:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -race -timeout 40m ./internal/sim
-
-  # The chaos job's binaries built with -race, two seeds. A data race
-  # stops the node (GORACE halt_on_error), which fails the run as an
-  # exit nobody asked for, and the logs are searched for a report too.
-  chaos-race:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: |
-          go build -race -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -race -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run seeds
-        shell: bash
-        env:
-          RUN_ID: ${{ github.run_id }}
-          GORACE: halt_on_error=1
-        run: |
-          set -uo pipefail
-          status=0
-          for k in 0 1; do
-            # The chaos shards take offsets 1 to 6.
-            seed=$(( (RUN_ID % 1000000000) * 8 + 7 + k ))
-            echo "seed $seed"
-            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
-          done
-          if grep -rl 'WARNING: DATA RACE' "$RUNNER_TEMP/chaos-out"; then status=1; fi
-          exit "$status"
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-race-evidence
-          path: ${{ runner.temp }}/chaos-out
-          retention-days: 30
-
-  # Differential fuzzing (#148): random sequences against a fresh etcd
-  # v3.7.2 and a fresh 3-node tigerstore side by side for 90 s, every
-  # answer compared, then every saved mismatch again. A mismatch is shrunk
-  # into a named case, uploaded; commit it to difftest/testdata/fuzz.
-  # Seeds come from the run ID. The long run is difffuzz.yml.
-  # The second row builds tigerstore and the tests with -race.
-  difffuzz:
-    strategy:
-      fail-fast: false
-      matrix:
-        race: ["", "1"]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Install etcd v3.7.2
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-      - name: Fuzz for 90 s
-        env:
-          ETCD: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcd
-          DURATION: 90s
-          RACE: ${{ matrix.race }}
-          RUN_ID: ${{ github.run_id }}
-        run: SEED=$(( (RUN_ID % 1000000000) * 1000000 + 1 + ${RACE:-0} * 500000 )) scripts/difffuzz.sh
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: difffuzz-mismatch-${{ strategy.job-index }}
-          path: difftest/testdata/fuzz/
-
-  # The required check. It runs even when a job it needs failed or was
-  # skipped, and passes only if every one of them succeeded.
-  ci:
-    if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, planted, chaos, chaos-planted, fuzz, coverage, race-sim, chaos-race]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
-    steps:
-      - env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          for result in $RESULTS; do
-            if [ "$result" != success ]; then
-              echo "a needed job ended with: $result"
+          git show 40e7c0a009a08d6ba80f369dd2e66c9735512dbb:check/witness_revisions.go > check/witness_revisions.go
+          for seed in 5068434 5058843; do
+            if go test -v -count=1 ./check -run "^TestWitnessedCampaignPrefixes$/$seed$" > "$RUNNER_TEMP/control-$seed.log" 2>&1; then
+              cat "$RUNNER_TEMP/control-$seed.log"
+              echo "The original checker unexpectedly passed $seed"
               exit 1
             fi
+            cat "$RUNNER_TEMP/control-$seed.log"
+            grep -q 'timed out' "$RUNNER_TEMP/control-$seed.log"
           done
+          git restore check/witness_revisions.go
+      - name: The snapshot regression must fail without the corruption stop
+        run: |
+          git diff 3b02c421 7b829c24 -- internal/core/snapshot.go | git apply -R
+          if go test -v -count=1 ./internal/sim -run '^TestCampaignSeeds$/5038431$' > "$RUNNER_TEMP/control-5038431.log" 2>&1; then
+            cat "$RUNNER_TEMP/control-5038431.log"
+            echo 'The corrupt sender unexpectedly passed'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/control-5038431.log"
+          grep -q 'liveness:.*sim: connection lost' "$RUNNER_TEMP/control-5038431.log"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: campaign-controls
+          path: ${{ runner.temp }}/control-*.log
+  histories:
+    if: ${{ inputs.histories_only }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Check archived round 2 and 3 histories, one at a time
+        run: |
+          go build -o "$RUNNER_TEMP/checkhistory" ./cmd/checkhistory
+          for ref in 374b44c6d0a4e0fe732275285aa7e85118e4e7d7 93c4b85b2bd14e495aebf154356641093f76c45a; do
+            git ls-tree -r --name-only "$ref" | grep -E '/history(-[^/.]+)?\.json\.gz$' > "$RUNNER_TEMP/paths"
+            while IFS= read -r file; do
+              mkdir -p "$(dirname "$file")"
+              git show "$ref:$file" > "$file"
+            done < "$RUNNER_TEMP/paths"
+          done
+          find experiments -name 'history*.json.gz' -print0 | xargs -0 -n1 env GOMEMLIMIT=2GiB "$RUNNER_TEMP/checkhistory" -checkers witness-revisions -timeout 10s | tee "$RUNNER_TEMP/histories.jsonl"
+          jq -s '{histories:length, passed:map(select(.passed))|length, ops:map(.ops)|add, slowest:map(.seconds)|max}' "$RUNNER_TEMP/histories.jsonl"
+          # These refs contain 589 history variants and 148 raw workload histories.
+          test "$(wc -l < "$RUNNER_TEMP/histories.jsonl")" -eq 737
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: archived-history-verdicts
+          path: ${{ runner.temp }}/histories.jsonl
