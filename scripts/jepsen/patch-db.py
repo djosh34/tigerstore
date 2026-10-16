@@ -22,6 +22,8 @@ s = s[:a] + '''(defn peer-url [node]
         common [:--name node
                 :--data-dir (data-dir node)
                 :--listen-peer-urls (peer-url node)
+                :--initial-advertise-peer-urls (peer-url node)
+                :--peer-client-cert-auth
                 :--listen-client-urls (s/client-url node)
                 :--advertise-client-urls (s/client-url node)
                 :--initial-cluster peers
@@ -31,8 +33,6 @@ s = s[:a] + '''(defn peer-url [node]
                 :--peer-trusted-ca-file "/opt/test-assets/ca.crt"]
         extra (when-not tiger?
                 [:--initial-cluster-state (:initial-cluster-state opts :existing)
-                 :--initial-advertise-peer-urls (peer-url node)
-                 :--peer-client-cert-auth
                  :--snapshot-count (:snapshot-count test)
                  :--log-outputs :stderr :--logger :zap])]
     (c/su
@@ -55,7 +55,9 @@ s = s[:a] + '''    ; Both binaries are pre-built/downloaded by the runner, never
 # revision and executable before this setup. Keep upstream mounting and faults.
 s = s.replace('(db/setup! (lazyfs node) test node)',
               '(lazyfs/mount! (:lazyfs (lazyfs node)))')
-s = s.replace('(client/await-node-ready c)', '''(client/await-node-ready c)
+s = s.replace('(client/await-node-ready c)', '''(util/timeout 60000
+          (throw (ex-info "MemberList readiness timed out" {:node node}))
+          (client/await-node-ready c))
         ; MemberList can succeed before the first leader election. SetClient's
         ; setup writes without retrying. Readiness must include consensus.
         (let [deadline (+ (System/nanoTime) 30000000000)]
