@@ -214,9 +214,9 @@ func check(key []byte, r Ref, b []byte) error {
 
 // Store is the key index with every revision since the last compaction.
 type Store struct {
-	keys       *btree.BTreeG[*keyIndex]
+	keys *btree.BTreeG[*keyIndex]
 	// probe is the key a lookup searches for, so that it allocates none.
-	probe keyIndex
+	probe      keyIndex
 	rev        int64
 	compactRev int64
 	values     Values

@@ -43,10 +43,12 @@ func randTxn(r *rand.Rand, depth int) *pb.TxnRequest {
 			op := &pb.RequestOp{}
 			switch r.IntN(5) {
 			case 0:
-				g := &pb.RangeRequest{Key: randBytes(r), RangeEnd: randBytes(r), Limit: r.Int64N(3) - 1, Revision: r.Int64N(1 << 30),
+				g := &pb.RangeRequest{
+					Key: randBytes(r), RangeEnd: randBytes(r), Limit: r.Int64N(3) - 1, Revision: r.Int64N(1 << 30),
 					SortOrder: pb.RangeRequest_SortOrder(r.IntN(4) - 1), SortTarget: pb.RangeRequest_SortTarget(r.IntN(4)),
 					Serializable: r.IntN(2) == 0, KeysOnly: r.IntN(2) == 0, CountOnly: r.IntN(2) == 0,
-					MinModRevision: r.Int64N(3), MaxModRevision: r.Int64N(3), MinCreateRevision: r.Int64N(3), MaxCreateRevision: r.Int64N(3) - 1}
+					MinModRevision: r.Int64N(3), MaxModRevision: r.Int64N(3), MinCreateRevision: r.Int64N(3), MaxCreateRevision: r.Int64N(3) - 1,
+				}
 				unknown(r, g)
 				op.Request = &pb.RequestOp_RequestRange{RequestRange: g}
 			case 1:
