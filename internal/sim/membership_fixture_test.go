@@ -17,6 +17,8 @@ import (
 // TestMembershipRemovalColdFixture keeps #211 independent of subsequent
 // workload and fault scheduling changes. The disks were copied in seed 88
 // at 34,365 ms on 3f852051, before erasing node 1. Index 207 had applied.
+// Its hash is the state hash since #174, which also covers the version
+// epoch and confirmations; the old one was 3872532366339738327.
 func TestMembershipRemovalColdFixture(t *testing.T) {
 	data, err := os.ReadFile("testdata/membership-cold-88.json")
 	if err != nil {
