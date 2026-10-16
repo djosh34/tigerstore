@@ -1,10 +1,11 @@
 name: Jepsen and upstream robustness
 on:
-  push:
-    branches: [prep/148-jepsen]
-    paths: ['scripts/jepsen/**', '.github/workflows/jepsen.yml']
   workflow_dispatch:
     inputs:
+      suite:
+        type: choice
+        options: [all, jepsen, robustness]
+        default: all
       product_sha:
         description: Main commit to test, blank uses the pinned prework baseline
         default: '40e7c0a009a08d6ba80f369dd2e66c9735512dbb'
@@ -14,6 +15,7 @@ env:
   PRODUCT_SHA: ${{ inputs.product_sha || '40e7c0a009a08d6ba80f369dd2e66c9735512dbb' }}
 jobs:
   jepsen:
+    if: inputs.suite != 'robustness'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -45,4 +47,33 @@ jobs:
         with:
           name: jepsen-${{ matrix.store }}-${{ matrix.workload }}-${{ matrix.nemesis }}
           path: results/jepsen
+          retention-days: 30
+  robustness:
+    if: inputs.suite != 'jepsen'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        store: [etcd, tigerstore]
+        traffic: [etcd-put-delete-lease, etcd-put, etcd-delete, kubernetes, kubernetes-create-delete]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run upstream traffic and black-box KV checker on three nodes
+        shell: bash
+        env:
+          GOFLAGS: -p=2
+          GOMEMLIMIT: 2GiB
+        run: bash scripts/jepsen/robustness.sh '${{ matrix.store }}' '${{ matrix.traffic }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robustness-${{ matrix.store }}-${{ matrix.traffic }}
+          path: results/robustness
           retention-days: 30
