@@ -311,15 +311,17 @@ type lastCkpt struct {
 }
 
 // maybeCheckpoint cuts a checkpoint once the entries applied since the
-// last one pass CheckpointBytes and CheckpointRatio times the base: the
+// last one pass CheckpointBytes and CheckpointRatio times the base, or
+// at a compaction under a NOSPACE alarm (cutNow): the
 // size of the newest checkpoint finished when the last one was cut. Every
 // node knows that size, however far its copy got, so every node cuts at
 // the same index; it runs after each applied entry. A copy still under
 // way then is finished at once.
 func (n *Node) maybeCheckpoint(index, term uint64) {
-	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) {
+	if n.sinceCkpt < max(n.cfg.CheckpointBytes, n.cfg.CheckpointRatio*n.base) && !n.cutNow {
 		return
 	}
+	n.cutNow = false
 	if n.copy != nil {
 		n.copyChunk(-1)
 	}

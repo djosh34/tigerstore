@@ -1,6 +1,8 @@
 package core
 
 import (
+	"slices"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
@@ -21,7 +23,10 @@ import (
 // for itself. One that was let in and finds the quota reached when it
 // applies still applies, as in etcd, but its client gets ErrNoSpace, and
 // every member raises its own NOSPACE alarm. While a NOSPACE alarm is
-// active, such writes fail when they apply (alarm.go).
+// active, such writes fail when they apply (alarm.go), and every member
+// refuses them before it proposes them. A node past its disk budget
+// raises the same alarm for itself, and clears it once its disk is low
+// again (SetDisk).
 
 // QuotaBytes is etcd's default --quota-backend-bytes.
 const QuotaBytes = 2 << 30
@@ -121,4 +126,22 @@ func (n *Node) raiseNoSpace(id uint64) bool {
 		n.timeouts = append(n.timeouts, p)
 	}
 	return id != 0
+}
+
+// clearNoSpace proposes clearing this node's NOSPACE alarm, if it is
+// active and no proposal of a change to it is under way (SetDisk).
+func (n *Node) clearNoSpace() {
+	if n.rn == nil || n.readInline || !slices.ContainsFunc(n.state.alarms, func(a *pb.AlarmMember) bool {
+		return a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID
+	}) {
+		return
+	}
+	if n.noSpaceAt >= 0 && n.now-n.noSpaceAt < leaseRetryTicks {
+		return
+	}
+	n.noSpaceAt = n.now
+	n.queueFeature(&pending{
+		req:      Request{Op: &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
+		deadline: n.now + int64(n.cfg.RequestTicks),
+	})
 }

@@ -955,8 +955,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case <-ctx.Done():
 			return nil
 		}
-		if n.cfg.DiskBudget > 0 {
-			n.core.SetNoSpace(n.log.used.Load() >= n.cfg.DiskBudget)
+		if b := n.cfg.DiskBudget; b > 0 {
+			used := n.log.used.Load()
+			n.core.SetDisk(used >= b, used < b*3/4)
 		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {

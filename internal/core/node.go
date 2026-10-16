@@ -476,7 +476,8 @@ type Node struct {
 	// logBytes estimates the size of the durable log.
 	logBytes int64
 	// noSpace refuses new data: the node's disk is past its budget.
-	noSpace bool
+	// cutNow makes the next applied entry cut a checkpoint.
+	noSpace, cutNow bool
 
 	// log reads what left memory.
 	log Log
@@ -857,7 +858,7 @@ func (n *Node) submit(r Request, p *pending) {
 		n.reply(r.ID, rpctypes.ErrGRPCStopped)
 		return
 	}
-	if n.noSpace && TakesSpace(r) {
+	if n.refusesSpace(r) {
 		n.reply(r.ID, rpctypes.ErrGRPCNoSpace)
 		return
 	}
@@ -982,10 +983,39 @@ func (n *Node) submit(r Request, p *pending) {
 	n.timeouts = append(n.timeouts, p)
 }
 
-// SetNoSpace tells the node whether its disk is past its budget. While it
-// is, the node answers requests that write new data with etcd's NOSPACE
-// error, as etcd does past its quota.
-func (n *Node) SetNoSpace(full bool) { n.noSpace = full }
+// SetDisk tells the node how full its disk is: full past its budget, low
+// below three quarters of it. While full, the node answers requests that
+// write new data with etcd's NOSPACE error, as etcd does past its quota,
+// and raises its NOSPACE alarm, so that every member refuses them: a
+// follower past its budget must not take the leader's appends either
+// (#170). Once its disk is low and its store under the quota, it clears
+// its own alarm.
+func (n *Node) SetDisk(full, low bool) {
+	n.noSpace = full
+	switch {
+	case full:
+		n.raiseNoSpace(0)
+	case low && n.quotaLeft(kvOverhead):
+		n.clearNoSpace()
+	}
+}
+
+// refusesSpace reports whether the node refuses write r before it
+// proposes it: past its budget one that takes space, and under a NOSPACE
+// alarm one that the alarm refuses when it applies (State.refusedOp), so
+// that refused writes do not fill the members' logs.
+func (n *Node) refusesSpace(r Request) bool {
+	switch {
+	case n.noSpace && TakesSpace(r):
+		return true
+	case !n.state.noSpace:
+		return false
+	case r.Op == nil:
+		// A put in wire form.
+		return true
+	}
+	return errors.Is(n.state.refusedOp(r.Op), rpctypes.ErrGRPCNoSpace)
+}
 
 // TakesSpace reports whether etcd v3.7.2 refuses a request while its
 // NOSPACE alarm is active: a put, a lease grant and a transaction that is
@@ -1226,12 +1256,12 @@ func writeBytes(p *pending) int {
 // whose raft.Node takes no proposal while there is no leader, the writes
 // wait for one, up to their deadline, instead of failing at once (#105).
 func (n *Node) propose() {
-	if n.noSpace {
-		// Writes taken before the disk passed its budget get NOSPACE
-		// too, unless they were proposed: only those still add to the
-		// files, and UnappliedBytes bounds them.
+	if n.noSpace || n.state.noSpace {
+		// Writes taken before the disk passed its budget, or before the
+		// alarm, get NOSPACE too, unless they were proposed: only those
+		// still add to the files, and UnappliedBytes bounds them.
 		n.proposals = slices.DeleteFunc(n.proposals, func(p *pending) bool {
-			if !TakesSpace(p.req) {
+			if !n.refusesSpace(p.req) {
 				return false
 			}
 			n.propBytes -= writeSize(p)
@@ -1866,6 +1896,11 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
+		// Under a NOSPACE alarm, which every member has applied too, a
+		// compaction cuts a checkpoint, so that cleaning can drop the
+		// values it freed; the size rule may not cut one for long, as
+		// little new data comes in (#167).
+		n.cutNow = n.cutNow || n.state.noSpace
 	}
 	switch op := op.(type) {
 	case *pb.LeaseGrantRequest:
