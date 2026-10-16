@@ -1,0 +1,65 @@
+# The 5-hour soak of #148: three tigerstore processes, each in a cgroup
+# with a memory limit below the values it holds, under Kubernetes-shaped
+# churn with leases, compactions and watches, a node kill every few
+# minutes and a follower held behind the window now and then; cmd/soak
+# says what it checks. Started by hand on main:
+#   gh workflow run soak.yml --ref main
+# A shorter run for a try: -f duration=30m.
+name: soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: How long the churn and the faults run
+        required: true
+        default: 5h
+      seed:
+        description: Seed of the workers and the faults
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build tigerstore and soak
+        run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/soak" ./cmd/soak
+          nproc; free -m; df -h "$RUNNER_TEMP"
+      - name: Soak
+        env:
+          DURATION: ${{ inputs.duration }}
+          SEED: ${{ inputs.seed }}
+        # 600,000 objects hold about 0.9 GB of values. The preloaded
+        # events go with their leases after 2 minutes, which leaves about
+        # 0.6 GB, still above the value cache's share of each node's
+        # 640 MiB limit, so reads miss the cache and go to the disk.
+        run: |
+          "$RUNNER_TEMP/soak" -tigerstore "$RUNNER_TEMP/tigerstore" -out "$RUNNER_TEMP/soak-out" \
+            -duration "$DURATION" -seed "$SEED" -objects 600000 -memory $((640 << 20)) \
+            -disk-budget $((3 << 30)) -workers 16 -rate 400
+      - if: always()
+        name: Keep the report and the end of each node's log
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          cp "$RUNNER_TEMP/soak-out/report.json" "$RUNNER_TEMP/evidence/" || true
+          for n in 1 2 3; do
+            tail -c 20000000 "$RUNNER_TEMP/soak-out/node$n.log" > "$RUNNER_TEMP/evidence/node$n.log" || true
+          done
+          cat "$RUNNER_TEMP/evidence/report.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: soak-evidence
+          path: ${{ runner.temp }}/evidence
+          retention-days: 30

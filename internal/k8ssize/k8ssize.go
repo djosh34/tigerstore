@@ -1,19 +1,24 @@
-package main
+// Package k8ssize holds the value sizes measured on a Kubernetes 1.37
+// cluster, for load generators that write Kubernetes-shaped objects.
+package k8ssize
 
 import "math/rand/v2"
 
-// Value sizes of a Kubernetes 1.37 cluster: the length-only histogram of
-// #50 comment 6153233467 (histogram.csv at 4a0c0b28, run 38452568825), one
-// row per resource and exact value size, with its object count. 6,345
-// objects and 9,253,583 value bytes. A draw picks a row by its count, so a
-// resource comes up as often as its objects and a size as often as it was
-// measured. Only lengths are kept, never contents.
-type sizeBucket struct {
-	resource    string
-	size, count int
+// Bucket is one row of the histogram: a resource, an exact value size,
+// and how many objects of that resource had it.
+type Bucket struct {
+	Resource    string
+	Size, Count int
 }
 
-var k8sSizes = []sizeBucket{
+// Buckets are the value sizes of a Kubernetes 1.37 cluster: the
+// length-only histogram of #50 comment 6153233467 (histogram.csv at
+// 4a0c0b28, run 38452568825), one row per resource and exact value size,
+// with its object count. 6,345 objects and 9,253,583 value bytes. A draw
+// picks a row by its count, so a resource comes up as often as its
+// objects and a size as often as it was measured. Only lengths are kept,
+// never contents.
+var Buckets = []Bucket{
 	{"apiservices", 827, 1},
 	{"apiservices", 860, 1},
 	{"apiservices", 862, 1},
@@ -432,19 +437,19 @@ var k8sSizes = []sizeBucket{
 	{"storageclasses", 841, 1},
 }
 
-// drawBin returns the index of a row drawn by count, among the rows of
+// Draw returns the index of a row drawn by count, among the rows of
 // resource, or among all rows if resource is "".
-func drawBin(r *rand.Rand, resource string) int {
+func Draw(r *rand.Rand, resource string) int {
 	total := 0
-	for _, b := range k8sSizes {
-		if resource == "" || resource == b.resource {
-			total += b.count
+	for _, b := range Buckets {
+		if resource == "" || resource == b.Resource {
+			total += b.Count
 		}
 	}
 	n := r.IntN(total)
-	for i, b := range k8sSizes {
-		if resource == "" || resource == b.resource {
-			n -= b.count
+	for i, b := range Buckets {
+		if resource == "" || resource == b.Resource {
+			n -= b.Count
 			if n < 0 {
 				return i
 			}
@@ -453,11 +458,12 @@ func drawBin(r *rand.Rand, resource string) int {
 	return 0
 }
 
-func k8sResources() []string {
+// Resources lists the resources of the rows, in order.
+func Resources() []string {
 	var out []string
-	for _, b := range k8sSizes {
-		if len(out) == 0 || out[len(out)-1] != b.resource {
-			out = append(out, b.resource)
+	for _, b := range Buckets {
+		if len(out) == 0 || out[len(out)-1] != b.Resource {
+			out = append(out, b.Resource)
 		}
 	}
 	return out

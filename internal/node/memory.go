@@ -47,12 +47,26 @@ func MemoryBudget(root fs.FS, flag int64) (int64, string, error) {
 	return host, "host", nil
 }
 
+// GoMemory returns the Go memory limit for a budget that came from
+// from. A cgroup charges the node for more than Go's memory: the log
+// segments it maps, the page cache of its writes and kernel memory. With
+// Go's limit at the whole budget, a node in a cgroup of that size used
+// all of it, and its cgroup killed it under a burst of writes (#202). So
+// an eighth of the budget stays for those pages, unless GOMEMLIMIT gave
+// the budget, which then stays the Go limit, as the user set it.
+func GoMemory(budget int64, from string) int64 {
+	if from == "GOMEMLIMIT" {
+		return budget
+	}
+	return budget - budget/8
+}
+
 // CacheMemory returns what the index, the entries in memory and the
-// value cache share out of budget (core.Config.MemoryBytes): a quarter
-// stays free, so that the garbage collector does not run all the time
-// near the limit, and BufferBytes goes to buffers.
-func CacheMemory(budget int64) int64 {
-	return max(budget-budget/4-BufferBytes, 0)
+// value cache share out of the Go memory limit (core.Config.MemoryBytes):
+// a quarter stays free, so that the garbage collector does not run all
+// the time near the limit, and BufferBytes goes to buffers.
+func CacheMemory(limit int64) int64 {
+	return max(limit-limit/4-BufferBytes, 0)
 }
 
 // cgroupLimit returns the lowest memory.max of the process's cgroup and

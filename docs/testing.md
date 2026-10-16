@@ -161,3 +161,33 @@ The first long run on `main` ([38909081059](https://github.com/djosh34/tigerstor
 # Simulator seed campaign
 
 `sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. A process of 2,000 seeds or more also requires a stopped gray leader (#183).
+
+# Soak
+
+`soak.yml`, started by hand on `main` (`gh workflow run soak.yml --ref main`), runs `cmd/soak` for 5 hours: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects. They hold about 0.9 GB of values. The preloaded events expire with their leases after 2 minutes, which leaves about 0.6 GB: still more than the value cache's share of the limit, so reads miss the cache.
+
+Sixteen workers make 400 calls per second in loadgen's mixed proportions:
+- creates and updates in Txns that compare the create or mod revision, as the apiserver does;
+- deletes;
+- linearizable reads and paginated lists, as Range calls;
+- events on leases of 120 s that expire, at most 1,000 on a lease and a new lease every minute, as the apiserver reuses them.
+
+Alongside them run a watch on every resource prefix, with progress requests, and a compaction every 5 minutes to the revision of the one before.
+
+Each worker owns its objects and makes one call at a time, so it knows what every answer must hold:
+- An ambiguous write is resolved by the next read of the object.
+- A compare that fails, a read or a list that differs from the model, and a header below an answer that came before the call are findings.
+- Every watch must send exactly the changes the workers made at the revisions it covers.
+
+The faults:
+- A node is killed every 4 minutes on average, half the time the leader, and started again after 1 to 10 s.
+- Every 30 minutes on average, a follower is stopped while 256 MiB of writes go in, and it must fetch a snapshot when it resumes.
+
+After each fault:
+- after a kill, the other two nodes must commit a write within 10 s;
+- a restarted or resumed node must commit a write through itself within 2 minutes, which covers its recovery or snapshot install;
+- the nodes must agree on `HashKV` at one revision.
+
+No node may exit on its own or be killed by its memory limit, no alarm may go off, and a data directory may not pass its budget by more than 256 MiB.
+
+The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, its bytes cleaned and its cache hits and misses since its last start, and the longest recovery and catch-up. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.
