@@ -32,11 +32,13 @@ const (
 
 var opNames = [5]string{"get", "list", "update", "create", "delete"}
 
-// leaseTTL is the TTL of the leases events are written with, as the
-// apiserver's, and leaseEvery how often a worker grants a new one.
+// leaseTTL is the TTL of the leases events are written with, and
+// leaseEvery and leaseObjects when a worker grants a new one: after a
+// minute or 1,000 objects, as the apiserver's lease reuse does.
 const (
-	leaseTTL   = 120
-	leaseEvery = time.Minute
+	leaseTTL     = 120
+	leaseEvery   = time.Minute
+	leaseObjects = 1000
 )
 
 // object is one Kubernetes-shaped object a worker owns. Only that worker
@@ -113,8 +115,9 @@ type worker struct {
 	last  int64
 	lease clientv3.LeaseID
 	// leaseAt is when the lease was granted, and leaseVanish when it may
-	// expire.
+	// expire; leaseUses counts the writes put on it.
 	leaseAt, leaseVanish time.Time
+	leaseUses            int
 }
 
 // load is the churn of every worker and what it found.
@@ -435,6 +438,7 @@ func (w *worker) put(ctx context.Context, o *object, op int) error {
 	if o.leased {
 		opts = append(opts, clientv3.WithLease(w.lease))
 		p.leased, p.vanishAt = true, w.leaseVanish
+		w.leaseUses++
 	}
 	cmp := clientv3.Compare(clientv3.ModRevision(o.key), "=", o.mod)
 	if op == opCreate {
@@ -543,7 +547,7 @@ func (w *worker) list(ctx context.Context, g *group) error {
 
 // renewLease grants the lease new events go on once a minute.
 func (w *worker) renewLease(ctx context.Context) error {
-	if !w.leaseAt.IsZero() && time.Since(w.leaseAt) < leaseEvery {
+	if !w.leaseAt.IsZero() && time.Since(w.leaseAt) < leaseEvery && w.leaseUses < leaseObjects {
 		return nil
 	}
 	at := time.Now()
@@ -554,7 +558,7 @@ func (w *worker) renewLease(ctx context.Context) error {
 	if err != nil {
 		return w.lost("lease grant", err)
 	}
-	w.lease, w.leaseAt = resp.ID, at
+	w.lease, w.leaseAt, w.leaseUses = resp.ID, at, 0
 	// A lease expires its TTL after the leader granted it, which is after
 	// the call; a leader change only extends it.
 	w.leaseVanish = at.Add(leaseTTL * time.Second)
@@ -593,6 +597,7 @@ func (w *worker) preload(ctx context.Context) error {
 			if o.leased {
 				opts = append(opts, clientv3.WithLease(w.lease))
 				p.leased, p.vanishAt = true, w.leaseVanish
+				w.leaseUses++
 			}
 			cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(o.key), "=", 0))
 			puts = append(puts, clientv3.OpPut(o.key, string(v), opts...))

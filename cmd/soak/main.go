@@ -368,7 +368,7 @@ func (s *soak) kill(ctx context.Context) error {
 	if err := n.signal(syscall.SIGKILL); err != nil {
 		return err
 	}
-	if err := s.commit(ctx, at, others(n.i)); err != nil {
+	if err := s.commit(ctx, "the kill", at, others(n.i)); err != nil {
 		return fmt.Errorf("after node%d was killed: %w", n.i+1, err)
 	}
 	pause(ctx, time.Duration(1+s.rng.IntN(10))*time.Second)
@@ -399,19 +399,21 @@ func (s *soak) restart(ctx context.Context, n *node) error {
 	d := time.Since(at).Seconds()
 	s.rep.Restart = max(s.rep.Restart, d)
 	s.logf("node%d answers %.1f s after its start", n.i+1, d)
-	return s.commit(ctx, at, []int{n.i})
+	return s.commit(ctx, "its start", at, []int{n.i})
 }
 
 // commit writes a probe through each of the nodes until one commits it,
 // within the liveness bound from at.
-func (s *soak) commit(ctx context.Context, at time.Time, through []int) error {
+func (s *soak) commit(ctx context.Context, what string, at time.Time, through []int) error {
 	for {
 		for _, i := range through {
 			cctx, cancel := context.WithTimeout(ctx, time.Second)
 			_, err := s.c.nodes[i].one.Put(cctx, "/soak/probe", at.String())
 			cancel()
 			if err == nil {
-				s.rep.Recovery = max(s.rep.Recovery, time.Since(at).Seconds())
+				d := time.Since(at).Seconds()
+				s.rep.Recovery = max(s.rep.Recovery, d)
+				s.logf("a write through node%d committed %.1f s after %s", i+1, d, what)
 				return nil
 			}
 		}
@@ -469,7 +471,7 @@ func (s *soak) hold(ctx context.Context) error {
 	}
 	s.rep.Snapshots++
 	s.logf("node%d fetches a snapshot", f.i+1)
-	return s.commit(ctx, at, []int{f.i})
+	return s.commit(ctx, "its resume", at, []int{f.i})
 }
 
 // hashes checks that the nodes agree on the hash of their keys at the
