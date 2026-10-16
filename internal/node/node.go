@@ -634,6 +634,7 @@ func (n *Node) forceNewCluster() error {
 // the disk goroutines. The new log replaces the old one, if any, at once,
 // for snapshots this node serves meanwhile.
 func (n *Node) open() error {
+	n.logf("recovering the log")
 	w, rec, err := wal.Open(n.log.fs)
 	if err != nil {
 		return err
@@ -692,6 +693,7 @@ func (n *Node) open() error {
 	as, _ := c.Alarms()
 	as = slices.Clone(as)
 	n.alarms.Store(&as)
+	n.logf("recovered the log up to entry %d", c.Applied())
 	return nil
 }
 
@@ -1457,6 +1459,7 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 // log can.
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
 	m, from := n.cfg.Metrics, peerLabel(in.From)
+	n.logf("fetching the snapshot at %d from %d", in.Index, in.From)
 	m.SnapshotApplyInProgress.Set(1)
 	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
 	start := time.Now()

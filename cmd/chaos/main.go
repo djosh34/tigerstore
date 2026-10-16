@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,6 +46,12 @@ type config struct {
 	WatchTimeout   time.Duration `json:"watch_timeout"`
 	Quiet          time.Duration `json:"quiet"`
 	CheckerTimeout time.Duration `json:"checker_timeout"`
+	// Env runs every node on a disk of its own, in a cgroup of its own,
+	// with netem on the links and 1 to 10 ms between nodes, through
+	// sudo -n; LazyFS is its binary, for the faults that need it.
+	Env      bool   `json:"env"`
+	LazyFS   string `json:"lazyfs,omitempty"`
+	DiskSize int64  `json:"disk_size,omitempty"`
 }
 
 func main() {
@@ -60,11 +67,17 @@ func main() {
 	flag.DurationVar(&c.Quiet, "quiet", 8*time.Second, "wait after the heal, longer than the server's request timeout, before the final reads")
 	flag.DurationVar(&c.CheckerTimeout, "checker-timeout", time.Minute, "linearizability checker timeout")
 	flag.StringVar(&recheck, "check", "", "only rerun the checkers on this saved history.json, writing results next to it")
+	flag.BoolVar(&c.Env, "env", false, "run each node on a disk and in a cgroup of its own, with netem and 1 to 10 ms between nodes (needs sudo -n), and add the faults of that environment")
+	flag.StringVar(&c.LazyFS, "lazyfs", "", "LazyFS binary; with -env, every disk runs under it")
+	flag.Int64Var(&c.DiskSize, "disk-size", 512<<20, "with -env, the bytes of each node's disk")
 	flag.Parse()
 	if recheck != "" {
 		os.Exit(checkSaved(recheck, c.CheckerTimeout))
 	}
 	c.Faults = strings.Split(faults, ",")
+	if c.Env && faults == strings.Join(allFaults, ",") {
+		c.Faults = append(c.Faults, envFaultsFor(c.LazyFS != "")...)
+	}
 	if c.Seed == 0 || c.Tigerstore == "" || flag.NArg() != 0 {
 		flag.Usage()
 		os.Exit(2)
@@ -72,7 +85,14 @@ func main() {
 	dir := filepath.Join(c.Out, fmt.Sprintf("seed-%d", c.Seed))
 	err := run(c, dir)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreproduce: go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s\n", c.Seed, err, dir, c.Seed, faults)
+		envFlags := ""
+		if c.Env {
+			envFlags = " -env"
+			if c.LazyFS != "" {
+				envFlags += " -lazyfs <LazyFS binary>"
+			}
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreproduce: go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s%s\n", c.Seed, err, dir, c.Seed, strings.Join(c.Faults, ","), envFlags)
 		os.Exit(1)
 	}
 	_, _ = fmt.Fprintf(os.Stdout, "PASS seed %d, evidence in %s\n", c.Seed, dir)
@@ -96,12 +116,17 @@ type verdict struct {
 
 func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
-		known := false
-		for _, a := range allFaults {
-			known = known || a == f
+		if slices.Contains(envFaults, f) && !c.Env {
+			return fmt.Errorf("fault %q needs -env", f)
 		}
-		if !known {
-			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(allFaults, ","))
+		if slices.Contains(withoutLazyFS, f) && c.LazyFS != "" {
+			return fmt.Errorf("fault %q runs only without -lazyfs, which would hide it", f)
+		}
+		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
+			return fmt.Errorf("fault %q needs -lazyfs", f)
+		}
+		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
+			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))
 		}
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -137,12 +162,32 @@ func run(c config, dir string) (err error) {
 	fail("save schedule", save(filepath.Join(dir, "schedule.json"), steps))
 	logf("seed %d, %d steps: %v", c.Seed, len(steps), c.Faults)
 
-	cl, err := newCluster(dir, c.Tigerstore, c.Seed)
+	var e *environment
+	var data [3]string
+	var extra []string
+	if c.Env {
+		if e, err = newEnvironment(dir, c.Seed, c.LazyFS, c.DiskSize); err != nil {
+			fail("environment", err)
+			return
+		}
+		defer func() { fail("close the environment", e.close()) }()
+		data, extra = e.data(), nodeArgs
+	}
+	cl, err := newCluster(dir, c.Tigerstore, c.Seed, data, extra)
 	if err != nil {
 		fail("cluster", err)
 		return
 	}
 	defer func() { fail("close proxies", cl.closeProxies()) }()
+	if e != nil {
+		cl.started = func(i, pid int) error { return e.groups[i].Add(pid) }
+		if ne := e.network(cl, c.Seed); ne != nil {
+			fail("netem", ne)
+			return
+		}
+		logf("one-way delays between nodes: %v", e.latency)
+		fail("save latency", save(filepath.Join(dir, "latency.json"), e.latency))
+	}
 	for _, n := range cl.nodes {
 		if e := cl.start(n); e != nil {
 			fail("start", e)
@@ -171,7 +216,13 @@ func run(c config, dir string) (err error) {
 		fail("stop", cl.stop())
 		return
 	}
-	r := &runner{c: cl, start: t.r.origin, logf: logf}
+	r := &runner{c: cl, t: t, e: e, start: t.r.origin, logf: logf}
+	var archived <-chan error
+	stopArchive := func() {}
+	if e != nil {
+		actx, cancel := context.WithCancel(ctx)
+		archived, stopArchive = e.archive(actx, dir), cancel
+	}
 	_ = pause(ctx, 2*time.Second)
 	records, schedErr := r.run(ctx, steps)
 	fail("schedule", schedErr)
@@ -198,6 +249,16 @@ func run(c config, dir string) (err error) {
 	var dirs []string
 	for i := range 3 {
 		dirs = append(dirs, filepath.Join(dir, "data", fmt.Sprintf("node%d", i+1)))
+	}
+	if e != nil {
+		stopArchive()
+		fail("archive the logs", <-archived)
+		fail("keep data", e.keep(dir))
+		for i := range dirs {
+			d, me := merged(dir, i)
+			fail("merge the archived log", me)
+			dirs[i] = d
+		}
 	}
 	log, walEvidence, logErr := committedLog(dirs)
 	h.Log = log

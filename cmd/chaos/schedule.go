@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"syscall"
 	"time"
 
@@ -54,6 +55,11 @@ func plan(seed uint64, faults []string) []step {
 	rng := rand.New(rand.NewPCG(seed, 49))
 	order := append([]string(nil), faults...)
 	rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+	// A replaced member's peers reach it at its own port, past the
+	// proxies, so the replacement comes last.
+	if k := slices.Index(order, replace); k >= 0 {
+		order = append(slices.Delete(order, k, k+1), replace)
+	}
 	ms := func(lo, hi int) time.Duration { return time.Duration(lo+rng.IntN(hi-lo+1)) * time.Millisecond }
 	var out []step
 	for _, f := range order {
@@ -66,6 +72,18 @@ func plan(seed uint64, faults []string) []step {
 			s.Delay, s.Delay2, s.Every = ms(0, 2), ms(20, 80), ms(100, 400)
 		case netSlow:
 			s.Rate = 8<<10 + rng.IntN(24<<10)
+		case cpuGray, severalAtOnce:
+			// A node at 2 to 5 percent of one CPU, which throttles a
+			// follower too.
+			s.Rate = 2 + rng.IntN(4)
+		case diskSlow:
+			s.Delay = ms(100, 400)
+		}
+		if slices.Contains(grayFaults, f) || f == severalAtOnce {
+			// Long enough for writes through the healthy nodes to show
+			// the liveness bound, and for both faults of several-at-once
+			// to show.
+			s.Hold = ms(5000, 8000)
 		}
 		out = append(out, s)
 	}
@@ -105,12 +123,16 @@ type record struct {
 	HealedAt  time.Duration  `json:"healed_at,omitempty"`
 	Links     []linkRecord   `json:"links,omitempty"`
 	Process   *processRecord `json:"process,omitempty"`
+	Env       *envRecord     `json:"env,omitempty"`
 	Error     string         `json:"error,omitempty"`
 }
 
-// runner injects a schedule into a cluster.
+// runner injects a schedule into a cluster. t is the workload, which
+// the faults of the environment e also write through.
 type runner struct {
 	c     *cluster
+	t     *traffic
+	e     *environment
 	start time.Time
 	logf  func(string, ...any)
 }
@@ -168,6 +190,15 @@ func (r *runner) inject(ctx context.Context, s step, rec *record) error {
 	followers := []int{(lead + 1) % 3, (lead + 2) % 3}
 	follower := followers[s.Pick%2]
 	rec.Requested = r.since()
+	if slices.Contains(envFaults, s.Fault) {
+		// The leader in a third of the steps, as a gray leader must be
+		// fenced too.
+		target := follower
+		if s.Pick%3 == 0 {
+			target = lead
+		}
+		return r.injectEnv(ctx, s, lead, target, rec)
+	}
 	switch s.Fault {
 	case killLeader, killFollower:
 		target := lead

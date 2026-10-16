@@ -14,7 +14,7 @@ import (
 
 // TestCall checks that Call reaches the other node's Answer with the
 // caller's ID and brings back its answer, or its error with the gRPC
-// code and message.
+// code and message, and that Ask does without a transport.
 func TestCall(t *testing.T) {
 	ca, err := testcert.NewCA()
 	if err != nil {
@@ -51,5 +51,11 @@ func TestCall(t *testing.T) {
 	}
 	if _, err := b.t.Call(context.Background(), 1, nil); status.Code(err) != codes.Unknown {
 		t.Fatalf("call to a node that answers none: %v", err)
+	}
+	// Ask, as a member that joins asks for the members before it has a
+	// transport: with its own certificate, from ID 0 (#200).
+	got, err = Ask(context.Background(), Config{Certificate: certs[1], CA: ca.Pool}, addrs[2], []byte("join"))
+	if err != nil || string(got) != "\x00join" {
+		t.Fatalf("ask: %q, %v", got, err)
 	}
 }

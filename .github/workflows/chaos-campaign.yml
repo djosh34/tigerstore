@@ -1,0 +1,63 @@
+# The nightly real-process chaos campaign (#49, #148): many short jobs of
+# the chaos-env job of ci, each three seeds of its own, half of them with
+# every disk under LazyFS and half failing fsyncs and filling disks. Also
+# started by hand:
+#   gh workflow run chaos-campaign.yml
+# A failing seed reproduces with the command its log prints, and its
+# evidence is uploaded.
+name: chaos-campaign
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seeds:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        mode: [lazyfs, plain]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install FUSE and LazyFS's build tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake g++ libfuse3-dev fuse3
+      - name: Build LazyFS, tigerstore and chaos
+        run: |
+          echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Run three seeds
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          lazy=()
+          if [ "$MODE" = lazyfs ]; then lazy=(-lazyfs "$LAZYFS"); fi
+          status=0
+          for k in 0 1 2; do
+            seed=$(( (RUN_ID % 1000000000) * 64 + SHARD * 3 + k + 1 ))
+            echo "seed $seed, $MODE"
+            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}" || status=1
+          done
+          exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-campaign-${{ matrix.mode }}-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/chaos-out
+            !${{ runner.temp }}/chaos-out/**/disks
+          retention-days: 30

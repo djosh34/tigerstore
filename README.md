@@ -39,6 +39,24 @@ etcdctl --endpoints=https://127.0.0.1:2379,https://127.0.0.1:22379,https://127.0
 
 Stop the cluster with `kill $(cat data/*.pid)`. Starting it again recovers each node from its data directory.
 
+## Replace a member whose disk was lost or whose log is refused
+
+A node that finds a damaged record in its log stops, and a restart refuses that log. A node whose disk was erased must not start again under its old name with empty storage: it would vote and acknowledge as if it still held what it had promised, and an acknowledged write could be lost. Bring either back as a new member, as with etcd, while the other two are up:
+
+```sh
+ctl="etcdctl --endpoints=https://127.0.0.1:2379,https://127.0.0.1:22379 \
+  --cacert certs/ca.pem --cert certs/client.pem --key certs/client-key.pem"
+$ctl member list                             # the ID of the broken member, here node3
+$ctl member remove <ID>
+$ctl member add node3 --peer-urls=https://127.0.0.1:12380
+rm -rf data/node3                            # start on empty storage
+./tigerstore --name node3 --data-dir data/node3 --initial-cluster-state existing \
+  --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:12380 \
+  ...                                        # the node's other flags, as before
+```
+
+The new member gets a new ID and catches up from the leader, with a snapshot once the leader no longer has the log from its start. With `--strict-reconfig-check` (the default), a removal or an add waits until the node that takes it has been connected to its peers for 5 s; until then it answers that the cluster is unhealthy, and the call can be repeated. The `replace-member` step of the chaos job (`cmd/chaos -env`) does this after an erased disk and after a refused log, under every checker (#161).
+
 ## Tests
 
 `go test ./...` runs the unit tests, a 3-node cluster over TLS in one process, and the deterministic simulator on 16 seeds. `scripts/smoke.sh` runs etcdctl against a local cluster. `scripts/difftest.sh etcd` and `scripts/difftest.sh tigerstore` run the differential tests against etcd v3.7.2 and against a local cluster (see `difftest/doc.go`). CI runs the simulator on 400 seeds per pull request and 1,600 on each push to `main` and nightly; see `.github/workflows/ci.yml`.

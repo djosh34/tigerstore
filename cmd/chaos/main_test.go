@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/history"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 )
 
 func TestWithoutLostWrites(t *testing.T) {
@@ -68,5 +69,20 @@ func TestFailedStart(t *testing.T) {
 	err := run(config{Seed: 1, Tigerstore: filepath.Join(t.TempDir(), "missing"), Faults: allFaults}, t.TempDir())
 	if err == nil || !strings.Contains(err.Error(), "start: ") || strings.Contains(err.Error(), "stop: ") {
 		t.Fatalf("got %v, want only the failed start", err)
+	}
+}
+
+// A watch that drops one of the two delete events of one revision
+// differs from one that got both.
+func TestSameEvents(t *testing.T) {
+	ref := []watchEvent{{2, "a", mvccpb.PUT}, {3, "a", mvccpb.DELETE}, {3, "b", mvccpb.DELETE}, {4, "a", mvccpb.PUT}, {5, "c", mvccpb.PUT}}
+	if err := sameEvents(ref[:4], ref, 4); err != nil {
+		t.Errorf("same events up to 4: %v", err)
+	}
+	if err := sameEvents([]watchEvent{ref[0], ref[1], ref[3]}, ref, 4); err == nil {
+		t.Error("a dropped delete at a revision with two passed")
+	}
+	if err := sameEvents(ref[:2], ref, 2); err == nil {
+		t.Error("an event no other watch got passed")
 	}
 }

@@ -176,6 +176,12 @@ func start(c *config, lg *zap.Logger) error {
 		}
 	}
 	ccfg := coreConfig(ec, ident)
+	if w := c.own.UnsafeWindow; w > 0 {
+		ccfg.WindowBytes, ccfg.WindowMaxBytes = w, 2*w
+	}
+	if b := c.own.UnsafeCheckpoint; b > 0 {
+		ccfg.CheckpointBytes = b
+	}
 	budget, from, err := node.MemoryBudget(os.DirFS("/"), c.own.MemoryBudget)
 	if err != nil {
 		return err
@@ -192,7 +198,7 @@ func start(c *config, lg *zap.Logger) error {
 	gate := ec.ServerFeatureGate
 	ncfg := node.Config{
 		Core: ccfg, DataDir: ec.Dir, WalDir: ec.WalDir, Tick: time.Duration(ec.TickMs) * time.Millisecond,
-		DiskBudget: c.own.DiskBudget, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
+		DiskBudget: c.own.DiskBudget, SegmentBytes: c.own.UnsafeSegment, CorruptCheckTime: ec.CorruptCheckTime, Logf: logf, AutoCompaction: compaction,
 		UnsafeNoFsync: ec.UnsafeNoFsync, WarningApplyDuration: ec.WarningApplyDuration, ForceNewCluster: ec.ForceNewCluster,
 	}
 	if gate.Enabled(features.CompactHashCheck) {
