@@ -22,13 +22,18 @@ import (
 
 // memNet connects nodes in one process. Each node takes its messages from
 // its own queue. A fetch reads from the source's Serve through a pipe;
-// the first cuts streams end early, as when the leader crashes.
+// the first refuse fetches fail before a stream opens, as when the
+// source is gone, and the next cuts streams end early, as when the leader
+// crashes.
 type memNet struct {
 	mu     sync.Mutex
 	queues map[uint64]chan *raftpb.Message
 	nodes  map[uint64]*Node
+	refuse int
 	cuts   []int
 	cut    int
+	// fetches counts every fetch.
+	fetches int
 }
 
 // join makes n reachable until ctx ends.
@@ -87,7 +92,12 @@ func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
 
 func (p memPeer) Fetch(_ context.Context, id, first, last uint64) (io.ReadCloser, error) {
 	p.net.mu.Lock()
+	p.net.fetches++
 	src := p.net.nodes[id]
+	if p.net.refuse > 0 {
+		p.net.refuse--
+		src = nil
+	}
 	limit := -1
 	if len(p.net.cuts) > 0 {
 		limit, p.net.cuts = p.net.cuts[0], p.net.cuts[1:]
@@ -141,6 +151,8 @@ type behind struct {
 	// rev is the revision of the last write, which set every key k00 to
 	// k49 to value(i, 40).
 	rev int64
+	// tune, if set, changes the configuration of a node before it starts.
+	tune func(id uint64, cfg *Config)
 }
 
 func value(i, round int) []byte { return fmt.Appendf(nil, "value %d of round %d %0200d", i, round, 0) }
@@ -152,9 +164,13 @@ func (c *behind) config(id uint64) Config {
 	cfg.CheckpointBytes, cfg.CheckpointRatio = 16<<10, 2
 	// The leader stops itself when an append takes two election
 	// timeouts; 50 ms ticks keep a slow runner's fsync below that.
-	return Config{Core: cfg, DataDir: c.dirs[id], Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
+	ncfg := Config{Core: cfg, DataDir: c.dirs[id], Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
 		c.t.Logf("node %d: "+f, append([]any{id}, args...)...)
 	}}
+	if c.tune != nil {
+		c.tune(id, &ncfg)
+	}
+	return ncfg
 }
 
 // start runs node id until close.
@@ -260,6 +276,39 @@ func newBehind(t *testing.T) (*behind, error) {
 	return c, nil
 }
 
+// caughtUp waits up to wait until node 3 serves the newest value of every
+// key, and fails if it stops before.
+func (c *behind) caughtUp(n3 *Node, wait time.Duration) error {
+	for deadline := time.Now().Add(wait); ; time.Sleep(20 * time.Millisecond) {
+		select {
+		case err := <-c.ran[3]:
+			return fmt.Errorf("%w: %w", errFollowerStopped, err)
+		default:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		r, err := n3.Do(ctx, &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Serializable: true})
+		cancel()
+		if err == nil && r.(*pb.RangeResponse).Header.Revision >= c.rev {
+			kvs := r.(*pb.RangeResponse).Kvs
+			if len(kvs) != 50 {
+				return fmt.Errorf("node 3 has %d keys", len(kvs))
+			}
+			for i, kv := range kvs {
+				if string(kv.Value) != string(value(i, 40)) {
+					return fmt.Errorf("node 3 has %q for k%02d", kv.Value, i)
+				}
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err == nil {
+				err = fmt.Errorf("it is at revision %d of %d", r.(*pb.RangeResponse).Header.Revision, c.rev)
+			}
+			return fmt.Errorf("node 3 did not catch up: %w", err)
+		}
+	}
+}
+
 // followerRetriesFetch starts node 3 of a behind cluster. Its first two
 // snapshot streams break off partway, after it wrote some of each to its
 // log. It must start again from its log, fetch another snapshot, and
@@ -279,33 +328,8 @@ func followerRetriesFetch(t *testing.T) error {
 	if err != nil {
 		return err
 	}
-	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		select {
-		case err := <-c.ran[3]:
-			return fmt.Errorf("%w: %w", errFollowerStopped, err)
-		default:
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		r, err := n3.Do(ctx, &pb.RangeRequest{Key: []byte("k"), RangeEnd: []byte("l"), Serializable: true})
-		cancel()
-		if err == nil && r.(*pb.RangeResponse).Header.Revision >= c.rev {
-			kvs := r.(*pb.RangeResponse).Kvs
-			if len(kvs) != 50 {
-				return fmt.Errorf("node 3 has %d keys", len(kvs))
-			}
-			for i, kv := range kvs {
-				if string(kv.Value) != string(value(i, 40)) {
-					return fmt.Errorf("node 3 has %q for k%02d", kv.Value, i)
-				}
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			if err == nil {
-				err = fmt.Errorf("it is at revision %d of %d", r.(*pb.RangeResponse).Header.Revision, c.rev)
-			}
-			return fmt.Errorf("node 3 did not catch up: %w", err)
-		}
+	if err := c.caughtUp(n3, 30*time.Second); err != nil {
+		return err
 	}
 	c.net.mu.Lock()
 	cut := c.net.cut

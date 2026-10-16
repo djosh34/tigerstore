@@ -1,6 +1,8 @@
 package core
 
 import (
+	"slices"
+
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/protobuf/proto"
@@ -21,7 +23,10 @@ import (
 // for itself. One that was let in and finds the quota reached when it
 // applies still applies, as in etcd, but its client gets ErrNoSpace, and
 // every member raises its own NOSPACE alarm. While a NOSPACE alarm is
-// active, such writes fail when they apply (alarm.go).
+// active, such writes fail when they apply (alarm.go), and every member
+// refuses them before it proposes them. A node past its disk budget
+// raises the same alarm for itself, and clears it once its log is below
+// the budget again (SetDisk).
 
 // QuotaBytes is etcd's default --quota-backend-bytes.
 const QuotaBytes = 2 << 30
@@ -99,18 +104,9 @@ func (n *Node) overQuota() error {
 // If it proposes the alarm and id is not 0, request id gets ErrNoSpace
 // once the alarm applied.
 func (n *Node) raiseNoSpace(id uint64) bool {
-	if n.rn == nil || n.readInline {
+	if !n.noSpaceDue(true) {
 		return false
 	}
-	for _, a := range n.state.alarms {
-		if a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID {
-			return false
-		}
-	}
-	if n.noSpaceAt >= 0 && n.now-n.noSpaceAt < leaseRetryTicks {
-		return false
-	}
-	n.noSpaceAt = n.now
 	p := &pending{
 		req:      Request{ID: id, Op: &pb.AlarmRequest{Action: pb.AlarmRequest_ACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
 		deadline: n.now + int64(n.cfg.RequestTicks),
@@ -121,4 +117,37 @@ func (n *Node) raiseNoSpace(id uint64) bool {
 		n.timeouts = append(n.timeouts, p)
 	}
 	return id != 0
+}
+
+// clearNoSpace proposes clearing this node's NOSPACE alarm, if it is
+// active and no proposal of a change to it is under way (SetDisk).
+func (n *Node) clearNoSpace() {
+	if !n.noSpaceDue(false) {
+		return
+	}
+	n.queueFeature(&pending{
+		req:      Request{Op: &pb.AlarmRequest{Action: pb.AlarmRequest_DEACTIVATE, Alarm: pb.AlarmType_NOSPACE, MemberID: n.cfg.ID}},
+		deadline: n.now + int64(n.cfg.RequestTicks),
+	})
+}
+
+// noSpaceDue reports whether the node proposes setting its own NOSPACE
+// alarm to active, and notes the proposal: not while it replays its log or
+// installs a snapshot, not if the alarm is already so, and not within
+// leaseRetryTicks of its last proposal of a change, which may not have
+// applied yet.
+func (n *Node) noSpaceDue(active bool) bool {
+	if n.rn == nil || n.readInline {
+		return false
+	}
+	if slices.ContainsFunc(n.state.alarms, func(a *pb.AlarmMember) bool {
+		return a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == n.cfg.ID
+	}) == active {
+		return false
+	}
+	if n.noSpaceAt >= 0 && n.now-n.noSpaceAt < leaseRetryTicks {
+		return false
+	}
+	n.noSpaceAt = n.now
+	return true
 }

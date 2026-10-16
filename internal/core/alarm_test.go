@@ -118,11 +118,19 @@ func TestAlarms(t *testing.T) {
 		}
 	}
 	// A put in wire form goes the same way.
-	s.n.Submit(Request{ID: 30, Put: Put{PutOp: mustParsePut(t, &pb.PutRequest{Key: []byte("w"), Value: []byte("1")}).PutOp, Wire: mustMarshal(t, &pb.PutRequest{Key: []byte("w"), Value: []byte("1")})}})
-	for _, r := range s.run() {
-		if r.ID == 30 && !errors.Is(r.Err, rpctypes.ErrGRPCNoSpace) {
-			t.Fatalf("wire put under NOSPACE: %v", r.Err)
+	wirePut := func(id uint64) error {
+		p := &pb.PutRequest{Key: []byte("w"), Value: []byte("1")}
+		s.n.Submit(Request{ID: id, Put: Put{PutOp: mustParsePut(t, p).PutOp, Wire: mustMarshal(t, p)}})
+		for _, r := range s.run() {
+			if r.ID == id {
+				return r.Err
+			}
 		}
+		t.Fatalf("no answer to wire put %d", id)
+		return nil
+	}
+	if err := wirePut(30); !errors.Is(err, rpctypes.ErrGRPCNoSpace) {
+		t.Fatalf("wire put under NOSPACE: %v", err)
 	}
 
 	s.alarms(40, alarmReq(pb.AlarmRequest_ACTIVATE, pb.AlarmType_CORRUPT, 3))
@@ -144,6 +152,10 @@ func TestAlarms(t *testing.T) {
 		if r := s.do(uint64(50+i), op); !errors.Is(r.Err, rpctypes.ErrGRPCCorrupt) {
 			t.Fatalf("%T under CORRUPT: %v", op, r.Err)
 		}
+	}
+	// CORRUPT comes first, also for a put in wire form.
+	if err := wirePut(55); !errors.Is(err, rpctypes.ErrGRPCCorrupt) {
+		t.Fatalf("wire put under NOSPACE and CORRUPT: %v", err)
 	}
 	if r := s.do(60, &pb.RangeRequest{Key: []byte("a")}); r.Err != nil {
 		t.Fatalf("range under CORRUPT: %v", r.Err)

@@ -99,9 +99,7 @@ func TestCleaningSteps(t *testing.T) {
 	}
 	p := writePack(t, w, [3]uint32{2, 1, 1}, [3]uint32{5, 0, 2})
 	check("pack written", d.Durable(), 0)
-	if err := w.InstallPacks(p, nil); err != nil {
-		t.Fatal(err)
-	}
+	w.InstallPacks(p, nil)
 	check("root buffered", d.Durable(), 0)
 	if err := w.Sync(); err != nil {
 		t.Fatal(err)
@@ -137,7 +135,8 @@ func TestPackMerge(t *testing.T) {
 	fill(t, w, 9, 10)
 	segs, _ := cleanable(w, 6)
 	p1 := writePack(t, w, [3]uint32{2, 0, 2}, [3]uint32{3, 0, 2}, [3]uint32{4, 0, 2})
-	if err := errors.Join(w.InstallPacks(p1, nil), w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
+	w.InstallPacks(p1, nil)
+	if err := errors.Join(w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
 		t.Fatal(err)
 	}
 	_, packs := cleanable(w, 6)
@@ -145,9 +144,7 @@ func TestPackMerge(t *testing.T) {
 		t.Fatalf("cleanable packs %v", packs)
 	}
 	p2 := writePack(t, w, [3]uint32{3, 0, 2})
-	if err := w.InstallPacks(p2, []uint64{p1.ID()}); err != nil {
-		t.Fatal(err)
-	}
+	w.InstallPacks(p2, []uint64{p1.ID()})
 	wantValue(t, w, 3, 0, 2, "v3")
 	if _, err := w.Value(2, 0, 2); !errors.Is(err, wal.ErrNotOnDisk) {
 		t.Fatalf("value only the dropped pack held: %v", err)
@@ -206,7 +203,8 @@ func TestDamagedPackIsCorrupt(t *testing.T) {
 			t.Fatal(err)
 		}
 		p := writePack(t, w, [3]uint32{1, 0, 2}, [3]uint32{2, 0, 2})
-		if err := errors.Join(w.InstallPacks(p, nil), w.Sync(), w.Close()); err != nil {
+		w.InstallPacks(p, nil)
+		if err := errors.Join(w.Sync(), w.Close()); err != nil {
 			t.Fatal(err)
 		}
 		name := packFiles(t, d)[0]
@@ -242,7 +240,8 @@ func TestPackOutlivesRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := writePack(t, w, [3]uint32{1, 0, 2})
-	if err := errors.Join(w.InstallPacks(p, nil), w.Sync()); err != nil {
+	w.InstallPacks(p, nil)
+	if err := w.Sync(); err != nil {
 		t.Fatal(err)
 	}
 	fill(t, w, 5, 12)
@@ -277,7 +276,8 @@ func TestMapShrinks(t *testing.T) {
 	before := w.MapBytes()
 	segs, _ := cleanable(w, 199)
 	p := writePack(t, w, [3]uint32{7, 0, 2})
-	if err := errors.Join(w.InstallPacks(p, nil), w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
+	w.InstallPacks(p, nil)
+	if err := errors.Join(w.Sync(), w.RemoveCleaned(segs[len(segs)-1], nil)); err != nil {
 		t.Fatal(err)
 	}
 	if after := w.MapBytes(); after*4 > before {

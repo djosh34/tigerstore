@@ -106,7 +106,14 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	if n.log.w.Has(1) {
 		t.Fatal("setup: entry 1 is still on disk")
 	}
-	go n.persist(t.Context(), noPeers{})
+	// The test stops the persist goroutine before its directory goes.
+	pctx, pcancel := context.WithCancel(context.Background())
+	var persisting sync.WaitGroup
+	persisting.Go(func() { n.persist(pctx, noPeers{}) })
+	defer func() {
+		pcancel()
+		persisting.Wait()
+	}()
 	g := &gate{wrote: make(chan struct{}), release: make(chan struct{})}
 	served := make(chan error, 1)
 	go func() { served <- n.Serve(2, 1, n.core.Applied(), g) }()
@@ -118,11 +125,21 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	if done := <-n.persisted; done.err != nil {
 		t.Fatal(done.err)
 	}
+	file := filepath.Join(dir, "wal", wal.CheckpointName(ckpt.Index))
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("the checkpoint the stream reads is gone while it reads: %v", err)
+	}
 	close(g.release)
 	if err := <-served; err != nil {
 		t.Fatalf("the stream failed after the root job ran: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "wal", wal.CheckpointName(ckpt.Index))); err != nil {
-		t.Fatalf("the checkpoint the stream read is gone: %v", err)
+	// The end of the stream runs the removal it put off (#165).
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the removal the stream put off did not run once it ended")
+		}
 	}
 }

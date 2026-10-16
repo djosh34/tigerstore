@@ -30,6 +30,10 @@ type single struct {
 	held []*ValueRead
 	// keep skips removals, as a node does while it serves a fetch.
 	keep bool
+	// holdCkpt keeps the checkpoint parts in heldCkpt instead of writing
+	// them.
+	holdCkpt bool
+	heldCkpt []CheckpointChunk
 	// as is the caller of the requests do submits.
 	as Caller
 }
@@ -98,7 +102,11 @@ func (s *single) run() []Reply {
 		}
 		out = append(out, eff.Replies...)
 		s.watch = append(s.watch, eff.Watch...)
-		s.writeCheckpoint(eff.Checkpoint)
+		if s.holdCkpt {
+			s.heldCkpt = append(s.heldCkpt, eff.Checkpoint...)
+		} else {
+			s.writeCheckpoint(eff.Checkpoint)
+		}
 		if s.hold {
 			s.held = append(s.held, eff.Reads...)
 		} else {
