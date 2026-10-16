@@ -153,6 +153,11 @@ func tigerLog(dir string) (recovered, error) {
 		return recovered{}, err
 	}
 	n := recovered{commit: r.HardState.Commit, first: r.Root.Index + 1, dir: dir}
+	// An archive of every segment, as -env keeps, holds the log from its
+	// first entry, below the checkpoint too.
+	if w.Has(1) {
+		n.first = 1
+	}
 	for i := n.first; i <= r.Last; i++ {
 		e, err := w.Entry(i)
 		if err != nil {

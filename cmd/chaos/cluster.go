@@ -40,6 +40,10 @@ type cluster struct {
 	links   []*link
 	tls     *tls.Config
 	ids     [3]uint64 // member ID of each node
+	// data are the nodes' data directories, and started, if set, runs for
+	// each process the cluster starts.
+	data    [3]string
+	started func(i, pid int) error
 }
 
 // node is one tigerstore process and its restarts.
@@ -66,9 +70,15 @@ func writeFile(path string, b []byte) error {
 }
 
 // newCluster makes certificates, proxies and node arguments; start runs
-// the processes.
-func newCluster(dir, bin string, seed uint64) (*cluster, error) {
-	c := &cluster{dir: dir, bin: bin}
+// the processes. data are the nodes' data directories, under dir by
+// default, and extra goes to every node's arguments.
+func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*cluster, error) {
+	c := &cluster{dir: dir, bin: bin, data: data}
+	for i := range c.data {
+		if c.data[i] == "" {
+			c.data[i] = filepath.Join(dir, "data", fmt.Sprintf("node%d", i+1))
+		}
+	}
 	certs := filepath.Join(dir, "certs")
 	if err := os.MkdirAll(certs, 0o755); err != nil {
 		return nil, err
@@ -161,7 +171,7 @@ func newCluster(dir, bin string, seed uint64) (*cluster, error) {
 		key := filepath.Join(certs, name+"-key.pem")
 		caFile := filepath.Join(certs, "ca.pem")
 		n := &node{i: i, log: log, args: []string{
-			"--name", name, "--data-dir", filepath.Join(dir, "data", name),
+			"--name", name, "--data-dir", c.data[i],
 			"--initial-cluster", strings.Join(members, ","),
 			"--listen-peer-urls", fmt.Sprintf("https://127.0.0.1:%d", peerPort[i]),
 			"--initial-advertise-peer-urls", fmt.Sprintf("https://127.0.0.1:%d", peerPort[i]),
@@ -170,6 +180,7 @@ func newCluster(dir, bin string, seed uint64) (*cluster, error) {
 			"--cert-file", cert, "--key-file", key, "--trusted-ca-file", caFile, "--client-cert-auth",
 			"--peer-cert-file", cert, "--peer-key-file", key, "--peer-trusted-ca-file", caFile,
 		}}
+		n.args = append(n.args, extra...)
 		n.control, err = clientv3.New(clientv3.Config{
 			Endpoints: []string{fmt.Sprintf("127.0.0.1:%d", clientPort[i])}, TLS: c.tls, DialTimeout: 2 * time.Second, Logger: zap.NewNop(),
 		})
@@ -199,6 +210,11 @@ func (c *cluster) start(n *node) error {
 	cmd.Stdout, cmd.Stderr = n.log, n.log
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+	if c.started != nil {
+		if err := c.started(n.i, cmd.Process.Pid); err != nil {
+			return errors.Join(err, cmd.Process.Kill())
+		}
 	}
 	n.cmd = cmd
 	n.expecting, n.exitedNow = false, false

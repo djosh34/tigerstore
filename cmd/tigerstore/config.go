@@ -67,6 +67,12 @@ type config struct {
 type ownFlags struct {
 	DiskBudget   int64 `json:"disk-budget-bytes"`
 	MemoryBudget int64 `json:"memory-budget-bytes"`
+	// The unsafe sizes are for tests that need a follower behind the
+	// window, checkpoints and removed segments with little data, as
+	// real-process chaos does.
+	UnsafeWindow     int64 `json:"unsafe-window-bytes"`
+	UnsafeCheckpoint int64 `json:"unsafe-checkpoint-bytes"`
+	UnsafeSegment    int64 `json:"unsafe-segment-bytes"`
 }
 
 func newConfig(stderr io.Writer) *config {
@@ -92,6 +98,9 @@ func newConfig(stderr io.Writer) *config {
 	}
 	fs.Int64Var(&c.own.DiskBudget, "disk-budget-bytes", 0, "bytes of the log's files at which writes get NOSPACE; cleaning keeps them below. Leave room above it for 64 MiB of writes in flight, a 64 MiB pack and a checkpoint; below two segments (128 MiB) plus the checkpoints and live values, writes stay at NOSPACE (0 means no budget)")
 	fs.Int64Var(&c.own.MemoryBudget, "memory-budget-bytes", 0, "memory this node may use (default GOMEMLIMIT, else the cgroup's memory limit, else the host's memory)")
+	fs.Int64Var(&c.own.UnsafeWindow, "unsafe-window-bytes", 0, "for tests only: bytes of entries kept in memory for followers, twice that while one still needs them (0 means 64 MiB)")
+	fs.Int64Var(&c.own.UnsafeCheckpoint, "unsafe-checkpoint-bytes", 0, "for tests only: bytes of log after which the node cuts a checkpoint (0 means 256 MiB)")
+	fs.Int64Var(&c.own.UnsafeSegment, "unsafe-segment-bytes", 0, "for tests only: bytes after which the log starts a new segment file (0 means 64 MiB)")
 	return c
 }
 

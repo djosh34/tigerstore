@@ -1343,6 +1343,7 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 // log can.
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
 	m, from := n.cfg.Metrics, peerLabel(in.From)
+	n.logf("fetching the snapshot at %d from %d", in.Index, in.From)
 	m.SnapshotApplyInProgress.Set(1)
 	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
 	start := time.Now()
