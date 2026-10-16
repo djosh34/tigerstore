@@ -213,15 +213,14 @@ func (n *Node) SnapshotStarted(to uint64) {
 	}
 }
 
-// SnapshotSent tells the leader that a follower's fetch ended, and
-// whether it got everything.
-func (n *Node) SnapshotSent(to uint64, ok bool) {
+// SnapshotSent reports the result of serving a follower's snapshot.
+func (n *Node) SnapshotSent(to uint64, err error) {
 	if n.err != nil || !n.isLeader {
 		return
 	}
 	delete(n.snapWait, to)
 	status := raft.SnapshotFinish
-	if !ok {
+	if err != nil {
 		status = raft.SnapshotFailure
 	}
 	n.rn.ReportSnapshot(to, status)

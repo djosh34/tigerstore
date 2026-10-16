@@ -129,10 +129,10 @@ type input struct {
 	written  uint64
 	writeErr error
 	// snapshot is a follower that started (fetching) or ended (served,
-	// served ok) a snapshot fetch from this node.
-	snapshot         uint64
+	// with serveErr) a snapshot fetch from this node.
+	snapshot        uint64
 	fetching, served bool
-	servedOK         bool
+	serveErr        error
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -1187,7 +1187,7 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 	case in.fetching:
 		n.core.SnapshotStarted(in.snapshot)
 	case in.served:
-		n.core.SnapshotSent(in.snapshot, in.servedOK)
+		n.core.SnapshotSent(in.snapshot, in.serveErr)
 	}
 }
 
@@ -1741,7 +1741,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.serving--
 	n.log.mu.Unlock()
 	n.log.wake()
-	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
+	n.tell(input{snapshot: id, served: true, serveErr: err})
 	return err
 }
 

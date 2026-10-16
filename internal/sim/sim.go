@@ -792,7 +792,7 @@ func (s *Sim) handle(e *event) {
 		s.checkpointSynced(e)
 	case evSnapshotSent:
 		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
-			n.core.SnapshotSent(uint64(e.from+1), e.err == nil)
+			n.core.SnapshotSent(uint64(e.from+1), e.err)
 			s.process(n)
 		}
 	case evRecoveryDue:
