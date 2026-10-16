@@ -126,8 +126,19 @@ func TestRangeReplyMemoryTimeoutAndOversize(t *testing.T) {
 		t.Fatalf("timed-out range retained %d bytes", s.n.replyBytes)
 	}
 
+	// With no other answer out, a read goes even when the index and the
+	// entries fill the budget.
 	s.n.cfg.MemoryBytes = s.n.kv.Bytes() + s.n.EntryBytes() + 1
 	s.n.Submit(Request{ID: 1001, Compact: true, Op: &pb.RangeRequest{Key: []byte("a"), Serializable: true}})
+	got = s.run()
+	if len(got) != 1 || got[0].Err != nil || got[0].Held == 0 || s.n.replyBytes != got[0].Held {
+		t.Fatalf("range with a full index: %+v, held=%d", got, s.n.replyBytes)
+	}
+	s.n.ReleaseReplyBytes(got[0].Held)
+
+	// Only an answer larger than the whole budget is refused.
+	s.n.cfg.MemoryBytes = 1
+	s.n.Submit(Request{ID: 1002, Compact: true, Op: &pb.RangeRequest{Key: []byte("a"), Serializable: true}})
 	got = s.run()
 	if len(got) != 1 || status.Code(got[0].Err) != codes.ResourceExhausted || s.n.replyBytes != 0 {
 		t.Fatalf("oversized range: %+v, held=%d", got, s.n.replyBytes)

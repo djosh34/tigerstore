@@ -23,11 +23,14 @@ func (n *Node) reserveReply(bytes int64) error {
 	if n.cfg.MemoryBytes <= 0 {
 		return nil
 	}
-	available := max(n.cfg.MemoryBytes-n.kv.Bytes()-n.EntryBytes(), 0)
-	if bytes > available {
+	if bytes > n.cfg.MemoryBytes {
 		return status.Error(codes.ResourceExhausted, "tigerstore: Range answer exceeds the memory budget; use a smaller limit")
 	}
-	if bytes > available-n.replyBytes {
+	// An answer waits only for other answers to go out. With none out,
+	// it goes even when the index and the entries leave less room, so
+	// that a full index does not refuse every read.
+	available := n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes()
+	if n.replyBytes > 0 && bytes > available-n.replyBytes {
 		return errReplyBusy
 	}
 	n.replyBytes += bytes
