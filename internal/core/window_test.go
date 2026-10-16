@@ -483,6 +483,10 @@ func TestInstallKeepsHeldEntries(t *testing.T) {
 	}
 	write(30, true)
 	ckpt := src.n.DurableCheckpoint()
+	// Compaction may cut at the last entry, especially before alarm
+	// support. Build the held tail explicitly without another checkpoint.
+	src.n.cfg.CheckpointBytes = 1 << 30
+	write(1, false)
 	held := src.n.Applied()
 	follower := src.disk.Durable()
 	write(1, false)
