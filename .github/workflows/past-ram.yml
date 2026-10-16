@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Capacity outcome regressions
+        run: python3 -B -m unittest discover -s scripts -p 'test_past_ram.py' -v
       - name: Format new Go files on the runner
         run: |
           gofmt -w cmd/pastram internal/k8ssize internal/sim/sim.go internal/sim/past_ram_test.go internal/core/past_ram_test.go internal/node/past_ram_test.go internal/node/clean_sim_test.go internal/node/node.go internal/node/clean.go
@@ -214,6 +216,20 @@ jobs:
       - name: Run under per-member cgroup limits
         run: |
           sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --preload-bytes '${{ matrix.preload || 0 }}' --seconds '${{ matrix.seconds || 180 }}' --out "$RUNNER_TEMP/past-ram"
+      - name: Report measured outcome
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/past-ram/summary.json
+        run: |
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path(os.environ['REPORT']).read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Past-RAM outcome\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
+              if report['outcome'] == 'reference-preload-limit':
+                  summary.write('\nEtcd could not reach the requested population. No mixed-load comparison or checker pass is claimed.\n')
+          PY
       - name: Copy evidence without database files
         if: always()
         run: |

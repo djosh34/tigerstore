@@ -28,6 +28,40 @@ def metrics(port):
     return result
 
 
+def classify(result, progress):
+    """Keep test failures distinct from measured, cgroup-confirmed limits."""
+    result["outcome"] = "failed" if result["failure"] else "passed"
+    if not result["failure"] or result.get("censored"):
+        return
+    groups = result.get("final_cgroups", [])
+    ack = result.get("last_acknowledged", {})
+    if (len(groups) != 3 or not any(g["events"]["oom_kill"] for g in groups)
+            or ack.get("objects", 0) <= 0 or ack.get("live_bytes", 0) <= 0
+            or ack.get("phase") != "preload" or result["kills"]
+            or "mixed_start" in result or "checker_exit" in result):
+        return
+    # An unrelated driver/setup/checker error must not be hidden by an OOM.
+    failure = result["failure"]
+    if failure != "a member was OOM-killed":
+        if failure != "driver exited 1; see progress.jsonl and driver.log" or not progress:
+            return
+        last = progress[-1]
+        if (last["phase"] != "preload-failed"
+                or not last.get("failure", "").startswith("rpc error: code = Unavailable desc = ")):
+            return
+    if any(row["phase"] not in ("preload", "preload-failed") for row in progress):
+        return
+    if result["mode"] == "max":
+        outcome = "capacity-limit"
+    elif (result["kind"] == "etcd" and result["mode"] == "proof"
+          and result["preload_bytes"] == 0
+          and ack["live_bytes"] < result["memory"] * 31 // 10):
+        outcome = "reference-preload-limit"
+    else:
+        return
+    result.update(outcome=outcome, limit="cgroup-oom", termination=failure, failure=None)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", required=True)
@@ -190,13 +224,17 @@ def main():
                                     "cpu": fields(cg / "cpu.stat")} for cg in groups]
         for log in logs:
             log.close()
-        (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
-        summary = {"failure": result["failure"], "kills": result["kills"],
-                   "oom_kills": [s["events"]["oom_kill"] for s in result["final_cgroups"]],
-                   "peak_bytes": [s["peak"] for s in result["final_cgroups"]]}
+        progress = []
         if (out / "progress.jsonl").exists():
             progress = [json.loads(line) for line in (out / "progress.jsonl").read_text().splitlines()]
-            summary["phases"] = [row for row in progress if row["phase"] != "preload"]
+        classify(result, progress)
+        (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+        summary = {"outcome": result["outcome"], "limit": result.get("limit"),
+                   "termination": result.get("termination"),
+                   "failure": result["failure"], "kills": result["kills"],
+                   "oom_kills": [s["events"]["oom_kill"] for s in result["final_cgroups"]],
+                   "peak_bytes": [s["peak"] for s in result["final_cgroups"]]}
+        summary["phases"] = [row for row in progress if row["phase"] != "preload"]
         if "last_acknowledged" in result:
             summary["last_acknowledged"] = result["last_acknowledged"]
         if samples and samples[-1].get("last_acknowledged", {}).get("objects", 0):

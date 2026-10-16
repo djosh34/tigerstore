@@ -447,13 +447,21 @@ jobs:
           name: difffuzz-mismatch-${{ strategy.job-index }}
           path: difftest/testdata/fuzz/
 
+  # Storage recovery and all three mutation controls run on every PR.
+  # Main, nightly and manual runs also measure the past-RAM population
+  # and capacity boundaries under separate per-member cgroups.
+  past-ram:
+    uses: ./.github/workflows/past-ram.yml
+    with:
+      capacity: ${{ github.event_name != 'pull_request' }}
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded. On a pull
   # request the jobs of main and the nightly run are skipped by their own
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
