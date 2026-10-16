@@ -4,9 +4,9 @@
 # and 12379, peers to ports 2380, 22380 and 12380; OFFSET adds to every
 # port. With OFFSET up to 2000 every port stays below Linux's ephemeral
 # range (32768 on), where another process's outgoing connection can take
-# a port after it was checked free and before the node binds it (#184). Data goes to ./data/node1..3, logs to ./data/node1..3.log. Each
-# node may use MEMORY_BUDGET bytes (default a quarter of the host's
-# memory). Arguments are passed to every node as extra flags, with
+# a port after it was checked free and before the node binds it (#184).
+# Data goes to ./data/node1..3, logs to ./data/node1..3.log. Each node
+# may use MEMORY_BUDGET bytes (default a quarter of the host's memory). Arguments are passed to every node as extra flags, with
 # @CLIENT@ replaced by the node's client port and @METRICS@ by that port
 # plus 2.
 # Stop it with: kill $(cat data/*.pid)

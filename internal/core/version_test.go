@@ -19,46 +19,57 @@ import (
 func TestAnnounceRaisesVersionOnce(t *testing.T) {
 	st := NewState(2, &mvcc.Heap{})
 	voters := []uint64{1, 2, 3}
-	// Each announcement applies at index i+1 and was proposed after index
-	// i applied, but for the late one.
 	for i, step := range []struct {
 		id      uint64
 		v, want uint32
-		late    bool
+		run     uint64
 	}{
-		{1, 2, 1, false}, {2, 2, 1, false}, // node 3 has not announced
-		{3, 1, 1, false},                   // node 3 is older
-		{2, 1, 1, false}, {3, 2, 1, false}, // node 2 rolls back before node 3 upgrades
-		{2, 2, 1, true},                    // node 2's announcement from before the rollback arrives late (#174)
-		{4, 3, 1, false},                   // not a voter
-		{2, 2, 2, false},                   // every voter supports 2
-		{3, 1, 2, false}, {1, 3, 2, false}, // never goes down
+		{1, 2, 1, 1}, {2, 2, 1, 1}, // node 3 has not announced
+		{3, 1, 1, 1},               // node 3 is older
+		{2, 1, 1, 2}, {3, 2, 1, 2}, // node 2 rolls back before node 3 upgrades
+		{2, 2, 1, 1},               // node 2's announcement of run 1 arrives late (#174)
+		{4, 3, 1, 1},               // not a voter
+		{2, 2, 2, 3},               // node 2 upgrades again: every voter supports 2
+		{3, 1, 2, 3}, {1, 3, 2, 2}, // never goes down
 	} {
-		index, base := uint64(i+1), uint64(i)
-		if step.late {
-			base = 1
-		}
-		st.announce(step.id, step.v, base, true, index, voters)
+		st.announce(step.id, step.v, step.run, true, voters)
 		if st.version != step.want {
 			t.Fatalf("step %d: node %d announced %d, version %d, want %d", i, step.id, step.v, st.version, step.want)
 		}
 	}
 }
 
-func TestAnnouncementBase(t *testing.T) {
+// TestLateAnnouncementAppliesFirst is #174's other order: node 2's
+// announcement of version 2 from run 1 arrives late but applies before
+// that of its rollback to version 1 in run 2. The rollback still counts,
+// and node 3's upgrade does not activate version 2.
+func TestLateAnnouncementAppliesFirst(t *testing.T) {
+	st := NewState(2, &mvcc.Heap{})
+	voters := []uint64{1, 2, 3}
+	st.announce(1, 2, 1, true, voters)
+	st.announce(3, 1, 1, true, voters)
+	st.announce(2, 2, 1, true, voters) // run 1, late
+	st.announce(2, 1, 2, true, voters) // run 2, the rollback
+	st.announce(3, 2, 2, true, voters)
+	if st.version != 1 || st.supports[2] != 1 {
+		t.Fatalf("version %d, node 2 supports %d; want 1 and 1", st.version, st.supports[2])
+	}
+}
+
+func TestAnnouncementRun(t *testing.T) {
 	b, err := proto.Marshal(announcement(3, 1234))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, base, has, err := parseAnnouncement(b); err != nil || v != 3 || base != 1234 || !has {
-		t.Fatalf("got %d, %d, %v, %v", v, base, has, err)
+	if v, run, has, err := parseAnnouncement(b); err != nil || v != 3 || run != 1234 || !has {
+		t.Fatalf("got %d, %d, %v, %v", v, run, has, err)
 	}
 	// A build before the base reads the version alone.
 	var old wrapperspb.UInt32Value
 	if err := proto.Unmarshal(b, &old); err != nil || old.Value != 3 {
 		t.Fatalf("plain message: %v, %v", old.Value, err)
 	}
-	// And this one reads its announcements without a base.
+	// And this one reads its announcements without a run.
 	plain, err := proto.Marshal(wrapperspb.UInt32(2))
 	if err != nil {
 		t.Fatal(err)
@@ -68,9 +79,9 @@ func TestAnnouncementBase(t *testing.T) {
 	}
 }
 
-// TestLegacyAnnouncements replays announcements without a base, from a
+// TestLegacyAnnouncements replays announcements without a run, from a
 // build before #174: each counts, as it did there, so versions rise and a
-// rollback holds the cluster back; a later one with a base still works.
+// rollback holds the cluster back; a later one with a run still works.
 func TestLegacyAnnouncements(t *testing.T) {
 	st := NewState(2, &mvcc.Heap{})
 	voters := []uint64{1, 2, 3}
@@ -83,7 +94,7 @@ func TestLegacyAnnouncements(t *testing.T) {
 		{2, 1, 1, true}, {3, 2, 1, true}, // node 2 rolls back
 		{2, 2, 2, false}, // node 2 upgrades again with a new build
 	} {
-		st.announce(step.id, step.v, uint64(i), !step.legacy, uint64(i+1), voters)
+		st.announce(step.id, step.v, 1, !step.legacy, voters)
 		if st.version != step.want {
 			t.Fatalf("step %d: version %d, want %d", i, st.version, step.want)
 		}

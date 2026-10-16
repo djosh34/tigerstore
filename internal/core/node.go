@@ -64,8 +64,10 @@ type Config struct {
 	ClusterID uint64
 	// Boot tells this run of the node apart from earlier runs, so that a
 	// request from before a restart never matches one after it. The driver
-	// takes it from its randomness adapter.
-	Boot uint64
+	// takes it from its randomness adapter. Run orders the runs: it is
+	// higher than that of every earlier run of the node, and the driver
+	// keeps it on disk (version.go).
+	Boot, Run uint64
 
 	// ElectionTicks and HeartbeatTicks are the Raft timeouts in ticks.
 	ElectionTicks, HeartbeatTicks int
@@ -1759,7 +1761,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	case kindVersion:
 		n.timed.op = "VersionAnnounce"
-		return n.applyVersion(origin, e.GetIndex(), b)
+		return n.applyVersion(origin, b)
 	}
 	op, err := newOp(kind)
 	if err != nil {

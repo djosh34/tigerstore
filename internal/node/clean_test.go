@@ -257,7 +257,9 @@ func TestNoSpace(t *testing.T) {
 	// replaces on disk, and a checkpoint may be on its way (#181). Once
 	// the pass removes them, the files must be near the budget.
 	for deadline := time.Now().Add(10 * time.Second); ; {
-		m, err := r.n.Metrics(ctx)
+		mctx, mcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		m, err := r.n.Metrics(mctx)
+		mcancel()
 		if err != nil {
 			t.Fatal(err)
 		}

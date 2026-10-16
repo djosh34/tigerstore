@@ -76,25 +76,24 @@ func tooOld(cluster, own uint32) error {
 }
 
 // An announcement is a wrapperspb.UInt32Value with the version, and in
-// field 2 the applied index of the node that proposed it, which a parser
-// of the plain message keeps as an unknown field. A run's announcement can
-// reach the leader late, after the node restarted with another binary and
-// announced again; base tells it apart: it is below the index at which
-// the newer announcement applied, which the node had not seen (#174).
-const announceBaseField = 2
+// field 2 the number of the run of the node that proposed it (Config.Run),
+// which a parser of the plain message keeps as an unknown field. A run's
+// announcement can reach the leader late, after the node restarted with
+// another binary and announced again, and apply before or after the newer
+// one; the run number tells them apart (#174).
+const announceRunField = 2
 
-// announcement is the announcement of version v, proposed at applied
-// index base.
-func announcement(v uint32, base uint64) *wrapperspb.UInt32Value {
+// announcement is the announcement of version v by run run.
+func announcement(v uint32, run uint64) *wrapperspb.UInt32Value {
 	m := wrapperspb.UInt32(v)
-	b := protowire.AppendTag(nil, announceBaseField, protowire.VarintType)
-	m.ProtoReflect().SetUnknown(protowire.AppendVarint(b, base))
+	b := protowire.AppendTag(nil, announceRunField, protowire.VarintType)
+	m.ProtoReflect().SetUnknown(protowire.AppendVarint(b, run))
 	return m
 }
 
-// parseAnnouncement returns the version and base of an announcement, and
-// whether it has a base: one from a build before #174 has none.
-func parseAnnouncement(b []byte) (v uint32, base uint64, hasBase bool, err error) {
+// parseAnnouncement returns the version and run of an announcement, and
+// whether it has a run: one from a build before #174 has none.
+func parseAnnouncement(b []byte) (v uint32, run uint64, hasRun bool, err error) {
 	var m wrapperspb.UInt32Value
 	if err := proto.Unmarshal(b, &m); err != nil {
 		return 0, 0, false, fmt.Errorf("%w: %w", errBadBatch, err)
@@ -105,12 +104,12 @@ func parseAnnouncement(b []byte) (v uint32, base uint64, hasBase bool, err error
 			return 0, 0, false, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
 		}
 		u = u[n:]
-		if num == announceBaseField && typ == protowire.VarintType {
+		if num == announceRunField && typ == protowire.VarintType {
 			x, n := protowire.ConsumeVarint(u)
 			if n < 0 {
 				return 0, 0, false, fmt.Errorf("%w: announcement: %w", errBadBatch, protowire.ParseError(n))
 			}
-			base, hasBase, u = x, true, u[n:]
+			run, hasRun, u = x, true, u[n:]
 			continue
 		}
 		n = protowire.ConsumeFieldValue(num, typ, u)
@@ -119,21 +118,23 @@ func parseAnnouncement(b []byte) (v uint32, base uint64, hasBase bool, err error
 		}
 		u = u[n:]
 	}
-	return m.Value, base, hasBase, nil
+	return m.Value, run, hasRun, nil
 }
 
 // announce records the newest version a voter supports, from an
-// announcement proposed at applied index base that applies at index, and
-// raises the cluster version to the lowest version of all voters, once
-// each has announced one. An announcement proposed before the voter's
-// current one applied is from before it, maybe from an earlier run, and
-// changes nothing. One without a base, from a build before #174, always
-// counts, as it did there.
-func (st *State) announce(id uint64, v uint32, base uint64, hasBase bool, index uint64, voters []uint64) {
-	if !slices.Contains(voters, id) || hasBase && base < st.announced[id] {
+// announcement by its run run, and raises the cluster version to the
+// lowest version of all voters, once each has announced one. One from an
+// earlier run than the voter's current announcement changes nothing,
+// whenever it applies. One without a run, from a build before #174,
+// always counts, as it did there.
+func (st *State) announce(id uint64, v uint32, run uint64, hasRun bool, voters []uint64) {
+	if !slices.Contains(voters, id) || hasRun && run < st.runs[id] {
 		return
 	}
-	st.supports[id], st.announced[id] = v, index
+	st.supports[id] = v
+	if hasRun {
+		st.runs[id] = run
+	}
 	low := v
 	for _, voter := range voters {
 		s, ok := st.supports[voter]
@@ -151,14 +152,14 @@ func ownVersion(cfg Config) uint32 { return cmp.Or(cfg.MaxVersion, MaxVersion) }
 // ActiveVersion is the cluster version this node has applied.
 func (n *Node) ActiveVersion() uint32 { return n.state.version }
 
-// applyVersion applies a node's announcement at index. A node whose
-// binary is older than the version it makes active stops.
-func (n *Node) applyVersion(origin, index uint64, b []byte) error {
-	v, base, hasBase, err := parseAnnouncement(b)
+// applyVersion applies a node's announcement. A node whose binary is
+// older than the version it makes active stops.
+func (n *Node) applyVersion(origin uint64, b []byte) error {
+	v, run, hasRun, err := parseAnnouncement(b)
 	if err != nil {
 		return err
 	}
-	n.state.announce(origin, v, base, hasBase, index, n.state.voters())
+	n.state.announce(origin, v, run, hasRun, n.state.voters())
 	if n.state.version > ownVersion(n.cfg) {
 		return tooOld(n.state.version, ownVersion(n.cfg))
 	}
@@ -177,5 +178,5 @@ func (n *Node) announceVersion() {
 		return
 	}
 	n.announcedAt = n.now
-	n.proposeInternal(announcement(own, n.applied))
+	n.proposeInternal(announcement(own, n.cfg.Run))
 }

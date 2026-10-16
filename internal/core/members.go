@@ -201,7 +201,7 @@ func (st *State) applyMembers(op byte, m *pb.Member) {
 	case confRemove:
 		delete(st.members, m.ID)
 		delete(st.supports, m.ID)
-		delete(st.announced, m.ID)
+		delete(st.runs, m.ID)
 		st.removed[m.ID] = true
 	case confUpdate:
 		st.members[m.ID].PeerURLs = m.PeerURLs

@@ -384,6 +384,8 @@ type node struct {
 	replaceFrom uint64
 	// recoverFloor is how far recovery must reach after the last crash.
 	recoverFloor uint64
+	// runs counts the node's starts (core.Config.Run).
+	runs uint64
 	// ckptFile is the checkpoint being written, at ckptIndex; root is the
 	// index of the newest synced root, and roots are the synced roots
 	// whose checkpoint files are on disk, for the snapshots it serves.
@@ -891,7 +893,10 @@ func (s *Sim) start(n *node) error {
 		// where any damage is detectable.
 		w.SetSegmentBytes(8 << 10)
 		cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
-		cfg.Boot = s.rng.Uint64()
+		// The run number lives with the node, as the real node keeps it on
+		// a disk that survives what the simulator does to the log.
+		n.runs++
+		cfg.Boot, cfg.Run = s.rng.Uint64(), n.runs
 		// Progress notifications every 2 s instead of 10 minutes, so runs
 		// see them.
 		cfg.ProgressTicks = 20

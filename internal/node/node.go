@@ -566,8 +566,12 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
+	run, err := nextRun(n.log.fs)
+	if err != nil {
+		return err
+	}
 	cfg := n.cfg.Core
-	cfg.Boot = rand.Uint64()
+	cfg.Boot, cfg.Run = rand.Uint64(), run
 	cfg.ConnectedTicks = n.connectedTicks
 	cfg.Timer = newTimer(n.cfg.Metrics, cmp.Or(n.cfg.WarningApplyDuration, warningApply), n.logf)
 	c, err := core.New(cfg, rec, n.log)
