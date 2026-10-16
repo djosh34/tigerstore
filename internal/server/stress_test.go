@@ -92,8 +92,9 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 	t.Logf("%d puts of %d bytes in %v", puts.Load(), len(value), duration)
 	// The margins under the limits (#88): the longest put, the longest a
 	// leader's append waited to commit, and the longest write and sync of
-	// the log, per node. The commit wait is counted in whole ticks from
-	// the tick of the append, so 1 tick means within one tick.
+	// the log, per node. The commit wait counts ticks from the tick of the
+	// append to the tick that sees its commit, so N ticks is a wait of
+	// more than N-2 and at most N ticks.
 	for id := uint64(1); id <= 3; id++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		m, err := c.nodes[id].Metrics(ctx)
