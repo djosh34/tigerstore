@@ -214,7 +214,13 @@ func (n *Node) SnapshotStarted(to uint64) {
 }
 
 // SnapshotSent reports the result of serving a follower's snapshot.
+// Local log corruption stops the sender even if it has lost leadership.
+// Other failures let Raft retry the fetch.
 func (n *Node) SnapshotSent(to uint64, err error) {
+	if errors.Is(err, wal.ErrCorrupt) {
+		n.fail(err)
+		return
+	}
 	if n.err != nil || !n.isLeader {
 		return
 	}
