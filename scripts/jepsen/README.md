@@ -1,31 +1,34 @@
-# Jepsen and etcd robustness prework for #148
+# Jepsen and etcd robustness for #148
 
 Run `.github/workflows/jepsen.yml` on a GitHub runner. These scripts refuse to
 run outside Actions. No product code changes are included.
 
 ```sh
-gh workflow run jepsen.yml --repo djosh34/tigerstore --ref prep/148-jepsen \
-  -f suite=all -f product_sha=<main-commit>
+gh workflow run jepsen.yml --repo djosh34/tigerstore --ref main -f suite=all
 ```
 
-The workflow builds the specified product commit, not the workflow branch's
-server code. The default is main at the final matrix launch,
-`e6c654e8253674f972d4227aea157fa907102363`. The initial probes used
-`40e7c0a009a08d6ba80f369dd2e66c9735512dbb`. Every job has its own fresh three-node
-cluster and uploads logs and histories even when it fails. Choose `jepsen` or
+The workflow builds its own commit unless `product_sha` explicitly selects
+another commit. The nightly run tests current main. The original prework ran
+on `e6c654e8253674f972d4227aea157fa907102363`; those results do not certify a
+later commit. Every job has its own fresh three-node cluster and uploads logs
+and histories even when it fails. Choose `jepsen` or
 `robustness` to run only that suite, or `tools` for the parser regressions.
 To repeat one Jepsen case, pass `-f workloads='["register"]'` and
-`-f nemeses='["lazyfs"]'`. Set `-f stores='["tigerstore"]'` to omit controls.
-Omitted arrays use the full matrix. A partial run is not evidence for omitted cases.
+`-f nemeses='["lazyfs"]'`. Set `-f stores='["etcd","tigerstore"]'` to add
+controls. Omitted arrays use the required tigerstore matrix. A partial run is
+not evidence for omitted cases.
 
 ## Jepsen
 
-The seven active upstream workloads each run with kill, pause, partition, and
-kill with LazyFS. Each case also runs against stock etcd v3.7.2. The `none`
-workload is a no-op and upstream disables the old `lock` workload. `lock-set`
-is included even though upstream excludes it from its expected-to-pass list.
-It protects an in-memory set with expiring leases and has no fencing. Its
-failure under faults is not by itself a tigerstore defect.
+The six expected-to-pass upstream workloads each run with kill, pause,
+partition, and kill with LazyFS. This is the 24-case scope in the
+[manager's decision](https://github.com/djosh34/tigerstore/issues/148#issuecomment-6221843602).
+The `none` workload is a no-op and upstream disables the old `lock` workload.
+The unfenced `lock-set` workload remains available through `workloads`, but
+upstream excludes it from its expected-to-pass list. It protects an in-memory
+set with expiring leases and has no fencing. The four prework failures remain
+failures, not waived passes. An explicit `lock-set` run still fails on an
+invalid or unknown verdict. Stock etcd controls remain available too.
 
 Each run uses six clients, 30 operations per second, 90 seconds of traffic,
 a five-second nemesis interval and 50 operations per independent key. The

@@ -1,5 +1,7 @@
 name: Jepsen and upstream robustness
 on:
+  schedule:
+    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
       suite:
@@ -8,20 +10,20 @@ on:
         default: all
       workloads:
         description: Jepsen workload array as JSON
-        default: '["append","lock-set","lock-etcd-set","set","register","watch","wr"]'
+        default: '["append","lock-etcd-set","set","register","watch","wr"]'
       nemeses:
         description: Jepsen nemesis array as JSON
         default: '["kill","pause","partition","lazyfs"]'
       stores:
         description: Products as JSON
-        default: '["etcd","tigerstore"]'
+        default: '["tigerstore"]'
       product_sha:
-        description: Main commit to test, blank uses the pinned prework baseline
-        default: 'e6c654e8253674f972d4227aea157fa907102363'
+        description: Product commit to test, blank uses the workflow commit
+        default: ''
 permissions:
   contents: read
 env:
-  PRODUCT_SHA: ${{ inputs.product_sha || 'e6c654e8253674f972d4227aea157fa907102363' }}
+  PRODUCT_SHA: ${{ inputs.product_sha || github.sha }}
 jobs:
   tools:
     runs-on: ubuntu-24.04
@@ -35,16 +37,16 @@ jobs:
           pip install edn_format==0.7.5
           python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
   jepsen:
-    if: inputs.suite == 'all' || inputs.suite == 'jepsen'
+    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'jepsen'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
-        workload: ${{ fromJSON(inputs.workloads) }}
-        nemesis: ${{ fromJSON(inputs.nemeses) }}
-        store: ${{ fromJSON(inputs.stores) }}
+        workload: ${{ fromJSON(inputs.workloads || '["append","lock-etcd-set","set","register","watch","wr"]') }}
+        nemesis: ${{ fromJSON(inputs.nemeses || '["kill","pause","partition","lazyfs"]') }}
+        store: ${{ fromJSON(inputs.stores || '["tigerstore"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,7 +73,7 @@ jobs:
           path: results/jepsen
           retention-days: 30
   robustness:
-    if: inputs.suite == 'all' || inputs.suite == 'robustness'
+    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'robustness'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -79,7 +81,7 @@ jobs:
       max-parallel: 4
       matrix:
         traffic: [etcd-put-delete-lease, etcd-put, etcd-delete, kubernetes, kubernetes-create-delete]
-        store: ${{ fromJSON(inputs.stores) }}
+        store: ${{ fromJSON(inputs.stores || '["tigerstore"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
