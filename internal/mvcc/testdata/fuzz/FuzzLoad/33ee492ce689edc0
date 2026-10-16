@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("\r\r\r000000000000")
+int64(27)
+int64(30)
