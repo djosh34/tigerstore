@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
 )
@@ -27,9 +26,11 @@ func TestRangeReplyReservationLifetime(t *testing.T) {
 			st := testCall(c, 1)
 			var freed atomic.Int64
 			hold := node.NewReplyHold(reserved, func(n int64) { freed.Add(n) })
-			cp := node.Completion{Tag: st, Hold: hold, Reply: core.Reply{
+			cp := node.Completion{
+				Tag:   st,
+				Hold:  hold,
 				Range: mvcc.RangeResult{KVs: []mvcc.KV{{Key: []byte("k"), Value: make([]byte, 128<<10)}}, Bytes: 1 + 128<<10},
-			}}
+			}
 			switch phase {
 			case "deadline before completion":
 				st.expire()
