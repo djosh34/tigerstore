@@ -88,7 +88,7 @@ func TestMembershipChangesMatchRaft(t *testing.T) {
 				t.Fatalf("run %d step %d: raft refuses %v of %d on %v after the checks (%v): %v", run, step, typ, id, before, err, rerr)
 			}
 			if err == nil {
-				st.applyMembers(op, m)
+				st.applyMembers(op, m, 1)
 				if op == confAdd {
 					next = max(next, m.ID+1)
 				}

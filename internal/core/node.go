@@ -431,6 +431,11 @@ type Node struct {
 	leaseSeq     uint64
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
+	// confMessages wait for Raft to apply the preceding configuration
+	// change. confGate is its index, or MaxUint64 until it reaches apply.
+	confMessages []*raftpb.Message
+	confGate     uint64
+	confTerm     uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -809,6 +814,10 @@ func (n *Node) retryReads(now bool) {
 func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
+	}
+	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
+		n.confMessages = append(n.confMessages, m)
+		return nil
 	}
 	if n.noSpace && m.GetType() == raftpb.MsgProp {
 		// Writes a follower forwards. Past its budget, the leader refuses
@@ -1434,6 +1443,7 @@ func (n *Node) Process() (Effects, error) {
 			n.propose()
 		}
 		n.proposeConfs()
+		n.proposeConfMessages()
 		// Apply messages left behind by a snapshot install.
 		n.runApply()
 		n.requestReads()
@@ -1477,6 +1487,7 @@ func (n *Node) stop() {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
 	n.tokenWaits = nil
+	n.confMessages = nil
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
@@ -1822,7 +1833,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	case kindVersion:
 		n.timed.op = "VersionAnnounce"
-		return n.applyVersion(origin, b)
+		return n.applyVersion(e.GetIndex(), origin, b)
 	}
 	op, err := newOp(kind)
 	if err != nil {
@@ -1927,11 +1938,12 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
-		// Under a NOSPACE alarm, which every member has applied too, a
-		// compaction cuts a checkpoint, so that cleaning can drop the
-		// values it freed; the size rule may not cut one for long, as
-		// little new data comes in (#167).
-		n.cutNow = n.cutNow || n.state.noSpace
+		// A compaction under NOSPACE cuts a checkpoint so cleaning can
+		// drop the freed values (#167). Before alarms are supported,
+		// local disk pressure can already refuse writes, so compacting
+		// must also cut without an alarm (#213). Both conditions come
+		// from replicated state; every member cuts at the same entry.
+		n.cutNow = n.cutNow || n.state.noSpace || !n.capable()
 	}
 	switch op := op.(type) {
 	case *pb.LeaseGrantRequest:
