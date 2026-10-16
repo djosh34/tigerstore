@@ -1242,13 +1242,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
-	// report runs on the sync goroutine, or here after drain. Rotation,
-	// snapshot installation and cleaning wait for it before changing
-	// the segment or the roots it reads in afterSync.
+	// report runs on the sync goroutine. Rotation, snapshot installation
+	// and cleaning wait for it before changing the segment or the roots
+	// it reads in afterSync.
 	report := func(g written, err error) error {
-		if g.timing.reporting.IsZero() {
-			g.timing.reporting = time.Now()
-		}
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
@@ -1386,31 +1383,35 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			fail(err)
 			return
 		}
-		mustSync := slices.ContainsFunc(jobs, core.PersistJob.MustSync)
-		if !w.Full() {
-			if mustSync {
-				g.f = w.Segment()
-			}
-			toSync <- g
-			inFlight++
+		full := w.Full()
+		if full || slices.ContainsFunc(jobs, core.PersistJob.MustSync) {
+			g.f = w.Segment()
+		}
+		toSync <- g
+		inFlight++
+		if !full {
 			continue
 		}
-		// The segment is full: once the groups in flight are synced, Sync
-		// syncs this one and starts the next segment.
+		// Report the full segment's durable appends before starting the
+		// next one. Its header and directory syncs do not make these
+		// appends any more durable, and may block for a long time.
 		if !drain() {
 			return
 		}
 		syncStart := time.Now()
-		g.timing.syncQueue = syncStart.Sub(g.flushed)
 		err = w.Sync()
 		syncTime := time.Since(syncStart)
-		g.timing.rotation = syncTime
-		g.timing.reporting = syncStart.Add(syncTime)
 		m.WALFsync.Observe(syncTime.Seconds())
 		if syncTime > n.cfg.Tick {
-			n.logf("slow log rotation: %v", syncTime)
+			n.logf("slow log rotation: %v start=%s end=%s", syncTime,
+				syncStart.UTC().Format(time.RFC3339Nano), syncStart.Add(syncTime).UTC().Format(time.RFC3339Nano))
 		}
-		if report(g, err) != nil {
+		if err == nil {
+			// Rotation sealed a segment after the last durable report.
+			err = n.afterSync(nil)
+		}
+		if err != nil {
+			fail(err)
 			return
 		}
 	}

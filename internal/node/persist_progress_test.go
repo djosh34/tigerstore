@@ -128,6 +128,14 @@ func TestPersistReportsSyncDuringNextWrite(t *testing.T) {
 			if len(done.jobs) != 1 || len(done.jobs[0].Entries) != 1 || done.jobs[0].Entries[0].GetIndex() != index {
 				t.Fatalf("persist response = %+v, want entry %d", done, index)
 			}
+			p := done.timing
+			if p.queued.IsZero() || p.reporting.IsZero() {
+				t.Fatal("persist report lost its timing")
+			}
+			stages := p.queue + p.append + p.flush + p.syncQueue + p.sync
+			if stages != p.reporting.Sub(p.queued) {
+				t.Fatalf("persist stages total %v, want %v", stages, p.reporting.Sub(p.queued))
+			}
 		case <-ctx.Done():
 			t.Fatalf("durable entry %d waited behind the next write", index)
 		}
