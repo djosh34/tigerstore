@@ -86,7 +86,7 @@ docker exec tigerstore-control-plane cat /etc/kubernetes/manifests/kube-apiserve
 docker exec tigerstore-control-plane test ! -e /etc/kubernetes/manifests/etcd.yaml
 kubectl create configmap external-store-proof --from-literal=store="$store"
 for endpoint in ${ETCDCTL_ENDPOINTS//,/ }; do
-  etcdctl --endpoints "$endpoint" get /registry/configmaps/default/external-store-proof --count-only -w json | jq -e '.count == 1'
+  ETCDCTL_ENDPOINTS="$endpoint" etcdctl get /registry/configmaps/default/external-store-proof --count-only -w json | jq -e '.count == 1'
 done
 kubectl delete configmap external-store-proof
 {

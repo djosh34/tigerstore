@@ -68,9 +68,9 @@ def run(root, result):
 
     def keys(endpoint, prefix):
         output = subprocess.check_output([
-            "etcdctl", "--endpoints", endpoint, "get", prefix,
+            "etcdctl", "get", prefix,
             "--prefix", "--keys-only", "--consistency=l", "-w", "json",
-        ], timeout=60)
+        ], timeout=60, env={**os.environ, "ETCDCTL_ENDPOINTS": endpoint})
         data = json.loads(output)
         return {base64.b64decode(kv["key"]).decode() for kv in data.get("kvs", [])}
 
