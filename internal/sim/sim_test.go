@@ -521,3 +521,24 @@ func TestAmbiguousWritesInTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestWitnessGaps runs seeds 1789179577 and 1789179677, whose first
+// revisions no acked write holds: revisions 16 to 30 of the first all
+// came from ambiguous writes, and only later reads show which. The
+// log-free witness check searched for an order of them for longer than a
+// minute until it used what the reads show of each key's life: created
+// at one revision, last written at another, with a version (#197). A
+// change to the simulator's random draws can move these seeds off that
+// edge; the test then passes without testing it.
+func TestWitnessGaps(t *testing.T) {
+	for _, seed := range []uint64{1789179577, 1789179677} {
+		res := run(t, DefaultConfig(seed))
+		h, err := res.Checkable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := check.Witnessed(h, check.FromRevisions, time.Minute); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+	}
+}

@@ -27,7 +27,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, resolved: map[int64]int{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		lb: map[int]int64{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
 	}
 	if err := r.index(); err != nil {
 		return err
@@ -51,11 +51,19 @@ type revisionOrder struct {
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
 	lb        map[int]int64
-	// resolved are the ambiguous ops that a client saw write a revision.
+	// resolved are the ambiguous ops that a client saw write a revision,
+	// and reserved the same by op: no other revision's candidate.
 	resolved map[int64]int
+	reserved map[int]int64
 	// covered are, per key, the revisions at which a client saw it
 	// unchanged.
 	covered map[string][]span
+	// lives are, per key, the lives clients saw it in: created at c, last
+	// written at m with version v, still so at r. created, written and
+	// deleted list, per revision, the keys a client saw it create, write
+	// or delete: the writer of that revision must.
+	lives                     map[string]map[life]int64
+	created, written, deleted map[int64][]string
 	// optional are the ambiguous mutations that change no key and that a
 	// later answer needs, by the revision from which they may go, in call
 	// order.
@@ -82,6 +90,10 @@ type optional struct {
 	from  int64
 	after int
 }
+
+// life is what one observation of a key shows: created at c, last
+// written at m, with version v.
+type life struct{ c, m, v int64 }
 
 // span is the revisions after lo up to hi.
 type span struct{ lo, hi int64 }
@@ -129,6 +141,7 @@ func (r *revisionOrder) index() error {
 		if kv.ModRevision < unchangedTo {
 			r.covered[kv.Key] = append(r.covered[kv.Key], span{kv.ModRevision, unchangedTo})
 		}
+		r.note(kv, unchangedTo)
 		r.top = max(r.top, kv.ModRevision)
 		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 || !valued {
 			return
@@ -155,6 +168,8 @@ func (r *revisionOrder) index() error {
 				}
 				if e.Type == history.EventPut {
 					saw(e.KV, e.Revision(), true)
+				} else {
+					r.deleted[e.Revision()] = append(r.deleted[e.Revision()], e.KV.Key)
 				}
 			}
 		}
@@ -173,11 +188,41 @@ func (r *revisionOrder) index() error {
 		}
 		revOf[i] = rev
 	}
+	for rev, i := range r.resolved {
+		r.reserved[i] = rev
+	}
 	for k, ss := range r.covered {
 		r.covered[k] = merge(ss)
 	}
 	r.scheduleOptional()
 	return nil
+}
+
+// note records what an observation of kv, unchanged up to revision to,
+// shows of the key's life. One without a version, from a compare of the
+// mod revision, shows only the revision of its last write.
+func (r *revisionOrder) note(kv history.KeyValue, to int64) {
+	if kv.ModRevision < 2 {
+		return
+	}
+	if kv.Version == 0 {
+		r.written[kv.ModRevision] = append(r.written[kv.ModRevision], kv.Key)
+		return
+	}
+	l := life{kv.CreateRevision, kv.ModRevision, kv.Version}
+	m := r.lives[kv.Key]
+	if m == nil {
+		m = map[life]int64{}
+		r.lives[kv.Key] = m
+	}
+	if old, ok := m[l]; ok && old >= to {
+		return
+	}
+	if _, ok := m[l]; !ok {
+		r.created[l.c] = append(r.created[l.c], kv.Key)
+		r.written[l.m] = append(r.written[l.m], kv.Key)
+	}
+	m[l] = to
 }
 
 func (r *revisionOrder) byCall(ops []int) {
@@ -658,13 +703,16 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 }
 
 // candidates are the ops that may write gap rev: the acked revokes at it
-// first, then the ambiguous mutations that no answer puts after it,
-// latest call first.
+// first, then the ambiguous mutations that no answer puts after it and
+// that no client saw write another revision, latest call first.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
 	var amb []int
 	for _, i := range r.ambiguous {
+		if at, ok := r.reserved[i]; ok && at != rev {
+			continue
+		}
 		if !r.used[i] && r.lb[i] < rev {
 			amb = append(amb, i)
 		}
@@ -688,6 +736,32 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 	}
 	for _, e := range o.events {
 		if r.unchanged(e.KV.Key, rev) {
+			return false
+		}
+		// A key it changes inside a life a client saw stays in that
+		// life: created then, with no more versions than seen.
+		for l, to := range r.lives[e.KV.Key] {
+			if l.c <= rev && rev <= to {
+				kv, ok := s.get(e.KV.Key)
+				if !ok || kv.CreateRevision != l.c || kv.Version > l.v {
+					return false
+				}
+			}
+		}
+	}
+	// What clients saw happen at rev must happen.
+	for _, k := range r.created[rev] {
+		if kv, ok := s.get(k); !ok || kv.CreateRevision != rev {
+			return false
+		}
+	}
+	for _, k := range r.written[rev] {
+		if kv, ok := s.get(k); !ok || kv.ModRevision != rev {
+			return false
+		}
+	}
+	for _, k := range r.deleted[rev] {
+		if _, ok := s.get(k); ok || !slices.ContainsFunc(o.events, func(e history.Event) bool { return e.KV.Key == k }) {
 			return false
 		}
 	}
