@@ -73,6 +73,8 @@ type RangeResult struct {
 	Rev   int64
 	KVs   []KV
 	Count int64
+	// Bytes is the size of the keys and values of KVs, set by RangeKVs.
+	Bytes int64
 	More  bool
 	// values is set when the KVs still need their values.
 	values bool
@@ -89,12 +91,25 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	w := s.reader()
 	res, err := w.rangeResult(r, true)
-	if err != nil || !res.values {
+	if err != nil {
 		return res, err
 	}
+	values := 0
+	for i := range res.KVs {
+		res.Bytes += int64(len(res.KVs[i].Key))
+		if res.values {
+			values += int(res.KVs[i].ref.Len)
+		}
+	}
+	res.Bytes += int64(values)
+	if !res.values {
+		return res, nil
+	}
+	// The values of the answer take one allocation.
+	arena := make([]byte, 0, values)
 	for i := range res.KVs {
 		kv := &res.KVs[i]
-		if err := s.fill(kv.Key, kv.ref, &kv.Value); err != nil {
+		if err := s.fill(kv.Key, kv.ref, &kv.Value, &arena); err != nil {
 			return RangeResult{}, err
 		}
 	}
@@ -110,7 +125,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, e
 	resp := res.Response()
 	if res.values {
 		for i := range res.KVs {
-			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value); err != nil {
+			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -219,7 +234,7 @@ func (s *Store) readNow(kvs []KV) error {
 	var cold []Fill
 	for i := range kvs {
 		kv := &kvs[i]
-		b, ok, err := s.value(kv.Key, kv.ref)
+		b, ok, err := s.value(kv.Key, kv.ref, nil)
 		if err != nil {
 			return err
 		}
@@ -594,7 +609,7 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
 			var in bool
-			if kv.Value, in, err = w.s.value(k.key, v.value); err != nil {
+			if kv.Value, in, err = w.s.value(k.key, v.value, nil); err != nil {
 				return false
 			}
 			if !in {

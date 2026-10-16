@@ -15,11 +15,11 @@ type coldHeap struct {
 	disk uint64
 }
 
-func (h *coldHeap) Read(r Ref) ([]byte, bool, error) {
+func (h *coldHeap) Read(r Ref, arena *[]byte) ([]byte, bool, error) {
 	if r.Index <= h.disk {
 		return nil, false, nil
 	}
-	return h.Heap.Read(r)
+	return h.Heap.Read(r, arena)
 }
 
 // evict puts every value so far on disk only.
@@ -31,7 +31,7 @@ func fillAll(t *testing.T, s *Store, h *coldHeap) int {
 	t.Helper()
 	fills := s.TakeFills()
 	for _, f := range fills {
-		b, _, err := h.Heap.Read(f.Ref)
+		b, _, err := h.Heap.Read(f.Ref, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,6 +128,10 @@ func TestColdEventAndRangeKVs(t *testing.T) {
 	res, err := s.RangeKVs(&pb.RangeRequest{Key: []byte("a")})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The key and the value on disk, by its length.
+	if res.Bytes != 2 {
+		t.Fatalf("a range of one key and value of 1 byte counts %d bytes", res.Bytes)
 	}
 	fillAll(t, s, h)
 	if string(res.KVs[0].Value) != "2" {

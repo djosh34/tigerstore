@@ -112,7 +112,8 @@ func TestCallCharges(t *testing.T) {
 		},
 		"range answer waiting for the writer": func(c *conn, st *stream) {
 			charge(c, st)
-			res := mvcc.RangeResult{KVs: []mvcc.KV{{Key: []byte("k"), Value: make([]byte, 1<<20)}}}
+			// Bytes as RangeKVs counts them.
+			res := mvcc.RangeResult{KVs: []mvcc.KV{{Key: []byte("k"), Value: make([]byte, 1<<20)}}, Bytes: 1 + 1<<20}
 			c.Complete([]node.Completion{{Tag: st, Range: res}})
 			if c.waitingReplies.Load() < 1<<20 {
 				t.Errorf("a range answer of 1 MiB waiting for the writer counts %d bytes", c.waitingReplies.Load())

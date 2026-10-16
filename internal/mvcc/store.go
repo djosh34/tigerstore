@@ -43,8 +43,10 @@ type Values interface {
 	Place(value []byte) (Ref, error)
 	// Read returns the bytes r names if they are in memory, and false if
 	// only the log on disk has them. The caller may keep the bytes, as a
-	// response or a watch event does, but must not change them.
-	Read(r Ref) ([]byte, bool, error)
+	// response or a watch event does, but must not change them. Bytes it
+	// copies go to the end of *arena if arena is not nil, so that the
+	// values of one answer take one allocation.
+	Read(r Ref, arena *[]byte) ([]byte, bool, error)
 }
 
 // Fill is a value a response or a watch event waits for because only the
@@ -93,7 +95,7 @@ func (h *Heap) Place(value []byte) (Ref, error) {
 }
 
 // Read returns a value Place kept.
-func (h *Heap) Read(r Ref) ([]byte, bool, error) {
+func (h *Heap) Read(r Ref, _ *[]byte) ([]byte, bool, error) {
 	if r.Index == 0 || r.Index > uint64(len(h.vals)) {
 		return nil, false, fmt.Errorf("mvcc: no value %d in memory", r.Index)
 	}
@@ -153,7 +155,7 @@ func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
 		Version:        v.ver,
 		Lease:          v.lease,
 	}
-	if err := s.fill(k.key, v.value, &kv.Value); err != nil {
+	if err := s.fill(k.key, v.value, &kv.Value, nil); err != nil {
 		return nil, err
 	}
 	return kv, nil
@@ -161,8 +163,8 @@ func (s *Store) kv(k *keyIndex, v *version) (*mvccpb.KeyValue, error) {
 
 // fill stores the value r names in *dst if it is in memory. Otherwise the
 // store keeps a Fill for it, which TakeFills hands out.
-func (s *Store) fill(key []byte, r Ref, dst *[]byte) error {
-	b, ok, err := s.value(key, r)
+func (s *Store) fill(key []byte, r Ref, dst *[]byte, arena *[]byte) error {
+	b, ok, err := s.value(key, r, arena)
 	if err != nil {
 		return err
 	}
@@ -184,11 +186,12 @@ func (s *Store) TakeFills() []Fill {
 
 // value returns the bytes of a value of key k, checked against the
 // checksum, if they are in memory, and false if only the disk has them.
-func (s *Store) value(key []byte, r Ref) ([]byte, bool, error) {
+// arena is as in Values.Read.
+func (s *Store) value(key []byte, r Ref, arena *[]byte) ([]byte, bool, error) {
 	if r.Len == 0 {
 		return nil, true, nil
 	}
-	b, ok, err := s.values.Read(r)
+	b, ok, err := s.values.Read(r, arena)
 	if err != nil {
 		return nil, false, fmt.Errorf("mvcc: read the value of %q: %w", key, err)
 	}
