@@ -283,14 +283,19 @@ func TestReset(t *testing.T) {
 	if _, err := c.Read(make([]byte, 1)); !errors.Is(err, syscall.ECONNRESET) {
 		t.Fatalf("read after reset: %v, want ECONNRESET", err)
 	}
-	// New connections are reset while the fault is installed.
+	// New connections are reset while the fault is installed. The reset
+	// can reach the client before its connect returns. The proxy counts
+	// the hit before it resets.
 	c2, err := net.Dial("tcp", p.Addr())
-	if err != nil {
+	switch {
+	case errors.Is(err, syscall.ECONNRESET):
+	case err != nil:
 		t.Fatal(err)
-	}
-	defer func() { _ = c2.Close() }()
-	if !closed(c2) {
-		t.Fatal("a new connection stayed open during reset")
+	default:
+		defer func() { _ = c2.Close() }()
+		if !closed(c2) {
+			t.Fatal("a new connection stayed open during reset")
+		}
 	}
 	if s := p.Stats(); s.Hits != 2 {
 		t.Fatalf("hits %d, want 2", s.Hits)
