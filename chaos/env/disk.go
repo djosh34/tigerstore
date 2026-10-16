@@ -42,11 +42,11 @@ type Disk struct {
 
 // NewDisk makes a disk of size bytes under dir, named name, with LazyFS on
 // top when lazyfs names its binary.
-func NewDisk(dir, name string, size int64, lazyfs string) (d *Disk, err error) {
+func NewDisk(dir, name string, size int64, lazyfs string) (_ *Disk, err error) {
 	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
-	d = &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), lazyfs: lazyfs, mode: "linear"}
+	d := &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), lazyfs: lazyfs, mode: "linear"}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, d.Close())
@@ -111,7 +111,10 @@ func NewDisk(dir, name string, size int64, lazyfs string) (d *Disk, err error) {
 	if err := os.MkdirAll(d.Data, 0o755); err != nil {
 		return nil, err
 	}
-	return d, d.mountLazyFS()
+	if err := d.mountLazyFS(); err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 func (d *Disk) device() string { return "/dev/mapper/" + d.Name }
@@ -126,7 +129,16 @@ func (d *Disk) mountLazyFS() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(d.lazyfs, d.Data, "--config-path", d.cfgfile, "-o", "modules=subdir", "-o", "subdir="+d.root, "-f")
+	// LazyFS ignores a config path with "-o" in it, in any case, and
+	// looks for config/default.toml instead; a CI run's directory had
+	// chaos-out in it. So it gets the file's name, relative to its working
+	// directory, the disk's.
+	cfg := filepath.Base(d.cfgfile)
+	if strings.Contains(strings.ToLower(cfg), "-o") {
+		return errors.Join(fmt.Errorf("LazyFS cannot take the config path %s, which has -o in it", cfg), out.Close())
+	}
+	cmd := exec.Command(d.lazyfs, d.Data, "--config-path", cfg, "-o", "modules=subdir", "-o", "subdir="+d.root, "-f")
+	cmd.Dir = filepath.Dir(d.cfgfile)
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Start(); err != nil {
 		return errors.Join(err, out.Close())
@@ -139,7 +151,11 @@ func (d *Disk) mountLazyFS() error {
 		_ = out.Close()
 	}()
 	if !waitFor(10*time.Second, func() bool { return mounted(d.Data) }) {
-		return fmt.Errorf("LazyFS did not mount %s within 10s", d.Data)
+		b, _ := os.ReadFile(out.Name())
+		if len(b) > 2000 {
+			b = b[len(b)-2000:]
+		}
+		return fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b)))
 	}
 	return nil
 }

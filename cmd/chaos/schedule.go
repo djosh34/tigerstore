@@ -81,7 +81,8 @@ func plan(seed uint64, faults []string) []step {
 		}
 		if slices.Contains(grayFaults, f) || f == severalAtOnce {
 			// Long enough for writes through the healthy nodes to show
-			// the liveness bound.
+			// the liveness bound, and for both faults of several-at-once
+			// to show.
 			s.Hold = ms(5000, 8000)
 		}
 		out = append(out, s)

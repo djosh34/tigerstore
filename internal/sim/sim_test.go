@@ -531,9 +531,11 @@ func TestAmbiguousWritesInTheLog(t *testing.T) {
 // minute until it used what the reads show of each key's life: created
 // at one revision, last written at another, with a version (#197). A
 // change to the simulator's random draws can move these seeds off that
-// edge; the test then passes without testing it.
+// edge; the test then passes without testing it. Seed 1797098110 has a
+// lease expiry that the log-free check put in too early, before an
+// ambiguous put that used the lease.
 func TestWitnessGaps(t *testing.T) {
-	for _, seed := range []uint64{1789179577, 1789179677} {
+	for _, seed := range []uint64{1789179577, 1789179677, 1797098110} {
 		res := run(t, DefaultConfig(seed))
 		h, err := res.Checkable()
 		if err != nil {

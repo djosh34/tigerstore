@@ -18,6 +18,8 @@ import (
 
 	"github.com/djosh34/tigerstore/chaos/env"
 	"github.com/djosh34/tigerstore/history"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -51,10 +53,12 @@ var envFaults = []string{
 
 // LazyFS answers an fsync with success even when the disk under it
 // failed the write or is full, so a node on it would be told that data is
-// durable that is not: failing writes and a full disk run only without
-// it, and the faults that need it only with it.
+// durable that is not. Its fsync also only writes to the disk under it
+// and never syncs it, so a slow or stalled disk does not hold the node's
+// fsync. Those faults run only without it, and the faults that need it
+// only with it.
 var (
-	withoutLazyFS = []string{fsyncFail, diskFull}
+	withoutLazyFS = []string{diskSlow, diskStall, fsyncFail, diskFull}
 	withLazyFS    = []string{powerLoss, tornWrite}
 )
 
@@ -202,7 +206,7 @@ type envRecord struct {
 	Exited    string           `json:"exited,omitempty"`
 	LeaderNow string           `json:"leader_after,omitempty"`
 	// Crashes are the kills during recovery, each with the time after
-	// the start and whether the node answered before it.
+	// the start and whether it came inside the recovery of the log.
 	Crashes []recoveryKill `json:"crashes,omitempty"`
 	// Fetching is the node's log line of the fetch the crash cut.
 	Fetching string `json:"fetching,omitempty"`
@@ -213,8 +217,8 @@ type envRecord struct {
 }
 
 type recoveryKill struct {
-	After    time.Duration `json:"after"`
-	Answered bool          `json:"answered"`
+	After      time.Duration `json:"after"`
+	InRecovery bool          `json:"in_recovery"`
 }
 
 // probe is one write through a healthy node during a gray fault.
@@ -333,7 +337,7 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 	case recoveryCrash:
 		return r.withProbes(others(target), rec, func() error { return r.crashInRecovery(ctx, s, target, rec) })
 	case installCrash:
-		return r.crashInInstall(ctx, s, lead, target, rec)
+		return r.crashInInstall(ctx, lead, target, rec)
 	case slowWatcher:
 		return r.withProbes([]int{0, 1, 2}, rec, func() error { return r.slowWatch(ctx, s, target, rec) })
 	case severalAtOnce:
@@ -378,7 +382,21 @@ func (r *runner) cpuFault(ctx context.Context, s step, target int, rec *record) 
 		return err
 	}
 	rec.Installed = true
+	// Reads through the node keep it busy, so that a follower with little
+	// to do still uses up its share. Their answers do not matter.
+	bctx, stop := context.WithCancel(ctx)
+	busy := make(chan struct{})
+	go func() {
+		defer close(busy)
+		for bctx.Err() == nil {
+			rctx, cancel := context.WithTimeout(bctx, time.Second)
+			_, _ = r.t.cs[target].Get(rctx, prefix, clientv3.WithPrefix(), clientv3.WithCountOnly())
+			cancel()
+		}
+	}()
 	holdErr := pause(ctx, s.Hold)
+	stop()
+	<-busy
 	after, statErr := g.Stats()
 	healErr := g.LimitCPU(0)
 	rec.Healed, rec.HealedAt = healErr == nil, r.since()
@@ -390,7 +408,8 @@ func (r *runner) cpuFault(ctx context.Context, s step, target int, rec *record) 
 // diskFault slows or stalls the disk of target. A stall of the leader's
 // disk must move leadership away within the hold.
 func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record) error {
-	d := r.e.disks[target]
+	n, d := r.c.nodes[target], r.e.disks[target]
+	logBefore := logSize(n)
 	var err error
 	if s.Fault == diskSlow {
 		err = d.Delay(s.Delay/4, s.Delay)
@@ -401,7 +420,10 @@ func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record)
 		return err
 	}
 	rec.Installed = true
-	rec.Env.Disk, _, _ = d.Status()
+	var statErr error
+	if rec.Env.Disk, _, statErr = d.Status(); statErr != nil {
+		return errors.Join(statErr, d.Healthy())
+	}
 	holdErr := pause(ctx, s.Hold)
 	if s.Fault == diskStall {
 		// Whether a write was held: the node logs a slow write once the
@@ -412,24 +434,12 @@ func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record)
 	}
 	healErr := d.Healthy()
 	rec.Healed, rec.HealedAt = healErr == nil, r.since()
-	switch s.Fault {
-	case diskSlow:
-		rec.Effect = slowWrites(r.c.nodes[target]) > 0
-	case diskStall:
+	if s.Fault == diskStall {
 		// The held writes finish once it heals.
 		time.Sleep(time.Second)
-		rec.Effect = slowWrites(r.c.nodes[target]) > 0
 	}
+	rec.Effect = strings.Contains(logSince(n, logBefore), "slow write to the log")
 	return errors.Join(holdErr, healErr)
-}
-
-// slowWrites counts the node's log lines of writes slower than a tick.
-func slowWrites(n *node) int {
-	b, err := os.ReadFile(n.log.Name())
-	if err != nil {
-		return 0
-	}
-	return strings.Count(string(b), "slow write to the log")
 }
 
 // diskError fails the writes of target's disk, or fills it, and expects
@@ -451,8 +461,9 @@ func (r *runner) diskError(ctx context.Context, s step, target int, rec *record)
 		return err
 	}
 	rec.Installed = true
-	rec.Env.Disk, rec.Env.FreeBytes, _ = d.Status()
-	holdErr := pause(ctx, s.Hold)
+	var statErr error
+	rec.Env.Disk, rec.Env.FreeBytes, statErr = d.Status()
+	holdErr := errors.Join(statErr, pause(ctx, s.Hold))
 	var healErr error
 	if s.Fault == fsyncFail {
 		healErr = d.Healthy()
@@ -576,10 +587,10 @@ func waitUntil(ctx context.Context, d time.Duration, cond func() bool) bool {
 }
 
 // crashInRecovery kills target, then five times drops its caches,
-// starts it and kills it again within 5 to 150 ms, while it recovers its
-// log from a disk slowed to 50 ms a read, and starts it for good on a
-// healthy disk. At least one kill must come before the node served
-// clients, which it does once it recovered.
+// starts it and kills it again 5 to 100 ms after it logged that it is
+// recovering its log, from a disk slowed to 50 ms a read, and starts it
+// for good on a healthy disk. At least one kill must come before the node
+// logged that it recovered the log.
 func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *record) error {
 	n, d := r.c.nodes[target], r.e.disks[target]
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
@@ -598,15 +609,16 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 		if err := r.c.start(n); err != nil {
 			return errors.Join(err, d.Healthy())
 		}
-		after := time.Duration(5+rng.IntN(145)) * time.Millisecond
+		after := time.Duration(5+rng.IntN(95)) * time.Millisecond
+		waitUntil(ctx, 10*time.Second, func() bool { return strings.Contains(logSince(n, from), "recovering the log") })
 		time.Sleep(after)
 		if _, _, err := n.signal(syscall.SIGKILL); err != nil {
 			return err
 		}
-		rec.Env.Crashes = append(rec.Env.Crashes, recoveryKill{After: after, Answered: strings.Contains(logSince(n, from), "serving client traffic")})
-	}
-	for _, k := range rec.Env.Crashes {
-		rec.Effect = rec.Effect || !k.Answered
+		text := logSince(n, from)
+		in := strings.Contains(text, "recovering the log") && !strings.Contains(text, "recovered the log")
+		rec.Env.Crashes = append(rec.Env.Crashes, recoveryKill{After: after, InRecovery: in})
+		rec.Effect = rec.Effect || in
 	}
 	if err := d.Healthy(); err != nil {
 		return err
@@ -620,7 +632,7 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // crashInInstall stops follower target, writes until the leader's log
 // moved past it, resumes it so that it fetches a snapshot, and kills it
 // once the fetch started; it then starts it again, which must recover.
-func (r *runner) crashInInstall(ctx context.Context, s step, lead, target int, rec *record) error {
+func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
 	if target == lead {
 		target = others(lead)[0]
 	}
@@ -629,21 +641,12 @@ func (r *runner) crashInInstall(ctx context.Context, s step, lead, target int, r
 	if _, _, err := n.signal(syscall.SIGSTOP); err != nil {
 		return err
 	}
-	// Writes through the leader far past the window and a checkpoint, and
-	// compactions, so that the leader sends the follower a snapshot.
+	// Writes through the leader far past the window and a checkpoint, so
+	// that the leader sends the follower a snapshot.
 	cl := r.t.cs[lead]
-	bulk := func(round int) history.Op {
-		var last history.Op
-		for k := range 150 {
-			q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%d-%s", round, k, strings.Repeat("b", 1000))}}
-			last = r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
-		}
-		return last
-	}
-	for round := range 2 {
-		if last := bulk(round); last.Resp != nil {
-			r.t.r.call(cl, installClient, history.Request{Compact: &history.CompactRequest{Revision: last.Resp.Revision}}, r.t.cfg.requestTimeout)
-		}
+	for k := range 300 {
+		q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%s", k, strings.Repeat("b", 1000))}}
+		r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
 	}
 	logBefore := logSize(n)
 	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
@@ -668,17 +671,22 @@ func (r *runner) crashInInstall(ctx context.Context, s step, lead, target int, r
 // installClient is the history client of crashInInstall's writes.
 const installClient = 50
 
-// stallConn stops reading once stalled, until released: the TCP window
-// of a client that is barely alive.
-type stallConn struct {
-	net.Conn
-	stalled atomic.Bool
+// stall holds the reads of every connection of the slow client once on,
+// until released: the TCP window of a client that is barely alive.
+type stall struct {
+	on      atomic.Bool
 	release chan struct{}
 }
 
+// stallConn is one connection of the slow client.
+type stallConn struct {
+	net.Conn
+	s *stall
+}
+
 func (c *stallConn) Read(b []byte) (int, error) {
-	if c.stalled.Load() {
-		<-c.release
+	if c.s.on.Load() {
+		<-c.s.release
 	}
 	return c.Conn.Read(b)
 }
@@ -687,15 +695,19 @@ func (c *stallConn) Read(b []byte) (int, error) {
 // then stops reading from its connection for the hold, while the
 // workload writes, so the node's sends to it back up. The node must keep
 // serving everyone else (the probes go through every node) and, once the
-// client reads again, deliver what the watch missed or cancel it.
+// client reads again, deliver every event the watch missed, up to the
+// revision of a read through another node, or cancel it. A watch through
+// that node from the same start must have the same events.
 func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record) error {
-	conn := &stallConn{release: make(chan struct{})}
+	st := &stall{release: make(chan struct{})}
 	cl, err := clientv3.New(clientv3.Config{
 		Endpoints: []string{r.c.clients[target].Proxy.Addr()}, TLS: r.c.tls, DialTimeout: 2 * time.Second, Logger: zap.NewNop(),
 		DialOptions: []grpc.DialOption{grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			c, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
-			conn.Conn = c
-			return conn, err
+			if err != nil {
+				return nil, err
+			}
+			return &stallConn{Conn: c, s: st}, nil
 		})},
 	})
 	if err != nil {
@@ -705,37 +717,87 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	wc := cl.Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
+	var start int64
 	select {
-	case <-wc:
+	case resp := <-wc:
+		if !resp.Created {
+			return fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
+		}
+		start = resp.Header.Revision
 	case <-time.After(5 * time.Second):
 		return errors.New("the slow client's watch was not created")
 	}
-	conn.stalled.Store(true)
+	st.on.Store(true)
 	rec.Installed = true
 	from := r.since()
 	holdErr := pause(ctx, s.Hold)
-	close(conn.release)
-	// The writes of the hold must reach it, or a cancel.
-	got := 0
-	for deadline := time.After(10 * time.Second); got == 0; {
+	close(st.release)
+	gctx, gcancel := context.WithTimeout(ctx, r.t.cfg.requestTimeout)
+	g, err := r.t.cs[others(target)[0]].Get(gctx, prefix+"k0")
+	gcancel()
+	if err != nil {
+		return errors.Join(holdErr, fmt.Errorf("read the revision the slow watch must reach: %w", err))
+	}
+	end := g.Header.Revision
+	got, last, canceled := readWatch(wc, end)
+	if !canceled && last < end {
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start, last, end))
+	}
+	ref, refLast, _ := readWatch(r.t.cs[others(target)[0]].Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(start+1)), last)
+	if refLast < last {
+		return errors.Join(holdErr, fmt.Errorf("a watch through another node from %d reached %d, not %d, within 10s", start+1, refLast, last))
+	}
+	if err := sameEvents(got, ref, last); err != nil {
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d: %w", start, err))
+	}
+	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: revisions %d to %d of %d, canceled %v", s.Hold, from, start+1, last, end, canceled)
+	rec.Effect = true
+	rec.Healed, rec.HealedAt = true, r.since()
+	return holdErr
+}
+
+// watchEvent is what a watch delivered for one key at one revision.
+type watchEvent struct {
+	Rev  int64
+	Key  string
+	Type mvccpb.Event_EventType
+}
+
+// readWatch reads wc until an event at or past rev, a cancel, or 10 s,
+// and returns the events, the last revision among them and whether the
+// watch was canceled.
+func readWatch(wc clientv3.WatchChan, rev int64) (events []watchEvent, last int64, canceled bool) {
+	for deadline := time.After(10 * time.Second); last < rev; {
 		select {
 		case resp, ok := <-wc:
 			if !ok || resp.Canceled {
-				got = -1
-				break
+				return events, last, true
 			}
-			got += len(resp.Events)
+			for _, ev := range resp.Events {
+				events = append(events, watchEvent{ev.Kv.ModRevision, string(ev.Kv.Key), ev.Type})
+				last = max(last, ev.Kv.ModRevision)
+			}
 		case <-deadline:
-			got = -2
-		}
-		if got != 0 {
-			break
+			return events, last, false
 		}
 	}
-	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: %d events, or -1 for a cancel", s.Hold, from, got)
-	rec.Effect = got != -2
-	rec.Healed, rec.HealedAt = true, r.since()
-	return holdErr
+	return events, last, false
+}
+
+// sameEvents compares got with the events of ref up to revision last.
+func sameEvents(got, ref []watchEvent, last int64) error {
+	ref = slices.DeleteFunc(slices.Clone(ref), func(e watchEvent) bool { return e.Rev > last })
+	for i := range max(len(got), len(ref)) {
+		switch {
+		case i >= len(got):
+			return fmt.Errorf("missed %d events, the first %+v", len(ref)-i, ref[i])
+		case i >= len(ref):
+			return fmt.Errorf("got %d events no other watch got, the first %+v", len(got)-i, got[i])
+		case got[i] != ref[i]:
+			return fmt.Errorf("got %+v where another watch got %+v", got[i], ref[i])
+		}
+	}
+	return nil
 }
 
 // several runs two faults at once on different nodes: a gray node and a
@@ -950,32 +1012,55 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	// Remove and add through a healthy node. --strict-reconfig-check
 	// refuses a change until the node has been connected to its peers
 	// for 5 s, which after the cold restart it has not, so each is tried
-	// again until it goes through.
+	// again until it goes through. A try that timed out may have gone
+	// through, so a later one may find the member gone, or added.
 	ctl := r.c.nodes[healthy[0]].control
-	retry := func(what string, call func(context.Context) error) error {
+	retry := func(what string, call func(c context.Context, ambiguous bool) error) error {
 		var err error
+		ambiguous := false
 		for deadline := time.Now().Add(2 * livenessBound); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
 			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			err = call(cctx)
+			err = call(cctx, ambiguous)
 			cancel()
 			if err == nil {
 				return nil
 			}
+			ambiguous = ambiguous || transientWatch(err)
 		}
 		return fmt.Errorf("%s: %w", what, err)
 	}
 	old := r.c.ids[target]
-	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context) error {
+	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context, ambiguous bool) error {
 		_, err := ctl.MemberRemove(c, old)
+		if ambiguous && errors.Is(err, rpctypes.ErrMemberNotFound) {
+			return nil
+		}
 		return err
 	}); err != nil {
 		return err
 	}
-	var added *clientv3.MemberAddResponse
-	if err := retry("add the new member", func(c context.Context) error {
-		var err error
-		added, err = ctl.MemberAdd(c, []string{fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])})
-		return err
+	peerURL := fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])
+	var newID uint64
+	if err := retry("add the new member", func(c context.Context, ambiguous bool) error {
+		added, err := ctl.MemberAdd(c, []string{peerURL})
+		if err == nil {
+			newID = added.Member.ID
+			return nil
+		}
+		if !ambiguous || !errors.Is(err, rpctypes.ErrPeerURLExist) {
+			return err
+		}
+		list, err := ctl.MemberList(c)
+		if err != nil {
+			return err
+		}
+		for _, m := range list.Members {
+			if slices.Equal(m.PeerURLs, []string{peerURL}) {
+				newID = m.ID
+				return nil
+			}
+		}
+		return fmt.Errorf("no member has the peer URL %s", peerURL)
 	}); err != nil {
 		return err
 	}
@@ -986,8 +1071,8 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	if err := r.c.start(n); err != nil {
 		return err
 	}
-	r.c.ids[target] = added.Member.ID
-	rec.Env.Link = fmt.Sprintf("member %x replaced by %x", old, added.Member.ID)
+	r.c.ids[target] = newID
+	rec.Env.Link = fmt.Sprintf("member %x replaced by %x", old, newID)
 	err := r.c.converged(ctx, 30*time.Second)
 	rec.Healed, rec.HealedAt = err == nil, r.since()
 	return err
@@ -1003,10 +1088,9 @@ func rejoinArgs(args []string) []string {
 }
 
 func lastLine(text, with string) string {
-	lines := strings.Split(text, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(lines[i], with) {
-			return lines[i]
+	for _, line := range slices.Backward(strings.Split(text, "\n")) {
+		if strings.Contains(line, with) {
+			return line
 		}
 	}
 	return ""

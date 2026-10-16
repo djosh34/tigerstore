@@ -103,11 +103,14 @@ func (n *Netem) Stats(port int) (NetemStats, error) {
 			continue
 		}
 		st := NetemStats{Qdisc: strings.TrimSpace(line)}
-		if m := netemSent.FindStringSubmatch(lines[i+1]); m != nil {
-			st.Packets, _ = strconv.ParseInt(m[1], 10, 64)
-			st.Dropped, _ = strconv.ParseInt(m[2], 10, 64)
+		m := netemSent.FindStringSubmatch(lines[i+1])
+		if m == nil {
+			return NetemStats{}, fmt.Errorf("netem: no counters for port %d in %q", port, lines[i+1])
 		}
-		return st, nil
+		var errP, errD error
+		st.Packets, errP = strconv.ParseInt(m[1], 10, 64)
+		st.Dropped, errD = strconv.ParseInt(m[2], 10, 64)
+		return st, errors.Join(errP, errD)
 	}
 	return NetemStats{}, fmt.Errorf("netem: no qdisc for port %d in %q", port, out)
 }

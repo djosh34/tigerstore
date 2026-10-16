@@ -1,0 +1,51 @@
+{
+	"name": "seed-3636324238000000155",
+	"ops": [
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 2,
+					"target": "VERSION",
+					"result": "LESS",
+					"number": 3
+				},
+				{
+					"key": 0,
+					"target": "CREATE",
+					"result": "GREATER",
+					"number": 8
+				}
+			],
+			"success": [
+				{
+					"kind": "get",
+					"key": 1,
+					"limit": 1
+				}
+			],
+			"failure": [
+				{
+					"kind": "put",
+					"key": 5,
+					"value": "emj7nYL61Dr78TJ+gglueaWjqFfNtk8Q97+XKc82GG0HI+3sAWTRNdd0yxhVJdOIMNxAIBJCmgjebJmva6IH6aJZauuDjK9Nuk7h+PgNOu2t00hmuw==",
+					"prevKV": true
+				},
+				{
+					"kind": "del",
+					"end": -1,
+					"prevKV": true
+				}
+			]
+		},
+		{
+			"kind": "watch",
+			"key": 3,
+			"end": -1,
+			"rev": 1,
+			"watch": {
+				"prevKV": true
+			}
+		}
+	]
+}

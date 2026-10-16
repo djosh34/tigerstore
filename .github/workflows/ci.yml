@@ -1,16 +1,21 @@
+# A pull request runs the fast set. The push to main and the nightly run
+# also run every sim and chaos shard, race-sim, chaos-race and apiserver.
+# The planted bugs run in planted.yml.
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -95,15 +100,15 @@ jobs:
   # package check (TestSeeds), checks short runs of the same seeds with
   # Porcupine (TestLinearizable), then replays TestSeeds in a second process
   # with GOMAXPROCS=1 and compares the trace hashes. Shards 0 and 1 run fixed
-  # seeds; shards 2 and 3 run fresh seeds from the run ID. A failing seed
-  # reproduces with
+  # seeds; shards 2 and 3 run fresh seeds from the run ID. A pull request
+  # runs shard 0 only. A failing seed reproduces with
   # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
   # go test ./internal/sim/ -run 'TestLinearizable/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
   sim:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2, 3]') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
@@ -152,6 +157,7 @@ jobs:
   # The k8s.io/apiserver etcd3 storage tests of each supported Kubernetes
   # version, unchanged, against a fresh 3-node TLS tigerstore per test.
   apiserver:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
@@ -203,29 +209,13 @@ jobs:
         env:
           RACE: ${{ matrix.race }}
 
-  # Every planted bug (internal/planted) must be caught within its seed
-  # budget; TestPlanted fails otherwise, and a crash is a failure too.
-  # TestPlantedInventory checks that this list names every bug.
-  planted:
-    strategy:
-      fail-fast: false
-      matrix:
-        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B05, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B13, B14, B15, B16, B17, B18, B19, B20, B21, B22, B23, B24, B25, B26, B27]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ ./internal/node/ ./internal/peer/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
-
   # Real-process chaos (#49). Each shard builds tigerstore and runs two
   # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
   # proxy on every client and peer link, recording clients and watches,
   # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
   # and follower, and proxy faults), then the checkers of package check.
-  # Seeds come from the run ID. A failing seed reproduces with
+  # Seeds come from the run ID. A pull request runs shard 0 only. A
+  # failing seed reproduces with
   # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
   # and its evidence (schedule, fault records, node logs, data, history)
   # is uploaded.
@@ -233,7 +223,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2]') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 12
     steps:
@@ -298,6 +288,9 @@ jobs:
           echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Test the environment
+        if: matrix.mode == 'lazyfs'
+        run: CHAOS_LAZYFS="$LAZYFS" go test -tags chaosenv ./chaos/env/
       - name: Run a seed
         shell: bash
         env:
@@ -319,97 +312,35 @@ jobs:
             !${{ runner.temp }}/chaos-out/**/disks
           retention-days: 30
 
-  # The chaos job must be able to fail: with a planted bug built in, the
-  # checker that bug breaks must report its own finding. B01a serves
-  # linearizable reads like serializable ones (a stale read), which
-  # Porcupine and the witness checker in each mode must find; B06c drops
-  # previous values from watch events, B09a gives each key of a write its
-  # own revision. Seeds are fixed.
-  chaos-planted:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - bug: B01a
-            checker: Linearizable
-          - bug: B01a
-            checker: Witnessed (log)
-          - bug: B01a
-            checker: Witnessed (revisions)
-          - bug: B06c
-            checker: Watches
-          - bug: B09a
-            checker: Revisions
+  # Each fuzz test of a hand-written decoder runs for 20 s from its saved
+  # corpus in testdata/fuzz, one after the other. A failing input
+  # reproduces with go test -run '<target>/<input>' ./<package>, once
+  # copied into testdata/fuzz/<target>/ from the artifact.
+  fuzz:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: |
-          go build -tags planted -ldflags "-X github.com/djosh34/tigerstore/internal/planted.Active=${{ matrix.bug }}" -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: The planted bug must be caught
+      - name: Fuzz each target for 20 s
         shell: bash
-        env:
-          CHECKER: ${{ matrix.checker }}
         run: |
           set -uo pipefail
-          caught=0
-          for seed in 1 2; do
-            if "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out"; then
-              echo "seed $seed passed with the bug built in"
-              continue
-            fi
-            # Caught only if the named checker itself found the bug, not
-            # only a shared precondition such as the coverage floor.
-            # For Linearizable and the witness checker, a timeout or a
-            # search that ran out of candidates is not a catch.
-            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))) and ((.name | startswith("Witnessed") | not) or (.checker_error | test("answers it|real time allows|returned before it was called"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
-              echo "seed $seed: $CHECKER caught it"
-              caught=1
-            else
-              echo "seed $seed failed, but not by $CHECKER on a complete history"
-            fi
+          status=0
+          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2; do
+            pkg=./internal/${t%:*} target=${t#*:}
+            echo "::group::$pkg $target"
+            go test -run '^$' -fuzz "^$target\$" -fuzztime 20s "$pkg" || { status=1; echo "::error::$target failed"; }
+            echo "::endgroup::"
           done
-          [ "$caught" = 1 ]
-      - if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-planted-${{ matrix.bug }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/chaos-out
-          retention-days: 30
-
-  # Each fuzz test of a hand-written decoder runs for 20 s from its saved
-  # corpus in testdata/fuzz. A failing input reproduces with
-  # go test -run '<target>/<input>' ./<package>, once copied into
-  # testdata/fuzz/<target>/ from the artifact.
-  fuzz:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {pkg: ./internal/core, target: FuzzDecodeAlias}
-          - {pkg: ./internal/core, target: FuzzParsePut}
-          - {pkg: ./internal/core, target: FuzzReceiveSnapshot}
-          - {pkg: ./internal/wal, target: FuzzOpen}
-          - {pkg: ./internal/mvcc, target: FuzzLoad}
-          - {pkg: ./internal/peer, target: FuzzFrames}
-          - {pkg: ./internal/server, target: FuzzHTTP2}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 20s ${{ matrix.pkg }}
+          exit "$status"
       - if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: fuzz-${{ matrix.target }}
-          path: ${{ matrix.pkg }}/testdata/fuzz
+          name: fuzz
+          path: internal/*/testdata/fuzz
           retention-days: 30
 
   # The statement coverage of the internal/... packages, measured across
@@ -432,6 +363,7 @@ jobs:
   # The simulator under the race detector too, which test leaves out to
   # keep its time: no goroutine runs there, so it has nothing to find yet.
   race-sim:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
@@ -445,6 +377,7 @@ jobs:
   # stops the node (GORACE halt_on_error), which fails the run as an
   # exit nobody asked for, and the logs are searched for a report too.
   chaos-race:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -515,17 +448,23 @@ jobs:
           path: difftest/testdata/fuzz/
 
   # The required check. It runs even when a job it needs failed or was
-  # skipped, and passes only if every one of them succeeded.
+  # skipped, and passes only if every one of them succeeded. On a pull
+  # request the jobs of main and the nightly run are skipped by their own
+  # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, planted, chaos, chaos-env, chaos-planted, fuzz, coverage, race-sim, chaos-race]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
+          EVENT: ${{ github.event_name }}
         run: |
           for result in $RESULTS; do
+            if [ "$result" = skipped ] && [ "$EVENT" = pull_request ]; then
+              continue
+            fi
             if [ "$result" != success ]; then
               echo "a needed job ended with: $result"
               exit 1

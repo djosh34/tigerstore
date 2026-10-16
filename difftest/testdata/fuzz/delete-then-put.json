@@ -1,0 +1,33 @@
+{
+	"name": "delete-then-put",
+	"ops": [
+		{
+			"kind": "put",
+			"key": 1,
+			"value": "dg=="
+		},
+		{
+			"kind": "txn",
+			"success": [
+				{
+					"kind": "del",
+					"key": 1,
+					"end": -1
+				},
+				{
+					"kind": "put",
+					"key": 1,
+					"value": "dw=="
+				}
+			]
+		},
+		{
+			"kind": "watch",
+			"key": 1,
+			"rev": 1,
+			"watch": {
+				"prevKV": true
+			}
+		}
+	]
+}
