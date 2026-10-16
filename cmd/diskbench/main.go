@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -45,10 +46,10 @@ func run(dir string, size int64, dur time.Duration) (err error) {
 		return errors.New("need -dir")
 	}
 	name := filepath.Join(dir, "diskbench.data")
-	defer func() { err = errors.Join(err, os.Remove(name)) }()
 	if err := fill(name, size); err != nil {
-		return err
+		return errors.Join(err, removeIfThere(name))
 	}
+	defer func() { err = errors.Join(err, os.Remove(name)) }()
 	best := cell{}
 	enc := json.NewEncoder(os.Stdout)
 	for _, group := range []int{256 << 10, 1 << 20, 4 << 20} {
@@ -66,6 +67,14 @@ func run(dir string, size int64, dur time.Duration) (err error) {
 	return enc.Encode(struct {
 		Max float64 `json:"max_mib_per_s"`
 	}{best.MiBps})
+}
+
+// removeIfThere removes name if it exists.
+func removeIfThere(name string) error {
+	if err := os.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // fill writes size bytes of zeros to name and syncs it, so later writes go

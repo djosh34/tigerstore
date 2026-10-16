@@ -154,6 +154,7 @@ start() {
 			if [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
 				extra+=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
 			fi
+			local flags
 			read -r -a flags <<<"${BENCH_FLAGS:-}"
 			extra+=("${flags[@]}")
 		fi
@@ -229,7 +230,10 @@ stop() {
 		done
 	fi
 	if [ -f "$dir/datadirs" ]; then
-		xargs rm -rf <"$dir/datadirs"
+		local path
+		while IFS= read -r path; do
+			rm -rf -- "$path"
+		done <"$dir/datadirs"
 	fi
 	rm -rf "$dir"
 }

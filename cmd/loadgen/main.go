@@ -148,7 +148,6 @@ type result struct {
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
 	// all servers on it and anything else, per operation.
 	DiskBytesPerOp float64          `json:"disk_bytes_per_op,omitempty"`
-	DiskMiBps      float64          `json:"disk_mib_per_s,omitempty"`
 	Errors         map[string]int64 `json:"errors"`
 }
 
@@ -642,7 +641,6 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	if cfg.disk != "" && res.Ops > 0 {
 		written := samples[1].diskBytes - samples[0].diskBytes
 		res.DiskBytesPerOp = float64(written) / float64(res.Ops)
-		res.DiskMiBps = float64(written) / (1 << 20) / elapsed.Seconds()
 	}
 	if res.Watch != nil {
 		res.Watch.ServerCPUUsPerEvent = perOp(total, res.Watch.Events)

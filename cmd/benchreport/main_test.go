@@ -12,10 +12,16 @@ import (
 // write puts a result file for bench put-1k into dir.
 func write(t *testing.T, dir, name, json string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, "put-1k"), 0o755); err != nil {
+	writeIn(t, dir, "put-1k", name, json)
+}
+
+// writeIn puts a result file for a bench into dir.
+func writeIn(t *testing.T, dir, bench, name, json string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, bench), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "put-1k", name), []byte(json), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bench, name), []byte(json), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -111,6 +117,12 @@ func TestReportCeilings(t *testing.T) {
 	write(t, dir, "main-tmpfs-1.json", `{"valid": true, "throughput": 120000}`)
 	write(t, dir, "main-alone-1.json", `{"valid": true, "throughput": 110000, "disk_bytes_per_op": 1165.08}`)
 	write(t, dir, "diskbench.jsonl", "{\"group_bytes\":1048576,\"mib_per_s\":333.3}\n{\"max_mib_per_s\":333.3}\n")
+	// A second benchmark gets a table of its own.
+	writeIn(t, dir, "txn-1k", "etcd-max-1.json", valid)
+	writeIn(t, dir, "txn-1k", "main-max-1.json", `{"valid": true, "throughput": 60000, "disk_bytes_per_op": 3495.25}`)
+	writeIn(t, dir, "txn-1k", "main-tmpfs-1.json", `{"valid": true, "throughput": 80000}`)
+	writeIn(t, dir, "txn-1k", "main-alone-1.json", `{"valid": true, "throughput": 70000, "disk_bytes_per_op": 1165.08}`)
+	writeIn(t, dir, "txn-1k", "diskbench.jsonl", "{\"max_mib_per_s\":333.3}\n")
 	var b strings.Builder
 	if err := report(&b, dir); err != nil {
 		t.Fatal(err)
@@ -121,9 +133,13 @@ func TestReportCeilings(t *testing.T) {
 		"| put-1k | main | shared disk | 90,000 | 3495 | 99,990 | 120,000 | 90.0% |",
 		"| put-1k | main | leader alone | 110,000 | 1165 | 299,971 | 120,000 | 91.7% |",
 		"| put-1k | main | tmpfs | 120,000",
+		"txn-1k: the disk takes 333.3 MiB/s",
 	} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("missing %s in report:\n%s", want, b.String())
 		}
+	}
+	if n := strings.Count(b.String(), "| Benchmark | Store | Layout |"); n != 2 {
+		t.Fatalf("%d ceiling tables, want one per benchmark:\n%s", n, b.String())
 	}
 }

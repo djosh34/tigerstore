@@ -193,8 +193,8 @@ var layouts = []string{"tmpfs", "alone"}
 // (the device's MiB/s over the device bytes per operation measured in the
 // run) and its CPU reference (its median on tmpfs).
 func ceilings(w io.Writer, dir string, benches, targets []string, all func(bench, target, mode string) runs) error {
-	header := false
 	for _, bench := range benches {
+		header := false
 		b, err := os.ReadFile(filepath.Join(dir, bench, "diskbench.jsonl"))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
