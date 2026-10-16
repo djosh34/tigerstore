@@ -2,49 +2,13 @@ package main
 
 import (
 	"bytes"
-	"math"
-	"math/rand/v2"
 	"testing"
+
+	"github.com/djosh34/tigerstore/internal/k8ssize"
 )
 
-func TestK8sSizes(t *testing.T) {
-	var count, total int
-	for i, b := range k8sSizes {
-		if b.count <= 0 || b.size < 1 || b.size > 33365 {
-			t.Fatalf("bad row: %+v", b)
-		}
-		if i > 0 && k8sSizes[i-1].resource == b.resource && k8sSizes[i-1].size >= b.size {
-			t.Fatalf("rows out of order at %+v", b)
-		}
-		count += b.count
-		total += b.size * b.count
-	}
-	if count != 6345 || total != 9253583 || len(k8sResources()) != 27 {
-		t.Fatalf("histogram totals %d objects, %d bytes, %d resources", count, total, len(k8sResources()))
-	}
-	r := rand.New(rand.NewPCG(1, 2))
-	const samples = 400000
-	draws := make([]int, len(k8sSizes))
-	for range samples {
-		draws[drawBin(r, "")]++
-	}
-	for i, b := range k8sSizes {
-		probability := float64(b.count) / float64(count)
-		want := samples * probability
-		tolerance := 6*math.Sqrt(want*(1-probability)) + 1
-		if math.Abs(float64(draws[i])-want) > tolerance {
-			t.Fatalf("%s %d: %d draws, want %.0f", b.resource, b.size, draws[i], want)
-		}
-		for range 20 {
-			if k8sSizes[drawBin(r, b.resource)].resource != b.resource {
-				t.Fatal("resource draw crossed resources")
-			}
-		}
-	}
-}
-
 func TestMixedScopes(t *testing.T) {
-	for _, r := range k8sResources() {
+	for _, r := range k8ssize.Resources() {
 		key := mixedName(r, 2, 3, 4)
 		parts := bytes.Split(key, []byte("/"))
 		want := 5

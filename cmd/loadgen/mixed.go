@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/djosh34/tigerstore/internal/k8ssize"
 )
 
 // get, list, update, create, delete. Watches run alongside these arrivals.
@@ -117,7 +119,7 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 	if err != nil {
 		return nil, err
 	}
-	w := &mixedLoad{wk: wk, ownerID: owner, resources: k8sResources(), cfg: cfg, writes: writes, ledger: ledger, pool: *makeValues(33365, cfg.seed+uint64(owner)), calls: make(map[uint32]mixedCall), mix: mix}
+	w := &mixedLoad{wk: wk, ownerID: owner, resources: k8ssize.Resources(), cfg: cfg, writes: writes, ledger: ledger, pool: *makeValues(33365, cfg.seed+uint64(owner)), calls: make(map[uint32]mixedCall), mix: mix}
 	// About 1,024 namespaces (or cluster-scoped name groups) overall.
 	w.namespaces = max(1, 1024/cfg.conns)
 	for _, r := range w.resources {
@@ -135,8 +137,8 @@ func newMixedLoad(wk *worker, cfg config, owner int, writes *revisionSet, ledger
 }
 
 func (w *mixedLoad) newKey() *mixedKey {
-	bin := drawBin(w.wk.rng, "")
-	resource := k8sSizes[bin].resource
+	bin := k8ssize.Draw(w.wk.rng, "")
+	resource := k8ssize.Buckets[bin].Resource
 	base := slices.Index(w.resources, resource) * w.namespaces
 	group := -1
 	for offset := range w.namespaces {
@@ -157,8 +159,8 @@ func (w *mixedLoad) newKey() *mixedKey {
 }
 
 func (w *mixedLoad) value(k *mixedKey) []byte {
-	k.bin = drawBin(w.wk.rng, k8sSizes[k.bin].resource)
-	w.pool.size = k8sSizes[k.bin].size
+	k.bin = k8ssize.Draw(w.wk.rng, k8ssize.Buckets[k.bin].Resource)
+	w.pool.size = k8ssize.Buckets[k.bin].Size
 	return w.pool.next()
 }
 
@@ -862,7 +864,7 @@ func runMixed(cfg config) (*result, error) {
 		}
 	}
 	ledger.revision.Store(revision)
-	for i, r := range k8sResources() {
+	for i, r := range k8ssize.Resources() {
 		c, err := dial(cfg.endpoints[i%len(cfg.endpoints)])
 		if err != nil {
 			return nil, err
