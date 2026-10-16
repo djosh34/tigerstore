@@ -181,7 +181,7 @@ Each worker owns its objects and makes one call at a time, so it knows what ever
 
 The faults:
 - A node is killed every 4 minutes on average, half the time the leader, and started again after 1 to 10 s.
-- Every 30 minutes on average, a follower is stopped while 256 MiB of writes go in, and it must fetch a snapshot when it resumes.
+- Every 30 minutes on average, a follower is stopped while 256 MiB of writes go in, and it must fetch a snapshot when it resumes. The workers' client leaves it out while it is stopped: a call waiting in a stopped node's socket applies when the node resumes, after the worker gave up and read the object, so the model would take it for a write no one made.
 
 After each fault:
 - after a kill, the other two nodes must commit a write within 10 s;

@@ -468,6 +468,18 @@ func (s *soak) hold(ctx context.Context) error {
 	s.rep.Holds++
 	s.logf("hold node%d while %d MiB go in", f.i+1, s.cfg.burst>>20)
 	from := logSize(f)
+	// A call waiting in a stopped node's socket applies when the node
+	// resumes, after its worker gave up and read the object, and the
+	// model would take it for a write no one made. So the workers' client
+	// leaves the node out while it is held, from when the calls it has
+	// already sent there have ended.
+	var rest []string
+	for _, i := range others(f.i) {
+		rest = append(rest, s.c.endpoints[i])
+	}
+	s.l.cl.SetEndpoints(rest...)
+	defer s.l.cl.SetEndpoints(s.c.endpoints[:]...)
+	pause(ctx, s.cfg.requestTimeout)
 	if err := f.signal(syscall.SIGSTOP); err != nil {
 		return err
 	}
