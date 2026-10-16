@@ -261,6 +261,10 @@ func (st *State) ApplyPut(op *mvcc.PutOp) (*mvccpb.KeyValue, error) {
 // Errors from etcd's set of answers leave the state unchanged
 // and are the same on every replica; any other error is a bug.
 func (st *State) Apply(op proto.Message) (proto.Message, error) {
+	return st.applyReserved(op, nil)
+}
+
+func (st *State) applyReserved(op proto.Message, reserve func(int64) error) (proto.Message, error) {
 	st.changes = nil
 	if err := st.refusedOp(op); err != nil {
 		return nil, err
@@ -284,7 +288,7 @@ func (st *State) Apply(op proto.Message) (proto.Message, error) {
 		st.track()
 		return r, nil
 	case *pb.TxnRequest:
-		r, err := st.kv.Txn(op)
+		r, err := st.kv.TxnReserved(op, reserve, true)
 		if err != nil {
 			return nil, err
 		}

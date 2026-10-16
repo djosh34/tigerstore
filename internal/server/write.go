@@ -165,8 +165,12 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				if last && it.end {
 					flags = http2.FlagDataEndStream
 				}
-				st.replyHold.Retain()
-				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n], hold: st.replyHold})
+				hold := it.hold
+				if hold == nil {
+					hold = st.replyHold
+				}
+				hold.Retain()
+				frames = append(frames, wframe{typ: http2.FrameData, flags: flags, id: st.id, b: it.b[:n], hold: hold})
 				it.b = it.b[n:]
 				it.started = true
 				c.sendWin -= int64(n)
@@ -181,6 +185,7 @@ func (c *conn) takeStream(st *stream, frames []wframe, budget *int) []wframe {
 				}
 			}
 		}
+		it.hold.Release()
 		st.out[0] = outItem{}
 		st.out = st.out[1:]
 	}

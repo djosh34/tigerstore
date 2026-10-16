@@ -41,7 +41,7 @@ type ValueRead struct {
 	// when ordered apply waits for them.
 	read  *pending
 	apply bool
-	// held reserves candidate values needed by a compact Range's sort.
+	// held reserves working values needed by a read or committed Txn.
 	held int64
 }
 

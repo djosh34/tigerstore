@@ -415,6 +415,28 @@ func (c Change) PrevLease() int64 {
 	return 0
 }
 
+// Deleted reports whether this change is a deletion.
+func (c Change) Deleted() bool { return c.k.vers[c.i].ver == 0 }
+
+// EventBytes includes the event, its values, fills, encoding and compression.
+// It can be computed without allocating or reading a value.
+func (c Change) EventBytes(withPrev bool) int64 {
+	v := &c.k.vers[c.i]
+	bytes := int64(1024) + 4*int64(len(c.k.key))
+	if v.ver != 0 {
+		bytes += 4 * int64(v.value.Len)
+	}
+	j := c.i - 1
+	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
+		j--
+	}
+	create := v.ver != 0 && v.create == v.mod.main
+	if withPrev && !create && j >= 0 && c.k.vers[j].ver != 0 {
+		bytes += 512 + 4*int64(len(c.k.key)) + 4*int64(c.k.vers[j].value.Len)
+	}
+	return bytes
+}
+
 // Event builds the watch event of the change. The previous value is set
 // when withPrev is true and the key existed at the revision before, as
 // etcd reads it there: a Txn that put a key and then deleted it sends the
@@ -540,11 +562,41 @@ func mix(x uint64) uint64 {
 // from or later, in revision order. end follows Range: empty means only
 // key, "\x00" means every key from key on.
 func (s *Store) History(key, end []byte, from int64) []Change {
+	return s.historyInto(nil, key, end, from, nil)
+}
+
+// HistoryReserved admits the history and its selected events before
+// allocating either. include filters events without reading their values.
+func (s *Store) HistoryReserved(key, end []byte, from int64, prev bool, include func(Change) bool, reserve func(int64) error) ([]Change, error) {
 	var out []Change
+	if reserve != nil {
+		count, bytes := 0, int64(1024)
+		s.ascend(key, end, func(k *keyIndex) bool {
+			for i := k.at(from-1) + 1; i < len(k.vers); i++ {
+				ch := Change{s: s, k: k, i: i}
+				if include == nil || include(ch) {
+					count++
+					bytes += ch.EventBytes(prev) + 32
+				}
+			}
+			return true
+		})
+		if err := reserve(bytes); err != nil {
+			return nil, err
+		}
+		out = make([]Change, 0, count)
+	}
+	return s.historyInto(out, key, end, from, include), nil
+}
+
+func (s *Store) historyInto(out []Change, key, end []byte, from int64, include func(Change) bool) []Change {
 	s.ascend(key, end, func(k *keyIndex) bool {
 		i := k.at(from - 1)
 		for i++; i < len(k.vers); i++ {
-			out = append(out, Change{s: s, k: k, i: i})
+			ch := Change{s: s, k: k, i: i}
+			if include == nil || include(ch) {
+				out = append(out, ch)
+			}
 		}
 		return true
 	})

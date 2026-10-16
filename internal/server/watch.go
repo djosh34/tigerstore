@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/djosh34/tigerstore/internal/node"
 )
 
 // watch serves one Watch stream. A goroutine reads client requests into
@@ -51,9 +53,11 @@ func (s *Server) watch(st *stream) error {
 	for {
 		select {
 		case r := <-ws.C:
-			ws.Taken(r)
+			hold := ws.TakeHold(r)
 			start := time.Now()
-			if err := sendFragments(st, r); err != nil {
+			err := sendFragments(st, r, hold)
+			hold.Release()
+			if err != nil {
 				if errors.Is(err, errAborted) {
 					return ws.Err()
 				}
@@ -82,14 +86,14 @@ func (s *Server) watch(st *stream) error {
 // MaxRequestBytesWithOverhead (Server.maxRecvMsg) bytes, each
 // of at least one event and all but the last marked as fragments, if it
 // is that large and has more than one event.
-func sendFragments(st *stream, r *pb.WatchResponse) error {
+func sendFragments(st *stream, r *pb.WatchResponse, hold *node.ReplyHold) error {
 	if !r.Fragment {
-		return st.Send(r)
+		return st.SendHeld(r, hold)
 	}
 	r.Fragment = false
 	maxWatchBytes := st.c.s.maxRecvMsg
 	if proto.Size(r) < maxWatchBytes {
-		return st.Send(r)
+		return st.SendHeld(r, hold)
 	}
 	for evs := r.Events; len(evs) > 0; {
 		cur := &pb.WatchResponse{
@@ -107,7 +111,7 @@ func sendFragments(st *stream, r *pb.WatchResponse) error {
 		cur.Events = evs[:n]
 		evs = evs[n:]
 		cur.Fragment = len(evs) > 0
-		if err := st.Send(cur); err != nil {
+		if err := st.SendHeld(cur, hold); err != nil {
 			return err
 		}
 	}

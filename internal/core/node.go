@@ -276,7 +276,7 @@ type Reply struct {
 	PrevKv *mvccpb.KeyValue
 	// Range is the answer to a Compact range.
 	Range mvcc.RangeResult
-	// Held is the reservation for a compact Range. The driver reports
+	// Held is the answer's reservation. The driver reports
 	// ReleaseReplyBytes only after the answer is sent or dropped.
 	Held int64
 }
@@ -457,7 +457,7 @@ type Node struct {
 	// Appends of forwarded proposals do not hold anything.
 	own        []uint64
 	awaitOwn   bool
-	replyBytes int64               // compact Range answers under construction or at clients
+	replyBytes int64               // value-bearing answers under construction or at clients
 	replyWait  []*pending          // ranges waiting for answer memory
 	waiting    map[uint64]*pending // writes by request ID
 	timeouts   []*pending          // every waiting request in deadline order
@@ -1445,7 +1445,7 @@ func (n *Node) Process() (Effects, error) {
 			// goes out ahead of the events it covers.
 			for _, w := range n.watchers {
 				if !w.dead && w.progress && len(w.pending) > 0 {
-					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id}, nil)
+					n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id})
 				}
 			}
 		}
@@ -1610,6 +1610,7 @@ func (n *Node) serveRead(p *pending) {
 	var resp proto.Message
 	var err error
 	rep := Reply{ID: p.req.ID}
+	reserve := n.replyReservation(&rep.Held)
 	if p.aiCurrent {
 		p.ai.revision = n.state.auth.revision
 	}
@@ -1626,34 +1627,27 @@ func (n *Node) serveRead(p *pending) {
 		resp, err = n.credentials(op)
 		rep.Rev = int64(n.state.auth.revision)
 	case *pb.RangeRequest:
+		if op.CountOnly {
+			// A fixed-size control answer must not wait behind the chunk
+			// whose final count the RangeStream handler is asking for.
+			reserve = nil
+		}
 		if p.req.Compact {
 			var res mvcc.RangeResult
-			if res, err = n.kv.RangeKVsReserved(op, func(bytes int64) error {
-				if err := n.reserveReply(bytes); err != nil {
-					return err
-				}
-				if n.cfg.MemoryBytes > 0 {
-					rep.Held = bytes
-				}
-				return nil
-			}); err == nil {
+			if res, err = n.kv.RangeKVsReserved(op, reserve); err == nil {
 				rep.Term, rep.Range = n.term, res
 			}
 			break
 		}
 		var r *pb.RangeResponse
-		if p.req.Chunk {
-			r, err = n.kv.RangeChunk(op)
-		} else {
-			r, err = n.kv.Range(op)
-		}
+		r, err = n.kv.RangeReserved(op, !p.req.Chunk, reserve)
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
 		}
 	case *pb.TxnRequest:
 		var r *pb.TxnResponse
-		r, err = n.kv.Txn(op)
+		r, err = n.kv.TxnReserved(op, reserve, false)
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
@@ -1686,7 +1680,9 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.DowngradeRequest:
 		resp, err = n.validateDowngrade(op)
 	}
+	fills := n.kv.TakeFills()
 	if errors.Is(err, errReplyBusy) {
+		n.ReleaseReplyBytes(rep.Held)
 		p.fetched = nil
 		n.replyWait = append(n.replyWait, p)
 		return
@@ -1697,6 +1693,7 @@ func (n *Node) serveRead(p *pending) {
 		return
 	}
 	if err != nil {
+		fills = nil
 		n.ReleaseReplyBytes(rep.Held)
 		rep.Held = 0
 	}
@@ -1717,7 +1714,7 @@ func (n *Node) serveRead(p *pending) {
 		return
 	}
 	rep.Resp, rep.Err = resp, err
-	n.answer(p, rep, n.kv.TakeFills())
+	n.answer(p, rep, fills)
 }
 
 func (n *Node) fillHeader(h *pb.ResponseHeader) {
@@ -1839,17 +1836,34 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	room := n.quotaLeft(quotaCost(op))
-	resp, err := n.applyOp(op)
+	var held int64
+	var replyErr error
+	reserve := n.replyReservation(&held)
+	if reserve != nil {
+		charge := reserve
+		reserve = func(bytes int64) error {
+			if replyErr == nil {
+				if p == nil || p.done {
+					replyErr = errReplyBusy
+				} else {
+					replyErr = charge(bytes)
+				}
+			}
+			return replyErr
+		}
+	}
+	resp, err := n.applyOpReserved(op, reserve)
 	var cold *mvcc.ColdError
 	for errors.As(err, &cold) {
 		if !n.readInline {
 			n.pause(e.GetIndex(), k, cold.Need)
+			n.paused.read.held = held
 			return errPaused
 		}
 		if err := n.readNow(cold.Need); err != nil {
 			return err
 		}
-		resp, err = n.applyOp(op)
+		resp, err = n.applyOpReserved(op, reserve)
 	}
 	if n.readInline {
 		n.values.fetched = nil
@@ -1865,8 +1879,18 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		}
 	}
 	n.timed = timedApply{op: opName(op), err: err}
+	if err != nil || replyErr != nil || p == nil || p.done {
+		n.ReleaseReplyBytes(held)
+		held = 0
+		if replyErr != nil && err == nil {
+			// The write is committed. Do not retry it as a read, and do
+			// not make a local memory refusal an apply failure.
+			err = status.Error(codes.Unavailable, "tigerstore: transaction applied but its answer exceeds the available memory; read back the result")
+			resp, fills = nil, nil
+		}
+	}
 	if p != nil {
-		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err}, fills)
+		n.answer(p, Reply{ID: p.req.ID, Resp: resp, Err: err, Held: held}, fills)
 	}
 	return nil
 }
@@ -1914,8 +1938,8 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 
 // applyOp runs one write. Request errors (an unknown lease, a missing key
 // for ignore_value) are answers; any other error stops the node.
-func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
-	resp, err := n.state.Apply(op)
+func (n *Node) applyOpReserved(op proto.Message, reserve func(int64) error) (proto.Message, error) {
+	resp, err := n.state.applyReserved(op, reserve)
 	if err != nil {
 		if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) || errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err

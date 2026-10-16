@@ -161,14 +161,51 @@ type WatchStream struct {
 	// C carries the responses in order. Whoever takes one calls Taken.
 	C chan *pb.WatchResponse
 	// queued is the size of the responses in C.
-	queued atomic.Int64
-	done   chan struct{}
-	err    error
+	queued  atomic.Int64
+	holdsMu sync.Mutex
+	holds   map[*pb.WatchResponse]*ReplyHold
+	done    chan struct{}
+	err     error
 }
 
 // Taken reports that a response from C was taken, so its bytes no longer
 // count against the stream's limit.
-func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.queued.Add(-int64(proto.Size(r))) }
+func (ws *WatchStream) Taken(r *pb.WatchResponse) { ws.TakeHold(r).Release() }
+
+// TakeHold transfers a received response's reservation to its sender.
+func (ws *WatchStream) TakeHold(r *pb.WatchResponse) *ReplyHold {
+	ws.queued.Add(-int64(proto.Size(r)))
+	ws.holdsMu.Lock()
+	h := ws.holds[r]
+	delete(ws.holds, r)
+	ws.holdsMu.Unlock()
+	return h
+}
+
+func (ws *WatchStream) hold(r *pb.WatchResponse, h *ReplyHold) {
+	if h == nil {
+		return
+	}
+	ws.holdsMu.Lock()
+	if ws.holds == nil {
+		ws.holds = make(map[*pb.WatchResponse]*ReplyHold)
+	}
+	ws.holds[r] = h
+	ws.holdsMu.Unlock()
+}
+
+// dropQueued releases only messages still in the channel. A receiver
+// that already took a message owns it until TakeHold or Taken.
+func (ws *WatchStream) dropQueued() {
+	for {
+		select {
+		case r := <-ws.C:
+			ws.Taken(r)
+		default:
+			return
+		}
+	}
+}
 
 // Done is closed when the node dropped the stream; Err then says why.
 func (ws *WatchStream) Done() <-chan struct{} { return ws.done }
@@ -279,7 +316,7 @@ type request struct {
 	op     proto.Message
 	chunk  bool // a RangeStream chunk; see core.Request.Chunk
 	caller core.Caller
-	reply  chan core.Reply
+	reply  chan Completion
 }
 
 // Completer takes the replies to the requests it handed the node with
@@ -309,7 +346,7 @@ type batch struct {
 // waiter is who waits for the reply to a request: a Do call, or a
 // completer with its tag.
 type waiter struct {
-	reply chan core.Reply
+	reply chan Completion
 	to    Completer
 	tag   any
 }
@@ -814,22 +851,18 @@ func (n *Node) Do(ctx context.Context, op proto.Message) (proto.Message, error) 
 // DoAs runs one request of caller and waits for its reply. The caller
 // counts in the size limit of a write.
 func (n *Node) DoAs(ctx context.Context, caller core.Caller, op proto.Message) (proto.Message, error) {
-	return n.do(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan core.Reply, 1)})
+	return n.do(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan Completion, 1)})
 }
 
 // RangeChunk reads one chunk of a RangeStream: a range that counts keys
 // only up to its limit, as etcd's chunks do.
-func (n *Node) RangeChunk(ctx context.Context, caller core.Caller, r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	resp, err := n.do(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, caller: caller, reply: make(chan core.Reply, 1)})
-	if err != nil {
-		return nil, err
-	}
-	return resp.(*pb.RangeResponse), nil
+func (n *Node) RangeChunk(ctx context.Context, caller core.Caller, r *pb.RangeRequest) (Completion, error) {
+	return n.doHeld(ctx, &request{id: n.nextID.Add(1), op: r, chunk: true, caller: caller, reply: make(chan Completion, 1)})
 }
 
 // DoReply runs one request of caller and returns the node's whole reply.
 func (n *Node) DoReply(ctx context.Context, caller core.Caller, op proto.Message) (core.Reply, error) {
-	return n.doReply(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan core.Reply, 1)})
+	return n.doReply(ctx, &request{id: n.nextID.Add(1), op: op, caller: caller, reply: make(chan Completion, 1)})
 }
 
 func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
@@ -838,21 +871,42 @@ func (n *Node) do(ctx context.Context, r *request) (proto.Message, error) {
 }
 
 func (n *Node) doReply(ctx context.Context, r *request) (core.Reply, error) {
+	rep, err := n.doHeld(ctx, r)
+	rep.Hold.Release()
+	return rep.Reply, err
+}
+
+func (n *Node) doHeld(ctx context.Context, r *request) (Completion, error) {
 	if core.TakesSpace(core.Request{Op: r.op}) {
 		if err := n.throttle(ctx); err != nil {
-			return core.Reply{}, err
+			return Completion{}, err
 		}
 	}
 	if err := n.put(ctx, input{req: r}); err != nil {
-		return core.Reply{}, err
+		return Completion{}, err
 	}
 	select {
 	case rep := <-r.reply:
 		return rep, rep.Err
 	case <-ctx.Done():
-		return core.Reply{}, ctx.Err()
+		go n.dropReply(r.reply)
+		return Completion{}, ctx.Err()
 	case <-n.done:
-		return core.Reply{}, rpctypes.ErrGRPCStopped
+		n.dropReply(r.reply)
+		return Completion{}, rpctypes.ErrGRPCStopped
+	}
+}
+
+func (n *Node) dropReply(ch <-chan Completion) {
+	select {
+	case rep := <-ch:
+		rep.Hold.Release()
+	case <-n.done:
+		select {
+		case rep := <-ch:
+			rep.Hold.Release()
+		default:
+		}
 	}
 }
 
@@ -1040,6 +1094,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				delete(streams, id)
 				ws.err = ErrSnapshotInstalled
 				close(ws.done)
+				ws.dropQueued()
 			}
 		}
 		if eff.HandOff != 0 {
@@ -1057,8 +1112,10 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
 			if !ok {
+				n.core.ReleaseReplyBytes(w.Held)
 				continue
 			}
+			ws.hold(w.Resp, n.holdReply(w.Held))
 			if planted.On("B13") {
 				// Planted: wait for a slow watcher instead of closing it.
 				ws.C <- w.Resp
@@ -1075,10 +1132,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				}
 			}
 			if !sent {
+				ws.Taken(w.Resp)
 				delete(streams, w.Stream)
 				n.core.CloseWatchStream(w.Stream)
 				ws.err = ErrWatchTooSlow
 				close(ws.done)
+				ws.dropQueued()
 			}
 		}
 		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
@@ -1110,6 +1169,7 @@ func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStrea
 		delete(streams, id)
 		ws.err = rpctypes.ErrGRPCStopped
 		close(ws.done)
+		ws.dropQueued()
 	}
 }
 
@@ -1130,7 +1190,7 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 		}
 		delete(waiters, r.ID)
 		if w.reply != nil {
-			w.reply <- r
+			w.reply <- Completion{Reply: r, Hold: n.holdReply(r.Held)}
 			continue
 		}
 		i, ok := groupOf[w.to]
@@ -1176,6 +1236,9 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 			n.core.Watch(in.stream, streams[in.stream].caller, in.watchReq)
 		}
 	case in.watchClose:
+		if ws := streams[in.stream]; ws != nil {
+			ws.dropQueued()
+		}
 		delete(streams, in.stream)
 		n.core.CloseWatchStream(in.stream)
 	case in.req != nil:

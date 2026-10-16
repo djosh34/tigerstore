@@ -6,9 +6,79 @@ import (
 	"sync/atomic"
 	"testing"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/node"
 )
+
+func TestAnswerMemoryStreamLifetime(t *testing.T) {
+	for i, phase := range []string{"sent", "reset during write", "close during write", "drop queued watch", "refused send"} {
+		t.Run(phase, func(t *testing.T) {
+			c := testConn(t)
+			a, b := net.Pipe()
+			c.raw = a
+			t.Cleanup(func() {
+				c.close()
+				if err := b.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			st := testCall(c, uint32(2*i+1))
+			st.rpc = methods["/etcdserverpb.Watch/Watch"]
+			var freed atomic.Int64
+			const bytes = 1 << 20
+			hold := node.NewReplyHold(bytes, func(n int64) { freed.Add(n) })
+			if phase == "refused send" {
+				c.resetStream(st.id, 0)
+			}
+			r := &pb.WatchResponse{Events: []*mvccpb.Event{{Kv: &mvccpb.KeyValue{Key: []byte("k"), Value: make([]byte, 128<<10)}}}}
+			err := st.SendHeld(r, hold)
+			if (err != nil) != (phase == "refused send") {
+				t.Fatalf("send: %v", err)
+			}
+			hold.Release()
+			if phase == "refused send" {
+				if freed.Load() != bytes {
+					t.Fatal("refused send retained memory")
+				}
+				return
+			}
+			if freed.Load() != 0 {
+				t.Fatal("queue did not retain the reservation")
+			}
+			if phase == "drop queued watch" {
+				st.finish(status.Error(codes.Unavailable, "closed"))
+			} else {
+				c.mu.Lock()
+				if phase != "sent" {
+					st.sendWin = 1
+				}
+				frames := c.take(nil)
+				c.mu.Unlock()
+				if len(frames) == 0 {
+					t.Fatal("no socket frames")
+				}
+				switch phase {
+				case "reset during write":
+					c.resetStream(st.id, 0)
+				case "close during write":
+					c.close()
+				}
+				if freed.Load() != 0 {
+					t.Fatal("socket frames lost their reservation")
+				}
+				releaseFrames(frames)
+			}
+			if freed.Load() != bytes {
+				t.Fatalf("released %d bytes, want %d", freed.Load(), bytes)
+			}
+		})
+	}
+}
 
 func TestRangeReplyReservationLifetime(t *testing.T) {
 	const reserved = 1 << 20

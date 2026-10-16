@@ -215,6 +215,9 @@ func (c *conn) close() {
 		for _, st := range c.streams {
 			st.countEnd(canceled)
 			st.reset = true
+			for _, it := range st.out {
+				it.hold.Release()
+			}
 			st.out = nil
 			st.replyHold.Release()
 			st.replyHold = nil
@@ -431,6 +434,9 @@ func (c *conn) resetStream(id uint32, code http2.ErrCode) {
 		c.releaseLocked(&st.replyHeld)
 		st.replyHold.Release()
 		st.replyHold = nil
+		for _, it := range st.out {
+			it.hold.Release()
+		}
 		st.out = nil
 		st.queued = 0
 	}

@@ -54,10 +54,12 @@ func (s *Server) rangeStream(st *stream) error {
 	var header *pb.ResponseHeader
 	count := int64(0)
 	for {
-		resp, err := s.n.RangeChunk(st.ctx, st.c.callerOf(st), r)
+		cp, err := s.n.RangeChunk(st.ctx, st.c.callerOf(st), r)
 		if err != nil {
+			cp.Hold.Release()
 			return toStatus(err)
 		}
+		resp := cp.Resp.(*pb.RangeResponse)
 		if header == nil {
 			header = resp.Header
 			if r.Revision == 0 {
@@ -86,12 +88,15 @@ func (s *Server) rangeStream(st *stream) error {
 			if resp.More {
 				rest, err := s.countRead(st, &pb.RangeRequest{Key: next, RangeEnd: r.RangeEnd, Revision: r.Revision, CountOnly: true, Serializable: true})
 				if err != nil {
+					cp.Hold.Release()
 					return err
 				}
 				out.Count += rest.Count
 			}
 		}
-		if err := st.Send(&pb.RangeStreamResponse{RangeResponse: out}); err != nil {
+		err = st.SendHeld(&pb.RangeStreamResponse{RangeResponse: out}, cp.Hold)
+		cp.Hold.Release()
+		if err != nil {
 			return err
 		}
 		if done {

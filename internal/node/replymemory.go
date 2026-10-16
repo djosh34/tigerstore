@@ -2,7 +2,7 @@ package node
 
 import "sync/atomic"
 
-// ReplyHold keeps a Range's memory reservation until every owner has
+// ReplyHold keeps an answer's memory reservation until every owner has
 // dropped its reference. A writer retains one while using the answer in
 // socket writes, so a concurrent stream reset cannot release it early.
 type ReplyHold struct {

@@ -2,11 +2,57 @@ package mvcc
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
+
+func TestRangeReservationCandidates(t *testing.T) {
+	if size := unsafe.Sizeof(KV{}); size != kvReplyBytes {
+		t.Fatalf("KV size=%d, reservation size=%d", size, kvReplyBytes)
+	}
+	s := New(&coldHeap{})
+	const keys = 10000
+	for i := range keys {
+		put(t, s, fmt.Sprintf("%05d", i), "v")
+	}
+	r := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}, Limit: 1, KeysOnly: true, SortOrder: pb.RangeRequest_DESCEND}
+	var reserved int64
+	res, err := s.RangeKVsReserved(r, func(bytes int64) error {
+		reserved = bytes
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := int64(1024 + (keys-1)*int(unsafe.Sizeof(KV{})) + 512 + 4*5)
+	if reserved != want || len(res.KVs) != 1 || string(res.KVs[0].Key) != "09999" {
+		t.Fatalf("reserved=%d want=%d, result=%+v", reserved, want, res)
+	}
+}
+
+func TestRangeReservationBeforeAllocation(t *testing.T) {
+	s := New(&coldHeap{})
+	for i := range 10000 {
+		put(t, s, fmt.Sprintf("%05d", i), "v")
+	}
+	r := &pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}, KeysOnly: true}
+	refused := errors.New("no candidate memory")
+	b := testing.Benchmark(func(b *testing.B) {
+		for range b.N {
+			_, err := s.RangeKVsReserved(r, func(int64) error { return refused })
+			if !errors.Is(err, refused) {
+				b.Fatal(err)
+			}
+		}
+	})
+	if bytes := b.AllocedBytesPerOp(); bytes > 8192 {
+		t.Fatalf("refused range allocated %d bytes before admission", bytes)
+	}
+}
 
 func TestRangeReservationBeforeValues(t *testing.T) {
 	for _, order := range []pb.RangeRequest_SortTarget{pb.RangeRequest_KEY, pb.RangeRequest_VALUE} {

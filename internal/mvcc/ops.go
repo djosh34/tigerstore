@@ -11,6 +11,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -20,9 +21,16 @@ import (
 
 // writer applies one request. Its changes get main revision begin+1.
 type writer struct {
-	s       *Store
-	begin   int64
-	changed bool
+	s        *Store
+	begin    int64
+	changed  bool
+	reserve  func(int64) error
+	reserved int64
+	// discard lets a committed transaction finish its writes when the
+	// local client cannot afford its answer. It never changes the branch.
+	discard   bool
+	committed bool
+	readonly  bool
 }
 
 func (s *Store) start() *writer {
@@ -60,6 +68,10 @@ func header(r int64) *pb.ResponseHeader { return &pb.ResponseHeader{Revision: r}
 // KV is one key's version as a range returns it: the fields of an
 // mvccpb.KeyValue, as a value. Key is the index's slice, Value the one
 // Values returned; neither may change.
+// kvReplyBytes is the 64-bit size of KV, checked by a regression test.
+// Keep the core's accounting independent of the host architecture.
+const kvReplyBytes = 104
+
 type KV struct {
 	Key, Value                                  []byte
 	CreateRevision, ModRevision, Version, Lease int64
@@ -132,8 +144,14 @@ func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) 
 
 // rangeKeys answers r as etcd's message. Without total, as rangeResult.
 func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, total, nil)
+	if w.discard {
+		return &pb.RangeResponse{}, nil
+	}
+	res, err := w.rangeResult(r, total, w.reservePart())
 	if err != nil {
+		if w.committed && w.discard {
+			return &pb.RangeResponse{}, nil
+		}
 		return nil, err
 	}
 	resp := res.Response()
@@ -170,7 +188,30 @@ func (res *RangeResult) Response() *pb.RangeResponse {
 // plus one keys, and Count holds the keys it saw, not every key in the
 // range.
 func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
-	return s.reader().rangeKeys(r, false)
+	return s.RangeReserved(r, false, nil)
+}
+
+// RangeReserved builds a protobuf answer under the same reservation as
+// RangeKVsReserved. total is false for RangeStream chunks.
+func (s *Store) RangeReserved(r *pb.RangeRequest, total bool, reserve func(int64) error) (*pb.RangeResponse, error) {
+	w := s.reader()
+	w.reserve = reserve
+	return w.rangeKeys(r, total)
+}
+
+// reservePart gives one part of an answer a cumulative reservation.
+func (w *writer) reservePart() func(int64) error {
+	if w.reserve == nil {
+		return nil
+	}
+	base := w.reserved
+	return func(bytes int64) error {
+		if err := w.reserve(base + bytes); err != nil {
+			return err
+		}
+		w.reserved = base + bytes
+		return nil
+	}
 }
 
 // rangeResult answers r without the values, unless it sorts by them, and
@@ -198,6 +239,22 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 		pushLimit = r.Limit + 1
 	}
 	var kvs []KV
+	// Count first so the backing array has an exact, reserved capacity.
+	// In particular a small sorted page must not charge every candidate
+	// for encoding and fills that only the selected keys need.
+	if reserve != nil && !r.CountOnly {
+		candidates := 0
+		w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
+			if _, ok := k.live(at); ok {
+				candidates++
+			}
+			return pushLimit == 0 || int64(candidates) < pushLimit
+		})
+		if err := reserve(1024 + int64(candidates)*kvReplyBytes); err != nil {
+			return RangeResult{}, err
+		}
+		kvs = make([]KV, 0, candidates)
+	}
 	count := int64(0)
 	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
 		v, ok := k.live(at)
@@ -262,7 +319,7 @@ func reserveReply(reserve func(int64) error, kvs []KV, values bool) error {
 	if reserve == nil {
 		return nil
 	}
-	bytes := int64(1024) + 512*int64(cap(kvs))
+	bytes := int64(1024) + kvReplyBytes*int64(cap(kvs)-len(kvs)) + 512*int64(len(kvs))
 	for _, kv := range kvs {
 		bytes += 4 * int64(len(kv.Key))
 		if values {
@@ -572,7 +629,25 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 // transaction; reads inside it see its own earlier writes. An error after
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
+	return s.TxnReserved(r, nil, false)
+}
+
+// TxnReserved reserves the whole answer, including nested ranges. A
+// committed transaction must still apply if this node refuses its answer;
+// the caller records that local refusal separately from the apply result.
+func (s *Store) TxnReserved(r *pb.TxnRequest, reserve func(int64) error, committed bool) (*pb.TxnResponse, error) {
 	w := s.start()
+	w.committed = committed
+	w.readonly = IsTxnReadOnly(r)
+	if reserve != nil {
+		w.reserve = func(bytes int64) error {
+			err := reserve(bytes)
+			if err != nil && committed {
+				w.discard = true
+			}
+			return err
+		}
+	}
 	ops := s.counts.Puts + s.counts.Deletes + s.counts.Ranges
 	defer func() {
 		if s.counts.Puts+s.counts.Deletes+s.counts.Ranges-ops > 1 {
@@ -588,7 +663,7 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	}
 	resp, _, err := w.executeTxn(r, path)
 	if err != nil {
-		if cold := (*ColdError)(nil); errors.As(err, &cold) {
+		if cold := (*ColdError)(nil); errors.As(err, &cold) && !w.readonly {
 			// checkTxn found every value it sorts by in memory; the
 			// transaction may have changed keys already, so it cannot run
 			// again.
@@ -775,21 +850,47 @@ func (w *writer) checkRange(r *pb.RangeRequest) error {
 // it reads otherwise are those at r's revision, or before the
 // transaction.
 func (w *writer) checkSortValues(r *pb.RangeRequest) error {
-	if r.SortTarget != pb.RangeRequest_VALUE || r.CountOnly {
+	if w.readonly || r.SortTarget != pb.RangeRequest_VALUE || r.CountOnly {
 		return nil
 	}
 	at := r.Revision
 	if at <= 0 {
 		at = w.begin
 	}
-	var kvs []KV
-	w.s.ascend(r.Key, r.RangeEnd, func(k *keyIndex) bool {
-		if v, ok := k.live(at); ok {
-			kvs = append(kvs, k.kvValue(v))
+	if w.discard {
+		return nil
+	}
+	// The check needs all values that could take part in the sort.
+	// Use the reserved candidate walk before reading any of them.
+	check := proto.Clone(r).(*pb.RangeRequest)
+	check.Revision, check.Limit = at, 0
+	check.MinModRevision, check.MaxModRevision = 0, 0
+	check.MinCreateRevision, check.MaxCreateRevision = 0, 0
+	_, err := w.rangeResult(check, true, w.reservePart())
+	w.s.counts.Ranges--
+	if w.committed && w.discard {
+		return nil
+	}
+	return err
+}
+
+func (w *writer) reservePrevious(key, end []byte) error {
+	reserve := w.reservePart()
+	if reserve == nil || w.discard {
+		return nil
+	}
+	bytes := int64(1024)
+	w.s.ascend(key, end, func(k *keyIndex) bool {
+		if v, ok := k.live(w.cur()); ok {
+			bytes += 512 + 4*int64(len(k.key)) + 4*int64(v.value.Len)
 		}
 		return true
 	})
-	return w.s.readNow(kvs)
+	err := reserve(bytes)
+	if w.committed && w.discard {
+		return nil
+	}
+	return err
 }
 
 // executeTxn runs the chosen branch and returns its response and the
@@ -797,6 +898,11 @@ func (w *writer) checkSortValues(r *pb.RangeRequest) error {
 // header, as in etcd.
 func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int, error) {
 	ops := branch(r, path[0])
+	if reserve := w.reservePart(); reserve != nil && !w.discard {
+		if err := reserve(1024 + 512*int64(len(ops))); err != nil && !w.committed {
+			return nil, 0, err
+		}
+	}
 	resp := &pb.TxnResponse{
 		Header:    &pb.ResponseHeader{},
 		Succeeded: path[0],
@@ -814,13 +920,30 @@ func (w *writer) executeTxn(r *pb.TxnRequest, path []bool) (*pb.TxnResponse, int
 			out.Response = &pb.ResponseOp_ResponseRange{ResponseRange: rr}
 		case *pb.RequestOp_RequestPut:
 			op := putOp(t.RequestPut)
+			if op.PrevKv {
+				if err := w.reservePrevious(op.Key, nil); err != nil {
+					return nil, 0, err
+				}
+			}
+			if w.discard {
+				op.PrevKv = false
+			}
 			prev, err := w.put(&op)
 			if err != nil {
 				return nil, 0, err
 			}
 			out.Response = &pb.ResponseOp_ResponsePut{ResponsePut: &pb.PutResponse{Header: header(w.begin + 1), PrevKv: prev}}
 		case *pb.RequestOp_RequestDeleteRange:
-			d, err := w.deleteRange(t.RequestDeleteRange)
+			op := pb.DeleteRangeRequest{Key: t.RequestDeleteRange.Key, RangeEnd: t.RequestDeleteRange.RangeEnd, PrevKv: t.RequestDeleteRange.PrevKv}
+			if op.PrevKv {
+				if err := w.reservePrevious(op.Key, op.RangeEnd); err != nil {
+					return nil, 0, err
+				}
+			}
+			if w.discard {
+				op.PrevKv = false
+			}
+			d, err := w.deleteRange(&op)
 			if err != nil {
 				return nil, 0, err
 			}

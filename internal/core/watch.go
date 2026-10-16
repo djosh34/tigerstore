@@ -22,6 +22,7 @@ import (
 type WatchResponse struct {
 	Stream uint64
 	Resp   *pb.WatchResponse
+	Held   int64
 }
 
 // invalidWatchID marks responses that belong to no single watcher.
@@ -54,6 +55,7 @@ type watcher struct {
 	// asked is the start revision the client asked for, 0 for "from now".
 	asked   int64
 	pending []*mvccpb.Event
+	held    int64
 	// waits are the value reads the pending events wait for.
 	waits []*ValueRead
 	// sent is set when the watcher got events since the last progress
@@ -93,10 +95,14 @@ func (n *Node) watchHeader() *pb.ResponseHeader {
 
 // watchReply sends a response on a stream once the value reads in waits
 // are done and every response before it went out.
-func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRead) {
+func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse) {
+	n.watchReplyHeld(s, r, nil, 0)
+}
+
+func (n *Node) watchReplyHeld(s *watchStream, r *pb.WatchResponse, waits []*ValueRead, held int64) {
 	r.Header = n.watchHeader()
 	n.counters.Events += int64(len(r.Events))
-	resp := WatchResponse{Stream: s.id, Resp: r}
+	resp := WatchResponse{Stream: s.id, Resp: r, Held: held}
 	waits = slices.DeleteFunc(waits, func(v *ValueRead) bool { return v.done })
 	if len(s.held) == 0 && len(waits) == 0 {
 		n.out.Watch = append(n.out.Watch, resp)
@@ -113,12 +119,13 @@ func (n *Node) watchReply(s *watchStream, r *pb.WatchResponse, waits []*ValueRea
 // releaseWatches sends a stream's held responses whose reads are done, in
 // order, up to the first that still waits.
 func (n *Node) releaseWatches(s *watchStream) {
-	if n.streams[s.id] != s {
-		return
-	}
 	i := 0
 	for ; i < len(s.held) && allRead(s.held[i].waits); i++ {
-		n.out.Watch = append(n.out.Watch, s.held[i].resp)
+		if n.streams[s.id] == s {
+			n.out.Watch = append(n.out.Watch, s.held[i].resp)
+		} else {
+			n.ReleaseReplyBytes(s.held[i].resp.Held)
+		}
 	}
 	clear(s.held[:i])
 	s.held = s.held[i:]
@@ -174,7 +181,7 @@ func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 		id := r.GetCancelRequest().WatchId
 		if w, ok := s.byID[id]; ok {
 			n.removeWatch(w)
-			n.watchReply(s, &pb.WatchResponse{WatchId: id, Canceled: true}, nil)
+			n.watchReply(s, &pb.WatchResponse{WatchId: id, Canceled: true})
 		}
 	case r.GetProgressRequest() != nil:
 		// Every watcher is synced, because catching up happens inside one
@@ -190,7 +197,7 @@ func (n *Node) Watch(stream uint64, c Caller, r *pb.WatchRequest) {
 				return
 			}
 		}
-		n.watchReply(s, &pb.WatchResponse{WatchId: invalidWatchID}, nil)
+		n.watchReply(s, &pb.WatchResponse{WatchId: invalidWatchID})
 	}
 }
 
@@ -213,14 +220,17 @@ func (n *Node) CloseWatchStream(stream uint64) {
 	}
 	if !planted.On("B18") {
 		for _, w := range s.byID {
+			n.flushWatcher(w)
 			w.dead = true
 		}
 	}
 	delete(n.streams, stream)
+	n.releaseWatches(s)
 	n.pruneWatchers()
 }
 
 func (n *Node) removeWatch(w *watcher) {
+	n.flushWatcher(w)
 	w.dead = true
 	delete(w.stream.byID, w.id)
 	n.pruneWatchers()
@@ -252,7 +262,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	if c.StartRevision < 0 {
 		created.WatchId, created.Canceled = invalidWatchID, true
 		created.CancelReason = rpctypes.ErrCompacted.Error()
-		n.watchReply(s, created, nil)
+		n.watchReply(s, created)
 		return
 	}
 	key := c.Key
@@ -261,13 +271,13 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 	}
 	if err := n.watchAllowed(s.caller, key, c.RangeEnd); err != nil {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, err.Error()
-		n.watchReply(s, created, nil)
+		n.watchReply(s, created)
 		return
 	}
 	fromKey := len(c.RangeEnd) == 1 && c.RangeEnd[0] == 0
 	if len(c.RangeEnd) != 0 && !fromKey && bytes.Compare(key, c.RangeEnd) >= 0 {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errEmptyWatchRange
-		n.watchReply(s, created, nil)
+		n.watchReply(s, created)
 		return
 	}
 	id := c.WatchId
@@ -279,7 +289,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		s.nextID++
 	} else if s.byID[id] != nil {
 		created.WatchId, created.Canceled, created.CancelReason = invalidWatchID, true, errDuplicateWatchID
-		n.watchReply(s, created, nil)
+		n.watchReply(s, created)
 		return
 	}
 	w := &watcher{stream: s, id: id, key: key, end: c.RangeEnd, prevKV: c.PrevKv, progress: c.ProgressNotify, fragment: c.Fragment, start: c.StartRevision, asked: c.StartRevision}
@@ -302,7 +312,7 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		w.start = rev + 1
 	}
 	created.WatchId = id
-	n.watchReply(s, created, nil)
+	n.watchReply(s, created)
 	if w.start <= rev {
 		// Like etcd, a watch from below the compaction is canceled. A
 		// watch with prev_kv from the compaction revision itself is too:
@@ -310,15 +320,22 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 		// without previous values, which Kubernetes rejects.
 		if c := n.kv.CompactRev(); w.start < c || (w.prevKV && w.start == c) {
 			r := &pb.WatchResponse{WatchId: id, CompactRevision: c, Canceled: true}
-			n.watchReply(s, r, nil)
+			n.watchReply(s, r)
 			// etcd's compaction cancel carries header revision 0.
 			r.Header.Revision = 0
 			return
 		}
+		var held int64
+		history, err := n.kv.HistoryReserved(w.key, w.end, w.start, w.withPrev(), w.includes, n.replyReservation(&held))
+		if err != nil {
+			n.watchReply(s, &pb.WatchResponse{WatchId: id, Canceled: true, CancelReason: err.Error()})
+			return
+		}
 		var evs []*mvccpb.Event
 		var waits []*ValueRead
+		var chunkHeld int64
 		revs, last := 0, int64(0)
-		for _, ch := range n.kv.History(w.key, w.end, w.start) {
+		for _, ch := range history {
 			ev, err := w.event(ch)
 			if err != nil {
 				n.fail(err)
@@ -330,16 +347,23 @@ func (n *Node) createWatch(s *watchStream, c *pb.WatchCreateRequest) {
 			}
 			if r := ev.Kv.ModRevision; r != last {
 				if revs == catchUpRevs {
-					n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits)
+					n.watchReplyHeld(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits, chunkHeld)
+					held -= chunkHeld
+					chunkHeld = 0
 					evs, waits, revs = nil, nil, 0
 				}
 				revs, last = revs+1, r
 			}
 			evs = append(evs, ev)
+			if n.cfg.MemoryBytes > 0 {
+				chunkHeld += ch.EventBytes(w.withPrev()) + 32
+			}
 			waits = addWait(waits, read)
 		}
 		if len(evs) > 0 {
-			n.watchReply(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits)
+			n.watchReplyHeld(s, &pb.WatchResponse{WatchId: id, Events: evs, Fragment: w.fragment && len(evs) > 1}, waits, held)
+		} else {
+			n.ReleaseReplyBytes(held)
 		}
 	}
 	s.byID[id] = w
@@ -355,6 +379,13 @@ func (w *watcher) event(c mvcc.Change) (*mvccpb.Event, error) {
 		return nil, err
 	}
 	return ev, nil
+}
+
+func (w *watcher) includes(c mvcc.Change) bool {
+	if c.Deleted() {
+		return !w.noDelete
+	}
+	return !w.noPut
 }
 
 // withPrev reports whether the watcher's events carry previous values.
@@ -382,6 +413,20 @@ func (n *Node) matchWatches() {
 		for _, w := range n.watchers {
 			if w.dead || c.ModRev() < w.start || !mvcc.InRange(c.Key(), w.key, w.end) {
 				continue
+			}
+			if !w.includes(c) {
+				continue
+			}
+			bytes := c.EventBytes(w.withPrev())
+			if err := n.reserveReply(bytes); err != nil {
+				n.flushWatcher(w)
+				w.dead = true
+				delete(w.stream.byID, w.id)
+				n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Canceled: true, CancelReason: err.Error()})
+				continue
+			}
+			if n.cfg.MemoryBytes > 0 {
+				w.held += bytes
 			}
 			k := 0
 			if w.withPrev() {
@@ -414,10 +459,18 @@ func (n *Node) flushWatches() {
 		if w.dead || len(w.pending) == 0 {
 			continue
 		}
-		n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Events: w.pending, Fragment: w.fragment && len(w.pending) > 1}, w.waits)
-		w.pending, w.waits = nil, nil
-		w.sent = true
+		n.flushWatcher(w)
 	}
+	n.pruneWatchers()
+}
+
+func (n *Node) flushWatcher(w *watcher) {
+	if len(w.pending) == 0 {
+		return
+	}
+	n.watchReplyHeld(w.stream, &pb.WatchResponse{WatchId: w.id, Events: w.pending, Fragment: w.fragment && len(w.pending) > 1}, w.waits, w.held)
+	w.pending, w.waits, w.held = nil, nil, 0
+	w.sent = true
 }
 
 // progressNotify sends a progress notification to every watcher that
@@ -429,7 +482,7 @@ func (n *Node) progressNotify() {
 	for _, w := range n.watchers {
 		if !w.dead && w.progress && !w.sent && !w.ahead(rev) {
 			r := &pb.WatchResponse{WatchId: w.id}
-			n.watchReply(w.stream, r, nil)
+			n.watchReply(w.stream, r)
 		}
 		w.sent = false
 	}

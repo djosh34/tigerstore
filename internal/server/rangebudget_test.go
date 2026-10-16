@@ -3,7 +3,9 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +21,44 @@ import (
 // the node driver and the socket writer. More pages than fit in memory
 // must all finish, including gzip replies on separate connections.
 func TestRangeReplyClients(t *testing.T) {
+	for _, kind := range []string{"range", "txn", "stream"} {
+		t.Run(kind, func(t *testing.T) { testAnswerClients(t, kind) })
+	}
+}
+
+func answerPage(ctx context.Context, client pb.KVClient, kind string, req *pb.RangeRequest, options ...grpc.CallOption) (*pb.RangeResponse, error) {
+	switch kind {
+	case "txn":
+		r, err := client.Txn(ctx, &pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestRange{RequestRange: req}}}}, options...)
+		if err != nil {
+			return nil, err
+		}
+		return r.Responses[0].GetResponseRange(), nil
+	case "stream":
+		stream, err := client.RangeStream(ctx, req, options...)
+		if err != nil {
+			return nil, err
+		}
+		out := &pb.RangeResponse{}
+		for {
+			r, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				return out, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			out.Kvs = append(out.Kvs, r.RangeResponse.Kvs...)
+			if r.RangeResponse.Header != nil {
+				out.Header, out.Count, out.More = r.RangeResponse.Header, r.RangeResponse.Count, r.RangeResponse.More
+			}
+		}
+	default:
+		return client.Range(ctx, req, options...)
+	}
+}
+
+func testAnswerClients(t *testing.T, kind string) {
 	c := newClusterWith(t, func(c *cluster) {
 		c.coreConfig = func(cfg *core.Config) {
 			cfg.MemoryBytes = 12 << 20
@@ -58,7 +98,7 @@ func TestRangeReplyClients(t *testing.T) {
 			key := []byte("range/")
 			var revision int64
 			for page := range 3 {
-				r, err := client.Range(ctx, &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}, options...)
+				r, err := answerPage(ctx, client, kind, &pb.RangeRequest{Key: key, RangeEnd: []byte("range0"), Limit: 1000, Revision: revision}, options...)
 				if err != nil {
 					errs <- fmt.Errorf("client %d page %d: %w", i, page, err)
 					return
@@ -83,6 +123,28 @@ func TestRangeReplyClients(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+	// A history response must release its reservation while the watch
+	// stream remains open, not only when the client closes it.
+	watch, err := pb.NewWatchClient(c.dial(1, cert)).Watch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := watch.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte("range/0000"), RangeEnd: []byte("range/1000"), StartRevision: 1, PrevKv: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	events := 0
+	for events < 1000 {
+		r, err := watch.Recv()
+		if err != nil || r.Canceled {
+			t.Fatalf("watch: %v, %v", r, err)
+		}
+		for _, ev := range r.Events {
+			if string(ev.Kv.Key) != fmt.Sprintf("range/%04d", events) || !bytes.Equal(ev.Kv.Value, value) {
+				t.Fatalf("wrong watch event %d: %v", events, ev)
+			}
+			events++
+		}
 	}
 	for {
 		m, err := c.nodes[1].Metrics(ctx)

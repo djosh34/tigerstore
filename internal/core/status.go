@@ -75,7 +75,8 @@ type Metrics struct {
 	// hold now; CacheHits are the values it returned and CacheMisses those
 	// read from the log.
 	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
-	// RangeReplyBytes reserves memory for unary Range answers until sent.
+	// RangeReplyBytes reserves memory for value-bearing answers until sent.
+	// The name is kept for compatibility with the original Range metric.
 	RangeReplyBytes int64
 	// ClusterVersion is the cluster version the node has applied.
 	ClusterVersion uint32

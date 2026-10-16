@@ -112,6 +112,7 @@ type outItem struct {
 	end  bool // for data: END_STREAM
 	// started: the writer sent part of it, so it must be sent whole.
 	started bool
+	hold    *node.ReplyHold
 }
 
 var (
@@ -266,6 +267,12 @@ func (st *stream) next() ([]byte, error) {
 // Send queues one response message of a streaming call. It waits while
 // the stream has too much output queued.
 func (st *stream) Send(m proto.Message) error {
+	return st.SendHeld(m, nil)
+}
+
+// SendHeld keeps the reservation on each queued message and socket frame.
+// The caller still owns its reference while encoding and between fragments.
+func (st *stream) SendHeld(m proto.Message, hold *node.ReplyHold) error {
 	b, err := marshal(m)
 	if err == nil {
 		b, err = st.compress(b)
@@ -273,7 +280,7 @@ func (st *stream) Send(m proto.Message) error {
 	if err != nil {
 		return err
 	}
-	return st.push(b, false, nil, true)
+	return st.pushHeld(b, false, nil, true, hold)
 }
 
 // marshal encodes m behind a gRPC message prefix.
@@ -324,6 +331,10 @@ func (st *stream) finish(err error) {
 // the stream (if end) with status s (nil for OK). With wait, it waits
 // while the stream has more than sendQueue bytes queued.
 func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error {
+	return st.pushHeld(msg, end, s, wait, nil)
+}
+
+func (st *stream) pushHeld(msg []byte, end bool, s *status.Status, wait bool, hold *node.ReplyHold) error {
 	c := st.c
 	for {
 		c.mu.Lock()
@@ -345,7 +356,7 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 				return st.ctx.Err()
 			}
 		}
-		st.pushLocked(msg, end, s)
+		st.pushHeldLocked(msg, end, s, hold)
 		c.mu.Unlock()
 		c.signal()
 		return nil
@@ -355,6 +366,10 @@ func (st *stream) push(msg []byte, end bool, s *status.Status, wait bool) error 
 // pushLocked queues output as push does. c.mu is held and the caller
 // signals the writer.
 func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
+	st.pushHeldLocked(msg, end, s, nil)
+}
+
+func (st *stream) pushHeldLocked(msg []byte, end bool, s *status.Status, hold *node.ReplyHold) {
 	if end {
 		st.countEnd(s)
 	}
@@ -378,7 +393,8 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 			st.out = append(st.out, outItem{kind: outHeaders, b: hdrs})
 			st.headersQueued = true
 		}
-		st.out = append(st.out, outItem{kind: outData, b: msg})
+		hold.Retain()
+		st.out = append(st.out, outItem{kind: outData, b: msg, hold: hold})
 		st.queued += len(msg)
 	}
 	if end && s != nil && st.rpc != nil && st.rpc.stream != nil && !st.rpc.serverStream {
@@ -388,7 +404,13 @@ func (st *stream) pushLocked(msg []byte, end bool, s *status.Status) {
 		// framing stays whole. A server stream keeps them: grpc-go sends
 		// every message Send took before the status, as etcd's RangeStream
 		// does before a compaction error.
-		st.out = slices.DeleteFunc(st.out, func(it outItem) bool { return it.kind == outData && !it.started })
+		st.out = slices.DeleteFunc(st.out, func(it outItem) bool {
+			if it.kind == outData && !it.started {
+				it.hold.Release()
+				return true
+			}
+			return false
+		})
 		st.queued = 0
 		for _, it := range st.out {
 			if it.kind == outData {
