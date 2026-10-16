@@ -87,7 +87,7 @@ type Config struct {
 	// and BeforeSync before each sync of the log. Tests use them to stall
 	// those reads and syncs.
 	BeforeRead, BeforeSync func()
-	Logf       func(format string, args ...any)
+	Logf                   func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
 	Metrics *metrics.Set

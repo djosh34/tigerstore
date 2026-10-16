@@ -26,6 +26,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/djosh34/tigerstore/internal/testport"
 )
 
 // stopTimeout is how long a tigerstore node may take to stop after
@@ -107,8 +109,9 @@ func run() error {
 	}
 }
 
-// freePorts asks the kernel for n free loopback ports. Another process may
-// take one before tigerstore binds it; the test then fails to start.
+// freePorts finds n free loopback ports below the ephemeral range
+// (testport). Another test's node may still take one before tigerstore
+// binds it; the test then fails to start.
 func freePorts(n int) ([]int, error) {
 	var ports []int
 	var lns []net.Listener
@@ -118,12 +121,12 @@ func freePorts(n int) ([]int, error) {
 		}
 	}()
 	for range n {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		ln, port, err := testport.Listen()
 		if err != nil {
 			return nil, err
 		}
 		lns = append(lns, ln)
-		ports = append(ports, ln.Addr().(*net.TCPAddr).Port)
+		ports = append(ports, port)
 	}
 	return ports, nil
 }

@@ -166,7 +166,7 @@ for suite in "${suites[@]}"; do
 		;;
 	tigerstore)
 		off=${OFFSET:-$((RANDOM % 2000 + 1))}
-		for port in $((2379 + off)) $((22379 + off)) $((32379 + off)) $((2380 + off)) $((22380 + off)) $((32380 + off)) $((2381 + off)) $((22381 + off)) $((32381 + off)) $((2383 + off)) $((2384 + off)); do
+		for port in $((2379 + off)) $((22379 + off)) $((12379 + off)) $((2380 + off)) $((22380 + off)) $((12380 + off)) $((2381 + off)) $((22381 + off)) $((12381 + off)) $((2383 + off)) $((2384 + off)); do
 			if in_use $port; then
 				echo "port $port is in use"
 				exit 1

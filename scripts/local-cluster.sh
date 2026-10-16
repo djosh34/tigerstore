@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Starts a 3-node cluster on this machine with the certificates of
 # scripts/dev-certs.sh. Clients connect to https://127.0.0.1:2379, 22379
-# and 32379, peers to ports 2380, 22380 and 32380; OFFSET adds to every
-# port. Data goes to ./data/node1..3, logs to ./data/node1..3.log. Each
+# and 12379, peers to ports 2380, 22380 and 12380; OFFSET adds to every
+# port. With OFFSET up to 2000 every port stays below Linux's ephemeral
+# range (32768 on), where another process's outgoing connection can take
+# a port after it was checked free and before the node binds it (#184). Data goes to ./data/node1..3, logs to ./data/node1..3.log. Each
 # node may use MEMORY_BUDGET bytes (default a quarter of the host's
 # memory). Arguments are passed to every node as extra flags, with
 # @CLIENT@ replaced by the node's client port and @METRICS@ by that port
@@ -12,8 +14,8 @@ set -euo pipefail
 bin=${TIGERSTORE:-./tigerstore}
 certs=${CERTS:-certs}
 off=${OFFSET:-0}
-client=($((2379 + off)) $((22379 + off)) $((32379 + off)))
-peer=($((2380 + off)) $((22380 + off)) $((32380 + off)))
+client=($((2379 + off)) $((22379 + off)) $((12379 + off)))
+peer=($((2380 + off)) $((22380 + off)) $((12380 + off)))
 cluster=node1=https://127.0.0.1:${peer[0]},node2=https://127.0.0.1:${peer[1]},node3=https://127.0.0.1:${peer[2]}
 budget=${MEMORY_BUDGET:-$(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4))}
 mkdir -p data

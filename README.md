@@ -11,14 +11,14 @@ You need Go 1.27, openssl and, to talk to it, etcdctl.
 ```sh
 go build -o tigerstore ./cmd/tigerstore
 scripts/dev-certs.sh certs        # throwaway CA and certificates
-scripts/local-cluster.sh          # nodes on client ports 2379, 22379, 32379
+scripts/local-cluster.sh          # nodes on client ports 2379, 22379, 12379
 ```
 
 Each node is one process. `scripts/local-cluster.sh` runs, for node 1:
 
 ```sh
 ./tigerstore --name node1 --data-dir data/node1 \
-  --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:32380 \
+  --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:12380 \
   --listen-peer-urls https://127.0.0.1:2380 --initial-advertise-peer-urls https://127.0.0.1:2380 \
   --listen-client-urls https://127.0.0.1:2379 --advertise-client-urls https://127.0.0.1:2379 \
   --cert-file certs/node1.pem --key-file certs/node1-key.pem \
@@ -32,7 +32,7 @@ The flags, `ETCD_*` environment variables and `--config-file` are etcd v3.7.2's,
 Talk to it with etcdctl:
 
 ```sh
-etcdctl --endpoints=https://127.0.0.1:2379,https://127.0.0.1:22379,https://127.0.0.1:32379 \
+etcdctl --endpoints=https://127.0.0.1:2379,https://127.0.0.1:22379,https://127.0.0.1:12379 \
   --cacert certs/ca.pem --cert certs/client.pem --key certs/client-key.pem \
   put foo bar
 ```
