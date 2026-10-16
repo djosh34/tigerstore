@@ -85,7 +85,14 @@ func main() {
 	dir := filepath.Join(c.Out, fmt.Sprintf("seed-%d", c.Seed))
 	err := run(c, dir)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreproduce: go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s\n", c.Seed, err, dir, c.Seed, faults)
+		envFlags := ""
+		if c.Env {
+			envFlags = " -env"
+			if c.LazyFS != "" {
+				envFlags += " -lazyfs <LazyFS binary>"
+			}
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "FAIL seed %d: %v\nevidence in %s\nreproduce: go run ./cmd/chaos -tigerstore <binary> -seed %d -faults %s%s\n", c.Seed, err, dir, c.Seed, strings.Join(c.Faults, ","), envFlags)
 		os.Exit(1)
 	}
 	_, _ = fmt.Fprintf(os.Stdout, "PASS seed %d, evidence in %s\n", c.Seed, dir)

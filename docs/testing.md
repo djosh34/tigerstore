@@ -90,16 +90,31 @@ Each run writes its evidence to `<out>/seed-<seed>/`, pass or fail: `config.json
 
 and `-faults` runs a subset. `go run ./cmd/chaos -check <dir>/history.json` reruns only the checkers on a saved history. A seed fixes the schedule, the proxies' choices for each connection and the workload's calls. It does not fix kernel timing or the order of connections, so a rerun injects the same faults in the same order but does not repeat the interleaving.
 
-Not covered yet; these are later pieces of #49:
+## The environment of `-env`
 
-- A delay on client links: the `delay` fault delays only the leader's link to one follower, so that a follower lags (B01a), and no fault delays a client link.
-- tc netem packet faults: loss, reordering and corruption, and 1 to 10 ms between nodes. Deleting stream bytes in the proxy is a different fault from packet loss, which TCP repairs.
-- CPU throttling with cgroup quotas.
-- Disk faults on real processes: a fault-injecting file layer with torn writes and failing or stalling fsync, and real ENOSPC.
-- Crashes timed inside WAL recovery, and erase-one-disk cold restarts of real processes.
-- Gray nodes and barely alive clients, with numeric liveness bounds.
-- Several faults at once; the schedule injects one at a time.
-- Nightly long campaigns as many short jobs.
+With `-env`, a run gives each node an environment of its own, through `sudo -n` (`chaos/env`). Each node gets its own disk: a file on a loop device, under a device-mapper target that is linear when healthy, then a small ext4 file system (512 MiB) that fills for real. With `-lazyfs <binary>` ([Jepsen's LazyFS](https://github.com/dsrhaslab/lazyfs), which `scripts/lazyfs.sh` builds at a pinned commit) on top, a write stays in LazyFS's cache until an fsync covers it, so a power cut loses exactly what no fsync covered. Each node also runs in a cgroup of its own, with the cpu, memory and io controllers. A prio qdisc on `lo` puts every proxy port behind a netem qdisc of its own: each peer link gets a seeded one-way delay of 1 to 10 ms (`latency.json`), and client links get none. The nodes run with `--unsafe-window-bytes 16384 --unsafe-checkpoint-bytes 65536 --unsafe-segment-bytes 32768`, which are for tests only. With them, a follower stopped for a few seconds falls behind the window and needs a snapshot, and checkpoints and segment removal come often. During the run, every log file except spares is archived every 100 ms. The checkers read each node's own log plus the archived segments below its oldest one, which the node removed below a checkpoint. So the log they see still starts at entry 1.
+
+LazyFS answers an fsync with success even when the disk under it failed the write or is full. A node on it would be told that data is durable when it is not. So `fsync-fail` and `disk-full` run only without `-lazyfs`, and `power-loss` and `torn-write` only with it. The `chaos-env` job of `ci` runs one seed in each mode on every PR. `chaos-campaign.yml` runs nightly, and by hand with `gh workflow run chaos-campaign.yml`: 20 jobs of three seeds, half of them in each mode.
+
+| Fault | What the run does | Evidence that it took effect |
+| --- | --- | --- |
+| `netem-loss`, `netem-reorder`, `netem-corrupt` | A busy peer link loses 20% of its packets, reorders half of them, or corrupts 5%, on top of its delay | The link's qdisc sent packets during the hold; for loss, it dropped some |
+| `cpu-gray` | A node, the leader in a third of the runs, is limited to 2 to 5% of one CPU | `nr_throttled` of its cgroup grew |
+| `disk-slow` | A node's disk delays reads by a quarter of 100 to 400 ms and writes by all of it | The node logged a write slower than a tick |
+| `disk-stall` | A node's disk takes no I/O for the hold | The node logged a write slower than a tick once it healed |
+| `fsync-fail` | Every write to a node's disk fails; after the hold the disk is healed, `e2fsck` runs (ext4 may have gone read-only), and the node starts again | The node's log names an I/O error or a read-only file system |
+| `disk-full` | A file takes every free byte of a node's ext4; it goes after the hold, and the node starts again | The node's log names `no space left on device` or NOSPACE |
+| `power-loss` | SIGKILL, and LazyFS drops every write no fsync covered; restart after the hold | LazyFS's log says the cache is cleared |
+| `torn-write` | The next write to a node's newest segment keeps its first third, and LazyFS crashes, as a power cut mid-write would; the node is killed, LazyFS mounted again and the node started | LazyFS crashed |
+| `crash-in-recovery` | Five times: drop the caches, start the node on a disk slowed to 50 ms a read, and kill it after 5 to 150 ms; then start it on a healthy disk | At least one kill came before the node served clients, which it does once it recovered |
+| `crash-in-install` | A follower is stopped while 300 writes of 1 KiB and two compactions go through the leader; once resumed it fetches a snapshot, and it is killed during the fetch, then started again | The node logged `fetching the snapshot` and not `installed the snapshot` before the kill |
+| `barely-alive-client` | A client opens a watch with previous values and then stops reading its connection for the hold, during writes | The watch delivered the missed events or was canceled once it read again |
+| `several-at-once` | `cpu-gray` on one node and `netem-loss` on a leader link to another, at once | Both took effect |
+| `replace-member` | Last in every run. Either every node loses power, one disk is erased and the other two start again from theirs, or one node's oldest segment gets a corrupt byte and its restart refuses the log. Then the member is removed through a healthy node, added as a new member and started on an empty disk with `--initial-cluster-state existing` (#161) | The two nodes elected a leader within 10 election timeouts, or the restart refused the log; the cluster converged with the new member |
+
+Gray faults are every fault above but `crash-in-install`, `several-at-once` and `replace-member`, whose erased case probes the two nodes left. During each one, a prober writes through the two healthy nodes (all three for `barely-alive-client`), one write every 500 ms, for at least 3 s and three writes. A write is retried, as a client retries, until it commits. Every write must commit within 10 election timeouts of its first try: the liveness bound of #47. The probes are part of the history, so every checker checks them.
+
+Not covered yet: a delay on client links. The `delay` fault delays only the leader's link to one follower, so that a follower lags (B01a), and no fault delays a client link.
 
 # Kubernetes storage tests
 

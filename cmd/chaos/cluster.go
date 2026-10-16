@@ -44,6 +44,9 @@ type cluster struct {
 	// each process the cluster starts.
 	data    [3]string
 	started func(i, pid int) error
+	// peerPorts are the ports the nodes listen on for peers, past the
+	// proxies.
+	peerPorts [3]int
 }
 
 // node is one tigerstore process and its restarts.
@@ -115,6 +118,7 @@ func newCluster(dir, bin string, seed uint64, data [3]string, extra []string) (*
 			_ = ln.Close()
 		}
 	}()
+	defer func() { c.peerPorts = peerPort }()
 	for i := range 3 {
 		for _, port := range []*int{&clientPort[i], &peerPort[i]} {
 			ln, p, err := testport.Listen()

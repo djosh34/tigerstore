@@ -40,12 +40,13 @@ const (
 	installCrash   = "crash-in-install"
 	slowWatcher    = "barely-alive-client"
 	severalAtOnce  = "several-at-once"
+	replace        = "replace-member"
 	electionMillis = 1000
 )
 
 var envFaults = []string{
 	netemLoss, netemReorder, netemCorrupt, cpuGray, diskSlow, diskStall, fsyncFail, diskFull,
-	powerLoss, tornWrite, recoveryCrash, installCrash, slowWatcher, severalAtOnce,
+	powerLoss, tornWrite, recoveryCrash, installCrash, slowWatcher, severalAtOnce, replace,
 }
 
 // LazyFS answers an fsync with success even when the disk under it
@@ -337,6 +338,8 @@ func (r *runner) injectEnv(ctx context.Context, s step, lead, target int, rec *r
 		return r.withProbes([]int{0, 1, 2}, rec, func() error { return r.slowWatch(ctx, s, target, rec) })
 	case severalAtOnce:
 		return r.several(ctx, s, lead, target, rec)
+	case replace:
+		return r.replaceMember(ctx, s, target, rec)
 	}
 	return fmt.Errorf("unknown fault %q", s.Fault)
 }
@@ -873,4 +876,179 @@ func merged(dir string, i int) (string, error) {
 		}
 	}
 	return filepath.Dir(to), nil
+}
+
+// replaceMember is the safe way back for a member whose disk was erased
+// or whose log a restart refuses (#161). Erased: every node loses power
+// at once, the target's disk is erased, and the other two start again
+// from their disks, which must elect a leader and commit writes within
+// livenessBound. Fenced: the target's oldest segment gets a corrupt byte
+// while it is down, and its restart must refuse the log. Then, as an
+// operator would, the target is removed from the cluster through a
+// healthy node and added again as a new member, which starts on an empty
+// disk with --initial-cluster-state existing; the cluster must converge.
+func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *record) error {
+	n, d := r.c.nodes[target], r.e.disks[target]
+	healthy := others(target)
+	erased := s.Pick%2 == 0
+	if erased {
+		rec.Env.Parts = []string{"erased"}
+		for _, m := range r.c.nodes {
+			if _, _, err := m.signal(syscall.SIGKILL); err != nil {
+				return err
+			}
+		}
+		for _, disk := range r.e.disks {
+			if err := disk.DropCaches(); err != nil {
+				return err
+			}
+		}
+		if err := d.Erase(); err != nil {
+			return err
+		}
+		for _, i := range healthy {
+			if err := r.c.start(r.c.nodes[i]); err != nil {
+				return err
+			}
+		}
+		rec.Installed = true
+		if err := r.withProbes(healthy, rec, func() error {
+			_, err := r.c.leader(ctx, livenessBound)
+			return err
+		}); err != nil {
+			return fmt.Errorf("the two nodes left after the erase: %w", err)
+		}
+	} else {
+		rec.Env.Parts = []string{"fenced"}
+		if _, _, err := n.signal(syscall.SIGKILL); err != nil {
+			return err
+		}
+		seg, err := oldestSegment(d.Data)
+		if err != nil {
+			return err
+		}
+		if err := flipByte(seg); err != nil {
+			return err
+		}
+		rec.Env.Disk = filepath.Base(seg)
+		rec.Installed = true
+		n.mu.Lock()
+		n.expecting = true
+		n.mu.Unlock()
+		from := logSize(n)
+		if err := r.c.start(n); err != nil {
+			return err
+		}
+		refused := waitUntil(ctx, 10*time.Second, func() bool {
+			n.mu.Lock()
+			defer n.mu.Unlock()
+			return n.exitedNow
+		})
+		if !refused {
+			return errors.New("the node started on a corrupt log")
+		}
+		rec.Env.Exited = strings.TrimSpace(lastLine(logSince(n, from), "corrupt"))
+	}
+	rec.Effect = true
+	// Remove and add through a healthy node. --strict-reconfig-check
+	// refuses a change until the node has been connected to its peers
+	// for 5 s, which after the cold restart it has not, so each is tried
+	// again until it goes through.
+	ctl := r.c.nodes[healthy[0]].control
+	retry := func(what string, call func(context.Context) error) error {
+		var err error
+		for deadline := time.Now().Add(2 * livenessBound); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
+			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			err = call(cctx)
+			cancel()
+			if err == nil {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s: %w", what, err)
+	}
+	old := r.c.ids[target]
+	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context) error {
+		_, err := ctl.MemberRemove(c, old)
+		return err
+	}); err != nil {
+		return err
+	}
+	var added *clientv3.MemberAddResponse
+	if err := retry("add the new member", func(c context.Context) error {
+		var err error
+		added, err = ctl.MemberAdd(c, []string{fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])})
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := d.Erase(); err != nil {
+		return err
+	}
+	n.args = rejoinArgs(n.args)
+	if err := r.c.start(n); err != nil {
+		return err
+	}
+	r.c.ids[target] = added.Member.ID
+	rec.Env.Link = fmt.Sprintf("member %x replaced by %x", old, added.Member.ID)
+	err := r.c.converged(ctx, 30*time.Second)
+	rec.Healed, rec.HealedAt = err == nil, r.since()
+	return err
+}
+
+// rejoinArgs are a node's arguments to join the cluster as a new member.
+func rejoinArgs(args []string) []string {
+	out := slices.Clone(args)
+	if !slices.Contains(out, "--initial-cluster-state") {
+		out = append(out, "--initial-cluster-state", "existing")
+	}
+	return out
+}
+
+func lastLine(text, with string) string {
+	lines := strings.Split(text, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.Contains(lines[i], with) {
+			return lines[i]
+		}
+	}
+	return ""
+}
+
+// oldestSegment is the oldest log segment of a node.
+func oldestSegment(data string) (string, error) {
+	var segs []string
+	err := filepath.WalkDir(data, func(path string, de os.DirEntry, err error) error {
+		if err == nil && !de.IsDir() && strings.HasSuffix(path, ".wal") {
+			segs = append(segs, path)
+		}
+		return err
+	})
+	if err != nil || len(segs) == 0 {
+		return "", errors.Join(err, fmt.Errorf("no log segment under %s", data))
+	}
+	slices.Sort(segs)
+	return segs[0], nil
+}
+
+// flipByte flips one bit in the middle of a file and syncs it.
+func flipByte(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		return errors.Join(err, f.Close())
+	}
+	b := make([]byte, 1)
+	at := st.Size() / 2
+	if _, err := f.ReadAt(b, at); err != nil {
+		return errors.Join(err, f.Close())
+	}
+	b[0] ^= 0x10
+	if _, err := f.WriteAt(b, at); err != nil {
+		return errors.Join(err, f.Close())
+	}
+	return errors.Join(f.Sync(), f.Close())
 }
