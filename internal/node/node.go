@@ -90,11 +90,12 @@ type Config struct {
 	BeforeRead, BeforeSync func()
 	// snapshotSync, if set, replaces the syncBytes of a snapshot after
 	// which the log syncs what came; stage, if set, runs after each such
-	// sync and after the root of a snapshot install; and reloading, if
-	// set, runs when a run that ended for a reload opened the log again,
-	// before the core replays it. For tests.
+	// sync and after the root of a snapshot install, and an error it
+	// returns breaks the stream there; and reloading, if set, runs when a
+	// run that ended for a reload opened the log again, before the core
+	// replays it. For tests.
 	snapshotSync int
-	stage        func(string)
+	stage        func(string) error
 	reloading    func()
 	Logf         func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
@@ -1421,6 +1422,7 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 		if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
 			n.log.ckpts = []wal.Root{in.Checkpoint}
 			n.log.removal = nil
+			n.log.held.Store(false)
 		}
 		if j.Root != nil {
 			n.log.ckpts = append(n.log.ckpts, *j.Root)
@@ -1505,15 +1507,15 @@ func (s *logSink) wrote(n int) error {
 	if err := s.disk(s.sync()); err != nil {
 		return err
 	}
-	s.staged("sync")
-	return nil
+	return s.staged("sync")
 }
 
 // staged runs Config.stage, if set.
-func (s *logSink) staged(stage string) {
+func (s *logSink) staged(stage string) error {
 	if s.n.cfg.stage != nil {
-		s.n.cfg.stage(stage)
+		return s.n.cfg.stage(stage)
 	}
+	return nil
 }
 
 // sync syncs the log and times it as an fsync of the snapshot.
@@ -1573,8 +1575,7 @@ func (s *logSink) Root(r wal.Root) error {
 	s.n.log.mu.Lock()
 	s.n.log.w.AppendRoot(r)
 	s.n.log.mu.Unlock()
-	s.staged("root")
-	return nil
+	return s.staged("root")
 }
 
 // close closes a checkpoint file a failed fetch left open.

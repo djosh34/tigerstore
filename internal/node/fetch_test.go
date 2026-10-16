@@ -32,6 +32,8 @@ type memNet struct {
 	refuse int
 	cuts   []int
 	cut    int
+	// fetches counts every fetch.
+	fetches int
 }
 
 // join makes n reachable until ctx ends.
@@ -90,6 +92,7 @@ func (p memPeer) Call(context.Context, uint64, []byte) ([]byte, error) {
 
 func (p memPeer) Fetch(_ context.Context, id, first, last uint64) (io.ReadCloser, error) {
 	p.net.mu.Lock()
+	p.net.fetches++
 	src := p.net.nodes[id]
 	if p.net.refuse > 0 {
 		p.net.refuse--

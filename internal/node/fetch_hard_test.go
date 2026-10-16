@@ -55,21 +55,26 @@ func TestFetchHardCases(t *testing.T) {
 			t.Fatal(err)
 		}
 		// With a sync every 2 KiB of values and entries, the checkpoint
-		// fills the first 16 KiB of the stream, the root follows, then
-		// the entries. The cuts land in the header, before the first
-		// sync, after a few, and after the root; stages notes what each
-		// stream got to.
+		// fills the first 11 to 16 KiB of the stream, the root follows,
+		// then the entries. Four cuts land in the header, before the
+		// first sync and after a few; the fifth fetch breaks off right
+		// after its root, wherever that is. stages notes what each fetch
+		// got to.
 		stages := map[int][]string{}
 		c.tune = func(id uint64, cfg *Config) {
 			cfg.snapshotSync = 2 << 10
-			cfg.stage = func(s string) {
+			cfg.stage = func(s string) error {
 				c.net.mu.Lock()
-				stages[c.net.cut] = append(stages[c.net.cut], s)
-				c.net.mu.Unlock()
+				defer c.net.mu.Unlock()
+				stages[c.net.fetches] = append(stages[c.net.fetches], s)
+				if s == "root" && c.net.fetches == 5 {
+					return errCut
+				}
+				return nil
 			}
 		}
 		c.net.mu.Lock()
-		c.net.cuts = []int{20, 3 << 10, 5 << 10, 9 << 10, 16 << 10}
+		c.net.cuts = []int{20, 3 << 10, 5 << 10, 9 << 10}
 		c.net.mu.Unlock()
 		n3, err := c.start(3)
 		if err != nil {
@@ -80,8 +85,8 @@ func TestFetchHardCases(t *testing.T) {
 		}
 		c.net.mu.Lock()
 		defer c.net.mu.Unlock()
-		if c.net.cut != 5 {
-			t.Fatalf("%d streams were cut, want 5", c.net.cut)
+		if c.net.cut != 4 || c.net.fetches < 6 {
+			t.Fatalf("%d streams were cut and %d fetched, want 4 cut and the fifth broken off", c.net.cut, c.net.fetches)
 		}
 		// Before any sync, after a sync and before the root, after the
 		// root.
@@ -102,8 +107,8 @@ func TestFetchHardCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The first stream breaks off after its root. When node 3 opened
-		// its log again, before it replays it, the hook copies its
+		// The first stream breaks off right after its root. When node 3
+		// opened its log again, before it replays it, the hook copies its
 		// directory: what a crash at that point leaves. Node 3 then
 		// starts from that copy.
 		crash := filepath.Join(t.TempDir(), "crash")
@@ -112,16 +117,18 @@ func TestFetchHardCases(t *testing.T) {
 		var once sync.Once
 		c.tune = func(id uint64, cfg *Config) {
 			cfg.snapshotSync = 2 << 10
-			cfg.stage = func(s string) { rooted.Store(rooted.Load() || s == "root") }
+			cfg.stage = func(s string) error {
+				if s == "root" && !rooted.Swap(true) {
+					return errCut
+				}
+				return nil
+			}
 			cfg.reloading = func() {
 				if rooted.Load() {
 					once.Do(func() { copied <- os.CopyFS(crash, os.DirFS(c.dirs[3])) })
 				}
 			}
 		}
-		c.net.mu.Lock()
-		c.net.cuts = []int{16 << 10}
-		c.net.mu.Unlock()
 		if _, err := c.start(3); err != nil {
 			t.Fatal(err)
 		}
