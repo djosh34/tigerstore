@@ -39,6 +39,11 @@ func (s *Sim) check(res *Result) error {
 	if err != nil {
 		return err
 	}
+	if s.cfg.Membership {
+		if err := s.checkMembership(); err != nil {
+			return err
+		}
+	}
 	final := last.core.Store()
 	res.FinalRev = final.Rev()
 	ents, err := s.committed(s.live()[0].core.Applied())
@@ -51,6 +56,11 @@ func (s *Sim) check(res *Result) error {
 			continue
 		}
 		if err := core.DecodeBatch(e.GetData(), func(_, _, _ uint64, op proto.Message) error {
+			// Member attributes change no KV state. Membership has its
+			// own oracle; the KV history format does not represent them.
+			if _, ok := op.(*pb.Member); ok {
+				return nil
+			}
 			res.Log = append(res.Log, op)
 			return nil
 		}); err != nil {
@@ -124,11 +134,11 @@ func (s *Sim) check(res *Result) error {
 	return nil
 }
 
-// live returns the nodes that are not fenced. At most one is.
+// live returns active members whose disks have not been fenced.
 func (s *Sim) live() []*node {
 	var out []*node
 	for _, n := range s.nodes {
-		if !n.fenced {
+		if !n.fenced && !n.inactive {
 			out = append(out, n)
 		}
 	}

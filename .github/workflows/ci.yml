@@ -132,6 +132,30 @@ jobs:
           test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
           diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
 
+  # Membership changes share the simulator's KV traffic and faults. Run
+  # fixed and fresh seeds, then compare a second process's trace hashes.
+  membership:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Check membership and replay its traces
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for first in 1 $((1000000 + RUN_ID % 1000000000)); do
+            go test -v -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 | tee "$RUNNER_TEMP/a.log"
+            GOMAXPROCS=1 go test -v -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 | tee "$RUNNER_TEMP/b.log"
+            grep ' trace ' "$RUNNER_TEMP/a.log" > "$RUNNER_TEMP/a.traces"
+            grep ' trace ' "$RUNNER_TEMP/b.log" > "$RUNNER_TEMP/b.traces"
+            test "$(wc -l < "$RUNNER_TEMP/a.traces")" -eq 64
+            diff "$RUNNER_TEMP/a.traces" "$RUNNER_TEMP/b.traces"
+          done
+
   # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
   # with client certificates.
   smoke:
@@ -210,7 +234,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B05, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B13, B14, B15, B16, B17, B18, B19, B20, B21, B22, B23, B24, B25, B26, B27]
+        bug: [B01a, B01b, B02, B03, B04a, B04b, B04c, B05, B06a, B06b, B06c, B06d, B07, B08, B09a, B09b, B10, B11, B12, B13, B14, B15, B16, B17, B18, B19, B20, B21, B22, B23, B24, B25, B26, B27, B28]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -464,7 +488,7 @@ jobs:
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, planted, chaos, chaos-planted, fuzz, coverage, race-sim, chaos-race]
+    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, difftest, difffuzz, planted, chaos, chaos-planted, fuzz, coverage, race-sim, chaos-race]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

@@ -118,7 +118,7 @@ func (w *watchClient) drop() {
 // openWatch picks a node and sends the create request.
 func (w *watchClient) openWatch() {
 	s := w.sim
-	n := s.nodes[s.rng.IntN(len(s.nodes))]
+	n := s.nodes[s.rng.IntN(3)]
 	if !n.up {
 		s.push(&event{at: s.now + 100*Millisecond + s.rng.Int64N(400*Millisecond), kind: evWatchOpen, watch: w})
 		return

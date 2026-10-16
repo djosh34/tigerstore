@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -204,7 +205,9 @@ func (st *State) applyMembers(op byte, m *pb.Member) {
 		delete(st.runs, m.ID)
 		st.removed[m.ID] = true
 	case confUpdate:
-		st.members[m.ID].PeerURLs = m.PeerURLs
+		if !planted.On("B28") {
+			st.members[m.ID].PeerURLs = m.PeerURLs
+		}
 	}
 }
 
