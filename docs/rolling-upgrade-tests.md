@@ -8,14 +8,14 @@ The tests reuse the chaos cluster, TLS links, workload, history recorder and six
 
 `TestRollingRollbackBeforeAnnouncement` covers the other order named in #174. It stops the node selected for rollback and upgrades the last old node before the rollback can announce. This is a regression test, not an expected-success downgrade. If the remaining nodes activate version 2, it fails.
 
-The workflow also removes the stale-run guard in a separate build. That job passes only if `TestRollingUpgrade/148` detects activation after the delayed announcement. This checks that the delayed-announcement test reaches the gate it claims to test.
+The workflow also removes the confirmation check in a separate build. That job passes only if `TestRollingRollbackBeforeAnnouncement` detects activation while the rollback node is down and the old binary refuses to restart. The component tests separately check rejection of superseded runs.
 
 The normal scenario also runs with the server and test executable built with `-race`. Each stage checks the binary ranges in `/metrics` and probes fresh TLS peer connections in both directions. ALPN and the preface reply must choose the highest shared version. The existing core and peer version tests run alongside it, including overlapping, touching and disjoint peer ranges and refusal from a checkpoint.
 
 To reproduce in GitHub Actions, dispatch `rolling-upgrade.yml` on the candidate branch. While the workflow exists only on the prework branch, its prep-only `ci.yml` calls it:
 
 ```
-gh workflow run ci.yml --repo djosh34/tigerstore --ref prep/148-rolling-upgrade
+gh workflow run ci.yml --repo djosh34/tigerstore --ref prep/174-210-version-members
 ```
 
 No build or execution belongs on the shared agent host. The task worker should drop the prep-only CI change and add the rolling job to the required CI gate. When a previous release exists, the release workflow still needs the previous-tag-to-candidate run required by #127. These synthetic builds do not replace that check.

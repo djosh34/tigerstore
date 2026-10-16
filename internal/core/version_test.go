@@ -61,8 +61,8 @@ func TestAnnouncementRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, run, has, err := parseAnnouncement(b); err != nil || v != 3 || run != 1234 || !has {
-		t.Fatalf("got %d, %d, %v, %v", v, run, has, err)
+	if a, err := parseAnnouncement(b); err != nil || a.version != 3 || a.run != 1234 || !a.hasRun || a.hasEpoch {
+		t.Fatalf("got %+v, %v", a, err)
 	}
 	// A build before #174 reads the version alone.
 	var old wrapperspb.UInt32Value
@@ -74,8 +74,15 @@ func TestAnnouncementRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _, has, err := parseAnnouncement(plain); err != nil || v != 2 || has {
-		t.Fatalf("got %d, %v, %v", v, has, err)
+	if a, err := parseAnnouncement(plain); err != nil || a.version != 2 || a.hasRun || a.hasEpoch {
+		t.Fatalf("got %+v, %v", a, err)
+	}
+	b, err = proto.Marshal(confirmation(3, 1234, 5678))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, err := parseAnnouncement(b); err != nil || a.version != 3 || a.run != 1234 || a.epoch != 5678 || !a.hasRun || !a.hasEpoch {
+		t.Fatalf("confirmation: %+v, %v", a, err)
 	}
 }
 

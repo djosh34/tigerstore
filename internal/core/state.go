@@ -70,6 +70,10 @@ type State struct {
 	version  uint32
 	supports map[uint64]uint32
 	runs     map[uint64]uint64
+	// versionEpoch changes with the support table or membership. Every
+	// voter must confirm that epoch before a newer format becomes active.
+	versionEpoch uint64
+	confirmed    map[uint64]uint64
 	// members are the cluster's members by ID, and removed the IDs it
 	// removed, which never come back (members.go).
 	members map[uint64]*pb.Member
@@ -105,6 +109,7 @@ func NewState(minTTL int64, v mvcc.Values) *State {
 	st := &State{
 		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{}, runs: map[uint64]uint64{},
 		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(), etcdVersion: ClusterVersion,
+		confirmed: map[uint64]uint64{},
 	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
 	return st
@@ -132,10 +137,12 @@ func (st *State) Hash() uint64 {
 		mix(uint64(len(l.keys)))
 	}
 	mix(uint64(st.version))
+	mix(st.versionEpoch)
 	for _, id := range slices.Sorted(maps.Keys(st.supports)) {
 		mix(id)
 		mix(uint64(st.supports[id]))
 		mix(st.runs[id])
+		mix(st.confirmed[id])
 	}
 	for _, a := range st.alarms {
 		mix(a.MemberID)

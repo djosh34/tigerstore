@@ -428,6 +428,11 @@ type Node struct {
 	leaseSeq     uint64
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
+	// confMessages wait for Raft to apply the preceding configuration
+	// change. confGate is its index, or MaxUint64 until it reaches apply.
+	confMessages []*raftpb.Message
+	confGate     uint64
+	confTerm     uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -804,6 +809,10 @@ func (n *Node) retryReads(now bool) {
 func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
+	}
+	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
+		n.confMessages = append(n.confMessages, m)
+		return nil
 	}
 	if n.noSpace && m.GetType() == raftpb.MsgProp {
 		// Writes a follower forwards. Past its budget, the leader refuses
@@ -1428,6 +1437,7 @@ func (n *Node) Process() (Effects, error) {
 			n.propose()
 		}
 		n.proposeConfs()
+		n.proposeConfMessages()
 		// Apply messages left behind by a snapshot install.
 		n.runApply()
 		n.requestReads()
@@ -1467,6 +1477,7 @@ func (n *Node) stop() {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
 	n.tokenWaits = nil
+	n.confMessages = nil
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
@@ -1794,7 +1805,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	case kindVersion:
 		n.timed.op = "VersionAnnounce"
-		return n.applyVersion(origin, b)
+		return n.applyVersion(e.GetIndex(), origin, b)
 	}
 	op, err := newOp(kind)
 	if err != nil {
