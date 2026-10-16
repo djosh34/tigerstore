@@ -129,22 +129,22 @@ func TestPlantedInventory(t *testing.T) {
 			t.Errorf("case %s plants no known bug", name)
 		}
 	}
-	ci, err := os.ReadFile("../../.github/workflows/ci.yml")
+	ci, err := os.ReadFile("../../.github/workflows/planted.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`(?m)^\s*bug: \[(.*)\]$`).FindSubmatch(ci)
+	m := regexp.MustCompile(`(?m)^\s*BUGS: (.*)$`).FindSubmatch(ci)
 	if m == nil {
-		t.Fatal("ci.yml has no planted bug matrix")
+		t.Fatal("planted.yml has no BUGS list")
 	}
-	inCI := strings.Split(string(m[1]), ", ")
+	inCI := strings.Fields(string(m[1]))
 	for name := range planted.Bugs {
 		if !slices.Contains(inCI, name) {
-			t.Errorf("planted bug %s is not in the CI matrix", name)
+			t.Errorf("planted bug %s is not in the CI list", name)
 		}
 	}
 	if len(inCI) != len(planted.Bugs) {
-		t.Errorf("the CI matrix has %d bugs, the inventory %d", len(inCI), len(planted.Bugs))
+		t.Errorf("the CI list has %d bugs, the inventory %d", len(inCI), len(planted.Bugs))
 	}
 }
 
