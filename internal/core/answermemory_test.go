@@ -183,6 +183,49 @@ func TestAnswerMemoryLiveWatch(t *testing.T) {
 	s.n.ReleaseReplyBytes(held)
 }
 
+func TestAnswerMemoryWatchKeepsRevisionWhole(t *testing.T) {
+	s, _ := coldSingle(t, func(c *Config) { c.MemoryBytes = 1 << 20 })
+	s.n.cfg.WindowBytes, s.n.cfg.WindowMaxBytes = 1<<20, 1<<20
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("c")}))
+	s.run()
+	s.watch = nil
+	rev := s.n.kv.Rev() + 1
+	// One event fits, but the whole two-key revision and the transaction
+	// answer do not. A client must never see just the first event.
+	held := s.n.cfg.MemoryBytes - s.n.kv.Bytes() - s.n.EntryBytes() - 1800
+	s.n.SetReplyBytes(held)
+	var ops []*pb.RequestOp
+	for _, key := range []string{"a", "b"} {
+		ops = append(ops, &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte(key), Value: []byte("next")}}})
+	}
+	r := s.do(1000, &pb.TxnRequest{Success: ops})
+	if status.Code(r.Err) != codes.Unavailable {
+		t.Fatalf("expected a committed answer refusal, got %v", r.Err)
+	}
+	if len(s.watch) != 1 || !s.watch[0].Resp.Canceled || len(s.watch[0].Resp.Events) != 0 || s.watch[0].Held == 0 {
+		t.Fatalf("memory cancellation sent a partial revision: %+v", s.watch)
+	}
+	s.n.ReleaseReplyBytes(s.watch[0].Held)
+	s.n.ReleaseReplyBytes(held)
+	s.watch = nil
+	// Resume from the last delivered revision, not from the cancellation
+	// header. Both committed changes must still be delivered together.
+	s.n.Watch(1, Caller{}, create(&pb.WatchCreateRequest{Key: []byte("a"), RangeEnd: []byte("c"), StartRevision: rev}))
+	s.run()
+	if len(s.watch) != 2 || !s.watch[0].Resp.Created || len(s.watch[1].Resp.Events) != 2 {
+		t.Fatalf("resume lost part of the revision: %+v", s.watch)
+	}
+	for _, ev := range s.watch[1].Resp.Events {
+		if ev.Kv.ModRevision != rev || string(ev.Kv.Value) != "next" {
+			t.Fatalf("wrong resumed event: %v", ev)
+		}
+	}
+	s.n.ReleaseReplyBytes(s.watch[1].Held)
+	if s.n.replyBytes != 0 {
+		t.Fatalf("canceled watch retained %d bytes", s.n.replyBytes)
+	}
+}
+
 func TestAnswerMemoryWatch(t *testing.T) {
 	s, _ := coldSingle(t, nil)
 	s.n.cfg.MemoryBytes = 16 << 10

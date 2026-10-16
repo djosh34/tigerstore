@@ -419,10 +419,14 @@ func (n *Node) matchWatches() {
 			}
 			bytes := c.EventBytes(w.withPrev())
 			if err := n.reserveReply(bytes); err != nil {
-				n.flushWatcher(w)
+				// Pending events may contain only part of this transaction's
+				// revision. Drop them all, so resuming from the last delivered
+				// revision cannot skip the rest. Keep their cold-read charge
+				// until those reads and the cancellation have gone out.
 				w.dead = true
 				delete(w.stream.byID, w.id)
-				n.watchReply(w.stream, &pb.WatchResponse{WatchId: w.id, Canceled: true, CancelReason: err.Error()})
+				n.watchReplyHeld(w.stream, &pb.WatchResponse{WatchId: w.id, Canceled: true, CancelReason: err.Error()}, w.waits, w.held)
+				w.pending, w.waits, w.held = nil, nil, 0
 				continue
 			}
 			if n.cfg.MemoryBytes > 0 {
