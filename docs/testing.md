@@ -166,7 +166,7 @@ Sixteen workers make 400 calls per second in loadgen's mixed proportions:
 - creates and updates in Txns that compare the create or mod revision, as the apiserver does;
 - deletes;
 - linearizable reads and paginated lists, as Range calls;
-- events on leases of 120 s that expire.
+- events on leases of 120 s that expire, at most 1,000 on a lease and a new lease every minute, as the apiserver reuses them.
 
 Alongside them run a watch on every resource prefix, with progress requests, and a compaction every 5 minutes to the revision of the one before.
 
@@ -180,10 +180,10 @@ The faults:
 - Every 30 minutes on average, a follower is stopped while 256 MiB of writes go in, and it must fetch a snapshot when it resumes.
 
 After each fault:
-- a write must commit within 10 s;
-- the restarted node must answer;
+- after a kill, the other two nodes must commit a write within 10 s;
+- a restarted or resumed node must commit a write through itself within 2 minutes, which covers its recovery or snapshot install;
 - the nodes must agree on `HashKV` at one revision.
 
 No node may exit on its own or be killed by its memory limit, no alarm may go off, and a data directory may not pass its budget by more than 256 MiB.
 
-The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, and the longest recovery. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.
+The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, and the longest recovery and catch-up. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.

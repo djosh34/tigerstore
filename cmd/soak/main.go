@@ -110,9 +110,11 @@ type report struct {
 	Snapshots   int            `json:"snapshot_fetches"`
 	Compactions int            `json:"compactions"`
 	Hashes      int            `json:"hash_checks"`
-	// Recovery is the longest time from a fault to a committed write, and
-	// Restart the longest time from a node's start to its first answer.
+	// Recovery is the longest time from a kill to a write the others
+	// committed, CatchUp from a node's start or resume to a write committed
+	// through it, and Restart from a node's start to its first answer.
 	Recovery   float64     `json:"max_recovery_seconds"`
+	CatchUp    float64     `json:"max_catch_up_seconds"`
 	Restart    float64     `json:"max_restart_seconds"`
 	Revision   int64       `json:"final_revision"`
 	Load       *stats      `json:"load"`
@@ -136,8 +138,8 @@ func (r *report) summary() string {
 	for _, n := range r.Load.Calls {
 		calls += n
 	}
-	return fmt.Sprintf("%.0f s, %d calls, %d kills, %d holds with %d snapshot fetches, %d compactions, %d hash checks, final revision %d, max recovery %.1f s",
-		r.Seconds, calls, r.Kills, r.Holds, r.Snapshots, r.Compactions, r.Hashes, r.Revision, r.Recovery)
+	return fmt.Sprintf("%.0f s, %d calls, %d kills, %d holds with %d snapshot fetches, %d compactions, %d hash checks, final revision %d, max recovery %.1f s, max catch-up %.1f s",
+		r.Seconds, calls, r.Kills, r.Holds, r.Snapshots, r.Compactions, r.Hashes, r.Revision, r.Recovery, r.CatchUp)
 }
 
 // soak is one run.
@@ -368,7 +370,7 @@ func (s *soak) kill(ctx context.Context) error {
 	if err := n.signal(syscall.SIGKILL); err != nil {
 		return err
 	}
-	if err := s.commit(ctx, "the kill", at, others(n.i)); err != nil {
+	if err := s.commit(ctx, "the kill", at, others(n.i), s.cfg.liveness, &s.rep.Recovery); err != nil {
 		return fmt.Errorf("after node%d was killed: %w", n.i+1, err)
 	}
 	pause(ctx, time.Duration(1+s.rng.IntN(10))*time.Second)
@@ -399,12 +401,16 @@ func (s *soak) restart(ctx context.Context, n *node) error {
 	d := time.Since(at).Seconds()
 	s.rep.Restart = max(s.rep.Restart, d)
 	s.logf("node%d answers %.1f s after its start", n.i+1, d)
-	return s.commit(ctx, "its start", at, []int{n.i})
+	return s.commit(ctx, "its start", at, []int{n.i}, catchUp, &s.rep.CatchUp)
 }
 
+// catchUp bounds the time from a node's start or resume, which recovers
+// its log or installs a snapshot, to a write committed through it.
+const catchUp = 2 * time.Minute
+
 // commit writes a probe through each of the nodes until one commits it,
-// within the liveness bound from at.
-func (s *soak) commit(ctx context.Context, what string, at time.Time, through []int) error {
+// within bound from at.
+func (s *soak) commit(ctx context.Context, what string, at time.Time, through []int, bound time.Duration, worst *float64) error {
 	for {
 		for _, i := range through {
 			cctx, cancel := context.WithTimeout(ctx, time.Second)
@@ -412,7 +418,7 @@ func (s *soak) commit(ctx context.Context, what string, at time.Time, through []
 			cancel()
 			if err == nil {
 				d := time.Since(at).Seconds()
-				s.rep.Recovery = max(s.rep.Recovery, d)
+				*worst = max(*worst, d)
 				s.logf("a write through node%d committed %.1f s after %s", i+1, d, what)
 				return nil
 			}
@@ -420,8 +426,8 @@ func (s *soak) commit(ctx context.Context, what string, at time.Time, through []
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if time.Since(at) > s.cfg.liveness {
-			return fmt.Errorf("no write committed within %v", s.cfg.liveness)
+		if time.Since(at) > bound {
+			return fmt.Errorf("no write committed within %v of %s", bound, what)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -471,7 +477,7 @@ func (s *soak) hold(ctx context.Context) error {
 	}
 	s.rep.Snapshots++
 	s.logf("node%d fetches a snapshot", f.i+1)
-	return s.commit(ctx, "its resume", at, []int{f.i})
+	return s.commit(ctx, "its resume", at, []int{f.i}, catchUp, &s.rep.CatchUp)
 }
 
 // hashes checks that the nodes agree on the hash of their keys at the
