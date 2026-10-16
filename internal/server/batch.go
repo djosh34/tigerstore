@@ -239,6 +239,9 @@ func estimate(cp *node.Completion) int64 {
 	case cp.Err != nil:
 		return replyEstimate
 	case cp.Resp != nil:
+		if t, ok := cp.Resp.(*pb.TxnResponse); ok {
+			return 5 + int64(txnRespSize(t))
+		}
 		return int64(proto.Size(cp.Resp))
 	case cp.Tag.(*stream).rpc.compact:
 		return 5 + rangeReplyBound(&cp.Range)
@@ -323,6 +326,8 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 				}
 			case f.st.rpc.compact && cp.Resp == nil:
 				f.msg, f.err = appendRangeReply(c.cluster, c.member, cp.Term, &cp.Range)
+			case isTxn(cp.Resp):
+				f.msg, f.err = appendTxnReply(cp.Resp.(*pb.TxnResponse))
 			default:
 				f.msg, f.err = marshal(cp.Resp)
 			}
