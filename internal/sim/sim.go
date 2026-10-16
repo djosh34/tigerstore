@@ -1,4 +1,4 @@
-// Package sim runs the real core of a 3-node cluster in one process, on
+// Package sim runs the real core of a cluster in one process, on
 // simulated disks, links and clocks, from one seed.
 //
 // Everything that happens is an event in one queue ordered by virtual time.
@@ -75,7 +75,10 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
-	Faults   Faults
+	// Membership adds, updates, promotes and removes a fourth member
+	// while the ordinary clients and faults continue.
+	Membership bool
+	Faults     Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -256,6 +259,9 @@ const (
 	evWatchBroken
 	evWatchDrop
 	evValuesRead
+	evMembership
+	evRemoved
+	evMemberConnect
 )
 
 type event struct {
@@ -376,6 +382,9 @@ type node struct {
 	// corrupted is set when the run damaged the disk on purpose; fenced
 	// when the node then refused to start and stays down.
 	corrupted, fenced bool
+	// inactive is a member not yet added, or a process stopped because
+	// it was removed. Cold recovery must still read that process's disk.
+	inactive bool
 	// inflight are the jobs of the disk write under way. replaceFrom is the
 	// lowest index at which they replace entries already reported durable,
 	// or 0: Raft may replace acknowledged entries that never committed.
@@ -484,6 +493,7 @@ type Sim struct {
 	lateStopAt   int64
 	history      []*Record
 	stats        Stats
+	membership   membershipWork
 	err          error
 }
 
@@ -529,6 +539,10 @@ type Stats struct {
 	// taken right after a root synced and right after a segment removal.
 	ErasedAtRoot, ErasedAtRemoval int
 	CheckpointsDuringInstall      int
+	// MembershipChanges counts each completed stage, and MembershipFaults
+	// those completed before healing. Attempts include failed calls.
+	MembershipChanges, MembershipFaults [4]int
+	MembershipAttempts                  int
 }
 
 // Result is the outcome of a run.
@@ -566,6 +580,11 @@ func Run(cfg Config) (*Result, error) {
 		if err := s.start(s.nodes[i]); err != nil {
 			return nil, err
 		}
+	}
+	if cfg.Membership {
+		s.addNode(3, simfs.New())
+		s.nodes[3].inactive = true
+		s.push(&event{at: 2 * Second, kind: evMembership})
 	}
 	for i := range cfg.Clients {
 		c := &client{id: i, sim: s}
@@ -620,11 +639,15 @@ func newSim(cfg Config) *Sim {
 	// still expire for up to leaseGrace, and the watch events of the last
 	// expiry need time to arrive.
 	s.endAt = s.stopAt + leaseGrace + 2*Second
-	s.links = make([][]link, 3)
-	for i := range s.links {
-		s.links[i] = make([]link, 3)
+	count := 3
+	if cfg.Membership {
+		count = 4
 	}
-	s.setLinks(1<<6 - 1)
+	s.links = make([][]link, count)
+	for i := range s.links {
+		s.links[i] = make([]link, count)
+	}
+	s.setLinks(s.allLinks())
 	return s
 }
 
@@ -697,6 +720,24 @@ func (s *Sim) handle(e *event) {
 		s.push(&event{at: s.now + n.tickEvery, kind: evTick, node: n.idx, gen: n.gen})
 	case evDeliver:
 		s.deliver(e)
+	case evMemberConnect:
+		n := s.nodes[e.node]
+		if n.up && n.gen == e.gen {
+			s.memberConnect(n)
+			s.push(&event{at: s.now + Second, kind: evMemberConnect, node: n.idx, gen: n.gen})
+		}
+	case evRemoved:
+		n := s.nodes[e.node]
+		l := &s.links[e.from][e.node]
+		if n.up && l.up && l.epoch == e.gen && l.halfOpenUntil <= s.now {
+			if l.stallUntil > s.now {
+				e.at = l.stallUntil
+				s.push(e)
+				return
+			}
+			n.core.Removed()
+			s.process(n)
+		}
 	case evDiskDone:
 		s.diskDone(e)
 	case evCrash:
@@ -792,7 +833,7 @@ func (s *Sim) handle(e *event) {
 		s.checkpointSynced(e)
 	case evSnapshotSent:
 		if n := s.nodes[e.node]; n.up && n.gen == e.gen {
-			n.core.SnapshotSent(uint64(e.from+1), e.err == nil)
+			n.core.SnapshotSent(s.nodes[e.from].id, e.err == nil)
 			s.process(n)
 		}
 	case evRecoveryDue:
@@ -825,7 +866,7 @@ func (s *Sim) handle(e *event) {
 		if !s.healed {
 			s.stats.LinkChanges++
 			// Any mask but all links up.
-			s.setLinks(s.rng.Uint64N(1<<6 - 1))
+			s.setLinks(s.rng.Uint64N(s.allLinks()))
 		}
 	case evHeal:
 		s.heal()
@@ -834,9 +875,11 @@ func (s *Sim) handle(e *event) {
 	case evSubmit:
 		s.submit(e)
 	case evClientReply:
-		e.op.client.done(e.op, e.resp, e.err)
+		s.complete(e.op, e.resp, e.err)
 	case evClientTimeout:
-		e.op.client.done(e.op, nil, errClientTimeout)
+		s.complete(e.op, nil, errClientTimeout)
+	case evMembership:
+		s.changeMembership()
 	case evWatchOpen:
 		e.watch.openWatch()
 	case evWatchCreate:
@@ -857,7 +900,7 @@ func (s *Sim) handle(e *event) {
 
 // start opens a node from its disk, as a process start does.
 func (s *Sim) start(n *node) error {
-	if n.fenced {
+	if n.fenced || n.inactive {
 		return nil
 	}
 	if n.rotted && !slices.Contains(n.disk.DurableNames(), n.rotFile) {
@@ -896,6 +939,10 @@ func (s *Sim) start(n *node) error {
 		// where any damage is detectable.
 		w.SetSegmentBytes(8 << 10)
 		cfg := core.DefaultConfig(n.id, []uint64{1, 2, 3})
+		cfg.Join = n.id > 3
+		if s.cfg.Membership {
+			cfg.Name = fmt.Sprintf("node%d", n.id)
+		}
 		// The run number lives with the node, as the real node keeps it on
 		// a disk that survives what the simulator does to the log.
 		n.runs++
@@ -905,6 +952,13 @@ func (s *Sim) start(n *node) error {
 		cfg.ProgressTicks = 20
 		tinyLimits(&cfg)
 		c, err = core.New(cfg, rec, w)
+	}
+	if s.cfg.Membership && errors.Is(err, core.ErrRemoved) {
+		n.inactive = true
+		if w != nil {
+			return w.Close()
+		}
+		return nil
 	}
 	if n.corrupted {
 		// The disk was damaged on purpose; the node must notice and stay
@@ -938,6 +992,9 @@ func (s *Sim) start(n *node) error {
 	n.diskQ, n.diskBusy, n.syncing = nil, false, nil
 	s.mix(0xb007, uint64(n.idx), rec.Last, rec.HardState.Commit)
 	s.push(&event{at: s.now + s.rng.Int64N(TickTime) + 1, kind: evTick, node: n.idx, gen: n.gen})
+	if s.cfg.Membership && n.id > 3 {
+		s.push(&event{at: s.now + Second, kind: evMemberConnect, node: n.idx, gen: n.gen})
+	}
 	s.process(n)
 	return nil
 }
@@ -996,6 +1053,11 @@ func (s *Sim) process(n *node) {
 	if eff.HandOff != 0 {
 		s.stats.StallHandOffs++
 		s.stallHandOffs = append(s.stallHandOffs, s.now)
+	}
+	if errors.Is(err, core.ErrRemoved) && s.cfg.Membership {
+		n.inactive = true
+		s.down(n)
+		return
 	}
 	if errors.Is(err, core.ErrCommitStalled) {
 		s.stats.CommitStops++
@@ -1149,8 +1211,13 @@ var marshal = proto.MarshalOptions{Deterministic: true}
 // send puts a message on its link. Links are ordered streams: a message
 // never overtakes an earlier one on the same link.
 func (s *Sim) send(from *node, m *raftpb.Message) {
-	to := int(m.GetTo()) - 1
-	if to < 0 || to >= len(s.nodes) {
+	to := slices.IndexFunc(s.nodes, func(n *node) bool { return n.id == m.GetTo() })
+	if to < 0 {
+		if s.cfg.Membership && slices.ContainsFunc(from.core.Members(), func(member *pb.Member) bool { return member.ID == m.GetTo() }) {
+			// An added member may not have started yet.
+			s.stats.Dropped++
+			return
+		}
 		s.fail("node %d sends to unknown node %d", from.id, m.GetTo())
 		return
 	}
@@ -1216,6 +1283,17 @@ func (s *Sim) deliver(e *event) {
 	m := &raftpb.Message{}
 	if err := proto.Unmarshal(e.data, m); err != nil {
 		s.fail("unmarshal message: %w", err)
+		return
+	}
+	if slices.Contains(n.core.RemovedMembers(), m.GetFrom()) {
+		// The real peer transport closes a removed member's connection
+		// and answers its next handshake with removedReply. Deliver that
+		// answer through the reverse link, rather than reviving a removed
+		// node forever during an erase-one-disk restart.
+		back := &s.links[e.node][e.from]
+		if back.up && back.halfOpenUntil <= s.now {
+			s.push(&event{at: max(s.now+back.base, back.stallUntil), kind: evRemoved, node: e.from, from: e.node, gen: back.epoch})
+		}
 		return
 	}
 	if err := n.core.Step(m); err != nil {
@@ -1303,7 +1381,7 @@ func (s *Sim) changeLinks() {
 	s.stats.LinkChanges++
 	// Half of the changes heal every link; the rest pick a random set of
 	// directed links, which covers partitions and one-way links.
-	mask := uint64(1<<6 - 1)
+	mask := s.allLinks()
 	if s.rng.IntN(2) == 0 {
 		mask = s.rng.Uint64() & mask
 	}
@@ -1313,7 +1391,9 @@ func (s *Sim) changeLinks() {
 	s.push(&event{at: min(s.exp(s.cfg.Faults.LinkEvery), s.now+3*s.cfg.Faults.LinkEvery), kind: evLinks})
 }
 
-// setLinks sets the six directed links between three nodes from a mask:
+func (s *Sim) allLinks() uint64 { return 1<<uint(len(s.links)*(len(s.links)-1)) - 1 }
+
+// setLinks sets the directed links between nodes from a mask:
 // bit k is the k-th pair (i, j) with i != j in order.
 func (s *Sim) setLinks(mask uint64) {
 	s.mix(0x11, mask)
@@ -1356,7 +1436,7 @@ func (s *Sim) heal() {
 		// Closes its stream and stops.
 		s.grayConnect()
 	}
-	s.setLinks(1<<6 - 1)
+	s.setLinks(s.allLinks())
 	// Link stalls and pauses end by healing, as they are cut to it, and
 	// ending them here would let new messages overtake held ones.
 	// Half-open links end now.
