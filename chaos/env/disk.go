@@ -126,7 +126,16 @@ func (d *Disk) mountLazyFS() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(d.lazyfs, d.Data, "--config-path", d.cfgfile, "-o", "modules=subdir", "-o", "subdir="+d.root, "-f")
+	// LazyFS ignores a config path with "-o" in it, in any case, and
+	// looks for config/default.toml instead; a CI run's directory had
+	// chaos-out in it. So it gets the file's name, relative to its working
+	// directory, the disk's.
+	cfg := filepath.Base(d.cfgfile)
+	if strings.Contains(strings.ToLower(cfg), "-o") {
+		return errors.Join(fmt.Errorf("LazyFS cannot take the config path %s, which has -o in it", cfg), out.Close())
+	}
+	cmd := exec.Command(d.lazyfs, d.Data, "--config-path", cfg, "-o", "modules=subdir", "-o", "subdir="+d.root, "-f")
+	cmd.Dir = filepath.Dir(d.cfgfile)
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Start(); err != nil {
 		return errors.Join(err, out.Close())
