@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestRangeReplyMemoryTimeoutAndOversize(t *testing.T) {
 		s.n.Tick()
 	}
 	got := s.run()
-	if len(got) != 1 || got[0].Err != rpctypes.ErrGRPCTimeout || got[0].Held != 0 {
+	if len(got) != 1 || !errors.Is(got[0].Err, rpctypes.ErrGRPCTimeout) || got[0].Held != 0 {
 		t.Fatalf("waiting range did not time out: %+v", got)
 	}
 	s.n.ReleaseReplyBytes(held)
