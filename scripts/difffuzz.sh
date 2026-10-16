@@ -8,9 +8,10 @@
 #
 #   scripts/difffuzz.sh
 #
-# ETCD is the etcd v3.7.2 binary, etcd on PATH by default. A mismatch is
-# shrunk, saved to FUZZ_OUT (default difftest/testdata/fuzz) as a named
-# case, and fails the run. BUILD_FLAGS go to the build of tigerstore, for
+# ETCD is the etcd v3.7.2 binary, etcd on PATH by default. FUZZ_ETCD_PORT
+# (default 23790) is its client port, its peer port 10 above, for a
+# second run beside the first. A mismatch is shrunk, saved to FUZZ_OUT
+# (default difftest/testdata/fuzz) as a named case, and fails the run. BUILD_FLAGS go to the build of tigerstore, for
 # example to build in a planted bug. With RACE set, tigerstore and the
 # tests are built with -race and stop at their first race report, and a
 # report in a node's log fails the run.
@@ -35,7 +36,8 @@ stop() {
 trap 'stop; rm -rf "$work"' EXIT
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 off=${OFFSET:-$((RANDOM % 2000 + 1))}
-for port in 23790 23800 $((2379 + off)) $((22379 + off)) $((12379 + off)) $((2380 + off)) $((22380 + off)) $((12380 + off)); do
+eport=${FUZZ_ETCD_PORT:-23790}
+for port in $eport $((eport + 10)) $((2379 + off)) $((22379 + off)) $((12379 + off)) $((2380 + off)) $((22380 + off)) $((12380 + off)); do
 	if in_use $port; then
 		echo "port $port is in use"
 		exit 1
@@ -46,14 +48,14 @@ go build ${RACE:+-race} ${BUILD_FLAGS:-} -o "$work/tigerstore" ./cmd/tigerstore
 [ -n "${RACE:-}" ] && export GORACE=halt_on_error=1
 scripts/dev-certs.sh "$work/certs" >/dev/null 2>&1
 (cd "$work" && exec "$etcd" --name fuzz --data-dir "$work/etcd" \
-	--listen-client-urls https://127.0.0.1:23790 --advertise-client-urls https://127.0.0.1:23790 \
+	--listen-client-urls https://127.0.0.1:$eport --advertise-client-urls https://127.0.0.1:$eport \
 	--cert-file "$work/certs/node1.pem" --key-file "$work/certs/node1-key.pem" \
 	--trusted-ca-file "$work/certs/ca.pem" --client-cert-auth \
-	--listen-peer-urls http://127.0.0.1:23800 --initial-advertise-peer-urls http://127.0.0.1:23800 \
-	--initial-cluster fuzz=http://127.0.0.1:23800 --log-level warn) >"$work/etcd.log" 2>&1 &
+	--listen-peer-urls http://127.0.0.1:$((eport + 10)) --initial-advertise-peer-urls http://127.0.0.1:$((eport + 10)) \
+	--initial-cluster fuzz=http://127.0.0.1:$((eport + 10)) --log-level warn) >"$work/etcd.log" 2>&1 &
 echo $! >"$work/etcd.pid"
 (cd "$work" && TIGERSTORE=./tigerstore CERTS=certs OFFSET=$off "$OLDPWD/scripts/local-cluster.sh")
-TIGERSTORE_DIFF_ETCD=127.0.0.1:23790 TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) \
+TIGERSTORE_DIFF_ETCD=127.0.0.1:$eport TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) \
 	TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
 	go test -count=1 -tags difftest ${RACE:+-race} -timeout 0 ./difftest -run '^TestDiffFuzz' -v \
 	-args -difffuzz.duration="${DURATION:-60s}" -difffuzz.seed="${SEED:-0}" -difffuzz.out="$out" |

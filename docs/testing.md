@@ -139,6 +139,10 @@ The `test` job runs every package but the simulator with `-race`; `race-sim` run
 
 The `difffuzz` job of `ci` fuzzes for 90 s from a seed of the run ID. `difffuzz.yml` is the long run, started by hand (`gh workflow run difffuzz.yml -f duration=2h`): four jobs with seeds of their own. With planted bug B09a built in (`BUILD_FLAGS='-tags planted -ldflags=-X=github.com/djosh34/tigerstore/internal/planted.Active=B09a'`), the first sequence differed, and its case shrank to 6 requests.
 
+The first long run on `main` ([38909081059](https://github.com/djosh34/tigerstore/actions/runs/38909081059), 2 hours) found two things:
+- Three of its four shards found #203 within 5 minutes: the watch event of a delete that follows a put of the same key in one Txn carried the put's value as its previous value. etcd sends the key as it was before the Txn. Their shrunk cases are in `difftest/testdata/fuzz`.
+- The fourth shard stopped etcd v3.7.2 itself. The shrunk sequence: a Txn branch deletes a key and then puts it again, then a compaction at that Txn's revision. After it, etcd's index still has the put but its backend does not, so the next read of the key ends etcd with "range failed to find revision pair". tigerstore answers it. Kubernetes never deletes and puts a key in one Txn, so the generator no longer puts a key that an earlier delete of the same branch removed (`TestDiffFuzzNoPutAfterDelete`). `scripts/difffuzz.sh` takes `FUZZ_ETCD_PORT` for a second run beside the first, and a failing run names the seed of its last sequence.
+
 # Simulator seed campaign
 
 `sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. A process of 2,000 seeds or more also requires a stopped gray leader (#183).

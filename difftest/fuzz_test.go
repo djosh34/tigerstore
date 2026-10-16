@@ -141,6 +141,34 @@ func (g *fuzzGen) branchOp() fuzzOp {
 	return op
 }
 
+// branch returns n ops of a txn branch. A put of a key that an earlier
+// delete of the branch removed becomes a read: after a compaction at that
+// txn's revision, etcd v3.7.2 keeps such a put in its index but not its
+// values, and its next read of the key stops it with "range failed to find
+// revision pair" (seed 3636324239000001190 of the long run on 0281f342).
+func (g *fuzzGen) branch(n int) []fuzzOp {
+	var out []fuzzOp
+	for range n {
+		op := g.branchOp()
+		if op.Kind == "put" && slices.ContainsFunc(out, func(d fuzzOp) bool { return d.Kind == "del" && deletes(d, op.Key) }) {
+			op = fuzzOp{Kind: "get", Key: op.Key}
+		}
+		out = append(out, op)
+	}
+	return out
+}
+
+// deletes reports whether delete d removes key k.
+func deletes(d fuzzOp, k int) bool {
+	switch {
+	case d.End == -1:
+		return k >= d.Key
+	case d.End > 0:
+		return d.Key <= k && k < d.End-1
+	}
+	return k == d.Key
+}
+
 func (g *fuzzGen) compare() fuzzCmp {
 	c := fuzzCmp{Key: g.rng.IntN(fuzzKeys), Result: []string{"EQUAL", "GREATER", "LESS", "NOT_EQUAL"}[g.rng.IntN(4)]}
 	switch g.rng.IntN(5) {
@@ -176,12 +204,8 @@ func (g *fuzzGen) op() fuzzOp {
 		for range g.rng.IntN(3) {
 			op.Compare = append(op.Compare, g.compare())
 		}
-		for range g.rng.IntN(4) {
-			op.Success = append(op.Success, g.branchOp())
-		}
-		for range g.rng.IntN(3) {
-			op.Failure = append(op.Failure, g.branchOp())
-		}
+		op.Success = g.branch(g.rng.IntN(4))
+		op.Failure = g.branch(g.rng.IntN(3))
 	case p < 84:
 		op = fuzzOp{Kind: "compact", Rev: g.rev(), Physical: g.rng.IntN(2) == 0}
 	case p < 90:
@@ -571,6 +595,13 @@ func TestDiffFuzz(t *testing.T) {
 		seed = uint64(time.Now().UnixNano())
 	}
 	t.Logf("first seed %d", seed)
+	// A step that fails, as when a server stops answering, ends the test
+	// without naming the sequence.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("the sequence it ran last was seed %d", seed)
+		}
+	})
 	n := 0
 	for deadline := time.Now().Add(*fuzzDuration); time.Now().Before(deadline); seed++ {
 		g := &fuzzGen{rng: rand.New(rand.NewPCG(seed, 148))}
@@ -667,6 +698,28 @@ func TestDiffFuzzWatchRule(t *testing.T) {
 	for _, c := range cases {
 		if got := stricterWatch(ops, c.steps, truth, etcd, watch(c.ours)); got != c.want {
 			t.Errorf("%s: stricterWatch says %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDiffFuzzNoPutAfterDelete checks that no generated txn branch puts a key
+// an earlier delete of it removed, which etcd v3.7.2 does not survive
+// after a compaction at that revision.
+func TestDiffFuzzNoPutAfterDelete(t *testing.T) {
+	if !deletes(fuzzOp{Kind: "del", Key: 1, End: -1}, 4) || deletes(fuzzOp{Kind: "del", Key: 1, End: 3}, 2) || !deletes(fuzzOp{Kind: "del", Key: 1, End: 3}, 1) || deletes(fuzzOp{Kind: "del", Key: 1}, 2) {
+		t.Fatal("deletes covers the wrong keys")
+	}
+	for seed := range uint64(3000) {
+		g := &fuzzGen{rng: rand.New(rand.NewPCG(seed, 148))}
+		for range 30 {
+			op := g.op()
+			for _, branch := range [][]fuzzOp{op.Success, op.Failure} {
+				for i, o := range branch {
+					if o.Kind == "put" && slices.ContainsFunc(branch[:i], func(d fuzzOp) bool { return d.Kind == "del" && deletes(d, o.Key) }) {
+						t.Fatalf("seed %d: a branch puts k%d after deleting it: %+v", seed, o.Key, branch)
+					}
+				}
+			}
 		}
 	}
 }

@@ -1,0 +1,74 @@
+{
+	"name": "seed-3636324236000000257",
+	"ops": [
+		{
+			"kind": "txn",
+			"success": [
+				{
+					"kind": "get",
+					"key": 4
+				},
+				{
+					"kind": "del",
+					"key": 5,
+					"end": -1,
+					"prevKV": true
+				},
+				{
+					"kind": "put",
+					"value": "djQ2OQ=="
+				}
+			],
+			"failure": [
+				{
+					"kind": "del",
+					"key": 2,
+					"end": -1,
+					"prevKV": true
+				}
+			]
+		},
+		{
+			"kind": "put",
+			"key": 3,
+			"value": "djU2NQ=="
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 2,
+					"target": "CREATE",
+					"result": "LESS",
+					"number": 6
+				}
+			],
+			"success": [
+				{
+					"kind": "put",
+					"key": 3,
+					"value": "djgwNw=="
+				},
+				{
+					"kind": "del",
+					"key": 1,
+					"end": -1
+				},
+				{
+					"kind": "del",
+					"key": 3,
+					"end": 2,
+					"prevKV": true
+				}
+			]
+		},
+		{
+			"kind": "watch",
+			"key": 3,
+			"rev": 3,
+			"watch": {
+				"prevKV": true
+			}
+		}
+	]
+}
