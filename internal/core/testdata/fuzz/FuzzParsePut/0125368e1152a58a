@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0ی\x860\xff\xff\xff0")

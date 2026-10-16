@@ -544,8 +544,10 @@ func TestEntryChecksRecord(t *testing.T) {
 	data := d.DurableBytes(names[0])
 	at := strings.Index(string(data), "v2")
 	d.FlipDurable(names[0], at+1)
-	if _, err := w.Entry(2); !errors.Is(err, wal.ErrCorrupt) {
-		t.Fatalf("damaged entry 2: %v", err)
+	_, err = w.Entry(2)
+	var re *wal.RecordError
+	if !errors.Is(err, wal.ErrCorrupt) || !errors.As(err, &re) || re.Entry != 2 || re.Segment != 1 {
+		t.Fatalf("damaged entry 2: %v, want a RecordError of entry 2 in segment 1", err)
 	}
 	if e, err := w.Entry(3); err != nil || string(e.GetData()) != "v3" {
 		t.Fatalf("entry 3: %v, %v", e, err)

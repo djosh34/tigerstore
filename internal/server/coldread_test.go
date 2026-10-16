@@ -64,7 +64,10 @@ type result struct {
 }
 
 // TestColdReadsStall holds every value read from disk on every node for
-// 2 s at a time, with every value the requests need on disk only.
+// 2 s at a time, with every value the requests need on disk only. A read
+// is held once it found its place and let go of the log's lock, so one
+// that kept the lock would hold up every append and fail the writes below
+// (#165).
 //   - Every kind of request whose response carries values, sent to a
 //     follower, gets no answer while its reads are held. Meanwhile
 //     compare-and-swap writes on the revision finish, the cluster

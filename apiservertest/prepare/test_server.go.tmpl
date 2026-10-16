@@ -97,6 +97,10 @@ func RunEtcd(t testing.TB, cfg *Config) *kubernetes.Client {
 		if err := log.Close(); err != nil {
 			t.Error(err)
 		}
+		// A race-built server reports races in its log.
+		if b, err := os.ReadFile(dir + "/server.log"); err == nil && strings.Contains(string(b), "WARNING: DATA RACE") {
+			t.Error("the server reported a data race")
+		}
 		if t.Failed() {
 			if b, err := os.ReadFile(dir + "/server.log"); err == nil {
 				t.Logf("server log:\n%s", b)

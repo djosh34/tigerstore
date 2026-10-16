@@ -41,7 +41,7 @@ func TestTakesSpace(t *testing.T) {
 // NOSPACE and change nothing, the delete applies.
 func TestForwardedWritesGetNoSpace(t *testing.T) {
 	c := newMemCluster(t, func(*Config) {})
-	c.nodes[0].SetNoSpace(true)
+	c.nodes[0].SetDisk(1, 1)
 	f := c.nodes[1]
 	f.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
 	f.Submit(Request{ID: 2, Op: &pb.LeaseGrantRequest{TTL: 10}})
@@ -60,7 +60,7 @@ func TestForwardedWritesGetNoSpace(t *testing.T) {
 			t.Fatalf("node %d is at revision %d", i+1, n.Store().Rev())
 		}
 	}
-	c.nodes[0].SetNoSpace(false)
+	c.nodes[0].SetDisk(0, 1)
 	f.Submit(Request{ID: 4, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
 	for range 100 {
 		if c.replies == 2 {
@@ -83,7 +83,7 @@ func TestQueuedWritesGetNoSpace(t *testing.T) {
 		l.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: []byte("k"), Value: make([]byte, 1<<10)}})
 	}
 	c.step()
-	l.SetNoSpace(true)
+	l.SetDisk(1, 1)
 	for range 100 {
 		if c.noSpace+c.replies == 100 {
 			break
@@ -92,5 +92,59 @@ func TestQueuedWritesGetNoSpace(t *testing.T) {
 	}
 	if c.noSpace+c.replies != 100 || c.replies > 10 {
 		t.Fatalf("%d NOSPACE answers and %d others, want at most 10 others", c.noSpace, c.replies)
+	}
+}
+
+// TestFollowerPastBudgetStopsWrites has a follower pass its budget (#170).
+// It raises its NOSPACE alarm, so the leader refuses a put too, which the
+// follower would otherwise append to its full disk. Once the follower's
+// disk is low again it clears the alarm, and a put goes through.
+func TestFollowerPastBudgetStopsWrites(t *testing.T) {
+	c := newMemCluster(t, func(*Config) {})
+	l, f := c.nodes[0], c.nodes[2]
+	f.SetDisk(1, 1)
+	alarmed := func() bool {
+		for _, a := range l.state.alarms {
+			if a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == f.cfg.ID {
+				return true
+			}
+		}
+		return false
+	}
+	// The alarm waits for the cluster version, which waits for every
+	// node's announcement, which ticks send.
+	tick := func() {
+		for _, n := range c.nodes {
+			n.Tick()
+		}
+		c.step()
+	}
+	for i := 0; i < 100 && !alarmed(); i++ {
+		tick()
+	}
+	if !alarmed() {
+		t.Fatal("the follower past its budget raised no alarm")
+	}
+	l.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	for range 10 {
+		c.step()
+	}
+	if c.noSpace != 1 || l.Store().Rev() != 1 {
+		t.Fatalf("%d NOSPACE answers, revision %d; want the put refused", c.noSpace, l.Store().Rev())
+	}
+	f.SetDisk(0, 1)
+	for i := 0; i < 100 && alarmed(); i++ {
+		tick()
+	}
+	if alarmed() {
+		t.Fatal("the follower kept its alarm with its disk low")
+	}
+	before := c.replies
+	l.Submit(Request{ID: 2, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
+	for i := 0; i < 100 && c.replies == before; i++ {
+		c.step()
+	}
+	if c.replies == before || l.Store().Rev() != 2 {
+		t.Fatalf("the put after the alarm: %d answers, revision %d", c.replies-before, l.Store().Rev())
 	}
 }
