@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -93,7 +94,8 @@ func h2Request(method string, m proto.Message) []byte {
 
 // FuzzHTTP2 sends any bytes as frames on a client connection, after the
 // preface and a SETTINGS frame, then closes its side. The server must
-// answer or close the connection without a crash, and keep serving.
+// answer and close the connection, or reset it, within 5 s, without a
+// crash, and keep serving.
 func FuzzHTTP2(f *testing.F) {
 	f.Add(h2Request("/etcdserverpb.KV/Range", &pb.RangeRequest{Key: []byte("a")}))
 	f.Add(h2Request("/etcdserverpb.KV/Put", &pb.PutRequest{Key: []byte("a"), Value: []byte("1")}))
@@ -118,9 +120,16 @@ func FuzzHTTP2(f *testing.F) {
 		}
 		in := append([]byte(http2.ClientPreface), settings.Bytes()...)
 		if _, err := c.Write(append(in, b...)); err != nil {
+			// The server may reset a connection it refuses, but not stop
+			// reading.
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				t.Fatalf("the server read nothing for 5 s: %v", err)
+			}
 			return
 		}
 		_ = c.(*net.TCPConn).CloseWrite()
-		_, _ = io.Copy(io.Discard, c)
+		if _, err := io.Copy(io.Discard, c); errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatal("the server neither answered and closed the connection nor reset it within 5 s")
+		}
 	})
 }

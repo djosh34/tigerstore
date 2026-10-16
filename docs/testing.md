@@ -121,14 +121,14 @@ The `fuzz` job in CI runs each fuzz test of a hand-written decoder for 20 s, fro
 | `core.FuzzParsePut` | `ParsePut` | The fields, the size and the error of `proto.Unmarshal` |
 | `core.FuzzReceiveSnapshot` | The follower's snapshot receiver | No crash, and a log it took opens again |
 | `wal.FuzzOpen` | WAL recovery of two segments | No crash, and every entry it reports reads back as that entry or fails |
-| `mvcc.FuzzLoad` | `Store.Load` of a checkpoint's keys | No crash, and a store it loaded answers a range over every key |
+| `mvcc.FuzzLoad` | `Store.Load` of a checkpoint's keys | No crash, and a store it loaded answers a keys-only range over every key |
 | `peer.FuzzFrames` | The peer transport's frame reader | It stops with an error, never crashes, and delivers only the peer's own messages |
-| `server.FuzzHTTP2` | The server's HTTP/2 and gRPC framing, on a real one-node server | No crash; the server answers or closes the connection |
+| `server.FuzzHTTP2` | The server's HTTP/2 and gRPC framing, on a real one-node server | No crash; within 5 s the server answers and closes the connection, or resets it |
 
 A failure's input is uploaded as an artifact; copied into `testdata/fuzz/<test>/`, it reproduces with `go test -run '<test>/<input>' <package>`.
 
 The `coverage` job fails when the statement coverage of the `internal/...` packages, measured across every package's tests (`-coverpkg=./internal/...`), is below 80%. It was 86.8% when the job was added.
 
-The `test` job runs every package but the simulator with `-race`; `race-sim` runs the simulator with it too, in its own job, as it takes most of the 10 minutes there. The third `difftest` job builds tigerstore and runs the tests with `-race` (`RACE=1 scripts/difftest.sh tigerstore`), and `chaos-race` runs two chaos seeds with race-built `tigerstore` and `chaos` binaries, where a data race stops the node (`GORACE=halt_on_error=1`) and fails the run.
+The `test` job runs every package but the simulator with `-race`; `race-sim` runs the simulator with it, in its own job, as it takes most of the 10 minutes there. Three jobs run real processes built with `-race`, where a data race stops the process (`GORACE=halt_on_error=1`) and a race report in a log fails the run, also one at shutdown: the third `difftest` job (`RACE=1 scripts/difftest.sh tigerstore`, which builds the tests with `-race` too), the race row of `apiserver` (`RACE=1 apiservertest/run.sh v0.37.0`), and `chaos-race`, which runs two chaos seeds that the `chaos` job does not, with race-built `tigerstore` and `chaos` binaries.
 
 `core.TestMembershipChangesMatchRaft` is the component test of the membership checks: random member adds, learner adds, removals, promotions and updates on random clusters. Every change the checks let through must be one raft's `confchange` takes, since raft panics on any error, and the members after it must equal raft's configuration; a refused change goes to raft as a change of nobody, as in etcd.

@@ -9,7 +9,9 @@
 # with the adapter (apiservertest/prepare) and runs the tests of
 # pkg/storage/etcd3 and pkg/storage/testing unchanged, and fails if one is
 # skipped. WORK keeps the copy and the test output (default: a temporary
-# directory).
+# directory). With RACE set, tigerstore is built with -race and stops at
+# its first race report; the adapter fails a test whose server log has
+# one.
 set -euo pipefail
 
 version=${1:?usage: apiservertest/run.sh <version> [go test flags...]}
@@ -19,7 +21,8 @@ work=${WORK:-$(mktemp -d)}
 mkdir -p "$work"
 work=$(cd "$work" && pwd)
 
-go build -o "$work/tigerstore" "$repo/cmd/tigerstore"
+go build ${RACE:+-race} -o "$work/tigerstore" "$repo/cmd/tigerstore"
+[ -n "${RACE:-}" ] && export GORACE=halt_on_error=1
 go build -o "$work/factory" "$repo/apiservertest/factory"
 "$repo/scripts/dev-certs.sh" "$work/certs" >/dev/null
 

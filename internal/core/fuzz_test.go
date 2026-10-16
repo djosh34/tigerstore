@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand/v2"
 	"testing"
 
@@ -89,8 +90,39 @@ func FuzzParsePut(f *testing.F) {
 // FuzzReceiveSnapshot feeds any bytes to a follower's snapshot receiver as
 // the stream of the snapshot at index and term, into an empty log. It
 // must refuse or take the stream without a crash, and a log it took must
-// open again. The corpus in testdata/fuzz holds whole streams.
+// open again. The seed is a whole stream from the sender, of a node whose
+// first entries are gone: a checkpoint, the values it names, and entries.
 func FuzzReceiveSnapshot(f *testing.F) {
+	src := startSingleWith(f, simfs.New(), 1, func(cfg *Config) {
+		cfg.WindowBytes, cfg.WindowMaxBytes = 512, 1024
+		cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
+	})
+	id := uint64(0)
+	for round := range 30 {
+		for k := range 10 {
+			id++
+			if r := src.do(id, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", k), Value: fmt.Appendf(nil, "value %d of round %d", k, round)}); r.Err != nil {
+				f.Fatal(r.Err)
+			}
+		}
+		id++
+		if r := src.do(id, &pb.CompactionRequest{Revision: src.n.kv.Rev()}); r.Err != nil {
+			f.Fatal(r.Err)
+		}
+	}
+	if src.log.Has(1) {
+		f.Fatal("the source still has entry 1")
+	}
+	last := src.n.Applied()
+	term, err := src.n.termAt(last)
+	if err != nil {
+		f.Fatal(err)
+	}
+	var stream bytes.Buffer
+	if err := ServeSnapshot(src.log, []wal.Root{src.n.DurableCheckpoint()}, 1, last, &stream); err != nil {
+		f.Fatal(err)
+	}
+	f.Add(stream.Bytes(), last, term)
 	f.Fuzz(func(t *testing.T, b []byte, index, term uint64) {
 		disk := simfs.New()
 		w, _, err := wal.Open(disk)

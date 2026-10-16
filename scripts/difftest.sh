@@ -90,7 +90,13 @@ proxy() {
 	echo $! >"$work/proxy.pid"
 }
 args=(-count=1 -tags difftest ./difftest)
-[ -n "${RACE:-}" ] && args+=(-race)
+# With RACE set, tigerstore and the tests are built with -race, stop at
+# their first race report, and a report in a server's log fails the run,
+# also one at shutdown.
+if [ -n "${RACE:-}" ]; then
+	args+=(-race)
+	export GORACE=halt_on_error=1
+fi
 [ "$record" = record ] && args+=(-record)
 
 case $server in
@@ -187,4 +193,13 @@ for suite in "${suites[@]}"; do
 	esac
 	alive
 	stop
+	if [ -n "${RACE:-}" ]; then
+		for f in "$work"/data/*.log "$work"/proxy.log; do
+			if [ -e "$f" ] && grep -q 'WARNING: DATA RACE' "$f"; then
+				echo "$f has a data race report:"
+				grep -A60 'WARNING: DATA RACE' "$f" | head -120
+				exit 1
+			fi
+		done
+	fi
 done

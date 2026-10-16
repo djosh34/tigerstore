@@ -59,12 +59,9 @@ jobs:
           echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
           echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      # The simulator starts no goroutine (the determinism lint forbids
-      # it), so the race detector has nothing to find there; its tests run
-      # without it. Under -race they took 545 s of the 600 s package
-      # timeout on main.
+      # The simulator's tests run under -race in their own job, race-sim:
+      # they took 545 s of the 600 s package timeout here.
       - run: go list ./... | grep -v '/internal/sim$' | xargs go test -race
-      - run: go test ./internal/sim
 
   # Values near the request limit from clients on every node at a real
   # node's 100 ms ticks, failing if a leader entry waits one election
@@ -161,12 +158,20 @@ jobs:
       fail-fast: false
       matrix:
         version: [v0.35.0, v0.36.0, v0.37.0]
+        race: [""]
+        # The newest version once more against a tigerstore built with
+        # -race: a race report fails the test whose server made it.
+        include:
+          - version: v0.37.0
+            race: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: apiservertest/run.sh ${{ matrix.version }}
+        env:
+          RACE: ${{ matrix.race }}
 
   # Sequential differential tests: the same requests against a fresh etcd
   # v3.7.2 and a fresh 3-node tigerstore, compared with etcd's recorded
@@ -398,7 +403,8 @@ jobs:
           set -uo pipefail
           status=0
           for k in 0 1; do
-            seed=$(( (RUN_ID % 1000000000) * 8 + 6 + k ))
+            # The chaos shards take offsets 1 to 6.
+            seed=$(( (RUN_ID % 1000000000) * 8 + 7 + k ))
             echo "seed $seed"
             "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
           done

@@ -19,7 +19,7 @@ import (
 
 // single runs a one-node cluster on a simulated disk.
 type single struct {
-	t     *testing.T
+	t     testing.TB
 	disk  *simfs.Disk
 	log   *wal.WAL
 	n     *Node
@@ -57,7 +57,7 @@ func startSingle(t *testing.T, disk *simfs.Disk, boot uint64) *single {
 
 // startSingleWith starts the single node with change applied to its
 // configuration.
-func startSingleWith(t *testing.T, disk *simfs.Disk, boot uint64, change func(*Config)) *single {
+func startSingleWith(t testing.TB, disk *simfs.Disk, boot uint64, change func(*Config)) *single {
 	t.Helper()
 	w, rec, err := wal.Open(disk)
 	if err != nil {

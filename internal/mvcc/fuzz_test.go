@@ -11,7 +11,9 @@ import (
 
 // FuzzLoad loads any bytes as the keys of a checkpoint at revision rev,
 // compacted at compact. Load must refuse them or load them without a
-// crash, and a store it loaded must answer a range over every key.
+// crash. A store it loaded must answer a keys-only range over every key;
+// a range with values may fail, as the values are in a log this store
+// does not have, but must not crash.
 func FuzzLoad(f *testing.F) {
 	s := New(&Heap{})
 	for i := range 40 {
@@ -39,6 +41,9 @@ func FuzzLoad(f *testing.F) {
 		s := New(&Heap{})
 		if _, err := s.Load(bufio.NewReader(bytes.NewReader(b)), rev, compact); err != nil {
 			return
+		}
+		if _, err := s.Range(&pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}, KeysOnly: true}); err != nil {
+			t.Fatalf("a store Load took does not answer a keys-only range over every key: %v", err)
 		}
 		_, _ = s.Range(&pb.RangeRequest{Key: []byte{0}, RangeEnd: []byte{0}})
 	})
