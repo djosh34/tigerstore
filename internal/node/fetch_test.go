@@ -378,9 +378,20 @@ func TestQueuedInstalls(t *testing.T) {
 		}
 	}()
 	leader := c.nodes[1]
+	// Before version 3 every compaction cuts a checkpoint (#213), and the
+	// last one may become durable after this reads the list. Hold the
+	// leader's removals, as a fetch under way does, so that it cannot
+	// remove the checkpoint the installs name.
 	leader.log.mu.Lock()
+	leader.log.serving++
 	ckpt := leader.log.ckpts[len(leader.log.ckpts)-1]
 	leader.log.mu.Unlock()
+	defer func() {
+		leader.log.mu.Lock()
+		leader.log.serving--
+		leader.log.mu.Unlock()
+		leader.log.wake()
+	}()
 	// The final compaction may be the checkpoint entry itself. Create
 	// the second install's tail instead of relying on an incidental one.
 	if _, err := do(leader, &pb.PutRequest{Key: []byte("install-tail"), Value: []byte("v")}); err != nil {
