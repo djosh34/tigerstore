@@ -4,7 +4,7 @@
 # and the certificates of scripts/dev-certs.sh, and runs the difftest's
 # TestDiffFuzz against both for DURATION (default 60s) from seed SEED
 # (default: from the clock), then TestDiffFuzzFound, which replays every
-# saved mismatch in difftest/testdata/fuzz.
+# saved mismatch in difftest/testdata/fuzz, and TestDiffFuzzWatchRule.
 #
 #   scripts/difffuzz.sh
 #
@@ -55,7 +55,7 @@ echo $! >"$work/etcd.pid"
 (cd "$work" && TIGERSTORE=./tigerstore CERTS=certs OFFSET=$off "$OLDPWD/scripts/local-cluster.sh")
 TIGERSTORE_DIFF_ETCD=127.0.0.1:23790 TIGERSTORE_DIFF_ENDPOINT=127.0.0.1:$((2379 + off)) \
 	TIGERSTORE_DIFF_CA=$work/certs/ca.pem TIGERSTORE_DIFF_CERT=$work/certs/client.pem TIGERSTORE_DIFF_KEY=$work/certs/client-key.pem \
-	go test -count=1 -tags difftest ${RACE:+-race} -timeout 0 ./difftest -run '^TestDiffFuzz(Found)?$' -v \
+	go test -count=1 -tags difftest ${RACE:+-race} -timeout 0 ./difftest -run '^TestDiffFuzz' -v \
 	-args -difffuzz.duration="${DURATION:-60s}" -difffuzz.seed="${SEED:-0}" -difffuzz.out="$out" |
 	grep -v -E '^=== RUN|^\s+--- PASS: TestDiffFuzzFound/' ||
 	{

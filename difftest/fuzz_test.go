@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -332,13 +334,22 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 	p.t.Helper()
 	p.tag++
 	var steps [2][]step
+	var truth func(key string, rel int64) *kv
 	for k, c := range []*client{p.etcd, p.ours} {
 		f := &fuzzRun{run: newRun(p.t, c, p.tag, "fuzz"), tag: p.tag}
 		f.exact = true
+		var h *keyHistory
+		if k == 0 {
+			h = watchHistory(f.run, f.base+1)
+		}
 		for i, op := range ops {
 			f.do(i, op)
 		}
 		steps[k] = f.steps
+		if h != nil {
+			h.finish(f.run)
+			truth = func(key string, rel int64) *kv { return f.kv(h.before(f.run.key(key), f.abs(rel))) }
+		}
 		// A lease left to expire would delete its keys on each server at
 		// its own time, during a later sequence, and move that server's
 		// revision under it.
@@ -349,7 +360,7 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 		}
 	}
 	for i := range steps[0] {
-		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0], steps[0][i], steps[1][i]) {
+		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0], truth, steps[0][i], steps[1][i]) {
 			e, _ := json.Marshal(steps[0][i])
 			o, _ := json.Marshal(steps[1][i])
 			return fmt.Sprintf("step %s: etcd v3.7.2 answers %s, tigerstore %s", steps[0][i].Do, e, o)
@@ -366,9 +377,10 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 // previous values that starts at a revision the sequence compacted
 // (etcd's steps say which): tigerstore may cancel it as compacted there,
 // or add to an update or delete at the start revision the previous value
-// that etcd leaves out, which must be the key's version just before.
-// Everything else must be the same.
-func stricterWatch(ops []fuzzOp, etcdSteps []step, etcd, ours step) bool {
+// that etcd leaves out, which must be the key's version just before, as
+// etcd's own history of the sequence (truth) shows. Everything else must
+// be the same.
+func stricterWatch(ops []fuzzOp, etcdSteps []step, truth func(key string, rel int64) *kv, etcd, ours step) bool {
 	var i int
 	if _, err := fmt.Sscanf(etcd.Do, "%d watch", &i); err != nil || i >= len(ops) || ops[i].Watch == nil || !ops[i].Watch.PrevKV {
 		return false
@@ -401,7 +413,9 @@ func stricterWatch(ops []fuzzOp, etcdSteps []step, etcd, ours step) bool {
 		return false
 	}
 	if o.Canceled {
-		return o.Created && o.CompactRevision == start && len(o.Events) == 0 && len(o.Problems) == 0
+		// The canceled answer the boundary tests allow, and nothing else.
+		return o.Created && o.CreatedRevision == e.CreatedRevision && o.CompactRevision == start && o.CancelRevision == 0 &&
+			o.CancelReason == "" && len(o.Events) == 0 && len(o.Problems) == 0
 	}
 	if e.Canceled || e.Created != o.Created || e.CreatedRevision != o.CreatedRevision || !slices.Equal(e.Problems, o.Problems) || len(e.Events) != len(o.Events) {
 		return false
@@ -417,13 +431,97 @@ func stricterWatch(ops []fuzzOp, etcdSteps []step, etcd, ours step) bool {
 		}
 		// Only the value etcd compacted away may be added.
 		update := x.Type == "DELETE" || x.KV.Version > 1
-		if x.PrevKV != nil || y.PrevKV == nil || x.KV.Mod != start || !update || y.PrevKV.Key != x.KV.Key || y.PrevKV.Mod >= start ||
-			(x.Type == "PUT" && (y.PrevKV.Version != x.KV.Version-1 || y.PrevKV.Create != x.KV.Create)) {
+		if x.PrevKV != nil || x.KV.Mod != start || !update || !samePtr(y.PrevKV, truth(x.KV.Key, start)) || y.PrevKV == nil {
 			return false
 		}
 		added = true
 	}
 	return added
+}
+
+// keyHistory is every change to a sequence's keys on etcd, from a watch
+// opened before the sequence: the truth that a previous value etcd
+// compacted away must match.
+type keyHistory struct {
+	mu     sync.Mutex
+	events []*mvccpb.Event
+	header int64
+	err    error
+	stream pb.Watch_WatchClient
+	done   chan struct{}
+}
+
+func watchHistory(r *run, from int64) *keyHistory {
+	r.t.Helper()
+	stream, err := r.c.watch.Watch(r.ctx)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	prefix := []byte(r.prefix)
+	if err := stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+		Key: prefix, RangeEnd: prefixEnd(prefix), StartRevision: from,
+	}}}); err != nil {
+		r.t.Fatal(err)
+	}
+	h := &keyHistory{stream: stream, done: make(chan struct{})}
+	go func() {
+		defer close(h.done)
+		for {
+			resp, err := stream.Recv()
+			h.mu.Lock()
+			if err != nil {
+				h.err = err
+				h.mu.Unlock()
+				return
+			}
+			h.events = append(h.events, resp.Events...)
+			h.header = max(h.header, resp.Header.GetRevision())
+			h.mu.Unlock()
+		}
+	}()
+	return h
+}
+
+// finish waits until the watch reached the current revision and ends it.
+func (h *keyHistory) finish(r *run) {
+	r.t.Helper()
+	cur, err := r.c.kv.Range(r.ctx, &pb.RangeRequest{Key: []byte(r.prefix)})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		h.mu.Lock()
+		reached, err := h.header >= cur.Header.Revision, h.err
+		h.mu.Unlock()
+		if reached {
+			break
+		}
+		if err != nil || time.Now().After(deadline) {
+			r.t.Fatalf("etcd's history watch did not reach revision %d: %v", cur.Header.Revision, err)
+		}
+		if err := h.stream.Send(&pb.WatchRequest{RequestUnion: &pb.WatchRequest_ProgressRequest{ProgressRequest: &pb.WatchProgressRequest{}}}); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	_ = h.stream.CloseSend()
+}
+
+// before is key as it was just before revision rev, nil if absent.
+func (h *keyHistory) before(key []byte, rev int64) *mvccpb.KeyValue {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var last *mvccpb.KeyValue
+	for _, e := range h.events {
+		if string(e.Kv.Key) != string(key) || e.Kv.ModRevision >= rev {
+			continue
+		}
+		if e.Type == mvccpb.DELETE {
+			last = nil
+		} else {
+			last = e.Kv
+		}
+	}
+	return last
 }
 
 func samePtr[T comparable](a, b *T) bool {
@@ -525,5 +623,50 @@ func TestDiffFuzzFound(t *testing.T) {
 				t.Fatal(why)
 			}
 		})
+	}
+}
+
+// TestDiffFuzzWatchRule checks stricterWatch on a sequence that puts a
+// key twice, compacts at the second put and watches from there with
+// previous values: etcd sends the update without its previous value.
+// tigerstore may add exactly the version before, or cancel the watch as
+// compacted at the start; a wrong value or lease, a cancel with other
+// metadata, or a sequence that never compacted there, may not.
+func TestDiffFuzzWatchRule(t *testing.T) {
+	ops := []fuzzOp{
+		{Kind: "put", Key: 0, Value: []byte("original")},
+		{Kind: "put", Key: 0, Value: []byte("new")},
+		{Kind: "compact", Rev: 2},
+		{Kind: "watch", Key: 0, Rev: 2, Watch: &fuzzWatch{PrevKV: true}},
+	}
+	etcdSteps := []step{{Do: "0 put", Code: "OK"}, {Do: "1 put", Code: "OK"}, {Do: "2 compact", Code: "OK"}}
+	original := &kv{Key: "f/k0", Value: `"original"`, Create: 1, Mod: 1, Version: 1}
+	truth := func(key string, rel int64) *kv {
+		if key == "f/k0" && rel == 2 {
+			return original
+		}
+		return nil
+	}
+	watch := func(result string) step { return step{Do: "3 watch", Code: "OK", Result: json.RawMessage(result)} }
+	update := `{"type":"PUT","kv":{"key":"f/k0","value":"\"new\"","create":1,"mod":2,"version":2}`
+	etcd := watch(`{"created":true,"createdRevision":2,"events":[` + update + `}]}`)
+	cases := []struct {
+		name  string
+		ours  string
+		steps []step
+		want  bool
+	}{
+		{"the version before", `{"created":true,"createdRevision":2,"events":[` + update + `,"prevKV":{"key":"f/k0","value":"\"original\"","create":1,"mod":1,"version":1}}]}`, etcdSteps, true},
+		{"cancel as compacted", `{"created":true,"createdRevision":2,"canceled":true,"compactRevision":2}`, etcdSteps, true},
+		{"another value", `{"created":true,"createdRevision":2,"events":[` + update + `,"prevKV":{"key":"f/k0","value":"\"CORRUPTED\"","create":1,"mod":1,"version":1}}]}`, etcdSteps, false},
+		{"another lease", `{"created":true,"createdRevision":2,"events":[` + update + `,"prevKV":{"key":"f/k0","value":"\"original\"","create":1,"mod":1,"version":1,"lease":99}}]}`, etcdSteps, false},
+		{"cancel at another created revision", `{"created":true,"createdRevision":999,"canceled":true,"compactRevision":2}`, etcdSteps, false},
+		{"cancel with a reason", `{"created":true,"createdRevision":2,"canceled":true,"compactRevision":2,"cancelReason":"other"}`, etcdSteps, false},
+		{"no compaction there", `{"created":true,"createdRevision":2,"canceled":true,"compactRevision":2}`, []step{etcdSteps[0], etcdSteps[1], {Do: "2 compact", Code: "OutOfRange"}}, false},
+	}
+	for _, c := range cases {
+		if got := stricterWatch(ops, c.steps, truth, etcd, watch(c.ours)); got != c.want {
+			t.Errorf("%s: stricterWatch says %v, want %v", c.name, got, c.want)
+		}
 	}
 }

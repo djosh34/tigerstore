@@ -85,7 +85,10 @@ func TestFetchHardCases(t *testing.T) {
 		}
 		c.net.mu.Lock()
 		defer c.net.mu.Unlock()
-		if c.net.cut != 4 || c.net.fetches < 6 {
+		// The fifth fetch breaks off after its root, which the install
+		// syncs, so the node may catch up from there without a sixth
+		// (#199).
+		if c.net.cut != 4 || c.net.fetches < 5 {
 			t.Fatalf("%d streams were cut and %d fetched, want 4 cut and the fifth broken off", c.net.cut, c.net.fetches)
 		}
 		// Before any sync, after a sync and before the root, after the
