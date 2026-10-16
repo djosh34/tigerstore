@@ -39,6 +39,7 @@ def main():
     parser.add_argument("--memory", type=int, default=640 << 20)
     parser.add_argument("--out", required=True)
     parser.add_argument("--seconds", type=int, default=180)
+    parser.add_argument("--preload-bytes", type=int, default=0, help="nonzero is a small adapter control, not the past-RAM proof")
     parser.add_argument("--limit-seconds", type=int, default=2700)
     args = parser.parse_args()
     out = Path(args.out).resolve()
@@ -102,7 +103,7 @@ def main():
                 time.sleep(1)
         with (out / "driver.log").open("wb") as log:
             driver = subprocess.Popen([str(Path(args.driver).resolve()), "-endpoints", endpoints,
-                                       "-mode", args.mode, "-bytes", str(args.memory * 31 // 10),
+                                       "-mode", args.mode, "-bytes", str(args.preload_bytes or args.memory * 31 // 10),
                                        "-duration", f"{args.seconds}s", "-out", str(out)],
                                       stdout=log, stderr=subprocess.STDOUT)
             started = time.monotonic()
@@ -170,6 +171,16 @@ def main():
             if node.poll() is None:
                 node.kill()
             node.wait(timeout=30)
+        if args.mode == "proof" and (out / "recorded.json").exists():
+            try:
+                with (out / "checker.log").open("wb") as log:
+                    checked = subprocess.run([str(Path(args.driver).resolve()), "-mode", "check", "-out", str(out)],
+                                             stdout=log, stderr=subprocess.STDOUT, timeout=600)
+                result["checker_exit"] = checked.returncode
+                if checked.returncode:
+                    result["failure"] = (result["failure"] or "") + "; recorded history checks failed"
+            except subprocess.TimeoutExpired as error:
+                result["failure"] = (result["failure"] or "") + f"; checker process timed out: {error}"
         if (out / "last-acknowledged.json").exists():
             result["last_acknowledged"] = json.loads((out / "last-acknowledged.json").read_text())
         if samples:

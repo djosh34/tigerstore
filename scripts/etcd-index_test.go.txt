@@ -1,0 +1,44 @@
+package mvcc
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"runtime"
+	"testing"
+
+	"go.uber.org/zap"
+)
+
+// Copied into the pinned upstream mvcc package by past-ram.yml. Only the
+// index and its owned keys remain live across the two forced collections.
+// This is an allocation measurement, not RSS attribution in an etcd process.
+func TestPastRAMIndexBytes(t *testing.T) {
+	data, err := os.ReadFile(os.Getenv("PAST_RAM_RESOURCES"))
+	if err != nil { t.Fatal(err) }
+	var resources []string
+	if err := json.Unmarshal(data, &resources); err != nil { t.Fatal(err) }
+	if len(resources) != 6345 { t.Fatalf("histogram has %d objects", len(resources)) }
+	logger := zap.NewNop()
+	for _, count := range []int{100000, 457472, 463680, 463744, 470144} {
+		for repeat := range 3 {
+			runtime.GC()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			idx := newTreeIndex(logger)
+			for i := range count {
+				key := []byte(fmt.Sprintf("/registry/%s/past-ram/%09d", resources[i%len(resources)], i))
+				idx.Put(key, Revision{Main: int64(2+i/64), Sub: int64(i%64)})
+			}
+			runtime.GC()
+			runtime.ReadMemStats(&after)
+			if got := idx.CountRevisions([]byte("/registry/"), []byte("/registry0"), int64(count)); got != count {
+				t.Fatalf("index has %d keys, want %d", got, count)
+			}
+			runtime.KeepAlive(idx)
+			live := int64(after.HeapAlloc)-int64(before.HeapAlloc)
+			if live <= 0 { t.Fatalf("invalid heap delta %d", live) }
+			t.Logf("objects=%d repeat=%d live_index_bytes=%d bytes_per_key=%.3f", count, repeat, live, float64(live)/float64(count))
+		}
+	}
+}
