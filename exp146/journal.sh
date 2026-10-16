@@ -47,7 +47,7 @@ for rep in 1 2; do
 		# it logged, from the kernel's jbd2_run_stats tracepoint.
 		sudo sh -c 'echo > /sys/kernel/tracing/trace; echo 1 > /sys/kernel/tracing/events/jbd2/jbd2_run_stats/enable'
 		sudo cat /sys/kernel/tracing/trace_pipe |
-			awk -v d="$DISK" '$0 ~ "dev " { n++; for (i = 1; i <= NF; i++) if ($i ~ /^blocks_logged/) { split($i, a, "="); b += a[2] } } END { print n, b }' >"$out/$name.jbdtrace" &
+			awk -v d="dev $(tr ':' ',' </sys/class/block/"$DISK"/dev) " 'index($0, d) { n++; for (i = 1; i < NF; i++) if ($i == "blocks_logged") b += $(i + 1) } END { print n, b }' >"$out/$name.jbdtrace" &
 		tracer=$!
 		taskset -c 3 "$BINS/loadgen" -endpoints "$(cat "$dir/leader")" \
 			-cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
