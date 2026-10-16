@@ -51,6 +51,54 @@ The owner approved these on #47:
 
 B05 and B16 targeted code that did not exist then (snapshots, segment cleaning), so, as the owner decided, each was replaced by the nearest real bug in the WAL. Snapshots and the removal of old segments now exist, with B19 to B23 of their own (#143); cleaning comes with #144. For B05 that is the same class: new on-disk state, here a segment, used before its metadata is synced. B16's class is destroying durable data before its replacement is durable. Its instance here is removing a segment before the root that makes it obsolete is synced, and the removal of old segments came later, with a bug of its own (B19). So B16 plants a step that existed when it was written, rotation without the old segment's last sync, which is closer to the B02/B11 class of reporting data durable without an fsync. B13 and B14 are in `internal/node` and `internal/peer`, which the simulator does not run; each of those packages has its own `TestPlanted` with one fixed scenario, and it counts only the scenario's own detecting failure as a catch.
 
+# Real-process chaos
+
+The `chaos` job in CI runs `cmd/chaos` on three `ubuntu-24.04-arm` runners with two seeds each. The seeds come from the run ID, and the job prints them. It is part of #49. One run does this:
+
+1. It starts a fresh 3-node cluster of `cmd/tigerstore` processes with client and peer TLS and client certificates.
+2. It puts one seeded proxy (`chaos/proxy`) on every link: one for each client-to-node connection and one for each of the six directed node-to-node links. Node i's `--initial-cluster` names each peer at the proxy of the link from i to that peer, so every Raft message crosses a proxy. The lists therefore differ between nodes, and so do the cluster IDs in response headers; nothing checks those. The proxies relay the TLS bytes without decrypting them.
+3. Three stock clientv3 v3.7.2 clients, each pinned to one node through its proxy, send Put, CAS Txn, DeleteRange and Range calls on six hot keys, 10 calls per second each. Three watches from revision 1 ask for previous values and progress notifications. This recorder comes from the correctness round 1 harness on #49. A failed call is recorded as ambiguous unless the error is a clear rejection.
+4. It injects each fault of the table below once, in a seeded order. Each fault holds for 1.5 to 3.5 s, with 1 to 2 s between faults. A fault aimed at the leader or a follower picks its target when it starts.
+5. It heals every fault, stops the random calls, and waits until all three nodes name one leader and report one revision. Then it waits 8 s, longer than the server's 7 s request timeout, writes barriers, reads the final state from every node as the target revision, and waits until every watch reports progress through the target.
+6. It stops the nodes and reads the committed log from private copies of their WALs; the committed prefixes must agree. It runs `check.Linearizable`, `check.Watches`, `check.Durable` and `check.Revisions` on the history. Each checker also fails if the history has no log, no watches, or a target where the log does not end, or if the coverage floor is missed: both CAS outcomes, a multi-key delete, watch puts, deletes and previous values, and successful calls from every client.
+
+The `chaos-planted` job shows the job can fail: it builds tigerstore with planted bug B01a (a linearizable read served like a serializable one), B06c (watch events without previous values) or B09a (each key of a write gets its own revision), runs seeds 1 and 2, and passes only if the matching checker (Linearizable, Watches, Revisions) reported its own finding (`checker_error` in `checks.json`), not only a shared precondition such as the coverage floor. Durable has no planted case yet: SIGKILL keeps the page cache, so the bugs that lose unsynced writes (B02, B03, B11) need the file-fault layer. Left for later pieces: a delay longer than the election timeout (1 s) and a both-way cut of every peer link of one node (`proxy.Cut` with `Both` exists but is not scheduled), and tying a fault on a client link to a write from that link's own client. The run fails if a fault it installed overlaps no write: a Put, Delete or Txn whose call ran between the fault's install and its heal, so peer heartbeats or a signal to an idle node cannot count as the workload seeing the fault. Before Porcupine runs, the linearizability input leaves out ambiguous writes that did not take effect: those whose request the committed log holds no more often than successful calls sent it. Porcupine keeps an ambiguous write open until the end of the history, and in the first CI run two seeds, each with 66 to 79 ambiguous calls, timed out after 60 s; with this rule they check in 2 ms. Leaving out an ambiguous call can only make the check stricter. The other three checkers get the whole history.
+
+| Fault | What the run does | Evidence that it took effect |
+| --- | --- | --- |
+| `sigkill-leader`, `sigkill-follower` | SIGKILL, restart after the hold | The wait status says the process was killed by SIGKILL; the restart has a new pid |
+| `sigstop-leader`, `sigstop-follower` | SIGSTOP, SIGCONT after the hold | `/proc/<pid>/stat` shows state T after SIGSTOP and another state after SIGCONT |
+| `delay` | Every busy link of one node delays each read by 5 to 50 ms, both directions | Proxy hits, one per delayed read |
+| `switching-delay` | Every peer link to and from the leader switches between 0 to 2 ms and 20 to 80 ms of delay every 100 to 400 ms | Proxy hits |
+| `stall` | One busy link stops reading and writing; the senders block, and the held bytes go out at the heal | Proxy hits |
+| `drop` | One busy link deletes one byte of the first read, then of one read in four | Proxy hits |
+| `corrupt` | Like `drop`, but flips one bit | Proxy hits |
+| `duplicate` | Like `drop`, but repeats one byte | Proxy hits |
+| `reset` | Every busy link of one node closes its open and new connections with RST | Proxy hits, one per connection |
+| `one-direction-cut` | The leader's messages to one follower vanish; the follower's messages to the leader still arrive | Proxy hits |
+| `slow-link` | The leader's link to one follower is limited to 8 to 32 KiB/s while its link to the other follower runs at full speed | Proxy hits |
+
+Busy links are the ones that carry traffic: every client link, and the peer links to and from the leader. Followers do not send to each other, so a fault on a link between two followers would have nothing to act on. A peer link carries messages only forward, from the node that dialed, so peer faults act forward; a fault on a client link acts forward, backward or both, as the seed picks. A dropped, corrupted, duplicated or cut byte breaks the TLS stream, so the heal closes such connections with RST, and peers and clients reconnect.
+
+A run fails if a fault was not installed (the proxy does not report the requested fault, or the signal failed), had no effect (no proxy hit during the hold, no SIGKILL in the wait status, no stopped state), or did not heal. It also fails if a node exited on its own, if the cluster does not converge within 30 s of the heal, if the final reads or the watch progress fail, or if a checker fails.
+
+Each run writes its evidence to `<out>/seed-<seed>/`, pass or fail: `config.json`, the planned `schedule.json`, `faults.json` (for each fault the request, the installed proxy state, the state before and after the heal, pids and process states, and times), `proxy-events.json`, `chaos.log`, the node logs and data directories, `wal.json`, `history.json`, `watch-responses.json`, `coverage.json`, `checks.json` and `verdict.json`. When the job fails it uploads all of it as the `chaos-evidence-<shard>` artifact. A seed reproduces with
+
+    go build -o /tmp/tigerstore ./cmd/tigerstore
+    go run ./cmd/chaos -tigerstore /tmp/tigerstore -seed <seed>
+
+and `-faults` runs a subset. `go run ./cmd/chaos -check <dir>/history.json` reruns only the checkers on a saved history. A seed fixes the schedule, the proxies' choices for each connection and the workload's calls. It does not fix kernel timing or the order of connections, so a rerun injects the same faults in the same order but does not repeat the interleaving.
+
+Not covered yet; these are later pieces of #49:
+
+- tc netem packet faults: loss, reordering and corruption, and 1 to 10 ms between nodes. Deleting stream bytes in the proxy is a different fault from packet loss, which TCP repairs.
+- CPU throttling with cgroup quotas.
+- Disk faults on real processes: a fault-injecting file layer with torn writes and failing or stalling fsync, and real ENOSPC.
+- Crashes timed inside WAL recovery, and erase-one-disk cold restarts of real processes.
+- Gray nodes and barely alive clients, with numeric liveness bounds.
+- Several faults at once; the schedule injects one at a time.
+- Nightly long campaigns as many short jobs.
+
 # Kubernetes storage tests
 
 `apiservertest/run.sh <version>` runs the etcd3 storage tests of `k8s.io/apiserver` (`pkg/storage/etcd3/...` and `pkg/storage/testing`) against tigerstore, unchanged. The `apiserver` job in ci runs it for v0.35.0, v0.36.0 and v0.37.0 (Kubernetes 1.35 to 1.37). The 1.37 tests use RangeStream (`TestGetListStreamMultiChunk`, `TestWatchChanSync/RangeStream`, `TestWatchChanSyncStream*`).

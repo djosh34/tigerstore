@@ -206,11 +206,111 @@ jobs:
           go-version-file: go.mod
       - run: go test -tags planted -count=1 -timeout 28m ./internal/sim/ ./internal/node/ ./internal/peer/ -run 'TestPlanted$|TestPlantedInventory$' -v -args -planted=${{ matrix.bug }}
 
+  # Real-process chaos (#49). Each shard builds tigerstore and runs two
+  # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
+  # proxy on every client and peer link, recording clients and watches,
+  # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
+  # and follower, and proxy faults), then the four checkers of package
+  # check. Seeds come from the run ID. A failing seed reproduces with
+  # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
+  # and its evidence (schedule, fault records, node logs, data, history)
+  # is uploaded.
+  chaos:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: |
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Run seeds
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          status=0
+          for k in 0 1; do
+            seed=$(( (RUN_ID % 1000000000) * 8 + SHARD * 2 + k + 1 ))
+            echo "seed $seed"
+            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
+          done
+          exit "$status"
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-evidence-${{ matrix.shard }}
+          path: ${{ runner.temp }}/chaos-out
+          retention-days: 30
+
+  # The chaos job must be able to fail: with a planted bug built in, the
+  # checker that bug breaks must report its own finding. B01a serves linearizable reads like serializable ones (a stale
+  # read), B06c drops previous values from watch events, B09a gives each
+  # key of a write its own revision. Seeds are fixed.
+  chaos-planted:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bug: B01a
+            checker: Linearizable
+          - bug: B06c
+            checker: Watches
+          - bug: B09a
+            checker: Revisions
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: |
+          go build -tags planted -ldflags "-X github.com/djosh34/tigerstore/internal/planted.Active=${{ matrix.bug }}" -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: The planted bug must be caught
+        shell: bash
+        env:
+          CHECKER: ${{ matrix.checker }}
+        run: |
+          set -uo pipefail
+          caught=0
+          for seed in 1 2; do
+            if "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out"; then
+              echo "seed $seed passed with the bug built in"
+              continue
+            fi
+            # Caught only if the named checker itself found the bug, not
+            # only a shared precondition such as the coverage floor.
+            # For Linearizable, a search timeout is not a catch.
+            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
+              echo "seed $seed: $CHECKER caught it"
+              caught=1
+            else
+              echo "seed $seed failed, but not by $CHECKER on a complete history"
+            fi
+          done
+          [ "$caught" = 1 ]
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-planted-${{ matrix.bug }}
+          path: ${{ runner.temp }}/chaos-out
+          retention-days: 30
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, planted]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, planted, chaos, chaos-planted]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
