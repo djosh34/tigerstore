@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [normal, race, rollback-before-announcement, stale-guard-removed]
+        mode: [normal, race, rollback-before-announcement, confirmation-removed]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -42,10 +42,10 @@ jobs:
                   if rel.endswith('version.go'):
                       assert source.count('const MaxVersion = 3') == 1
                       source = source.replace('const MaxVersion = 3', f'const MaxVersion = {version}')
-                      if os.environ['MODE'] == 'stale-guard-removed':
-                          guard = ' || hasRun && run < st.runs[id]'
+                      if os.environ['MODE'] == 'confirmation-removed':
+                          guard = 'if a.hasEpoch {'
                           assert source.count(guard) == 1
-                          source = source.replace(guard, '')
+                          source = source.replace(guard, 'if false {')
                   else:
                       assert source.count('maxVersion = 1') == 1
                       source = source.replace('maxVersion = 1', f'maxVersion = {version}')
@@ -86,13 +86,13 @@ jobs:
           if [ "$MODE" = race ]; then flags=(-race); fi
           test='^TestRollingUpgrade$'
           if [ "$MODE" = rollback-before-announcement ]; then test='^TestRollingRollbackBeforeAnnouncement$'; fi
-          if [ "$MODE" = stale-guard-removed ]; then
-            if go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingUpgrade$/148$' 2>&1 | tee "$RUNNER_TEMP/result.log"; then
-              echo 'The delayed-announcement regression missed the removed run guard.'
+          if [ "$MODE" = confirmation-removed ]; then
+            if go test -count=1 -timeout 8m -v ./cmd/chaos -run '^TestRollingRollbackBeforeAnnouncement$' 2>&1 | tee "$RUNNER_TEMP/result.log"; then
+              echo 'The rollback regression missed the removed confirmation check.'
               exit 1
             fi
-            grep -q 'replayed node 2 run 2 version 2' "$RUNNER_TEMP/result.log"
-            grep -q 'this binary is too old for the cluster: the cluster runs version 2' "$ROLLING_OUT/seed-148/node2.log"
+            grep -q 'version 2 activated while the rollback node was down; want 1 (#174)' "$RUNNER_TEMP/result.log"
+            grep -q 'this binary is too old for the cluster' "$ROLLING_OUT/seed-175/old-binary-refused.log"
           else
             go test "${flags[@]}" -count=1 -timeout 8m -v ./cmd/chaos -run "$test" 2>&1 | tee "$RUNNER_TEMP/result.log"
           fi

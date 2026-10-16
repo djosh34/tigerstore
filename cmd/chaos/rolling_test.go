@@ -98,9 +98,8 @@ func TestRollingUpgrade(t *testing.T) {
 }
 
 // #174 also asks for the other order: upgrade the last node while the
-// rollback node cannot announce. Keep this a failing regression until
-// there is a protocol that makes that rollback safe, rather than treating
-// an old binary's refusal as a successful rollback.
+// rollback node cannot announce. The remaining nodes must wait for its
+// confirmation instead of treating its earlier support as consent.
 func TestRollingRollbackBeforeAnnouncement(t *testing.T) {
 	r := startRolling(t, 175)
 	r.stage("initial", 1)

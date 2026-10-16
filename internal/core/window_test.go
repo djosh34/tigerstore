@@ -32,6 +32,8 @@ type memCluster struct {
 	replies  int
 	// noSpace counts NOSPACE answers, the one error a node may give.
 	noSpace int
+	// onReply lets a test inspect expected errors instead of failing on them.
+	onReply func(int, Reply)
 }
 
 func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
@@ -73,6 +75,10 @@ func (c *memCluster) step() {
 		c.jobs[i] = append(c.jobs[i], eff.Persist...)
 		c.msgs = append(c.msgs, eff.Send...)
 		for _, r := range eff.Replies {
+			if c.onReply != nil {
+				c.onReply(i, r)
+				continue
+			}
 			if errors.Is(r.Err, rpctypes.ErrGRPCNoSpace) {
 				c.noSpace++
 				continue
