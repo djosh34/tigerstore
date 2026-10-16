@@ -12,7 +12,10 @@ The workflow builds the specified product commit, not the workflow branch's
 server code. The default is main at the start of this prework,
 `40e7c0a009a08d6ba80f369dd2e66c9735512dbb`. Every job has its own fresh three-node
 cluster and uploads logs and histories even when it fails. Choose `jepsen` or
-`robustness` to run only that suite.
+`robustness` to run only that suite, or `tools` for the parser regressions.
+To repeat one Jepsen case, pass `-f workloads='["register"]'` and
+`-f nemeses='["lazyfs"]'`. Set `-f stores='["tigerstore"]'` to omit controls.
+Omitted arrays use the full matrix. A partial run is not evidence for omitted cases.
 
 ## Jepsen
 
