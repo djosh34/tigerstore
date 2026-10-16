@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"testing/cryptotest"
+	"time"
+
+	"github.com/djosh34/tigerstore/check"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -22,13 +25,16 @@ var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted
 // cfg, by a failure whose message matches want, the assertion the
 // semantics pre-work on #47 names for it. Any other failure fails the
 // test, so a bug cannot pass on an unrelated check or a crash. extra adds
-// an assertion of the case's own. Each cfg also runs in the plain tests
-// (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
+// an assertion of the case's own. With witness, the witness checker in
+// both modes must fail the same seed's history on its own too: Porcupine
+// cannot check the full runs (#112). Each cfg also runs in the plain
+// tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
 type plantedCase struct {
-	seeds int
-	cfg   func(seed uint64) Config
-	want  string
-	extra func(*Result) error
+	seeds   int
+	cfg     func(seed uint64) Config
+	want    string
+	extra   func(*Result) error
+	witness bool
 }
 
 func stalledLeaderConfig(seed uint64) Config {
@@ -60,8 +66,8 @@ const (
 )
 
 var plantedCases = map[string]plantedCase{
-	"B01a": {seeds: 64, cfg: DefaultConfig, want: staleRead},
-	"B01b": {seeds: 64, cfg: DefaultConfig, want: staleRead},
+	"B01a": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
+	"B01b": {seeds: 64, cfg: DefaultConfig, want: staleRead, witness: true},
 	"B02":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B03":  {seeds: 128, cfg: DefaultConfig, want: lostAppend},
 	"B04a": {seeds: 256, cfg: DefaultConfig, want: refused},
@@ -142,6 +148,27 @@ func TestPlantedInventory(t *testing.T) {
 	}
 }
 
+// witnessCatches reports whether the witness checker fails a run's history
+// in both modes.
+func witnessCatches(t *testing.T, res *Result) bool {
+	if res == nil {
+		return false
+	}
+	h, err := res.Checkable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		err := check.Witnessed(h, mode, time.Minute)
+		if err == nil {
+			t.Logf("the witness checker (%s) passed this seed", mode)
+			return false
+		}
+		t.Logf("the witness checker (%s): %v", mode, err)
+	}
+	return true
+}
+
 // TestPlanted switches on the bug named by -planted and fails unless a
 // check catches it within its seed budget. A crash of the test binary is
 // a failure too, not a catch.
@@ -176,6 +203,9 @@ func TestPlanted(t *testing.T) {
 			}
 			if !want.MatchString(err.Error()) {
 				t.Fatalf("%s failed on another check than the expected one (%s): %v", name, c.want, err)
+			}
+			if c.witness && !witnessCatches(t, res) {
+				return
 			}
 			caught = true
 			t.Logf("%s (%s) caught by seed %d: %v", name, planted.Bugs[name], seed, err)

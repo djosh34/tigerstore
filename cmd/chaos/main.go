@@ -222,9 +222,11 @@ type checkerResult struct {
 	Seconds      float64 `json:"seconds"`
 }
 
-// runChecks runs the four checkers of package check on h. Each one fails
-// too if the history is incomplete: no committed log, no watches, or a
-// target that the log does not end at.
+// runChecks runs the checkers of package check on h: Porcupine on the
+// history without the ambiguous writes the log does not have, the witness
+// checker in both modes on the whole history, the watch, durability and
+// revision checkers. Each one fails too if the history is incomplete: no
+// committed log, no watches, or a target that the log does not end at.
 func runChecks(h *history.History, timeout time.Duration, dir string, logf func(string, ...any)) error {
 	var missing error
 	if len(h.Ops) == 0 || len(h.Log) == 0 || len(h.Watches) == 0 || h.Target <= 0 {
@@ -246,6 +248,8 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 		fn   func() error
 	}{
 		{"Linearizable", func() error { return check.Linearizable(lin, timeout) }},
+		{"Witnessed (log)", func() error { return check.Witnessed(h, check.FromLog, timeout) }},
+		{"Witnessed (revisions)", func() error { return check.Witnessed(h, check.FromRevisions, timeout) }},
 		{"Watches", func() error { return check.Watches(h) }},
 		{"Durable", func() error { return check.Durable(h) }},
 		{"Revisions", func() error { return check.Revisions(h) }},

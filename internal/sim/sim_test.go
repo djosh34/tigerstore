@@ -13,6 +13,7 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 
 	"github.com/djosh34/tigerstore/check"
+	"github.com/djosh34/tigerstore/history"
 )
 
 var (
@@ -139,7 +140,35 @@ func independent(res *Result) error {
 	if err := check.Watches(h); err != nil {
 		errs = append(errs, fmt.Errorf("watches: %w", err))
 	}
+	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		if err := check.Witnessed(h, mode, time.Minute); err != nil {
+			errs = append(errs, fmt.Errorf("witness: %w", err))
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// agree runs Porcupine and the witness checker in both modes on a short
+// run's history, which all of them must pass. A history that one passes
+// and another fails is a checker bug.
+func agree(h *history.History) error {
+	errs := []error{check.Linearizable(h, time.Minute)}
+	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
+		errs = append(errs, check.Witnessed(h, mode, time.Minute))
+	}
+	if (errs[0] == nil) != (errs[1] == nil) || (errs[0] == nil) != (errs[2] == nil) {
+		verdict := func(err error) string {
+			if err == nil {
+				return "passes"
+			}
+			return err.Error()
+		}
+		return fmt.Errorf("the checkers disagree: linearizability %s; witness from the log %s; witness from the revisions %s", verdict(errs[0]), verdict(errs[1]), verdict(errs[2]))
+	}
+	if errs[0] != nil {
+		return fmt.Errorf("linearizability: %w", errors.Join(errs...))
+	}
+	return nil
 }
 
 // linearizableConfig is a short run whose history Porcupine can check:
@@ -172,8 +201,8 @@ func TestLinearizable(t *testing.T) {
 				t.Fatal(err)
 			}
 			start := time.Now()
-			if err := check.Linearizable(h, time.Minute); err != nil {
-				t.Fatalf("linearizability: %v", err)
+			if err := agree(h); err != nil {
+				t.Fatal(err)
 			}
 			t.Logf("%d ops checked in %v", len(h.Ops), time.Since(start))
 		})
@@ -229,8 +258,8 @@ func TestAllLinkMasks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := check.Linearizable(h, time.Minute); err != nil {
-			t.Fatalf("mask %06b: linearizability: %v", mask, err)
+		if err := agree(h); err != nil {
+			t.Fatalf("mask %06b: %v", mask, err)
 		}
 	}
 }
@@ -488,7 +517,7 @@ func TestAmbiguousWritesInTheLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := check.Linearizable(h, time.Minute); err != nil {
-		t.Fatalf("linearizability: %v", err)
+	if err := agree(h); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -47,6 +47,9 @@ type state struct {
 	leases    []int64 // sorted
 	rev       int64
 	compacted int64
+	// past, if set, holds every version before rev, so that the state
+	// answers reads at past revisions too. Only Witnessed sets it.
+	past versions
 	// sum is a fingerprint of the state, kept only by the Porcupine
 	// model, where comparing sets of states is the hot path. It must be
 	// recomputed after every change: same and states.equal rely on it,
@@ -188,6 +191,9 @@ func (s *state) stepRange(r *history.RangeRequest) outcome {
 		return outcome{err: err}
 	}
 	if r.Revision > 0 && r.Revision < s.rev {
+		if s.past != nil {
+			return outcome{resp: &history.Response{Revision: s.rev, Range: s.past.read(s.keys, r, r.Revision)}}
+		}
 		return outcome{resp: &history.Response{Revision: s.rev, Range: &history.RangeResponse{}}, historical: true}
 	}
 	return outcome{resp: &history.Response{Revision: s.rev, Range: s.read(r)}}
@@ -305,8 +311,10 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 		if err := s.checkRevision(op.Range.Revision); err != nil {
 			return outcome{err: err}
 		}
-		// Other historical reads inside a txn are not modelled.
-		return outcome{err: errUnsupported}
+		// Other historical reads inside a txn need the past versions.
+		if s.past == nil {
+			return outcome{err: errUnsupported}
+		}
 	}
 	// A read at the txn's own start revision sees the store before the
 	// txn, as etcd keeps a positive requested revision.
@@ -323,6 +331,8 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 	resp := &history.TxnResponse{Succeeded: ok, Results: make([]history.TxnOpResponse, len(ops))}
 	for i, op := range ops {
 		switch {
+		case op.Range != nil && op.Range.Revision > 0 && op.Range.Revision < before.rev:
+			resp.Results[i].Range = s.past.read(s.keys, op.Range, op.Range.Revision)
 		case op.Range != nil && op.Range.Revision > 0:
 			resp.Results[i].Range = before.read(op.Range)
 		case op.Range != nil:

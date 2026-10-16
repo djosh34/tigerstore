@@ -6187,5 +6187,253 @@
         ]
       }
     }
+  ],
+  "txn-revisions": [
+    {
+      "do": "put a 1",
+      "code": "OK",
+      "result": {
+        "revision": 1
+      }
+    },
+    {
+      "do": "put a 2",
+      "code": "OK",
+      "result": {
+        "revision": 2
+      }
+    },
+    {
+      "do": "put b 1",
+      "code": "OK",
+      "result": {
+        "revision": 3
+      }
+    },
+    {
+      "do": "read a at 1",
+      "code": "OK",
+      "result": {
+        "revision": 3,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 3,
+              "kvs": [
+                {
+                  "key": "t/a",
+                  "value": "1",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "read a at 1, put a, read a at 1 and now",
+      "code": "OK",
+      "result": {
+        "revision": 4,
+        "succeeded": true,
+        "ops": [
+          {
+            "range": {
+              "revision": 3,
+              "kvs": [
+                {
+                  "key": "t/a",
+                  "value": "1",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          },
+          {
+            "revision": 4,
+            "put": true
+          },
+          {
+            "range": {
+              "revision": 4,
+              "kvs": [
+                {
+                  "key": "t/a",
+                  "value": "1",
+                  "create": 1,
+                  "mod": 1,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          },
+          {
+            "range": {
+              "revision": 4,
+              "kvs": [
+                {
+                  "key": "t/a",
+                  "value": "3",
+                  "create": 1,
+                  "mod": 4,
+                  "version": 3
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "put b, read b at the start revision and now",
+      "code": "OK",
+      "result": {
+        "revision": 5,
+        "succeeded": true,
+        "ops": [
+          {
+            "revision": 5,
+            "put": true
+          },
+          {
+            "range": {
+              "revision": 5,
+              "kvs": [
+                {
+                  "key": "t/b",
+                  "value": "1",
+                  "create": 3,
+                  "mod": 3,
+                  "version": 1
+                }
+              ],
+              "count": 1
+            }
+          },
+          {
+            "range": {
+              "revision": 5,
+              "kvs": [
+                {
+                  "key": "t/b",
+                  "value": "2",
+                  "create": 3,
+                  "mod": 5,
+                  "version": 2
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "failure branch puts a",
+      "code": "OK",
+      "result": {
+        "revision": 6,
+        "succeeded": false,
+        "ops": [
+          {
+            "revision": 6,
+            "put": true
+          },
+          {
+            "range": {
+              "revision": 6,
+              "kvs": [
+                {
+                  "key": "t/a",
+                  "value": "4",
+                  "create": 1,
+                  "mod": 6,
+                  "version": 4
+                }
+              ],
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "failure branch deletes b",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "succeeded": false,
+        "ops": [
+          {
+            "revision": 7,
+            "deleted": 1
+          },
+          {
+            "range": {
+              "revision": 7,
+              "count": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "do": "failure branch deletes nothing",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "succeeded": false,
+        "ops": [
+          {
+            "revision": 7,
+            "deleted": 0
+          }
+        ]
+      }
+    },
+    {
+      "do": "a at 4",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "t/a",
+            "value": "3",
+            "create": 1,
+            "mod": 4,
+            "version": 3
+          }
+        ],
+        "count": 1
+      }
+    },
+    {
+      "do": "b at 6",
+      "code": "OK",
+      "result": {
+        "revision": 7,
+        "kvs": [
+          {
+            "key": "t/b",
+            "value": "2",
+            "create": 3,
+            "mod": 5,
+            "version": 2
+          }
+        ],
+        "count": 1
+      }
+    }
   ]
 }
