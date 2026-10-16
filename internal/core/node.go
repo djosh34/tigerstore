@@ -114,10 +114,10 @@ type Config struct {
 	// CheckpointChunk is about how many bytes of the index each
 	// CopyCheckpoint copies into a checkpoint under way.
 	CheckpointChunk int
-	// MemoryBytes is the memory that the index, the entries in memory and
-	// the value cache share: the node's budget less what buffers take and
-	// room for the garbage collector. The cache takes what the index and
-	// the entries leave. 0 turns the cache off.
+	// MemoryBytes is shared by the index, entries, unary Range answers
+	// and value cache, after buffers and room for the garbage collector.
+	// The cache takes what the other three leave. 0 disables the cache
+	// and Range reservations.
 	MemoryBytes int64
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
@@ -276,6 +276,9 @@ type Reply struct {
 	PrevKv *mvccpb.KeyValue
 	// Range is the answer to a Compact range.
 	Range mvcc.RangeResult
+	// Held is the reservation for a compact Range. The driver reports
+	// ReleaseReplyBytes only after the answer is sent or dropped.
+	Held int64
 }
 
 // ownDepth is how many appends of the leader's own writes may be on their
@@ -457,10 +460,12 @@ type Node struct {
 	// ownDepth of them are on their way, new writes wait. awaitOwn marks
 	// that the next append with entries carries a batch just proposed.
 	// Appends of forwarded proposals do not hold anything.
-	own      []uint64
-	awaitOwn bool
-	waiting  map[uint64]*pending // writes by request ID
-	timeouts []*pending          // every waiting request in deadline order
+	own        []uint64
+	awaitOwn   bool
+	replyBytes int64               // compact Range answers under construction or at clients
+	replyWait  []*pending          // ranges waiting for answer memory
+	waiting    map[uint64]*pending // writes by request ID
+	timeouts   []*pending          // every waiting request in deadline order
 
 	proposals []*pending
 	// early are writes that need featureVersion, which wait for it.
@@ -1430,6 +1435,7 @@ func (n *Node) Process() (Effects, error) {
 		// so one client sees no delay. The byte cap still sends a full
 		// entry early (queueWrite).
 		n.releaseEarly()
+		n.retryReplies()
 		if len(n.tokenWaits) > 0 {
 			n.retryTokenWaits()
 		}
@@ -1470,6 +1476,10 @@ func (n *Node) Process() (Effects, error) {
 
 // stop fails every waiting request once the node stopped.
 func (n *Node) stop() {
+	for _, p := range n.replyWait {
+		n.finish(p, rpctypes.ErrGRPCStopped)
+	}
+	n.replyWait = nil
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
@@ -1629,7 +1639,15 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.RangeRequest:
 		if p.req.Compact {
 			var res mvcc.RangeResult
-			if res, err = n.kv.RangeKVs(op); err == nil {
+			if res, err = n.kv.RangeKVsReserved(op, func(bytes int64) error {
+				if err := n.reserveReply(bytes); err != nil {
+					return err
+				}
+				if n.cfg.MemoryBytes > 0 {
+					rep.Held = bytes
+				}
+				return nil
+			}); err == nil {
 				rep.Term, rep.Range = n.term, res
 			}
 			break
@@ -1679,9 +1697,19 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.DowngradeRequest:
 		resp, err = n.validateDowngrade(op)
 	}
-	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
-		n.fetch(cold.Need).read = p
+	if errors.Is(err, errReplyBusy) {
+		p.fetched = nil
+		n.replyWait = append(n.replyWait, p)
 		return
+	}
+	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
+		r := n.fetch(cold.Need)
+		r.read, r.held = p, rep.Held
+		return
+	}
+	if err != nil {
+		n.ReleaseReplyBytes(rep.Held)
+		rep.Held = 0
 	}
 	if t := n.cfg.Timer; t != nil {
 		switch p.req.Op.(type) {

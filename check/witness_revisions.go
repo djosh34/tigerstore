@@ -16,7 +16,7 @@ import (
 // by revision. The writer of a revision is the acked op that wrote it, or
 // the ambiguous one whose value a client saw at it. A revision with
 // neither is a gap: some ambiguous mutation, or an acked revoke, wrote it
-// unseen. A depth-first search tries the candidates, latest call first,
+// unseen. A depth-first search tries the candidates in call order,
 // and goes back to the last gap when a later revision cannot be explained.
 // A candidate must change exactly the keys that no client saw unchanged
 // across the gap.
@@ -817,7 +817,12 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 
 // candidates are the ops that may write gap rev: the acked revokes at it
 // first, then the ambiguous mutations that no answer puts after it and
-// that no client saw write another revision, latest call first.
+// that no client saw write another revision, earliest call first. When a
+// fault hides a long prefix of writes, this tries the puts before later
+// deletes that may depend on them. Reversing that order can exhaust the
+// search on permutations before it reaches the first observed revision.
+// Call order is only a preference: the search still tries other orders,
+// and verifies every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
@@ -830,7 +835,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 			amb = append(amb, i)
 		}
 	}
-	slices.SortFunc(amb, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[b].Call, h.Ops[a].Call), cmp.Compare(a, b)) })
+	slices.SortFunc(amb, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
 	return append(out, amb...)
 }
 

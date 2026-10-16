@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,6 +19,89 @@ import (
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
+
+// TestServeCorruptRecordStops damages an old record after it leaves the
+// Raft window. Serving it must stop the sender, not just fail the fetch.
+func TestServeCorruptRecordStops(t *testing.T) {
+	cfg := Config{DataDir: t.TempDir(), Tick: 50 * time.Millisecond, SegmentBytes: 4 << 10, Logf: t.Logf}
+	cfg.Core = core.DefaultConfig(1, []uint64{1})
+	cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = 256, 512
+	// Keep the old records, without checkpoint or cleaning reads.
+	cfg.Core.CheckpointBytes = 1 << 30
+	n, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	ran := make(chan error, 1)
+	finished := make(chan struct{})
+	go func() {
+		ran <- n.Run(ctx, noPeers{})
+		close(finished)
+	}()
+	defer func() {
+		cancel()
+		<-finished
+	}()
+	if _, err := do(n, &pb.PutRequest{Key: []byte("old"), Value: bytes.Repeat([]byte("v"), 256)}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := n.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := st.RaftAppliedIndex
+	for i := range 40 {
+		if _, err := do(n, &pb.PutRequest{Key: fmt.Appendf(nil, "k%d", i), Value: bytes.Repeat([]byte("v"), 256)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err = n.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A broken connection alone must not stop the sender.
+	if err := n.Serve(2, 1, st.RaftAppliedIndex, &cutWriter{w: io.Discard}); !errors.Is(err, errCut) {
+		t.Fatalf("cut stream: %v, want errCut", err)
+	}
+	if _, err := do(n, &pb.RangeRequest{Key: []byte("old")}); err != nil {
+		t.Fatalf("sender stopped after a broken connection: %v", err)
+	}
+	n.log.mu.Lock()
+	seq, at, ok := n.log.w.ValuePlace(old, 0, 0)
+	sealed := seq < n.log.w.Seq()
+	n.log.mu.Unlock()
+	if !ok || !sealed {
+		t.Fatal("the old entry is not in a sealed segment")
+	}
+	f, err := os.OpenFile(filepath.Join(cfg.DataDir, "wal", wal.SegmentName(seq)), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b [1]byte
+	if _, err := f.ReadAt(b[:], at); err != nil {
+		t.Fatal(errors.Join(err, f.Close()))
+	}
+	b[0] ^= 1
+	_, err = f.WriteAt(b[:], at)
+	if err := errors.Join(err, f.Sync(), f.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.Serve(2, 1, st.RaftAppliedIndex, io.Discard); !errors.Is(err, wal.ErrCorrupt) {
+		t.Fatalf("serve: %v, want wal.ErrCorrupt", err)
+	}
+	select {
+	case err := <-ran:
+		if !errors.Is(err, wal.ErrCorrupt) {
+			t.Fatalf("sender stopped with %v, want wal.ErrCorrupt", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sender kept running after serving a corrupt record")
+	}
+	if _, err := New(cfg); !errors.Is(err, wal.ErrCorrupt) {
+		t.Fatalf("restart: %v, want wal.ErrCorrupt", err)
+	}
+}
 
 // gate is a writer that blocks its first write until released.
 type gate struct {
@@ -121,7 +205,7 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	// A root job the core made before the fetch began: it removes every
 	// segment it can and the checkpoint the stream reads.
 	last := n.core.Applied()
-	n.persistQ <- []core.PersistJob{{Root: &wal.Root{Index: last, Term: ckpt.Term}, RemoveBelow: last + 1}}
+	n.persistQ <- persistBatch{jobs: []core.PersistJob{{Root: &wal.Root{Index: last, Term: ckpt.Term}, RemoveBelow: last + 1}}, queued: time.Now()}
 	if done := <-n.persisted; done.err != nil {
 		t.Fatal(done.err)
 	}
