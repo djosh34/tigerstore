@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/djosh34/tigerstore/internal/k8ssize"
@@ -56,7 +57,7 @@ func main() {
 	var c config
 	flag.StringVar(&c.endpoints, "endpoints", "http://127.0.0.1:20100", "comma-separated endpoints")
 	flag.StringVar(&c.out, "out", "past-ram", "report directory")
-	flag.StringVar(&c.mode, "mode", "proof", "proof, max or cache")
+	flag.StringVar(&c.mode, "mode", "proof", "proof, max, cache or check")
 	flag.Int64Var(&c.bytes, "bytes", 3*(512<<20), "minimum live value bytes before mixed load")
 	flag.DurationVar(&c.duration, "duration", 3*time.Minute, "mixed-load measurement")
 	flag.Parse()
@@ -69,6 +70,9 @@ func main() {
 }
 
 func run(c config) (err error) {
+	if c.mode == "check" {
+		return checkRecorded(c.out)
+	}
 	if c.bytes <= 0 || c.duration <= 0 || (c.mode != "proof" && c.mode != "max" && c.mode != "cache") {
 		return errors.New("need positive bytes and duration, mode proof, max or cache")
 	}
@@ -141,6 +145,14 @@ func run(c config) (err error) {
 			return fmt.Errorf("preload on %s: %d objects, want %d", endpoint, r.Count, w.objects)
 		}
 	}
+	var recorded *recordedLoad
+	if c.mode == "proof" {
+		recorded, err = startRecorded(cl)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, recorded.close(), recorded.save(c.out)) }()
+	}
 	// The runner kills and restarts a node after this marker, during mixed load.
 	if err := os.WriteFile(filepath.Join(c.out, "ready"), []byte("mixed\n"), 0o644); err != nil {
 		return err
@@ -149,6 +161,13 @@ func run(c config) (err error) {
 		return err
 	}
 	start = time.Now()
+	if recorded != nil {
+		first := recorded.call(recorded.clients[0], 50, &pb.PutRequest{Key: []byte(proofPrefix + "start"), Value: []byte("recording")})
+		if first.Err != nil {
+			return fmt.Errorf("start marker: %v", first.Err)
+		}
+		recorded.start()
+	}
 	for time.Since(start) < c.duration {
 		at := time.Now()
 		if err := w.mixed(); err != nil {
@@ -156,7 +175,13 @@ func run(c config) (err error) {
 		}
 		w.latency = append(w.latency, time.Since(at).Microseconds())
 	}
+	if recorded != nil {
+		recorded.stopTraffic()
+	}
 	seconds := time.Since(start).Seconds()
+	if len(w.latency) == 0 {
+		return errors.New("mixed interval completed no bulk requests")
+	}
 	slices.Sort(w.latency)
 	if err := w.report(measurement{
 		Phase: "mixed", Objects: w.objects, LiveBytes: w.live, Calls: len(w.latency), Seconds: seconds,
@@ -169,6 +194,11 @@ func run(c config) (err error) {
 	}
 	if err := waitMarker(filepath.Join(c.out, "mixed-sampled")); err != nil {
 		return err
+	}
+	if recorded != nil {
+		if err := recorded.finish(c.out); err != nil {
+			return err
+		}
 	}
 	// A paginated scan through each member checks exact bytes against our
 	// generated history, not against another replica or a server hash.
@@ -238,6 +268,9 @@ func (w *workload) mixed() error {
 	// 40% point reads, 10% paginated LIST, 40% revision-CAS updates,
 	// 10% deletes. A later update recreates a deleted key.
 	op := w.rng.IntN(10)
+	if w.cfg.mode == "proof" {
+		op = w.rng.IntN(5)
+	}
 	if w.cfg.mode == "cache" {
 		op = 0
 		// Eight reads in ten target the first percent of the keys.

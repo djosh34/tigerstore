@@ -297,6 +297,7 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	c.n.cleaningStage("pack-synced")
 	pr := packRoot{add: pack, drop: rm.drop, synced: make(chan struct{})}
 	select {
 	case c.n.cleanQ <- pr:
@@ -466,7 +467,11 @@ func (c *cleaner) remove() error {
 	if err != nil {
 		return err
 	}
-	return l.unmap(rm.upto)
+	if err := l.unmap(rm.upto); err != nil {
+		return err
+	}
+	c.n.cleaningStage("removed")
+	return nil
 }
 
 // sleep waits for d and reports whether ctx is still live.
@@ -487,15 +492,23 @@ func (n *Node) installPacks(pr packRoot) error {
 	w := n.log.w
 	n.log.mu.Lock()
 	w.InstallPacks(pr.add, pr.drop)
+	n.cleaningStage("root-buffered")
 	n.log.mu.Unlock()
 	err := w.Sync()
 	n.log.mu.Lock()
 	err = errors.Join(err, n.log.synced())
 	n.log.mu.Unlock()
 	if err == nil {
+		n.cleaningStage("root-synced")
 		close(pr.synced)
 	}
 	return err
+}
+
+func (n *Node) cleaningStage(stage string) {
+	if n.cfg.cleanStage != nil {
+		n.cfg.cleanStage(stage)
+	}
 }
 
 // delay is how long a write waits before the node takes it: nothing while

@@ -232,7 +232,11 @@ No new tigerstore defect was proved by these runs. Intentional mutations,
 test setup failures and maximum-capacity OOM boundaries are not filed as
 product defects. Existing #202 remains open; this branch does not fix it.
 
-## Remaining limits
+## Remaining limits at the first handoff
+
+The [continuation](past-ram-continuation.md) adds recorded process histories,
+watches, concurrent production cleaner simulation and etcd index allocation
+measurements. The limits below describe `74e08fe1`, not that continuation.
 
 This is not the complete #144 proof yet. The real-process driver has exact
 response and final-state checks, but no watch traffic, leases, compaction

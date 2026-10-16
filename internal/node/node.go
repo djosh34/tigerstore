@@ -94,6 +94,8 @@ type Config struct {
 	// returns breaks the stream there; and reloading, if set, runs when a
 	// run that ended for a reload opened the log again, before the core
 	// replays it. For tests.
+	// cleanStage observes the production cleaner's durability boundaries in tests.
+	cleanStage   func(string)
 	snapshotSync int
 	stage        func(string) error
 	reloading    func()
@@ -394,7 +396,7 @@ type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
 	w       *wal.WAL
-	fs      osfs.Dir
+	fs      logFS
 	dir     string
 	// sealed is the newest segment that no longer changes; maps holds the
 	// mappings of sealed segments by sequence number.
@@ -438,7 +440,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	var m []byte
 	var r io.ReaderAt
 	var err error
-	if ok && seq <= l.sealed {
+	if ok && seq <= l.sealed && l.dir != "" {
 		m, err = l.mapping(seq)
 	} else {
 		r, at, err = l.w.ValueReader(index, off, n)
@@ -580,6 +582,12 @@ func (l *diskLog) Checkpoint(index uint64) (io.ReadCloser, error) {
 	return l.w.Checkpoint(index)
 }
 
+// logFS also reports usage to the paced cleaner.
+type logFS interface {
+	wal.FS
+	Usage() (int64, error)
+}
+
 // New recovers the node's state from its checkpoint and log on disk.
 func New(cfg Config) (*Node, error) {
 	path := cmp.Or(cfg.WalDir, filepath.Join(cfg.DataDir, "wal"))
@@ -590,6 +598,13 @@ func New(cfg Config) (*Node, error) {
 	if cfg.UnsafeNoFsync {
 		dir = dir.WithoutSync()
 	}
+	return newOnDisk(cfg, path, dir)
+}
+
+// An empty path uses File.ReadAt rather than OS mappings. Tests run the same
+// driver and cleaner on a simulated filesystem with a virtual clock.
+func newOnDisk(cfg Config, path string, dir logFS) (*Node, error) {
+	var err error
 	if cfg.Metrics == nil {
 		if cfg.Metrics, err = metrics.New(nil); err != nil {
 			return nil, err

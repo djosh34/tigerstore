@@ -23,7 +23,8 @@ jobs:
           go-version-file: go.mod
       - name: Format new Go files on the runner
         run: |
-          gofmt -w cmd/pastram internal/k8ssize internal/sim/sim.go internal/sim/past_ram_test.go internal/core/past_ram_test.go internal/node/past_ram_test.go
+          gofmt -w cmd/pastram internal/k8ssize internal/sim/sim.go internal/sim/past_ram_test.go internal/core/past_ram_test.go internal/node/past_ram_test.go internal/node/clean_sim_test.go internal/node/node.go internal/node/clean.go
+          go run mvdan.cc/gofumpt@v0.12.0 -w cmd/pastram internal/node/clean_sim_test.go
           git diff > format.patch
       - uses: actions/upload-artifact@v7
         with:
@@ -34,10 +35,10 @@ jobs:
           test ! -s format.patch
           go vet ./cmd/pastram ./internal/k8ssize ./internal/core ./internal/node ./internal/sim
           go test -race ./cmd/pastram ./internal/k8ssize
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          args: ./cmd/pastram/... ./internal/k8ssize/... ./internal/core/... ./internal/node/... ./internal/sim/...
+      - name: Concurrent production cleaner on simulated storage
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=10m -v ./internal/node -run '^TestConcurrentCleanerSimulation$' 2>&1 | tee concurrent-cleaner.log
       - name: Existing recovery, cleaning, cache and cold-read tests
         run: |
           set -o pipefail
@@ -46,6 +47,10 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=20m -v ./internal/sim -run 'TestPastRAM' 2>&1 | tee -a storage.log
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          args: ./cmd/pastram/... ./internal/k8ssize/... ./internal/core/... ./internal/node/... ./internal/sim/...
       - name: Planted stale cache lookup, one fixed scenario
         run: |
           python3 - <<'PY'
@@ -75,8 +80,94 @@ jobs:
           name: past-ram-storage
           path: |
             storage.log
+            concurrent-cleaner.log
             stale-cache.log
             stale-cache.patch
+          retention-days: 30
+  cleaner-controls:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        fault: [early-remove, missing-value]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Mutate the production cleaner, not the test protocol
+        env:
+          FAULT: ${{ matrix.fault }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('internal/node/clean.go')
+          text = p.read_text()
+          if os.environ['FAULT'] == 'early-remove':
+              old = 'pr := packRoot{add: pack, drop: rm.drop, synced: make(chan struct{})}'
+              new = old + '''
+              l.mu.Lock()
+              premature := l.w.RemoveCleaned(rm.upto, rm.drop)
+              l.mu.Unlock()
+              if premature != nil { return false, premature }
+              '''
+          else:
+              old = 'var pw *wal.PackWriter'
+              assert text.count(old) == 1
+              text = text.replace(old, old + '\n skipped := false')
+              old = 'return pw.Add(r.Index, r.Off, b)'
+              new = 'if !skipped { skipped = true; return nil }; ' + old
+          assert text.count(old) == 1
+          p.write_text(text.replace(old, new))
+          PY
+          gofmt -w internal/node/clean.go
+          git diff > cleaner-control.patch
+          if go test -race -count=1 -timeout=5m -v ./internal/node -run '^TestConcurrentCleanerSimulation$/^1$' > cleaner-control.log 2>&1; then
+            echo 'production cleaner mutation escaped'; exit 1
+          fi
+          grep -E 'lost checkpoint value|wal: not on disk|concurrent reader lost' cleaner-control.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cleaner-control-${{ matrix.fault }}
+          path: |
+            cleaner-control.patch
+            cleaner-control.log
+          retention-days: 30
+  etcd-index:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: etcd-io/etcd
+          ref: 68c065e562994b89e333e77b039ad066f933c586
+          path: upstream-etcd
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Measure the upstream index with the exact preload key distribution
+        run: |
+          cp scripts/etcd-index_test.go.txt upstream-etcd/server/storage/mvcc/past_ram_index_test.go
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          rows = re.findall(r'\{"([^"]+)", \d+, (\d+)\}', Path('internal/k8ssize/k8ssize.go').read_text())
+          resources = [resource for resource, count in rows for _ in range(int(count))]
+          Path('resources.json').write_text(json.dumps(resources))
+          PY
+          export PAST_RAM_RESOURCES="$PWD/resources.json"
+          cd upstream-etcd/server
+          set -o pipefail
+          go test -count=1 -v ./storage/mvcc -run '^TestPastRAMIndexBytes$' 2>&1 | tee ../../etcd-index.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: etcd-index
+          path: etcd-index.log
           retention-days: 30
   capacity:
     if: inputs.capacity
@@ -86,6 +177,7 @@ jobs:
         include:
           - {kind: tigerstore, mode: proof, quota: '9223372036854775807', cache: normal}
           - {kind: etcd, mode: proof, quota: '9223372036854775807', cache: normal}
+          - {kind: etcd, mode: proof, quota: '8589934592', cache: normal, preload: '16777216', seconds: 60}
           - {kind: tigerstore, mode: max, quota: '9223372036854775807', cache: normal}
           - {kind: etcd, mode: max, quota: '8589934592', cache: normal}
           - {kind: etcd, mode: max, quota: '9223372036854775807', cache: normal}
@@ -121,7 +213,7 @@ jobs:
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
       - name: Run under per-member cgroup limits
         run: |
-          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --out "$RUNNER_TEMP/past-ram"
+          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --preload-bytes '${{ matrix.preload || 0 }}' --seconds '${{ matrix.seconds || 180 }}' --out "$RUNNER_TEMP/past-ram"
       - name: Copy evidence without database files
         if: always()
         run: |
