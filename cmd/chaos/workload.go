@@ -177,8 +177,8 @@ type traffic struct {
 	cancelW context.CancelFunc
 }
 
-// startTraffic checks that the cluster is fresh, then starts one watch and
-// one sequential client per node until stopTraffic.
+// startTraffic checks that the cluster is fresh, then starts one watch,
+// one sequential client and one reader per node until stopTraffic.
 func startTraffic(cfg workloadConfig, cs []*clientv3.Client) (*traffic, error) {
 	t := &traffic{cfg: cfg, cs: cs, r: &recorder{origin: time.Now()}}
 	members := map[uint64]bool{}
@@ -208,8 +208,32 @@ func startTraffic(cfg workloadConfig, cs []*clientv3.Client) (*traffic, error) {
 	}
 	for i, cl := range cs {
 		t.workers.Go(func() { t.client(stopCtx, i, cl) })
+		t.workers.Go(func() { t.reader(stopCtx, i, cl) })
 	}
 	return t, nil
+}
+
+// readerClient is the history client of the reader pinned to node i.
+func readerClient(i int) int { return 30 + i }
+
+// reader issues only linearizable Range calls on the node of client i, at
+// most cfg.rate per second. A writer on a lagging follower spends the lag
+// in each write; the reader keeps asking the follower, so a read it
+// served from its own state would show (B01a).
+func (t *traffic) reader(ctx context.Context, i int, cl *clientv3.Client) {
+	c := t.cfg
+	rng := rand.New(rand.NewPCG(c.seed, uint64(readerClient(i))))
+	tick := time.NewTicker(time.Second / time.Duration(c.rate))
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		q := history.Request{Range: &history.RangeRequest{Key: fmt.Sprintf("%sk%d", prefix, rng.IntN(c.keys))}}
+		t.r.call(cl, readerClient(i), q, c.requestTimeout)
+	}
 }
 
 // client issues random Put, CAS Txn, DeleteRange and Range calls on hot
@@ -311,7 +335,8 @@ func (t *traffic) stopClients() {
 // finish runs on the healed cluster: it waits out calls that timed out
 // on the client but may still commit, makes the commit index pass the
 // last write, reads the final state on every node as the target, and
-// waits until every watch reports progress through the target.
+// waits until every watch has an event or a progress notification at or
+// past the target.
 func (t *traffic) finish() (err error) {
 	c, r, cs := t.cfg, t.r, t.cs
 	// Give requests whose clients timed out longer than the server's 7s
@@ -347,20 +372,14 @@ func (t *traffic) finish() (err error) {
 		complete := true
 		r.mu.Lock()
 		for _, w := range r.h.Watches {
-			covered := false
-			for _, wr := range w.Responses {
-				if wr.Progress && wr.Revision >= r.h.Target {
-					covered = true
-				}
-			}
-			complete = complete && covered
+			complete = complete && throughTarget(w, r.h.Target)
 		}
 		r.mu.Unlock()
 		if complete {
 			break
 		}
 		if !time.Now().Before(finish) {
-			err = errors.New("watches did not report progress through terminal target")
+			err = errors.New("watches did not reach the terminal target")
 			break
 		}
 		for i, cl := range cs {

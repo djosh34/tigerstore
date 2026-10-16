@@ -99,3 +99,16 @@ func resumeRevision(next int64, wr history.WatchResponse) int64 {
 	}
 	return next
 }
+
+// throughTarget reports whether watch w got an event or a progress
+// notification at or past the target. A watch resumed after the last write
+// starts above the target, and neither tigerstore nor etcd sends progress
+// to such a watcher, so an event at the target counts too; check.Watches
+// still finds any event the watch missed.
+func throughTarget(w history.Watch, target int64) bool {
+	next := int64(1)
+	for _, wr := range w.Responses {
+		next = resumeRevision(next, wr)
+	}
+	return target > 0 && next-1 >= target
+}

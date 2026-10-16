@@ -81,11 +81,7 @@ func coverage(h *history.History) (coverageReport, error) {
 	}
 	var errs []error
 	for i, w := range h.Watches {
-		progress := false
 		for _, r := range w.Responses {
-			if r.Progress && r.Revision >= h.Target && h.Target > 0 {
-				progress = true
-			}
 			if r.Canceled {
 				errs = append(errs, fmt.Errorf("watch %d canceled in a no-compaction campaign", i))
 			}
@@ -101,8 +97,8 @@ func coverage(h *history.History) (coverageReport, error) {
 				}
 			}
 		}
-		if !progress {
-			errs = append(errs, fmt.Errorf("watch %d has no progress through target", i))
+		if !throughTarget(w, h.Target) {
+			errs = append(errs, fmt.Errorf("watch %d did not reach the target", i))
 		}
 	}
 	if c.Put == 0 || c.TxnSuccess == 0 || c.TxnFailure == 0 || c.Delete == 0 || c.MultiDelete == 0 || c.Range == 0 || c.WatchPuts == 0 || c.WatchDeletes == 0 || c.WatchPrevKV == 0 {

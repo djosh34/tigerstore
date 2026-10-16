@@ -61,7 +61,7 @@ func plan(seed uint64, faults []string) []step {
 		s.Dir = []proxy.Dir{proxy.Forward, proxy.Backward, proxy.Both}[rng.IntN(3)]
 		switch f {
 		case netDelay:
-			s.Delay = ms(5, 50)
+			s.Delay = ms(300, 800)
 		case netSwitching:
 			s.Delay, s.Delay2, s.Every = ms(0, 2), ms(20, 80), ms(100, 400)
 		case netSlow:
@@ -200,13 +200,11 @@ func (r *runner) inject(ctx context.Context, s step, rec *record) error {
 	var faults []linkFault
 	switch s.Fault {
 	case netDelay:
-		// Every busy link of one node.
-		n := int(s.Pick % 3)
-		for _, l := range busy {
-			if l.To == n || l.From == n {
-				faults = append(faults, linkFault{l, proxy.Fault{Kind: proxy.Delay, Dir: proxy.Both, Delay: s.Delay}})
-			}
-		}
+		// The leader's messages to one follower arrive late, by less than
+		// an election timeout: the follower keeps its leader but applies
+		// behind, while its own client link stays fast. A read it served
+		// from its own state would be stale (B01a).
+		faults = append(faults, linkFault{r.c.peers[lead][follower], proxy.Fault{Kind: proxy.Delay, Dir: proxy.Forward, Delay: s.Delay}})
 	case netSwitching:
 		for _, l := range busy[3:] {
 			faults = append(faults, linkFault{l, proxy.Fault{Kind: proxy.Switching, Dir: proxy.Forward, Delay: s.Delay, Delay2: s.Delay2, Every: s.Every}})

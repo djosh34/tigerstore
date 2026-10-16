@@ -20,6 +20,9 @@ import (
 //   - Every write gets its own revision, however many keys it changes. A key
 //     whose mod revision is the revision of an acked write holds what that
 //     write put there, and a delete event at it is a key that write deleted.
+//     A watch that ran through the revision of an acked delete shows a
+//     delete event at that revision for each key the delete is known to
+//     have removed and the watch covers.
 //   - The same key at the same mod revision always looks the same. Versions
 //     grow with mod revisions and restart at 1 when a key is recreated.
 //   - A read below the compaction revision fails as compacted and one above
@@ -35,6 +38,7 @@ func Revisions(h *history.History) error {
 	c.writes()
 	c.realTime()
 	c.observed()
+	c.deleteEvents()
 	c.versions()
 	c.compaction()
 	return errors.Join(c.errs...)
@@ -194,6 +198,59 @@ func (c *revisionChecker) observed() {
 				}
 				if j, ok := c.byRev[kv.ModRevision]; ok && !deletes(&c.h.Ops[j], kv.Key) {
 					c.fail("%s: delete event of key %q at revision %d, but op %d wrote that revision and did not delete it", where, kv.Key, kv.ModRevision, j)
+				}
+			}
+		}
+	}
+}
+
+// deleteEvents checks that every watch that ran through the revision of
+// an acked delete shows it: a delete event at that revision for each key
+// the delete removed and the watch covers. A watch from the current
+// revision starts after its created response's revision; one without
+// that response has no known start and is left out.
+func (c *revisionChecker) deleteEvents() {
+	revs := make([]int64, 0, len(c.byRev))
+	for rev := range c.byRev {
+		revs = append(revs, rev)
+	}
+	slices.Sort(revs)
+	type event struct {
+		key string
+		rev int64
+	}
+	for i, w := range c.h.Watches {
+		start := w.Req.StartRevision
+		if start == 0 {
+			if len(w.Responses) == 0 || !w.Responses[0].Created {
+				continue
+			}
+			start = w.Responses[0].Revision + 1
+		}
+		// Every event up to reached was delivered: progress at P covers
+		// P, and the events of one revision come in one response.
+		var reached int64
+		seen := map[event]bool{}
+		for _, resp := range w.Responses {
+			if resp.Progress {
+				reached = max(reached, resp.Revision)
+			}
+			for _, e := range resp.Events {
+				reached = max(reached, e.KV.ModRevision)
+				if e.Type == history.EventDelete {
+					seen[event{e.KV.Key, e.KV.ModRevision}] = true
+				}
+			}
+		}
+		for _, rev := range revs {
+			if rev < start || rev > reached {
+				continue
+			}
+			j := c.byRev[rev]
+			op := &c.h.Ops[j]
+			for _, key := range deletedBy(op) {
+				if deletes(op, key) && history.InRange(key, w.Req.Key, w.Req.End) && !seen[event{key, rev}] {
+					c.fail("watch %d (client %d) reached revision %d but has no delete event of key %q at revision %d, which op %d deleted", i, w.Client, reached, key, rev, j)
 				}
 			}
 		}
