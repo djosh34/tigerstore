@@ -72,7 +72,12 @@ func (f Fill) Set(b []byte) error {
 // compare or sort them, that only the log on disk has. The store is
 // unchanged. The operation runs again once the values in Need are read
 // and Values.Read returns them; their Dst is nil.
-type ColdError struct{ Need []Fill }
+type ColdError struct {
+	Need []Fill
+	// Compare marks a bounded comparison batch. Once evaluated, its
+	// values can be dropped; CompareProgress keeps only the result.
+	Compare bool
+}
 
 func (e *ColdError) Error() string {
 	return fmt.Sprintf("mvcc: %d values must be read from disk first", len(e.Need))

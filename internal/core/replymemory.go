@@ -3,6 +3,8 @@ package core
 import (
 	"errors"
 
+	"github.com/djosh34/tigerstore/internal/mvcc"
+
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,6 +58,38 @@ func (n *Node) resizeReply(held, bytes int64) error {
 	// Evict before allocating values, not at the next Process call.
 	n.fitCache()
 	return nil
+}
+
+func (n *Node) newComparisons() *mvcc.CompareProgress {
+	budget := int64(1 << 20)
+	if n.cfg.MemoryBytes > 0 {
+		budget = min(budget, n.cfg.MemoryBytes)
+	}
+	return &mvcc.CompareProgress{Budget: budget}
+}
+
+// reserveComparison admits one bounded input batch. A single value is
+// the minimum read unit. Even a committed transaction must make progress
+// when that value exceeds a tiny configured budget, but never alongside
+// other reservations. Recovery reads inline, before a driver can release
+// answers, and may also need this one bounded batch to finish installing.
+func (n *Node) reserveComparison(cold *mvcc.ColdError) (int64, error) {
+	if n.cfg.MemoryBytes <= 0 {
+		return 0, nil
+	}
+	bytes := mvcc.CompareBytes(cold.Need)
+	if n.readInline || (len(cold.Need) == 1 && bytes > n.cfg.MemoryBytes && n.replyBytes == 0) {
+		n.replyBytes += bytes
+		n.fitCache()
+		return bytes, nil
+	}
+	if bytes > n.cfg.MemoryBytes {
+		return 0, errReplyBusy
+	}
+	if err := n.reserveReply(bytes); err != nil {
+		return 0, err
+	}
+	return bytes, nil
 }
 
 // retryReplies retries reads whose answers did not fit. No values were

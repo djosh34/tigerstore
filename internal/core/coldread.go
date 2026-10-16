@@ -43,6 +43,8 @@ type ValueRead struct {
 	apply bool
 	// held reserves working values needed by a read or committed Txn.
 	held int64
+	// compare inputs are discarded after this batch is evaluated.
+	compare bool
 }
 
 // Run reads every value from the log and checks it against its checksum.
@@ -72,10 +74,11 @@ var errStateReplaced = status.Error(codes.Unavailable, "tigerstore: the node ins
 // apply behind it: its entry, how many writes of the entry are applied,
 // the read that brings the values, and those read for it so far.
 type pausedWrite struct {
-	index   uint64
-	write   int
-	read    *ValueRead
-	fetched map[mvcc.Ref][]byte
+	index    uint64
+	write    int
+	read     *ValueRead
+	fetched  map[mvcc.Ref][]byte
+	compares *mvcc.CompareProgress
 }
 
 // errPaused stops the walk of an entry at a write that waits for values.
@@ -148,15 +151,29 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 
 // pause stops ordered apply at write number write of entry index until
 // need is read.
-func (n *Node) pause(index uint64, write int, need []mvcc.Fill) {
+func (n *Node) pause(index uint64, write int, cold *mvcc.ColdError, compares *mvcc.CompareProgress) {
 	fetched := map[mvcc.Ref][]byte{}
-	if r := n.resume; r != nil && r.index == index && r.write == write {
-		// The write needs more values than the last read brought; it
-		// keeps those too.
+	if r := n.resume; r != nil && r.index == index && r.write == write && r.fetched != nil && !cold.Compare && (r.read == nil || !r.read.compare) {
+		// A sort may need more values than the last read brought.
+		// Comparison batches keep only their progress, not past values.
 		fetched = r.fetched
 	}
-	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(need)}
-	n.paused.read.apply = true
+	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(cold.Need), compares: compares}
+	n.paused.read.apply, n.paused.read.compare = true, cold.Compare
+}
+
+// retryComparisonApply retries an unapplied transaction whose next input
+// batch waited for memory. Its branch is still decided by the committed
+// state, never by whether this replica could reserve space on the last try.
+func (n *Node) retryComparisonApply() {
+	w := n.paused
+	if w == nil || w.read != nil {
+		return
+	}
+	n.paused, n.resume = nil, w
+	n.values.fetched = nil
+	n.runApply()
+	n.values.fetched, n.resume = nil, nil
 }
 
 // runApply applies Raft's apply messages in order, until a write waits
@@ -213,6 +230,9 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 		n.releaseWatches(s)
 	}
 	if p := r.read; p != nil && !p.done {
+		if r.compare {
+			p.fetched = nil
+		}
 		if p.fetched == nil {
 			p.fetched = map[mvcc.Ref][]byte{}
 		}
@@ -220,11 +240,14 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 		n.values.fetched = p.fetched
 		n.serveRead(p)
 		n.values.fetched = nil
-		if p.done {
+		if p.done || r.compare {
 			p.fetched = nil
 		}
 	}
 	if w := n.paused; w != nil && w.read == r {
+		if r.compare {
+			w.fetched = map[mvcc.Ref][]byte{}
+		}
 		keep(w.fetched, r)
 		n.paused, n.resume = nil, w
 		n.values.fetched = w.fetched

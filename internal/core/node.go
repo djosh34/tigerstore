@@ -114,10 +114,10 @@ type Config struct {
 	// CheckpointChunk is about how many bytes of the index each
 	// CopyCheckpoint copies into a checkpoint under way.
 	CheckpointChunk int
-	// MemoryBytes is shared by the index, entries, unary Range answers
-	// and value cache, after buffers and room for the garbage collector.
-	// The cache takes what the other three leave. 0 disables the cache
-	// and Range reservations.
+	// MemoryBytes is shared by the index, entries, answers, comparison
+	// inputs and value cache, after buffers and room for the collector.
+	// The cache takes what the others leave. 0 disables the cache and
+	// reservations; comparison batches remain bounded.
 	MemoryBytes int64
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
@@ -376,7 +376,8 @@ type pending struct {
 	queued bool
 	// fetched holds the values read from the log for a read that needed
 	// them at once.
-	fetched map[mvcc.Ref][]byte
+	fetched  map[mvcc.Ref][]byte
+	compares *mvcc.CompareProgress
 	// early marks a write in Node.early.
 	early bool
 	// conf is the configuration change of a member change.
@@ -1426,6 +1427,7 @@ func (n *Node) Process() (Effects, error) {
 		// so one client sees no delay. The byte cap still sends a full
 		// entry early (queueWrite).
 		n.releaseEarly()
+		n.retryComparisonApply()
 		n.retryReplies()
 		if len(n.tokenWaits) > 0 {
 			n.retryTokenWaits()
@@ -1646,8 +1648,11 @@ func (n *Node) serveRead(p *pending) {
 			resp = r
 		}
 	case *pb.TxnRequest:
+		if p.compares == nil {
+			p.compares = n.newComparisons()
+		}
 		var r *pb.TxnResponse
-		r, err = n.kv.TxnReserved(op, reserve, false)
+		r, err = n.kv.TxnReserved(op, reserve, false, p.compares)
 		if err == nil {
 			n.fillHeader(r.Header)
 			resp = r
@@ -1681,15 +1686,21 @@ func (n *Node) serveRead(p *pending) {
 		resp, err = n.validateDowngrade(op)
 	}
 	fills := n.kv.TakeFills()
+	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
+		if cold.Compare {
+			p.fetched = nil
+			rep.Held, err = n.reserveComparison(cold)
+		}
+		if !cold.Compare || err == nil {
+			r := n.fetch(cold.Need)
+			r.read, r.held, r.compare = p, rep.Held, cold.Compare
+			return
+		}
+	}
 	if errors.Is(err, errReplyBusy) {
 		n.ReleaseReplyBytes(rep.Held)
 		p.fetched = nil
 		n.replyWait = append(n.replyWait, p)
-		return
-	}
-	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
-		r := n.fetch(cold.Need)
-		r.read, r.held = p, rep.Held
 		return
 	}
 	if err != nil {
@@ -1836,6 +1847,13 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return fmt.Errorf("%w: %w", errBadBatch, err)
 	}
 	room := n.quotaLeft(quotaCost(op))
+	var compares *mvcc.CompareProgress
+	if _, ok := op.(*pb.TxnRequest); ok {
+		compares = n.newComparisons()
+		if r := n.resume; r != nil && r.index == e.GetIndex() && r.write == k && r.compares != nil {
+			compares = r.compares
+		}
+	}
 	var held int64
 	var replyErr error
 	reserve := n.replyReservation(&held)
@@ -1852,18 +1870,31 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 			return replyErr
 		}
 	}
-	resp, err := n.applyOpReserved(op, reserve)
+	resp, err := n.applyOpReserved(op, reserve, compares)
 	var cold *mvcc.ColdError
 	for errors.As(err, &cold) {
+		if cold.Compare {
+			n.values.fetched = nil
+			n.ReleaseReplyBytes(held)
+			held, err = n.reserveComparison(cold)
+			if errors.Is(err, errReplyBusy) {
+				n.paused = &pausedWrite{index: e.GetIndex(), write: k, compares: compares}
+				return errPaused
+			}
+			if err != nil {
+				return err
+			}
+		}
 		if !n.readInline {
-			n.pause(e.GetIndex(), k, cold.Need)
+			n.pause(e.GetIndex(), k, cold, compares)
 			n.paused.read.held = held
 			return errPaused
 		}
 		if err := n.readNow(cold.Need); err != nil {
+			n.ReleaseReplyBytes(held)
 			return err
 		}
-		resp, err = n.applyOpReserved(op, reserve)
+		resp, err = n.applyOpReserved(op, reserve, compares)
 	}
 	if n.readInline {
 		n.values.fetched = nil
@@ -1938,8 +1969,8 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 
 // applyOp runs one write. Request errors (an unknown lease, a missing key
 // for ignore_value) are answers; any other error stops the node.
-func (n *Node) applyOpReserved(op proto.Message, reserve func(int64) error) (proto.Message, error) {
-	resp, err := n.state.applyReserved(op, reserve)
+func (n *Node) applyOpReserved(op proto.Message, reserve func(int64) error, compares *mvcc.CompareProgress) (proto.Message, error) {
+	resp, err := n.state.applyReserved(op, reserve, compares)
 	if err != nil {
 		if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) || errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err

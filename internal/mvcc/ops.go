@@ -31,6 +31,7 @@ type writer struct {
 	discard   bool
 	committed bool
 	readonly  bool
+	compares  *CompareProgress
 }
 
 func (s *Store) start() *writer {
@@ -629,14 +630,16 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 // transaction; reads inside it see its own earlier writes. An error after
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
-	return s.TxnReserved(r, nil, false)
+	return s.TxnReserved(r, nil, false, nil)
 }
 
 // TxnReserved reserves the whole answer, including nested ranges. A
 // committed transaction must still apply if this node refuses its answer;
 // the caller records that local refusal separately from the apply result.
-func (s *Store) TxnReserved(r *pb.TxnRequest, reserve func(int64) error, committed bool) (*pb.TxnResponse, error) {
+func (s *Store) TxnReserved(r *pb.TxnRequest, reserve func(int64) error, committed bool, compares *CompareProgress) (*pb.TxnResponse, error) {
 	w := s.start()
+	w.compares = compares
+	compares.begin(w.begin)
 	w.committed = committed
 	w.readonly = IsTxnReadOnly(r)
 	if reserve != nil {
@@ -713,12 +716,30 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	w.s.counts.Ranges++
 	end := c.RangeEnd
 	matched := false
+	var cursor *compareCursor
+	start := c.Key
+	if c.Target == pb.Compare_VALUE {
+		cursor = w.compares.cursor()
+		if cursor != nil {
+			if cursor.done {
+				return cursor.result, nil
+			}
+			matched = cursor.matched
+			if cursor.key != nil {
+				start = cursor.key
+			}
+		}
+	}
 	ok := true
 	var err error
+	bytesNeeded := int64(1024)
 	// cold are the values only the disk has. Any key that fails the
 	// compare decides it without them.
 	var cold []Fill
-	w.s.ascend(c.Key, end, func(k *keyIndex) bool {
+	w.s.ascend(start, end, func(k *keyIndex) bool {
+		if cursor != nil && cursor.key != nil && bytes.Equal(k.key, cursor.key) {
+			return true
+		}
 		v, live := k.live(w.cur())
 		if !live {
 			return true
@@ -732,21 +753,35 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 				return false
 			}
 			if !in {
+				cost := compareValueBytes(k.key, v.value)
+				if cursor != nil && len(cold) > 0 && bytesNeeded+cost > w.compares.Budget {
+					return false
+				}
 				cold = append(cold, Fill{Key: k.key, Ref: v.value})
-				return true
+				bytesNeeded += cost
+				return cursor == nil || bytesNeeded < w.compares.Budget
 			}
 		}
 		if !compareKV(c, &kv) {
 			ok = false
 			return false
 		}
+		if cursor != nil && len(cold) == 0 {
+			cursor.key = k.key
+		}
 		return true
 	})
 	if err != nil {
 		return false, err
 	}
+	if cursor != nil {
+		cursor.matched = matched
+	}
 	if ok && len(cold) > 0 {
-		return false, &ColdError{Need: cold}
+		return false, &ColdError{Need: cold, Compare: cursor != nil}
+	}
+	if cursor != nil {
+		cursor.done, cursor.result, cursor.key = true, ok && matched, nil
 	}
 	if !matched {
 		// A missing key has no value to compare, so VALUE compares fail.
