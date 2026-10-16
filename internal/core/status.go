@@ -3,6 +3,7 @@ package core
 import (
 	"cmp"
 	"slices"
+	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3"
@@ -67,6 +68,11 @@ type Metrics struct {
 	// the size of the log's files, DiskBudget the budget for them, and
 	// CleanedBytes what cleaning wrote.
 	MapBytes, DiskBytes, DiskBudget, CleanedBytes int64
+	// MaxCommitWait is the most ticks one of this node's appends as leader
+	// waited to commit, which the commit watchdog bounds, and the node
+	// driver adds MaxLogWrite, the longest write and sync of the log.
+	MaxCommitWait int64
+	MaxLogWrite   time.Duration
 	// CacheBytes is what the value cache holds and CacheLimit what it may
 	// hold now; CacheHits are the values it returned and CacheMisses those
 	// read from the log.
@@ -114,6 +120,7 @@ func (n *Node) Metrics() Metrics {
 		CacheLimit:    max(n.cache.limit, 0),
 		CacheHits:     n.cache.hits,
 		CacheMisses:   n.cache.misses,
+		MaxCommitWait: n.maxCommitWait,
 
 		ClusterVersion: n.state.version,
 

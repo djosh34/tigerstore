@@ -61,6 +61,8 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 	stop := time.Now().Add(duration)
 	var wg sync.WaitGroup
 	var puts atomic.Int64
+	// longest[id-1] is the longest put on node id, in nanoseconds.
+	var longest [3]atomic.Int64
 	for id := uint64(1); id <= 3; id++ {
 		kv := c.client(id, cert)
 		for n := range 2 {
@@ -79,10 +81,28 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 						return
 					}
 					puts.Add(1)
+					for d := int64(time.Since(start)); d > longest[id-1].Load(); {
+						if longest[id-1].CompareAndSwap(longest[id-1].Load(), d) {
+							break
+						}
+					}
 				}
 			})
 		}
 	}
 	wg.Wait()
 	t.Logf("%d puts of %d bytes in %v", puts.Load(), len(value), duration)
+	// The margins under the limits (#88): the longest put, the longest a
+	// leader's append waited to commit, and the longest write and sync of
+	// the log, per node.
+	for id := uint64(1); id <= 3; id++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		m, err := c.nodes[id].Metrics(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("node %d: longest put %v, longest commit wait %v (%d ticks), longest log write %v",
+			id, time.Duration(longest[id-1].Load()), time.Duration(m.MaxCommitWait)*c.tick, m.MaxCommitWait, m.MaxLogWrite)
+	}
 }
