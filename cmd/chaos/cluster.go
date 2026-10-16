@@ -205,7 +205,11 @@ func (c *cluster) closeProxies() error {
 }
 
 // start starts the process of n.
-func (c *cluster) start(n *node) error {
+func (c *cluster) start(n *node) error { return c.startExpecting(n, false) }
+
+// startExpecting starts the process of n; with exit, its exit is expected,
+// as of a restart that must refuse its log.
+func (c *cluster) startExpecting(n *node, exit bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.starts++
@@ -221,7 +225,7 @@ func (c *cluster) start(n *node) error {
 		}
 	}
 	n.cmd = cmd
-	n.expecting, n.exitedNow = false, false
+	n.expecting, n.exitedNow = exit, false
 	exited := make(chan *os.ProcessState, 1)
 	n.exited = exited
 	go func() {

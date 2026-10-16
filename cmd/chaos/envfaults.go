@@ -932,11 +932,8 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 		}
 		rec.Env.Disk = filepath.Base(seg)
 		rec.Installed = true
-		n.mu.Lock()
-		n.expecting = true
-		n.mu.Unlock()
 		from := logSize(n)
-		if err := r.c.start(n); err != nil {
+		if err := r.c.startExpecting(n, true); err != nil {
 			return err
 		}
 		refused := waitUntil(ctx, 10*time.Second, func() bool {
