@@ -55,6 +55,8 @@ jobs:
           REPS: ${{ inputs.reps || '3' }}
         run: |
           sudo mount -o remount,barrier=1 /
+          # Connections closed by the client may be reused at once.
+          sudo sysctl -w net.ipv4.tcp_tw_reuse=1
           CERT_IPS=172.30.0.1 scripts/dev-certs.sh certs
           CERTS=certs KUBE_BURNER="$PWD/bin/kube-burner" bench/kind/run.sh bin/etcd bin/tigerstore out
           cp commits.txt out/

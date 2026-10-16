@@ -42,6 +42,12 @@ for rep in $(seq "$reps"); do
 			kind export logs --name bench "$out/$store-$rep-kind-logs" >/dev/null 2>&1 || true
 			exit 1
 		}
+		# Without rate limits kube-burner opens thousands of connections;
+		# through docker's port proxy on 127.0.0.1 they run out of local
+		# ports. The node's own address skips the proxy (its certificate
+		# names that address).
+		node=$(docker inspect -f '{{(index .NetworkSettings.Networks "kind").IPAddress}}' bench-control-plane)
+		kubectl config set-cluster kind-bench --server "https://$node:6443" >/dev/null
 		# The kind node's CPU and memory every 10 s, to see what failed.
 		while sleep 10; do docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-control-plane; done >"$out/$store-$rep.stats" 2>&1 &
 		sampler=$!
