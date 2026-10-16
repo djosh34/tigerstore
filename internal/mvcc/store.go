@@ -416,9 +416,13 @@ func (c Change) PrevLease() int64 {
 }
 
 // Event builds the watch event of the change. The previous value is set
-// when withPrev is true and the key existed before. Values that only the
-// disk has come as Fills, from TakeFills; the event holds their positions,
-// so a later compaction does not change it.
+// when withPrev is true and the key existed at the revision before, as
+// etcd reads it there: a Txn that put a key and then deleted it sends the
+// delete with the key as it was before the Txn, not with the put's value.
+// As in etcd, a put that creates its key (create equals mod) has none,
+// also when the same Txn deleted the key before.
+// Values that only the disk has come as Fills, from TakeFills; the event
+// holds their positions, so a later compaction does not change it.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	s := c.s
 	v := &c.k.vers[c.i]
@@ -430,8 +434,13 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 		}
 		ev = &mvccpb.Event{Type: mvccpb.Event_PUT, Kv: kv}
 	}
-	if withPrev && c.i > 0 && c.k.vers[c.i-1].ver != 0 {
-		prev, err := s.kv(c.k, &c.k.vers[c.i-1])
+	j := c.i - 1
+	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
+		j--
+	}
+	create := v.ver != 0 && v.create == v.mod.main
+	if withPrev && !create && j >= 0 && c.k.vers[j].ver != 0 {
+		prev, err := s.kv(c.k, &c.k.vers[j])
 		if err != nil {
 			return nil, err
 		}

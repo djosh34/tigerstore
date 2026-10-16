@@ -1,0 +1,116 @@
+# The planted bugs guard the checkers, the simulator and the chaos
+# harness. They run on the push to main, nightly, and on a pull request
+# that changes one of those. This workflow is not part of the required
+# check ci.
+name: planted
+
+on:
+  pull_request:
+    paths:
+      - "check/**"
+      - "internal/sim/**"
+      - "cmd/chaos/**"
+      - "chaos/**"
+      - ".github/workflows/planted.yml"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planted-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Every planted bug (internal/planted) in turn must be caught within its
+  # seed budget; TestPlanted fails otherwise, and a crash is a failure too.
+  # TestPlantedInventory checks that BUGS names every bug. A bug reproduces
+  # with go test -tags planted ./internal/sim/ -run 'TestPlanted$' -v -args -planted=<bug>
+  planted:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      BUGS: B01a B01b B02 B03 B04a B04b B04c B05 B06a B06b B06c B06d B07 B08 B09a B09b B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20 B21 B22 B23 B24 B25 B26 B27
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -c -tags planted -o "$RUNNER_TEMP/bin/" ./internal/sim ./internal/node ./internal/peer
+      - name: Catch every planted bug
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          (cd internal/sim && "$RUNNER_TEMP/bin/sim.test" -test.run 'TestPlantedInventory$') || { status=1; echo "::error::TestPlantedInventory failed"; }
+          for bug in $BUGS; do
+            echo "::group::$bug"
+            for pkg in sim node peer; do
+              (cd "internal/$pkg" && "$RUNNER_TEMP/bin/$pkg.test" -test.run 'TestPlanted$' -test.v -test.timeout 28m -planted="$bug") || { status=1; echo "::error::$bug was not caught in internal/$pkg"; }
+            done
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+  # The chaos job must be able to fail: with a planted bug built in, the
+  # checker that bug breaks must report its own finding. B01a serves
+  # linearizable reads like serializable ones (a stale read), which
+  # Porcupine and the witness checker in each mode must find; B06c drops
+  # previous values from watch events, B09a gives each key of a write its
+  # own revision. Each pair of bug and checker runs seeds 1 and 2 in turn.
+  chaos-planted:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: |
+          for bug in B01a B06c B09a; do
+            go build -tags planted -ldflags "-X github.com/djosh34/tigerstore/internal/planted.Active=$bug" -o "$RUNNER_TEMP/tigerstore-$bug" ./cmd/tigerstore
+          done
+          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Each planted bug must be caught by its checker
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for row in "B01a:Linearizable" "B01a:Witnessed (log)" "B01a:Witnessed (revisions)" "B06c:Watches" "B09a:Revisions"; do
+            bug=${row%%:*} checker=${row#*:}
+            out="$RUNNER_TEMP/chaos-out/$bug-${checker//[ ()]/}"
+            echo "::group::$bug, $checker"
+            caught=0
+            for seed in 1 2; do
+              if "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore-$bug" -seed "$seed" -out "$out"; then
+                echo "seed $seed passed with the bug built in"
+                continue
+              fi
+              # Caught only if the named checker itself found the bug, not
+              # only a shared precondition such as the coverage floor.
+              # For Linearizable and the witness checker, a timeout or a
+              # search that ran out of candidates is not a catch.
+              if jq -e --arg c "$checker" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))) and ((.name | startswith("Witnessed") | not) or (.checker_error | test("answers it|real time allows|returned before it was called"))))' "$out/seed-$seed/checks.json" >/dev/null; then
+                echo "seed $seed: $checker caught it"
+                caught=1
+              else
+                echo "seed $seed failed, but not by $checker on a complete history"
+              fi
+            done
+            echo "::endgroup::"
+            if [ "$caught" != 1 ]; then
+              echo "::error::$checker did not catch $bug"
+              status=1
+            fi
+          done
+          exit "$status"
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chaos-planted
+          path: ${{ runner.temp }}/chaos-out
+          retention-days: 30

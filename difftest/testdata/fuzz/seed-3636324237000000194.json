@@ -1,0 +1,79 @@
+{
+	"name": "seed-3636324237000000194",
+	"ops": [
+		{
+			"kind": "put",
+			"key": 4,
+			"value": "djI3MQ=="
+		},
+		{
+			"kind": "txn",
+			"compare": [
+				{
+					"key": 2,
+					"target": "CREATE",
+					"result": "LESS",
+					"number": -1
+				}
+			],
+			"success": [
+				{
+					"kind": "put",
+					"key": 3,
+					"value": "djc3OQ==",
+					"lease": 1,
+					"prevKV": true
+				},
+				{
+					"kind": "get",
+					"key": 4,
+					"limit": 2
+				}
+			],
+			"failure": [
+				{
+					"kind": "get",
+					"key": 3
+				},
+				{
+					"kind": "put",
+					"value": "gbQvhyzv42bP2WN0r/ISJ8fyMcOzIzOWNLN4cshndDisqrHT1NCaigod4MDsQ/5JW1N6TxNbu4XX2faWTDoZI/36dl4LcbTKENERMmtpKOJ0TAwBSq7wbBFr+lDkpIS82aYCMTuj3EkfIgiBDe8HNX7fACMZKDtVCZNnms3fIm5Q6qKZ4eJ9xS9DIa177E4Ldy23JWMc5sY1Rfr+zY1Ar4IXS69Pp5cFbvII0IZfrSf3d5GCp6sW1QiymqzIwEQSK21BnuqUQAh4Zylxhvdk8w2jf1Yq0ZX1eY/29d84XnG6m974Bmd/83i5S85JCo/vzDCVHQvDAcrcYqhJ3dWNAQ=="
+				}
+			]
+		},
+		{
+			"kind": "txn",
+			"success": [
+				{
+					"kind": "put",
+					"key": 5
+				},
+				{
+					"kind": "del",
+					"key": 3,
+					"end": -1
+				},
+				{
+					"kind": "get",
+					"key": 1,
+					"limit": 1
+				}
+			],
+			"failure": [
+				{
+					"kind": "del",
+					"key": 2
+				}
+			]
+		},
+		{
+			"kind": "watch",
+			"key": 1,
+			"end": -1,
+			"rev": 3,
+			"watch": {
+				"prevKV": true
+			}
+		}
+	]
+}
