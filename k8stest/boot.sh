@@ -69,6 +69,13 @@ done
 export ETCDCTL_ENDPOINTS="https://$gateway:20010,https://$gateway:20020,https://$gateway:20030"
 export ETCDCTL_CACERT="$root/certs/ca.pem" ETCDCTL_CERT="$root/certs/client.pem" ETCDCTL_KEY="$root/certs/client-key.pem"
 export ETCDCTL_COMMAND_TIMEOUT=5s
+{
+  echo "ETCDCTL_ENDPOINTS=$ETCDCTL_ENDPOINTS"
+  echo "ETCDCTL_CACERT=$ETCDCTL_CACERT"
+  echo "ETCDCTL_CERT=$ETCDCTL_CERT"
+  echo "ETCDCTL_KEY=$ETCDCTL_KEY"
+  echo "ETCDCTL_COMMAND_TIMEOUT=30s"
+} >> "$GITHUB_ENV"
 for attempt in $(seq 30); do
   if etcdctl endpoint health; then break; fi
   sleep 1
@@ -86,13 +93,6 @@ docker exec tigerstore-control-plane cat /etc/kubernetes/manifests/kube-apiserve
 docker exec tigerstore-control-plane test ! -e /etc/kubernetes/manifests/etcd.yaml
 kubectl create configmap external-store-proof --from-literal=store="$store"
 for endpoint in ${ETCDCTL_ENDPOINTS//,/ }; do
-  ETCDCTL_ENDPOINTS="$endpoint" etcdctl get /registry/configmaps/default/external-store-proof --count-only -w json | jq -e '.count == 1'
+  ETCDCTL_ENDPOINTS="$endpoint" etcdctl get /registry/configmaps/default/external-store-proof --keys-only -w json | jq -e '.count == 1'
 done
 kubectl delete configmap external-store-proof
-{
-  echo "ETCDCTL_ENDPOINTS=$ETCDCTL_ENDPOINTS"
-  echo "ETCDCTL_CACERT=$ETCDCTL_CACERT"
-  echo "ETCDCTL_CERT=$ETCDCTL_CERT"
-  echo "ETCDCTL_KEY=$ETCDCTL_KEY"
-  echo "ETCDCTL_COMMAND_TIMEOUT=30s"
-} >> "$GITHUB_ENV"
