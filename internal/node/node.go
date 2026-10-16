@@ -345,7 +345,7 @@ type Node struct {
 	core      *core.Node
 	log       *diskLog
 	inbox     chan input
-	persistQ  chan []core.PersistJob
+	persistQ  chan persistBatch
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
@@ -676,7 +676,7 @@ func (n *Node) open() error {
 		n.log.mu.Unlock()
 	}
 	n.core = c
-	n.persistQ = make(chan []core.PersistJob, maxBacklog)
+	n.persistQ = make(chan persistBatch, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
@@ -932,7 +932,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	waiters := map[uint64]waiter{}
 	var groups []completions
 	groupOf := map[Completer]int{}
-	var backlog [][]core.PersistJob
+	var backlog []persistBatch
 	// chunks are checkpoint parts for the writer; pace wakes the committer
 	// to copy the next one once the writer took them all, so a slow disk
 	// slows the copy instead of piling parts up in memory.
@@ -947,8 +947,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if len(backlog) >= maxBacklog {
 			inbox = nil
 		}
-		var toDisk chan<- []core.PersistJob
-		var next []core.PersistJob
+		var toDisk chan<- persistBatch
+		var next persistBatch
 		if len(backlog) > 0 {
 			toDisk, next = n.persistQ, backlog[0]
 		}
@@ -991,8 +991,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 			}
+			n.logPersistTiming(done)
 		case toDisk <- next:
-			backlog[0] = nil
+			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
 			continue
 		case toWriter <- chunk:
@@ -1018,7 +1019,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
-			backlog = append(backlog, eff.Persist)
+			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
@@ -1191,8 +1192,16 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 // persistDone reports one group of synced jobs, or the error that stops
 // the node.
 type persistDone struct {
-	jobs []core.PersistJob
-	err  error
+	jobs   []core.PersistJob
+	err    error
+	timing persistTiming
+}
+
+// persistBatch starts its clock before the committer's backlog, not when
+// the writer receives it. Coalesced batches keep the oldest queue time.
+type persistBatch struct {
+	jobs   []core.PersistJob
+	queued time.Time
 }
 
 // syncsInFlight is how many written groups may wait for their sync.
@@ -1205,6 +1214,8 @@ type written struct {
 	f              wal.File
 	start          time.Time
 	entries, bytes int
+	timing         persistTiming
+	flushed        time.Time
 }
 
 // syncedGroup is a written group after its sync, or after the error that
@@ -1233,6 +1244,9 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	// snapshot installation and cleaning wait for it before changing
 	// the segment or the roots it reads in afterSync.
 	report := func(g written, err error) error {
+		if g.timing.reporting.IsZero() {
+			g.timing.reporting = time.Now()
+		}
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
@@ -1243,7 +1257,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		if err == nil && d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
 		}
-		done := persistDone{jobs: g.jobs, err: err}
+		done := persistDone{jobs: g.jobs, err: err, timing: g.timing}
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():
@@ -1274,7 +1288,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 	}
 	for {
-		var jobs []core.PersistJob
+		var pending persistBatch
 		queue, cleanQ := n.persistQ, n.cleanQ
 		if inFlight == syncsInFlight {
 			queue = nil
@@ -1283,7 +1297,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			cleanQ = nil
 		}
 		select {
-		case jobs = <-queue:
+		case pending = <-queue:
 		case s := <-synced:
 			inFlight--
 			if s.err != nil {
@@ -1322,12 +1336,15 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		for {
 			select {
 			case js := <-n.persistQ:
-				jobs = append(jobs, js...)
+				pending.jobs = append(pending.jobs, js.jobs...)
 			default:
 				break more
 			}
 		}
+		jobs := pending.jobs
 		g := written{jobs: jobs, start: time.Now()}
+		g.timing.queued = pending.queued
+		g.timing.queue = g.start.Sub(pending.queued)
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
@@ -1353,8 +1370,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
 		wrote := time.Now()
+		g.timing.append = wrote.Sub(g.start)
 		err := w.Flush()
-		writeTime := time.Since(wrote)
+		g.flushed = time.Now()
+		writeTime := g.flushed.Sub(wrote)
+		g.timing.flush = writeTime
 		m.WALWrite.Observe(writeTime.Seconds())
 		if writeTime > n.cfg.Tick {
 			n.logf("slow log flush: %d bytes in %v", buffered, writeTime)
@@ -1379,8 +1399,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			return
 		}
 		syncStart := time.Now()
+		g.timing.syncQueue = syncStart.Sub(g.flushed)
 		err = w.Sync()
 		syncTime := time.Since(syncStart)
+		g.timing.rotation = syncTime
+		g.timing.reporting = syncStart.Add(syncTime)
 		m.WALFsync.Observe(syncTime.Seconds())
 		if syncTime > n.cfg.Tick {
 			n.logf("slow log rotation: %v", syncTime)
@@ -1419,8 +1442,8 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				f = g.f
 			}
 		}
+		start := time.Now()
 		if err == nil && f != nil {
-			start := time.Now()
 			if n.cfg.BeforeSync != nil {
 				n.cfg.BeforeSync()
 			}
@@ -1431,7 +1454,11 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 				n.logf("slow log sync: %v", syncTime)
 			}
 		}
+		end := time.Now()
 		for _, g := range batch {
+			g.timing.syncQueue = start.Sub(g.flushed)
+			g.timing.sync = end.Sub(start)
+			g.timing.reporting = end
 			err = report(g, err)
 			synced <- syncedGroup{g: g, err: err}
 		}
