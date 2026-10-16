@@ -92,15 +92,24 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption, a leader stalled long enough to hand over and a link 10 times
-	// slower than its other direction are rare in one run, but a set of
-	// seeds must see each. A stopped gray leader is too rare for the rule
-	// (#183) and only reported until that is fixed.
+	// Corruption, a leader stalled long enough to hand over and a link 10
+	// times slower than its other direction are rare in one run, but a set
+	// of seeds must see each.
 	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
-			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.GrayLeaderStops, total.RecoveryCrashes)
+		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery; each must happen",
+			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes)
 	}
+	// A gray leader stopped by the commit watchdog is rarer: 22 of seeds 1
+	// to 2000 had one, 1.1%, as gray periods on the leader mostly end
+	// before three election timeouts (#183). Over 2000 seeds even 0.7%,
+	// the low end of that estimate, leaves less than one chance in a
+	// million of none, so the rule needs that many; CI's shards of 400 do
+	// not reach it, the seed campaign does.
+	if ran >= 2000 && !t.Failed() && total.GrayLeaderStops == 0 {
+		t.Fatalf("%d seeds: no gray leader stopped; at least one must", ran)
+	}
+	t.Logf("%d seeds: %d stopped gray leaders", ran, total.GrayLeaderStops)
 }
 
 // checkers runs the independent checkers of package check on a run:
