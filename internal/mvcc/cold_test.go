@@ -16,11 +16,11 @@ type coldHeap struct {
 	disk uint64
 }
 
-func (h *coldHeap) Read(r Ref, arena *[]byte) ([]byte, bool, error) {
+func (h *coldHeap) Read(r Ref) ([]byte, bool, error) {
 	if r.Index <= h.disk {
 		return nil, false, nil
 	}
-	return h.Heap.Read(r, arena)
+	return h.Heap.Read(r)
 }
 
 // evict puts every value so far on disk only.
@@ -32,7 +32,7 @@ func fillAll(t *testing.T, s *Store, h *coldHeap) int {
 	t.Helper()
 	fills := s.TakeFills()
 	for _, f := range fills {
-		b, _, err := h.Heap.Read(f.Ref, nil)
+		b, _, err := h.Heap.Read(f.Ref)
 		if err != nil {
 			t.Fatal(err)
 		}

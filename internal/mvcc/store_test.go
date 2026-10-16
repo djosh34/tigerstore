@@ -424,11 +424,11 @@ type swapped struct {
 	from, to uint64
 }
 
-func (s *swapped) Read(r Ref, arena *[]byte) ([]byte, bool, error) {
+func (s *swapped) Read(r Ref) ([]byte, bool, error) {
 	if r.Index == s.from {
 		r.Index = s.to
 	}
-	return s.Heap.Read(r, arena)
+	return s.Heap.Read(r)
 }
 
 // TestValueChecksum reads a value from the wrong place, with the same

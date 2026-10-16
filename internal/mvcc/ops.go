@@ -108,16 +108,9 @@ func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	if !res.values {
 		return res, nil
 	}
-	// The values of an answer with several take one allocation; make
-	// zeroes it, which a copy of one value alone does not need.
-	var arena *[]byte
-	if len(res.KVs) > 1 {
-		b := make([]byte, 0, values)
-		arena = &b
-	}
 	for i := range res.KVs {
 		kv := &res.KVs[i]
-		if err := s.fill(kv.Key, kv.ref, &kv.Value, arena); err != nil {
+		if err := s.fill(kv.Key, kv.ref, &kv.Value); err != nil {
 			return RangeResult{}, err
 		}
 	}
@@ -133,7 +126,7 @@ func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, e
 	resp := res.Response()
 	if res.values {
 		for i := range res.KVs {
-			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value, nil); err != nil {
+			if err := w.s.fill(res.KVs[i].Key, res.KVs[i].ref, &resp.Kvs[i].Value); err != nil {
 				return nil, err
 			}
 		}
@@ -242,7 +235,7 @@ func (s *Store) readNow(kvs []KV) error {
 	var cold []Fill
 	for i := range kvs {
 		kv := &kvs[i]
-		b, ok, err := s.value(kv.Key, kv.ref, nil)
+		b, ok, err := s.value(kv.Key, kv.ref)
 		if err != nil {
 			return err
 		}
@@ -617,7 +610,7 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		if c.Target == pb.Compare_VALUE {
 			// Only a compare on the value reads it.
 			var in bool
-			if kv.Value, in, err = w.s.value(k.key, v.value, nil); err != nil {
+			if kv.Value, in, err = w.s.value(k.key, v.value); err != nil {
 				return false
 			}
 			if !in {
