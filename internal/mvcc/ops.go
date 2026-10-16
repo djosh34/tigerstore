@@ -362,7 +362,7 @@ func (w *writer) checkPut(p *PutOp) error {
 		return rpctypes.ErrGRPCLeaseNotFound
 	}
 	if p.IgnoreValue || p.IgnoreLease {
-		k, ok := w.s.keys.Get(&keyIndex{key: p.Key})
+		k, ok := w.s.get(p.Key)
 		if !ok {
 			return rpctypes.ErrGRPCKeyNotFound
 		}
@@ -383,7 +383,7 @@ func (w *writer) countPrevRead(p *PutOp) {
 
 // latest returns the newest version of key if the key exists now.
 func (w *writer) latest(key []byte) (*keyIndex, *version) {
-	k, ok := w.s.keys.Get(&keyIndex{key: key})
+	k, ok := w.s.get(key)
 	if !ok {
 		return nil, nil
 	}

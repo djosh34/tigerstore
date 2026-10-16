@@ -215,6 +215,8 @@ func check(key []byte, r Ref, b []byte) error {
 // Store is the key index with every revision since the last compaction.
 type Store struct {
 	keys       *btree.BTreeG[*keyIndex]
+	// probe is the key a lookup searches for, so that it allocates none.
+	probe keyIndex
 	rev        int64
 	compactRev int64
 	values     Values
@@ -289,7 +291,7 @@ func (s *Store) Leaving(index uint64, fn func(Ref)) {
 
 // Current reports whether r names the value of key's newest version.
 func (s *Store) Current(key []byte, r Ref) bool {
-	k, ok := s.keys.Get(&keyIndex{key: key})
+	k, ok := s.get(key)
 	return ok && k.current(r)
 }
 
@@ -369,7 +371,7 @@ func (s *Store) CompactRev() int64 { return s.compactRev }
 func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 	switch {
 	case len(end) == 0:
-		if k, ok := s.keys.Get(&keyIndex{key: key}); ok {
+		if k, ok := s.get(key); ok {
 			fn(k)
 		}
 	case len(end) == 1 && end[0] == 0:
@@ -377,6 +379,15 @@ func (s *Store) ascend(key, end []byte, fn func(*keyIndex) bool) {
 	default:
 		s.keys.AscendRange(&keyIndex{key: key}, &keyIndex{key: end}, fn)
 	}
+}
+
+// get returns the index entry of key. No lookup runs inside another, so
+// one probe serves them all.
+func (s *Store) get(key []byte) (*keyIndex, bool) {
+	s.probe.key = key
+	k, ok := s.keys.Get(&s.probe)
+	s.probe.key = nil
+	return k, ok
 }
 
 // Change is one key change made by a write request.
@@ -436,7 +447,7 @@ func (s *Store) Changes() []Change { return s.changes }
 // Refs returns the positions of the values of every version of a key.
 // The simulator uses them to damage a value on disk.
 func (s *Store) Refs(key []byte) []Ref {
-	k, ok := s.keys.Get(&keyIndex{key: key})
+	k, ok := s.get(key)
 	if !ok {
 		return nil
 	}

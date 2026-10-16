@@ -1005,10 +1005,12 @@ const sizeRequestID = 1 << 63
 // InternalRaftRequest whose size etcd's server limits for a write, or nil
 // for a request that does not go through Raft.
 func validate(op proto.Message, maxTxnOps int) (*pb.InternalRaftRequest, error) {
+	if r, ok := op.(*pb.RangeRequest); ok {
+		// Reads are not sized; they make no request to size.
+		return nil, mvcc.CheckRange(r)
+	}
 	r := &pb.InternalRaftRequest{Header: &pb.RequestHeader{ID: sizeRequestID}}
 	switch op := op.(type) {
-	case *pb.RangeRequest:
-		return nil, mvcc.CheckRange(op)
 	case *pb.PutRequest:
 		r.Put = op
 		return r, mvcc.CheckPut(op)
