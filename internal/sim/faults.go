@@ -226,6 +226,9 @@ type checkpoint struct {
 	applied uint64
 	disks   []*simfs.Disk
 	bad     []bool
+	// runs are the nodes' run numbers, which a real node keeps on its
+	// disk with the log.
+	runs []uint64
 }
 
 func (s *Sim) newCheckpoint() *checkpoint {
@@ -233,6 +236,7 @@ func (s *Sim) newCheckpoint() *checkpoint {
 	for _, n := range s.nodes {
 		c.disks = append(c.disks, n.disk.Durable())
 		c.bad = append(c.bad, n.corrupted)
+		c.runs = append(c.runs, n.runs)
 	}
 	return c
 }
@@ -300,6 +304,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 			d = simfs.New()
 		}
 		r.addNode(i, d.Durable())
+		r.nodes[i].runs = c.runs[i]
 		if i == erased {
 			r.nodes[i].fenced = true
 			continue
