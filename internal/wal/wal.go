@@ -210,15 +210,16 @@ type WAL struct {
 	seg File
 	seq uint64
 	// version is the format of the newest segment, size where its records
-	// end and fileSize the size of its file, which a reused one may make
-	// larger than size.
-	version        uint32
-	size, fileSize int64
-	crc            uint32
-	last           uint64
-	buf            []byte
-	dirty          bool
-	maxSize        int64
+	// end, and reused whether its file was a spare, which may hold more
+	// after the records.
+	version uint32
+	size    int64
+	reused  bool
+	crc     uint32
+	last    uint64
+	buf     []byte
+	dirty   bool
+	maxSize int64
 	// spares is how many removed segments to keep as spare files.
 	spares int
 	// hs and root are the newest hard state and root, copied into every
@@ -353,7 +354,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		w.seg, w.size, w.fileSize, w.copied = f, good, good, true
+		w.seg, w.size, w.copied = f, good, true
 	}
 	if err := w.check(first); err != nil {
 		return nil, nil, err
@@ -629,10 +630,12 @@ func (w *WAL) newSegment() error {
 		return err
 	}
 	var f File
-	var size int64
 	if spare != "" {
-		if f, err = w.fs.Open(spare); err == nil {
-			size, err = fileSize(f)
+		// The removal that made the spare must be durable before the
+		// file gets a new header: else a crash could bring back the
+		// removed segment's name with this segment's header.
+		if err = w.fs.SyncDir(); err == nil {
+			f, err = w.fs.Open(spare)
 		}
 	} else {
 		f, err = w.fs.Create(segmentName(seq))
@@ -665,14 +668,8 @@ func (w *WAL) newSegment() error {
 	}
 	w.sealed = w.size
 	w.seq, w.seg, w.size, w.copied = seq, f, int64(headerSize), false
-	w.version, w.fileSize = Version, max(size, int64(headerSize))
+	w.version, w.reused = Version, spare != ""
 	return nil
-}
-
-// fileSize returns the size of f.
-func fileSize(f File) (int64, error) {
-	b, err := f.ReadAll()
-	return int64(len(b)), err
 }
 
 // spare returns the name of the oldest spare file, or "" if there is none.
@@ -821,7 +818,6 @@ func (w *WAL) Flush() error {
 	}
 	n, err := w.seg.WriteAt(w.buf, w.size)
 	w.size += int64(n)
-	w.fileSize = max(w.fileSize, w.size)
 	w.dirty = true
 	if err != nil {
 		if planted.On("B12") {
@@ -859,7 +855,7 @@ func (w *WAL) Sync() error {
 	}
 	// A reused file may hold more than the records; a segment that no
 	// longer changes ends with its last record.
-	if w.fileSize > w.size {
+	if w.reused {
 		if err := errors.Join(w.seg.Truncate(w.size), w.seg.Sync()); err != nil {
 			return err
 		}
@@ -872,7 +868,9 @@ func (w *WAL) Sync() error {
 
 // Segment returns the file of the newest segment, which Flush writes to.
 // A sync of it makes what Flush wrote durable, also while the next Flush
-// runs; only Sync starts a new segment, after Full.
+// runs; only Sync starts a new segment, after Full. Sync does not know of
+// such outside syncs and syncs again what they covered, which costs
+// little.
 func (w *WAL) Segment() File { return w.seg }
 
 // Full reports whether the newest segment is full: the next Sync starts a

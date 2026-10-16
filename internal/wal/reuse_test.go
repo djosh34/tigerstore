@@ -277,3 +277,44 @@ func TestCrashWithSpares(t *testing.T) {
 		t.Fatalf("only %d of 500 seeds made spares", spared)
 	}
 }
+
+// TestSpareOfAnUnsyncedRemoval renames a segment to a spare without
+// syncing the directory, as the cleaner does before its own sync, and
+// lets the next segment take the spare and crash before its directory
+// sync. The removal must be durable before the spare gets a new header:
+// else the old name comes back with the new segment's header, and the log
+// does not open.
+func TestSpareOfAnUnsyncedRemoval(t *testing.T) {
+	d := simfs.New()
+	w, _ := open(t, d)
+	w.SetSegmentBytes(1)
+	fill(t, w, 1, 6)
+	w.AppendRoot(wal.Root{Index: 5, Term: 1})
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	segs, _ := files(t, d)
+	if err := d.Rename(segs[0], "spare-0000000000000001"); err != nil {
+		t.Fatal(err)
+	}
+	renamed := false
+	d.Fault = func(op simfs.Op, _ string) error {
+		if op == simfs.OpRename {
+			renamed = true
+		}
+		if op == simfs.OpSyncDir && renamed {
+			return errCrash
+		}
+		return nil
+	}
+	w.Append(&wal.HardState{Term: 1, Vote: 2, Commit: 7}, []*raftpb.Entry{entry(1, 7, "v7")})
+	if err := w.Sync(); !errors.Is(err, errCrash) {
+		t.Fatalf("sync into the spare = %v", err)
+	}
+	d.Fault = nil
+	d.Crash(rand.New(rand.NewPCG(1, 2)))
+	_, rec := open(t, d)
+	if rec.Root.Index != 5 || rec.Last < 6 {
+		t.Fatalf("recovered %+v", rec)
+	}
+}
