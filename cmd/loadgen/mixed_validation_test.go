@@ -270,7 +270,7 @@ func TestMixedPreloadBoundsAndFrames(t *testing.T) {
 	m := newMsg()
 	m.bytes(putKey, w.live[0].key)
 	m.bytes(putValue, bytes.Repeat([]byte{7}, 33365))
-	tpl, err := newTemplate(c.addr, "/etcdserverpb.KV/Put", m, true)
+	tpl, err := newTemplate("/etcdserverpb.KV/Put", m, true)
 	if err != nil {
 		t.Fatal(err)
 	}

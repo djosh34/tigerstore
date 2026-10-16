@@ -145,7 +145,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 	ks := makeKeys(10)
 	revs := make([]int64, ks.n)
 	mk := func(m *msg) base {
-		tpl, err := newTemplate(ep, kvPath("txn"), m, true)
+		tpl, err := newTemplate(kvPath("txn"), m, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func TestEtcdCASDetectsStaleRevision(t *testing.T) {
 		return b
 	}
 	pre := mk(putRequest(ks.size, 64))
-	pre.tpl, err = newTemplate(ep, kvPath("put"), putRequest(ks.size, 64), true)
+	pre.tpl, err = newTemplate(kvPath("put"), putRequest(ks.size, 64), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestEtcdServerError(t *testing.T) {
 	defer c.close()
 	wk := newWorker(c, 1)
 	// A put with an empty key, which etcd rejects.
-	tpl, err := newTemplate(ep, kvPath("put"), putRequest(0, 64), true)
+	tpl, err := newTemplate(kvPath("put"), putRequest(0, 64), true)
 	if err != nil {
 		t.Fatal(err)
 	}

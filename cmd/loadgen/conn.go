@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -89,6 +90,15 @@ type conn struct {
 	wake  chan struct{} // tells the writer that a stream ended or a window or control frame changed
 	ready chan struct{} // closed on the server's first SETTINGS
 	gone  chan struct{} // closed when the reader exits
+
+	// enc encodes the request headers, which a header block indexes the
+	// first time it sends each field, as grpc-go's does; blocks holds the
+	// block last encoded for each path, which is the same bytes as long as
+	// no block added to the table since (gen). Both are guarded by mu.
+	enc    *hpack.Encoder
+	encBuf bytes.Buffer
+	gen    int
+	blocks map[string]headerBlock
 
 	// Reader-only state.
 	dec          *hpack.Decoder
@@ -219,22 +229,75 @@ func (c *conn) canStart(t *template, limit int) bool {
 		c.nextID < maxStreamID
 }
 
-// startStream appends the request t on a new stream for st and returns its
-// bytes, for the caller to fill in keys and values before the next flush.
-// The caller holds c.mu and has checked canStart.
+// startStream appends the request t on a new stream for st and returns the
+// bytes of its DATA frames, for the caller to fill in keys and values
+// before the next flush. The caller holds c.mu and has checked canStart.
 func (c *conn) startStream(st *stream, t *template) []byte {
 	st.id = c.nextID
 	c.nextID += 2
+	block := c.headerBlock(t.path)
+	c.out = appendFrameHeader(c.out, len(block), http2.FrameHeaders, http2.FlagHeadersEndHeaders)
+	binary.BigEndian.PutUint32(c.out[len(c.out)-4:], st.id)
+	c.out = append(c.out, block...)
 	start := len(c.out)
 	c.out = append(c.out, t.b...)
 	b := c.out[start:]
-	binary.BigEndian.PutUint32(b[5:], st.id)
 	for _, off := range t.frames {
 		binary.BigEndian.PutUint32(b[off+5:], st.id)
 	}
 	c.streams[st.id] = st
 	c.sendWin -= int64(t.dataLen)
 	return b
+}
+
+// headerBlock is a header block of a path, valid while the table is at
+// generation gen.
+type headerBlock struct {
+	b   []byte
+	gen int
+}
+
+// headerBlock returns the request headers of a call to path, encoded for
+// this connection: fields new to its table are added to it, as grpc-go's
+// encoder does, so later calls send one-byte references. Blocks go out in
+// the order they are encoded, under c.mu.
+func (c *conn) headerBlock(path string) []byte {
+	if h, ok := c.blocks[path]; ok && h.gen == c.gen {
+		return h.b
+	}
+	enc := c.encoder()
+	c.encBuf.Reset()
+	for _, f := range [...]hpack.HeaderField{
+		{Name: ":method", Value: "POST"},
+		{Name: ":scheme", Value: "http"},
+		{Name: ":path", Value: path},
+		{Name: ":authority", Value: c.addr},
+		{Name: "content-type", Value: "application/grpc"},
+		{Name: "te", Value: "trailers"},
+	} {
+		// Writing to a bytes.Buffer cannot fail.
+		_ = enc.WriteField(f)
+	}
+	b := bytes.Clone(c.encBuf.Bytes())
+	// A block of only indexed fields leaves the table as it is and can go
+	// out again; any other adds to it, and the blocks encoded before may
+	// no longer hold.
+	for _, h := range b {
+		if h&0x80 == 0 {
+			c.gen++
+			return b
+		}
+	}
+	c.blocks[path] = headerBlock{b: b, gen: c.gen}
+	return b
+}
+
+// encoder returns the connection's header encoder, made on first use.
+func (c *conn) encoder() *hpack.Encoder {
+	if c.enc == nil {
+		c.enc, c.blocks = hpack.NewEncoder(&c.encBuf), map[string]headerBlock{}
+	}
+	return c.enc
 }
 
 // appendControl appends the control frames the reader asked for. The caller
@@ -352,6 +415,9 @@ func (c *conn) onSettings(f *http2.SettingsFrame) error {
 			c.maxStreams = s.Val
 		case http2.SettingInitialWindowSize:
 			c.streamWin = s.Val
+		case http2.SettingHeaderTableSize:
+			c.encoder().SetMaxDynamicTableSizeLimit(s.Val)
+			c.gen++
 		case http2.SettingMaxFrameSize:
 			if s.Val < maxDataFrame {
 				return fmt.Errorf("server max frame size %d is below the HTTP/2 minimum", s.Val)

@@ -243,7 +243,7 @@ func run(cfg config) (*result, error) {
 	// base returns the per-connection parts of a load on worker i.
 	base := func(i int, path string, m *msg) (base, error) {
 		wk := workers[i]
-		t, err := newTemplate(wk.c.addr, path, m, true)
+		t, err := newTemplate(path, m, true)
 		if err != nil {
 			return base{}, err
 		}
@@ -462,7 +462,7 @@ func startWatches(cfg config, control *sync.WaitGroup, stop <-chan struct{}) ([]
 			return conns, nil, err
 		}
 		conns = append(conns, c)
-		t, err := newTemplate(c.addr, "/etcdserverpb.Watch/Watch", watchRequest([]byte(keyPrefix)), false)
+		t, err := newTemplate("/etcdserverpb.Watch/Watch", watchRequest([]byte(keyPrefix)), false)
 		if err != nil {
 			return conns, nil, err
 		}

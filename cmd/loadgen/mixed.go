@@ -281,7 +281,7 @@ func (w *mixedLoad) start(c *conn, st *stream) bool {
 		m = mixedTxn(call.key, call.op, call.value)
 		path = "/etcdserverpb.KV/Txn"
 	}
-	tpl, err := newTemplate(c.addr, path, m, true)
+	tpl, err := newTemplate(path, m, true)
 	if err != nil {
 		c.err = err
 		return false
@@ -521,7 +521,7 @@ func (p *mixedPreload) start(c *conn, st *stream) bool {
 		m.sub(txnSuccess, op)
 		batch = append(batch, k)
 	}
-	tpl, err := newTemplate(c.addr, "/etcdserverpb.KV/Txn", m, true)
+	tpl, err := newTemplate("/etcdserverpb.KV/Txn", m, true)
 	if err != nil {
 		c.err = err
 		return false
@@ -870,7 +870,7 @@ func runMixed(cfg config) (*result, error) {
 		watchConns = append(watchConns, c)
 		prefix := []byte("/registry/" + r + "/")
 		m := watchRequestFrom(prefix, revision+1)
-		tpl, err := newTemplate(c.addr, "/etcdserverpb.Watch/Watch", m, false)
+		tpl, err := newTemplate("/etcdserverpb.Watch/Watch", m, false)
 		if err != nil {
 			return nil, err
 		}
