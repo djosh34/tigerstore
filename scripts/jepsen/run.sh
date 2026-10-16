@@ -80,6 +80,18 @@ for node in n1 n2 n3; do
   docker exec "jepsen-$node" mkdir -p /opt/test-assets
   docker cp "$assets/server" "jepsen-$node:/opt/test-assets/server"
   for file in ca.crt peer.crt peer.key; do docker cp "$assets/$file" "jepsen-$node:/opt/test-assets/$file"; done
+  if [[ $NEMESIS == lazyfs ]]; then
+    docker exec "jepsen-$node" bash -euc '
+      cd /opt/jepsen/lazyfs
+      test "$(git rev-parse HEAD)" = 9c5685e828da8b5d113d2f9134f6671e481d7162
+      test -x lazyfs/build/lazyfs
+      git rev-parse HEAD
+      sha256sum lazyfs/build/lazyfs
+      test -c /dev/fuse || mknod /dev/fuse c 10 229
+      chmod a+rw /dev/fuse
+      sed -i "/user_allow_other/s/^#//g" /etc/fuse.conf
+    ' | tee "$out/lazyfs-binary-$node.txt"
+  fi
 done
 docker cp .jepsen/etcd jepsen-control:/jepsen/etcd
 # Record clocks' namespace identities. Docker shares CLOCK_REALTIME with host.

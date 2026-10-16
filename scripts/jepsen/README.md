@@ -38,7 +38,11 @@ They retain these pins:
   jetcd 0.8.5.
 - nurturenature/jepsen-docker `4b5707813a0a24966082ae4fd2dd223da447e499`.
   The three image digests are in `run.sh`.
-- Jepsen 0.3.11 installs LazyFS 0.3.0.
+- The pinned node image contains LazyFS 0.3.0 at
+  `9c5685e828da8b5d113d2f9134f6671e481d7162`. The runner verifies that revision
+  and records each executable's SHA-256 before mounting it. It does not rebuild
+  LazyFS during Jepsen setup. The first run timed out inside upstream
+  `install!`, before any traffic; the blocked subcommand was not identified.
 
 The adapter changes server installation, startup flags, primary lookup,
 readiness and checker scheduling. It preserves upstream clients, models,
