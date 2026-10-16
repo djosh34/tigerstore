@@ -4,7 +4,7 @@ on:
     inputs:
       suite:
         type: choice
-        options: [all, jepsen, robustness]
+        options: [all, jepsen, robustness, tools]
         default: all
       product_sha:
         description: Main commit to test, blank uses the pinned prework baseline
@@ -14,8 +14,19 @@ permissions:
 env:
   PRODUCT_SHA: ${{ inputs.product_sha || '40e7c0a009a08d6ba80f369dd2e66c9735512dbb' }}
 jobs:
+  tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check runner scripts and summary regressions
+        shell: bash
+        run: |
+          bash -n scripts/jepsen/run.sh scripts/jepsen/robustness.sh
+          pip install edn_format==0.7.5
+          python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
   jepsen:
-    if: inputs.suite != 'robustness'
+    if: inputs.suite == 'all' || inputs.suite == 'jepsen'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -41,7 +52,9 @@ jobs:
         shell: bash
         run: |
           pip install edn_format==0.7.5
-          python3 scripts/jepsen/summarize.py results/jepsen > results/jepsen/summary.json
+          mkdir -p results/jepsen
+          python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
+          python3 scripts/jepsen/summarize.py results/jepsen | tee results/jepsen/summary.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -49,7 +62,7 @@ jobs:
           path: results/jepsen
           retention-days: 30
   robustness:
-    if: inputs.suite != 'jepsen'
+    if: inputs.suite == 'all' || inputs.suite == 'robustness'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
