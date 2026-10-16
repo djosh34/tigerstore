@@ -240,7 +240,10 @@ type WAL struct {
 	// packs are the packs the newest root names, by number, and nextPack
 	// the number of the next one. named are the numbers of the newest
 	// root that Open read.
-	packs    []*Pack
+	packs []*Pack
+	// dropped are packs a root no longer names, whose files stay open
+	// until RemoveCleaned removes them, for reads that found them before.
+	dropped  []*Pack
 	nextPack uint64
 	named    []uint64
 }
@@ -924,15 +927,24 @@ func (w *WAL) locate(index uint64) (*run, int) {
 	return nil, 0
 }
 
-// readAt reads len(p) bytes at offset off of segment seq.
-func (w *WAL) readAt(seq uint64, p []byte, off int64) error {
+// reader returns the file of segment seq, opened for reads once.
+func (w *WAL) reader(seq uint64) (File, error) {
 	f, ok := w.readers[seq]
 	if !ok {
 		var err error
 		if f, err = w.fs.Open(segmentName(seq)); err != nil {
-			return err
+			return nil, err
 		}
 		w.readers[seq] = f
+	}
+	return f, nil
+}
+
+// readAt reads len(p) bytes at offset off of segment seq.
+func (w *WAL) readAt(seq uint64, p []byte, off int64) error {
+	f, err := w.reader(seq)
+	if err != nil {
+		return err
 	}
 	n, err := f.ReadAt(p, off)
 	if n == len(p) {
@@ -983,14 +995,31 @@ const MaxEntryBytes = 64 << 20
 // entry's record, a value record or a pack. The caller checks them against
 // the value's checksum.
 func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
+	r, at, err := w.ValueReader(index, off, n)
+	if err != nil {
+		return nil, err
+	}
 	b := make([]byte, n)
+	if k, err := r.ReadAt(b, at); k != len(b) {
+		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)
+	}
+	return b, nil
+}
+
+// ValueReader returns the file that holds the n bytes at offset off of
+// the data of entry index, and their offset in it: a segment or a pack.
+// The file stays open until the log removes it, or closes, so a caller
+// that reads it after letting go of the log must keep those from
+// running meanwhile.
+func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, error) {
 	if seq, at, ok := w.ValuePlace(index, off, n); ok {
-		return b, w.readAt(seq, b, at)
+		f, err := w.reader(seq)
+		return f, at, err
 	}
 	if p, at, ok := w.packPlace(index, off, n); ok {
-		return b, p.readAt(b, at)
+		return p.f, at, nil
 	}
-	return nil, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
+	return nil, 0, fmt.Errorf("%w: value at %d+%d of entry %d", ErrNotOnDisk, off, n, index)
 }
 
 // ValuePlace returns the segment, and the offset in its file, of the n

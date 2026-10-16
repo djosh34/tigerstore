@@ -83,8 +83,9 @@ type Config struct {
 	// CompactHashCheck feature gate on; 0 turns either check off
 	// (corrupt.go).
 	CorruptCheckTime, CompactHashCheckTime time.Duration
-	// BeforeRead, if set, runs before each read of a value from the log,
-	// and BeforeSync before each sync of the log. Tests use them to stall
+	// BeforeRead, if set, runs in each read of a value from the log, once
+	// it found where the value is and let go of the log's lock, and
+	// BeforeSync before each sync of the log. Tests use them to stall
 	// those reads and syncs.
 	BeforeRead, BeforeSync func()
 	Logf                   func(format string, args ...any)
@@ -368,11 +369,19 @@ type Node struct {
 // entries are: appends and reads take it, the fsync does not. Values in
 // segments that no longer change are read from a read-only mapping of the
 // file, a copy from the page cache instead of a read call.
+//
+// A value read finds its place under the lock and copies the bytes after
+// letting it go, so a read that waits for the disk does not hold up
+// appends (#165). It holds reading meanwhile. Whatever unmaps a segment
+// or closes a file of the log takes reading for writing, under the lock:
+// a removal or an unmap tries, and if a read is under way leaves it for
+// its next turn, so appends never wait for a read.
 type diskLog struct {
-	mu  sync.Mutex
-	w   *wal.WAL
-	fs  osfs.Dir
-	dir string
+	mu      sync.Mutex
+	reading sync.RWMutex
+	w       *wal.WAL
+	fs      osfs.Dir
+	dir     string
 	// sealed is the newest segment that no longer changes; maps holds the
 	// mappings of sealed segments by sequence number.
 	sealed uint64
@@ -388,7 +397,7 @@ type diskLog struct {
 	// bytes that cleaning wrote. maxWrite is the longest write and sync
 	// of a group, in nanoseconds.
 	used, cleaned, maxWrite atomic.Int64
-	// before runs before each value read; see Config.BeforeRead.
+	// before runs in each value read; see Config.BeforeRead.
 	before func()
 }
 
@@ -405,23 +414,37 @@ func (l *diskLog) Has(index uint64) bool {
 }
 
 func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
+	l.mu.Lock()
+	seq, at, ok := l.w.ValuePlace(index, off, n)
+	var m []byte
+	var r io.ReaderAt
+	var err error
+	if ok && seq <= l.sealed {
+		m, err = l.mapping(seq)
+	} else {
+		r, at, err = l.w.ValueReader(index, off, n)
+	}
+	if err != nil {
+		l.mu.Unlock()
+		return nil, err
+	}
+	l.reading.RLock()
+	l.mu.Unlock()
+	defer l.reading.RUnlock()
 	if l.before != nil {
 		l.before()
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	seq, at, ok := l.w.ValuePlace(index, off, n)
-	if !ok || seq > l.sealed {
-		return l.w.Value(index, off, n)
+	if m != nil {
+		if at+int64(n) > int64(len(m)) {
+			return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
+		}
+		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
-	m, err := l.mapping(seq)
-	if err != nil {
-		return nil, err
+	b := make([]byte, n)
+	if k, err := r.ReadAt(b, at); k != len(b) {
+		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)
 	}
-	if at+int64(n) > int64(len(m)) {
-		return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
-	}
-	return bytes.Clone(m[at : at+int64(n)]), nil
+	return b, nil
 }
 
 // mapping returns the mapping of sealed segment seq, mapping it first.
@@ -459,9 +482,19 @@ func (l *diskLog) synced() error {
 	return l.unmap(l.w.Oldest() - 1)
 }
 
-// unmap unmaps the segments up to upto, which are removed. The lock is
-// held.
+// unmap unmaps the segments up to upto, which are removed, unless a value
+// read is under way. The lock is held.
 func (l *diskLog) unmap(upto uint64) error {
+	gone := false
+	for seq := range l.maps {
+		gone = gone || seq <= upto
+	}
+	// A value read under way may copy from a mapping; the next sync
+	// unmaps it instead.
+	if !gone || !l.reading.TryLock() {
+		return nil
+	}
+	defer l.reading.Unlock()
 	var err error
 	for seq, m := range l.maps {
 		if seq <= upto {
@@ -477,6 +510,8 @@ func (l *diskLog) close() error {
 	if l.w == nil {
 		return nil
 	}
+	l.reading.Lock()
+	defer l.reading.Unlock()
 	err := l.w.Close()
 	for seq, m := range l.maps {
 		err = errors.Join(err, syscall.Munmap(m))
@@ -1327,8 +1362,12 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 			n.log.ckpts = append(n.log.ckpts, *j.Root)
 			// A fetch under way may read what the removal would take;
 			// the next root removes it.
-			if j.RemoveBelow > 0 && n.log.serving == 0 {
-				err = errors.Join(err, w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index), n.log.synced())
+			// So may a value read under way, which must not hold up
+			// the appends behind this sync (#165).
+			if j.RemoveBelow > 0 && n.log.serving == 0 && n.log.reading.TryLock() {
+				err = errors.Join(err, w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index))
+				n.log.reading.Unlock()
+				err = errors.Join(err, n.log.synced())
 				n.log.ckpts = []wal.Root{*j.Root}
 			}
 		}

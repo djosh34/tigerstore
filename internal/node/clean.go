@@ -413,8 +413,15 @@ func (c *cleaner) remove() error {
 	if l.serving > 0 {
 		return nil
 	}
+	// A value read under way may use a file the removal closes; the next
+	// tick tries again.
+	if !l.reading.TryLock() {
+		return nil
+	}
 	c.pending = nil
-	if err := l.w.RemoveCleaned(rm.upto, rm.drop); err != nil {
+	err := l.w.RemoveCleaned(rm.upto, rm.drop)
+	l.reading.Unlock()
+	if err != nil {
 		return err
 	}
 	return l.unmap(rm.upto)
@@ -437,9 +444,9 @@ func sleep(ctx context.Context, d time.Duration) bool {
 func (n *Node) installPacks(pr packRoot) error {
 	w := n.log.w
 	n.log.mu.Lock()
-	err := w.InstallPacks(pr.add, pr.drop)
+	w.InstallPacks(pr.add, pr.drop)
 	n.log.mu.Unlock()
-	err = errors.Join(err, w.Sync())
+	err := w.Sync()
 	n.log.mu.Lock()
 	err = errors.Join(err, n.log.synced())
 	n.log.mu.Unlock()
