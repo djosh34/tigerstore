@@ -64,7 +64,7 @@ func TestAnnouncementRun(t *testing.T) {
 	if v, run, has, err := parseAnnouncement(b); err != nil || v != 3 || run != 1234 || !has {
 		t.Fatalf("got %d, %d, %v, %v", v, run, has, err)
 	}
-	// A build before the base reads the version alone.
+	// A build before #174 reads the version alone.
 	var old wrapperspb.UInt32Value
 	if err := proto.Unmarshal(b, &old); err != nil || old.Value != 3 {
 		t.Fatalf("plain message: %v, %v", old.Value, err)
@@ -213,4 +213,24 @@ func TestOldBinaryRefusesToStart(t *testing.T) {
 			t.Log(err)
 		})
 	}
+}
+
+// TestNewRunAnnounces restarts a node with the same version: it still
+// announces, so that the state holds its new run and a late announcement
+// of the run before cannot count (#174).
+func TestNewRunAnnounces(t *testing.T) {
+	disk := simfs.New()
+	s := startSingleWith(t, disk, 1, func(cfg *Config) { cfg.Run = 1 }).capable()
+	if s.n.state.runs[1] != 1 {
+		t.Fatalf("run 1 announced, the state holds run %d", s.n.state.runs[1])
+	}
+	s = startSingleWith(t, disk, 2, func(cfg *Config) { cfg.Run = 2 })
+	for range 100 {
+		s.n.Tick()
+		s.run()
+		if s.n.state.runs[1] == 2 {
+			return
+		}
+	}
+	t.Fatalf("the restarted node never announced run 2; the state holds run %d", s.n.state.runs[1])
 }

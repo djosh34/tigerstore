@@ -167,11 +167,14 @@ func (n *Node) applyVersion(origin uint64, b []byte) error {
 }
 
 // announceVersion proposes the newest version this node supports until
-// the state holds it, again after each election timeout, as Raft may
-// drop a proposal.
+// the state holds it, from this run, again after each election timeout,
+// as Raft may drop a proposal.
 func (n *Node) announceVersion() {
 	own := ownVersion(n.cfg)
-	if n.state.supports[n.cfg.ID] == own || n.leader == raft.None {
+	// A new run announces even an unchanged version, so that its run
+	// supersedes those before it: a late announcement of an earlier one
+	// must not count.
+	if n.state.supports[n.cfg.ID] == own && n.state.runs[n.cfg.ID] == n.cfg.Run || n.leader == raft.None {
 		return
 	}
 	if n.announcedAt != 0 && n.now-n.announcedAt < int64(n.cfg.ElectionTicks) {

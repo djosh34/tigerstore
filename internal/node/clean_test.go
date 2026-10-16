@@ -267,7 +267,14 @@ func TestNoSpace(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("the log's files take %d bytes, past the budget of %d", m.DiskBytes, budget)
+			// Which files take the space, for #181.
+			ents, err := os.ReadDir(filepath.Join(dir, "wal"))
+			for _, e := range ents {
+				if info, err := e.Info(); err == nil {
+					t.Logf("%s: %d bytes", e.Name(), info.Size())
+				}
+			}
+			t.Fatalf("the log's files take %d bytes, past the budget of %d: %v", m.DiskBytes, budget, err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
