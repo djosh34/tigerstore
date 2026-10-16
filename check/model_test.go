@@ -142,3 +142,32 @@ func TestCompareTargets(t *testing.T) {
 		}
 	}
 }
+
+// TestTxnEventPrevKV checks the previous values of the events of a txn
+// that writes a key and then deletes it: the key as it was before the
+// txn, as etcd v3.7.2 sends them (#203), and none for a key that did not
+// exist then.
+func TestTxnEventPrevKV(t *testing.T) {
+	s := newState([]string{"a", "b"})
+	s.step(history.Request{Put: &history.PutRequest{Key: "a", Value: "old"}}, true)
+	o := s.step(history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
+		{Put: &history.PutRequest{Key: "a", Value: "new"}},
+		{Put: &history.PutRequest{Key: "b", Value: "new"}},
+		{Delete: &history.DeleteRequest{Key: "a", End: "c"}},
+	}}}, true)
+	old := history.KeyValue{Key: "a", Value: "old", CreateRevision: 2, ModRevision: 2, Version: 1}
+	want := []history.Event{
+		{Type: history.EventPut, KV: history.KeyValue{Key: "a", Value: "new", CreateRevision: 2, ModRevision: 3, Version: 2}, PrevKV: &old},
+		{Type: history.EventPut, KV: history.KeyValue{Key: "b", Value: "new", CreateRevision: 3, ModRevision: 3, Version: 1}},
+		{Type: history.EventDelete, KV: history.KeyValue{Key: "a", ModRevision: 3}, PrevKV: &old},
+		{Type: history.EventDelete, KV: history.KeyValue{Key: "b", ModRevision: 3}},
+	}
+	if len(o.events) != len(want) {
+		t.Fatalf("got %d events, want %d: %+v", len(o.events), len(want), o.events)
+	}
+	for i := range want {
+		if !sameEvent(o.events[i], want[i]) {
+			t.Errorf("event %d: %s", i, eventDiff(want[i], o.events[i], true))
+		}
+	}
+}

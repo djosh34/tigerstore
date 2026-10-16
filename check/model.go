@@ -320,6 +320,16 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 	next := s.rev + 1
 	changed := false
 	var events []history.Event
+	// An event's previous value is the key at the revision before the
+	// txn, as etcd reads it, not what an earlier op of the txn wrote.
+	was := map[string]history.KeyValue{}
+	prior := func(key string, cur history.KeyValue) history.KeyValue {
+		if kv, ok := was[key]; ok {
+			return kv
+		}
+		was[key] = cur
+		return cur
+	}
 	resp := &history.TxnResponse{Succeeded: ok, Results: make([]history.TxnOpResponse, len(ops))}
 	for i, op := range ops {
 		switch {
@@ -346,7 +356,7 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 			}
 			resp.Results[i].Put = pr
 			if withEvents {
-				events = append(events, putEvent(kv, prev))
+				events = append(events, putEvent(kv, prior(p.Key, prev)))
 			}
 		default:
 			d := op.Delete
@@ -364,7 +374,7 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 					dr.PrevKVs = append(dr.PrevKVs, prev)
 				}
 				if withEvents {
-					events = append(events, deleteEvent(prev, next))
+					events = append(events, deleteEvent(prev.Key, prior(prev.Key, prev), next))
 				}
 			}
 			resp.Results[i].Delete = dr
@@ -384,8 +394,14 @@ func putEvent(kv, prev history.KeyValue) history.Event {
 	return e
 }
 
-func deleteEvent(prev history.KeyValue, rev int64) history.Event {
-	return history.Event{Type: history.EventDelete, KV: history.KeyValue{Key: prev.Key, ModRevision: rev}, PrevKV: &prev}
+// deleteEvent is the delete of key at rev; prev is the key at the
+// revision before, with no previous value if it did not exist then.
+func deleteEvent(key string, prev history.KeyValue, rev int64) history.Event {
+	e := history.Event{Type: history.EventDelete, KV: history.KeyValue{Key: key, ModRevision: rev}}
+	if prev.Version != 0 {
+		e.PrevKV = &prev
+	}
+	return e
 }
 
 func (s *state) stepLeaseGrant(g *history.LeaseGrantRequest) outcome {
@@ -417,7 +433,7 @@ func (s *state) stepLeaseRevoke(r *history.LeaseRevokeRequest, withEvents bool) 
 		s.kvs[j] = history.KeyValue{}
 		changed = true
 		if withEvents {
-			events = append(events, deleteEvent(kv, next))
+			events = append(events, deleteEvent(kv.Key, kv, next))
 		}
 	}
 	if changed {
