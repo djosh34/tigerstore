@@ -20,13 +20,15 @@ import (
 //	header | value records | end record
 //
 // The header is a magic string, the format version and the pack's number.
-// The records are framed and chained like a segment's, starting from crc
-// 0, and the end record holds the number of values. A pack counts once a
+// The records are framed and chained like those of a segment of version
+// 1, starting from crc 0, and the end record holds the number of values. A pack counts once a
 // synced root names it. Open removes the packs that the newest root does
 // not name, which a crash left behind, and a named pack that is missing or
 // does not verify is ErrCorrupt.
 
 const (
+	// packVersion is the format version of packs.
+	packVersion    = 1
 	packMagic      = "tigerpck"
 	packPrefix     = "pack-"
 	packHeaderSize = len(packMagic) + 4 + 8
@@ -117,7 +119,7 @@ func (w *WAL) NewPack() (*PackWriter, error) {
 		return nil, err
 	}
 	buf := append(make([]byte, 0, packFlush+packFlush/4), packMagic...)
-	buf = binary.LittleEndian.AppendUint32(buf, Version)
+	buf = binary.LittleEndian.AppendUint32(buf, packVersion)
 	buf = binary.LittleEndian.AppendUint64(buf, id)
 	return &PackWriter{fs: w.fs, p: &Pack{id: id, f: f}, buf: buf}, nil
 }
@@ -247,8 +249,8 @@ func (p *Pack) read(data []byte) error {
 		binary.LittleEndian.Uint64(data[len(packMagic)+4:]) != p.id {
 		return fmt.Errorf("%w: bad header of pack %d", ErrCorrupt, p.id)
 	}
-	if v := binary.LittleEndian.Uint32(data[len(packMagic):]); v != Version {
-		return fmt.Errorf("wal: pack %d has format version %d; this build reads version %d", p.id, v, Version)
+	if v := binary.LittleEndian.Uint32(data[len(packMagic):]); v != packVersion {
+		return fmt.Errorf("wal: pack %d has format version %d; this build reads version %d", p.id, v, packVersion)
 	}
 	var crc uint32
 	for off := packHeaderSize; off < len(data); {

@@ -1,7 +1,8 @@
 // Package simfs is a simulated disk for one node. It keeps what a real
 // disk keeps across a crash: file contents up to the last Sync and the
 // directory as of the last SyncDir. A crash drops everything else, except
-// for a random torn part of unsynced appends.
+// for a random torn part of the unsynced writes: a prefix of them, in the
+// order they were made.
 //
 // It implements wal.FS and is deterministic for a given random source.
 package simfs
@@ -32,14 +33,32 @@ const (
 	OpSync
 	OpRemove
 	OpSyncDir
+	OpRename
 )
 
 type file struct {
 	data    []byte
 	durable []byte
+	// pending are the writes since the last sync, oldest first.
+	pending []write
 	// cut is set when a truncate removed synced bytes, so data no longer
 	// starts with durable.
 	cut bool
+}
+
+// write is one write: p at offset off.
+type write struct {
+	off int
+	p   []byte
+}
+
+// apply writes p at off into b, growing it with zeros as needed.
+func apply(b []byte, off int, p []byte) []byte {
+	if end := off + len(p); end > len(b) {
+		b = append(b, make([]byte, end-len(b))...)
+	}
+	copy(b[off:], p)
+	return b
 }
 
 var _ wal.FS = (*Disk)(nil)
@@ -63,27 +82,39 @@ func New() *Disk {
 }
 
 // Crash drops what was not made durable. Each file keeps its synced
-// content plus a random prefix of its unsynced appends, and with
-// probability 1/4 the last kept bytes are garbage, like a torn sector.
+// content plus a random prefix of the bytes of its unsynced writes, in
+// order, and with probability 1/4 the last kept bytes are garbage, like a
+// torn sector.
 func (d *Disk) Crash(rng *rand.Rand) {
 	d.names = make(map[string]*file, len(d.durable))
 	for _, name := range sortedNames(d.durable) {
 		f := d.durable[name]
 		kept := slices.Clone(f.durable)
-		if !f.cut && len(f.data) > len(f.durable) {
-			extra := f.data[len(f.durable):]
-			n := rng.IntN(len(extra) + 1)
-			kept = append(kept, extra[:n]...)
+		var stream []byte
+		for _, w := range f.pending {
+			stream = append(stream, w.p...)
+		}
+		if !f.cut && len(stream) > 0 {
+			n := rng.IntN(len(stream) + 1)
+			stream = stream[:n]
 			if n > 0 && rng.IntN(4) == 0 {
 				g := rng.IntN(n) + 1
-				for i := len(kept) - g; i < len(kept); i++ {
-					kept[i] = byte(rng.Uint32())
+				for i := n - g; i < n; i++ {
+					stream[i] = byte(rng.Uint32())
 				}
+			}
+			for _, w := range f.pending {
+				if len(stream) == 0 {
+					break
+				}
+				k := min(len(stream), len(w.p))
+				kept = apply(kept, w.off, stream[:k])
+				stream = stream[k:]
 			}
 		}
 		f.data = kept
 		f.durable = slices.Clone(kept)
-		f.cut = false
+		f.pending, f.cut = nil, false
 		d.names[name] = f
 	}
 }
@@ -139,7 +170,7 @@ func (d *Disk) Corrupt(rng *rand.Rand) bool {
 	}
 	copy(f.durable[at:at+n], slices.Clone(src[from:from+n]))
 	f.data = slices.Clone(f.durable)
-	f.cut = false
+	f.pending, f.cut = nil, false
 	return true
 }
 
@@ -151,7 +182,7 @@ func (d *Disk) CorruptFile(rng *rand.Rand, name string) bool {
 	}
 	f.durable[rng.IntN(len(f.durable))] ^= 1 << rng.IntN(8)
 	f.data = slices.Clone(f.durable)
-	f.cut = false
+	f.pending, f.cut = nil, false
 	return true
 }
 
@@ -237,6 +268,21 @@ func (d *Disk) Open(name string) (wal.File, error) {
 	return &Handle{d: d, f: f, name: name}, nil
 }
 
+// Rename gives file oldName the name newName, replacing any file of that
+// name. Like a creation, it only survives a crash after SyncDir.
+func (d *Disk) Rename(oldName, newName string) error {
+	if err := d.fault(OpRename, oldName); err != nil {
+		return err
+	}
+	f, ok := d.names[oldName]
+	if !ok {
+		return fs.ErrNotExist
+	}
+	delete(d.names, oldName)
+	d.names[newName] = f
+	return nil
+}
+
 // Remove deletes a file from the directory.
 func (d *Disk) Remove(name string) error {
 	if err := d.fault(OpRemove, name); err != nil {
@@ -300,17 +346,31 @@ func (h *Handle) ReadAt(p []byte, off int64) (int, error) {
 
 // Write appends a copy of p.
 func (h *Handle) Write(p []byte) (int, error) {
+	return h.WriteAt(p, int64(len(h.f.data)))
+}
+
+// WriteAt writes a copy of p at offset off, growing the file with zeros
+// up to off if it is shorter.
+func (h *Handle) WriteAt(p []byte, off int64) (int, error) {
 	if err := h.check(OpWrite); err != nil {
 		return 0, err
 	}
+	n, err := len(p), error(nil)
 	if rng := h.d.short; rng != nil {
 		h.d.short = nil
-		n := rng.IntN(len(p) + 1)
-		h.f.data = append(h.f.data, p[:n]...)
-		return n, ErrNoSpace
+		n, err = rng.IntN(len(p)+1), ErrNoSpace
 	}
-	h.f.data = append(h.f.data, p...)
-	return len(p), nil
+	if gap := int(off) - len(h.f.data); gap > 0 {
+		h.write(len(h.f.data), make([]byte, gap))
+	}
+	h.write(int(off), p[:n])
+	return n, err
+}
+
+func (h *Handle) write(off int, p []byte) {
+	p = slices.Clone(p)
+	h.f.data = apply(h.f.data, off, p)
+	h.f.pending = append(h.f.pending, write{off, p})
 }
 
 // Truncate cuts the file.
@@ -324,6 +384,12 @@ func (h *Handle) Truncate(size int64) error {
 	if size < int64(len(h.f.durable)) {
 		h.f.cut = true
 	}
+	// A later sync keeps only what is left of the writes before it.
+	for i, w := range h.f.pending {
+		if end := int64(w.off + len(w.p)); end > size {
+			h.f.pending[i].p = w.p[:max(0, size-int64(w.off))]
+		}
+	}
 	return nil
 }
 
@@ -333,17 +399,21 @@ func (h *Handle) Sync() error {
 		if errors.Is(err, ErrIO) && !h.f.cut {
 			// As on Linux, a failed writeback marks the pages clean: the
 			// unsynced bytes stay readable but never reach the disk, which
-			// keeps zeros there, and a later sync does not retry them.
-			h.f.durable = append(h.f.durable, make([]byte, len(h.f.data)-len(h.f.durable))...)
+			// keeps what it had there, zeros past its end, and a later
+			// sync does not retry them.
+			h.f.durable = append(h.f.durable, make([]byte, max(0, len(h.f.data)-len(h.f.durable)))...)
+			h.f.pending = nil
 		}
 		return err
 	}
 	if h.f.cut {
 		h.f.durable = slices.Clone(h.f.data)
-		h.f.cut = false
 	} else {
-		h.f.durable = append(h.f.durable, h.f.data[len(h.f.durable):]...)
+		for _, w := range h.f.pending {
+			h.f.durable = apply(h.f.durable, w.off, w.p)
+		}
 	}
+	h.f.pending, h.f.cut = nil, false
 	return nil
 }
 
@@ -378,6 +448,11 @@ func (d *Disk) Rot(name string, off int) {
 	if off < len(f.data) {
 		f.data[off] ^= 1
 	}
+	for _, w := range f.pending {
+		if off >= w.off && off < w.off+len(w.p) {
+			w.p[off-w.off] ^= 1
+		}
+	}
 }
 
 // FlipDurable flips the lowest bit of one synced byte, like a bit that
@@ -386,5 +461,5 @@ func (d *Disk) FlipDurable(name string, off int) {
 	f := d.durable[name]
 	f.durable[off] ^= 1
 	f.data = slices.Clone(f.durable)
-	f.cut = false
+	f.pending, f.cut = nil, false
 }

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -82,22 +84,28 @@ func (d Dir) Usage() (int64, error) {
 	return n, nil
 }
 
-// Create makes a new empty file.
+// Create makes a new empty file. Files are not opened with O_APPEND, so
+// that WriteAt writes where it says.
 func (d Dir) Create(name string) (wal.File, error) {
-	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, err
 	}
 	return file{f, d.noSync}, nil
 }
 
-// Open opens an existing file for reading and appending.
+// Open opens an existing file for reading and writing.
 func (d Dir) Open(name string) (wal.File, error) {
-	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR|os.O_APPEND, 0)
+	f, err := os.OpenFile(filepath.Join(d.path, name), os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
 	return file{f, d.noSync}, nil
+}
+
+// Rename renames a file. The rename only survives a crash after SyncDir.
+func (d Dir) Rename(oldName, newName string) error {
+	return os.Rename(filepath.Join(d.path, oldName), filepath.Join(d.path, newName))
 }
 
 // Remove deletes a file.
@@ -124,11 +132,25 @@ type file struct {
 	noSync bool
 }
 
+// Sync makes the content durable with fdatasync, which also persists a
+// changed size but not times: on blocks that are allocated and written
+// already, it commits nothing to the journal of ext4.
 func (f file) Sync() error {
 	if f.noSync {
 		return nil
 	}
-	return f.File.Sync()
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	cerr := rc.Control(func(fd uintptr) {
+		for {
+			if err = unix.Fdatasync(int(fd)); !errors.Is(err, unix.EINTR) {
+				return
+			}
+		}
+	})
+	return errors.Join(cerr, err)
 }
 
 func (f file) ReadAll() ([]byte, error) {

@@ -8,10 +8,17 @@
 //
 //	u32 payload length | u32 crc | u8 type | payload
 //
-// The crc covers type and payload and starts from the crc of the record
-// before it, so a stale or misplaced record does not verify. The header
-// carries the format version and the crc that the segment's first record
-// starts from.
+// The crc covers the segment's sequence number, type and payload and
+// starts from the crc of the record before it, so a stale or misplaced
+// record does not verify, nor one left from an earlier segment in a reused
+// file. The header carries the format version and the crc that the
+// segment's first record starts from.
+//
+// A new segment reuses the file of a removed one when there is a spare:
+// removal renames up to MaxSpares segments to spare names instead of
+// deleting them, and the log writes at its own offset, so a sync into a
+// reused file changes no block allocation and, on ext4, commits no
+// journal.
 //
 // An entry record replaces every entry at or after its index, so a
 // truncated Raft suffix and its replacement are synced together. A root
@@ -54,6 +61,9 @@ type FS interface {
 	Open(name string) (File, error)
 	// Remove deletes a file. The removal only survives a crash after SyncDir.
 	Remove(name string) error
+	// Rename gives file oldName the name newName, replacing any file of
+	// that name. The rename only survives a crash after SyncDir.
+	Rename(oldName, newName string) error
 	// SyncDir makes creations and removals durable.
 	SyncDir() error
 }
@@ -64,8 +74,11 @@ type File interface {
 	ReadAll() ([]byte, error)
 	// ReadAt reads len(p) bytes at offset off, as io.ReaderAt does.
 	ReadAt(p []byte, off int64) (int, error)
-	// Write appends p.
+	// Write writes p after what Write wrote before; on a new file that is
+	// an append.
 	Write(p []byte) (int, error)
+	// WriteAt writes p at offset off, as io.WriterAt does.
+	WriteAt(p []byte, off int64) (int, error)
 	// Truncate cuts the file to size bytes.
 	Truncate(size int64) error
 	// Sync makes the content durable.
@@ -81,8 +94,10 @@ var ErrCorrupt = errors.New("wal: corrupt log")
 // never was.
 var ErrNotOnDisk = errors.New("wal: not on disk")
 
-// Version is the format version of segments and checkpoint files.
-const Version = 1
+// Version is the format version of new segments. Version 2 added the
+// segment's sequence number to every record's crc; Open still reads
+// segments of version 1, and appends to a newest one in its format.
+const Version = 2
 
 const (
 	magic      = "tigerwal"
@@ -106,11 +121,18 @@ const (
 
 	// SegmentBytes is the size after which the log starts a new segment.
 	SegmentBytes = 64 << 20
+
+	// MaxSpares is how many removed segments the log keeps by default as
+	// spare files for new segments.
+	MaxSpares   = 4
+	sparePrefix = "spare-"
 )
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 func segmentName(seq uint64) string { return fmt.Sprintf("%016x.wal", seq) }
+
+func spareName(seq uint64) string { return fmt.Sprintf("%s%016x", sparePrefix, seq) }
 
 // CheckpointName is the file name of the checkpoint at a Raft index.
 func CheckpointName(index uint64) string { return fmt.Sprintf("ckpt-%016x", index) }
@@ -184,15 +206,21 @@ type valueRec struct {
 
 // WAL appends to the newest segment and reads from all of them.
 type WAL struct {
-	fs      FS
-	seg     File
-	seq     uint64
-	size    int64
-	crc     uint32
-	last    uint64
-	buf     []byte
-	dirty   bool
-	maxSize int64
+	fs  FS
+	seg File
+	seq uint64
+	// version is the format of the newest segment, size where its records
+	// end and fileSize the size of its file, which a reused one may make
+	// larger than size.
+	version        uint32
+	size, fileSize int64
+	crc            uint32
+	last           uint64
+	buf            []byte
+	dirty          bool
+	maxSize        int64
+	// spares is how many removed segments to keep as spare files.
+	spares int
 	// hs and root are the newest hard state and root, copied into every
 	// new segment; copied marks that the current segment has them.
 	hs     HardState
@@ -255,7 +283,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 		}
 	}
 
-	w := &WAL{fs: fs, maxSize: SegmentBytes, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
+	w := &WAL{fs: fs, maxSize: SegmentBytes, spares: MaxSpares, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
 	rec := &Recovered{}
 	// first is the index of the first entry the scan found, 0 for none.
 	var first uint64
@@ -290,12 +318,11 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			}
 			break
 		}
-		if version != Version {
-			return nil, nil, errors.Join(fmt.Errorf("wal: segment %s has format version %d; this build reads version %d", name, version, Version), f.Close())
+		if version < 1 || version > Version {
+			return nil, nil, errors.Join(fmt.Errorf("wal: segment %s has format version %d; this build reads versions 1 to %d", name, version, Version), f.Close())
 		}
-		w.seq, w.crc = seq, crc
+		w.seq, w.crc, w.version = seq, crc, version
 		w.current()
-		rec.Bytes += int64(len(data))
 		good, lastStart, err := w.replay(data, rec, &first)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("%s at byte %d: %w", name, good, err), f.Close())
@@ -318,6 +345,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 				return nil, nil, errors.Join(err, f.Close())
 			}
 		}
+		rec.Bytes += good
 		if !last {
 			if err := f.Close(); err != nil {
 				return nil, nil, err
@@ -325,7 +353,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			w.sizes[seq] = good
 			continue
 		}
-		w.seg, w.size, w.copied = f, good, true
+		w.seg, w.size, w.fileSize, w.copied = f, good, good, true
 	}
 	if err := w.check(first); err != nil {
 		return nil, nil, err
@@ -422,10 +450,10 @@ func (w *WAL) replay(data []byte, rec *Recovered, first *uint64) (good, lastStar
 		// Planted: B04a skips the check; B04c skips it for a record that
 		// still decodes.
 		skip := planted.On("B04a") || (planted.On("B04c") && w.decodes(body))
-		if got := crc32.Update(w.crc, castagnoli, body); got != sum && !skip {
+		if got := crc32.Update(w.seed(w.crc), castagnoli, body); got != sum && !skip {
 			// The damage may be in the body or in the stored crc, so try
 			// the next record chained from either.
-			if verifiesAfter(data, end, sum) || verifiesAfter(data, end, got) {
+			if verifiesAfter(data, end, w.seed(sum)) || verifiesAfter(data, end, w.seed(got)) {
 				return int64(off), lastStart, fmt.Errorf("%w: damaged record followed by a valid one", ErrCorrupt)
 			}
 			return int64(off), lastStart, nil
@@ -441,12 +469,12 @@ func (w *WAL) replay(data []byte, rec *Recovered, first *uint64) (good, lastStar
 }
 
 // verifiesAfter reports whether a whole record starts at off and verifies
-// when chained from crc, the stored crc of the record before it. A torn
+// when chained from seed, made from the stored crc of the record before it. A torn
 // write leaves garbage up to the end of the file, so a valid record after a
 // bad one means the bad one was damaged after it was written. This can also
 // fence a node after a crash whose disk persisted a later sector of the
 // last write but not an earlier one; refusing to start is the safe answer.
-func verifiesAfter(data []byte, off int, crc uint32) bool {
+func verifiesAfter(data []byte, off int, seed uint32) bool {
 	if len(data)-off < recHdrSize {
 		return false
 	}
@@ -455,7 +483,19 @@ func verifiesAfter(data []byte, off int, crc uint32) bool {
 	if end > len(data) {
 		return false
 	}
-	return crc32.Update(crc, castagnoli, data[off+8:end]) == binary.LittleEndian.Uint32(data[off+4:])
+	return crc32.Update(seed, castagnoli, data[off+8:end]) == binary.LittleEndian.Uint32(data[off+4:])
+}
+
+// seed is what the crc of the record after one with crc crc starts from
+// in the current segment: from version 2 on, crc with the segment's
+// sequence number added.
+func (w *WAL) seed(crc uint32) uint32 {
+	if w.version < 2 {
+		return crc
+	}
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], w.seq)
+	return crc32.Update(crc, castagnoli, b[:])
 }
 
 // apply takes one verified record of the current segment, which starts at
@@ -475,7 +515,7 @@ func (w *WAL) apply(typ byte, p []byte, at uint32, rec *Recovered, first *uint64
 		if index == 0 || index > w.last+1 {
 			return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
 		}
-		w.placeEntry(index, at, w.crc)
+		w.placeEntry(index, at, w.seed(w.crc))
 	case recHardState:
 		if len(p) != 24 {
 			return fmt.Errorf("%w: hard state record of %d bytes", ErrCorrupt, len(p))
@@ -529,7 +569,7 @@ func (w *WAL) current() *run {
 }
 
 // placeEntry notes that entry index has its record at file offset at of
-// the current segment, chained from crc seed. It replaces every entry at
+// the current segment, whose crc starts from seed. It replaces every entry at
 // or after index. Non-empty runs are in index order, so the walk back
 // stops at the first that ends at or below index.
 func (w *WAL) placeEntry(index uint64, at, seed uint32) {
@@ -577,13 +617,26 @@ func (w *WAL) setRoot(r Root) {
 	w.root = Root{Index: r.Index, Term: r.Term}
 }
 
-// newSegment starts the next segment. It syncs the header before the
-// directory entry, so a segment that survives a crash always has its
-// header. The copies of the hard state and the root go in with the next
+// newSegment starts the next segment, in a spare file if there is one. It
+// syncs the header before the directory entry, so a segment that survives
+// a crash always has its header; a spare gets its new header before it is
+// renamed. The copies of the hard state and the root go in with the next
 // write.
 func (w *WAL) newSegment() error {
 	seq := w.seq + 1
-	f, err := w.fs.Create(segmentName(seq))
+	spare, err := w.spare()
+	if err != nil {
+		return err
+	}
+	var f File
+	var size int64
+	if spare != "" {
+		if f, err = w.fs.Open(spare); err == nil {
+			size, err = fileSize(f)
+		}
+	} else {
+		f, err = w.fs.Create(segmentName(seq))
+	}
 	if err != nil {
 		return err
 	}
@@ -592,11 +645,16 @@ func (w *WAL) newSegment() error {
 	hdr = binary.LittleEndian.AppendUint32(hdr, Version)
 	hdr = binary.LittleEndian.AppendUint64(hdr, seq)
 	hdr = binary.LittleEndian.AppendUint32(hdr, w.crc)
-	if _, err := f.Write(hdr); err != nil {
+	if _, err := f.WriteAt(hdr, 0); err != nil {
 		return errors.Join(err, f.Close())
 	}
 	if err := f.Sync(); err != nil {
 		return errors.Join(err, f.Close())
+	}
+	if spare != "" {
+		if err := w.fs.Rename(spare, segmentName(seq)); err != nil {
+			return errors.Join(err, f.Close())
+		}
 	}
 	// Planted: B05 takes records into the new segment before its directory
 	// entry is durable.
@@ -607,16 +665,50 @@ func (w *WAL) newSegment() error {
 	}
 	w.sealed = w.size
 	w.seq, w.seg, w.size, w.copied = seq, f, int64(headerSize), false
+	w.version, w.fileSize = Version, max(size, int64(headerSize))
 	return nil
 }
 
-func (w *WAL) record(typ byte, payload ...[]byte) {
-	w.buf, w.crc = appendRecord(w.buf, w.crc, typ, payload...)
+// fileSize returns the size of f.
+func fileSize(f File) (int64, error) {
+	b, err := f.ReadAll()
+	return int64(len(b)), err
 }
 
-// appendRecord appends a record chained from crc to buf and returns the
-// record's crc.
-func appendRecord(buf []byte, crc uint32, typ byte, payload ...[]byte) ([]byte, uint32) {
+// spare returns the name of the oldest spare file, or "" if there is none.
+// It lists the directory, so that the goroutine that syncs shares nothing
+// with the one that removes segments.
+func (w *WAL) spare() (string, error) {
+	spares, err := w.listSpares()
+	if err != nil || len(spares) == 0 {
+		return "", err
+	}
+	return spares[0], nil
+}
+
+// listSpares returns the names of the spare files in order.
+func (w *WAL) listSpares() ([]string, error) {
+	names, err := w.fs.List()
+	if err != nil {
+		return nil, err
+	}
+	var spares []string
+	for _, n := range names {
+		if strings.HasPrefix(n, sparePrefix) {
+			spares = append(spares, n)
+		}
+	}
+	slices.Sort(spares)
+	return spares, nil
+}
+
+func (w *WAL) record(typ byte, payload ...[]byte) {
+	w.buf, w.crc = appendRecord(w.buf, w.seed(w.crc), typ, payload...)
+}
+
+// appendRecord appends a record whose crc starts from seed to buf and
+// returns the record's crc.
+func appendRecord(buf []byte, seed uint32, typ byte, payload ...[]byte) ([]byte, uint32) {
 	n := 1
 	for _, p := range payload {
 		n += len(p)
@@ -627,7 +719,7 @@ func appendRecord(buf []byte, crc uint32, typ byte, payload ...[]byte) ([]byte, 
 	for _, p := range payload {
 		buf = append(buf, p...)
 	}
-	crc = crc32.Update(crc, castagnoli, buf[start+8:])
+	crc := crc32.Update(seed, castagnoli, buf[start+8:])
 	binary.LittleEndian.PutUint32(buf[start+4:], crc)
 	return buf, crc
 }
@@ -691,7 +783,7 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		binary.LittleEndian.PutUint64(h[:], e.GetTerm())
 		binary.LittleEndian.PutUint64(h[8:], e.GetIndex())
 		h[16] = byte(e.GetType())
-		at, seed := uint32(w.size)+uint32(len(w.buf)), w.crc
+		at, seed := uint32(w.size)+uint32(len(w.buf)), w.seed(w.crc)
 		w.record(recEntry, h[:], e.GetData())
 		w.placeEntry(e.GetIndex(), at, seed)
 	}
@@ -720,14 +812,16 @@ func (w *WAL) AppendValue(index uint64, off uint32, value []byte) {
 	w.placeValue(index, off, uint32(len(value)), at)
 }
 
-// Flush writes what Append buffered without syncing it. The simulator
-// uses it to put a crash between the write and the fsync.
+// Flush writes what Append buffered without syncing it, at the end of
+// the records. The simulator uses it to put a crash between the write and
+// the fsync.
 func (w *WAL) Flush() error {
 	if len(w.buf) == 0 {
 		return nil
 	}
-	n, err := w.seg.Write(w.buf)
+	n, err := w.seg.WriteAt(w.buf, w.size)
 	w.size += int64(n)
+	w.fileSize = max(w.fileSize, w.size)
 	w.dirty = true
 	if err != nil {
 		if planted.On("B12") {
@@ -763,11 +857,27 @@ func (w *WAL) Sync() error {
 	if w.size < w.maxSize {
 		return nil
 	}
+	// A reused file may hold more than the records; a segment that no
+	// longer changes ends with its last record.
+	if w.fileSize > w.size {
+		if err := errors.Join(w.seg.Truncate(w.size), w.seg.Sync()); err != nil {
+			return err
+		}
+	}
 	if err := w.seg.Close(); err != nil {
 		return err
 	}
 	return w.newSegment()
 }
+
+// Segment returns the file of the newest segment, which Flush writes to.
+// A sync of it makes what Flush wrote durable, also while the next Flush
+// runs; only Sync starts a new segment, after Full.
+func (w *WAL) Segment() File { return w.seg }
+
+// Full reports whether the newest segment is full: the next Sync starts a
+// new one.
+func (w *WAL) Full() bool { return w.size >= w.maxSize }
 
 // Buffered is the size of what Append buffered for the next write. Only
 // the goroutine that calls Sync may call it.
@@ -776,6 +886,10 @@ func (w *WAL) Buffered() int64 { return int64(len(w.buf)) }
 // SetSegmentBytes changes the size after which a new segment starts. Tests
 // and the simulator use small segments to exercise rotation.
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
+
+// SetSpares changes how many removed segments the log keeps as spare
+// files. Call it before the log is shared.
+func (w *WAL) SetSpares(n int) { w.spares = n }
 
 // Close closes the newest segment without syncing, and every file opened
 // for reading.
@@ -942,8 +1056,9 @@ func (w *WAL) RemoveBelow(mark uint64) error {
 	return w.fs.SyncDir()
 }
 
-// removeSegment removes the file of segment seq and forgets the value
-// records in it.
+// removeSegment removes the file of segment seq, or keeps it as a spare,
+// and forgets the value records in it. Every read of it must be over: a
+// new segment may overwrite a spare as soon as the removal is done.
 func (w *WAL) removeSegment(seq uint64) error {
 	if f, ok := w.readers[seq]; ok {
 		delete(w.readers, seq)
@@ -951,7 +1066,16 @@ func (w *WAL) removeSegment(seq uint64) error {
 			return err
 		}
 	}
-	if err := w.fs.Remove(segmentName(seq)); err != nil {
+	spares, err := w.listSpares()
+	if err != nil {
+		return err
+	}
+	if len(spares) < w.spares {
+		err = w.fs.Rename(segmentName(seq), spareName(seq))
+	} else {
+		err = w.fs.Remove(segmentName(seq))
+	}
+	if err != nil {
 		return err
 	}
 	delete(w.sizes, seq)
