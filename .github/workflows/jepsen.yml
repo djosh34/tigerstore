@@ -6,6 +6,15 @@ on:
         type: choice
         options: [all, jepsen, robustness, tools]
         default: all
+      workloads:
+        description: Jepsen workload array as JSON
+        default: '["append","lock-set","lock-etcd-set","set","register","watch","wr"]'
+      nemeses:
+        description: Jepsen nemesis array as JSON
+        default: '["kill","pause","partition","lazyfs"]'
+      stores:
+        description: Products as JSON
+        default: '["etcd","tigerstore"]'
       product_sha:
         description: Main commit to test, blank uses the pinned prework baseline
         default: '40e7c0a009a08d6ba80f369dd2e66c9735512dbb'
@@ -33,9 +42,9 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        store: [etcd, tigerstore]
-        workload: [append, lock-set, lock-etcd-set, set, register, watch, wr]
-        nemesis: [kill, pause, partition, lazyfs]
+        workload: ${{ fromJSON(inputs.workloads) }}
+        nemesis: ${{ fromJSON(inputs.nemeses) }}
+        store: ${{ fromJSON(inputs.stores) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,8 +78,8 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        store: [etcd, tigerstore]
         traffic: [etcd-put-delete-lease, etcd-put, etcd-delete, kubernetes, kubernetes-create-delete]
+        store: ${{ fromJSON(inputs.stores) }}
     steps:
       - uses: actions/checkout@v4
         with:
