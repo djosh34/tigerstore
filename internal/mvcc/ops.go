@@ -89,8 +89,14 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 // values instead of a message per key, for drivers that encode the
 // response themselves.
 func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
+	return s.RangeKVsReserved(r, nil)
+}
+
+// RangeKVsReserved reserves memory before allocating the answer's values.
+// reserve may refuse the read; no fills then escape to the caller.
+func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) (RangeResult, error) {
 	w := s.reader()
-	res, err := w.rangeResult(r, true)
+	res, err := w.rangeResult(r, true, reserve)
 	if err != nil {
 		return res, err
 	}
@@ -126,7 +132,7 @@ func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 
 // rangeKeys answers r as etcd's message. Without total, as rangeResult.
 func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, total)
+	res, err := w.rangeResult(r, total, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +176,7 @@ func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 // rangeResult answers r without the values, unless it sorts by them, and
 // sets values if they are still to be read. Without total, the walk stops
 // at the pushed-down limit and Count holds only the keys it saw.
-func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error) {
+func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64) error) (RangeResult, error) {
 	w.s.counts.Ranges++
 	cur := w.cur()
 	at := r.Revision
@@ -210,6 +216,21 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool) (RangeResult, error
 
 	kvs = filterKVs(kvs, r)
 	byValue := r.SortTarget == pb.RangeRequest_VALUE
+	if reserve != nil {
+		// Include every candidate: a VALUE sort needs values even for
+		// keys the limit drops. Allow for values, wire encoding and
+		// compression, plus KVs, fills and allocator rounding.
+		bytes := int64(1024) + 512*int64(cap(kvs))
+		for _, kv := range kvs {
+			bytes += 4 * int64(len(kv.Key))
+			if !r.KeysOnly || byValue {
+				bytes += 4 * int64(kv.ref.Len)
+			}
+		}
+		if err := reserve(bytes); err != nil {
+			return RangeResult{}, err
+		}
+	}
 	if byValue {
 		if err := w.s.readNow(kvs); err != nil {
 			return RangeResult{}, err

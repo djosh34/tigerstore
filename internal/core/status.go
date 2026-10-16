@@ -75,6 +75,8 @@ type Metrics struct {
 	// hold now; CacheHits are the values it returned and CacheMisses those
 	// read from the log.
 	CacheBytes, CacheLimit, CacheHits, CacheMisses int64
+	// RangeReplyBytes reserves memory for unary Range answers until sent.
+	RangeReplyBytes int64
 	// ClusterVersion is the cluster version the node has applied.
 	ClusterVersion uint32
 
@@ -107,18 +109,19 @@ type Metrics struct {
 func (n *Node) Metrics() Metrics {
 	st := n.rn.BasicStatus()
 	m := Metrics{
-		HasLeader:     st.Lead != 0,
-		LeaderChanges: n.leaderChanges,
-		Committed:     st.GetCommit(),
-		Applied:       n.applied,
-		Counts:        n.kv.Counts(),
-		IndexBytes:    n.kv.Bytes(),
-		WindowBytes:   n.storage.total(),
-		CacheBytes:    n.cache.bytes,
-		CacheLimit:    max(n.cache.limit, 0),
-		CacheHits:     n.cache.hits,
-		CacheMisses:   n.cache.misses,
-		MaxCommitWait: n.maxCommitWait,
+		HasLeader:       st.Lead != 0,
+		LeaderChanges:   n.leaderChanges,
+		Committed:       st.GetCommit(),
+		Applied:         n.applied,
+		Counts:          n.kv.Counts(),
+		IndexBytes:      n.kv.Bytes(),
+		WindowBytes:     n.storage.total(),
+		CacheBytes:      n.cache.bytes,
+		CacheLimit:      max(n.cache.limit, 0),
+		CacheHits:       n.cache.hits,
+		CacheMisses:     n.cache.misses,
+		RangeReplyBytes: n.replyBytes,
+		MaxCommitWait:   n.maxCommitWait,
 
 		ClusterVersion: n.state.version,
 
