@@ -216,7 +216,8 @@ func TestCleaningCycles(t *testing.T) {
 // it answers NOSPACE to 10 rounds in a row, as etcd does past its quota.
 // Every other answer is a success, the node never stops, and its files
 // stay near the budget. Reads and deletes still work, and a lease grant
-// gets NOSPACE too. With a larger budget, the node takes writes again.
+// gets NOSPACE too. Once the keys are deleted and compacted, the node
+// takes writes again.
 func TestNoSpace(t *testing.T) {
 	const budget = 512 << 10
 	dir := t.TempDir()
@@ -278,12 +279,28 @@ func TestNoSpace(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// Deleting the keys and compacting lifts NOSPACE: under the alarm the
+	// compaction cuts a checkpoint, cleaning drops the values it freed,
+	// and the node clears its alarm (#167).
+	del, err := r.n.Do(ctx, &pb.DeleteRangeRequest{Key: []byte("r"), RangeEnd: []byte("s")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.n.Do(ctx, &pb.CompactionRequest{Revision: del.(*pb.DeleteRangeResponse).Header.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(20 * time.Second); ; {
+		_, err := do(r.n, &pb.PutRequest{Key: []byte("again"), Value: []byte("v")})
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, rpctypes.ErrGRPCNoSpace) || time.Now().After(deadline) {
+			t.Fatalf("put after deleting and compacting: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if err := r.stop(); err != nil {
 		t.Fatalf("the node stopped: %v", err)
-	}
-	r = runClean(t, dir, 4*budget)
-	if _, err := do(r.n, &pb.PutRequest{Key: []byte("again"), Value: []byte("v")}); err != nil {
-		t.Fatalf("put with a larger budget: %v", err)
 	}
 }
 

@@ -84,6 +84,7 @@ func (n *Node) Snapshot(ctx context.Context, w io.Writer, start func(size int64)
 		n.log.mu.Lock()
 		n.log.serving--
 		n.log.mu.Unlock()
+		n.log.wake()
 	}()
 	ch := make(chan snapshotPoint, 1)
 	if err := n.put(ctx, input{snapshotPoint: ch}); err != nil {
