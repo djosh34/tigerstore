@@ -239,7 +239,8 @@ func campaignRequest(q history.Request) error {
 }
 
 // Tiny independent replay used ONLY for the target fence. The repository's
-// four checkers still validate the requests, metadata and watch events.
+// checkers of package check still validate the requests, metadata and
+// watch events.
 func finalRevision(log []history.Request) (int64, error) {
 	rev := int64(1)
 	keys := map[string]history.KeyValue{}

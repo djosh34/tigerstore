@@ -113,7 +113,7 @@ func (o output) String() string {
 	if o.err != nil {
 		return fmt.Sprintf("error %+v", *o.err)
 	}
-	return fmt.Sprintf("%+v", *o.resp)
+	return jsonOf(o.resp)
 }
 
 // modelRequest is the request as the model sees it. A grant whose ID the
