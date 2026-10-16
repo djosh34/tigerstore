@@ -99,7 +99,7 @@ LazyFS answers an fsync with success even when the disk under it failed the writ
 | Fault | What the run does | Evidence that it took effect |
 | --- | --- | --- |
 | `netem-loss`, `netem-reorder`, `netem-corrupt` | A busy peer link loses 20% of its packets, reorders half of them, or corrupts 5%, on top of its delay | The link's qdisc sent packets during the hold; for loss, it dropped some |
-| `cpu-gray` | A node, the leader in a third of the runs, is limited to 2 to 5% of one CPU | `nr_throttled` of its cgroup grew |
+| `cpu-gray` | A node, the leader in a third of the runs, is limited to 2 to 5% of one CPU, while a client reads through it without pause | `nr_throttled` of its cgroup grew |
 | `disk-slow` | A node's disk delays reads by a quarter of 100 to 400 ms and writes by all of it | The node logged a write slower than a tick |
 | `disk-stall` | A node's disk takes no I/O for the hold | The node logged a write slower than a tick once it healed |
 | `fsync-fail` | Every write to a node's disk fails; after the hold the disk is healed, `e2fsck` runs (ext4 may have gone read-only), and the node starts again | The node's log names an I/O error or a read-only file system |

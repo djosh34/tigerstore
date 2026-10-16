@@ -19,6 +19,7 @@ import (
 	"github.com/djosh34/tigerstore/chaos/env"
 	"github.com/djosh34/tigerstore/history"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -381,7 +382,21 @@ func (r *runner) cpuFault(ctx context.Context, s step, target int, rec *record) 
 		return err
 	}
 	rec.Installed = true
+	// Reads through the node keep it busy, so that a follower with little
+	// to do still uses up its share. Their answers do not matter.
+	bctx, stop := context.WithCancel(ctx)
+	busy := make(chan struct{})
+	go func() {
+		defer close(busy)
+		for bctx.Err() == nil {
+			rctx, cancel := context.WithTimeout(bctx, time.Second)
+			_, _ = r.t.cs[target].Get(rctx, prefix, clientv3.WithPrefix(), clientv3.WithCountOnly())
+			cancel()
+		}
+	}()
 	holdErr := pause(ctx, s.Hold)
+	stop()
+	<-busy
 	after, statErr := g.Stats()
 	healErr := g.LimitCPU(0)
 	rec.Healed, rec.HealedAt = healErr == nil, r.since()
@@ -997,32 +1012,55 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	// Remove and add through a healthy node. --strict-reconfig-check
 	// refuses a change until the node has been connected to its peers
 	// for 5 s, which after the cold restart it has not, so each is tried
-	// again until it goes through.
+	// again until it goes through. A try that timed out may have gone
+	// through, so a later one may find the member gone, or added.
 	ctl := r.c.nodes[healthy[0]].control
-	retry := func(what string, call func(context.Context) error) error {
+	retry := func(what string, call func(c context.Context, ambiguous bool) error) error {
 		var err error
+		ambiguous := false
 		for deadline := time.Now().Add(2 * livenessBound); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
 			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			err = call(cctx)
+			err = call(cctx, ambiguous)
 			cancel()
 			if err == nil {
 				return nil
 			}
+			ambiguous = ambiguous || transientWatch(err)
 		}
 		return fmt.Errorf("%s: %w", what, err)
 	}
 	old := r.c.ids[target]
-	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context) error {
+	if err := retry(fmt.Sprintf("remove member %x", old), func(c context.Context, ambiguous bool) error {
 		_, err := ctl.MemberRemove(c, old)
+		if ambiguous && errors.Is(err, rpctypes.ErrMemberNotFound) {
+			return nil
+		}
 		return err
 	}); err != nil {
 		return err
 	}
-	var added *clientv3.MemberAddResponse
-	if err := retry("add the new member", func(c context.Context) error {
-		var err error
-		added, err = ctl.MemberAdd(c, []string{fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])})
-		return err
+	peerURL := fmt.Sprintf("https://127.0.0.1:%d", r.c.peerPorts[target])
+	var newID uint64
+	if err := retry("add the new member", func(c context.Context, ambiguous bool) error {
+		added, err := ctl.MemberAdd(c, []string{peerURL})
+		if err == nil {
+			newID = added.Member.ID
+			return nil
+		}
+		if !ambiguous || !errors.Is(err, rpctypes.ErrPeerURLExist) {
+			return err
+		}
+		list, err := ctl.MemberList(c)
+		if err != nil {
+			return err
+		}
+		for _, m := range list.Members {
+			if slices.Equal(m.PeerURLs, []string{peerURL}) {
+				newID = m.ID
+				return nil
+			}
+		}
+		return fmt.Errorf("no member has the peer URL %s", peerURL)
 	}); err != nil {
 		return err
 	}
@@ -1033,8 +1071,8 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 	if err := r.c.start(n); err != nil {
 		return err
 	}
-	r.c.ids[target] = added.Member.ID
-	rec.Env.Link = fmt.Sprintf("member %x replaced by %x", old, added.Member.ID)
+	r.c.ids[target] = newID
+	rec.Env.Link = fmt.Sprintf("member %x replaced by %x", old, newID)
 	err := r.c.converged(ctx, 30*time.Second)
 	rec.Healed, rec.HealedAt = err == nil, r.since()
 	return err
