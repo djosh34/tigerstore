@@ -14,6 +14,10 @@ func TestMatch(t *testing.T) {
 		gaps        []span
 		progress    int64
 		final       bool
+		// settled, when set, is the revision of the final list, which saw
+		// the object present, on a lease when leased is set.
+		settled int64
+		leased  bool
 		// want is a part of the finding, or "" for none; left is how many
 		// changes stay to match later.
 		want string
@@ -29,11 +33,13 @@ func TestMatch(t *testing.T) {
 		{name: "an optional change", acked: []change{{lo: 12, hi: 18, val: 3, opt: true}, {lo: 12, hi: 18, del: true, opt: true}}, seen: []change{del(14, 14)}, progress: 20, final: true},
 		{name: "an event no write made, before the end", seen: []change{put(14, 4)}, progress: 20, left: 0},
 		{name: "an event no write made", seen: []change{put(14, 4)}, progress: 20, final: true, want: "which no write of its worker made"},
+		{name: "a lease that expires after the final list", acked: []change{put(12, 1)}, seen: []change{put(12, 1), del(17, 17)}, progress: 20, final: true, settled: 15, leased: true},
+		{name: "a delete after the final list, with no lease", acked: []change{put(12, 1)}, seen: []change{put(12, 1), del(17, 17)}, progress: 20, final: true, settled: 15, want: "sent a delete"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			w := &watched{prefix: "/registry/pods/", start: 10, gaps: c.gaps}
-			o := &object{key: "/registry/pods/soak-w000/obj-0000001", acked: c.acked, seen: c.seen}
+			o := &object{key: "/registry/pods/soak-w000/obj-0000001", acked: c.acked, seen: c.seen, settled: c.settled, present: c.settled > 0, leased: c.leased}
 			err := w.match(o, c.progress, c.final)
 			switch {
 			case c.want == "" && err != nil:

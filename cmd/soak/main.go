@@ -101,15 +101,16 @@ func main() {
 
 // report is what the run did and saw.
 type report struct {
-	Config      map[string]any `json:"config"`
-	Started     time.Time      `json:"started"`
-	Seconds     float64        `json:"seconds"`
-	Preload     float64        `json:"preload_seconds"`
-	Kills       int            `json:"kills"`
-	Holds       int            `json:"holds"`
-	Snapshots   int            `json:"snapshot_fetches"`
-	Compactions int            `json:"compactions"`
-	Hashes      int            `json:"hash_checks"`
+	Config        map[string]any `json:"config"`
+	Started       time.Time      `json:"started"`
+	Seconds       float64        `json:"seconds"`
+	Preload       float64        `json:"preload_seconds"`
+	Kills         int            `json:"kills"`
+	Holds         int            `json:"holds"`
+	Snapshots     int            `json:"snapshot_fetches"`
+	Compactions   int            `json:"compactions"`
+	CompactErrors int            `json:"compact_errors"`
+	Hashes        int            `json:"hash_checks"`
 	// Recovery is the longest time from a kill to a write the others
 	// committed, CatchUp from a node's start or resume to a write committed
 	// through it, and Restart from a node's start to its first answer.
@@ -195,11 +196,14 @@ func run(cfg config) (*report, error) {
 	c.stop()
 	for i, n := range c.nodes {
 		rep.Nodes[i].Starts = n.starts
-		if st, serr := n.cg.Stats(); serr == nil {
-			rep.Nodes[i].Peak, rep.Nodes[i].OOMKills = st.PeakBytes, st.OOMKills
-			if st.OOMKills > 0 {
-				err = errors.Join(err, fmt.Errorf("the memory limit killed node%d %d times", i+1, st.OOMKills))
-			}
+		st, serr := n.cg.Stats()
+		if serr != nil {
+			err = errors.Join(err, fmt.Errorf("memory of node%d: %w", i+1, serr))
+			continue
+		}
+		rep.Nodes[i].Peak, rep.Nodes[i].OOMKills = st.PeakBytes, st.OOMKills
+		if st.OOMKills > 0 {
+			err = errors.Join(err, fmt.Errorf("the memory limit killed node%d %d times", i+1, st.OOMKills))
 		}
 	}
 	if s.l != nil {
@@ -311,6 +315,9 @@ func (s *soak) run(ctx context.Context) error {
 	if err := s.ws.check(true); err != nil {
 		return err
 	}
+	if s.rep.Compactions == 0 && s.cfg.duration >= 2*s.cfg.compactEvery {
+		return fmt.Errorf("no compaction succeeded, %d failed", s.rep.CompactErrors)
+	}
 	return s.hashes(ctx)
 }
 
@@ -393,8 +400,8 @@ func (s *soak) restart(ctx context.Context, n *node) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if time.Since(at) > 5*time.Minute {
-			return fmt.Errorf("node%d did not answer within 5 minutes of its start: %w", n.i+1, err)
+		if time.Since(at) > catchUp {
+			return fmt.Errorf("node%d did not answer within %v of its start: %w", n.i+1, catchUp, err)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -417,9 +424,12 @@ func (s *soak) commit(ctx context.Context, what string, at time.Time, through []
 			_, err := s.c.nodes[i].one.Put(cctx, "/soak/probe", at.String())
 			cancel()
 			if err == nil {
-				d := time.Since(at).Seconds()
-				*worst = max(*worst, d)
-				s.logf("a write through node%d committed %.1f s after %s", i+1, d, what)
+				d := time.Since(at)
+				*worst = max(*worst, d.Seconds())
+				s.logf("a write through node%d committed %.1f s after %s", i+1, d.Seconds(), what)
+				if d > bound {
+					return fmt.Errorf("the first write through node%d committed %.1f s after %s, past the bound of %v", i+1, d.Seconds(), what, bound)
+				}
 				return nil
 			}
 		}
@@ -481,7 +491,8 @@ func (s *soak) hold(ctx context.Context) error {
 }
 
 // hashes checks that the nodes agree on the hash of their keys at the
-// current revision.
+// current revision. A compaction that lands between two of the answers
+// moves the revision the hash starts from, so then it asks all again.
 func (s *soak) hashes(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, s.cfg.requestTimeout)
 	resp, err := s.l.cl.Get(cctx, "/soak/probe")
@@ -490,31 +501,38 @@ func (s *soak) hashes(ctx context.Context) error {
 		return fmt.Errorf("hash check: %w", err)
 	}
 	rev := resp.Header.Revision
-	var first uint32
-	var firstCompact int64
-	for _, n := range s.c.nodes {
-		var h *clientv3.HashKVResponse
-		deadline := time.Now().Add(time.Minute)
-		for {
-			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			h, err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
-			cancel()
-			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
-				break
+	for try := 0; ; try++ {
+		var hs [3]*clientv3.HashKVResponse
+		for _, n := range s.c.nodes {
+			deadline := time.Now().Add(time.Minute)
+			for {
+				cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				hs[n.i], err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
+				cancel()
+				if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(time.Second)
+			}
+			if err != nil {
+				return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
+			}
+		}
+		if hs[0].CompactRevision != hs[1].CompactRevision || hs[0].CompactRevision != hs[2].CompactRevision {
+			if try == 10 {
+				return fmt.Errorf("at revision %d the nodes hash after compactions %d, %d and %d, ten times in a row", rev, hs[0].CompactRevision, hs[1].CompactRevision, hs[2].CompactRevision)
 			}
 			time.Sleep(time.Second)
+			continue
 		}
-		if err != nil {
-			return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
+		for i := 1; i < 3; i++ {
+			if hs[i].Hash != hs[0].Hash {
+				return &violation{fmt.Sprintf("at revision %d after compaction %d node1 hashes its keys to %08x, node%d to %08x", rev, hs[0].CompactRevision, hs[0].Hash, i+1, hs[i].Hash)}
+			}
 		}
-		if n.i == 0 {
-			first, firstCompact = h.Hash, h.CompactRevision
-		} else if h.Hash != first || h.CompactRevision != firstCompact {
-			return &violation{fmt.Sprintf("at revision %d node1 hashes its keys to %08x after compaction %d, node%d to %08x after compaction %d", rev, first, firstCompact, n.i+1, h.Hash, h.CompactRevision)}
-		}
+		s.rep.Hashes++
+		return nil
 	}
-	s.rep.Hashes++
-	return nil
 }
 
 // compact compacts every interval to the revision of the interval before.
@@ -531,7 +549,10 @@ func (s *soak) compact(ctx context.Context) {
 			cctx, cancel := context.WithTimeout(ctx, s.cfg.requestTimeout)
 			_, err := s.l.cl.Compact(cctx, prev)
 			cancel()
-			if err == nil {
+			if err != nil {
+				s.rep.CompactErrors++
+				s.logf("compaction to revision %d: %v", prev, err)
+			} else {
 				s.rep.Compactions++
 			}
 		}

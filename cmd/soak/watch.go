@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -215,6 +216,13 @@ func (w *watched) match(o *object, p int64, final bool) error {
 		return &violation{fmt.Sprintf("the watch of %s, from revision %d and past revision %d, did not send the %s of %s", w.prefix, w.start, p, c, o.key)}
 	}
 	keep = append(keep, s[j:]...)
+	if final {
+		// The lease of an object left present may expire after the
+		// final list.
+		keep = slices.DeleteFunc(keep, func(e change) bool {
+			return e.del && o.present && o.leased && e.lo > o.settled
+		})
+	}
 	o.acked, o.seen = a[i:], keep
 	if final && len(keep) > 0 {
 		return &violation{fmt.Sprintf("the watch of %s sent a %s of %s, which no write of its worker made", w.prefix, keep[0], o.key)}

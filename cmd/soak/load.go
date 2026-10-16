@@ -62,6 +62,9 @@ type object struct {
 	// acked are the changes the object went through that no watch event
 	// has matched yet, and seen the watch events not matched yet.
 	acked, seen []change
+	// settled is the revision of the final list, after which only its
+	// lease may still delete it.
+	settled int64
 }
 
 // write is a call that changes an object: a put of a value, or a delete.
@@ -524,9 +527,15 @@ func (w *worker) list(ctx context.Context, g *group) error {
 		return w.lost("list", err)
 	}
 	rev := r.Header.Revision
+	if r.More && len(r.Kvs) == 0 {
+		return w.violate("a list of %s at revision %d is empty but says there is more", g.prefix, rev)
+	}
 	got := map[string]*mvccpb.KeyValue{}
 	last := ""
 	for _, kv := range r.Kvs {
+		if string(kv.Key) <= last {
+			return w.violate("a list of %s at revision %d shows %s after %s", g.prefix, rev, kv.Key, last)
+		}
 		got[string(kv.Key)] = kv
 		last = string(kv.Key)
 	}
@@ -720,6 +729,7 @@ func (w *worker) settle(ctx context.Context) error {
 			if err := w.observe(o, got[o.key], rev, "the final list"); err != nil {
 				return err
 			}
+			o.settled = rev
 			delete(got, o.key)
 		}
 		for k := range got {
