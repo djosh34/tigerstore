@@ -1,0 +1,137 @@
+name: past-ram
+on:
+  workflow_call:
+    inputs:
+      capacity:
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      capacity:
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  storage:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Format new Go files on the runner
+        run: |
+          gofmt -w cmd/pastram internal/k8ssize internal/sim/sim.go internal/sim/past_ram_test.go internal/core/past_ram_test.go internal/node/past_ram_test.go
+          git diff > format.patch
+      - uses: actions/upload-artifact@v7
+        with:
+          name: past-ram-format
+          path: format.patch
+      - name: Check formatting, vet and driver tests
+        run: |
+          test ! -s format.patch
+          go vet ./cmd/pastram ./internal/k8ssize ./internal/core ./internal/node ./internal/sim
+          go test -race ./cmd/pastram ./internal/k8ssize
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          args: ./cmd/pastram/... ./internal/k8ssize/... ./internal/core/... ./internal/node/... ./internal/sim/...
+      - name: Existing recovery, cleaning, cache and cold-read tests
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=20m -v ./internal/wal ./internal/core ./internal/node ./internal/simfs -run 'Test(Clean|Pack|MapShrinks|DamagedPack|Cache|Cold|Defragment|SharedValues|NoSpace|Value|Read|Remove)' 2>&1 | tee storage.log
+      - name: Simulator recovery after packing and protocol mutation controls
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=20m -v ./internal/sim -run 'TestPastRAM' 2>&1 | tee -a storage.log
+      - name: Planted stale cache lookup, one fixed scenario
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('internal/core/cache.go')
+          text = path.read_text()
+          old = 'e, ok := c.items[r]\n'
+          assert text.count(old) == 1
+          text = text.replace(old, '''e, ok := c.items[r]
+              for ref, item := range c.items {
+                  if ref.Off == r.Off && ref.Len == r.Len {
+                      e, ok = item, true
+                      break
+                  }
+              }\n''')
+          path.write_text(text)
+          PY
+          git diff internal/core/cache.go > stale-cache.patch
+          if go test -race -count=1 -v ./internal/core -run '^TestCacheReferenceIdentity$' > stale-cache.log 2>&1; then
+            echo 'stale cache mutation escaped'; exit 1
+          fi
+          grep 'stale cache entry after overwrite' stale-cache.log
+          git restore internal/core/cache.go
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: past-ram-storage
+          path: |
+            storage.log
+            stale-cache.log
+            stale-cache.patch
+          retention-days: 30
+  capacity:
+    if: inputs.capacity
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {kind: tigerstore, mode: proof, quota: '9223372036854775807', cache: normal}
+          - {kind: etcd, mode: proof, quota: '9223372036854775807', cache: normal}
+          - {kind: tigerstore, mode: max, quota: '9223372036854775807', cache: normal}
+          - {kind: etcd, mode: max, quota: '8589934592', cache: normal}
+          - {kind: etcd, mode: max, quota: '9223372036854775807', cache: normal}
+          - {kind: tigerstore, mode: cache, quota: '9223372036854775807', cache: normal}
+          - {kind: tigerstore, mode: cache, quota: '9223372036854775807', cache: page}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build drivers and server
+        run: |
+          go build -o "$RUNNER_TEMP/pastram" ./cmd/pastram
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd"
+      - name: Build the cache-disabled experimental control
+        if: matrix.cache == 'page'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('internal/core/cache.go')
+          text = path.read_text()
+          old = 'n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes())'
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, 'n.cache.setLimit(0)'))
+          PY
+          git diff > "$RUNNER_TEMP/cache-control.patch"
+          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+      - name: Run under per-member cgroup limits
+        run: |
+          sudo python3 scripts/past-ram.py --server "$RUNNER_TEMP/${{ matrix.kind }}" --driver "$RUNNER_TEMP/pastram" --kind '${{ matrix.kind }}' --mode '${{ matrix.mode }}' --quota '${{ matrix.quota }}' --go-memory 560MiB --out "$RUNNER_TEMP/past-ram"
+      - name: Copy evidence without database files
+        if: always()
+        run: |
+          mkdir -p evidence
+          sudo find "$RUNNER_TEMP/past-ram" -maxdepth 1 -type f -exec cp '{}' evidence/ \;
+          if [ -f "$RUNNER_TEMP/cache-control.patch" ]; then cp "$RUNNER_TEMP/cache-control.patch" evidence/; fi
+          sudo chown -R "$(id -u):$(id -g)" evidence
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: past-ram-${{ matrix.kind }}-${{ matrix.mode }}-${{ matrix.quota }}-${{ matrix.cache }}
+          path: evidence
+          retention-days: 30

@@ -75,7 +75,9 @@ type Config struct {
 	// that: every lease adds an expiry that may apply at any time, and its
 	// search grows too fast with them.
 	NoLeases bool
-	Faults   Faults
+	// CacheBytes enables the value cache in targeted storage scenarios.
+	CacheBytes int64
+	Faults     Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -560,11 +562,16 @@ type Result struct {
 // Run runs one seed and checks it. The error describes the first broken
 // rule.
 func Run(cfg Config) (*Result, error) {
+	_, res, err := runWithState(cfg)
+	return res, err
+}
+
+func runWithState(cfg Config) (*Sim, *Result, error) {
 	s := newSim(cfg)
 	for i := range 3 {
 		s.addNode(i, simfs.New())
 		if err := s.start(s.nodes[i]); err != nil {
-			return nil, err
+			return s, nil, err
 		}
 	}
 	for i := range cfg.Clients {
@@ -594,13 +601,13 @@ func Run(cfg Config) (*Result, error) {
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 	if err := s.loop(); err != nil {
-		return nil, err
+		return s, nil, err
 	}
 	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallHandOffs: s.stallHandOffs, CommitStops: s.commitStops, grayNode: s.lastGray, grayHealedAt: s.grayHealedAt, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
-		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
+		return s, res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
-	return res, nil
+	return s, res, nil
 }
 
 // newSim sets up an empty run.
@@ -904,6 +911,7 @@ func (s *Sim) start(n *node) error {
 		// see them.
 		cfg.ProgressTicks = 20
 		tinyLimits(&cfg)
+		cfg.MemoryBytes = s.cfg.CacheBytes
 		c, err = core.New(cfg, rec, w)
 	}
 	if n.corrupted {
