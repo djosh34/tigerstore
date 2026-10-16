@@ -12,12 +12,12 @@ The workflow also removes the confirmation check in a separate build. That job p
 
 The normal scenario also runs with the server and test executable built with `-race`. Each stage checks the binary ranges in `/metrics` and probes fresh TLS peer connections in both directions. ALPN and the preface reply must choose the highest shared version. The existing core and peer version tests run alongside it, including overlapping, touching and disjoint peer ranges and refusal from a checkpoint.
 
-To reproduce in GitHub Actions, dispatch `rolling-upgrade.yml` on the candidate branch. While the workflow exists only on the prework branch, its prep-only `ci.yml` calls it:
+The required `ci` gate calls `rolling-upgrade.yml` on pull requests, pushes to main, nightly runs and manual dispatches. The rolling workflow also accepts a separate manual dispatch. To run the full CI set on a candidate branch:
 
 ```
-gh workflow run ci.yml --repo djosh34/tigerstore --ref prep/174-210-version-members
+gh workflow run ci.yml --repo djosh34/tigerstore --ref <candidate-branch>
 ```
 
-No build or execution belongs on the shared agent host. The task worker should drop the prep-only CI change and add the rolling job to the required CI gate. When a previous release exists, the release workflow still needs the previous-tag-to-candidate run required by #127. These synthetic builds do not replace that check.
+No build or execution belongs on the shared agent host. When a previous release exists, the release workflow still needs the previous-tag-to-candidate run required by #127. These synthetic builds do not replace that check.
 
-The prework starts from the harness on main. On `work/148-chaos` at `821ac5e1`, `newCluster` also takes data directories and extra arguments. When combining the branches, change the call in `startRolling` to `newCluster(dir, oldBin, seed, [3]string{}, nil)`. The upgrade run does not need the privileged environment or LazyFS.
+The upgrade run uses the chaos cluster without extra data directories or arguments. It does not need the privileged environment or LazyFS.

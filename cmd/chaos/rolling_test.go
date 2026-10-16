@@ -160,7 +160,7 @@ func startRolling(t *testing.T, seed uint64) *rollingRun {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	c, err := newCluster(dir, oldBin, seed)
+	c, err := newCluster(dir, oldBin, seed, [3]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

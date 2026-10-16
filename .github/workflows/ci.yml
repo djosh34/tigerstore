@@ -447,13 +447,16 @@ jobs:
           name: difffuzz-mismatch-${{ strategy.job-index }}
           path: difftest/testdata/fuzz/
 
+  rolling-upgrade:
+    uses: ./.github/workflows/rolling-upgrade.yml
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded. On a pull
   # request the jobs of main and the nightly run are skipped by their own
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
