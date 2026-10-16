@@ -59,7 +59,10 @@ type Config struct {
 	ClientTimeout int64
 	// GrayLeaderAt, if set, makes whichever node leads then gray until
 	// healing: its heartbeats get through, its appends do not.
-	GrayLeaderAt int64
+	// GrayLeaderSync also makes its fsyncs slow, so one in flight at
+	// healing ends after it.
+	GrayLeaderAt   int64
+	GrayLeaderSync bool
 	// HalfOpenAt, if set, makes the link from whichever node leads then
 	// to a follower half-open for the peer write timeout.
 	HalfOpenAt int64
