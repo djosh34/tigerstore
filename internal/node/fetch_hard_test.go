@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/core"
 )
@@ -51,10 +54,22 @@ func TestFetchHardCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Within the header, the checkpoint and the entries after it,
-		// before and after the 16 KiB at which the log syncs what came.
+		// With a sync every 2 KiB of values and entries, the checkpoint
+		// fills the first 16 KiB of the stream, the root follows, then
+		// the entries. The cuts land in the header, before the first
+		// sync, after a few, and after the root; stages notes what each
+		// stream got to.
+		stages := map[int][]string{}
+		c.tune = func(id uint64, cfg *Config) {
+			cfg.snapshotSync = 2 << 10
+			cfg.stage = func(s string) {
+				c.net.mu.Lock()
+				stages[c.net.cut] = append(stages[c.net.cut], s)
+				c.net.mu.Unlock()
+			}
+		}
 		c.net.mu.Lock()
-		c.net.cuts = []int{20, 2 << 10, 8 << 10, 15 << 10, 17 << 10}
+		c.net.cuts = []int{20, 3 << 10, 5 << 10, 9 << 10, 16 << 10}
 		c.net.mu.Unlock()
 		n3, err := c.start(3)
 		if err != nil {
@@ -68,6 +83,18 @@ func TestFetchHardCases(t *testing.T) {
 		if c.net.cut != 5 {
 			t.Fatalf("%d streams were cut, want 5", c.net.cut)
 		}
+		// Before any sync, after a sync and before the root, after the
+		// root.
+		var none, synced, rooted bool
+		for i := 1; i <= 5; i++ {
+			st := stages[i]
+			none = none || len(st) == 0
+			synced = synced || slices.Contains(st, "sync") && !slices.Contains(st, "root")
+			rooted = rooted || slices.Contains(st, "root")
+		}
+		if !none || !synced || !rooted {
+			t.Fatalf("stages of the cut streams: %v", stages)
+		}
 	})
 	t.Run("crash during the reload", func(t *testing.T) {
 		c, err := newBehind(t)
@@ -75,28 +102,41 @@ func TestFetchHardCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The first stream breaks off after its root. When node 3 opened
+		// its log again, before it replays it, the hook copies its
+		// directory: what a crash at that point leaves. Node 3 then
+		// starts from that copy.
+		crash := filepath.Join(t.TempDir(), "crash")
+		copied := make(chan error, 1)
+		var rooted atomic.Bool
+		var once sync.Once
+		c.tune = func(id uint64, cfg *Config) {
+			cfg.snapshotSync = 2 << 10
+			cfg.stage = func(s string) { rooted.Store(rooted.Load() || s == "root") }
+			cfg.reloading = func() {
+				if rooted.Load() {
+					once.Do(func() { copied <- os.CopyFS(crash, os.DirFS(c.dirs[3])) })
+				}
+			}
+		}
 		c.net.mu.Lock()
-		c.net.cuts = []int{16 << 10, 16 << 10}
+		c.net.cuts = []int{16 << 10}
 		c.net.mu.Unlock()
 		if _, err := c.start(3); err != nil {
 			t.Fatal(err)
 		}
-		// Stop node 3 as soon as its first stream broke off, while it
-		// reloads, as a crash would, and start it again from its disk.
-		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(time.Millisecond) {
-			c.net.mu.Lock()
-			cut := c.net.cut
-			c.net.mu.Unlock()
-			if cut > 0 {
-				break
+		select {
+		case err := <-copied:
+			if err != nil {
+				t.Fatal(err)
 			}
-			if time.Now().After(deadline) {
-				t.Fatal("no stream broke off")
-			}
+		case <-time.After(20 * time.Second):
+			t.Fatal("node 3 did not reload after its root")
 		}
 		if err := c.stop(3); err != nil && !errors.Is(err, context.Canceled) {
 			t.Fatalf("stop node 3: %v", err)
 		}
+		c.dirs[3], c.tune = crash, nil
 		n3, err := c.start(3)
 		if err != nil {
 			t.Fatal(err)
@@ -118,9 +158,27 @@ func TestFetchHardCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Reads, writes and a watch while node 3 fetches and reloads:
-		// each call must come back, with an answer or an error, within
-		// its deadline and a little more, never hang.
+		watch := func() (*WatchStream, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ws, err := n3.OpenWatch(ctx, core.Caller{})
+			if err != nil {
+				return nil, err
+			}
+			return ws, ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+				Key: []byte("k"), RangeEnd: []byte("l"),
+			}}})
+		}
+		// A watch open from before the first reload stays open through
+		// the fetches.
+		held, err := watch()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Reads, writes and watches that open and wait for an event while
+		// node 3 fetches and reloads: each call must come back, with an
+		// answer or an error, within its deadline and a little more,
+		// never hang.
 		stop := make(chan struct{})
 		var wg sync.WaitGroup
 		errs := make(chan error, 3)
@@ -138,7 +196,17 @@ func TestFetchHardCases(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				ws.Close()
+				defer ws.Close()
+				if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{
+					Key: []byte("w"),
+				}}}); err != nil {
+					return err
+				}
+				select {
+				case <-ws.C:
+				case <-ws.Done():
+				case <-ctx.Done():
+				}
 				return nil
 			},
 		} {
@@ -169,6 +237,37 @@ func TestFetchHardCases(t *testing.T) {
 		}
 		for err := range errs {
 			t.Fatal(err)
+		}
+		// The reloads and the install ended the held watch with an error
+		// that tells its client to watch again; a new one gets the next
+		// event.
+		select {
+		case <-held.Done():
+			if err := held.Err(); !errors.Is(err, rpctypes.ErrGRPCStopped) && !errors.Is(err, ErrSnapshotInstalled) {
+				t.Fatalf("the held watch ended with %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the held watch stayed open through the reloads")
+		}
+		ws, err := watch()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ws.Close()
+		if _, err := do(c.nodes[1], &pb.PutRequest{Key: []byte("k00"), Value: []byte("next")}); err != nil {
+			t.Fatal(err)
+		}
+		for deadline := time.After(10 * time.Second); ; {
+			select {
+			case r := <-ws.C:
+				if len(r.Events) > 0 && string(r.Events[0].Kv.Value) == "next" {
+					return
+				}
+			case <-ws.Done():
+				t.Fatalf("the new watch ended: %v", ws.Err())
+			case <-deadline:
+				t.Fatal("the new watch got no event of the put")
+			}
 		}
 	})
 	t.Run("own disk fails during the install", func(t *testing.T) {

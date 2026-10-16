@@ -983,19 +983,19 @@ func (n *Node) submit(r Request, p *pending) {
 	n.timeouts = append(n.timeouts, p)
 }
 
-// SetDisk tells the node how full its disk is: full past its budget, low
-// below three quarters of it. While full, the node answers requests that
-// write new data with etcd's NOSPACE error, as etcd does past its quota,
-// and raises its NOSPACE alarm, so that every member refuses them: a
-// follower past its budget must not take the leader's appends either
-// (#170). Once its disk is low and its store under the quota, it clears
-// its own alarm.
-func (n *Node) SetDisk(full, low bool) {
-	n.noSpace = full
+// SetDisk tells the node how many bytes its log's files use, and its disk
+// budget. At the budget, the node answers requests that write new data
+// with etcd's NOSPACE error, as etcd does past its quota, and raises its
+// NOSPACE alarm, so that every member refuses them: a follower past its
+// budget must not take the leader's appends either (#170). Once below the
+// budget, with its store under the quota, it clears its own alarm; the
+// alarm changes at most every leaseRetryTicks.
+func (n *Node) SetDisk(used, budget int64) {
+	n.noSpace = used >= budget
 	switch {
-	case full:
+	case n.noSpace:
 		n.raiseNoSpace(0)
-	case low && n.quotaLeft(kvOverhead):
+	case n.quotaLeft(kvOverhead):
 		n.clearNoSpace()
 	}
 }
@@ -1003,7 +1003,9 @@ func (n *Node) SetDisk(full, low bool) {
 // refusesSpace reports whether the node refuses write r before it
 // proposes it: past its budget one that takes space, and under a NOSPACE
 // alarm one that the alarm refuses when it applies (State.refusedOp), so
-// that refused writes do not fill the members' logs.
+// that refused writes do not fill the members' logs. A member that has
+// not applied a disarm yet still refuses, though another member already
+// answered it; etcd refuses only when the write applies.
 func (n *Node) refusesSpace(r Request) bool {
 	switch {
 	case n.noSpace && TakesSpace(r):
@@ -1011,8 +1013,9 @@ func (n *Node) refusesSpace(r Request) bool {
 	case !n.state.noSpace:
 		return false
 	case r.Op == nil:
-		// A put in wire form.
-		return true
+		// A put in wire form, which CORRUPT refuses first, when it
+		// applies.
+		return !n.state.corrupt
 	}
 	return errors.Is(n.state.refusedOp(r.Op), rpctypes.ErrGRPCNoSpace)
 }

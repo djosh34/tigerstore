@@ -41,7 +41,7 @@ func TestTakesSpace(t *testing.T) {
 // NOSPACE and change nothing, the delete applies.
 func TestForwardedWritesGetNoSpace(t *testing.T) {
 	c := newMemCluster(t, func(*Config) {})
-	c.nodes[0].SetDisk(true, false)
+	c.nodes[0].SetDisk(1, 1)
 	f := c.nodes[1]
 	f.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
 	f.Submit(Request{ID: 2, Op: &pb.LeaseGrantRequest{TTL: 10}})
@@ -60,7 +60,7 @@ func TestForwardedWritesGetNoSpace(t *testing.T) {
 			t.Fatalf("node %d is at revision %d", i+1, n.Store().Rev())
 		}
 	}
-	c.nodes[0].SetDisk(false, true)
+	c.nodes[0].SetDisk(0, 1)
 	f.Submit(Request{ID: 4, Op: &pb.PutRequest{Key: []byte("k"), Value: []byte("v")}})
 	for range 100 {
 		if c.replies == 2 {
@@ -83,7 +83,7 @@ func TestQueuedWritesGetNoSpace(t *testing.T) {
 		l.Submit(Request{ID: uint64(i + 1), Op: &pb.PutRequest{Key: []byte("k"), Value: make([]byte, 1<<10)}})
 	}
 	c.step()
-	l.SetDisk(true, false)
+	l.SetDisk(1, 1)
 	for range 100 {
 		if c.noSpace+c.replies == 100 {
 			break
@@ -102,7 +102,7 @@ func TestQueuedWritesGetNoSpace(t *testing.T) {
 func TestFollowerPastBudgetStopsWrites(t *testing.T) {
 	c := newMemCluster(t, func(*Config) {})
 	l, f := c.nodes[0], c.nodes[2]
-	f.SetDisk(true, false)
+	f.SetDisk(1, 1)
 	alarmed := func() bool {
 		for _, a := range l.state.alarms {
 			if a.Alarm == pb.AlarmType_NOSPACE && a.MemberID == f.cfg.ID {
@@ -132,7 +132,7 @@ func TestFollowerPastBudgetStopsWrites(t *testing.T) {
 	if c.noSpace != 1 || l.Store().Rev() != 1 {
 		t.Fatalf("%d NOSPACE answers, revision %d; want the put refused", c.noSpace, l.Store().Rev())
 	}
-	f.SetDisk(false, true)
+	f.SetDisk(0, 1)
 	for i := 0; i < 100 && alarmed(); i++ {
 		tick()
 	}

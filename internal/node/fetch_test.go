@@ -148,6 +148,8 @@ type behind struct {
 	// rev is the revision of the last write, which set every key k00 to
 	// k49 to value(i, 40).
 	rev int64
+	// tune, if set, changes the configuration of a node before it starts.
+	tune func(id uint64, cfg *Config)
 }
 
 func value(i, round int) []byte { return fmt.Appendf(nil, "value %d of round %d %0200d", i, round, 0) }
@@ -159,9 +161,13 @@ func (c *behind) config(id uint64) Config {
 	cfg.CheckpointBytes, cfg.CheckpointRatio = 16<<10, 2
 	// The leader stops itself when an append takes two election
 	// timeouts; 50 ms ticks keep a slow runner's fsync below that.
-	return Config{Core: cfg, DataDir: c.dirs[id], Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
+	ncfg := Config{Core: cfg, DataDir: c.dirs[id], Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, Logf: func(f string, args ...any) {
 		c.t.Logf("node %d: "+f, append([]any{id}, args...)...)
 	}}
+	if c.tune != nil {
+		c.tune(id, &ncfg)
+	}
+	return ncfg
 }
 
 // start runs node id until close.

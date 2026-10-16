@@ -1014,6 +1014,12 @@ func (w *WAL) Value(index uint64, off, n uint32) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ReadValue(r, at, index, off, n)
+}
+
+// ReadValue reads the n bytes at offset off of the data of entry index
+// from r at at, where ValueReader placed them.
+func ReadValue(r io.ReaderAt, at int64, index uint64, off, n uint32) ([]byte, error) {
 	b := make([]byte, n)
 	if k, err := r.ReadAt(b, at); k != len(b) {
 		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)

@@ -88,7 +88,15 @@ type Config struct {
 	// BeforeSync before each sync of the log. Tests use them to stall
 	// those reads and syncs.
 	BeforeRead, BeforeSync func()
-	Logf                   func(format string, args ...any)
+	// snapshotSync, if set, replaces the syncBytes of a snapshot after
+	// which the log syncs what came; stage, if set, runs after each such
+	// sync and after the root of a snapshot install; and reloading, if
+	// set, runs when a run that ended for a reload opened the log again,
+	// before the core replays it. For tests.
+	snapshotSync int
+	stage        func(string)
+	reloading    func()
+	Logf         func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
 	Metrics *metrics.Set
@@ -375,7 +383,9 @@ type Node struct {
 // appends (#165). It holds reading meanwhile. Whatever unmaps a segment
 // or closes a file of the log takes reading for writing, under the lock:
 // a removal or an unmap tries, and if a read is under way leaves it for
-// its next turn, so appends never wait for a read.
+// its next turn, so appends never wait for a read. A removal that a read
+// or a snapshot fetch put off waits in removal, and the end of that read
+// or fetch wakes the persist goroutine to try it again.
 type diskLog struct {
 	mu      sync.Mutex
 	reading sync.RWMutex
@@ -392,6 +402,11 @@ type diskLog struct {
 	// is removed.
 	ckpts   []wal.Root
 	serving int
+	// removal is the removal that waits, held is set while one does,
+	// and retry wakes the persist goroutine to try it.
+	removal *rootRemoval
+	held    atomic.Bool
+	retry   chan struct{}
 	// used is the size of the log's files when the cleaner measured them
 	// last, plus what the disk goroutines wrote since, and cleaned the
 	// bytes that cleaning wrote. maxWrite is the longest write and sync
@@ -430,7 +445,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	}
 	l.reading.RLock()
 	l.mu.Unlock()
-	defer l.reading.RUnlock()
+	defer l.readDone()
 	if l.before != nil {
 		l.before()
 	}
@@ -440,11 +455,46 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 		}
 		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
-	b := make([]byte, n)
-	if k, err := r.ReadAt(b, at); k != len(b) {
-		return nil, fmt.Errorf("wal: read %d of %d bytes of the value at %d+%d of entry %d: %w", k, n, off, n, index, err)
+	return wal.ReadValue(r, at, index, off, n)
+}
+
+// rootRemoval is what a synced root made obsolete: the log below index
+// below and the checkpoints older than root.
+type rootRemoval struct {
+	below uint64
+	root  wal.Root
+}
+
+// readDone ends a value read.
+func (l *diskLog) readDone() {
+	l.reading.RUnlock()
+	l.wake()
+}
+
+// wake wakes the persist goroutine if a removal waits.
+func (l *diskLog) wake() {
+	if l.held.Load() {
+		select {
+		case l.retry <- struct{}{}:
+		default:
+		}
 	}
-	return b, nil
+}
+
+// remove removes, with the lock held, what the waiting removal's root
+// made obsolete, unless a snapshot fetch or a value read is under way:
+// either may read what it takes.
+func (l *diskLog) remove() error {
+	r := l.removal
+	if r == nil || l.serving > 0 || !l.reading.TryLock() {
+		return nil
+	}
+	err := errors.Join(l.w.RemoveBelow(r.below), l.w.RemoveCheckpoints(r.root.Index))
+	l.reading.Unlock()
+	l.removal = nil
+	l.held.Store(false)
+	l.ckpts = slices.DeleteFunc(l.ckpts, func(c wal.Root) bool { return c.Index < r.root.Index })
+	return errors.Join(err, l.synced())
 }
 
 // mapping returns the mapping of sealed segment seq, mapping it first.
@@ -543,7 +593,7 @@ func New(cfg Config) (*Node, error) {
 	}
 	n := &Node{
 		cfg:   cfg,
-		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead},
+		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
 		inbox: make(chan input, 8192),
 		done:  make(chan struct{}),
 		// Defragment sends to it from gRPC goroutines, so a reload keeps
@@ -596,10 +646,15 @@ func (n *Node) open() error {
 	}
 	n.log.mu.Lock()
 	err = n.log.close()
-	n.log.w, n.log.sealed, n.log.ckpts = w, w.Seq()-1, nil
+	n.log.w, n.log.sealed, n.log.ckpts, n.log.removal = w, w.Seq()-1, nil, nil
+	n.log.held.Store(false)
 	n.log.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	// Only a reload finds a core of an earlier run.
+	if n.core != nil && n.cfg.reloading != nil {
+		n.cfg.reloading()
 	}
 	run, err := nextRun(n.log.fs)
 	if err != nil {
@@ -956,8 +1011,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			return nil
 		}
 		if b := n.cfg.DiskBudget; b > 0 {
-			used := n.log.used.Load()
-			n.core.SetDisk(used >= b, used < b*3/4)
+			n.core.SetDisk(n.log.used.Load(), b)
 		}
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
@@ -1237,6 +1291,15 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				return
 			}
 			continue
+		case <-n.log.retry:
+			n.log.mu.Lock()
+			err := n.log.remove()
+			n.log.mu.Unlock()
+			if err != nil {
+				fail(err)
+				return
+			}
+			continue
 		case <-ctx.Done():
 			return
 		}
@@ -1351,25 +1414,22 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
 // longer change, a snapshot's checkpoint, and a root, which removes what
 // it made obsolete.
 func (n *Node) afterSync(jobs []core.PersistJob) error {
-	w := n.log.w
 	n.log.mu.Lock()
 	defer n.log.mu.Unlock()
 	err := n.log.synced()
 	for _, j := range jobs {
 		if in := j.Install; in != nil && in.Checkpoint.Index > 0 {
 			n.log.ckpts = []wal.Root{in.Checkpoint}
+			n.log.removal = nil
 		}
 		if j.Root != nil {
 			n.log.ckpts = append(n.log.ckpts, *j.Root)
-			// A fetch under way may read what the removal would take;
-			// the next root removes it.
-			// So may a value read under way, which must not hold up
-			// the appends behind this sync (#165).
-			if j.RemoveBelow > 0 && n.log.serving == 0 && n.log.reading.TryLock() {
-				err = errors.Join(err, w.RemoveBelow(j.RemoveBelow), w.RemoveCheckpoints(j.Root.Index))
-				n.log.reading.Unlock()
-				err = errors.Join(err, n.log.synced())
-				n.log.ckpts = []wal.Root{*j.Root}
+			if j.RemoveBelow > 0 {
+				// Set before it tries, so that a read that keeps
+				// it from removing wakes the retry when it ends.
+				n.log.removal = &rootRemoval{j.RemoveBelow, *j.Root}
+				n.log.held.Store(true)
+				err = errors.Join(err, n.log.remove())
 			}
 		}
 	}
@@ -1438,11 +1498,22 @@ const syncBytes = 16 << 20
 
 func (s *logSink) wrote(n int) error {
 	s.pending += n
-	if s.pending < syncBytes {
+	if s.pending < cmp.Or(s.n.cfg.snapshotSync, syncBytes) {
 		return nil
 	}
 	s.pending = 0
-	return s.disk(s.sync())
+	if err := s.disk(s.sync()); err != nil {
+		return err
+	}
+	s.staged("sync")
+	return nil
+}
+
+// staged runs Config.stage, if set.
+func (s *logSink) staged(stage string) {
+	if s.n.cfg.stage != nil {
+		s.n.cfg.stage(stage)
+	}
 }
 
 // sync syncs the log and times it as an fsync of the snapshot.
@@ -1502,6 +1573,7 @@ func (s *logSink) Root(r wal.Root) error {
 	s.n.log.mu.Lock()
 	s.n.log.w.AppendRoot(r)
 	s.n.log.mu.Unlock()
+	s.staged("root")
 	return nil
 }
 
@@ -1608,6 +1680,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.mu.Lock()
 	n.log.serving--
 	n.log.mu.Unlock()
+	n.log.wake()
 	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
 	return err
 }
