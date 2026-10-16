@@ -37,6 +37,7 @@ jobs:
           test ! -s format.patch
           go vet ./cmd/pastram ./internal/k8ssize ./internal/core ./internal/node ./internal/sim
           go test -race ./cmd/pastram ./internal/k8ssize
+          go test -tags planted ./internal/sim -run '^TestPlantedInventory$'
       - name: Concurrent production cleaner on simulated storage
         run: |
           set -o pipefail
@@ -53,7 +54,7 @@ jobs:
         with:
           version: v2.14.0
           args: ./cmd/pastram/... ./internal/k8ssize/... ./internal/core/... ./internal/node/... ./internal/sim/...
-      - name: Planted stale cache lookup, one fixed scenario
+      - name: B31 stale cache lookup, one fixed scenario
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -92,13 +93,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fault: [early-remove, missing-value]
+        include:
+          - {bug: B29, fault: early-remove}
+          - {bug: B30, fault: missing-value}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Mutate the production cleaner, not the test protocol
+      - name: ${{ matrix.bug }} mutates the production cleaner, one fixed seed
         env:
           FAULT: ${{ matrix.fault }}
         run: |

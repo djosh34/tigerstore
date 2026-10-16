@@ -92,8 +92,10 @@ Two Actions controls mutate `internal/node/clean.go` itself. One removes
 victims before installing and syncing the replacement root. The other omits
 one live checkpoint value from the pack. Both must fail seed 1 with lost-value
 evidence. The prior stale-cache mutation remains required too. The controls
-run in the reusable workflow but do not have numbers in the main planted-bug
-catalog yet.
+run in the reusable workflow. Integration assigns B29 to early removal, B30
+to an omitted checkpoint value and B31 to the stale cache lookup. They are
+source mutations, not production build switches. Each must fail its one fixed
+scenario with the named data-loss assertion; a build error is not a catch.
 
 ## Etcd index allocation
 
@@ -204,10 +206,55 @@ following test-setup failures are not product bug issues.
 
 ## Integration
 
-Keep `74e08fe1` once. Drop the prep-only CI commit when taking this branch.
-The shared `internal/k8ssize` files must not duplicate the soak branch's
-identical files. Add the reusable storage and cleaner-control jobs to the
-required CI gate, and assign the controls entries in the planted catalog.
+`prep/int-8-past-ram` takes `74e08fe1` and `5395c610` onto main at
+`e5b29278`, without either prep-only commit. The soak already supplied the
+identical `internal/k8ssize` files. The required CI gate now includes storage,
+the B29-B31 mutation controls and the upstream index measurement. Manual,
+main and nightly CI also run every capacity case; pull requests omit only
+those process measurements. The planted workflow runs the source mutations
+too, and its inventory names their workflow instead of a Go package.
+
 Run the memory proof on main after integration. Compression, the measured
 two-second three-member cold-read election scenario and the final release
 gate remain outside this continuation's new coverage.
+
+### Capacity outcomes
+
+The four red capacity jobs in run
+[38951406613](https://github.com/djosh34/tigerstore/actions/runs/38951406613)
+record measured limits, not a demonstrated product defect. This follows the
+max-objects requirement in #144: grow the live population until something
+fails, then name that limit and count. A green capacity job now means it
+recorded that limit, not that the server survived it.
+
+| Case | Acknowledged objects | Live value bytes | Final cgroup OOM kills |
+| --- | ---: | ---: | --- |
+| Tigerstore, uncapped max | 2,794,304 | 4,076,217,555 | 0, 1, 0 |
+| Etcd, 8 GiB max | 463,744 | 678,348,675 | 0, 0, 1 |
+| Etcd, uncapped max | 457,984 | 670,027,745 | 1, 0, 0 |
+| Etcd, proof preload | 463,680 | 677,194,644 | 0, 1, 0 |
+
+All four used separate 640 MiB cgroups, swap disabled and `GOMEMLIMIT=560MiB`.
+The driver log in the first and fourth cases ends with an unavailable Txn
+and EOF during preload. The final cgroup counters caught kills that the
+last two-second sample missed. The other two controllers observed the OOM
+in their polling loop. No mixed load had started. Etcd's proof population
+was below the required 2,080,374,784 bytes, so there is no mixed-load rate or
+checker result at that population. The small etcd adapter control remains
+required and is never accepted at OOM.
+
+These observations prove the cgroup boundary, not which allocation exhausted
+memory. Tigerstore keeps its index in RAM by decision #130; its sampled
+index estimate near this boundary is about 164.55 bytes/key. Etcd's isolated
+index measurement is about 195.08 bytes/key. Neither number attributes the
+whole process's OOM to the index. No quota or disk-full error preceded the
+recorded boundary. One additional 64-Put transaction may be ambiguous.
+
+`scripts/past-ram.py` now emits `capacity-limit` or
+`reference-preload-limit` only with three final cgroup reports, a positive
+acknowledged preload, a recorded OOM kill and a matching termination. It
+keeps the termination text and counters. Unknown driver errors, checker
+failures, time limits, failures after preload, and OOMs in tigerstore's proof
+or either cache case stay red. The classifier tests include the four earlier
+observations and these rejection cases. Every measurement writes its outcome
+and counts to the Actions summary as well as the retained JSON artifacts.

@@ -23,7 +23,7 @@ class ClassificationTests(unittest.TestCase):
         for kind, mode, count, live, driver_failed in [
             ("tigerstore", "max", 2794304, 4076217555, True),
             ("etcd", "max", 463744, 678348675, False),
-            ("etcd", "max", 457984, 669955351, False),
+            ("etcd", "max", 457984, 670027745, False),
             ("etcd", "proof", 463680, 677194644, True),
         ]:
             with self.subTest(kind=kind, mode=mode, count=count):

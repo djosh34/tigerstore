@@ -108,11 +108,15 @@ var plantedCases = map[string]plantedCase{
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each
 // package's own TestPlanted runs a fixed scenario that must catch it; the
-// CI job runs those packages too.
+// CI job runs those packages too. Workflow entries are source mutations,
+// caught by the required past-ram job rather than a planted build switch.
 var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
 	"B26": "internal/node",
+	"B29": ".github/workflows/past-ram.yml",
+	"B30": ".github/workflows/past-ram.yml",
+	"B31": ".github/workflows/past-ram.yml",
 }
 
 // TestPlantedInventory requires a case for every planted bug.
@@ -122,6 +126,18 @@ func TestPlantedInventory(t *testing.T) {
 		_, there := plantedElsewhere[name]
 		if here == there {
 			t.Errorf("planted bug %s (%s) needs exactly one case, here or in another package", name, planted.Bugs[name])
+		}
+	}
+	for name, path := range plantedElsewhere {
+		if !strings.HasPrefix(path, ".github/workflows/") {
+			continue
+		}
+		workflow, err := os.ReadFile("../../" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(workflow), name) {
+			t.Errorf("source mutation %s is absent from %s", name, path)
 		}
 	}
 	for name := range plantedCases {

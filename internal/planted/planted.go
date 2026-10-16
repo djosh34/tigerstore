@@ -40,4 +40,8 @@ var Bugs = map[string]string{
 	"B25":  "value reads skip the checksum",
 	"B26":  "a follower stops when it cannot fetch its snapshot, instead of starting again from its log",
 	"B27":  "a checkpoint finished while a snapshot install is on its way to disk asks for its root",
+	// Source mutations in past-ram.yml, caught in one fixed scenario each.
+	"B29": "the cleaner removes segments before syncing their replacement root",
+	"B30": "the cleaner omits a value still named by the durable checkpoint",
+	"B31": "a cache lookup ignores the Raft index and returns an overwritten value",
 }
