@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -488,6 +489,13 @@ func TestWitnessedAmbiguousCases(t *testing.T) {
 		},
 		Log: []history.Request{grant, put("a", "x", 42), put("a", "y", 0), revoke},
 	}
+	// The same with the rejection called before the put: it may still
+	// take effect after it, up to its return (review of #197).
+	overlap := *cases["expiry after an ambiguous put that used the lease"]
+	overlap.Ops = slices.Clone(overlap.Ops)
+	overlap.Ops[5].Call = 3
+	overlap.Ops[5].Client = 4
+	cases["expiry after an ambiguous put, with the rejection overlapping it"] = &overlap
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
 			mustPass(t, "Linearizable", Linearizable(h, timeout))
