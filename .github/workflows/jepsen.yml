@@ -1,0 +1,48 @@
+name: Jepsen and upstream robustness
+on:
+  push:
+    branches: [prep/148-jepsen]
+    paths: ['scripts/jepsen/**', '.github/workflows/jepsen.yml']
+  workflow_dispatch:
+    inputs:
+      product_sha:
+        description: Main commit to test, blank uses the pinned prework baseline
+        default: '40e7c0a009a08d6ba80f369dd2e66c9735512dbb'
+permissions:
+  contents: read
+env:
+  PRODUCT_SHA: ${{ inputs.product_sha || '40e7c0a009a08d6ba80f369dd2e66c9735512dbb' }}
+jobs:
+  jepsen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        store: [etcd, tigerstore]
+        workload: [append, lock-set, lock-etcd-set, set, register, watch, wr]
+        nemesis: [kill, pause, partition, lazyfs]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        if: matrix.store == 'tigerstore'
+        with:
+          go-version-file: go.mod
+      - name: Run upstream Jepsen on three nodes
+        shell: bash
+        run: bash scripts/jepsen/run.sh '${{ matrix.store }}' '${{ matrix.workload }}' '${{ matrix.nemesis }}' 90 50
+      - name: Require a definite verdict and observed faults
+        if: always()
+        shell: bash
+        run: |
+          pip install edn_format==0.7.5
+          python3 scripts/jepsen/summarize.py results/jepsen > results/jepsen/summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jepsen-${{ matrix.store }}-${{ matrix.workload }}-${{ matrix.nemesis }}
+          path: results/jepsen
+          retention-days: 30
