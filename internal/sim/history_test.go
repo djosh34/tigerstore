@@ -1,6 +1,8 @@
 package sim
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -11,6 +13,8 @@ import (
 
 	"github.com/djosh34/tigerstore/history"
 	"github.com/djosh34/tigerstore/history/frometcd"
+	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // TestConversionRefusesWhatTheFormatCannotHold makes sure the converter
@@ -75,5 +79,26 @@ func TestAmbiguousWritesFromTheLog(t *testing.T) {
 	}
 	if err := h.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRotStop accepts only the stop of a rotted node on the damaged
+// record itself, of its entry in its segment, or on its value (#160).
+func TestRotStop(t *testing.T) {
+	n := &node{rotEntry: 7, rotSeg: 3}
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{fmt.Errorf("core: read entry: %w", &wal.RecordError{Entry: 7, Segment: 3, Reason: "does not verify"}), true},
+		{fmt.Errorf("core: %w", mvcc.ErrBadValue), true},
+		{&wal.RecordError{Entry: 8, Segment: 3, Reason: "does not verify"}, false},
+		{&wal.RecordError{Entry: 7, Segment: 4, Reason: "does not verify"}, false},
+		{fmt.Errorf("%w: the record of entry 7 in segment 3 does not verify", wal.ErrCorrupt), false},
+		{errors.New("node stopped"), false},
+	} {
+		if got := rotStop(n, tc.err); got != tc.want {
+			t.Errorf("rotStop(%v) = %v, want %v", tc.err, got, tc.want)
+		}
 	}
 }

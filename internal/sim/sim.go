@@ -17,7 +17,6 @@ import (
 	"hash/fnv"
 	"math/rand/v2"
 	"slices"
-	"strings"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
@@ -395,10 +394,11 @@ type node struct {
 	root       uint64
 	roots      []wal.Root
 	// rotted is set when the run flipped a bit of a value of entry
-	// rotEntry, in segment rotFile, on the disk of this running node.
-	rotted   bool
-	rotFile  string
-	rotEntry uint64
+	// rotEntry, in segment rotSeg, file rotFile, on the disk of this
+	// running node.
+	rotted           bool
+	rotFile          string
+	rotEntry, rotSeg uint64
 }
 
 type link struct {
@@ -1020,11 +1020,8 @@ func rotStop(n *node, err error) bool {
 	if errors.Is(err, mvcc.ErrBadValue) {
 		return true
 	}
-	if !errors.Is(err, wal.ErrCorrupt) {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, fmt.Sprintf("the record of entry %d in segment ", n.rotEntry)) && strings.Contains(msg, "does not verify")
+	var re *wal.RecordError
+	return errors.As(err, &re) && re.Entry == n.rotEntry && re.Segment == n.rotSeg
 }
 
 // startDisk writes every queued job and schedules the fsync, or, for a

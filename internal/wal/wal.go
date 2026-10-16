@@ -90,6 +90,21 @@ type File interface {
 // cause. The node must not take part in the cluster with it.
 var ErrCorrupt = errors.New("wal: corrupt log")
 
+// RecordError is an entry's record that does not verify when it is read:
+// it is ErrCorrupt, and says which entry and segment.
+type RecordError struct {
+	Entry, Segment uint64
+	// Reason says what is wrong.
+	Reason string
+}
+
+func (e *RecordError) Error() string {
+	return fmt.Sprintf("%v: the record of entry %d in segment %d %s", ErrCorrupt, e.Entry, e.Segment, e.Reason)
+}
+
+// Unwrap makes a RecordError an ErrCorrupt.
+func (e *RecordError) Unwrap() error { return ErrCorrupt }
+
 // ErrNotOnDisk means that an entry or value is not in the log any more, or
 // never was.
 var ErrNotOnDisk = errors.New("wal: not on disk")
@@ -972,7 +987,7 @@ func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
 	}
 	n := binary.LittleEndian.Uint32(hdr[:])
 	if n < entryHdrSize || n > MaxEntryBytes {
-		return nil, fmt.Errorf("%w: the record of entry %d in segment %d has %d bytes", ErrCorrupt, index, s.seq, n)
+		return nil, &RecordError{Entry: index, Segment: s.seq, Reason: fmt.Sprintf("has %d bytes", n)}
 	}
 	body := make([]byte, 1+n)
 	if err := w.readAt(s.seq, body, at+8); err != nil {
@@ -980,7 +995,7 @@ func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
 	}
 	if crc32.Update(s.seeds[i], castagnoli, body) != binary.LittleEndian.Uint32(hdr[4:]) || body[0] != recEntry ||
 		binary.LittleEndian.Uint64(body[9:]) != index {
-		return nil, fmt.Errorf("%w: the record of entry %d in segment %d does not verify", ErrCorrupt, index, s.seq)
+		return nil, &RecordError{Entry: index, Segment: s.seq, Reason: "does not verify"}
 	}
 	p := body[1:]
 	term := binary.LittleEndian.Uint64(p)
