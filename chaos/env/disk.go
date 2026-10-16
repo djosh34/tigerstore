@@ -139,7 +139,11 @@ func (d *Disk) mountLazyFS() error {
 		_ = out.Close()
 	}()
 	if !waitFor(10*time.Second, func() bool { return mounted(d.Data) }) {
-		return fmt.Errorf("LazyFS did not mount %s within 10s", d.Data)
+		b, _ := os.ReadFile(out.Name())
+		if len(b) > 2000 {
+			b = b[len(b)-2000:]
+		}
+		return fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b)))
 	}
 	return nil
 }
