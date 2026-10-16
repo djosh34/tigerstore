@@ -381,6 +381,11 @@ func TestQueuedInstalls(t *testing.T) {
 	leader.log.mu.Lock()
 	ckpt := leader.log.ckpts[len(leader.log.ckpts)-1]
 	leader.log.mu.Unlock()
+	// The final compaction may be the checkpoint entry itself. Create
+	// the second install's tail instead of relying on an incidental one.
+	if _, err := do(leader, &pb.PutRequest{Key: []byte("install-tail"), Value: []byte("v")}); err != nil {
+		t.Fatal(err)
+	}
 	next, err := leader.log.Entry(ckpt.Index + 1)
 	if err != nil {
 		t.Fatal(err)
