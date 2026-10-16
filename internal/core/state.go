@@ -64,10 +64,12 @@ type State struct {
 	minTTL int64
 	// stamps counts grants and keepalives, to stamp leases.
 	stamps int64
-	// version is the cluster version, and supports the newest version each
-	// voter announced (version.go).
-	version  uint32
-	supports map[uint64]uint32
+	// version is the cluster version, supports the newest version each
+	// voter announced, and announced the index at which that announcement
+	// applied (version.go).
+	version   uint32
+	supports  map[uint64]uint32
+	announced map[uint64]uint64
 	// members are the cluster's members by ID, and removed the IDs it
 	// removed, which never come back (members.go).
 	members map[uint64]*pb.Member
@@ -101,7 +103,7 @@ func (st *State) Changes() []mvcc.Change { return st.changes }
 // rounded up.
 func NewState(minTTL int64, v mvcc.Values) *State {
 	st := &State{
-		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{},
+		kv: mvcc.New(v), leases: map[int64]*lease{}, minTTL: minTTL, version: 1, supports: map[uint64]uint32{}, announced: map[uint64]uint64{},
 		members: map[uint64]*pb.Member{}, removed: map[uint64]bool{}, auth: newAuthState(), etcdVersion: ClusterVersion,
 	}
 	st.kv.LeaseExists = func(id int64) bool { _, ok := st.leases[id]; return ok }
@@ -133,6 +135,7 @@ func (st *State) Hash() uint64 {
 	for _, id := range slices.Sorted(maps.Keys(st.supports)) {
 		mix(id)
 		mix(uint64(st.supports[id]))
+		mix(st.announced[id])
 	}
 	for _, a := range st.alarms {
 		mix(a.MemberID)

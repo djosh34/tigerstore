@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -17,21 +19,52 @@ import (
 func TestAnnounceRaisesVersionOnce(t *testing.T) {
 	st := NewState(2, &mvcc.Heap{})
 	voters := []uint64{1, 2, 3}
+	// Each announcement applies at index i+1 and was proposed after index
+	// i applied, but for the late one.
 	for i, step := range []struct {
 		id      uint64
 		v, want uint32
+		late    bool
 	}{
-		{1, 2, 1}, {2, 2, 1}, // node 3 has not announced
-		{3, 1, 1},            // node 3 is older
-		{2, 1, 1}, {3, 2, 1}, // node 2 rolls back before node 3 upgrades
-		{4, 3, 1},            // not a voter
-		{2, 2, 2},            // every voter supports 2
-		{3, 1, 2}, {1, 3, 2}, // never goes down
+		{1, 2, 1, false}, {2, 2, 1, false}, // node 3 has not announced
+		{3, 1, 1, false},                   // node 3 is older
+		{2, 1, 1, false}, {3, 2, 1, false}, // node 2 rolls back before node 3 upgrades
+		{2, 2, 1, true},                    // node 2's announcement from before the rollback arrives late (#174)
+		{4, 3, 1, false},                   // not a voter
+		{2, 2, 2, false},                   // every voter supports 2
+		{3, 1, 2, false}, {1, 3, 2, false}, // never goes down
 	} {
-		st.announce(step.id, step.v, voters)
+		index, base := uint64(i+1), uint64(i)
+		if step.late {
+			base = 1
+		}
+		st.announce(step.id, step.v, base, index, voters)
 		if st.version != step.want {
 			t.Fatalf("step %d: node %d announced %d, version %d, want %d", i, step.id, step.v, st.version, step.want)
 		}
+	}
+}
+
+func TestAnnouncementBase(t *testing.T) {
+	b, err := proto.Marshal(announcement(3, 1234))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, base, err := parseAnnouncement(b); err != nil || v != 3 || base != 1234 {
+		t.Fatalf("got %d, %d, %v", v, base, err)
+	}
+	// A build before the base reads the version alone.
+	var old wrapperspb.UInt32Value
+	if err := proto.Unmarshal(b, &old); err != nil || old.Value != 3 {
+		t.Fatalf("plain message: %v, %v", old.Value, err)
+	}
+	// And this one reads its announcements with base 0.
+	plain, err := proto.Marshal(wrapperspb.UInt32(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, base, err := parseAnnouncement(plain); err != nil || v != 2 || base != 0 {
+		t.Fatalf("got %d, %d, %v", v, base, err)
 	}
 }
 

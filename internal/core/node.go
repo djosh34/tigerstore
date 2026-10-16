@@ -1753,7 +1753,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	case kindVersion:
 		n.timed.op = "VersionAnnounce"
-		return n.applyVersion(origin, b)
+		return n.applyVersion(origin, e.GetIndex(), b)
 	}
 	op, err := newOp(kind)
 	if err != nil {

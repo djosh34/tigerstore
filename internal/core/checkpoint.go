@@ -32,6 +32,7 @@ import (
 //	uvarint member count | per member: uvarint ID | string name |
 //	uvarint count | strings peer URLs | uvarint count | strings client URLs |
 //	u8 learner | uvarint version it supports, 0 before it announced one |
+//	uvarint index at which that announcement applied (from version 4) |
 //	uvarint removed member count | uvarint removed IDs |
 //	uvarint cluster version | varint revision |
 //	varint compaction revision | varint lease stamps | varint base |
@@ -53,14 +54,16 @@ import (
 const ckptMagic = "tigerckp"
 
 // ckptVersion is the format version of checkpoint files. Version 2 added
-// the versions, version 3 the members and auth.
-const ckptVersion = 3
+// the versions, version 3 the members and auth, version 4 the index of
+// each member's announcement. This build reads versions 3 and 4.
+const ckptVersion = 4
 
 // ckptHeader is the part of a checkpoint before the keys.
 type ckptHeader struct {
 	index, term          uint64
 	members              []*pb.Member
 	supports             []uint32
+	announced            []uint64
 	removed              []uint64
 	version              uint32
 	rev, compact, stamps int64
@@ -100,6 +103,7 @@ func (h *ckptHeader) encode() ([]byte, error) {
 		}
 		b = append(b, learner)
 		b = binary.AppendUvarint(b, uint64(h.supports[i]))
+		b = binary.AppendUvarint(b, h.announced[i])
 	}
 	b = binary.AppendUvarint(b, uint64(len(h.removed)))
 	for _, id := range h.removed {
@@ -169,9 +173,10 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 	if string(fixed[:len(ckptMagic)]) != ckptMagic {
 		return nil, fmt.Errorf("%w: no magic", errBadCheckpoint)
 	}
-	if v := binary.LittleEndian.Uint32(fixed[len(ckptMagic):]); v != ckptVersion {
+	v := binary.LittleEndian.Uint32(fixed[len(ckptMagic):])
+	if v != 3 && v != ckptVersion {
 		// A root of this node names it, so it is damage or a newer build's.
-		return nil, fmt.Errorf("%w: format version %d; this build reads version %d", errBadCheckpoint, v, ckptVersion)
+		return nil, fmt.Errorf("%w: format version %d; this build reads versions 3 and %d", errBadCheckpoint, v, ckptVersion)
 	}
 	h := &ckptHeader{
 		index: binary.LittleEndian.Uint64(fixed[len(ckptMagic)+4:]),
@@ -219,6 +224,11 @@ func readHeader(r *bufio.Reader) (*ckptHeader, error) {
 		}
 		h.members = append(h.members, m)
 		h.supports = append(h.supports, uint32(uv()))
+		var announced uint64
+		if v >= 4 {
+			announced = uv()
+		}
+		h.announced = append(h.announced, announced)
 	}
 	n = uv()
 	for i := uint64(0); i < n && err == nil; i++ {
@@ -342,6 +352,7 @@ func (st *State) header(index, term uint64) *ckptHeader {
 	}
 	for _, m := range h.members {
 		h.supports = append(h.supports, st.supports[m.ID])
+		h.announced = append(h.announced, st.announced[m.ID])
 	}
 	for id := range st.removed {
 		h.removed = append(h.removed, id)
@@ -474,7 +485,7 @@ func readCheckpoint(cfg Config, f io.Reader, root wal.Root, v mvcc.Values) (*Sta
 	for i, m := range h.members {
 		st.members[m.ID] = m
 		if h.supports[i] != 0 {
-			st.supports[m.ID] = h.supports[i]
+			st.supports[m.ID], st.announced[m.ID] = h.supports[i], h.announced[i]
 		}
 	}
 	for _, id := range h.removed {
@@ -579,7 +590,7 @@ func (n *Node) RestoredCheckpoint(members []*pb.Member) (wal.Root, []byte, error
 		n.out.Checkpoint = nil
 	}
 	st := n.state
-	st.members, st.removed, st.supports = map[uint64]*pb.Member{}, map[uint64]bool{}, map[uint64]uint32{}
+	st.members, st.removed, st.supports, st.announced = map[uint64]*pb.Member{}, map[uint64]bool{}, map[uint64]uint32{}, map[uint64]uint64{}
 	for _, m := range members {
 		st.members[m.ID] = &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, IsLearner: m.IsLearner}
 		st.supports[m.ID] = st.version
