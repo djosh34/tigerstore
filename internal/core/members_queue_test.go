@@ -103,3 +103,54 @@ func TestMemberUpdatesQueuedOnLeader(t *testing.T) {
 		}
 	}
 }
+
+// A member change Raft drops for its uncommitted-size limit still moves
+// Raft's pending index, so the retry becomes an empty entry. The change
+// must stay queued and go out once the log drains, and the next must too.
+func TestMemberUpdateAfterUncommittedLimit(t *testing.T) {
+	c := newMemCluster(t, func(cfg *Config) {
+		cfg.UnappliedBytes, cfg.MaxBatchBytes = 1<<10, 1<<10
+	})
+	for range 100 {
+		for _, n := range c.nodes {
+			n.Tick()
+		}
+		c.step()
+	}
+	leader := c.nodes[0]
+	if !leader.isLeader || !leader.capable() {
+		t.Fatal("node 1 is not a capable leader")
+	}
+	var replies []Reply
+	c.onReply = func(node int, r Reply) {
+		if node == 0 {
+			replies = append(replies, r)
+		}
+	}
+	// A first entry may pass the limit; nothing commits while the acks
+	// are held, so the change after it is over the limit.
+	c.holdAcks = true
+	leader.Submit(Request{ID: 1, Op: &pb.PutRequest{Key: []byte("k"), Value: make([]byte, 4<<10)}})
+	leader.Submit(Request{ID: 2, Op: &pb.MemberUpdateRequest{ID: 3, PeerURLs: []string{"https://first:1"}}})
+	for range 20 {
+		c.step()
+	}
+	c.holdAcks = false
+	leader.Submit(Request{ID: 3, Op: &pb.MemberUpdateRequest{ID: 3, PeerURLs: []string{"https://second:1"}}})
+	for range 100 {
+		c.step()
+	}
+	if len(replies) != 3 {
+		t.Fatalf("%d replies, want 3: %+v", len(replies), replies)
+	}
+	for i, r := range replies {
+		if r.ID != uint64(i+1) || r.Err != nil {
+			t.Fatalf("reply %d: %+v", i, r)
+		}
+	}
+	for _, n := range c.nodes {
+		if got := n.state.members[3].PeerURLs; len(got) != 1 || got[0] != "https://second:1" {
+			t.Fatalf("node %d: peer URLs %v", n.cfg.ID, got)
+		}
+	}
+}

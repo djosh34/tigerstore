@@ -410,10 +410,20 @@ func (n *Node) proposeConfMessages() {
 			return
 		}
 	}
-	if err := n.rn.Step(n.confMessages[0]); err != nil {
+	// Raft replaces a change it ignores with an empty entry in place, so
+	// it gets a copy and the queue keeps the change.
+	m := proto.Clone(n.confMessages[0]).(*raftpb.Message)
+	if err := n.rn.Step(m); err != nil {
 		if !errors.Is(err, raft.ErrProposalDropped) {
 			n.fail(err)
 		}
+		return
+	}
+	if m.Entries[0].GetType() != raftpb.EntryConfChange {
+		// A proposal dropped for the uncommitted-size limit still moved
+		// Raft's pending index past its log, so this retry became an
+		// empty entry. Try again once more is applied.
+		n.confGate = st.Applied + 1
 		return
 	}
 	n.confMessages[0] = nil
