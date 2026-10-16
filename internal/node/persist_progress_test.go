@@ -81,7 +81,7 @@ func TestPersistReportsSyncDuringNextWrite(t *testing.T) {
 			}
 		}},
 		log:       &diskLog{w: w},
-		persistQ:  make(chan []core.PersistJob),
+		persistQ:  make(chan persistBatch),
 		persisted: make(chan persistDone, 1),
 	}
 	stopped := make(chan struct{})
@@ -101,7 +101,7 @@ func TestPersistReportsSyncDuringNextWrite(t *testing.T) {
 			Term: new(uint64(1)), Index: new(index), Data: bytes.Repeat([]byte("v"), 1536<<10),
 		}}}
 		select {
-		case n.persistQ <- []core.PersistJob{job}:
+		case n.persistQ <- persistBatch{jobs: []core.PersistJob{job}, queued: time.Now()}:
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
 		}

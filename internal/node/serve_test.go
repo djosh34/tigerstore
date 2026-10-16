@@ -121,7 +121,7 @@ func TestServeKeepsItsFiles(t *testing.T) {
 	// A root job the core made before the fetch began: it removes every
 	// segment it can and the checkpoint the stream reads.
 	last := n.core.Applied()
-	n.persistQ <- []core.PersistJob{{Root: &wal.Root{Index: last, Term: ckpt.Term}, RemoveBelow: last + 1}}
+	n.persistQ <- persistBatch{jobs: []core.PersistJob{{Root: &wal.Root{Index: last, Term: ckpt.Term}, RemoveBelow: last + 1}}, queued: time.Now()}
 	if done := <-n.persisted; done.err != nil {
 		t.Fatal(done.err)
 	}
