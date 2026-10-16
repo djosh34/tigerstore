@@ -773,8 +773,18 @@ func EntryRecordBytes(e *raftpb.Entry) int64 {
 
 // Append buffers entries and a hard state. Nothing is durable before Sync.
 // A nil hard state leaves the stored one unchanged.
+//
+// A crash keeps a prefix of what was not synced, so a new term or vote
+// goes before the entries: an entry never survives without the term it
+// came in, which would leave Raft at a lower term than its log and make
+// it panic when it rejects a vote (#173). That record keeps the old
+// commit, which must not pass the entries on disk; the whole hard state
+// follows the entries.
 func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 	w.copyState()
+	if hs != nil && len(ents) > 0 && (hs.Term != w.hs.Term || hs.Vote != w.hs.Vote) {
+		w.hardState(HardState{Term: hs.Term, Vote: hs.Vote, Commit: w.hs.Commit})
+	}
 	for _, e := range ents {
 		var h [entryHdrSize]byte
 		binary.LittleEndian.PutUint64(h[:], e.GetTerm())
@@ -784,7 +794,7 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		w.record(recEntry, h[:], e.GetData())
 		w.placeEntry(e.GetIndex(), at, seed)
 	}
-	if hs != nil {
+	if hs != nil && *hs != w.hs {
 		w.hardState(*hs)
 	}
 }

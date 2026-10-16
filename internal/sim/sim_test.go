@@ -34,10 +34,7 @@ func run(t *testing.T, cfg Config) *Result {
 
 // knownBad are seeds that hit an open bug, which TestSeeds skips until
 // the bug is fixed.
-var knownBad = map[uint64]string{
-	1383269143: "#173",
-	1417528536: "#173",
-}
+var knownBad = map[uint64]string{}
 
 // TestSeeds runs every seed twice and requires the same trace hash. A
 // failing seed is reproduced with -run 'TestSeeds/<seed>$'.
