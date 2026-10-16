@@ -339,6 +339,9 @@ type Node struct {
 	persisted chan persistDone
 	ckptQ     chan core.CheckpointChunk
 	cleanQ    chan packRoot
+	// sparesQ takes the number of spare segment files the log keeps to
+	// the disk goroutine, which rotates segments into them.
+	sparesQ   chan int
 	defragQ   chan chan error
 	readQ     chan *core.ValueRead
 	readDone  chan readDone
@@ -586,6 +589,7 @@ func (n *Node) open() error {
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
+	n.sparesQ = make(chan int, 1)
 	n.readQ = make(chan *core.ValueRead)
 	n.readDone = make(chan readDone, readers)
 	n.leader.Store(0)
@@ -1196,6 +1200,16 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		case pr := <-cleanQ:
 			if err := n.installPacks(pr); err != nil {
 				fail(fmt.Errorf("install the root of a pack: %w", err))
+				return
+			}
+			continue
+		case k := <-n.sparesQ:
+			// Here, as no segment starts while it removes spares.
+			n.log.mu.Lock()
+			err := w.SetSpares(k)
+			n.log.mu.Unlock()
+			if err != nil {
+				fail(fmt.Errorf("set %d spares: %w", k, err))
 				return
 			}
 			continue

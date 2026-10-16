@@ -896,8 +896,8 @@ func (w *WAL) Buffered() int64 { return int64(len(w.buf)) }
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
 // SetSpares changes how many removed segments the log keeps as spare
-// files from now on, and removes the spare files beyond n. Callers that
-// share the log hold its lock.
+// files from now on, and removes the spare files beyond n. It must not
+// run while a segment starts, which may take a spare.
 func (w *WAL) SetSpares(n int) error {
 	w.spares = n
 	spares, err := w.listSpares()
