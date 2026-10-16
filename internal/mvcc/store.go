@@ -419,6 +419,8 @@ func (c Change) PrevLease() int64 {
 // when withPrev is true and the key existed at the revision before, as
 // etcd reads it there: a Txn that put a key and then deleted it sends the
 // delete with the key as it was before the Txn, not with the put's value.
+// As in etcd, a put that creates its key (create equals mod) has none,
+// also when the same Txn deleted the key before.
 // Values that only the disk has come as Fills, from TakeFills; the event
 // holds their positions, so a later compaction does not change it.
 func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
@@ -436,7 +438,8 @@ func (c Change) Event(withPrev bool) (*mvccpb.Event, error) {
 	for j >= 0 && c.k.vers[j].mod.main == v.mod.main {
 		j--
 	}
-	if withPrev && j >= 0 && c.k.vers[j].ver != 0 {
+	create := v.ver != 0 && v.create == v.mod.main
+	if withPrev && !create && j >= 0 && c.k.vers[j].ver != 0 {
 		prev, err := s.kv(c.k, &c.k.vers[j])
 		if err != nil {
 			return nil, err

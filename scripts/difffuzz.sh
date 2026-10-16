@@ -8,9 +8,10 @@
 #
 #   scripts/difffuzz.sh
 #
-# ETCD is the etcd v3.7.2 binary, etcd on PATH by default. A mismatch is
-# shrunk, saved to FUZZ_OUT (default difftest/testdata/fuzz) as a named
-# case, and fails the run. BUILD_FLAGS go to the build of tigerstore, for
+# ETCD is the etcd v3.7.2 binary, etcd on PATH by default. FUZZ_ETCD_PORT
+# (default 23790) is its client port, its peer port 10 above, for a
+# second run beside the first. A mismatch is shrunk, saved to FUZZ_OUT
+# (default difftest/testdata/fuzz) as a named case, and fails the run. BUILD_FLAGS go to the build of tigerstore, for
 # example to build in a planted bug. With RACE set, tigerstore and the
 # tests are built with -race and stop at their first race report, and a
 # report in a node's log fails the run.
@@ -35,8 +36,7 @@ stop() {
 trap 'stop; rm -rf "$work"' EXIT
 in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 off=${OFFSET:-$((RANDOM % 2000 + 1))}
-# ETCD_PORT moves etcd off 23790, its peer port 10 above, for a second run.
-eport=${ETCD_PORT:-23790}
+eport=${FUZZ_ETCD_PORT:-23790}
 for port in $eport $((eport + 10)) $((2379 + off)) $((22379 + off)) $((12379 + off)) $((2380 + off)) $((22380 + off)) $((12380 + off)); do
 	if in_use $port; then
 		echo "port $port is in use"

@@ -702,10 +702,10 @@ func TestDiffFuzzWatchRule(t *testing.T) {
 	}
 }
 
-// TestFuzzNoPutAfterDelete checks that no generated txn branch puts a key
+// TestDiffFuzzNoPutAfterDelete checks that no generated txn branch puts a key
 // an earlier delete of it removed, which etcd v3.7.2 does not survive
 // after a compaction at that revision.
-func TestFuzzNoPutAfterDelete(t *testing.T) {
+func TestDiffFuzzNoPutAfterDelete(t *testing.T) {
 	if !deletes(fuzzOp{Kind: "del", Key: 1, End: -1}, 4) || deletes(fuzzOp{Kind: "del", Key: 1, End: 3}, 2) || !deletes(fuzzOp{Kind: "del", Key: 1, End: 3}, 1) || deletes(fuzzOp{Kind: "del", Key: 1}, 2) {
 		t.Fatal("deletes covers the wrong keys")
 	}

@@ -386,9 +386,11 @@ func (s *state) stepTxn(t *history.TxnRequest, withEvents bool) outcome {
 	return outcome{resp: &history.Response{Revision: s.rev, Txn: resp}, events: events}
 }
 
+// putEvent is the put of kv; prev is the key at the revision before. As in
+// etcd, a put that creates its key has no previous value.
 func putEvent(kv, prev history.KeyValue) history.Event {
 	e := history.Event{Type: history.EventPut, KV: kv}
-	if prev.Version != 0 {
+	if prev.Version != 0 && kv.CreateRevision != kv.ModRevision {
 		e.PrevKV = &prev
 	}
 	return e

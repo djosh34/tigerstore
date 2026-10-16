@@ -146,7 +146,11 @@ func TestCompareTargets(t *testing.T) {
 // TestTxnEventPrevKV checks the previous values of the events of a txn
 // that writes a key and then deletes it: the key as it was before the
 // txn, as etcd v3.7.2 sends them (#203), and none for a key that did not
-// exist then.
+// exist then; and of one that deletes a key and puts it again: none for
+// the put, which creates it. The servers refuse a put inside a delete's
+// range [a, c) of the same txn as a duplicate key, and take it only
+// through a range end of "\x00", as the fuzzer sent it; the model takes
+// either, and the rule is the same.
 func TestTxnEventPrevKV(t *testing.T) {
 	s := newState([]string{"a", "b"})
 	s.step(history.Request{Put: &history.PutRequest{Key: "a", Value: "old"}}, true)
@@ -168,6 +172,24 @@ func TestTxnEventPrevKV(t *testing.T) {
 	for i := range want {
 		if !sameEvent(o.events[i], want[i]) {
 			t.Errorf("event %d: %s", i, eventDiff(want[i], o.events[i], true))
+		}
+	}
+	s = newState([]string{"a"})
+	s.step(history.Request{Put: &history.PutRequest{Key: "a", Value: "old"}}, true)
+	o = s.step(history.Request{Txn: &history.TxnRequest{Success: []history.TxnOp{
+		{Delete: &history.DeleteRequest{Key: "a", End: "b"}},
+		{Put: &history.PutRequest{Key: "a", Value: "again"}},
+	}}}, true)
+	want = []history.Event{
+		{Type: history.EventDelete, KV: history.KeyValue{Key: "a", ModRevision: 3}, PrevKV: &old},
+		{Type: history.EventPut, KV: history.KeyValue{Key: "a", Value: "again", CreateRevision: 3, ModRevision: 3, Version: 1}},
+	}
+	if len(o.events) != len(want) {
+		t.Fatalf("delete then put: got %d events, want %d: %+v", len(o.events), len(want), o.events)
+	}
+	for i := range want {
+		if !sameEvent(o.events[i], want[i]) {
+			t.Errorf("delete then put, event %d: %s", i, eventDiff(want[i], o.events[i], true))
 		}
 	}
 }
