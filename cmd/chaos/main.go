@@ -3,9 +3,10 @@
 // link goes through its own seeded fault proxy (package chaos/proxy).
 // Three stock clientv3 clients, one pinned to each node, record Put, CAS
 // Txn, DeleteRange and Range calls, a reader on each node records Range
-// calls, and three watches with previous values record events. Meanwhile the run injects each fault of the
-// schedule once, in a seeded order: SIGKILL and restart, SIGSTOP and
-// SIGCONT of the leader and of a follower, and proxy faults. Then it
+// calls, and three watches with previous values record events. Meanwhile
+// the run injects each fault of the schedule once, in a seeded order:
+// SIGKILL and restart, SIGSTOP and SIGCONT of the leader and of a
+// follower, and proxy faults. Then it
 // heals, waits until the cluster converges, reads the committed log from
 // the stopped nodes' WALs, and runs the Linearizable, Watches, Durable
 // and Revisions checkers on the history.
