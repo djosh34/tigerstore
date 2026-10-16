@@ -60,7 +60,7 @@ func replies(s *single) map[uint64]Reply {
 }
 
 // release runs the held value reads and returns the replies after them.
-func release(t *testing.T, s *single) map[uint64]Reply {
+func release(t testing.TB, s *single) map[uint64]Reply {
 	t.Helper()
 	held := s.held
 	s.held, s.hold = nil, false

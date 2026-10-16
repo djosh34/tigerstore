@@ -91,14 +91,6 @@ func cmpPackVal(a, b packVal) int {
 	return cmp.Or(cmp.Compare(a.index, b.index), cmp.Compare(a.off, b.off))
 }
 
-func (p *Pack) readAt(b []byte, at int64) error {
-	n, err := p.f.ReadAt(b, at)
-	if n == len(b) {
-		return nil
-	}
-	return fmt.Errorf("wal: read %d of %d bytes at %d of pack %d: %w", n, len(b), at, p.id, err)
-}
-
 // mapBytes is about what the pack's map takes in memory.
 func (p *Pack) mapBytes() int64 { return 64 + int64(cap(p.vals))*24 }
 
@@ -292,10 +284,10 @@ func (p *Pack) read(data []byte) error {
 // closePacks closes the files of the named packs.
 func (w *WAL) closePacks() error {
 	var err error
-	for _, p := range w.packs {
+	for _, p := range slices.Concat(w.packs, w.dropped) {
 		err = errors.Join(err, p.f.Close())
 	}
-	w.packs = nil
+	w.packs, w.dropped = nil, nil
 	return err
 }
 
@@ -311,13 +303,13 @@ func (w *WAL) packPlace(index uint64, off, n uint32) (*Pack, int64, bool) {
 }
 
 // InstallPacks buffers a root that names the packs with add and without
-// drop. Reads find the values in add at once. The root counts once it is
+// drop. Reads find the values in add at once, and those in drop no more;
+// their files stay open until RemoveCleaned. The root counts once it is
 // synced; only then may RemoveCleaned remove the files that add replaces.
-func (w *WAL) InstallPacks(add *Pack, drop []uint64) error {
-	var err error
+func (w *WAL) InstallPacks(add *Pack, drop []uint64) {
 	w.packs = slices.DeleteFunc(w.packs, func(p *Pack) bool {
 		if slices.Contains(drop, p.id) {
-			err = errors.Join(err, p.f.Close())
+			w.dropped = append(w.dropped, p)
 			return true
 		}
 		return false
@@ -327,7 +319,6 @@ func (w *WAL) InstallPacks(add *Pack, drop []uint64) error {
 	}
 	w.copyState()
 	w.rootRecord(w.root)
-	return err
 }
 
 // FileID names a file of the log: segment N, or pack N.
@@ -403,6 +394,17 @@ func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
 		n++
 	}
 	w.runs = slices.Delete(w.runs, 0, n)
+	var err error
+	w.dropped = slices.DeleteFunc(w.dropped, func(p *Pack) bool {
+		if slices.Contains(drop, p.id) {
+			err = errors.Join(err, p.f.Close())
+			return true
+		}
+		return false
+	})
+	if err != nil {
+		return err
+	}
 	for _, id := range drop {
 		if err := w.fs.Remove(packName(id)); err != nil {
 			return err

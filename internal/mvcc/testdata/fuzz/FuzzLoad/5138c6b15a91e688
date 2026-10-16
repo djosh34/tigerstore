@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("\x9e\xd4\xd4\xd4\xd4\xd4Լ\xdf0")
+int64(36)
+int64(-22)

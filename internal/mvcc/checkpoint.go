@@ -103,8 +103,12 @@ const MaxKeyBytes = 4 << 20
 
 // Load reads the keys of a checkpoint, up to the end mark, into an empty
 // store and sets its revisions. It returns the lowest entry index that a
-// value is in, 0 for none.
+// value is in, 0 for none. A compaction above the store's revision is
+// malformed: every read would fail as compacted.
 func (s *Store) Load(r *bufio.Reader, rev, compactRev int64) (minRef uint64, err error) {
+	if rev < 1 || compactRev > rev {
+		return 0, fmt.Errorf("%w: revision %d compacted at %d", ErrBadCheckpoint, rev, compactRev)
+	}
 	s.rev, s.compactRev = rev, compactRev
 	var prev []byte
 	for {

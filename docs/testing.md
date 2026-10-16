@@ -110,3 +110,35 @@ Not covered yet; these are later pieces of #49:
 To tell a slow runner from a slow store, the factory starts a 3-node etcd with the same certificates and layout when `ETCD` names its binary, and the `apiserver-compare` workflow (started by hand) runs chosen tests many times against tigerstore and etcd v3.7.2 in turn in one job. It fails if a round ran no test.
 
 No test is skipped. A test that cannot apply to a non-etcd server would be listed here with the reason; none is so far.
+
+# Fuzz tests, coverage and the race detector
+
+The `fuzz` job in CI runs each fuzz test of a hand-written decoder for 20 s, from its saved corpus in the package's `testdata/fuzz`:
+
+| Fuzz test | Decoder | What it requires |
+| --- | --- | --- |
+| `core.FuzzDecodeAlias` | `DecodeAlias` for transactions, deletes and ranges | The message `proto.Unmarshal` gives, or an error from both |
+| `core.FuzzParsePut` | `ParsePut` | The fields, the size and the error of `proto.Unmarshal` |
+| `core.FuzzReceiveSnapshot` | The follower's snapshot receiver | No crash, and a log it took opens again |
+| `wal.FuzzOpen` | WAL recovery of two segments | No crash, and every entry it reports reads back as that entry or fails |
+| `mvcc.FuzzLoad` | `Store.Load` of a checkpoint's keys | No crash, and a store it loaded answers a keys-only range over every key |
+| `peer.FuzzFrames` | The peer transport's frame reader | It stops with an error, never crashes, and delivers only the peer's own messages |
+| `server.FuzzHTTP2` | The server's HTTP/2 and gRPC framing, on a real one-node server | No crash; within 5 s the server answers and closes the connection, or resets it |
+
+A failure's input is uploaded as an artifact; copied into `testdata/fuzz/<test>/`, it reproduces with `go test -run '<test>/<input>' <package>`.
+
+The `coverage` job fails when the statement coverage of the `internal/...` packages, measured across every package's tests (`-coverpkg=./internal/...`), is below 80%. It was 86.8% when the job was added.
+
+The `test` job runs every package but the simulator with `-race`; `race-sim` runs the simulator with it, in its own job, as it takes most of the 10 minutes there. Three jobs run real processes built with `-race`, where a data race stops the process (`GORACE=halt_on_error=1`) and a race report in a log fails the run, also one at shutdown: the third `difftest` job (`RACE=1 scripts/difftest.sh tigerstore`, which builds the tests with `-race` too), the race row of `apiserver` (`RACE=1 apiservertest/run.sh v0.37.0`), and `chaos-race`, which runs two chaos seeds that the `chaos` job does not, with race-built `tigerstore` and `chaos` binaries.
+
+`core.TestMembershipChangesMatchRaft` is the component test of the membership checks: random member adds, learner adds, removals, promotions and updates on random clusters. Every change the checks let through must be one raft's `confchange` takes, since raft panics on any error, and the members after it must equal raft's configuration; a refused change goes to raft as a change of nobody, as in etcd.
+
+# Differential fuzzing against etcd
+
+`scripts/difffuzz.sh` starts a fresh etcd v3.7.2 and a fresh 3-node tigerstore side by side, both with client TLS, and runs the difftest's `TestDiffFuzz` against both. It sends random sequences of 30 requests, each under keys of its own: puts with leases, previous values and the ignore flags; reads of one key, of ranges and of everything from a key, at the current, past, future, zero and negative revisions, with limits and count- or keys-only; deletes; transactions with up to two compares on every target and up to three puts, deletes and reads in each branch; compactions; lease grants with picked and asked-for IDs and revokes, also of leases nobody granted; and watches from past revisions. Every answer is compared as the difftest records it: revisions relative to the sequence's start, lease IDs by the order the sequence granted them, values byte for byte, transaction results, and error codes and messages. A mismatch is shrunk, by removing ever smaller runs of requests while one remains, and saved as a named case in `difftest/testdata/fuzz`, which `TestDiffFuzzFound` replays on every run.
+
+The `difffuzz` job of `ci` fuzzes for 90 s from a seed of the run ID. `difffuzz.yml` is the long run, started by hand (`gh workflow run difffuzz.yml -f duration=2h`): four jobs with seeds of their own. With planted bug B09a built in (`BUILD_FLAGS='-tags planted -ldflags=-X=github.com/djosh34/tigerstore/internal/planted.Active=B09a'`), the first sequence differed, and its case shrank to 6 requests.
+
+# Simulator seed campaign
+
+`sim-campaign.yml`, started by hand (`gh workflow run sim-campaign.yml -f first=<seed>`), runs `TestSeeds` on 100,000 seeds from `first`: 20 jobs of two processes of 2,500 seeds, every checker on each, the witness checker in both modes among them. A process of 2,000 seeds or more also requires a stopped gray leader (#183).
