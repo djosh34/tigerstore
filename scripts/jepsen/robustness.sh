@@ -9,7 +9,7 @@ mkdir -p "$RESULTS" .robustness
 exec > >(tee "$RESULTS/runner.log") 2>&1
 git rev-parse HEAD
 printf 'product=%s traffic=%s store=%s\n' "$PRODUCT_SHA" "$TRAFFIC" "$store"
-git clone https://github.com/etcd-io/etcd.git .robustness/etcd
+git clone --depth 1 --branch v3.7.2 https://github.com/etcd-io/etcd.git .robustness/etcd
 git -C .robustness/etcd checkout 68c065e562994b89e333e77b039ad066f933c586
 mkdir -p .robustness/etcd/tests/tigerstore_external
 cp scripts/jepsen/robustness_test.go.txt .robustness/etcd/tests/tigerstore_external/external_test.go
