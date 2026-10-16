@@ -14,7 +14,7 @@ on:
         description: tigerstore ref to compare against
         default: main
       benchmarks:
-        description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, mixed-k8s (Kubernetes 1.37 dump sizes), or etcd-tool (etcd's own benchmark tool)
+        description: space-separated benchmarks, put/txn/delete/range/list/watch with 1k or 10k, mixed-k8s (Kubernetes 1.37 dump sizes), etcd-tool (etcd's own benchmark tool), or profile (the candidate leader's CPU per step, bench/profile.sh)
         default: put-1k txn-1k mixed-k8s
       modes:
         description: max, rate (half etcd max), or both; default mixed calibration plus rate, others both
@@ -117,6 +117,12 @@ jobs:
           LAYOUTS: ${{ (matrix.bench == 'put-1k' || matrix.bench == 'txn-1k') && inputs.layouts || '' }}
           BENCH: ${{ matrix.bench }}
         run: |
+          if [ "$BENCH" = profile ]; then
+            for wl in put txn range list; do
+              TMPFS_DIR=/dev/shm/bench-profile bench/profile.sh bin/candidate "$wl" results/profile
+            done
+            exit 0
+          fi
           if [ "$BENCH" = etcd-tool ]; then
             git clone -q --depth 1 -b v3.7.2 https://github.com/etcd-io/etcd "$RUNNER_TEMP/etcd-src"
             (cd "$RUNNER_TEMP/etcd-src/tools/benchmark" && go build -o "$GITHUB_WORKSPACE/bin/benchmark" .)
@@ -137,7 +143,9 @@ jobs:
         run: |
           {
             cat results/runner.md
-            if [ "$BENCH" = etcd-tool ]; then
+            if [ "$BENCH" = profile ]; then
+              cat results/profile/*.steps.md
+            elif [ "$BENCH" = etcd-tool ]; then
               echo '```'
               echo "test | store | requests/s per repetition | p99 ms per repetition"
               cat results/etcd-tool/summary.txt
