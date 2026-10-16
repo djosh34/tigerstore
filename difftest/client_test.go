@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +159,9 @@ type run struct {
 	base   int64
 	leases map[int64]int64
 	steps  []step
+	// exact records values in full and quoted, so that every byte
+	// counts; else one above 64 bytes is recorded by its length.
+	exact bool
 }
 
 // newRun starts a case. Its keys live under a prefix of their own, made from
@@ -251,7 +255,10 @@ func (r *run) kv(k *mvccpb.KeyValue) *kv {
 		return nil
 	}
 	v := string(k.Value)
-	if len(v) > 64 {
+	switch {
+	case r.exact:
+		v = strconv.Quote(v)
+	case len(v) > 64:
 		v = fmt.Sprintf("<%d bytes>", len(v))
 	}
 	return &kv{Key: strings.TrimPrefix(string(k.Key), r.prefix), Value: v, Create: r.rel(k.CreateRevision), Mod: r.rel(k.ModRevision), Version: k.Version, Lease: r.lease(k.Lease)}

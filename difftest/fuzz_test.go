@@ -1,0 +1,486 @@
+//go:build difftest
+
+package difftest
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+)
+
+var (
+	fuzzDuration = flag.Duration("difffuzz.duration", time.Minute, "how long TestDiffFuzz runs random sequences")
+	fuzzSeed     = flag.Uint64("difffuzz.seed", 0, "first seed of TestDiffFuzz; 0 picks one from the clock")
+	fuzzOut      = flag.String("difffuzz.out", "testdata/fuzz", "where TestDiffFuzz saves a shrunk mismatch, and TestDiffFuzzFound reads them")
+)
+
+// fuzzKeys is how many keys a sequence uses, f/k0 to f/k5.
+const fuzzKeys = 6
+
+// fuzzOp is one request of a random sequence, in a form that does not
+// depend on the server: keys by index, leases by the order the sequence
+// granted them, revisions relative to the sequence's start.
+type fuzzOp struct {
+	Kind string `json:"kind"`
+	Key  int    `json:"key,omitempty"`
+	// End is 0 for one key, -1 for every key from Key on, else key End-1
+	// as the exclusive end.
+	End   int    `json:"end,omitempty"`
+	Value []byte `json:"value,omitempty"`
+	// Lease is a lease of the sequence, from 1; one above its grants is a
+	// lease nobody granted.
+	Lease       int   `json:"lease,omitempty"`
+	PrevKV      bool  `json:"prevKV,omitempty"`
+	IgnoreValue bool  `json:"ignoreValue,omitempty"`
+	IgnoreLease bool  `json:"ignoreLease,omitempty"`
+	Rev         int64 `json:"rev,omitempty"`
+	Limit       int64 `json:"limit,omitempty"`
+	CountOnly   bool  `json:"countOnly,omitempty"`
+	KeysOnly    bool  `json:"keysOnly,omitempty"`
+	Physical    bool  `json:"physical,omitempty"`
+	TTL         int64 `json:"ttl,omitempty"`
+	// ID asks for a lease ID in a grant, one of 1 to 4 of the
+	// sequence's own: 0 lets the server pick.
+	ID      int64      `json:"id,omitempty"`
+	Compare []fuzzCmp  `json:"compare,omitempty"`
+	Success []fuzzOp   `json:"success,omitempty"`
+	Failure []fuzzOp   `json:"failure,omitempty"`
+	Watch   *fuzzWatch `json:"watch,omitempty"`
+}
+
+// fuzzCmp is one compare of a txn. Number is a relative revision for the
+// create and mod targets.
+type fuzzCmp struct {
+	Key    int    `json:"key"`
+	Target string `json:"target"`
+	Result string `json:"result"`
+	Number int64  `json:"number,omitempty"`
+	Value  []byte `json:"value,omitempty"`
+	Lease  int    `json:"lease,omitempty"`
+}
+
+// fuzzWatch is a watch from a relative revision.
+type fuzzWatch struct {
+	PrevKV bool `json:"prevKV,omitempty"`
+}
+
+// fuzzCase is a sequence as saved: a mismatch, shrunk.
+type fuzzCase struct {
+	Name string   `json:"name"`
+	Ops  []fuzzOp `json:"ops"`
+}
+
+// fuzzGen makes random sequences.
+type fuzzGen struct {
+	rng    *rand.Rand
+	grants int
+	writes int64
+}
+
+func (g *fuzzGen) value() []byte {
+	switch g.rng.IntN(10) {
+	case 0:
+		return nil
+	case 1:
+		// Bytes past the 64 that a recorded value shows, and every byte
+		// value.
+		b := make([]byte, 65+g.rng.IntN(200))
+		for i := range b {
+			b[i] = byte(g.rng.IntN(256))
+		}
+		return b
+	}
+	return fmt.Appendf(nil, "v%d", g.rng.IntN(1000))
+}
+
+func (g *fuzzGen) end() int {
+	switch g.rng.IntN(4) {
+	case 0:
+		return -1
+	case 1:
+		return 1 + g.rng.IntN(fuzzKeys+1)
+	}
+	return 0
+}
+
+func (g *fuzzGen) lease() int {
+	if g.rng.IntN(3) > 0 {
+		return 0
+	}
+	return 1 + g.rng.IntN(g.grants+1)
+}
+
+// rev is a relative revision around the ones the sequence wrote: past,
+// current, future, zero and negative.
+func (g *fuzzGen) rev() int64 { return g.rng.Int64N(g.writes+4) - 1 }
+
+func (g *fuzzGen) branchOp() fuzzOp {
+	switch g.rng.IntN(3) {
+	case 0:
+		return fuzzOp{Kind: "put", Key: g.rng.IntN(fuzzKeys), Value: g.value(), Lease: g.lease(), PrevKV: g.rng.IntN(2) == 0}
+	case 1:
+		return fuzzOp{Kind: "del", Key: g.rng.IntN(fuzzKeys), End: g.end(), PrevKV: g.rng.IntN(2) == 0}
+	}
+	op := fuzzOp{Kind: "get", Key: g.rng.IntN(fuzzKeys), End: g.end(), Limit: g.rng.Int64N(3)}
+	if g.rng.IntN(3) == 0 {
+		op.Rev = g.rev()
+	}
+	return op
+}
+
+func (g *fuzzGen) compare() fuzzCmp {
+	c := fuzzCmp{Key: g.rng.IntN(fuzzKeys), Result: []string{"EQUAL", "GREATER", "LESS", "NOT_EQUAL"}[g.rng.IntN(4)]}
+	switch g.rng.IntN(5) {
+	case 0:
+		c.Target, c.Number = "VERSION", g.rng.Int64N(4)
+	case 1:
+		c.Target, c.Number = "CREATE", g.rev()
+	case 2:
+		c.Target, c.Number = "MOD", g.rev()
+	case 3:
+		c.Target, c.Value = "VALUE", g.value()
+	default:
+		c.Target, c.Lease = "LEASE", g.lease()
+	}
+	return c
+}
+
+func (g *fuzzGen) op() fuzzOp {
+	k := g.rng.IntN(fuzzKeys)
+	var op fuzzOp
+	switch p := g.rng.IntN(100); {
+	case p < 25:
+		op = fuzzOp{Kind: "put", Key: k, Value: g.value(), Lease: g.lease(), PrevKV: g.rng.IntN(2) == 0, IgnoreValue: g.rng.IntN(8) == 0, IgnoreLease: g.rng.IntN(8) == 0}
+	case p < 45:
+		op = fuzzOp{Kind: "get", Key: k, End: g.end(), Limit: g.rng.Int64N(3), CountOnly: g.rng.IntN(6) == 0, KeysOnly: g.rng.IntN(6) == 0}
+		if g.rng.IntN(3) == 0 {
+			op.Rev = g.rev()
+		}
+	case p < 55:
+		op = fuzzOp{Kind: "del", Key: k, End: g.end(), PrevKV: g.rng.IntN(2) == 0}
+	case p < 80:
+		op = fuzzOp{Kind: "txn"}
+		for range g.rng.IntN(3) {
+			op.Compare = append(op.Compare, g.compare())
+		}
+		for range g.rng.IntN(4) {
+			op.Success = append(op.Success, g.branchOp())
+		}
+		for range g.rng.IntN(3) {
+			op.Failure = append(op.Failure, g.branchOp())
+		}
+	case p < 84:
+		op = fuzzOp{Kind: "compact", Rev: g.rev(), Physical: g.rng.IntN(2) == 0}
+	case p < 90:
+		op = fuzzOp{Kind: "grant", TTL: 300 + g.rng.Int64N(300)}
+		if g.rng.IntN(3) == 0 {
+			op.ID = 1 + g.rng.Int64N(4)
+		}
+		g.grants++
+	case p < 94:
+		op = fuzzOp{Kind: "revoke", Lease: 1 + g.rng.IntN(g.grants+1)}
+	default:
+		op = fuzzOp{Kind: "watch", Key: k, End: g.end(), Rev: g.rev(), Watch: &fuzzWatch{PrevKV: g.rng.IntN(2) == 0}}
+	}
+	if op.Kind != "get" && op.Kind != "watch" && op.Kind != "grant" {
+		g.writes++
+	}
+	return op
+}
+
+// fuzzRun runs a sequence on one server.
+type fuzzRun struct {
+	*run
+	tag int64
+	// leases are the IDs the server granted, in order.
+	leases []int64
+}
+
+func (f *fuzzRun) key(i int) []byte { return f.run.key(fmt.Sprintf("f/k%d", i)) }
+
+func (f *fuzzRun) end(op fuzzOp) []byte {
+	switch {
+	case op.End == -1:
+		return []byte{0}
+	case op.End > 0:
+		return f.key(op.End - 1)
+	}
+	return nil
+}
+
+func (f *fuzzRun) lease(n int) int64 {
+	switch {
+	case n == 0:
+		return 0
+	case n <= len(f.leases):
+		return f.leases[n-1]
+	}
+	// A lease nobody granted.
+	return 1<<40 + int64(n)
+}
+
+func (f *fuzzRun) rev(rel int64) int64 {
+	if rel <= 0 {
+		return rel
+	}
+	return f.abs(rel)
+}
+
+func (f *fuzzRun) requestOp(op fuzzOp) *pb.RequestOp {
+	switch op.Kind {
+	case "put":
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: f.put(op)}}
+	case "del":
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: f.del(op)}}
+	}
+	return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: f.get(op)}}
+}
+
+func (f *fuzzRun) put(op fuzzOp) *pb.PutRequest {
+	return &pb.PutRequest{Key: f.key(op.Key), Value: op.Value, Lease: f.lease(op.Lease), PrevKv: op.PrevKV, IgnoreValue: op.IgnoreValue, IgnoreLease: op.IgnoreLease}
+}
+
+func (f *fuzzRun) del(op fuzzOp) *pb.DeleteRangeRequest {
+	return &pb.DeleteRangeRequest{Key: f.key(op.Key), RangeEnd: f.end(op), PrevKv: op.PrevKV}
+}
+
+func (f *fuzzRun) get(op fuzzOp) *pb.RangeRequest {
+	return &pb.RangeRequest{Key: f.key(op.Key), RangeEnd: f.end(op), Revision: f.rev(op.Rev), Limit: op.Limit, CountOnly: op.CountOnly, KeysOnly: op.KeysOnly}
+}
+
+func (f *fuzzRun) compare(c fuzzCmp) *pb.Compare {
+	cmp := &pb.Compare{Key: f.key(c.Key), Result: pb.Compare_CompareResult(pb.Compare_CompareResult_value[c.Result])}
+	switch c.Target {
+	case "VERSION":
+		cmp.Target, cmp.TargetUnion = pb.Compare_VERSION, &pb.Compare_Version{Version: c.Number}
+	case "CREATE":
+		cmp.Target, cmp.TargetUnion = pb.Compare_CREATE, &pb.Compare_CreateRevision{CreateRevision: f.rev(c.Number)}
+	case "MOD":
+		cmp.Target, cmp.TargetUnion = pb.Compare_MOD, &pb.Compare_ModRevision{ModRevision: f.rev(c.Number)}
+	case "VALUE":
+		cmp.Target, cmp.TargetUnion = pb.Compare_VALUE, &pb.Compare_Value{Value: c.Value}
+	default:
+		cmp.Target, cmp.TargetUnion = pb.Compare_LEASE, &pb.Compare_Lease{Lease: f.lease(c.Lease)}
+	}
+	return cmp
+}
+
+// do runs one op and records its answer.
+func (f *fuzzRun) do(i int, op fuzzOp) {
+	f.t.Helper()
+	name := fmt.Sprintf("%d %s", i, op.Kind)
+	switch op.Kind {
+	case "put":
+		f.run.put(name, f.put(op))
+	case "get":
+		f.run.get(name, f.get(op))
+	case "del":
+		f.run.del(name, f.del(op))
+	case "txn":
+		req := &pb.TxnRequest{}
+		for _, c := range op.Compare {
+			req.Compare = append(req.Compare, f.compare(c))
+		}
+		for _, o := range op.Success {
+			req.Success = append(req.Success, f.requestOp(o))
+		}
+		for _, o := range op.Failure {
+			req.Failure = append(req.Failure, f.requestOp(o))
+		}
+		f.txn(name, req)
+	case "compact":
+		f.compact(name, f.rev(op.Rev), op.Physical)
+	case "grant":
+		id := op.ID
+		if id != 0 {
+			// The same on both servers, and on no other sequence.
+			id += f.tag * 8
+		}
+		if id := f.grant(name, id, op.TTL); id != 0 {
+			f.leases = append(f.leases, id)
+		}
+	case "revoke":
+		f.revoke(name, f.lease(op.Lease))
+	case "watch":
+		f.watch(name, &pb.WatchCreateRequest{Key: f.key(op.Key), RangeEnd: f.end(op), StartRevision: f.rev(op.Rev), PrevKv: op.Watch.PrevKV})
+	default:
+		f.t.Fatalf("unknown fuzz op %q", op.Kind)
+	}
+}
+
+// fuzzPair is etcd and tigerstore, side by side.
+type fuzzPair struct {
+	t          *testing.T
+	etcd, ours *client
+	tag        int64
+}
+
+// diff runs ops on both servers under fresh keys and returns the first
+// step where their answers differ, or "".
+func (p *fuzzPair) diff(ops []fuzzOp) string {
+	p.t.Helper()
+	p.tag++
+	var steps [2][]step
+	for k, c := range []*client{p.etcd, p.ours} {
+		f := &fuzzRun{run: newRun(p.t, c, p.tag, "fuzz"), tag: p.tag}
+		f.exact = true
+		for i, op := range ops {
+			f.do(i, op)
+		}
+		steps[k] = f.steps
+	}
+	for i := range steps[0] {
+		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0][i], steps[1][i]) {
+			e, _ := json.Marshal(steps[0][i])
+			o, _ := json.Marshal(steps[1][i])
+			return fmt.Sprintf("step %s: etcd v3.7.2 answers %s, tigerstore %s", steps[0][i].Do, e, o)
+		}
+	}
+	return ""
+}
+
+// stricterWatch reports whether tigerstore's answer to a watch is one of
+// those the stricter rule of the boundary tests allows where etcd differs
+// (see stricter): a watch with previous values that starts at the
+// compaction revision gets etcd's events but with every previous value
+// etcd leaves out, or is canceled as compacted at its start.
+func stricterWatch(ops []fuzzOp, etcd, ours step) bool {
+	var i int
+	if _, err := fmt.Sscanf(etcd.Do, "%d watch", &i); err != nil || i >= len(ops) || ops[i].Watch == nil || !ops[i].Watch.PrevKV {
+		return false
+	}
+	type event struct {
+		Type   string          `json:"type"`
+		KV     json.RawMessage `json:"kv"`
+		PrevKV json.RawMessage `json:"prevKV,omitempty"`
+	}
+	type watch struct {
+		Created         bool    `json:"created"`
+		CreatedRevision int64   `json:"createdRevision,omitempty"`
+		Canceled        bool    `json:"canceled,omitempty"`
+		CompactRevision int64   `json:"compactRevision,omitempty"`
+		Events          []event `json:"events,omitempty"`
+	}
+	var e, o watch
+	if etcd.Code != "OK" || ours.Code != "OK" || json.Unmarshal(etcd.Result, &e) != nil || json.Unmarshal(ours.Result, &o) != nil {
+		return false
+	}
+	start := ops[i].Rev
+	if o.Canceled {
+		return o.Created && o.CompactRevision == start && len(o.Events) == 0
+	}
+	if len(e.Events) != len(o.Events) || e.Canceled || e.Created != o.Created || e.CreatedRevision != o.CreatedRevision {
+		return false
+	}
+	for k := range e.Events {
+		x, y := e.Events[k], o.Events[k]
+		if x.Type != y.Type || string(x.KV) != string(y.KV) || (x.PrevKV != nil && string(x.PrevKV) != string(y.PrevKV)) || (x.PrevKV == nil && y.PrevKV == nil && x.Type != "PUT") {
+			return false
+		}
+	}
+	return true
+}
+
+// shrink removes ops from a sequence that has a mismatch, ever smaller
+// runs of them, while one remains, up to 300 attempts.
+func (p *fuzzPair) shrink(ops []fuzzOp) ([]fuzzOp, string) {
+	p.t.Helper()
+	why := p.diff(ops)
+	attempts := 0
+	for chunk := len(ops) / 2; chunk >= 1; chunk /= 2 {
+		for i := 0; i+chunk <= len(ops) && attempts < 300; attempts++ {
+			cand := slices.Concat(ops[:i], ops[i+chunk:])
+			if w := p.diff(cand); w != "" {
+				ops, why = cand, w
+				continue
+			}
+			i += chunk
+		}
+	}
+	return ops, why
+}
+
+func newFuzzPair(t *testing.T) *fuzzPair {
+	t.Helper()
+	ca := os.Getenv("TIGERSTORE_DIFF_CA")
+	return &fuzzPair{t: t, etcd: dialAt(t, "TIGERSTORE_DIFF_ETCD", ca), ours: dialAt(t, "TIGERSTORE_DIFF_ENDPOINT", ca), tag: time.Now().UnixNano() % 1e9 * 1000}
+}
+
+// TestDiffFuzz sends random sequences of puts, reads at current and past
+// revisions, deletes, txns with every compare target, compactions, lease
+// grants and revokes and watches to etcd v3.7.2 and tigerstore, each
+// sequence under keys of its own, and compares every answer as the
+// difftest records it: revisions relative to the sequence's start, lease
+// IDs by grant order, exact value bytes, txn results and errors. A
+// mismatch is shrunk and saved as a named case in -difffuzz.out, which
+// TestDiffFuzzFound runs from then on.
+func TestDiffFuzz(t *testing.T) {
+	p := newFuzzPair(t)
+	seed := *fuzzSeed
+	if seed == 0 {
+		seed = uint64(time.Now().UnixNano())
+	}
+	t.Logf("first seed %d", seed)
+	n := 0
+	for deadline := time.Now().Add(*fuzzDuration); time.Now().Before(deadline); seed++ {
+		g := &fuzzGen{rng: rand.New(rand.NewPCG(seed, 148))}
+		ops := make([]fuzzOp, 30)
+		for i := range ops {
+			ops[i] = g.op()
+		}
+		n++
+		if p.diff(ops) == "" {
+			continue
+		}
+		ops, why := p.shrink(ops)
+		c := fuzzCase{Name: fmt.Sprintf("seed-%d", seed), Ops: ops}
+		b, err := json.MarshalIndent(c, "", "\t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(*fuzzOut, c.Name+".json")
+		if err := os.MkdirAll(*fuzzOut, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatalf("seed %d differs from etcd v3.7.2 after %d sequences; shrunk to %d ops in %s: %s", seed, n, len(ops), path, why)
+	}
+	t.Logf("%d sequences of 30 ops, seeds to %d, answered as etcd v3.7.2 does", n, seed-1)
+}
+
+// TestDiffFuzzFound runs every saved mismatch of TestDiffFuzz against
+// both servers; each must now get etcd's answers.
+func TestDiffFuzzFound(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(*fuzzOut, "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newFuzzPair(t)
+	for _, file := range files {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var c fuzzCase
+		if err := json.Unmarshal(b, &c); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		t.Run(strings.TrimSuffix(filepath.Base(file), ".json"), func(t *testing.T) {
+			p.t = t
+			if why := p.diff(c.Ops); why != "" {
+				t.Fatal(why)
+			}
+		})
+	}
+}
