@@ -57,9 +57,12 @@ for rep in $(seq "$reps"); do
 				docker ps -a
 				docker inspect bench-control-plane --format '{{json .State}}'
 				free -m
-				sudo dmesg | tail -100
+				sudo dmesg | grep -iE 'oom|killed' | tail -20
+				kubectl -n kube-system get pods -o wide
+				docker exec bench-control-plane crictl ps -a
+				docker exec bench-control-plane sh -c 'tail -n 300 /var/log/pods/kube-system_kube-apiserver-*/kube-apiserver/*.log'
+				docker exec bench-control-plane journalctl -u kubelet --no-pager | grep -iE 'apiserver|probe|kill' | tail -50
 			} >"$out/$store-$rep.failure" 2>&1
-			kind export logs --name bench "$out/$store-$rep-kind-logs" >/dev/null 2>&1 || true
 		fi
 		kubectl get --raw /metrics | grep -E '^etcd_request_duration_seconds_(sum|count)' >"$out/$store-$rep.apiserver" || true
 		echo "$store $rep total $(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.1f", b-a}') s" | tee -a "$out/summary.txt"
