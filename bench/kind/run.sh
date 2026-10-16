@@ -53,7 +53,8 @@ for rep in $(seq "$reps"); do
 		# invalid. Keep what shows why.
 		if grep -q 'level=error' "$out/$store-$rep.burner.log"; then
 			echo "$store $rep: invalid, kube-burner logged errors" | tee -a "$out/summary.txt"
-			{
+			(
+				set +e
 				docker ps -a
 				docker inspect bench-control-plane --format '{{json .State}}'
 				free -m
@@ -62,7 +63,7 @@ for rep in $(seq "$reps"); do
 				docker exec bench-control-plane crictl ps -a
 				docker exec bench-control-plane sh -c 'tail -n 300 /var/log/pods/kube-system_kube-apiserver-*/kube-apiserver/*.log'
 				docker exec bench-control-plane journalctl -u kubelet --no-pager | grep -iE 'apiserver|probe|kill' | tail -50
-			} >"$out/$store-$rep.failure" 2>&1
+			) >"$out/$store-$rep.failure" 2>&1
 		fi
 		kubectl get --raw /metrics | grep -E '^etcd_request_duration_seconds_(sum|count)' >"$out/$store-$rep.apiserver" || true
 		echo "$store $rep total $(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.1f", b-a}') s" | tee -a "$out/summary.txt"
