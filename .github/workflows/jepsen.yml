@@ -17,11 +17,11 @@ on:
         default: '["etcd","tigerstore"]'
       product_sha:
         description: Main commit to test, blank uses the pinned prework baseline
-        default: '40e7c0a009a08d6ba80f369dd2e66c9735512dbb'
+        default: 'e6c654e8253674f972d4227aea157fa907102363'
 permissions:
   contents: read
 env:
-  PRODUCT_SHA: ${{ inputs.product_sha || '40e7c0a009a08d6ba80f369dd2e66c9735512dbb' }}
+  PRODUCT_SHA: ${{ inputs.product_sha || 'e6c654e8253674f972d4227aea157fa907102363' }}
 jobs:
   tools:
     runs-on: ubuntu-24.04
