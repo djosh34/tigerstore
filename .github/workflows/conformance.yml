@@ -1,6 +1,9 @@
 name: conformance
 
 on:
+  push:
+    branches: [prep/148-k8s-conformance]
+    paths: [.github/workflows/conformance.yml]
   workflow_dispatch:
     inputs:
       store:
