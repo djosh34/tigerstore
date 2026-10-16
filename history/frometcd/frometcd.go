@@ -1,18 +1,18 @@
-package main
+// Package frometcd converts etcd's requests and responses to the history
+// format. The converters refuse request fields that the format cannot
+// hold, so a checker never sees a different request than the cluster did.
+// The simulator and the real-process chaos job both use it.
+package frometcd
 
 import (
 	"fmt"
 
-	"github.com/djosh34/tigerstore/history"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
-)
 
-// Copied from the correctness round 1 harness on #49, which copied it from
-// internal/sim/history.go.
-// The converters refuse request fields that the format cannot hold, so a
-// checker never sees a different request than the cluster did.
+	"github.com/djosh34/tigerstore/history"
+)
 
 func rangeRequest(r *pb.RangeRequest) (*history.RangeRequest, error) {
 	if r.SortOrder != pb.RangeRequest_NONE || r.SortTarget != pb.RangeRequest_KEY ||
@@ -81,7 +81,8 @@ func txnOps(ops []*pb.RequestOp) ([]history.TxnOp, error) {
 	return out, nil
 }
 
-func request(m proto.Message) (history.Request, error) {
+// Request converts a request.
+func Request(m proto.Message) (history.Request, error) {
 	switch r := m.(type) {
 	case *pb.RangeRequest:
 		hr, err := rangeRequest(r)
@@ -118,7 +119,8 @@ func request(m proto.Message) (history.Request, error) {
 	return history.Request{}, fmt.Errorf("the history format has no %T", m)
 }
 
-func keyValue(kv *mvccpb.KeyValue) history.KeyValue {
+// KeyValue converts a key-value.
+func KeyValue(kv *mvccpb.KeyValue) history.KeyValue {
 	return history.KeyValue{
 		Key: string(kv.Key), Value: string(kv.Value), CreateRevision: kv.CreateRevision,
 		ModRevision: kv.ModRevision, Version: kv.Version, Lease: kv.Lease,
@@ -128,16 +130,17 @@ func keyValue(kv *mvccpb.KeyValue) history.KeyValue {
 func keyValues(kvs []*mvccpb.KeyValue) []history.KeyValue {
 	var out []history.KeyValue
 	for _, kv := range kvs {
-		out = append(out, keyValue(kv))
+		out = append(out, KeyValue(kv))
 	}
 	return out
 }
 
-func prevKV(kv *mvccpb.KeyValue) *history.KeyValue {
+// PrevKV converts a previous key-value, nil when it is nil.
+func PrevKV(kv *mvccpb.KeyValue) *history.KeyValue {
 	if kv == nil {
 		return nil
 	}
-	v := keyValue(kv)
+	v := KeyValue(kv)
 	return &v
 }
 
@@ -145,12 +148,13 @@ func rangeResponse(r *pb.RangeResponse) *history.RangeResponse {
 	return &history.RangeResponse{KVs: keyValues(r.Kvs), Count: r.Count, More: r.More}
 }
 
-func response(m proto.Message) (*history.Response, error) {
+// Response converts the response to a request.
+func Response(m proto.Message) (*history.Response, error) {
 	switch r := m.(type) {
 	case *pb.RangeResponse:
 		return &history.Response{Revision: r.Header.Revision, Range: rangeResponse(r)}, nil
 	case *pb.PutResponse:
-		return &history.Response{Revision: r.Header.Revision, Put: &history.PutResponse{PrevKV: prevKV(r.PrevKv)}}, nil
+		return &history.Response{Revision: r.Header.Revision, Put: &history.PutResponse{PrevKV: PrevKV(r.PrevKv)}}, nil
 	case *pb.LeaseGrantResponse:
 		return &history.Response{Revision: r.Header.Revision, LeaseGrant: &history.LeaseGrantResponse{ID: r.ID, TTL: r.TTL}}, nil
 	case *pb.LeaseRevokeResponse:
@@ -166,7 +170,7 @@ func response(m proto.Message) (*history.Response, error) {
 			case *pb.ResponseOp_ResponseRange:
 				t.Results = append(t.Results, history.TxnOpResponse{Range: rangeResponse(o.ResponseRange)})
 			case *pb.ResponseOp_ResponsePut:
-				t.Results = append(t.Results, history.TxnOpResponse{Put: &history.PutResponse{PrevKV: prevKV(o.ResponsePut.PrevKv)}})
+				t.Results = append(t.Results, history.TxnOpResponse{Put: &history.PutResponse{PrevKV: PrevKV(o.ResponsePut.PrevKv)}})
 			case *pb.ResponseOp_ResponseDeleteRange:
 				d := o.ResponseDeleteRange
 				t.Results = append(t.Results, history.TxnOpResponse{Delete: &history.DeleteResponse{Deleted: d.Deleted, PrevKVs: keyValues(d.PrevKvs)}})

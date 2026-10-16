@@ -334,10 +334,12 @@ func (p *Proxy) accept() {
 	}
 }
 
-// chunk is one read on its way to the writer. A nil data ends the stream.
+// chunk is one read on its way to the writer, due at due under fault
+// state s. With eof set it ends the stream.
 type chunk struct {
 	data []byte
 	due  time.Time
+	s    *state
 	eof  bool
 }
 
@@ -346,10 +348,17 @@ type chunk struct {
 const queueLen = 16
 
 // relay copies src to dst in direction d. The reader applies byte faults
-// and stalls; the writer applies delays and rate limits.
+// and stalls; the writer applies delays and rate limits. It returns once
+// its writer has written everything read before the end of src, or the
+// pair closed, so the pair never closes on bytes still queued.
 func (p *Proxy) relay(q *pair, d Dir, src, dst *net.TCPConn, count *atomic.Uint64) {
 	ch := make(chan chunk, queueLen)
-	go p.write(q, d, dst, ch)
+	written := make(chan struct{})
+	go func() {
+		p.write(q, d, dst, ch)
+		close(written)
+	}()
+	defer func() { <-written }()
 	rng := rand.New(rand.NewPCG(p.seed, q.id<<1|uint64(d>>1)))
 	buf := make([]byte, 32<<10)
 	var off, lastGen uint64
@@ -380,7 +389,7 @@ func (p *Proxy) relay(q *pair, d Dir, src, dst *net.TCPConn, count *atomic.Uint6
 			}
 			off += uint64(n)
 			if len(data) > 0 {
-				c := chunk{data: data, due: time.Now()}
+				c := chunk{data: data, due: time.Now(), s: s}
 				switch f := s.fault; {
 				case f.Kind == Delay && f.applies(d):
 					c.due = c.due.Add(f.Delay)
@@ -458,11 +467,11 @@ func (p *Proxy) write(q *pair, d Dir, dst *net.TCPConn, ch chan chunk) {
 			_ = dst.CloseWrite()
 			return
 		}
-		if !sleep(q, time.Until(c.due)) {
+		if !hold(q, c.s, time.Until(c.due)) {
 			return
 		}
 		if s := p.cur.Load(); s.fault.Kind == Rate && s.fault.applies(d) {
-			if !sleep(q, time.Duration(len(c.data))*time.Second/time.Duration(s.fault.Rate)) {
+			if !hold(q, s, time.Duration(len(c.data))*time.Second/time.Duration(s.fault.Rate)) {
 				return
 			}
 		}
@@ -473,9 +482,10 @@ func (p *Proxy) write(q *pair, d Dir, dst *net.TCPConn, ch chan chunk) {
 	}
 }
 
-// sleep waits for d or until the pair closes, and reports whether the
-// pair is still open.
-func sleep(q *pair, d time.Duration) bool {
+// hold waits for d, until Set replaces fault state s, which releases
+// what s held back, or until the pair closes. It reports whether the pair
+// is still open.
+func hold(q *pair, s *state, d time.Duration) bool {
 	if d <= 0 {
 		return true
 	}
@@ -483,6 +493,8 @@ func sleep(q *pair, d time.Duration) bool {
 	defer t.Stop()
 	select {
 	case <-t.C:
+		return true
+	case <-s.changed:
 		return true
 	case <-q.done:
 		return false

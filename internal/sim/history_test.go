@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/history/frometcd"
 )
 
 // TestConversionRefusesWhatTheFormatCannotHold makes sure the converter
@@ -25,7 +26,7 @@ func TestConversionRefusesWhatTheFormatCannotHold(t *testing.T) {
 		&pb.TxnRequest{Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), IgnoreLease: true}}}}},
 	}
 	for _, r := range reqs {
-		if _, err := request(r); err == nil {
+		if _, err := frometcd.Request(r); err == nil {
 			t.Errorf("%T %v converted without error", r, r)
 		}
 	}

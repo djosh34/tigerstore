@@ -50,9 +50,11 @@ type node struct {
 	mu     sync.Mutex
 	cmd    *exec.Cmd
 	exited chan *os.ProcessState
-	// starts counts incarnations; unexpected records exits nobody asked for.
+	// starts counts incarnations; unexpected records exits nobody asked
+	// for, and exitedNow is set while the last incarnation has exited.
 	starts     int
 	expecting  bool
+	exitedNow  bool
 	unexpected []string
 	// control talks to the node directly, past its proxy, for status.
 	control *clientv3.Client
@@ -208,7 +210,7 @@ func (c *cluster) start(n *node) error {
 		return err
 	}
 	n.cmd = cmd
-	n.expecting = false
+	n.expecting, n.exitedNow = false, false
 	exited := make(chan *os.ProcessState, 1)
 	n.exited = exited
 	go func() {
@@ -217,6 +219,7 @@ func (c *cluster) start(n *node) error {
 		if !n.expecting {
 			n.unexpected = append(n.unexpected, fmt.Sprintf("incarnation %d (pid %d) exited on its own: %v", n.starts, cmd.Process.Pid, cmd.ProcessState))
 		}
+		n.exitedNow = true
 		n.mu.Unlock()
 		exited <- cmd.ProcessState
 	}()
@@ -372,11 +375,20 @@ func (c *cluster) ready(ctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-// stop ends every process with SIGTERM, or SIGKILL if that fails, so the
-// data directories can be read.
+// stop ends every running process with SIGTERM, or SIGKILL if that
+// fails, so the data directories can be read. A node that never started
+// or already exited has nothing to stop; unexpectedExits reports the
+// second.
 func (c *cluster) stop() error {
 	var errs []error
 	for _, n := range c.nodes {
+		n.mu.Lock()
+		running := n.cmd != nil && !n.exitedNow
+		n.mu.Unlock()
+		if !running {
+			errs = append(errs, n.control.Close())
+			continue
+		}
 		if _, _, err := n.signal(syscall.SIGCONT); err != nil {
 			errs = append(errs, err)
 		}

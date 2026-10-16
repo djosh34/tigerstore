@@ -91,6 +91,7 @@ and `-faults` runs a subset. `go run ./cmd/chaos -check <dir>/history.json` reru
 
 Not covered yet; these are later pieces of #49:
 
+- A delay on client links: the `delay` fault delays only the leader's link to one follower, so that a follower lags (B01a), and no fault delays a client link.
 - tc netem packet faults: loss, reordering and corruption, and 1 to 10 ms between nodes. Deleting stream bytes in the proxy is a different fault from packet loss, which TCP repairs.
 - CPU throttling with cgroup quotas.
 - Disk faults on real processes: a fault-injecting file layer with torn writes and failing or stalling fsync, and real ENOSPC.

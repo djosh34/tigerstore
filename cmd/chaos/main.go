@@ -2,8 +2,8 @@
 // 3-node TLS tigerstore cluster. Every client-to-node and node-to-node
 // link goes through its own seeded fault proxy (package chaos/proxy).
 // Three stock clientv3 clients, one pinned to each node, record Put, CAS
-// Txn, DeleteRange and Range calls, and three watches with previous
-// values record events. Meanwhile the run injects each fault of the
+// Txn, DeleteRange and Range calls, a reader on each node records Range
+// calls, and three watches with previous values record events. Meanwhile the run injects each fault of the
 // schedule once, in a seeded order: SIGKILL and restart, SIGSTOP and
 // SIGCONT of the leader and of a follower, and proxy faults. Then it
 // heals, waits until the cluster converges, reads the committed log from
@@ -235,7 +235,8 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 	missing = errors.Join(missing, h.Validate())
 	cov, covErr := coverage(h)
 	missing = errors.Join(missing, covErr, save(filepath.Join(dir, "coverage.json"), cov))
-	lin, pruned := withoutLostWrites(h)
+	lin, pruned, err := withoutLostWrites(h)
+	missing = errors.Join(missing, err)
 	logf("linearizability input leaves out %d ambiguous writes that did not take effect", pruned)
 	var results []checkerResult
 	var errs []error
@@ -277,15 +278,14 @@ func runChecks(h *history.History, timeout time.Duration, dir string, logf func(
 // a value no other call sends, which makes this exact for them. Leaving
 // out an ambiguous call is safe whatever the log says: it can only make
 // the check stricter, as a read that saw the call's effect then fails.
-func withoutLostWrites(h *history.History) (*history.History, int) {
+func withoutLostWrites(h *history.History) (*history.History, int, error) {
+	inLog := map[string]int{}
+	var errs []error
 	key := func(q history.Request) string {
 		b, err := json.Marshal(q)
-		if err != nil {
-			return fmt.Sprint(q)
-		}
+		errs = append(errs, err)
 		return string(b)
 	}
-	inLog := map[string]int{}
 	for _, q := range h.Log {
 		inLog[key(q)]++
 	}
@@ -304,7 +304,10 @@ func withoutLostWrites(h *history.History) (*history.History, int) {
 		}
 		out.Ops = append(out.Ops, op)
 	}
-	return &out, pruned
+	if err := errors.Join(errs...); err != nil {
+		return h, 0, err
+	}
+	return &out, pruned, nil
 }
 
 // checkSaved reruns the checkers on a history a run saved.

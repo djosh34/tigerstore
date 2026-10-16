@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/history/frometcd"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -123,19 +124,19 @@ func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*hist
 		if e != nil {
 			return nil, e
 		}
-		return response((*pb.PutResponse)(r))
+		return frometcd.Response((*pb.PutResponse)(r))
 	case q.Delete != nil:
 		r, e := cl.Delete(ctx, q.Delete.Key, options(q.Delete.End, q.Delete.PrevKV)...)
 		if e != nil {
 			return nil, e
 		}
-		return response((*pb.DeleteRangeResponse)(r))
+		return frometcd.Response((*pb.DeleteRangeResponse)(r))
 	case q.Range != nil:
 		r, e := cl.Get(ctx, q.Range.Key, options(q.Range.End, false)...)
 		if e != nil {
 			return nil, e
 		}
-		return response((*pb.RangeResponse)(r))
+		return frometcd.Response((*pb.RangeResponse)(r))
 	case q.Txn != nil:
 		var cmps []clientv3.Cmp
 		for _, cmp := range q.Txn.Compare {
@@ -158,7 +159,7 @@ func execute(ctx context.Context, cl *clientv3.Client, q history.Request) (*hist
 		if e != nil {
 			return nil, e
 		}
-		return response((*pb.TxnResponse)(r))
+		return frometcd.Response((*pb.TxnResponse)(r))
 	}
 	return nil, errors.New("unsupported generated request")
 }

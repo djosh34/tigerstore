@@ -326,3 +326,61 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+// TestHalfClose: the client sends a request and closes its write side;
+// the upstream reads to the end, answers with 128 KiB and closes. With no
+// fault every byte of the answer must arrive, though both readers saw EOF
+// before the answer was written out.
+func TestHalfClose(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	answer := bytes.Repeat([]byte("a"), 128<<10)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(io.Discard, c)
+		_, _ = c.Write(answer)
+		_ = c.Close()
+	}()
+	_, c := start(t, ln.Addr().String(), 1)
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := c.Write([]byte("request")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(c)
+	if err != nil || !bytes.Equal(got, answer) {
+		t.Fatalf("got %d of %d bytes: %v", len(got), len(answer), err)
+	}
+}
+
+// TestHealReleasesHeldBytes: a byte held by a one-second delay, and one
+// paced by a rate limit, must go out at once when the fault is replaced.
+func TestHealReleasesHeldBytes(t *testing.T) {
+	for _, f := range []Fault{
+		{Kind: Delay, Dir: Forward, Delay: time.Second},
+		{Kind: Rate, Dir: Forward, Rate: 1},
+	} {
+		p, c := start(t, echo(t), 1)
+		set(t, p, f)
+		if _, err := c.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		for p.Stats().Hits == 0 && f.Kind == Delay {
+			time.Sleep(time.Millisecond)
+		}
+		time.Sleep(20 * time.Millisecond)
+		set(t, p, Fault{Kind: None})
+		_ = c.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		if _, err := io.ReadFull(c, make([]byte, 1)); err != nil {
+			t.Fatalf("%s: the held byte did not arrive within 200 ms of the heal: %v", f.Kind, err)
+		}
+	}
+}

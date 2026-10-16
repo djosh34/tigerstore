@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/history/frometcd"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -41,7 +42,7 @@ func (r *recorder) watch(ctx context.Context, cl *clientv3.Client, i int, prefix
 			}
 			var bad error
 			for _, ev := range wr.Events {
-				he := history.Event{KV: keyValue(ev.Kv), PrevKV: prevKV(ev.PrevKv)}
+				he := history.Event{KV: frometcd.KeyValue(ev.Kv), PrevKV: frometcd.PrevKV(ev.PrevKv)}
 				switch ev.Type {
 				case mvccpb.Event_PUT:
 					he.Type = history.EventPut

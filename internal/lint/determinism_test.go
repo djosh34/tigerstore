@@ -20,6 +20,7 @@ import (
 // events.
 var corePackages = []string{
 	"history",
+	"history/frometcd",
 	"internal/core",
 	"internal/mvcc",
 	"internal/planted",

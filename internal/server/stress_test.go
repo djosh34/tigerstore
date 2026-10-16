@@ -81,10 +81,8 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 						return
 					}
 					puts.Add(1)
-					for d := int64(time.Since(start)); d > longest[id-1].Load(); {
-						if longest[id-1].CompareAndSwap(longest[id-1].Load(), d) {
-							break
-						}
+					l, d := &longest[id-1], int64(time.Since(start))
+					for cur := l.Load(); d > cur && !l.CompareAndSwap(cur, d); cur = l.Load() {
 					}
 				}
 			})
@@ -94,15 +92,17 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 	t.Logf("%d puts of %d bytes in %v", puts.Load(), len(value), duration)
 	// The margins under the limits (#88): the longest put, the longest a
 	// leader's append waited to commit, and the longest write and sync of
-	// the log, per node.
+	// the log, per node. The commit wait is counted in whole ticks from
+	// the tick of the append, so 1 tick means within one tick.
 	for id := uint64(1); id <= 3; id++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		m, err := c.nodes[id].Metrics(ctx)
 		cancel()
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("node %d: longest put %v, no metrics: %v", id, time.Duration(longest[id-1].Load()), err)
+			continue
 		}
-		t.Logf("node %d: longest put %v, longest commit wait %v (%d ticks), longest log write %v",
-			id, time.Duration(longest[id-1].Load()), time.Duration(m.MaxCommitWait)*c.tick, m.MaxCommitWait, time.Duration(m.MaxLogWriteNanos))
+		t.Logf("node %d: longest put %v, longest commit wait %d ticks of %v, longest log write %v",
+			id, time.Duration(longest[id-1].Load()), m.MaxCommitWait, c.tick, time.Duration(m.MaxLogWriteNanos))
 	}
 }

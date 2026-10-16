@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/djosh34/tigerstore/history"
+	"github.com/djosh34/tigerstore/history/frometcd"
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/osfs"
 	tigerwal "github.com/djosh34/tigerstore/internal/wal"
@@ -175,7 +176,7 @@ func decodeBatch(data []byte) ([]history.Request, error) {
 		if err := rejectUnknown(m); err != nil {
 			return err
 		}
-		q, err := request(m)
+		q, err := frometcd.Request(m)
 		if err != nil {
 			return err
 		}

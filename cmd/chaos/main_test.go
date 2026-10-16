@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,14 +25,17 @@ func TestWithoutLostWrites(t *testing.T) {
 		},
 		Log: []history.Request{put("kept"), del},
 	}
-	got, pruned := withoutLostWrites(h)
+	got, pruned, err := withoutLostWrites(h)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// The lost put and the delete whose only log copy belongs to the
 	// successful call go; the committed put and the read stay.
 	if pruned != 2 || len(got.Ops) != 3 || got.Ops[0].Req.Put.Value != "kept" || got.Ops[1].Resp == nil || got.Ops[2].Req.Range == nil {
 		t.Fatalf("pruned %d, kept %+v", pruned, got.Ops)
 	}
 	h.Log = append(h.Log, del)
-	if _, pruned := withoutLostWrites(h); pruned != 1 {
+	if _, pruned, err := withoutLostWrites(h); err != nil || pruned != 1 {
 		t.Fatalf("with a second delete in the log, pruned %d, want 1", pruned)
 	}
 	if len(h.Ops) != 5 {
@@ -54,5 +59,14 @@ func TestFaultsOverlapWrites(t *testing.T) {
 	}
 	if err := faultsOverlapWrites([]record{{Step: 3, Requested: 4 * time.Second}}, h); err != nil {
 		t.Fatalf("a fault that was not installed: %v", err)
+	}
+}
+
+// TestFailedStart runs with a binary that does not exist: the run must
+// report the failed start, not crash while stopping nodes that never ran.
+func TestFailedStart(t *testing.T) {
+	err := run(config{Seed: 1, Tigerstore: filepath.Join(t.TempDir(), "missing"), Faults: allFaults}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "start: ") || strings.Contains(err.Error(), "stop: ") {
+		t.Fatalf("got %v, want only the failed start", err)
 	}
 }
