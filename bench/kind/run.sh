@@ -16,7 +16,7 @@ cp "$1" "$bins/etcd"
 cp "$2" "$bins/tigerstore"
 cp "$(dirname "$1")/etcdctl" "$bins/etcdctl"
 out=$3
-iter=${ITER:-1000}
+iter=${ITER:-200}
 reps=${REPS:-3}
 certs=$(realpath "${CERTS:?}")
 gateway=172.30.0.1
