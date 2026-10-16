@@ -294,6 +294,7 @@ type Completer interface {
 type Completion struct {
 	Tag any
 	core.Reply
+	Hold *ReplyHold
 }
 
 // batch is requests that one client connection hands the committer at
@@ -341,14 +342,18 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 
 // Node is a running node.
 type Node struct {
-	cfg       Config
-	core      *core.Node
-	log       *diskLog
-	inbox     chan input
-	persistQ  chan persistBatch
-	persisted chan persistDone
-	ckptQ     chan core.CheckpointChunk
-	cleanQ    chan packRoot
+	// Issued and seen belong to the committer. Writers only add to freed.
+	// Cumulative counts survive reloads without losing a concurrent release.
+	replyIssued, replySeen int64
+	replyFreed             atomic.Int64
+	cfg                    Config
+	core                   *core.Node
+	log                    *diskLog
+	inbox                  chan input
+	persistQ               chan persistBatch
+	persisted              chan persistDone
+	ckptQ                  chan core.CheckpointChunk
+	cleanQ                 chan packRoot
 	// sparesQ takes the number of spare segment files the log keeps to
 	// the disk goroutine, which rotates segments into them.
 	sparesQ  chan int
@@ -677,6 +682,8 @@ func (n *Node) open() error {
 		n.log.mu.Unlock()
 	}
 	n.core = c
+	n.replySeen = n.replyFreed.Load()
+	c.SetReplyBytes(n.replyIssued - n.replySeen)
 	n.persistQ = make(chan persistBatch, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
@@ -986,7 +993,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case done := <-n.persisted:
 			if done.err != nil {
 				if errors.Is(done.err, errReload) {
-					dropAll(waiters, streams)
+					n.dropAll(waiters, streams)
 				}
 				return done.err
 			}
@@ -1019,6 +1026,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
+		freed := n.replyFreed.Load()
+		n.core.ReleaseReplyBytes(freed - n.replySeen)
+		n.replySeen = freed
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
@@ -1043,7 +1053,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
-		groups = completeAll(eff.Replies, waiters, groups, groupOf)
+		groups = n.completeAll(eff.Replies, waiters, groups, groupOf)
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
 			if !ok {
@@ -1090,12 +1100,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 // dropAll fails every request and ends every watch stream of a run that
 // ends for a reload; the node goes on, so their clients would otherwise
 // wait for good. Clients try again, as after a restart.
-func dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
+func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
 	replies := make([]core.Reply, 0, len(waiters))
 	for id := range waiters {
 		replies = append(replies, core.Reply{ID: id, Err: rpctypes.ErrGRPCStopped})
 	}
-	completeAll(replies, waiters, nil, map[Completer]int{})
+	n.completeAll(replies, waiters, nil, map[Completer]int{})
 	for id, ws := range streams {
 		delete(streams, id)
 		ws.err = rpctypes.ErrGRPCStopped
@@ -1111,10 +1121,11 @@ type completions struct {
 
 // completeAll hands every reply to its waiter: a Do call gets its own,
 // and each completer gets all of its replies in one Complete call.
-func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []completions, groupOf map[Completer]int) []completions {
+func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []completions, groupOf map[Completer]int) []completions {
 	for _, r := range replies {
 		w, ok := waiters[r.ID]
 		if !ok {
+			n.core.ReleaseReplyBytes(r.Held)
 			continue
 		}
 		delete(waiters, r.ID)
@@ -1128,7 +1139,7 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 			groupOf[w.to] = i
 			groups = append(groups, completions{to: w.to})
 		}
-		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
+		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r, Hold: n.holdReply(r.Held)})
 	}
 	for _, g := range groups {
 		g.to.Complete(g.cs)
