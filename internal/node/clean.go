@@ -1,6 +1,7 @@
 package node
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -72,6 +73,46 @@ type cleaner struct {
 	idleShort bool
 	// pending waits for a snapshot fetch to end before it is removed.
 	pending *removal
+	// short is whether space was short at the last measure, which turns
+	// spare files off.
+	short bool
+}
+
+// spareSegments is how many removed segments the log of a node with a
+// disk budget keeps as spare files: they count against the budget, at
+// most an eighth of it.
+func spareSegments(cfg Config) int {
+	segment := cmp.Or(cfg.SegmentBytes, int64(wal.SegmentBytes))
+	return int(min(wal.MaxSpares, cfg.DiskBudget/8/segment))
+}
+
+// spares turns spare files off from three quarters of the budget on,
+// and has the disk goroutine remove those on disk: they hold nothing, and
+// a removed segment kept as one frees no space. A pass at NOSPACE copies
+// values that are nearly all live, and the spares its removals made held
+// the files above the budget (#181). They come back below half the
+// budget, where cleaning starts, so that they do not switch at every
+// measure near three quarters.
+func (c *cleaner) spares(ctx context.Context, used, budget int64) {
+	short := c.short
+	switch {
+	case used >= budget*3/4:
+		short = true
+	case used < budget/2:
+		short = false
+	}
+	if short == c.short {
+		return
+	}
+	c.short = short
+	n := spareSegments(c.n.cfg)
+	if short {
+		n = 0
+	}
+	select {
+	case c.n.sparesQ <- n:
+	case <-ctx.Done():
+	}
 }
 
 // clean measures the disk every cleanTick and cleans while it is past
@@ -98,6 +139,7 @@ func (c *cleaner) run(ctx context.Context) error {
 				return err
 			}
 			c.n.log.used.Store(used)
+			c.spares(ctx, used, budget)
 		}
 		if err := c.remove(); err != nil {
 			return err

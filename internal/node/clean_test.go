@@ -279,6 +279,17 @@ func TestNoSpace(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// Spare segment files hold nothing; at NOSPACE they would hold the
+	// files above the budget, so the node keeps none (#181).
+	ents, err := os.ReadDir(filepath.Join(dir, "wal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), "spare-") {
+			t.Fatalf("spare file %s at NOSPACE", e.Name())
+		}
+	}
 	// Deleting the keys and compacting lifts NOSPACE: under the alarm the
 	// compaction cuts a checkpoint, cleaning drops the values it freed,
 	// and the node clears its alarm (#167).

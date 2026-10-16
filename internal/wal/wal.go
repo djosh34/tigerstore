@@ -914,8 +914,21 @@ func (w *WAL) Buffered() int64 { return int64(len(w.buf)) }
 func (w *WAL) SetSegmentBytes(n int64) { w.maxSize = n }
 
 // SetSpares changes how many removed segments the log keeps as spare
-// files. Call it before the log is shared.
-func (w *WAL) SetSpares(n int) { w.spares = n }
+// files from now on, and removes the spare files beyond n. It must not
+// run while a segment starts, which may take a spare.
+func (w *WAL) SetSpares(n int) error {
+	w.spares = n
+	spares, err := w.listSpares()
+	if err != nil || len(spares) <= n {
+		return err
+	}
+	for _, name := range spares[n:] {
+		if err := w.fs.Remove(name); err != nil {
+			return err
+		}
+	}
+	return w.fs.SyncDir()
+}
 
 // Close closes the newest segment without syncing, and every file opened
 // for reading.

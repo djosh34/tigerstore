@@ -417,11 +417,47 @@ jobs:
           path: ${{ runner.temp }}/chaos-out
           retention-days: 30
 
+  # Differential fuzzing (#148): random sequences against a fresh etcd
+  # v3.7.2 and a fresh 3-node tigerstore side by side for 90 s, every
+  # answer compared, then every saved mismatch again. A mismatch is shrunk
+  # into a named case, uploaded; commit it to difftest/testdata/fuzz.
+  # Seeds come from the run ID. The long run is difffuzz.yml.
+  # The second row builds tigerstore and the tests with -race.
+  difffuzz:
+    strategy:
+      fail-fast: false
+      matrix:
+        race: ["", "1"]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install etcd v3.7.2
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+      - name: Fuzz for 90 s
+        env:
+          ETCD: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcd
+          DURATION: 90s
+          RACE: ${{ matrix.race }}
+          RUN_ID: ${{ github.run_id }}
+        run: SEED=$(( (RUN_ID % 1000000000) * 1000000 + 1 + ${RACE:-0} * 500000 )) scripts/difffuzz.sh
+      - if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: difffuzz-mismatch-${{ strategy.job-index }}
+          path: difftest/testdata/fuzz/
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, planted, chaos, chaos-planted, fuzz, coverage, race-sim, chaos-race]
+    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, planted, chaos, chaos-planted, fuzz, coverage, race-sim, chaos-race]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
