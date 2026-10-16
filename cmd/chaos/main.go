@@ -116,8 +116,14 @@ type verdict struct {
 
 func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
-		if slices.Contains(envFaults, f) && !slices.Contains(envFaultsFor(c.LazyFS != ""), f) || slices.Contains(envFaults, f) && !c.Env {
-			return fmt.Errorf("fault %q needs -env, %s", f, map[bool]string{true: "and no -lazyfs: LazyFS reports a failed fsync as success", false: "and -lazyfs"}[slices.Contains(withoutLazyFS, f)])
+		if slices.Contains(envFaults, f) && !c.Env {
+			return fmt.Errorf("fault %q needs -env", f)
+		}
+		if slices.Contains(withoutLazyFS, f) && c.LazyFS != "" {
+			return fmt.Errorf("fault %q runs only without -lazyfs, which would hide it", f)
+		}
+		if slices.Contains(withLazyFS, f) && c.LazyFS == "" {
+			return fmt.Errorf("fault %q needs -lazyfs", f)
 		}
 		if !slices.Contains(allFaults, f) && !slices.Contains(envFaults, f) {
 			return fmt.Errorf("unknown fault %q; known: %s", f, strings.Join(slices.Concat(allFaults, envFaults), ","))

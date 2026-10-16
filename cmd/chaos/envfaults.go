@@ -51,10 +51,12 @@ var envFaults = []string{
 
 // LazyFS answers an fsync with success even when the disk under it
 // failed the write or is full, so a node on it would be told that data is
-// durable that is not: failing writes and a full disk run only without
-// it, and the faults that need it only with it.
+// durable that is not. Its fsync also only writes to the disk under it
+// and never syncs it, so a slow or stalled disk does not hold the node's
+// fsync. Those faults run only without it, and the faults that need it
+// only with it.
 var (
-	withoutLazyFS = []string{fsyncFail, diskFull}
+	withoutLazyFS = []string{diskSlow, diskStall, fsyncFail, diskFull}
 	withLazyFS    = []string{powerLoss, tornWrite}
 )
 
@@ -202,7 +204,7 @@ type envRecord struct {
 	Exited    string           `json:"exited,omitempty"`
 	LeaderNow string           `json:"leader_after,omitempty"`
 	// Crashes are the kills during recovery, each with the time after
-	// the start and whether the node answered before it.
+	// the start and whether it came inside the recovery of the log.
 	Crashes []recoveryKill `json:"crashes,omitempty"`
 	// Fetching is the node's log line of the fetch the crash cut.
 	Fetching string `json:"fetching,omitempty"`
@@ -213,8 +215,8 @@ type envRecord struct {
 }
 
 type recoveryKill struct {
-	After    time.Duration `json:"after"`
-	Answered bool          `json:"answered"`
+	After      time.Duration `json:"after"`
+	InRecovery bool          `json:"in_recovery"`
 }
 
 // probe is one write through a healthy node during a gray fault.
@@ -390,7 +392,8 @@ func (r *runner) cpuFault(ctx context.Context, s step, target int, rec *record) 
 // diskFault slows or stalls the disk of target. A stall of the leader's
 // disk must move leadership away within the hold.
 func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record) error {
-	d := r.e.disks[target]
+	n, d := r.c.nodes[target], r.e.disks[target]
+	logBefore := logSize(n)
 	var err error
 	if s.Fault == diskSlow {
 		err = d.Delay(s.Delay/4, s.Delay)
@@ -401,7 +404,10 @@ func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record)
 		return err
 	}
 	rec.Installed = true
-	rec.Env.Disk, _, _ = d.Status()
+	var statErr error
+	if rec.Env.Disk, _, statErr = d.Status(); statErr != nil {
+		return errors.Join(statErr, d.Healthy())
+	}
 	holdErr := pause(ctx, s.Hold)
 	if s.Fault == diskStall {
 		// Whether a write was held: the node logs a slow write once the
@@ -412,24 +418,12 @@ func (r *runner) diskFault(ctx context.Context, s step, target int, rec *record)
 	}
 	healErr := d.Healthy()
 	rec.Healed, rec.HealedAt = healErr == nil, r.since()
-	switch s.Fault {
-	case diskSlow:
-		rec.Effect = slowWrites(r.c.nodes[target]) > 0
-	case diskStall:
+	if s.Fault == diskStall {
 		// The held writes finish once it heals.
 		time.Sleep(time.Second)
-		rec.Effect = slowWrites(r.c.nodes[target]) > 0
 	}
+	rec.Effect = strings.Contains(logSince(n, logBefore), "slow write to the log")
 	return errors.Join(holdErr, healErr)
-}
-
-// slowWrites counts the node's log lines of writes slower than a tick.
-func slowWrites(n *node) int {
-	b, err := os.ReadFile(n.log.Name())
-	if err != nil {
-		return 0
-	}
-	return strings.Count(string(b), "slow write to the log")
 }
 
 // diskError fails the writes of target's disk, or fills it, and expects
@@ -451,8 +445,9 @@ func (r *runner) diskError(ctx context.Context, s step, target int, rec *record)
 		return err
 	}
 	rec.Installed = true
-	rec.Env.Disk, rec.Env.FreeBytes, _ = d.Status()
-	holdErr := pause(ctx, s.Hold)
+	var statErr error
+	rec.Env.Disk, rec.Env.FreeBytes, statErr = d.Status()
+	holdErr := errors.Join(statErr, pause(ctx, s.Hold))
 	var healErr error
 	if s.Fault == fsyncFail {
 		healErr = d.Healthy()
@@ -576,10 +571,10 @@ func waitUntil(ctx context.Context, d time.Duration, cond func() bool) bool {
 }
 
 // crashInRecovery kills target, then five times drops its caches,
-// starts it and kills it again within 5 to 150 ms, while it recovers its
-// log from a disk slowed to 50 ms a read, and starts it for good on a
-// healthy disk. At least one kill must come before the node served
-// clients, which it does once it recovered.
+// starts it and kills it again 5 to 100 ms after it logged that it is
+// recovering its log, from a disk slowed to 50 ms a read, and starts it
+// for good on a healthy disk. At least one kill must come before the node
+// logged that it recovered the log.
 func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *record) error {
 	n, d := r.c.nodes[target], r.e.disks[target]
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
@@ -598,15 +593,16 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 		if err := r.c.start(n); err != nil {
 			return errors.Join(err, d.Healthy())
 		}
-		after := time.Duration(5+rng.IntN(145)) * time.Millisecond
+		after := time.Duration(5+rng.IntN(95)) * time.Millisecond
+		waitUntil(ctx, 10*time.Second, func() bool { return strings.Contains(logSince(n, from), "recovering the log") })
 		time.Sleep(after)
 		if _, _, err := n.signal(syscall.SIGKILL); err != nil {
 			return err
 		}
-		rec.Env.Crashes = append(rec.Env.Crashes, recoveryKill{After: after, Answered: strings.Contains(logSince(n, from), "serving client traffic")})
-	}
-	for _, k := range rec.Env.Crashes {
-		rec.Effect = rec.Effect || !k.Answered
+		text := logSince(n, from)
+		in := strings.Contains(text, "recovering the log") && !strings.Contains(text, "recovered the log")
+		rec.Env.Crashes = append(rec.Env.Crashes, recoveryKill{After: after, InRecovery: in})
+		rec.Effect = rec.Effect || in
 	}
 	if err := d.Healthy(); err != nil {
 		return err
@@ -629,21 +625,12 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 	if _, _, err := n.signal(syscall.SIGSTOP); err != nil {
 		return err
 	}
-	// Writes through the leader far past the window and a checkpoint, and
-	// compactions, so that the leader sends the follower a snapshot.
+	// Writes through the leader far past the window and a checkpoint, so
+	// that the leader sends the follower a snapshot.
 	cl := r.t.cs[lead]
-	bulk := func(round int) history.Op {
-		var last history.Op
-		for k := range 150 {
-			q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%d-%s", round, k, strings.Repeat("b", 1000))}}
-			last = r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
-		}
-		return last
-	}
-	for round := range 2 {
-		if last := bulk(round); last.Resp != nil {
-			r.t.r.call(cl, installClient, history.Request{Compact: &history.CompactRequest{Revision: last.Resp.Revision}}, r.t.cfg.requestTimeout)
-		}
+	for k := range 300 {
+		q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%s", k, strings.Repeat("b", 1000))}}
+		r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
 	}
 	logBefore := logSize(n)
 	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
@@ -668,17 +655,22 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 // installClient is the history client of crashInInstall's writes.
 const installClient = 50
 
-// stallConn stops reading once stalled, until released: the TCP window
-// of a client that is barely alive.
-type stallConn struct {
-	net.Conn
-	stalled atomic.Bool
+// stall holds the reads of every connection of the slow client once on,
+// until released: the TCP window of a client that is barely alive.
+type stall struct {
+	on      atomic.Bool
 	release chan struct{}
 }
 
+// stallConn is one connection of the slow client.
+type stallConn struct {
+	net.Conn
+	s *stall
+}
+
 func (c *stallConn) Read(b []byte) (int, error) {
-	if c.stalled.Load() {
-		<-c.release
+	if c.s.on.Load() {
+		<-c.s.release
 	}
 	return c.Conn.Read(b)
 }
@@ -687,15 +679,19 @@ func (c *stallConn) Read(b []byte) (int, error) {
 // then stops reading from its connection for the hold, while the
 // workload writes, so the node's sends to it back up. The node must keep
 // serving everyone else (the probes go through every node) and, once the
-// client reads again, deliver what the watch missed or cancel it.
+// client reads again, deliver every revision the watch missed, up to one
+// read through another node, or cancel it. Every write of a run is under
+// prefix, so each revision after the watch's start has an event.
 func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record) error {
-	conn := &stallConn{release: make(chan struct{})}
+	st := &stall{release: make(chan struct{})}
 	cl, err := clientv3.New(clientv3.Config{
 		Endpoints: []string{r.c.clients[target].Proxy.Addr()}, TLS: r.c.tls, DialTimeout: 2 * time.Second, Logger: zap.NewNop(),
 		DialOptions: []grpc.DialOption{grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			c, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
-			conn.Conn = c
-			return conn, err
+			if err != nil {
+				return nil, err
+			}
+			return &stallConn{Conn: c, s: st}, nil
 		})},
 	})
 	if err != nil {
@@ -705,35 +701,48 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	wc := cl.Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV(), clientv3.WithCreatedNotify())
+	var start int64
 	select {
-	case <-wc:
+	case resp := <-wc:
+		if !resp.Created {
+			return fmt.Errorf("the slow client's watch answered %+v before it was created", resp)
+		}
+		start = resp.Header.Revision
 	case <-time.After(5 * time.Second):
 		return errors.New("the slow client's watch was not created")
 	}
-	conn.stalled.Store(true)
+	st.on.Store(true)
 	rec.Installed = true
 	from := r.since()
 	holdErr := pause(ctx, s.Hold)
-	close(conn.release)
-	// The writes of the hold must reach it, or a cancel.
-	got := 0
-	for deadline := time.After(10 * time.Second); got == 0; {
+	close(st.release)
+	gctx, gcancel := context.WithTimeout(ctx, r.t.cfg.requestTimeout)
+	g, err := r.t.cs[others(target)[0]].Get(gctx, prefix+"k0")
+	gcancel()
+	if err != nil {
+		return errors.Join(holdErr, fmt.Errorf("read the revision the slow watch must reach: %w", err))
+	}
+	end := g.Header.Revision
+	got, last, canceled := map[int64]bool{}, start, false
+	for deadline := time.After(10 * time.Second); last < end && !canceled; {
 		select {
 		case resp, ok := <-wc:
-			if !ok || resp.Canceled {
-				got = -1
-				break
+			canceled = !ok || resp.Canceled
+			for _, ev := range resp.Events {
+				got[ev.Kv.ModRevision] = true
+				last = max(last, ev.Kv.ModRevision)
 			}
-			got += len(resp.Events)
 		case <-deadline:
-			got = -2
-		}
-		if got != 0 {
-			break
+			return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start, last, end))
 		}
 	}
-	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: %d events, or -1 for a cancel", s.Hold, from, got)
-	rec.Effect = got != -2
+	for rev := start + 1; rev <= last; rev++ {
+		if !got[rev] {
+			return errors.Join(holdErr, fmt.Errorf("the slow watch from %d missed revision %d", start, rev))
+		}
+	}
+	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: revisions %d to %d of %d, canceled %v", s.Hold, from, start+1, last, end, canceled)
+	rec.Effect = true
 	rec.Healed, rec.HealedAt = true, r.since()
 	return holdErr
 }

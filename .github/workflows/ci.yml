@@ -288,6 +288,9 @@ jobs:
           echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
+      - name: Test the environment
+        if: matrix.mode == 'lazyfs'
+        run: CHAOS_LAZYFS="$LAZYFS" go test -tags chaosenv ./chaos/env/
       - name: Run a seed
         shell: bash
         env:

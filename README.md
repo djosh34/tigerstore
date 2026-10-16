@@ -44,9 +44,11 @@ Stop the cluster with `kill $(cat data/*.pid)`. Starting it again recovers each 
 A node that finds a damaged record in its log stops, and a restart refuses that log. A node whose disk was erased must not start again under its old name with empty storage: it would vote and acknowledge as if it still held what it had promised, and an acknowledged write could be lost. Bring either back as a new member, as with etcd, while the other two are up:
 
 ```sh
-etcdctl member list                          # the ID of the broken member, here node3
-etcdctl member remove <ID>
-etcdctl member add node3 --peer-urls=https://127.0.0.1:12380
+ctl="etcdctl --endpoints=https://127.0.0.1:2379,https://127.0.0.1:22379 \
+  --cacert certs/ca.pem --cert certs/client.pem --key certs/client-key.pem"
+$ctl member list                             # the ID of the broken member, here node3
+$ctl member remove <ID>
+$ctl member add node3 --peer-urls=https://127.0.0.1:12380
 rm -rf data/node3                            # start on empty storage
 ./tigerstore --name node3 --data-dir data/node3 --initial-cluster-state existing \
   --initial-cluster node1=https://127.0.0.1:2380,node2=https://127.0.0.1:22380,node3=https://127.0.0.1:12380 \

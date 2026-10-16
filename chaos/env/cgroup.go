@@ -85,7 +85,9 @@ func (c *Cgroup) Stats() (CgroupStats, error) {
 		m := map[string]int64{}
 		for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
 			if f := strings.Fields(line); len(f) == 2 {
-				m[f[0]], _ = strconv.ParseInt(f[1], 10, 64)
+				if m[f[0]], err = strconv.ParseInt(f[1], 10, 64); err != nil {
+					return nil, fmt.Errorf("%s: %w", file, err)
+				}
 			}
 		}
 		return m, nil
@@ -100,8 +102,16 @@ func (c *Cgroup) Stats() (CgroupStats, error) {
 		return st, err
 	}
 	st.OOMKills = mem["oom_kill"]
-	if b, err := os.ReadFile(filepath.Join(c.Path, "memory.peak")); err == nil {
-		st.PeakBytes, _ = strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	// memory.peak is there from Linux 5.19 on.
+	b, err := os.ReadFile(filepath.Join(c.Path, "memory.peak"))
+	if errors.Is(err, os.ErrNotExist) {
+		return st, nil
+	}
+	if err != nil {
+		return st, err
+	}
+	if st.PeakBytes, err = strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err != nil {
+		return st, fmt.Errorf("memory.peak: %w", err)
 	}
 	return st, nil
 }

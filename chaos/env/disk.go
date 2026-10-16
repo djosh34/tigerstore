@@ -42,11 +42,11 @@ type Disk struct {
 
 // NewDisk makes a disk of size bytes under dir, named name, with LazyFS on
 // top when lazyfs names its binary.
-func NewDisk(dir, name string, size int64, lazyfs string) (d *Disk, err error) {
+func NewDisk(dir, name string, size int64, lazyfs string) (_ *Disk, err error) {
 	if dir, err = filepath.Abs(dir); err != nil {
 		return nil, err
 	}
-	d = &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), lazyfs: lazyfs, mode: "linear"}
+	d := &Disk{Name: name, dir: dir, img: filepath.Join(dir, name+".img"), Backing: filepath.Join(dir, name+".ext4"), lazyfs: lazyfs, mode: "linear"}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, d.Close())
@@ -111,7 +111,10 @@ func NewDisk(dir, name string, size int64, lazyfs string) (d *Disk, err error) {
 	if err := os.MkdirAll(d.Data, 0o755); err != nil {
 		return nil, err
 	}
-	return d, d.mountLazyFS()
+	if err := d.mountLazyFS(); err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 func (d *Disk) device() string { return "/dev/mapper/" + d.Name }
