@@ -216,22 +216,12 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 
 	kvs = filterKVs(kvs, r)
 	byValue := r.SortTarget == pb.RangeRequest_VALUE
-	if reserve != nil {
-		// Include every candidate: a VALUE sort needs values even for
-		// keys the limit drops. Allow for values, wire encoding and
-		// compression, plus KVs, fills and allocator rounding.
-		bytes := int64(1024) + 512*int64(cap(kvs))
-		for _, kv := range kvs {
-			bytes += 4 * int64(len(kv.Key))
-			if !r.KeysOnly || byValue {
-				bytes += 4 * int64(kv.ref.Len)
-			}
-		}
-		if err := reserve(bytes); err != nil {
+	if byValue {
+		// A VALUE sort reads the values of every candidate, also of keys
+		// the limit drops.
+		if err := reserveReply(reserve, kvs, true); err != nil {
 			return RangeResult{}, err
 		}
-	}
-	if byValue {
 		if err := w.s.readNow(kvs); err != nil {
 			return RangeResult{}, err
 		}
@@ -242,6 +232,12 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	if r.Limit > 0 && int64(len(kvs)) > r.Limit {
 		kvs = kvs[:r.Limit]
 		res.More = true
+	}
+	if !byValue {
+		// Only the page's values are read, after this returns.
+		if err := reserveReply(reserve, kvs, !r.KeysOnly); err != nil {
+			return RangeResult{}, err
+		}
 	}
 	if r.KeysOnly {
 		// Without a sort on values, etcd reads only the key index, which
@@ -255,6 +251,25 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	}
 	res.KVs = kvs
 	return res, nil
+}
+
+// reserveReply asks reserve, if set, for the memory of an answer of kvs
+// before any of their values are allocated. It allows for the values,
+// wire encoding and compression, plus the KVs, fills and allocator
+// rounding. The KVs count by capacity: a page keeps its whole backing
+// array.
+func reserveReply(reserve func(int64) error, kvs []KV, values bool) error {
+	if reserve == nil {
+		return nil
+	}
+	bytes := int64(1024) + 512*int64(cap(kvs))
+	for _, kv := range kvs {
+		bytes += 4 * int64(len(kv.Key))
+		if values {
+			bytes += 4 * int64(kv.ref.Len)
+		}
+	}
+	return reserve(bytes)
 }
 
 // readNow reads the value of every KV at once, for a sort on them. If
