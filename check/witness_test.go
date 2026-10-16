@@ -222,14 +222,19 @@ func TestWitnessedBroken(t *testing.T) {
 	}
 }
 
-// TestWitnessedTimeout checks that running out of time is a failure.
+// TestWitnessedTimeout checks that running out of time is a failure, also
+// for a history too small to check the clock on the way.
 func TestWitnessedTimeout(t *testing.T) {
 	b := newBuilder(t, "a")
 	for i := range 2000 {
 		b.put(i%16, "a", strconv.Itoa(i))
 	}
-	for _, mode := range bothModes {
-		mustFail(t, "Witnessed "+mode.String(), Witnessed(b.done(), mode, time.Nanosecond), "timed out")
+	small := newBuilder(t, "a")
+	small.put(0, "a", "1")
+	for _, h := range []*history.History{b.done(), small.done()} {
+		for _, mode := range bothModes {
+			mustFail(t, "Witnessed "+mode.String(), Witnessed(h, mode, time.Nanosecond), "timed out")
+		}
 	}
 }
 
@@ -347,6 +352,8 @@ func staleAnswer(rng *rand.Rand, h *history.History) bool {
 // write. The model must give each answer, in both modes, before a failure
 // of the witness checker can be trusted (#112). The recording's revisions
 // start one lower: its first put is revision 1 above the case's start.
+// The answers are copied from the recording by hand, so a new recording
+// of the case needs them copied again.
 func TestWitnessedTxnRevisions(t *testing.T) {
 	kv := func(key, value string, create, mod, version int64) history.KeyValue {
 		return history.KeyValue{Key: key, Value: value, CreateRevision: create + 1, ModRevision: mod + 1, Version: version}
@@ -413,5 +420,66 @@ func TestWitnessedTxnRevisions(t *testing.T) {
 	}
 	for _, mode := range bothModes {
 		mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, timeout))
+	}
+}
+
+// TestWitnessedAmbiguousCases are three true histories that an earlier
+// log-free search failed (review of #197): an ambiguous grant that a put
+// in the next revision needs; a keys-only read, which shows no value, of
+// a key that one of two ambiguous puts wrote; and a gap that the later of
+// two ambiguous candidates fits but only the earlier explains, as a
+// rejection in between needs it. Porcupine passes each, and so must both
+// modes.
+func TestWitnessedAmbiguousCases(t *testing.T) {
+	amb := func(client int, call int64, req history.Request) history.Op {
+		return history.Op{Client: client, Call: call, Return: call + 1, Req: req, Err: errUnavailable}
+	}
+	acked := func(client int, call int64, req history.Request, resp *history.Response) history.Op {
+		return history.Op{Client: client, Call: call, Return: call + 1, Req: req, Resp: resp}
+	}
+	put := func(key, value string, lease int64) history.Request {
+		return history.Request{Put: &history.PutRequest{Key: key, Value: value, Lease: lease}}
+	}
+	grant := history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 60}}
+	revoke := history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}}
+	cases := map[string]*history.History{
+		"grant the next put needs": {
+			Ops: []history.Op{
+				amb(0, 1, grant),
+				acked(1, 3, put("a", "x", 42), &history.Response{Revision: 2, Put: &history.PutResponse{}}),
+			},
+			Log: []history.Request{grant, put("a", "x", 42)},
+		},
+		"keys-only read of an ambiguous put": {
+			Ops: []history.Op{
+				amb(0, 1, put("a", "x", 0)),
+				amb(1, 1, put("a", "", 0)),
+				acked(2, 5, history.Request{Range: &history.RangeRequest{Key: "a", KeysOnly: true}},
+					&history.Response{Revision: 2, Range: &history.RangeResponse{Count: 1, KVs: []history.KeyValue{{Key: "a", CreateRevision: 2, ModRevision: 2, Version: 1}}}}),
+				acked(3, 7, history.Request{Txn: &history.TxnRequest{
+					Compare: []history.Compare{{Key: "a", Target: history.TargetValue, Result: history.Equal, Value: "x"}},
+				}}, &history.Response{Revision: 2, Txn: &history.TxnResponse{Succeeded: true}}),
+			},
+			Log: []history.Request{put("a", "x", 0)},
+		},
+		"the earlier candidate of a gap": {
+			Ops: []history.Op{
+				acked(0, 1, grant, &history.Response{Revision: 1, LeaseGrant: &history.LeaseGrantResponse{ID: 42, TTL: 60}}),
+				acked(0, 3, put("k", "v", 42), &history.Response{Revision: 2, Put: &history.PutResponse{}}),
+				amb(1, 5, revoke),
+				{Client: 2, Call: 7, Return: 8, Req: put("k2", "w", 42), Err: errLeaseNotFound},
+				amb(3, 9, history.Request{Delete: &history.DeleteRequest{Key: "k"}}),
+				acked(4, 11, put("z", "1", 0), &history.Response{Revision: 4, Put: &history.PutResponse{}}),
+			},
+			Log: []history.Request{grant, put("k", "v", 42), revoke, put("z", "1", 0)},
+		},
+	}
+	for name, h := range cases {
+		t.Run(name, func(t *testing.T) {
+			mustPass(t, "Linearizable", Linearizable(h, timeout))
+			for _, mode := range bothModes {
+				mustPass(t, "Witnessed "+mode.String(), Witnessed(h, mode, timeout))
+			}
+		})
 	}
 }

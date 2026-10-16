@@ -148,8 +148,13 @@ func TestPlantedInventory(t *testing.T) {
 	}
 }
 
-// witnessCatches reports whether the witness checker fails a run's history
-// in both modes.
+// witnessFinding is how the witness checker reports a stale read: an
+// answer no state of its revision gives, or one real time does not allow.
+// A timeout or a search that ran out of candidates is no catch.
+var witnessFinding = regexp.MustCompile(`answers it|real time allows|returned before it was called`)
+
+// witnessCatches reports whether the witness checker finds the stale read
+// in a run's history in both modes.
 func witnessCatches(t *testing.T, res *Result) bool {
 	if res == nil {
 		return false
@@ -160,8 +165,8 @@ func witnessCatches(t *testing.T, res *Result) bool {
 	}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		err := check.Witnessed(h, mode, time.Minute)
-		if err == nil {
-			t.Logf("the witness checker (%s) passed this seed", mode)
+		if err == nil || !witnessFinding.MatchString(err.Error()) {
+			t.Logf("the witness checker (%s) did not find the stale read on this seed: %v", mode, err)
 			return false
 		}
 		t.Logf("the witness checker (%s): %v", mode, err)

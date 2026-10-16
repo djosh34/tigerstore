@@ -2,6 +2,7 @@ package check
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -26,7 +27,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, resolved: map[int64]int{}, covered: map[string][]span{}, used: map[int]bool{},
+		lb: map[int]int64{}, resolved: map[int64]int{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
 	}
 	if err := r.index(); err != nil {
 		return err
@@ -60,6 +61,11 @@ type revisionOrder struct {
 	// order.
 	optional []optional
 	used     map[int]bool
+	// mutations are the acked mutations by return time, which an
+	// optional one must follow if they returned before its call, and
+	// ready the optional ones whose mutations are all placed.
+	mutations []int
+	ready     map[int]bool
 	// top is the highest revision any client saw.
 	top int64
 	// failure is the failure at the highest revision reached, and at its
@@ -69,10 +75,12 @@ type revisionOrder struct {
 }
 
 // optional is an ambiguous mutation that changes no key and may go in
-// from revision from on.
+// from revision from on, once the first after acked mutations by return
+// time are placed: those that returned before its call.
 type optional struct {
-	op   int
-	from int64
+	op    int
+	from  int64
+	after int
 }
 
 // span is the revisions after lo up to hi.
@@ -116,13 +124,13 @@ func (r *revisionOrder) index() error {
 	}
 	r.lowerBounds()
 	// What clients saw: a key unchanged over a span, and the writer of a
-	// value.
-	saw := func(kv history.KeyValue, unchangedTo int64) {
+	// value, if they saw the value.
+	saw := func(kv history.KeyValue, unchangedTo int64, valued bool) {
 		if kv.ModRevision < unchangedTo {
 			r.covered[kv.Key] = append(r.covered[kv.Key], span{kv.ModRevision, unchangedTo})
 		}
 		r.top = max(r.top, kv.ModRevision)
-		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 {
+		if _, ok := r.writers[kv.ModRevision]; ok || kv.ModRevision < 2 || !valued {
 			return
 		}
 		ops := values[[2]string{kv.Key, kv.Value}]
@@ -143,10 +151,10 @@ func (r *revisionOrder) index() error {
 		for _, resp := range wt.Responses {
 			for _, e := range resp.Events {
 				if e.PrevKV != nil {
-					saw(*e.PrevKV, e.Revision()-1)
+					saw(*e.PrevKV, e.Revision()-1, true)
 				}
 				if e.Type == history.EventPut {
-					saw(e.KV, e.Revision())
+					saw(e.KV, e.Revision(), true)
 				}
 			}
 		}
@@ -221,9 +229,10 @@ func putsOf(req history.Request) [][2]string {
 	return out
 }
 
-// observed calls saw with every key an acked op saw, and the revision up
-// to which the key had not changed since.
-func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64)) {
+// observed calls saw with every key an acked op saw, the revision up to
+// which the key had not changed since, and whether the op saw its value:
+// a keys-only read and a compare of the mod revision do not.
+func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64, valued bool)) {
 	if op.Resp == nil {
 		return
 	}
@@ -238,12 +247,12 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64)) 
 			at = q.Revision
 		}
 		for _, kv := range got.KVs {
-			saw(kv, at)
+			saw(kv, at, !q.KeysOnly)
 		}
 	}
 	prev := func(kv *history.KeyValue) {
 		if kv != nil {
-			saw(*kv, before)
+			saw(*kv, before, true)
 		}
 	}
 	switch {
@@ -279,7 +288,7 @@ func observed(op *history.Op, saw func(kv history.KeyValue, unchangedTo int64)) 
 		if op.Resp.Txn.Succeeded {
 			for _, c := range op.Req.Txn.Compare {
 				if c.Target == history.TargetMod && c.Result == history.Equal && c.Number > 0 {
-					saw(history.KeyValue{Key: c.Key, ModRevision: c.Number}, before)
+					saw(history.KeyValue{Key: c.Key, ModRevision: c.Number}, before, false)
 				}
 			}
 		}
@@ -329,7 +338,7 @@ func (r *revisionOrder) scheduleOptional() {
 		op := &h.Ops[i]
 		if op.Resp != nil {
 			rev := op.Resp.Revision
-			observed(op, func(kv history.KeyValue, to int64) { note(kv.Lease, to) })
+			observed(op, func(kv history.KeyValue, to int64, _ bool) { note(kv.Lease, to) })
 			switch {
 			case op.Req.LeaseGrant != nil:
 				granted[op.Resp.LeaseGrant.ID] = true
@@ -370,12 +379,18 @@ func (r *revisionOrder) scheduleOptional() {
 			}
 		}
 	}
+	for i := range h.Ops {
+		if op := &h.Ops[i]; op.Resp != nil && op.Req.Mutates() && mutation(op) {
+			r.mutations = append(r.mutations, i)
+		}
+	}
+	slices.SortFunc(r.mutations, func(a, b int) int { return cmp.Compare(h.Ops[a].Return, h.Ops[b].Return) })
 	revoking := map[int64]bool{}
 	for _, i := range r.ambiguous {
 		op := &h.Ops[i]
-		// After every op that returned before its call, which may come
-		// late in the revision lb.
-		at := r.lb[i] + 1
+		// Not before the revision of the ops that returned before its
+		// call; insertOptional also waits for their events.
+		at := r.lb[i]
 		switch {
 		case op.Req.LeaseRevoke != nil:
 			id := op.Req.LeaseRevoke.ID
@@ -405,7 +420,8 @@ func (r *revisionOrder) scheduleOptional() {
 		default:
 			continue
 		}
-		r.optional = append(r.optional, optional{op: i, from: at})
+		after := sort.Search(len(r.mutations), func(k int) bool { return h.Ops[r.mutations[k]].Return >= op.Call })
+		r.optional = append(r.optional, optional{op: i, from: at, after: after})
 	}
 }
 
@@ -475,6 +491,12 @@ func (r *revisionOrder) insertOptional(rev int64) {
 		if o.from > rev || r.used[o.op] {
 			continue
 		}
+		if !r.ready[o.op] {
+			if slices.ContainsFunc(r.mutations[:o.after], func(j int) bool { return !w.at[j].set }) {
+				continue
+			}
+			r.ready[o.op] = true
+		}
 		s := w.live.clone()
 		if out := s.step(w.reqs[o.op], false); out.err == nil && s.rev == rev {
 			w.apply(o.op, w.reqs[o.op])
@@ -532,8 +554,15 @@ func (r *revisionOrder) restore(m mark) {
 		w.at[i] = place{}
 	}
 	w.placed = w.placed[:m.placed]
+	// What observe placed belongs to the order given up.
+	for i, p := range w.at {
+		if p.seen {
+			w.at[i] = place{}
+		}
+	}
 	w.live = m.live.clone()
 	w.kvsRev = -1
+	clear(r.ready)
 	r.used = maps.Clone(m.used)
 }
 
@@ -545,18 +574,36 @@ func (r *revisionOrder) dead(rev int64, err error) bool {
 	return false
 }
 
-// search builds the order revision by revision.
+// search builds the order revision by revision. Once every revision has
+// a writer, it places the ops that changed nothing and checks real time;
+// if either fails, the search goes on with the next candidate of the last
+// gap, as after a revision it cannot explain.
 func (r *revisionOrder) search() error {
 	w := r.w
 	if !r.finish(1) {
 		return r.failure
 	}
 	var stack []*frame
-	for rev := int64(2); rev <= r.top; {
+	for rev := int64(2); ; {
 		if w.tick() {
 			return errWitnessTimeout
 		}
-		ok := r.write(rev, &stack) && r.finish(rev)
+		var ok bool
+		if rev > r.top {
+			err := w.observe()
+			if err == nil {
+				err = w.verify()
+			}
+			if err == nil {
+				return nil
+			}
+			if errors.Is(err, errWitnessTimeout) {
+				return err
+			}
+			ok = r.dead(rev, err)
+		} else {
+			ok = r.write(rev, &stack) && r.finish(rev)
+		}
 		if ok {
 			rev++
 			continue
@@ -569,7 +616,6 @@ func (r *revisionOrder) search() error {
 		r.restore(f.mark)
 		rev = f.rev
 	}
-	return nil
 }
 
 // write places the writer of rev, the next candidate if rev is a gap.

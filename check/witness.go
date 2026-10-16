@@ -76,16 +76,21 @@ func Witnessed(h *history.History, mode WitnessMode, timeout time.Duration) erro
 	switch mode {
 	case FromLog:
 		err = w.fromLog()
+		if err == nil {
+			err = w.observe()
+		}
+		if err == nil {
+			err = w.verify()
+		}
 	case FromRevisions:
+		// The search places every op and checks real time itself, and
+		// tries another order when either fails.
 		err = w.fromRevisions()
 	default:
 		return fmt.Errorf("unknown witness mode %d", mode)
 	}
-	if err == nil {
-		err = w.observe()
-	}
-	if err == nil {
-		err = w.verify()
+	if err == nil && time.Now().After(w.deadline) {
+		err = errWitnessTimeout
 	}
 	if err != nil {
 		return fmt.Errorf("witness check (%s) of %d operations: %w", mode, len(h.Ops), err)
@@ -180,8 +185,8 @@ func (w *witness) tick() bool {
 	return w.steps%1024 == 0 && time.Now().After(w.deadline)
 }
 
-// summary is the live store's summary after req; prev is the one before
-// it, whose lease list it shares unless req changed the leases.
+// summary is the live store's summary after req. It shares the previous
+// summary's lease list unless req changed the leases.
 func (w *witness) summary(req *history.Request) summary {
 	s := summary{rev: w.live.rev, compacted: w.live.compacted}
 	if req == nil || req.LeaseGrant != nil || req.LeaseRevoke != nil {
