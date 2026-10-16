@@ -26,7 +26,7 @@
 # generator fit. TMPFS_NODES lists node numbers (1 to 3) whose data
 # directories go to TMPFS_DIR, a tmpfs, instead of <dir>. LEAD names the
 # node that must lead: start moves the leadership to it if another node won
-# the election.
+# the election. BENCH_FLAGS are more flags for every tigerstore node.
 set -euo pipefail
 
 port=${BENCH_PORT:-20000}
@@ -150,8 +150,12 @@ start() {
 		local extra=(--quota-backend-bytes $((8 << 30)))
 		if [ "$kind" = etcd ]; then
 			extra+=(--log-level warn --peer-client-cert-auth)
-		elif [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
-			extra+=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
+		else
+			if [ "${BENCH_GOMEMLIMIT:-off}" = off ]; then
+				extra+=(--memory-budget-bytes $(($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024 / 4)))
+			fi
+			read -r -a flags <<<"${BENCH_FLAGS:-}"
+			extra+=("${flags[@]}")
 		fi
 		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
