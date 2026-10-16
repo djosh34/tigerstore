@@ -50,14 +50,42 @@ func selfCPU() (time.Duration, error) {
 	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), nil
 }
 
-// cpuSample is the CPU time of the servers and of this process at one moment.
-type cpuSample struct {
-	at      int64
-	servers []time.Duration
-	self    time.Duration
+// diskWritten returns the bytes written so far to the block device or
+// partition named dev in /proc/diskstats, such as sda1.
+func diskWritten(dev string) (int64, error) {
+	b, err := os.ReadFile("/proc/diskstats")
+	if err != nil {
+		return 0, err
+	}
+	return parseDiskstats(b, dev)
 }
 
-func sampleCPU(pids []int) (cpuSample, error) {
+func parseDiskstats(b []byte, dev string) (int64, error) {
+	for line := range bytes.SplitSeq(b, []byte("\n")) {
+		f := bytes.Fields(line)
+		// Field 3 is the name and field 10 the 512-byte sectors written.
+		if len(f) < 10 || string(f[2]) != dev {
+			continue
+		}
+		n, err := strconv.ParseInt(string(f[9]), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("diskstats %s: %w", dev, err)
+		}
+		return n * 512, nil
+	}
+	return 0, fmt.Errorf("no device %q in /proc/diskstats", dev)
+}
+
+// cpuSample is the CPU time of the servers and of this process, and the
+// bytes written to the disk under test, at one moment.
+type cpuSample struct {
+	at        int64
+	servers   []time.Duration
+	self      time.Duration
+	diskBytes int64
+}
+
+func sampleCPU(pids []int, disk string) (cpuSample, error) {
 	s := cpuSample{at: now(), servers: make([]time.Duration, len(pids))}
 	for i, pid := range pids {
 		d, err := procCPU(pid)
@@ -65,6 +93,12 @@ func sampleCPU(pids []int) (cpuSample, error) {
 			return s, err
 		}
 		s.servers[i] = d
+	}
+	if disk != "" {
+		var err error
+		if s.diskBytes, err = diskWritten(disk); err != nil {
+			return s, err
+		}
 	}
 	var err error
 	s.self, err = selfCPU()

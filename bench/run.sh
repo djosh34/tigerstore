@@ -35,6 +35,13 @@
 #   REPS        repetitions (default 5)
 #   LOADGEN     loadgen binary (default: loadgen in BINS)
 #   DATA        directory for cluster data, on the disk under test (default /tmp/bench-data)
+#   DISK        device or partition of DATA in /proc/diskstats, such as
+#               sda1; each result then has the bytes it wrote per operation
+#   LAYOUTS     extra max runs of every tigerstore target, REPS each:
+#               tmpfs puts all three nodes on TMPFS_DIR (no disk: the CPU
+#               reference), alone puts the followers there and keeps the
+#               leader on the disk; written as <target>-<layout>-<rep>.json
+#   TMPFS_DIR   a directory on tmpfs for LAYOUTS (default /dev/shm/bench-data)
 set -euo pipefail
 
 bench=$1
@@ -46,6 +53,8 @@ if [ "$bench" = mixed-k8s ]; then default_modes=rate; fi
 read -r -a modes <<<"${MODES:-$default_modes}"
 reps=${REPS:-5}
 data=${DATA:-/tmp/bench-data}
+tmpfs=${TMPFS_DIR:-/dev/shm/bench-data}
+read -r -a extra_layouts <<<"${LAYOUTS:-}"
 bins=$(realpath "${BINS:-bin}")
 loadgen=${LOADGEN:-$bins/loadgen}
 certs=$(realpath "${CERTS:?CERTS must name a dev-certs.sh directory}")
@@ -71,10 +80,10 @@ if [ "${#layout[@]}" -ne 4 ]; then
 fi
 
 # Delete removes each key once, so it needs a key per request, and a run
-# that runs out is invalid: 600,000 keys over 1 + 4 s last up to 120k
+# that runs out is invalid: 600,000 keys over 0.5 + 3.5 s last up to 150k
 # deletes/s. The 10 KiB run preloads fewer keys, to keep the disk it fills
-# small, so it is shorter still: 300,000 keys over 1 + 2 s.
-keys=10000 warmup=3s duration=10s
+# small, so it is shorter still: 300,000 keys over 0.5 + 1.5 s.
+keys=10000 warmup=3s duration=10s watchers=3
 # A LIST asks for the first page of one namespace of 100: 1,000 keys
 # each, pages of 500 (the loadgen default), so every answer holds a count
 # of 1,000, 500 keys and "more". It does not page further. With 10 KiB
@@ -91,15 +100,20 @@ if [ "$workload" = mixed ]; then
 	# growing-log churn short on the 16 GB runner, without resizing values.
 	export BENCH_GOMEMLIMIT=3GiB
 fi
+# Three watchers of 10 KiB events take about 300 MB/s at max, more than
+# the generator's one CPU reads: its streams fall behind, and tigerstore
+# closes a stream 64 MiB behind. One watcher of 10 KiB takes about as many
+# bytes as three of 1 KiB.
+if [ "$workload" = watch ] && [ "$size" = 10240 ]; then watchers=1; fi
 if [ "$workload" = list ]; then
 	if [ "$size" = 1024 ]; then keys=100000; else keys=10000; fi
 	concurrency=(-conns 2 -streams 16)
 fi
 if [ "$workload" = delete ]; then
 	if [ "$size" = 1024 ]; then
-		keys=600000 warmup=1s duration=4s
+		keys=600000 warmup=0.5s duration=3.5s
 	else
-		keys=300000 warmup=1s duration=2s
+		keys=300000 warmup=0.5s duration=1.5s
 	fi
 fi
 
@@ -117,12 +131,17 @@ order() {
 }
 
 # once <target> <mode> <rep> <loadgen flags...>
+# Mode tmpfs or alone places the nodes as LAYOUTS says.
 once() {
 	local target=$1 mode=$2 rep=$3
 	shift 3
-	local dir=$data/$target
+	local dir=$data/$target place=()
+	case $mode in
+	tmpfs) place=(TMPFS_NODES="1 2 3") ;;
+	alone) place=(TMPFS_NODES="2 3" LEAD=1) ;;
+	esac
 	"$here/cluster.sh" stop "$dir"
-	"$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
+	env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
 	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
 	local status=0 endpoint_file=leader
 	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
@@ -133,10 +152,11 @@ once() {
 		-label "$target" \
 		-workload "$workload" \
 		-value-size "$size" \
-		-watchers 3 \
+		-watchers "$watchers" \
 		-warmup "$warmup" \
 		-duration "$duration" \
 		-seed "$rep" \
+		${DISK:+-disk "$DISK"} \
 		-out "$out/$bench/$target-$mode-$rep.json" \
 		"$@" || status=$?
 	if [ "$status" -eq 0 ]; then
@@ -172,6 +192,16 @@ if [[ " ${modes[*]} " == *" max "* ]]; then
 		done
 	done
 fi
+
+for mode in "${extra_layouts[@]}"; do
+	for rep in $(seq "$reps"); do
+		for target in $(order "$rep"); do
+			if [ "$(kind "$target")" = tigerstore ]; then
+				once "$target" "$mode" "$rep" -keys "$keys" "${concurrency[@]}"
+			fi
+		done
+	done
+done
 
 if [ "$workload" = mixed ] && [[ " ${modes[*]} " == *" rate "* ]] && [[ " ${modes[*]} " != *" max "* ]]; then
 	# One measured max point per store, with the same mixed concurrency.

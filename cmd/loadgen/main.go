@@ -38,6 +38,7 @@ type config struct {
 	watchers    int
 	page        int
 	pids        []int
+	disk        string
 	label       string
 	seed        uint64
 	out         string
@@ -64,6 +65,7 @@ func parseFlags(args []string) (config, error) {
 	fs.IntVar(&cfg.watchers, "watchers", 4, "watch workload: watch streams on the key prefix")
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
+	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
 	fs.StringVar(&cfg.out, "out", "", "write the JSON result to this file instead of stdout")
@@ -138,12 +140,15 @@ type result struct {
 	Unsent int64        `json:"unsent"`
 	Watch  *watchResult `json:"watch,omitempty"`
 	// CPU over the measurement window.
-	ServerCPUUsPerOp   float64          `json:"server_cpu_us_per_op"`
-	ServerCPUUsPerNode []float64        `json:"server_cpu_us_per_op_by_node"`
-	ServerCores        []float64        `json:"server_cores_by_node"`
-	ClientCPUUsPerOp   float64          `json:"client_cpu_us_per_op"`
-	ClientCores        float64          `json:"client_cores"`
-	Errors             map[string]int64 `json:"errors"`
+	ServerCPUUsPerOp   float64   `json:"server_cpu_us_per_op"`
+	ServerCPUUsPerNode []float64 `json:"server_cpu_us_per_op_by_node"`
+	ServerCores        []float64 `json:"server_cores_by_node"`
+	ClientCPUUsPerOp   float64   `json:"client_cpu_us_per_op"`
+	ClientCores        float64   `json:"client_cores"`
+	// DiskBytesPerOp counts every byte -disk wrote in the window, from
+	// all servers on it and anything else, per operation.
+	DiskBytesPerOp float64          `json:"disk_bytes_per_op,omitempty"`
+	Errors         map[string]int64 `json:"errors"`
 }
 
 type watchResult struct {
@@ -355,7 +360,7 @@ func run(cfg config) (*result, error) {
 	sampler.Go(func() {
 		for i, at := range []int64{t1, t2} {
 			time.Sleep(time.Duration(at - now()))
-			s, err := sampleCPU(cfg.pids)
+			s, err := sampleCPU(cfg.pids, cfg.disk)
 			if err != nil {
 				sampleErr = err
 				return
@@ -633,6 +638,10 @@ func summarize(cfg config, workers []*worker, watches []*watchLoad, samples [2]c
 	self := samples[1].self - samples[0].self
 	res.ClientCPUUsPerOp = perOp(self, res.Ops)
 	res.ClientCores = self.Seconds() / elapsed.Seconds()
+	if cfg.disk != "" && res.Ops > 0 {
+		written := samples[1].diskBytes - samples[0].diskBytes
+		res.DiskBytesPerOp = float64(written) / float64(res.Ops)
+	}
 	if res.Watch != nil {
 		res.Watch.ServerCPUUsPerEvent = perOp(total, res.Watch.Events)
 	}

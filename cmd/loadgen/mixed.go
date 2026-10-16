@@ -158,7 +158,7 @@ func (w *mixedLoad) newKey() *mixedKey {
 
 func (w *mixedLoad) value(k *mixedKey) []byte {
 	k.bin = drawBin(w.wk.rng, k8sSizes[k.bin].resource)
-	w.pool.size = k8sSizes[k.bin].draw(w.wk.rng)
+	w.pool.size = k8sSizes[k.bin].size
 	return w.pool.next()
 }
 
@@ -922,7 +922,7 @@ func runMixed(cfg config) (*result, error) {
 	sampler.Go(func() {
 		for i, at := range []int64{t1, t2} {
 			time.Sleep(time.Duration(at - now()))
-			samples[i], sampleErr = sampleCPU(cfg.pids)
+			samples[i], sampleErr = sampleCPU(cfg.pids, cfg.disk)
 			if sampleErr != nil {
 				return
 			}

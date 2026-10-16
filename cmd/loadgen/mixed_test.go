@@ -8,63 +8,38 @@ import (
 )
 
 func TestK8sSizes(t *testing.T) {
-	r := rand.New(rand.NewPCG(1, 2))
-	var count int
-	var total float64
-	for _, b := range k8sSizes {
-		if b.count <= 0 || b.min < 8 || b.max < b.min || b.mean < float64(b.min) || b.mean > float64(b.max) {
-			t.Fatalf("bad bin: %+v", b)
+	var count, total int
+	for i, b := range k8sSizes {
+		if b.count <= 0 || b.size < 1 || b.size > 33365 {
+			t.Fatalf("bad row: %+v", b)
 		}
-		const samples = 100000
-		sum := 0
-		for range samples {
-			n := b.draw(r)
-			if n < b.min || n > b.max {
-				t.Fatalf("%+v drew %d", b, n)
-			}
-			sum += n
-		}
-		got := float64(sum) / samples
-		// Six standard errors using the maximum variance of any bounded draw.
-		variance := (b.mean - float64(b.min)) * (float64(b.max) - b.mean)
-		tolerance := 6*math.Sqrt(variance/samples) + 0.01
-		if math.Abs(got-b.mean) > tolerance {
-			t.Fatalf("%s %s mean %.3f want %.3f", b.resource, b.bin, got, b.mean)
+		if i > 0 && k8sSizes[i-1].resource == b.resource && k8sSizes[i-1].size >= b.size {
+			t.Fatalf("rows out of order at %+v", b)
 		}
 		count += b.count
-		total += b.mean * float64(b.count)
+		total += b.size * b.count
 	}
-	if count != 6261 || math.Abs(total-9217907) > 0.001 {
-		t.Fatalf("dump totals %d %.3f", count, total)
+	if count != 6345 || total != 9253583 || len(k8sResources()) != 27 {
+		t.Fatalf("histogram totals %d objects, %d bytes, %d resources", count, total, len(k8sResources()))
 	}
+	r := rand.New(rand.NewPCG(1, 2))
+	const samples = 400000
 	draws := make([]int, len(k8sSizes))
-	for range 200000 {
+	for range samples {
 		draws[drawBin(r, "")]++
 	}
 	for i, b := range k8sSizes {
-		probability := float64(b.count) / 6261
-		want := 200000 * probability
+		probability := float64(b.count) / float64(count)
+		want := samples * probability
 		tolerance := 6*math.Sqrt(want*(1-probability)) + 1
 		if math.Abs(float64(draws[i])-want) > tolerance {
-			t.Fatalf("%s bin share %d want %.0f", b.resource, draws[i], want)
+			t.Fatalf("%s %d: %d draws, want %.0f", b.resource, b.size, draws[i], want)
 		}
-		for range 100 {
+		for range 20 {
 			if k8sSizes[drawBin(r, b.resource)].resource != b.resource {
 				t.Fatal("resource draw crossed resources")
 			}
 		}
-	}
-}
-
-func TestK8sSizesHaveInteriorDraws(t *testing.T) {
-	r := rand.New(rand.NewPCG(3, 4))
-	seen := map[int]bool{}
-	b := k8sSizes[21] // Events: 490..890 bytes, not only those endpoints.
-	for range 1000 {
-		seen[b.draw(r)] = true
-	}
-	if len(seen) < 50 {
-		t.Fatalf("only %d distinct sizes", len(seen))
 	}
 }
 
