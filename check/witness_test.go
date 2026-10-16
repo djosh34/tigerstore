@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -473,6 +474,67 @@ func TestWitnessedAmbiguousCases(t *testing.T) {
 			},
 			Log: []history.Request{grant, put("k", "v", 42), revoke, put("z", "1", 0)},
 		},
+	}
+	// An expiry that only an ambiguous put's later life shows came after
+	// that put: it must not go in right after the grant (seed 1797098110).
+	cases["expiry after an ambiguous put that used the lease"] = &history.History{
+		Ops: []history.Op{
+			acked(0, 1, grant, &history.Response{Revision: 1, LeaseGrant: &history.LeaseGrantResponse{ID: 42, TTL: 60}}),
+			{Client: 9, Call: 1, Return: 1, Req: revoke, Err: errUnavailable},
+			amb(1, 3, put("a", "x", 42)),
+			acked(2, 5, put("a", "y", 0), &history.Response{Revision: 3, Put: &history.PutResponse{}}),
+			acked(2, 7, history.Request{Range: &history.RangeRequest{Key: "a"}},
+				&history.Response{Revision: 3, Range: &history.RangeResponse{Count: 1, KVs: []history.KeyValue{{Key: "a", Value: "y", CreateRevision: 2, ModRevision: 3, Version: 2}}}}),
+			{Client: 3, Call: 9, Return: 10, Req: put("c", "z", 42), Err: errLeaseNotFound},
+		},
+		Log: []history.Request{grant, put("a", "x", 42), put("a", "y", 0), revoke},
+	}
+	// The same with the rejection called before the put: it may still
+	// take effect after it, up to its return (review of #197).
+	overlap := *cases["expiry after an ambiguous put that used the lease"]
+	overlap.Ops = slices.Clone(overlap.Ops)
+	overlap.Ops[5].Call = 3
+	overlap.Ops[5].Client = 4
+	cases["expiry after an ambiguous put, with the rejection overlapping it"] = &overlap
+	// The same with an ambiguous put called after the rejection returned,
+	// and an acked one after that: the expiry must go in before the
+	// ambiguous one, which no acked op's revision shows (review of #197).
+	later := overlap
+	later.Ops = append(slices.Clone(overlap.Ops),
+		amb(5, 11, put("d", "1", 0)),
+		acked(6, 13, put("e", "2", 0), &history.Response{Revision: 5, Put: &history.PutResponse{}}))
+	later.Log = append(slices.Clone(overlap.Log), put("d", "1", 0), put("e", "2", 0))
+	cases["expiry before an ambiguous put called after the rejection returned"] = &later
+	// Only ambiguous puts follow the rejection, and a read shows where they
+	// went: the expiry goes in before the first (CI planted B27, seed 83).
+	cases["expiry before ambiguous puts that a later read places"] = &history.History{
+		Ops: []history.Op{
+			acked(0, 1, grant, &history.Response{Revision: 1, LeaseGrant: &history.LeaseGrantResponse{ID: 42, TTL: 60}}),
+			{Client: 9, Call: 1, Return: 1, Req: revoke, Err: errUnavailable},
+			{Client: 3, Call: 3, Return: 4, Req: put("c", "z", 42), Err: errLeaseNotFound},
+			amb(4, 5, put("a", "x", 0)),
+			amb(5, 5, put("b", "y", 0)),
+			acked(6, 8, history.Request{Range: &history.RangeRequest{Key: "a", End: "c"}},
+				&history.Response{Revision: 3, Range: &history.RangeResponse{Count: 2, KVs: []history.KeyValue{
+					{Key: "a", Value: "x", CreateRevision: 2, ModRevision: 2, Version: 1},
+					{Key: "b", Value: "y", CreateRevision: 3, ModRevision: 3, Version: 1},
+				}}}),
+		},
+		Log: []history.Request{grant, revoke, put("a", "x", 0), put("b", "y", 0)},
+	}
+	// A read called after the rejection returned sees the revision before
+	// a concurrent put's: the expiry goes in by the end of the read's
+	// revision, though no op called after the rejection changes anything
+	// (CI planted B27, seed 2).
+	cases["expiry by the revision of a read called after the rejection returned"] = &history.History{
+		Ops: []history.Op{
+			acked(0, 0, grant, &history.Response{Revision: 1, LeaseGrant: &history.LeaseGrantResponse{ID: 42, TTL: 60}}),
+			{Client: 9, Call: 1, Return: 1, Req: revoke, Err: errUnavailable},
+			{Client: 3, Call: 2, Return: 4, Req: put("c", "z", 42), Err: errLeaseNotFound},
+			{Client: 4, Call: 1, Return: 10, Req: put("a", "x", 0), Resp: &history.Response{Revision: 2, Put: &history.PutResponse{}}},
+			acked(5, 5, history.Request{Range: &history.RangeRequest{Key: "a"}}, &history.Response{Revision: 1, Range: &history.RangeResponse{}}),
+		},
+		Log: []history.Request{grant, revoke, put("a", "x", 0)},
 	}
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
