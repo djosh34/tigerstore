@@ -440,9 +440,9 @@ type Sim struct {
 	checkpoints  []*checkpoint
 	halfOpens    []halfOpenLink
 	// applied is the highest index any node has applied.
-	applied     uint64
-	stallStops  []int64
-	commitStops []int64
+	applied       uint64
+	stallHandOffs []int64
+	commitStops   []int64
 	// gray is the gray node, or nil, and grayEnd when its gray period ends.
 	gray     *node
 	grayEnd  int64
@@ -493,10 +493,10 @@ type Stats struct {
 	// Revokes counts lease revokes in the log, expiries included.
 	Revokes int
 	// DiskFaults counts failed writes and syncs that stopped a node,
-	// StalledStops leaders that stopped on a stalled disk, Fenced nodes
-	// that found their disk damaged, and ColdRestarts the erase-one-disk
-	// restarts checked.
-	DiskFaults, StalledStops, Fenced, ColdRestarts int
+	// StallHandOffs leaders that handed over on a stalled disk, Fenced
+	// nodes that found their disk damaged, and ColdRestarts the
+	// erase-one-disk restarts checked.
+	DiskFaults, StallHandOffs, Fenced, ColdRestarts int
 	// Pauses counts process pauses, LinkStalls stalled links, ClockJumps
 	// clock jumps, HalfOpens half-open links, and Asymmetric the links
 	// that drew a delay at least 10 times that of the other direction.
@@ -532,9 +532,9 @@ type Result struct {
 	revs    []int64
 	Watches []WatchResult
 	Stats   Stats
-	// StallStops are the times leaders stopped on a stalled disk, and
-	// CommitStops the times leaders stopped because nothing committed.
-	StallStops, CommitStops []int64
+	// StallHandOffs are the times leaders handed over on a stalled disk,
+	// and CommitStops the times leaders stopped because nothing committed.
+	StallHandOffs, CommitStops []int64
 	// grayNode is the index of the last gray node, for tests.
 	grayNode int
 	// grayHealedAt is when the last gray fsync after healing ended, for
@@ -586,7 +586,7 @@ func Run(cfg Config) (*Result, error) {
 	if err := s.loop(); err != nil {
 		return nil, err
 	}
-	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallStops: s.stallStops, CommitStops: s.commitStops, grayNode: s.lastGray, grayHealedAt: s.grayHealedAt, halfOpens: s.halfOpens, Clients: cfg.Clients}
+	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallHandOffs: s.stallHandOffs, CommitStops: s.commitStops, grayNode: s.lastGray, grayHealedAt: s.grayHealedAt, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
 		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
@@ -980,11 +980,9 @@ func (s *Sim) process(n *node) {
 		}
 	}
 	s.applied = max(s.applied, n.core.Applied())
-	if errors.Is(err, core.ErrDiskStalled) {
-		s.stats.StalledStops++
-		s.stallStops = append(s.stallStops, s.now)
-		s.stopNode(n)
-		return
+	if eff.HandOff != 0 {
+		s.stats.StallHandOffs++
+		s.stallHandOffs = append(s.stallHandOffs, s.now)
 	}
 	if errors.Is(err, core.ErrCommitStalled) {
 		s.stats.CommitStops++

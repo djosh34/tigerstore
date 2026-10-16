@@ -82,7 +82,7 @@ func TestSeeds(t *testing.T) {
 			}
 			ran++
 			total.Fenced += st.Fenced
-			total.StalledStops += st.StalledStops
+			total.StallHandOffs += st.StallHandOffs
 			total.Asymmetric += st.Asymmetric
 			total.GrayLeaderStops += st.GrayLeaderStops
 			total.RecoveryCrashes += st.RecoveryCrashes
@@ -95,14 +95,14 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption, a leader stalled long enough to stop and a link 10 times
+	// Corruption, a leader stalled long enough to hand over and a link 10 times
 	// slower than its other direction are rare in one run, but a set of
 	// seeds must see each. A stopped gray leader is too rare for the rule
 	// (#183) and only reported until that is fixed.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0 ||
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
-			ran, total.Fenced, total.StalledStops, total.Asymmetric, total.GrayLeaderStops, total.RecoveryCrashes)
+		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
+			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.GrayLeaderStops, total.RecoveryCrashes)
 	}
 }
 
@@ -176,10 +176,10 @@ func TestLinearizable(t *testing.T) {
 
 // TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
 // with no other fault. The leader still heartbeats, so only its own
-// watchdog can make way. It must stop within core.StallTicks election
-// timeouts of the stall, plus a tick for an append already queued and one
-// for the next client write, and every call that starts 10 election
-// timeouts after the stall must succeed.
+// watchdog can make way. It must hand over within core.StallTicks
+// election timeouts of the stall, plus a tick for an append already
+// queued and one for the next client write, and every call to a healthy
+// node that starts 10 election timeouts after the stall must succeed.
 func TestStalledLeaderIsReplaced(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	for seed := uint64(1); seed <= 3; seed++ {
@@ -189,13 +189,13 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.StallStops) == 0 {
-			t.Fatalf("seed %d: the stalled leader never stopped", seed)
+		if len(res.StallHandOffs) == 0 {
+			t.Fatalf("seed %d: the stalled leader never handed over", seed)
 		}
 		limit := cfg.StallLeaderAt + core.StallTicks*election + 2*TickTime
-		if stop := res.StallStops[0]; stop < cfg.StallLeaderAt || stop > limit {
-			t.Fatalf("seed %d: the stalled leader stopped at %d ms, want between %d and %d ms",
-				seed, stop/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
+		if at := res.StallHandOffs[0]; at < cfg.StallLeaderAt || at > limit {
+			t.Fatalf("seed %d: the stalled leader handed over at %d ms, want between %d and %d ms",
+				seed, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
 		}
 	}
 }

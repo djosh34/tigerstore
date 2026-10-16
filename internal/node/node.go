@@ -83,9 +83,10 @@ type Config struct {
 	// CompactHashCheck feature gate on; 0 turns either check off
 	// (corrupt.go).
 	CorruptCheckTime, CompactHashCheckTime time.Duration
-	// BeforeRead, if set, runs before each read of a value from the log.
-	// Tests use it to stall those reads.
-	BeforeRead func()
+	// BeforeRead, if set, runs before each read of a value from the log,
+	// and BeforeSync before each sync of the log. Tests use them to stall
+	// those reads and syncs.
+	BeforeRead, BeforeSync func()
 	Logf       func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
@@ -931,6 +932,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				close(ws.done)
 			}
 		}
+		if eff.HandOff != 0 {
+			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
+		}
 		if eff.Members != nil {
 			n.setMembers(eff.Members)
 			t.SetPeers(PeerAddrs(eff.Members), n.core.RemovedMembers())
@@ -1290,6 +1294,9 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
 		}
 		if err == nil && f != nil {
 			start := time.Now()
+			if n.cfg.BeforeSync != nil {
+				n.cfg.BeforeSync()
+			}
 			err = f.Sync()
 			n.cfg.Metrics.WALFsync.Observe(time.Since(start).Seconds())
 		}

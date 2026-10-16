@@ -41,9 +41,8 @@ func (noPeers) Call(context.Context, uint64, []byte) ([]byte, error) {
 // then each finish within 10 election timeouts.
 func slowWatcherIsCut(t *testing.T) error {
 	cfg := core.DefaultConfig(1, []uint64{1})
-	// The leader stops itself when an append takes two election
-	// timeouts (core.StallTicks); with 10 ms ticks that is 200 ms, which
-	// one slow fsync on a shared runner can exceed.
+	// The bound below is 10 election timeouts; with 10 ms ticks that is
+	// 1 s, which a few slow fsyncs on a shared runner can exceed.
 	tick := 50 * time.Millisecond
 	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: tick, WatchQueue: 8, Logf: t.Logf})
 	if err != nil {

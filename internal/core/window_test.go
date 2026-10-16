@@ -25,6 +25,10 @@ type memCluster struct {
 	// nothing commits; holdDisk keeps a node's disk writes from finishing.
 	holdAcks bool
 	holdDisk [3]bool
+	// down marks nodes that neither run nor get messages, and handOffs
+	// collects Effects.HandOff.
+	down     [3]bool
+	handOffs []uint64
 	replies  int
 	// noSpace counts NOSPACE answers, the one error a node may give.
 	noSpace int
@@ -56,9 +60,15 @@ func newMemCluster(t *testing.T, change func(*Config)) *memCluster {
 // held, and finishes the disk writes that are not held.
 func (c *memCluster) step() {
 	for i, n := range c.nodes {
+		if c.down[i] {
+			continue
+		}
 		eff, err := n.Process()
 		if err != nil {
 			c.t.Fatalf("node %d: %v", i+1, err)
+		}
+		if eff.HandOff != 0 {
+			c.handOffs = append(c.handOffs, eff.HandOff)
 		}
 		c.jobs[i] = append(c.jobs[i], eff.Persist...)
 		c.msgs = append(c.msgs, eff.Send...)
@@ -78,6 +88,9 @@ func (c *memCluster) step() {
 	for _, m := range msgs {
 		if c.holdAcks && m.GetType() == raftpb.MsgAppResp {
 			c.msgs = append(c.msgs, m)
+			continue
+		}
+		if c.down[m.GetTo()-1] || c.down[m.GetFrom()-1] {
 			continue
 		}
 		if err := c.nodes[m.GetTo()-1].Step(m); err != nil {
