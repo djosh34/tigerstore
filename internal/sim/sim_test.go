@@ -95,10 +95,13 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption, a leader stalled long enough to hand over and a link 10
-	// times slower than its other direction are rare in one run, but a set
-	// of seeds must see each.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
+	// Random faults can end a disk stall before the leader hands over (#218).
+	// Require the deliberate scenario in each shard instead of relying on luck.
+	if ran >= 64 {
+		t.Run("stalled-leader", TestStalledLeaderIsReplaced)
+	}
+	// Corruption and asymmetric links must still occur in the random seeds.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0) {
 		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
 			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
@@ -112,7 +115,7 @@ func TestSeeds(t *testing.T) {
 	if ran >= 2000 && !t.Failed() && total.GrayLeaderStops == 0 {
 		t.Fatalf("%d seeds: no gray leader stopped; at least one must", ran)
 	}
-	t.Logf("%d seeds: %d stopped gray leaders", ran, total.GrayLeaderStops)
+	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
 }
 
 // checkers runs the independent checkers of package check on a run:
