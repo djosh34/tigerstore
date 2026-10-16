@@ -9,6 +9,7 @@
 #                                     the steps it does not match yet
 #
 # ONLY, a regular expression, runs only the tests whose names match it.
+# RACE=1 builds tigerstore and runs the tests with the race detector.
 #
 # Each test in suites runs on a fresh server started with the flags next to
 # it, on top of the ones below; @CERTS@ in a flag is the directory of the
@@ -89,6 +90,7 @@ proxy() {
 	echo $! >"$work/proxy.pid"
 }
 args=(-count=1 -tags difftest ./difftest)
+[ -n "${RACE:-}" ] && args+=(-race)
 [ "$record" = record ] && args+=(-record)
 
 case $server in
@@ -101,7 +103,7 @@ etcd)
 	scripts/dev-certs.sh "$work/certs" >/dev/null
 	;;
 tigerstore)
-	go build -o "$work/tigerstore" ./cmd/tigerstore
+	go build ${RACE:+-race} -o "$work/tigerstore" ./cmd/tigerstore
 	scripts/dev-certs.sh "$work/certs" >/dev/null 2>&1
 	;;
 *)

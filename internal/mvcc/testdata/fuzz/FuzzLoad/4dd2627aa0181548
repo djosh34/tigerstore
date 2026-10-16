@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("\x0300001")
+int64(74)
+int64(30)
