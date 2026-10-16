@@ -19,6 +19,9 @@ scrape() {
 	done
 }
 sectors() { awk -v d="$DISK" '$3 == d {print $10}' /proc/diskstats; }
+# jbd2 reports per journal how many transactions it committed and their
+# average size in blocks; their product is the journal's blocks.
+journal() { cat /proc/fs/jbd2/"$DISK"-*/info; }
 for rep in 1 2; do
 	for target in baseline candidate; do
 		name=$target-$rep dir=$DATA/$target
@@ -38,11 +41,13 @@ for rep in 1 2; do
 		) &
 		compactor=$!
 		s0=$(sectors)
+		journal >"$out/$name.jbd0"
 		taskset -c 3 "$BINS/loadgen" -endpoints "$(cat "$dir/leader")" \
 			-cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
 			-pids "$(cat "$dir/pids")" -workload put -value-size 1024 -keys 200000 -rate "$rate" \
 			-warmup 0s -duration "$dur" -disk "$DISK" -seed "$rep" -out "$out/$name.json" || echo "$name loadgen failed" | tee -a "$out/failed"
 		s1=$(sectors)
+		journal >"$out/$name.jbd1"
 		kill "$compactor"
 		scrape "$dir" "$out/$name.m1"
 		echo "$((s1 - s0))" >"$out/$name.sectors"
