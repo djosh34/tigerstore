@@ -25,7 +25,18 @@ tar -xzf "$root/etcd.tgz" -C "$root/bin" --strip-components=1 "etcd-v3.7.2-linux
 chmod +x "$root/bin/kind" "$root/bin/kubectl"
 export PATH="$root/bin:$PATH"
 case "$store" in
-  tigerstore) CGO_ENABLED=0 go build -trimpath -o "$root/bin/tigerstore" ./cmd/tigerstore ;;
+  tigerstore)
+    git status --porcelain --untracked-files=all > "$root/results/checkout-status.txt"
+    if [ -s "$root/results/checkout-status.txt" ]; then
+      cat "$root/results/checkout-status.txt" >&2
+      echo 'refusing to build a dirty checkout' >&2
+      exit 1
+    fi
+    CGO_ENABLED=0 go build -trimpath -o "$root/bin/tigerstore" ./cmd/tigerstore
+    go version -m "$root/bin/tigerstore" | tee "$root/results/build-info.txt"
+    grep -F "vcs.revision=$(git rev-parse HEAD)" "$root/results/build-info.txt"
+    grep -F 'vcs.modified=false' "$root/results/build-info.txt"
+    ;;
   etcd) ;;
   *) echo "unknown store: $store" >&2; exit 1 ;;
 esac
