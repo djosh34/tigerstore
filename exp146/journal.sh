@@ -8,7 +8,7 @@ mkdir -p "$out"
 : "${CERTS:?}" "${BINS:?}" "${DATA:?}" "${DISK:?}"
 export CERTS ETCDCTL=$BINS/etcdctl
 budget=${BUDGET:-3221225472}
-rate=${RATE:-20000}
+rate=${RATE:-15000}
 dur=${DUR:-600s}
 scrape() {
 	local dir=$1 f=$2 ep
@@ -24,12 +24,26 @@ for rep in 1 2; do
 		name=$target-$rep dir=$DATA/$target
 		BENCH_FLAGS="--disk-budget-bytes $budget" bench/cluster.sh start tigerstore "$BINS/$target" "$dir" 0 1 2
 		scrape "$dir" "$out/$name.m0"
+		# Compact every 10 s to the revision of 10 s before, as
+		# kube-apiserver does every 5 minutes, so cleaning has garbage.
+		(
+			prev=0
+			while sleep 10; do
+				rev=$("$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$CERTS/ca.pem" --cert "$CERTS/client.pem" --key "$CERTS/client-key.pem" endpoint status -w json | jq '.[0].Status.header.revision')
+				if [ "$prev" -gt 0 ]; then
+					"$ETCDCTL" --endpoints "$(cat "$dir/leader")" --cacert "$CERTS/ca.pem" --cert "$CERTS/client.pem" --key "$CERTS/client-key.pem" compact "$prev" >/dev/null || echo "$name compact $prev failed" >>"$out/failed"
+				fi
+				prev=$rev
+			done
+		) &
+		compactor=$!
 		s0=$(sectors)
 		taskset -c 3 "$BINS/loadgen" -endpoints "$(cat "$dir/leader")" \
 			-cacert "$CERTS/ca.pem" -cert "$CERTS/client.pem" -key "$CERTS/client-key.pem" \
 			-pids "$(cat "$dir/pids")" -workload put -value-size 1024 -keys 200000 -rate "$rate" \
 			-warmup 0s -duration "$dur" -disk "$DISK" -seed "$rep" -out "$out/$name.json" || echo "$name loadgen failed" | tee -a "$out/failed"
 		s1=$(sectors)
+		kill "$compactor"
 		scrape "$dir" "$out/$name.m1"
 		echo "$((s1 - s0))" >"$out/$name.sectors"
 		ls -l "$dir"/n*/wal >"$out/$name.files"
