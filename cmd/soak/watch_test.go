@@ -34,6 +34,7 @@ func TestMatch(t *testing.T) {
 		{name: "an event no write made, before the end", seen: []change{put(14, 4)}, progress: 20, left: 0},
 		{name: "an event no write made", seen: []change{put(14, 4)}, progress: 20, final: true, want: "which no write of its worker made"},
 		{name: "a lease that expires after the final list", acked: []change{put(12, 1)}, seen: []change{put(12, 1), del(17, 17)}, progress: 20, final: true, settled: 15, leased: true},
+		{name: "two deletes after the final list", acked: []change{put(12, 1)}, seen: []change{put(12, 1), del(17, 17), del(17, 17)}, progress: 20, final: true, settled: 15, leased: true, want: "sent a delete"},
 		{name: "a delete after the final list, with no lease", acked: []change{put(12, 1)}, seen: []change{put(12, 1), del(17, 17)}, progress: 20, final: true, settled: 15, want: "sent a delete"},
 	}
 	for _, c := range cases {

@@ -326,7 +326,7 @@ func (s *soak) run(ctx context.Context) error {
 	if err := s.ws.check(true); err != nil {
 		return err
 	}
-	if s.rep.Compactions == 0 && s.cfg.duration >= 2*s.cfg.compactEvery {
+	if s.rep.Compactions == 0 && s.cfg.duration > 2*s.cfg.compactEvery {
 		return fmt.Errorf("no compaction succeeded, %d failed", s.rep.CompactErrors)
 	}
 	if err := s.hashes(ctx); err != nil {
@@ -505,9 +505,8 @@ func (s *soak) hold(ctx context.Context) error {
 }
 
 // hashes checks that the nodes agree on the hash of their keys at the
-// current revision. Their compaction revisions may differ, as one may
-// land between the answers: the hash of a revision at or above both is
-// the same.
+// current revision. A compaction that lands between two of the answers
+// moves the revision the hash starts from, so then it asks all again.
 func (s *soak) hashes(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, s.cfg.requestTimeout)
 	resp, err := s.l.cl.Get(cctx, "/soak/probe")
@@ -516,30 +515,38 @@ func (s *soak) hashes(ctx context.Context) error {
 		return fmt.Errorf("hash check: %w", err)
 	}
 	rev := resp.Header.Revision
-	var first uint32
-	for _, n := range s.c.nodes {
-		var h *clientv3.HashKVResponse
-		deadline := time.Now().Add(time.Minute)
-		for {
-			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			h, err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
-			cancel()
-			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
-				break
+	for try := 0; ; try++ {
+		var hs [3]*clientv3.HashKVResponse
+		for _, n := range s.c.nodes {
+			deadline := time.Now().Add(time.Minute)
+			for {
+				cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				hs[n.i], err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
+				cancel()
+				if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(time.Second)
+			}
+			if err != nil {
+				return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
+			}
+		}
+		if hs[0].CompactRevision != hs[1].CompactRevision || hs[0].CompactRevision != hs[2].CompactRevision {
+			if try == 10 {
+				return fmt.Errorf("at revision %d the nodes hash after compactions %d, %d and %d, ten times in a row", rev, hs[0].CompactRevision, hs[1].CompactRevision, hs[2].CompactRevision)
 			}
 			time.Sleep(time.Second)
+			continue
 		}
-		if err != nil {
-			return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
+		for i := 1; i < 3; i++ {
+			if hs[i].Hash != hs[0].Hash {
+				return &violation{fmt.Sprintf("at revision %d after compaction %d node1 hashes its keys to %08x, node%d to %08x", rev, hs[0].CompactRevision, hs[0].Hash, i+1, hs[i].Hash)}
+			}
 		}
-		if n.i == 0 {
-			first = h.Hash
-		} else if h.Hash != first {
-			return &violation{fmt.Sprintf("at revision %d node1 hashes its keys to %08x, node%d to %08x", rev, first, n.i+1, h.Hash)}
-		}
+		s.rep.Hashes++
+		return nil
 	}
-	s.rep.Hashes++
-	return nil
 }
 
 // counters records each node's cleaning and cache counters from its

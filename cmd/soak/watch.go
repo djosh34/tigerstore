@@ -216,12 +216,12 @@ func (w *watched) match(o *object, p int64, final bool) error {
 		return &violation{fmt.Sprintf("the watch of %s, from revision %d and past revision %d, did not send the %s of %s", w.prefix, w.start, p, c, o.key)}
 	}
 	keep = append(keep, s[j:]...)
-	if final {
+	if final && o.present && o.leased {
 		// The lease of an object left present may expire after the
-		// final list.
-		keep = slices.DeleteFunc(keep, func(e change) bool {
-			return e.del && o.present && o.leased && e.lo > o.settled
-		})
+		// final list, once.
+		if k := slices.IndexFunc(keep, func(e change) bool { return e.del && e.lo > o.settled }); k >= 0 {
+			keep = slices.Delete(keep, k, k+1)
+		}
 	}
 	o.acked, o.seen = a[i:], keep
 	if final && len(keep) > 0 {
