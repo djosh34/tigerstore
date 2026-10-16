@@ -34,8 +34,6 @@ func files(t *testing.T, d *simfs.Disk) (segs, spares []string) {
 	return segs, spares
 }
 
-// TestSegmentsReuseSpares removes old segments, which become spares, and
-// writes on: new segments take the spare files instead of new ones.
 // TestSetSparesRemovesExtra turns spares off with spare files on disk:
 // they go, and a removal after it removes the segment's file (#181).
 func TestSetSparesRemovesExtra(t *testing.T) {
@@ -74,6 +72,8 @@ func TestSetSparesRemovesExtra(t *testing.T) {
 	}
 }
 
+// TestSegmentsReuseSpares removes old segments, which become spares, and
+// writes on: new segments take the spare files instead of new ones.
 func TestSegmentsReuseSpares(t *testing.T) {
 	d := simfs.New()
 	w, _ := open(t, d)

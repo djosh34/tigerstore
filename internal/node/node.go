@@ -351,12 +351,12 @@ type Node struct {
 	cleanQ    chan packRoot
 	// sparesQ takes the number of spare segment files the log keeps to
 	// the disk goroutine, which rotates segments into them.
-	sparesQ   chan int
-	defragQ   chan chan error
-	readQ     chan *core.ValueRead
-	readDone  chan readDone
-	nextID    atomic.Uint64
-	done      chan struct{}
+	sparesQ  chan int
+	defragQ  chan chan error
+	readQ    chan *core.ValueRead
+	readDone chan readDone
+	nextID   atomic.Uint64
+	done     chan struct{}
 
 	// leader is the leader the committer saw last, for readers outside it,
 	// and learner whether this node is a learner.

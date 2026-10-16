@@ -15,6 +15,8 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -337,9 +339,17 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 			f.do(i, op)
 		}
 		steps[k] = f.steps
+		// A lease left to expire would delete its keys on each server at
+		// its own time, during a later sequence, and move that server's
+		// revision under it.
+		for _, id := range f.leases {
+			if _, err := c.lease.LeaseRevoke(f.ctx, &pb.LeaseRevokeRequest{ID: id}); err != nil && status.Code(err) != codes.NotFound {
+				p.t.Fatalf("revoke lease %d after the sequence: %v", id, err)
+			}
+		}
 	}
 	for i := range steps[0] {
-		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0][i], steps[1][i]) {
+		if !sameStep(steps[0][i], steps[1][i]) && !stricterWatch(ops, steps[0], steps[0][i], steps[1][i]) {
 			e, _ := json.Marshal(steps[0][i])
 			o, _ := json.Marshal(steps[1][i])
 			return fmt.Sprintf("step %s: etcd v3.7.2 answers %s, tigerstore %s", steps[0][i].Do, e, o)
@@ -348,46 +358,79 @@ func (p *fuzzPair) diff(ops []fuzzOp) string {
 	return ""
 }
 
-// stricterWatch reports whether tigerstore's answer to a watch is one of
-// those the stricter rule of the boundary tests allows where etcd differs
-// (see stricter): a watch with previous values that starts at the
-// compaction revision gets etcd's events but with every previous value
-// etcd leaves out, or is canceled as compacted at its start.
-func stricterWatch(ops []fuzzOp, etcd, ours step) bool {
+// stricterWatch reports whether tigerstore's answer to a watch differs
+// from etcd's only as the stricter rule of the boundary tests allows (see
+// stricter). After a compaction at C, etcd sends the update at C without
+// its previous value, as the version before C is compacted; tigerstore
+// must send it, or cancel the watch as compacted at C. So for a watch with
+// previous values that starts at a revision the sequence compacted
+// (etcd's steps say which): tigerstore may cancel it as compacted there,
+// or add to an update or delete at the start revision the previous value
+// that etcd leaves out, which must be the key's version just before.
+// Everything else must be the same.
+func stricterWatch(ops []fuzzOp, etcdSteps []step, etcd, ours step) bool {
 	var i int
 	if _, err := fmt.Sscanf(etcd.Do, "%d watch", &i); err != nil || i >= len(ops) || ops[i].Watch == nil || !ops[i].Watch.PrevKV {
 		return false
 	}
+	start := ops[i].Rev
+	compacted := false
+	for k, op := range ops[:i] {
+		compacted = compacted || op.Kind == "compact" && op.Rev == start && k < len(etcdSteps) && etcdSteps[k].Code == "OK"
+	}
+	if !compacted {
+		return false
+	}
 	type event struct {
-		Type   string          `json:"type"`
-		KV     json.RawMessage `json:"kv"`
-		PrevKV json.RawMessage `json:"prevKV,omitempty"`
+		Type   string `json:"type"`
+		KV     *kv    `json:"kv"`
+		PrevKV *kv    `json:"prevKV,omitempty"`
 	}
 	type watch struct {
-		Created         bool    `json:"created"`
-		CreatedRevision int64   `json:"createdRevision,omitempty"`
-		Canceled        bool    `json:"canceled,omitempty"`
-		CompactRevision int64   `json:"compactRevision,omitempty"`
-		Events          []event `json:"events,omitempty"`
+		Created         bool     `json:"created"`
+		CreatedRevision int64    `json:"createdRevision,omitempty"`
+		Canceled        bool     `json:"canceled,omitempty"`
+		CancelRevision  int64    `json:"cancelRevision,omitempty"`
+		CompactRevision int64    `json:"compactRevision,omitempty"`
+		CancelReason    string   `json:"cancelReason,omitempty"`
+		Events          []event  `json:"events,omitempty"`
+		Problems        []string `json:"problems,omitempty"`
 	}
 	var e, o watch
 	if etcd.Code != "OK" || ours.Code != "OK" || json.Unmarshal(etcd.Result, &e) != nil || json.Unmarshal(ours.Result, &o) != nil {
 		return false
 	}
-	start := ops[i].Rev
 	if o.Canceled {
-		return o.Created && o.CompactRevision == start && len(o.Events) == 0
+		return o.Created && o.CompactRevision == start && len(o.Events) == 0 && len(o.Problems) == 0
 	}
-	if len(e.Events) != len(o.Events) || e.Canceled || e.Created != o.Created || e.CreatedRevision != o.CreatedRevision {
+	if e.Canceled || e.Created != o.Created || e.CreatedRevision != o.CreatedRevision || !slices.Equal(e.Problems, o.Problems) || len(e.Events) != len(o.Events) {
 		return false
 	}
+	added := false
 	for k := range e.Events {
 		x, y := e.Events[k], o.Events[k]
-		if x.Type != y.Type || string(x.KV) != string(y.KV) || (x.PrevKV != nil && string(x.PrevKV) != string(y.PrevKV)) || (x.PrevKV == nil && y.PrevKV == nil && x.Type != "PUT") {
+		if x.Type != y.Type || !samePtr(x.KV, y.KV) {
 			return false
 		}
+		if samePtr(x.PrevKV, y.PrevKV) {
+			continue
+		}
+		// Only the value etcd compacted away may be added.
+		update := x.Type == "DELETE" || x.KV.Version > 1
+		if x.PrevKV != nil || y.PrevKV == nil || x.KV.Mod != start || !update || y.PrevKV.Key != x.KV.Key || y.PrevKV.Mod >= start ||
+			(x.Type == "PUT" && (y.PrevKV.Version != x.KV.Version-1 || y.PrevKV.Create != x.KV.Create)) {
+			return false
+		}
+		added = true
 	}
-	return true
+	return added
+}
+
+func samePtr[T comparable](a, b *T) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // shrink removes ops from a sequence that has a mismatch, ever smaller
