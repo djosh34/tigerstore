@@ -18,6 +18,7 @@ import (
 
 	"github.com/djosh34/tigerstore/chaos/env"
 	"github.com/djosh34/tigerstore/history"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -679,9 +680,9 @@ func (c *stallConn) Read(b []byte) (int, error) {
 // then stops reading from its connection for the hold, while the
 // workload writes, so the node's sends to it back up. The node must keep
 // serving everyone else (the probes go through every node) and, once the
-// client reads again, deliver every revision the watch missed, up to one
-// read through another node, or cancel it. Every write of a run is under
-// prefix, so each revision after the watch's start has an event.
+// client reads again, deliver every event the watch missed, up to the
+// revision of a read through another node, or cancel it. A watch through
+// that node from the same start must have the same events.
 func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record) error {
 	st := &stall{release: make(chan struct{})}
 	cl, err := clientv3.New(clientv3.Config{
@@ -723,28 +724,65 @@ func (r *runner) slowWatch(ctx context.Context, s step, target int, rec *record)
 		return errors.Join(holdErr, fmt.Errorf("read the revision the slow watch must reach: %w", err))
 	}
 	end := g.Header.Revision
-	got, last, canceled := map[int64]bool{}, start, false
-	for deadline := time.After(10 * time.Second); last < end && !canceled; {
-		select {
-		case resp, ok := <-wc:
-			canceled = !ok || resp.Canceled
-			for _, ev := range resp.Events {
-				got[ev.Kv.ModRevision] = true
-				last = max(last, ev.Kv.ModRevision)
-			}
-		case <-deadline:
-			return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start, last, end))
-		}
+	got, last, canceled := readWatch(wc, end)
+	if !canceled && last < end {
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d reached %d, not %d, within 10s of its release", start, last, end))
 	}
-	for rev := start + 1; rev <= last; rev++ {
-		if !got[rev] {
-			return errors.Join(holdErr, fmt.Errorf("the slow watch from %d missed revision %d", start, rev))
-		}
+	ref, refLast, _ := readWatch(r.t.cs[others(target)[0]].Watch(wctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(start+1)), last)
+	if refLast < last {
+		return errors.Join(holdErr, fmt.Errorf("a watch through another node from %d reached %d, not %d, within 10s", start+1, refLast, last))
+	}
+	if err := sameEvents(got, ref, last); err != nil {
+		return errors.Join(holdErr, fmt.Errorf("the slow watch from %d: %w", start, err))
 	}
 	rec.Env.Exited = fmt.Sprintf("after %v stalled from %v: revisions %d to %d of %d, canceled %v", s.Hold, from, start+1, last, end, canceled)
 	rec.Effect = true
 	rec.Healed, rec.HealedAt = true, r.since()
 	return holdErr
+}
+
+// watchEvent is what a watch delivered for one key at one revision.
+type watchEvent struct {
+	Rev  int64
+	Key  string
+	Type mvccpb.Event_EventType
+}
+
+// readWatch reads wc until an event at or past rev, a cancel, or 10 s,
+// and returns the events, the last revision among them and whether the
+// watch was canceled.
+func readWatch(wc clientv3.WatchChan, rev int64) (events []watchEvent, last int64, canceled bool) {
+	for deadline := time.After(10 * time.Second); last < rev; {
+		select {
+		case resp, ok := <-wc:
+			if !ok || resp.Canceled {
+				return events, last, true
+			}
+			for _, ev := range resp.Events {
+				events = append(events, watchEvent{ev.Kv.ModRevision, string(ev.Kv.Key), ev.Type})
+				last = max(last, ev.Kv.ModRevision)
+			}
+		case <-deadline:
+			return events, last, false
+		}
+	}
+	return events, last, false
+}
+
+// sameEvents compares got with the events of ref up to revision last.
+func sameEvents(got, ref []watchEvent, last int64) error {
+	ref = slices.DeleteFunc(slices.Clone(ref), func(e watchEvent) bool { return e.Rev > last })
+	for i := range max(len(got), len(ref)) {
+		switch {
+		case i >= len(got):
+			return fmt.Errorf("missed %d events, the first %+v", len(ref)-i, ref[i])
+		case i >= len(ref):
+			return fmt.Errorf("got %d events no other watch got, the first %+v", len(got)-i, got[i])
+		case got[i] != ref[i]:
+			return fmt.Errorf("got %+v where another watch got %+v", got[i], ref[i])
+		}
+	}
+	return nil
 }
 
 // several runs two faults at once on different nodes: a gray node and a

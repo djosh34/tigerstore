@@ -44,6 +44,12 @@ done
 expect OK put foo bar
 expect $'foo\nbar' get foo
 expect OK put foo baz
+# A serializable read may reach a follower that has not applied the put
+# yet, as etcd allows; it must show it within 5 s.
+for _ in $(seq 25); do
+	[ "$(ctl get foo --consistency=s)" = $'foo\nbaz' ] && break
+	sleep 0.2
+done
 expect $'foo\nbaz' get foo --consistency=s
 expect 1 del foo
 expect "" get foo
