@@ -224,8 +224,8 @@ jobs:
   # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
   # proxy on every client and peer link, recording clients and watches,
   # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
-  # and follower, and proxy faults), then the four checkers of package
-  # check. Seeds come from the run ID. A failing seed reproduces with
+  # and follower, and proxy faults), then the checkers of package check.
+  # Seeds come from the run ID. A failing seed reproduces with
   # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
   # and its evidence (schedule, fault records, node logs, data, history)
   # is uploaded.
@@ -266,9 +266,11 @@ jobs:
           retention-days: 30
 
   # The chaos job must be able to fail: with a planted bug built in, the
-  # checker that bug breaks must report its own finding. B01a serves linearizable reads like serializable ones (a stale
-  # read), B06c drops previous values from watch events, B09a gives each
-  # key of a write its own revision. Seeds are fixed.
+  # checker that bug breaks must report its own finding. B01a serves
+  # linearizable reads like serializable ones (a stale read), which
+  # Porcupine and the witness checker in each mode must find; B06c drops
+  # previous values from watch events, B09a gives each key of a write its
+  # own revision. Seeds are fixed.
   chaos-planted:
     strategy:
       fail-fast: false
@@ -276,6 +278,10 @@ jobs:
         include:
           - bug: B01a
             checker: Linearizable
+          - bug: B01a
+            checker: Witnessed (log)
+          - bug: B01a
+            checker: Witnessed (revisions)
           - bug: B06c
             checker: Watches
           - bug: B09a
@@ -304,8 +310,9 @@ jobs:
             fi
             # Caught only if the named checker itself found the bug, not
             # only a shared precondition such as the coverage floor.
-            # For Linearizable, a search timeout is not a catch.
-            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
+            # For Linearizable and the witness checker, a timeout or a
+            # search that ran out of candidates is not a catch.
+            if jq -e --arg c "$CHECKER" '.[] | select(.name == $c and (.checker_error // "") != "" and (.name != "Linearizable" or (.checker_error | contains("is not linearizable"))) and ((.name | startswith("Witnessed") | not) or (.checker_error | test("answers it|real time allows|returned before it was called"))))' "$RUNNER_TEMP/chaos-out/seed-$seed/checks.json" >/dev/null; then
               echo "seed $seed: $CHECKER caught it"
               caught=1
             else
@@ -316,7 +323,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: chaos-planted-${{ matrix.bug }}
+          name: chaos-planted-${{ matrix.bug }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/chaos-out
           retention-days: 30
 

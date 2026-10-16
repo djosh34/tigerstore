@@ -248,19 +248,28 @@ func txnChanges(t *history.TxnRequest, resp *history.TxnResponse) bool {
 func describeRequest(r history.Request) string {
 	switch {
 	case r.Range != nil:
-		return fmt.Sprintf("range %+v", *r.Range)
+		return "range " + jsonOf(r.Range)
 	case r.Put != nil:
-		return fmt.Sprintf("put %+v", *r.Put)
+		return "put " + jsonOf(r.Put)
 	case r.Delete != nil:
-		return fmt.Sprintf("delete %+v", *r.Delete)
+		return "delete " + jsonOf(r.Delete)
 	case r.Txn != nil:
-		return fmt.Sprintf("txn %+v", *r.Txn)
+		return "txn " + jsonOf(r.Txn)
 	case r.LeaseGrant != nil:
-		return fmt.Sprintf("lease grant %+v", *r.LeaseGrant)
+		return "lease grant " + jsonOf(r.LeaseGrant)
 	case r.LeaseRevoke != nil:
-		return fmt.Sprintf("lease revoke %+v", *r.LeaseRevoke)
+		return "lease revoke " + jsonOf(r.LeaseRevoke)
 	case r.Compact != nil:
-		return fmt.Sprintf("compact %+v", *r.Compact)
+		return "compact " + jsonOf(r.Compact)
 	}
 	return "empty request"
+}
+
+// jsonOf is v in the history's JSON, for a failure message.
+func jsonOf(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%+v", v)
+	}
+	return string(b)
 }

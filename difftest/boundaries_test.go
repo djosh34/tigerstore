@@ -34,6 +34,7 @@ var cases = []testCase{
 	{"compact-above-current", compactAboveCurrent},
 	{"compact-physical", compactPhysical},
 	{"kubernetes-shapes", kubernetesShapes},
+	{"txn-revisions", txnRevisions},
 	{"error-codes", errorCodes},
 	{"leases", leases},
 	{"max-request-size", maxRequestSize},
@@ -393,6 +394,28 @@ func kubernetesShapes(r *run) {
 	r.txn("txn writing two keys", &pb.TxnRequest{Success: []*pb.RequestOp{putOp(a, "a4"), putOp(c, "c2"), getOp(a)}})
 	r.put("put a with prev_kv", &pb.PutRequest{Key: a, Value: []byte("a5"), PrevKv: true})
 	r.del("delete pods with prev_kv", &pb.DeleteRangeRequest{Key: pods, RangeEnd: prefixEnd(pods), PrevKv: true})
+}
+
+// txnRevisions are the txn answers the witness checker's model must agree
+// with etcd on (#112): a read at a past revision inside a txn, reads at the
+// txn's own start revision and at the current one after a write earlier in
+// the same txn, and failure branches that write.
+func txnRevisions(r *run) {
+	a, b := r.key("t/a"), r.key("t/b")
+	at := func(key []byte, rev int64) *pb.RequestOp {
+		return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: &pb.RangeRequest{Key: key, Revision: rev}}}
+	}
+	r.put("put a 1", &pb.PutRequest{Key: a, Value: []byte("1")})
+	r.put("put a 2", &pb.PutRequest{Key: a, Value: []byte("2")})
+	r.put("put b 1", &pb.PutRequest{Key: b, Value: []byte("1")})
+	r.txn("read a at 1", &pb.TxnRequest{Success: []*pb.RequestOp{at(a, r.abs(1))}})
+	r.txn("read a at 1, put a, read a at 1 and now", &pb.TxnRequest{Success: []*pb.RequestOp{at(a, r.abs(1)), putOp(a, "3"), at(a, r.abs(1)), getOp(a)}})
+	r.txn("put b, read b at the start revision and now", &pb.TxnRequest{Success: []*pb.RequestOp{putOp(b, "2"), at(b, r.abs(4)), getOp(b)}})
+	r.txn("failure branch puts a", &pb.TxnRequest{Compare: []*pb.Compare{modEquals(a, r.abs(1))}, Success: []*pb.RequestOp{getOp(a)}, Failure: []*pb.RequestOp{putOp(a, "4"), getOp(a)}})
+	r.txn("failure branch deletes b", &pb.TxnRequest{Compare: []*pb.Compare{modEquals(b, 0)}, Success: []*pb.RequestOp{getOp(b)}, Failure: []*pb.RequestOp{deleteOp(b), getOp(b)}})
+	r.txn("failure branch deletes nothing", &pb.TxnRequest{Compare: []*pb.Compare{modEquals(b, r.abs(5))}, Success: []*pb.RequestOp{getOp(b)}, Failure: []*pb.RequestOp{deleteOp(r.key("t/none"))}})
+	r.get("a at 4", &pb.RangeRequest{Key: a, Revision: r.abs(4)})
+	r.get("b at 6", &pb.RangeRequest{Key: b, Revision: r.abs(6)})
 }
 
 // errorCodes are requests etcd rejects, and their neighbours it accepts.
