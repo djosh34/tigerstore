@@ -11,7 +11,7 @@ off=${OFFSET:-$((RANDOM % 2000 + 1))}
 (cd "$work" && TIGERSTORE=./tigerstore CERTS=certs OFFSET=$off "$OLDPWD/scripts/local-cluster.sh")
 
 ctl() {
-	etcdctl --endpoints=https://127.0.0.1:$((2379 + off)),https://127.0.0.1:$((22379 + off)),https://127.0.0.1:$((32379 + off)) \
+	etcdctl --endpoints=https://127.0.0.1:$((2379 + off)),https://127.0.0.1:$((22379 + off)),https://127.0.0.1:$((12379 + off)) \
 		--cacert "$work/certs/ca.pem" --cert "$work/certs/client.pem" --key "$work/certs/client-key.pem" \
 		--command-timeout=5s "$@"
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/djosh34/tigerstore/chaos/proxy"
 	"github.com/djosh34/tigerstore/internal/testcert"
+	"github.com/djosh34/tigerstore/internal/testport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
@@ -60,17 +61,6 @@ type node struct {
 	control *clientv3.Client
 }
 
-// reservePort returns a free port and the listener that holds it. The
-// caller closes the listener once the proxies listen, so the kernel cannot
-// hand the port to a proxy meanwhile.
-func reservePort() (net.Listener, int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, 0, err
-	}
-	return ln, ln.Addr().(*net.TCPAddr).Port, nil
-}
-
 func writeFile(path string, b []byte) error {
 	return os.WriteFile(path, b, 0o600)
 }
@@ -108,7 +98,8 @@ func newCluster(dir, bin string, seed uint64) (*cluster, error) {
 	var clientPort, peerPort [3]int
 	var held []net.Listener
 	// The node ports stay held until every proxy listens: a proxy once got
-	// a node's port, and the node could not start.
+	// a node's port, and the node could not start. They are below the
+	// ephemeral range, which the proxies' and clients' ports come from.
 	defer func() {
 		for _, ln := range held {
 			_ = ln.Close()
@@ -116,7 +107,7 @@ func newCluster(dir, bin string, seed uint64) (*cluster, error) {
 	}()
 	for i := range 3 {
 		for _, port := range []*int{&clientPort[i], &peerPort[i]} {
-			ln, p, err := reservePort()
+			ln, p, err := testport.Listen()
 			if err != nil {
 				return nil, err
 			}

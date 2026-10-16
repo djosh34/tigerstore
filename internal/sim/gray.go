@@ -98,13 +98,14 @@ func (s *Sim) graySyncEnded() {
 	}
 }
 
-// grayLeader makes the leader gray until healing, without slow fsyncs, so
-// only the commit watchdog can make way.
+// grayLeader makes the leader gray until healing, without slow fsyncs
+// unless Config.GrayLeaderSync asks for them; without, only the commit
+// watchdog can make way.
 func (s *Sim) grayLeader() {
 	if i := s.leaderIdx(); i >= 0 && !s.healed {
 		s.grayEnd = s.healAt
 		s.makeGray(s.nodes[i])
-		s.gray.graySync = false
+		s.gray.graySync = s.cfg.GrayLeaderSync
 	}
 }
 

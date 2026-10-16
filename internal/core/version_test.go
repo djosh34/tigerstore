@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/simfs"
@@ -20,17 +22,81 @@ func TestAnnounceRaisesVersionOnce(t *testing.T) {
 	for i, step := range []struct {
 		id      uint64
 		v, want uint32
+		run     uint64
 	}{
-		{1, 2, 1}, {2, 2, 1}, // node 3 has not announced
-		{3, 1, 1},            // node 3 is older
-		{2, 1, 1}, {3, 2, 1}, // node 2 rolls back before node 3 upgrades
-		{4, 3, 1},            // not a voter
-		{2, 2, 2},            // every voter supports 2
-		{3, 1, 2}, {1, 3, 2}, // never goes down
+		{1, 2, 1, 1}, {2, 2, 1, 1}, // node 3 has not announced
+		{3, 1, 1, 1},               // node 3 is older
+		{2, 1, 1, 2}, {3, 2, 1, 2}, // node 2 rolls back before node 3 upgrades
+		{2, 2, 1, 1},               // node 2's announcement of run 1 arrives late (#174)
+		{4, 3, 1, 1},               // not a voter
+		{2, 2, 2, 3},               // node 2 upgrades again: every voter supports 2
+		{3, 1, 2, 3}, {1, 3, 2, 2}, // never goes down
 	} {
-		st.announce(step.id, step.v, voters)
+		st.announce(step.id, step.v, step.run, true, voters)
 		if st.version != step.want {
 			t.Fatalf("step %d: node %d announced %d, version %d, want %d", i, step.id, step.v, st.version, step.want)
+		}
+	}
+}
+
+// TestLateAnnouncementAppliesFirst is #174's other order: node 2's
+// announcement of version 2 from run 1 arrives late but applies before
+// that of its rollback to version 1 in run 2. The rollback still counts,
+// and node 3's upgrade does not activate version 2.
+func TestLateAnnouncementAppliesFirst(t *testing.T) {
+	st := NewState(2, &mvcc.Heap{})
+	voters := []uint64{1, 2, 3}
+	st.announce(1, 2, 1, true, voters)
+	st.announce(3, 1, 1, true, voters)
+	st.announce(2, 2, 1, true, voters) // run 1, late
+	st.announce(2, 1, 2, true, voters) // run 2, the rollback
+	st.announce(3, 2, 2, true, voters)
+	if st.version != 1 || st.supports[2] != 1 {
+		t.Fatalf("version %d, node 2 supports %d; want 1 and 1", st.version, st.supports[2])
+	}
+}
+
+func TestAnnouncementRun(t *testing.T) {
+	b, err := proto.Marshal(announcement(3, 1234))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, run, has, err := parseAnnouncement(b); err != nil || v != 3 || run != 1234 || !has {
+		t.Fatalf("got %d, %d, %v, %v", v, run, has, err)
+	}
+	// A build before #174 reads the version alone.
+	var old wrapperspb.UInt32Value
+	if err := proto.Unmarshal(b, &old); err != nil || old.Value != 3 {
+		t.Fatalf("plain message: %v, %v", old.Value, err)
+	}
+	// And this one reads its announcements without a run.
+	plain, err := proto.Marshal(wrapperspb.UInt32(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _, has, err := parseAnnouncement(plain); err != nil || v != 2 || has {
+		t.Fatalf("got %d, %v, %v", v, has, err)
+	}
+}
+
+// TestLegacyAnnouncements replays announcements without a run, from a
+// build before #174: each counts, as it did there, so versions rise and a
+// rollback holds the cluster back; a later one with a run still works.
+func TestLegacyAnnouncements(t *testing.T) {
+	st := NewState(2, &mvcc.Heap{})
+	voters := []uint64{1, 2, 3}
+	for i, step := range []struct {
+		id      uint64
+		v, want uint32
+		legacy  bool
+	}{
+		{1, 2, 1, true}, {2, 2, 1, true}, {3, 1, 1, true}, // node 3 is older
+		{2, 1, 1, true}, {3, 2, 1, true}, // node 2 rolls back
+		{2, 2, 2, false}, // node 2 upgrades again with a new build
+	} {
+		st.announce(step.id, step.v, 1, !step.legacy, voters)
+		if st.version != step.want {
+			t.Fatalf("step %d: version %d, want %d", i, st.version, step.want)
 		}
 	}
 }
@@ -147,4 +213,24 @@ func TestOldBinaryRefusesToStart(t *testing.T) {
 			t.Log(err)
 		})
 	}
+}
+
+// TestNewRunAnnounces restarts a node with the same version: it still
+// announces, so that the state holds its new run and a late announcement
+// of the run before cannot count (#174).
+func TestNewRunAnnounces(t *testing.T) {
+	disk := simfs.New()
+	s := startSingleWith(t, disk, 1, func(cfg *Config) { cfg.Run = 1 }).capable()
+	if s.n.state.runs[1] != 1 {
+		t.Fatalf("run 1 announced, the state holds run %d", s.n.state.runs[1])
+	}
+	s = startSingleWith(t, disk, 2, func(cfg *Config) { cfg.Run = 2 })
+	for range 100 {
+		s.n.Tick()
+		s.run()
+		if s.n.state.runs[1] == 2 {
+			return
+		}
+	}
+	t.Fatalf("the restarted node never announced run 2; the state holds run %d", s.n.state.runs[1])
 }

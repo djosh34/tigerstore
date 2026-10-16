@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -172,7 +173,15 @@ func (c *cluster) start(id uint64) {
 	cfg.Members = c.members()
 	cfg.Name = fmt.Sprintf("node%d", id)
 	cfg.Join = c.join[id]
-	cfg.CommitStallElections = c.stallElections
+	// The watchdogs and the request deadline wait for the disks, which a
+	// test's shorter ticks do not speed up: under -race on a shared runner
+	// one write took up to 600 ms, past the 200 ms that two election
+	// timeouts are at 10 ms ticks, and a request's 70 ticks were 700 ms
+	// (#180). They keep the time a real node at 100 ms ticks allows.
+	scale := max(1, int(100*time.Millisecond/c.tick))
+	cfg.StallElections = core.StallTicks * scale
+	cfg.CommitStallElections = cmp.Or(c.stallElections, core.CommitStallTicks*scale)
+	cfg.RequestTicks *= scale
 	if c.coreConfig != nil {
 		c.coreConfig(&cfg)
 	}
@@ -482,7 +491,9 @@ func TestStatusHealthVersionRangeStream(t *testing.T) {
 		t.Fatalf("RangeStream: %v, %v", r, err)
 	}
 
-	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	// A /health read without a quorum waits for the request deadline,
+	// 7 s as on a real node, before it answers.
+	hc := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		Certificates: []tls.Certificate{cert}, RootCAs: c.ca.Pool, ServerName: "localhost",
 	}, ForceAttemptHTTP2: true}}
 	get := func(path string) (int, string) {

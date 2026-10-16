@@ -194,8 +194,11 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	// Half the time the damage is in the checkpoint a synced root names.
-	if n.root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(n.root)) {
+	// Half the time the damage is in the checkpoint that recovery starts
+	// from: the newest root on the disk, which the crash may have kept
+	// though its sync never finished, so n.root does not know it yet
+	// (seed 439 damaged the older one, which recovery no longer reads).
+	if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(root)) {
 		n.corrupted = true
 		s.mix(0xc1, uint64(n.idx))
 		return
@@ -206,6 +209,16 @@ func (s *Sim) maybeCorrupt(n *node) {
 	}
 }
 
+// recoveredRoot is the index of the root that recovery of n's disk would
+// start from now.
+func recoveredRoot(n *node) (uint64, error) {
+	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return 0, err
+	}
+	return rec.Root.Index, w.Close()
+}
+
 // checkpoint is a copy of every disk as a power cut would leave it, the
 // time it was taken, and the highest index any node had applied by then.
 type checkpoint struct {
@@ -213,6 +226,9 @@ type checkpoint struct {
 	applied uint64
 	disks   []*simfs.Disk
 	bad     []bool
+	// runs are the nodes' run numbers, which a real node keeps on its
+	// disk with the log.
+	runs []uint64
 }
 
 func (s *Sim) newCheckpoint() *checkpoint {
@@ -220,6 +236,7 @@ func (s *Sim) newCheckpoint() *checkpoint {
 	for _, n := range s.nodes {
 		c.disks = append(c.disks, n.disk.Durable())
 		c.bad = append(c.bad, n.corrupted)
+		c.runs = append(c.runs, n.runs)
 	}
 	return c
 }
@@ -287,6 +304,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 			d = simfs.New()
 		}
 		r.addNode(i, d.Durable())
+		r.nodes[i].runs = c.runs[i]
 		if i == erased {
 			r.nodes[i].fenced = true
 			continue

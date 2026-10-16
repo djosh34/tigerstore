@@ -251,10 +251,10 @@ func TestDamagedRecordBeforeValidOneIsCorrupt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The second record is the first hard state, right after the header
-	// and the first entry record of 9+17+5 bytes. Damage its body, its
-	// type and its stored crc in turn.
-	for _, at := range []int{24 + 31 + 9 + 3, 24 + 31 + 8, 24 + 31 + 5} {
+	// The first record is the first hard state, with the new term and
+	// vote, right after the header: they go before the entries. Damage its
+	// body, its type and its stored crc in turn.
+	for _, at := range []int{24 + 9 + 3, 24 + 8, 24 + 5} {
 		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
 		wantCorrupt(t, d)
 		rewrite(t, d, names[0], func(b []byte) []byte { b[at] ^= 0x40; return b })
@@ -657,5 +657,33 @@ func TestResetRootCopiedPlain(t *testing.T) {
 	w, rec := open(t, d)
 	if got := describe(read(t, w, rec)); got != "9/1:v9 10/1:v10 11/1:v11 12/1:v12 " || rec.Root != (wal.Root{Index: 8, Term: 2}) {
 		t.Fatalf("recovered %+v with entries %s", rec, got)
+	}
+}
+
+// TestTornAppendKeepsTermWithEntries crashes in the middle of an append
+// that brings a new term and its first entries, keeping every prefix of
+// the unsynced bytes (#173). An entry that survives must come with a hard
+// state of its term or later.
+func TestTornAppendKeepsTermWithEntries(t *testing.T) {
+	for seed := range uint64(200) {
+		d := simfs.New()
+		w, _ := open(t, d)
+		w.Append(&wal.HardState{Term: 1, Vote: 2}, []*raftpb.Entry{entry(1, 1, "a")})
+		if err := w.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		w.Append(&wal.HardState{Term: 2, Vote: 0, Commit: 1}, []*raftpb.Entry{entry(2, 2, "b"), entry(2, 3, "c")})
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		d.Crash(rand.New(rand.NewPCG(seed, 173)))
+		w, rec := open(t, d)
+		ents := read(t, w, rec)
+		if last := ents[len(ents)-1]; last.GetTerm() > rec.HardState.Term {
+			t.Fatalf("seed %d: entry %d of term %d survived with the hard state %+v", seed, last.GetIndex(), last.GetTerm(), rec.HardState)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

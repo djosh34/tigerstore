@@ -84,8 +84,8 @@ var plantedCases = map[string]plantedCase{
 	"B15":  {seeds: 32, cfg: DefaultConfig, want: `no client sent it`},
 	"B16":  {seeds: 128, cfg: DefaultConfig, want: lostAppend + `|` + refused},
 	"B17": {seeds: 64, cfg: stalledLeaderConfig, want: `the stalled leader`, extra: func(r *Result) error {
-		if len(r.StallStops) == 0 {
-			return errors.New("the stalled leader never fenced itself")
+		if len(r.StallHandOffs) == 0 {
+			return errors.New("the stalled leader never handed over")
 		}
 		return nil
 	}},
@@ -97,6 +97,7 @@ var plantedCases = map[string]plantedCase{
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints`},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
+	"B27": {seeds: 2048, cfg: slowFetchConfig, want: refused},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each

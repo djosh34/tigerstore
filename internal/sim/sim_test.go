@@ -34,10 +34,7 @@ func run(t *testing.T, cfg Config) *Result {
 
 // knownBad are seeds that hit an open bug, which TestSeeds skips until
 // the bug is fixed.
-var knownBad = map[uint64]string{
-	1383269143: "#173",
-	1417528536: "#173",
-}
+var knownBad = map[uint64]string{}
 
 // TestSeeds runs every seed twice and requires the same trace hash. A
 // failing seed is reproduced with -run 'TestSeeds/<seed>$'.
@@ -82,7 +79,7 @@ func TestSeeds(t *testing.T) {
 			}
 			ran++
 			total.Fenced += st.Fenced
-			total.StalledStops += st.StalledStops
+			total.StallHandOffs += st.StallHandOffs
 			total.Asymmetric += st.Asymmetric
 			total.GrayLeaderStops += st.GrayLeaderStops
 			total.RecoveryCrashes += st.RecoveryCrashes
@@ -95,15 +92,24 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption, a leader stalled long enough to stop and a link 10 times
-	// slower than its other direction are rare in one run, but a set of
-	// seeds must see each. A stopped gray leader is too rare for the rule
-	// (#183) and only reported until that is fixed.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StalledStops == 0 || total.Asymmetric == 0 ||
+	// Corruption, a leader stalled long enough to hand over and a link 10
+	// times slower than its other direction are rare in one run, but a set
+	// of seeds must see each.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stopped stalled leaders, %d asymmetric links, %d stopped gray leaders, %d crashes in recovery; each must happen",
-			ran, total.Fenced, total.StalledStops, total.Asymmetric, total.GrayLeaderStops, total.RecoveryCrashes)
+		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery; each must happen",
+			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes)
 	}
+	// A gray leader stopped by the commit watchdog is rarer: 22 of seeds 1
+	// to 2000 had one, 1.1%, as gray periods on the leader mostly end
+	// before three election timeouts (#183). Over 2000 seeds even 0.7%,
+	// the low end of that estimate, leaves less than one chance in a
+	// million of none, so the rule needs that many; CI's shards of 400 do
+	// not reach it, the seed campaign does.
+	if ran >= 2000 && !t.Failed() && total.GrayLeaderStops == 0 {
+		t.Fatalf("%d seeds: no gray leader stopped; at least one must", ran)
+	}
+	t.Logf("%d seeds: %d stopped gray leaders", ran, total.GrayLeaderStops)
 }
 
 // checkers runs the independent checkers of package check on a run:
@@ -176,10 +182,10 @@ func TestLinearizable(t *testing.T) {
 
 // TestStalledLeaderIsReplaced stalls the leader's disk for good at 5 s,
 // with no other fault. The leader still heartbeats, so only its own
-// watchdog can make way. It must stop within core.StallTicks election
-// timeouts of the stall, plus a tick for an append already queued and one
-// for the next client write, and every call that starts 10 election
-// timeouts after the stall must succeed.
+// watchdog can make way. It must hand over within core.StallTicks
+// election timeouts of the stall, plus a tick for an append already
+// queued and one for the next client write, and every call to a healthy
+// node that starts 10 election timeouts after the stall must succeed.
 func TestStalledLeaderIsReplaced(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	for seed := uint64(1); seed <= 3; seed++ {
@@ -189,13 +195,13 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.StallStops) == 0 {
-			t.Fatalf("seed %d: the stalled leader never stopped", seed)
+		if len(res.StallHandOffs) == 0 {
+			t.Fatalf("seed %d: the stalled leader never handed over", seed)
 		}
 		limit := cfg.StallLeaderAt + core.StallTicks*election + 2*TickTime
-		if stop := res.StallStops[0]; stop < cfg.StallLeaderAt || stop > limit {
-			t.Fatalf("seed %d: the stalled leader stopped at %d ms, want between %d and %d ms",
-				seed, stop/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
+		if at := res.StallHandOffs[0]; at < cfg.StallLeaderAt || at > limit {
+			t.Fatalf("seed %d: the stalled leader handed over at %d ms, want between %d and %d ms",
+				seed, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
 		}
 	}
 }
@@ -284,29 +290,38 @@ func TestEachFaultTakesEffect(t *testing.T) {
 	}
 }
 
-// TestSlowFetch holds a follower down until it needs a snapshot, and
-// starts half its fetches up to 2 s late. Meanwhile the leader may make a
+// slowFetchConfig holds a follower down until it needs a snapshot, and
+// starts half its fetches up to 2 s late.
+func slowFetchConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
+	cfg.Duration = 10 * Second
+	cfg.Heal = 8 * Second
+	return cfg
+}
+
+// TestSlowFetch runs slowFetchConfig. Meanwhile the leader may make a
 // newer checkpoint durable while it still keeps the one the snapshot
 // named, which it must then serve, or give up on the snapshot and remove
 // that checkpoint, after which the follower starts again from its log and
-// gets another snapshot. Across the seeds each must happen, and every run
-// must pass the checkers.
+// gets another snapshot. And the follower, applying its log after the
+// restart, may finish a checkpoint while the install is on its way to
+// disk, whose root must not follow the install's (#182). Across the seeds
+// each must happen, and every run must pass the checkers, which recover
+// every node's disk at the end.
 func TestSlowFetch(t *testing.T) {
-	older, failed := 0, 0
-	// Each of the two happens in about one seed in 25 to 50; the search
-	// stops once both did.
-	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0); seed++ {
-		cfg := DefaultConfig(5000 + seed)
-		cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
-		cfg.Duration = 10 * Second
-		cfg.Heal = 8 * Second
-		res := run(t, cfg)
+	older, failed, during := 0, 0, 0
+	// Each of the three happens in about one seed in 20 to 50; the search
+	// stops once all did.
+	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0 || during == 0); seed++ {
+		res := run(t, slowFetchConfig(5000+seed))
 		checkers(t, res)
 		older += res.Stats.OlderCheckpoints
 		failed += res.Stats.ServeFailures
+		during += res.Stats.CheckpointsDuringInstall
 	}
-	if older == 0 || failed == 0 {
-		t.Fatalf("%d snapshots served from an older checkpoint, %d fetches the leader could not serve; each must happen", older, failed)
+	if older == 0 || failed == 0 || during == 0 {
+		t.Fatalf("%d snapshots served from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
 

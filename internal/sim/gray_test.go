@@ -10,40 +10,54 @@ import (
 	"github.com/djosh34/tigerstore/internal/simfs"
 )
 
-// TestGrayHealingSeed keeps a schedule of the shape from #81: healing is
-// at 20 s, but a gray fsync started before it ends at 22.29 s. The last
-// call without a definite answer starts at 22.4117 s, after the election
-// that follows; from 22.412 s every call gets one, long before the
-// checker's recovery allowance ends at 26.29 s. Seed 745672193 had this
-// shape until writes waited for a leader (#106), and seed 384 until
-// design E changed the timing (#143). Replies that wait for values read
-// from disk (#144) moved that last call from 22.407 s.
-func TestGrayHealingSeed(t *testing.T) {
-	t.Skip("seed 2507 lost this shape when the simulator got the FetchCrash and SlowFetch faults; #164 re-pins it")
-	cfg := DefaultConfig(2507)
-	a := run(t, cfg)
-	b := run(t, cfg)
-	if a.Trace != b.Trace {
-		t.Fatalf("trace changed on replay: %016x, then %016x", a.Trace, b.Trace)
-	}
-	checkers(t, a)
-	if a.grayHealedAt < cfg.Duration+2285*Millisecond || a.grayHealedAt > cfg.Duration+2286*Millisecond {
-		t.Fatalf("last gray fsync at %d ms, want the fsync at 22285 ms", a.grayHealedAt/Millisecond)
-	}
-	calls := 0
-	for _, r := range a.History {
-		if r.Call < cfg.Duration+2412*Millisecond {
-			continue
+// TestGrayFsyncOutlastsHealing builds the shape of #81 on purpose, so that
+// it no longer depends on one seed's draws (#164): 1.5 s before healing
+// the leader turns gray with slow fsyncs, and one of them, started before
+// healing, ends after it. Its node's term and vote changes wait for it, so
+// the liveness rule starts from its end (Sim.graySyncEnded). On every
+// seed, every call that starts two election timeouts after it must get a
+// definite answer, at least 50 calls must, and the checkers must pass;
+// the seeds run until two had a gray fsync end 1.5 s or more after
+// healing, as in #81.
+func TestGrayFsyncOutlastsHealing(t *testing.T) {
+	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
+	late := 0
+	for seed := uint64(1); seed <= 40 && late < 2; seed++ {
+		cfg := DefaultConfig(seed)
+		cfg.Faults = Faults{}
+		cfg.GrayLeaderAt, cfg.GrayLeaderSync = cfg.Duration-1500*Millisecond, true
+		a := run(t, cfg)
+		b := run(t, cfg)
+		if a.Trace != b.Trace {
+			t.Fatalf("seed %d: trace changed on replay: %016x, then %016x", seed, a.Trace, b.Trace)
 		}
-		if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
-			t.Fatalf("call to node %d at %d ms failed after the final election: %v", r.Node+1, r.Call/Millisecond, r.Err)
+		checkers(t, a)
+		if a.grayHealedAt <= cfg.Duration {
+			t.Fatalf("seed %d: no gray fsync outlasted healing at %d ms", seed, cfg.Duration/Millisecond)
 		}
-		calls++
+		if a.grayHealedAt >= cfg.Duration+1500*Millisecond {
+			late++
+		}
+		from := a.grayHealedAt + 2*election
+		calls := 0
+		for _, r := range a.History {
+			if r.Call < from {
+				continue
+			}
+			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {
+				t.Fatalf("seed %d: call to node %d at %d ms failed after the gray fsync ended at %d ms: %v",
+					seed, r.Node+1, r.Call/Millisecond, a.grayHealedAt/Millisecond, r.Err)
+			}
+			calls++
+		}
+		if calls < 50 {
+			t.Fatalf("seed %d: only %d calls after %d ms", seed, calls, from/Millisecond)
+		}
+		t.Logf("seed %d: last gray fsync at %d ms; %d definite answers from %d ms", seed, a.grayHealedAt/Millisecond, calls, from/Millisecond)
 	}
-	if calls < 50 {
-		t.Fatalf("only %d calls after the final election", calls)
+	if late < 2 {
+		t.Fatalf("only %d seeds had a gray fsync end 1.5 s after healing", late)
 	}
-	t.Logf("last gray fsync at %d ms; %d definite answers from 22412 ms; trace %016x", a.grayHealedAt/Millisecond, calls, a.Trace)
 }
 
 // TestGrayFsyncRecoveryBound checks the disk completion path, including a

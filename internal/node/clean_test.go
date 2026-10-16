@@ -145,16 +145,25 @@ func TestCleaningCycles(t *testing.T) {
 		want[k] = 0
 	}
 	var maps []int64
+	// The rounds that got NOSPACE, and how long the longest and all of
+	// them waited for cleaning to catch up (#181).
+	var refused int
+	var longest, waited time.Duration
 	for round := 1; round <= 200; round++ {
 		rev, err := putAll(r.n, round, hot...)
 		// On a slow disk cleaning may fall behind for a while, and then
 		// NOSPACE is the right answer; writes must go on once it catches up.
-		for deadline := time.Now().Add(10 * time.Second); errors.Is(err, rpctypes.ErrGRPCNoSpace) && time.Now().Before(deadline); {
+		start := time.Now()
+		for deadline := start.Add(10 * time.Second); errors.Is(err, rpctypes.ErrGRPCNoSpace) && time.Now().Before(deadline); {
 			time.Sleep(50 * time.Millisecond)
 			rev, err = putAll(r.n, round, hot...)
 		}
 		if err != nil {
 			t.Fatalf("round %d: %v", round, err)
+		}
+		if d := time.Since(start); d >= 50*time.Millisecond {
+			refused++
+			longest, waited = max(longest, d), waited+d
 		}
 		for _, k := range hot {
 			want[k] = round
@@ -177,6 +186,7 @@ func TestCleaningCycles(t *testing.T) {
 			maps = append(maps, m.MapBytes)
 		}
 	}
+	t.Logf("%d of 200 rounds got NOSPACE first, for %v in all, the longest %v", refused, waited, longest)
 	if err := checkValues(r.n, want); err != nil {
 		t.Fatal(err)
 	}
@@ -242,12 +252,31 @@ func TestNoSpace(t *testing.T) {
 			t.Fatalf("%T at NOSPACE: %v", op, err)
 		}
 	}
-	m, err := r.n.Metrics(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.DiskBytes > budget+64<<10 {
-		t.Fatalf("the log's files take %d bytes, past the budget of %d", m.DiskBytes, budget)
+	// The refusals come at once, so this runs right after the first one,
+	// while a cleaning pass may still have its new pack and the files it
+	// replaces on disk, and a checkpoint may be on its way (#181). Once
+	// the pass removes them, the files must be near the budget.
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		mctx, mcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		m, err := r.n.Metrics(mctx)
+		mcancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.DiskBytes <= budget+64<<10 {
+			break
+		}
+		if time.Now().After(deadline) {
+			// Which files take the space, for #181.
+			ents, err := os.ReadDir(filepath.Join(dir, "wal"))
+			for _, e := range ents {
+				if info, err := e.Info(); err == nil {
+					t.Logf("%s: %d bytes", e.Name(), info.Size())
+				}
+			}
+			t.Fatalf("the log's files take %d bytes, past the budget of %d: %v", m.DiskBytes, budget, err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if err := r.stop(); err != nil {
 		t.Fatalf("the node stopped: %v", err)

@@ -34,11 +34,8 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// ErrDiskStalled stops a leader with other voters whose local append took
-// longer than StallTicks election timeouts.
-var ErrDiskStalled = errors.New("core: the leader's disk stalled; stopping so that another node can lead")
-
-// StallTicks is how many election timeouts a leader's append may take.
+// StallTicks is how many election timeouts a leader's append may take
+// before it hands leadership to a follower (handOff).
 const StallTicks = 2
 
 // ErrCommitStalled stops a leader with other voters whose own entries have
@@ -67,8 +64,10 @@ type Config struct {
 	ClusterID uint64
 	// Boot tells this run of the node apart from earlier runs, so that a
 	// request from before a restart never matches one after it. The driver
-	// takes it from its randomness adapter.
-	Boot uint64
+	// takes it from its randomness adapter. Run orders the runs: it is
+	// higher than that of every earlier run of the node, and the driver
+	// keeps it on disk (version.go).
+	Boot, Run uint64
 
 	// ElectionTicks and HeartbeatTicks are the Raft timeouts in ticks.
 	ElectionTicks, HeartbeatTicks int
@@ -88,8 +87,12 @@ type Config struct {
 	ProgressTicks int
 	// CommitStallElections is how many election timeouts a leader's entry
 	// may wait to commit before the leader stops; 0 means
-	// CommitStallTicks. Tests set it lower to catch shorter stalls.
-	CommitStallElections int
+	// CommitStallTicks. StallElections is how many its own append may
+	// take before it hands over; 0 means StallTicks. Both watch the
+	// disks, so tests at shorter ticks set them higher to keep the time a
+	// real node allows; the stress job sets the first lower to catch
+	// shorter stalls.
+	CommitStallElections, StallElections int
 
 	// WindowBytes is how many bytes of applied entries stay in memory, and
 	// WindowMaxBytes how many while a follower still needs them. Older
@@ -337,6 +340,9 @@ type Effects struct {
 	// Members, if set, are the members after a change; the driver
 	// connects to their peer URLs.
 	Members []*pb.Member
+	// HandOff, if set, is the follower that this leader asked Raft to
+	// make leader because its own disk stalled (handOff).
+	HandOff uint64
 }
 
 // CheckpointChunk is part of the checkpoint at Index.
@@ -513,7 +519,9 @@ type Node struct {
 	tokenWaits []tokenWait
 	// installs counts the persist jobs with a snapshot install that are
 	// not durable yet.
-	installs int
+	// installTop is the highest snapshot index among them.
+	installs   int
+	installTop uint64
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -751,12 +759,9 @@ func (n *Node) Tick() {
 	// turn a slow disk into an outage; it waits for its disk instead. It
 	// still calls commitStalled, which trims uncommitted.
 	alone := len(n.state.voters()) == 1
-	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= StallTicks*int64(n.cfg.ElectionTicks) {
-		// A leader whose disk stalls still heartbeats, so the others would
-		// never elect a replacement. It stops instead; the healthy pair
-		// elects, and a restart brings it back from its log.
-		n.fail(ErrDiskStalled)
-		return
+	stall := int64(cmp.Or(n.cfg.StallElections, StallTicks)) * int64(n.cfg.ElectionTicks)
+	if !planted.On("B17") && !alone && n.isLeader && len(n.appending) > 0 && n.now-n.appending[0] >= stall {
+		n.handOff()
 	}
 	if n.isLeader && n.commitStalled() && !alone {
 		// The same for a gray leader whose heartbeats get through but
@@ -1314,6 +1319,9 @@ func (n *Node) Persisted(job PersistJob) {
 	n.unpersisted -= job.bytes
 	if job.Install != nil {
 		n.installs--
+		if n.installs == 0 {
+			n.installTop = 0
+		}
 		if err := n.install(job.Install); err != nil {
 			n.fail(err)
 			return
@@ -1473,6 +1481,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			if m.Snapshot != nil {
 				n.installs++
 				meta := m.Snapshot.GetMetadata()
+				n.installTop = max(n.installTop, meta.GetIndex())
 				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
 			}
 			if m.Vote != nil {
@@ -1930,6 +1939,35 @@ func isAnswer(err error) bool {
 type proposedAt struct {
 	index uint64
 	at    int64
+}
+
+// handOff asks Raft to make the follower with the longest log among those
+// it heard from in the last election timeout the leader, unless a
+// transfer is under way; Raft gives one up after an election timeout, and
+// the next tick asks again. A leader whose disk stalls still heartbeats,
+// so the others would never elect a replacement, and once its entries not
+// yet on its disk fill their budget it holds up the writes of the whole
+// cluster. As a follower it holds up only its own clients, until its disk
+// is back. Effects.HandOff names the follower.
+func (n *Node) handOff() {
+	st := n.rn.Status()
+	if st.LeadTransferee != 0 {
+		return
+	}
+	var to, match uint64
+	for id, pr := range st.Progress {
+		if id == n.cfg.ID || pr.IsLearner || !pr.RecentActive {
+			continue
+		}
+		if to == 0 || pr.Match > match || pr.Match == match && id < to {
+			to, match = id, pr.Match
+		}
+	}
+	if to == 0 {
+		return
+	}
+	n.rn.TransferLeader(to)
+	n.out.HandOff = to
 }
 
 // commitStalled drops the leader's appends that have committed and reports
