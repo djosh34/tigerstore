@@ -1354,7 +1354,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		m := n.cfg.Metrics
 		wrote := time.Now()
 		err := w.Flush()
-		m.WALWrite.Observe(time.Since(wrote).Seconds())
+		writeTime := time.Since(wrote)
+		m.WALWrite.Observe(writeTime.Seconds())
+		if writeTime > n.cfg.Tick {
+			n.logf("slow log flush: %d bytes in %v", buffered, writeTime)
+		}
 		m.WALWriteBytes.Add(float64(buffered))
 		if err != nil {
 			fail(err)
@@ -1376,7 +1380,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 		syncStart := time.Now()
 		err = w.Sync()
-		m.WALFsync.Observe(time.Since(syncStart).Seconds())
+		syncTime := time.Since(syncStart)
+		m.WALFsync.Observe(syncTime.Seconds())
+		if syncTime > n.cfg.Tick {
+			n.logf("slow log rotation: %v", syncTime)
+		}
 		if !report(g, err) {
 			return
 		}
@@ -1416,7 +1424,11 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
-			n.cfg.Metrics.WALFsync.Observe(time.Since(start).Seconds())
+			syncTime := time.Since(start)
+			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
+			if syncTime > n.cfg.Tick {
+				n.logf("slow log sync: %v", syncTime)
+			}
 		}
 		failed = err
 		for _, g := range batch {
