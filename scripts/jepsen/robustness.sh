@@ -31,7 +31,8 @@ cluster='n1=https://127.0.0.1:2380,n2=https://127.0.0.1:2480,n3=https://127.0.0.
 export ENDPOINTS='http://127.0.0.1:2379,http://127.0.0.1:2479,http://127.0.0.1:2579'
 pids=()
 start_node() {
-  local n=$1 client=$((2279 + n * 100)) peer=$((2280 + n * 100))
+  local n=$1
+  local client=$((2279 + n * 100)) peer=$((2280 + n * 100))
   "$root/.robustness/server" --name "n$n" --data-dir "$RESULTS/n$n.data" \
     --listen-client-urls "http://127.0.0.1:$client" --advertise-client-urls "http://127.0.0.1:$client" \
     --listen-peer-urls "https://127.0.0.1:$peer" --initial-advertise-peer-urls "https://127.0.0.1:$peer" \
@@ -67,7 +68,7 @@ done
 sleep 5
 kill -STOP "${pids[1]}"
 printf '%s pause n1 pid=%s\n' "$(date -u +%FT%T.%N)" "${pids[1]}" >> "$RESULTS/faults.log"
-ps -p "${pids[1]}" -o pid=,stat= >> "$RESULTS/faults.log"
+ps -p "${pids[1]}" -o pid=,stat= | tee -a "$RESULTS/faults.log" | grep -E '[[:space:]]T'
 sleep 3
 kill -CONT "${pids[1]}"
 printf '%s resume n1\n' "$(date -u +%FT%T.%N)" >> "$RESULTS/faults.log"
@@ -80,3 +81,6 @@ printf '%s kill n2 pid=%s wait=%s\n' "$(date -u +%FT%T.%N)" "${pids[2]}" "$statu
 sleep 3
 start_node 2
 wait "$traffic_pid"
+for n in 1 2 3; do
+  kill -0 "${pids[$n]}"
+done
