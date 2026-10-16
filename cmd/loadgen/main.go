@@ -209,6 +209,9 @@ func (r *result) oneLine() string {
 
 const (
 	preloadTimeout = 10 * time.Minute
+	// preloadStreams is the most streams in flight per connection while
+	// the keys of txn, range, list and delete are written first.
+	preloadStreams = 64
 	drainTimeout   = 10 * time.Second
 )
 
@@ -267,6 +270,9 @@ func run(cfg config) (*result, error) {
 			if err != nil {
 				return nil, err
 			}
+			// The preload is not measured. With every stream busy, etcd
+			// v3.7.2 timed out Puts of 10 KiB values ("request timed out").
+			b.limit = min(b.limit, preloadStreams)
 			loads[i] = &putLoad{base: b, once: true, revs: revs, vals: putVals}
 		}
 		start := now()

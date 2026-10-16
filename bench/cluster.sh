@@ -27,6 +27,8 @@
 # directories go to TMPFS_DIR, a tmpfs, instead of <dir>. LEAD names the
 # node that must lead: start moves the leadership to it if another node won
 # the election. BENCH_FLAGS are more flags for every tigerstore node.
+# BENCH_LISTEN_IP is one more address the client ports listen on, for
+# clients outside the host's loopback such as a kind cluster.
 set -euo pipefail
 
 port=${BENCH_PORT:-20000}
@@ -142,7 +144,9 @@ start() {
 
 	local pids=""
 	for i in 1 2 3; do
-		local client="https://127.0.0.1:$((port + 10 * i))"
+		local client="https://127.0.0.1:$((port + 10 * i))" listen
+		listen=$client
+		if [ -n "${BENCH_LISTEN_IP:-}" ]; then listen+=",https://$BENCH_LISTEN_IP:$((port + 10 * i))"; fi
 		local peer="https://127.0.0.1:$((port + 10 * i + 1))"
 		# The quota is etcd's suggested maximum, so long write runs do not
 		# hit the 2 GiB default. etcd-only flags: tigerstore always
@@ -161,7 +165,7 @@ start() {
 		GOMEMLIMIT=${BENCH_GOMEMLIMIT:-off} taskset -c "${cpus[i - 1]}" "$bin" \
 			--name "n$i" \
 			--data-dir "${datadirs[i - 1]}" \
-			--listen-client-urls "$client" \
+			--listen-client-urls "$listen" \
 			--advertise-client-urls "$client" \
 			--listen-peer-urls "$peer" \
 			--initial-advertise-peer-urls "$peer" \

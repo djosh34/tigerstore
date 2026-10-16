@@ -1,0 +1,37 @@
+# Create, update and mass-delete churn without client rate limits.
+global:
+  gc: false
+jobs:
+  - name: create
+    jobType: create
+    jobIterations: ITER
+    qps: 100000
+    burst: 100000
+    namespacedIterations: true
+    namespace: churn
+    waitWhenFinished: false
+    objects:
+      - objectTemplate: configmap.yaml
+        replicas: 10
+      - objectTemplate: secret.yaml
+        replicas: 10
+      - objectTemplate: deployment.yaml
+        replicas: 5
+  - name: update
+    jobType: patch
+    jobIterations: 3
+    qps: 100000
+    burst: 100000
+    objects:
+      - kind: ConfigMap
+        labelSelector: {kube-burner.io/job: create}
+        objectTemplate: patch.yaml
+        patchType: application/merge-patch+json
+  - name: delete
+    jobType: delete
+    qps: 100000
+    burst: 100000
+    waitForDeletion: true
+    objects:
+      - kind: Namespace
+        labelSelector: {kube-burner.io/job: create}

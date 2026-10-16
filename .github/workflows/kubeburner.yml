@@ -1,0 +1,67 @@
+# Compares tigerstore with etcd v3.7.2 at the Kubernetes level: kube-burner's
+# create, update and mass-delete churn, without client rate limits, on a
+# one-node kind cluster that uses each store as external etcd (a 3-node TLS
+# cluster on the runner, as the benchmarks run it). bench/kind/run.sh has
+# the details. Started by hand.
+name: kubeburner
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: tigerstore ref to measure
+        default: main
+      iterations:
+        description: create iterations, each a namespace of 10 ConfigMaps, 10 Secrets and 5 Deployments
+        default: "1000"
+      reps:
+        description: repetitions per store
+        default: "3"
+
+jobs:
+  churn:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tools and stores
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate || 'main' }}
+        run: |
+          mkdir -p bin
+          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
+          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
+          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcdctl" bin/
+          git worktree add --detach "$RUNNER_TEMP/candidate" "origin/$CANDIDATE" 2>/dev/null || git worktree add --detach "$RUNNER_TEMP/candidate" "$CANDIDATE"
+          (cd "$RUNNER_TEMP/candidate" && go build -o "$GITHUB_WORKSPACE/bin/tigerstore" ./cmd/tigerstore)
+          echo "tigerstore $CANDIDATE $(git -C "$RUNNER_TEMP/candidate" rev-parse HEAD)" | tee commits.txt
+          GOBIN="$PWD/bin" go install sigs.k8s.io/kind@v0.33.0
+          curl -fsSL -o bin/kubectl https://dl.k8s.io/release/v1.37.0/bin/linux/arm64/kubectl
+          chmod +x bin/kubectl
+          gh release download -R kube-burner/kube-burner -p '*linux-arm64*' -D "$RUNNER_TEMP/kb"
+          tar xzf "$RUNNER_TEMP"/kb/*.tar.gz -C bin kube-burner
+          bin/kube-burner version | tee -a commits.txt
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+      - name: Churn
+        env:
+          ITER: ${{ inputs.iterations || '1000' }}
+          REPS: ${{ inputs.reps || '3' }}
+        run: |
+          sudo mount -o remount,barrier=1 /
+          CERT_IPS=172.30.0.1 scripts/dev-certs.sh certs
+          CERTS=certs KUBE_BURNER="$PWD/bin/kube-burner" bench/kind/run.sh bin/etcd bin/tigerstore out
+          cp commits.txt out/
+          { echo '```'; cat out/commits.txt out/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: kubeburner
+          path: out
+          retention-days: 30

@@ -1,0 +1,21 @@
+# One-node kind cluster whose API server uses the store under test, a
+# 3-node cluster on the host, as external etcd. CERTS and the endpoints
+# are filled in by bench/kind/run.sh.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0
+    extraMounts:
+      - hostPath: CERTS
+        containerPath: /etc/bench-certs
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        etcd:
+          external:
+            endpoints: [ENDPOINTS]
+            caFile: /etc/bench-certs/ca.pem
+            certFile: /etc/bench-certs/client.pem
+            keyFile: /etc/bench-certs/client-key.pem
