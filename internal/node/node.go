@@ -549,15 +549,13 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
-	segment := int64(wal.SegmentBytes)
 	if n.cfg.SegmentBytes > 0 {
-		segment = n.cfg.SegmentBytes
-		w.SetSegmentBytes(segment)
+		w.SetSegmentBytes(n.cfg.SegmentBytes)
 	}
 	if n.cfg.DiskBudget > 0 {
-		// Spare segment files count against the budget: at most an
-		// eighth of it.
-		w.SetSpares(int(min(wal.MaxSpares, n.cfg.DiskBudget/8/segment)))
+		if err := w.SetSpares(spareSegments(n.cfg)); err != nil {
+			return errors.Join(err, w.Close())
+		}
 	}
 	n.log.mu.Lock()
 	err = n.log.close()
