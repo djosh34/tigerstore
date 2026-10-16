@@ -80,7 +80,10 @@ printf '%s kill n2 pid=%s wait=%s\n' "$(date -u +%FT%T.%N)" "${pids[2]}" "$statu
 [[ $status == 137 ]]
 sleep 3
 start_node 2
-wait "$traffic_pid"
+traffic_status=0
+wait "$traffic_pid" || traffic_status=$?
+cat "$RESULTS/test.log"
+(( traffic_status == 0 ))
 for n in 1 2 3; do
   kill -0 "${pids[$n]}"
 done

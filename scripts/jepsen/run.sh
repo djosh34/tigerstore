@@ -58,6 +58,14 @@ cleanup() {
     kill "$observer" || rc=1
     wait "$observer" || echo "Observer stopped"
   fi
+  if (( rc != 0 )); then
+    for node in n1 n2 n3; do
+      docker exec "jepsen-$node" ps auxf > "$out/processes-$node.txt" 2>&1 || rc=1
+      if docker exec "jepsen-$node" test -d /opt/etcd; then
+        docker cp "jepsen-$node:/opt/etcd" "$out/unfinished-$node" || rc=1
+      fi
+    done
+  fi
   docker cp jepsen-control:/jepsen/etcd/store "$out/store" || rc=1
   "${compose[@]}" logs --no-color > "$out/containers.log" 2>&1 || rc=1
   docker inspect jepsen-control jepsen-n1 jepsen-n2 jepsen-n3 > "$out/containers.json" || rc=1
