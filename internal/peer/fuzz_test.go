@@ -17,8 +17,10 @@ func FuzzFrames(f *testing.F) {
 	var seed []byte
 	for _, m := range []*raftpb.Message{
 		{Type: raftpb.MessageType_MsgHeartbeat.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(3))},
-		{Type: raftpb.MessageType_MsgApp.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(3)), Index: new(uint64(7)),
-			Entries: []*raftpb.Entry{{Term: new(uint64(3)), Index: new(uint64(8)), Data: []byte("data")}}},
+		{
+			Type: raftpb.MessageType_MsgApp.Enum(), From: new(uint64(2)), To: new(uint64(1)), Term: new(uint64(3)), Index: new(uint64(7)),
+			Entries: []*raftpb.Entry{{Term: new(uint64(3)), Index: new(uint64(8)), Data: []byte("data")}},
+		},
 	} {
 		b, err := proto.Marshal(m)
 		if err != nil {

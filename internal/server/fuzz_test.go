@@ -73,9 +73,12 @@ func h2Request(method string, m proto.Message) []byte {
 	fr := http2.NewFramer(&buf, nil)
 	enc := hpack.NewEncoder(&hb)
 	for _, f := range []hpack.HeaderField{
-		{Name: ":method", Value: "POST"}, {Name: ":scheme", Value: "http"},
-		{Name: ":path", Value: method}, {Name: ":authority", Value: "localhost"},
-		{Name: "content-type", Value: "application/grpc"}, {Name: "te", Value: "trailers"},
+		{Name: ":method", Value: "POST"},
+		{Name: ":scheme", Value: "http"},
+		{Name: ":path", Value: method},
+		{Name: ":authority", Value: "localhost"},
+		{Name: "content-type", Value: "application/grpc"},
+		{Name: "te", Value: "trailers"},
 	} {
 		_ = enc.WriteField(f)
 	}
