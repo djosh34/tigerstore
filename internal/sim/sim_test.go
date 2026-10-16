@@ -281,29 +281,38 @@ func TestEachFaultTakesEffect(t *testing.T) {
 	}
 }
 
-// TestSlowFetch holds a follower down until it needs a snapshot, and
-// starts half its fetches up to 2 s late. Meanwhile the leader may make a
+// slowFetchConfig holds a follower down until it needs a snapshot, and
+// starts half its fetches up to 2 s late.
+func slowFetchConfig(seed uint64) Config {
+	cfg := DefaultConfig(seed)
+	cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
+	cfg.Duration = 10 * Second
+	cfg.Heal = 8 * Second
+	return cfg
+}
+
+// TestSlowFetch runs slowFetchConfig. Meanwhile the leader may make a
 // newer checkpoint durable while it still keeps the one the snapshot
 // named, which it must then serve, or give up on the snapshot and remove
 // that checkpoint, after which the follower starts again from its log and
-// gets another snapshot. Across the seeds each must happen, and every run
-// must pass the checkers.
+// gets another snapshot. And the follower, applying its log after the
+// restart, may finish a checkpoint while the install is on its way to
+// disk, whose root must not follow the install's (#182). Across the seeds
+// each must happen, and every run must pass the checkers, which recover
+// every node's disk at the end.
 func TestSlowFetch(t *testing.T) {
-	older, failed := 0, 0
-	// Each of the two happens in about one seed in 25 to 50; the search
-	// stops once both did.
-	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0); seed++ {
-		cfg := DefaultConfig(5000 + seed)
-		cfg.Faults = Faults{HoldDown: true, SlowFetch: true}
-		cfg.Duration = 10 * Second
-		cfg.Heal = 8 * Second
-		res := run(t, cfg)
+	older, failed, during := 0, 0, 0
+	// Each of the three happens in about one seed in 20 to 50; the search
+	// stops once all did.
+	for seed := uint64(1); seed <= 200 && (older == 0 || failed == 0 || during == 0); seed++ {
+		res := run(t, slowFetchConfig(5000+seed))
 		checkers(t, res)
 		older += res.Stats.OlderCheckpoints
 		failed += res.Stats.ServeFailures
+		during += res.Stats.CheckpointsDuringInstall
 	}
-	if older == 0 || failed == 0 {
-		t.Fatalf("%d snapshots served from an older checkpoint, %d fetches the leader could not serve; each must happen", older, failed)
+	if older == 0 || failed == 0 || during == 0 {
+		t.Fatalf("%d snapshots served from an older checkpoint, %d fetches the leader could not serve, %d checkpoints finished during an install; each must happen", older, failed, during)
 	}
 }
 

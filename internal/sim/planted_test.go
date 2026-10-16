@@ -97,6 +97,7 @@ var plantedCases = map[string]plantedCase{
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints`},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
+	"B27": {seeds: 256, cfg: slowFetchConfig, want: refused},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each

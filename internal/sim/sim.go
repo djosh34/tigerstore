@@ -519,9 +519,11 @@ type Stats struct {
 	// needs, SnapshotFlips those damaged on the way, FetchCrashes sources
 	// that crashed during a stream, SlowFetches fetches that started late,
 	// InstallFailures installs that failed, each followed by a reload,
-	// StepCrashes crashes at a checkpoint, removal or install step, and
-	// Rots values damaged under a running node.
+	// StepCrashes crashes at a checkpoint, removal or install step, Rots
+	// values damaged under a running node, and CheckpointsDuringInstall
+	// checkpoints finished while an install was on its way to disk (#182).
 	Checkpoints, Snapshots, CheckpointSnapshots, OlderCheckpoints, ServeFailures, SnapshotFlips, FetchCrashes, SlowFetches, InstallFailures, StepCrashes, Rots int
+	CheckpointsDuringInstall                                                                                                                                   int
 }
 
 // Result is the outcome of a run.

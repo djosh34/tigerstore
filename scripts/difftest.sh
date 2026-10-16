@@ -65,6 +65,7 @@ alive() {
 		[ -e "$f" ] || continue
 		if ! kill -0 "$(cat "$f")" 2>/dev/null; then
 			echo "the server of $f exited during the tests"
+			[ -e "${f%.pid}.log" ] && tail -n 50 "${f%.pid}.log"
 			exit 1
 		fi
 	done

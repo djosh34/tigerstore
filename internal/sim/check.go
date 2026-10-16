@@ -15,6 +15,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // check runs the simulator's own rules on a finished run. The checkers in
@@ -92,6 +93,9 @@ func (s *Sim) check(res *Result) error {
 		return err
 	}
 	if err := s.checkColdRestarts(res); err != nil {
+		return err
+	}
+	if err := s.checkRecoverable(); err != nil {
 		return err
 	}
 	live := 0
@@ -649,4 +653,32 @@ func (s *Sim) extendLiveness() {
 		s.endAt += stop - s.stopAt
 		s.stopAt = stop
 	}
+}
+
+// checkRecoverable recovers the durable state of every node that runs at
+// the end, as a crash then would leave it: the log must open and reach
+// what the node reported durable. A disk that only a later restart would
+// read is checked too, so a bad record or root shows in the run that wrote
+// it (#182).
+func (s *Sim) checkRecoverable() error {
+	for _, n := range s.nodes {
+		if !n.up || n.fenced {
+			continue
+		}
+		floor := n.durableLast
+		if n.inflight != nil && n.replaceFrom > 0 {
+			floor = min(floor, n.replaceFrom-1)
+		}
+		w, rec, err := wal.Open(n.disk.Durable())
+		if err != nil {
+			return fmt.Errorf("node %d cannot recover its log at the end: %w", n.id, err)
+		}
+		if err := w.Close(); err != nil {
+			return err
+		}
+		if rec.Last < floor {
+			return fmt.Errorf("node %d recovers entries to %d at the end, but reported %d durable", n.id, rec.Last, floor)
+		}
+	}
+	return nil
 }

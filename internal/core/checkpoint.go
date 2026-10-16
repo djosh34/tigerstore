@@ -378,6 +378,9 @@ func (n *Node) copyChunk(limit int) {
 	}
 }
 
+// Installing reports whether a snapshot install is on its way to disk.
+func (n *Node) Installing() bool { return n.installs > 0 }
+
 // Copying reports whether a checkpoint is being copied out of the index.
 func (n *Node) Copying() bool { return n.copy != nil }
 
@@ -399,7 +402,7 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
 		return
 	}
-	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index || n.installs > 0 {
+	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index || n.installs > 0 && !planted.On("B27") {
 		// An older checkpoint than one a snapshot installed, or one of
 		// the state an install on its way to disk replaces; it never
 		// counts. Its root would land after the install's.
