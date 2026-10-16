@@ -42,12 +42,28 @@ for rep in $(seq "$reps"); do
 			kind export logs --name bench "$out/$store-$rep-kind-logs" >/dev/null 2>&1 || true
 			exit 1
 		}
+		# The kind node's CPU and memory every 10 s, to see what failed.
+		while sleep 10; do docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-control-plane; done >"$out/$store-$rep.stats" 2>&1 &
+		sampler=$!
 		start=$(date +%s.%N)
-		(cd "$work" && "$KUBE_BURNER" init -c churn.yaml --uuid "$store-$rep") >"$out/$store-$rep.burner.log" 2>&1
+		(cd "$work" && "$KUBE_BURNER" init -c churn.yaml --uuid "$store-$rep" --timeout 30m) >"$out/$store-$rep.burner.log" 2>&1 || true
 		end=$(date +%s.%N)
+		kill "$sampler"
+		# kube-burner logs a failed request and goes on; such a run is
+		# invalid. Keep what shows why.
+		if grep -q 'level=error' "$out/$store-$rep.burner.log"; then
+			echo "$store $rep: invalid, kube-burner logged errors" | tee -a "$out/summary.txt"
+			{
+				docker ps -a
+				docker inspect bench-control-plane --format '{{json .State}}'
+				free -m
+				sudo dmesg | tail -100
+			} >"$out/$store-$rep.failure" 2>&1
+			kind export logs --name bench "$out/$store-$rep-kind-logs" >/dev/null 2>&1 || true
+		fi
 		kubectl get --raw /metrics | grep -E '^etcd_request_duration_seconds_(sum|count)' >"$out/$store-$rep.apiserver" || true
 		echo "$store $rep total $(awk -v a="$start" -v b="$end" 'BEGIN{printf "%.1f", b-a}') s" | tee -a "$out/summary.txt"
-		grep -E "took|rror" "$out/$store-$rep.burner.log" | sed -E "s/.*msg=\"([^\"]*)\".*/$store $rep \1/" | tee -a "$out/summary.txt"
+		grep -E "took" "$out/$store-$rep.burner.log" | sed -E "s/.*msg=\"([^\"]*)\".*/$store $rep \1/" | tee -a "$out/summary.txt"
 		# The API server's view of the store: mean latency per operation.
 		awk -v n="$store $rep" '/_sum/ {match($0, /operation="[^"]*"/); o = substr($0, RSTART + 11, RLENGTH - 12); s[o] += $2}
 			/_count/ {match($0, /operation="[^"]*"/); o = substr($0, RSTART + 11, RLENGTH - 12); c[o] += $2}
