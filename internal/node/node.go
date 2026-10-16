@@ -131,10 +131,10 @@ type input struct {
 	written  uint64
 	writeErr error
 	// snapshot is a follower that started (fetching) or ended (served,
-	// served ok) a snapshot fetch from this node.
+	// with serveErr) a snapshot fetch from this node.
 	snapshot         uint64
 	fetching, served bool
-	servedOK         bool
+	serveErr         error
 }
 
 // watchBytes is how many bytes of responses a watch stream may fall
@@ -296,6 +296,7 @@ type Completer interface {
 type Completion struct {
 	Tag any
 	core.Reply
+	Hold *ReplyHold
 }
 
 // batch is requests that one client connection hands the committer at
@@ -343,14 +344,18 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 
 // Node is a running node.
 type Node struct {
-	cfg       Config
-	core      *core.Node
-	log       *diskLog
-	inbox     chan input
-	persistQ  chan []core.PersistJob
-	persisted chan persistDone
-	ckptQ     chan core.CheckpointChunk
-	cleanQ    chan packRoot
+	// Issued and seen belong to the committer. Writers only add to freed.
+	// Cumulative counts survive reloads without losing a concurrent release.
+	replyIssued, replySeen int64
+	replyFreed             atomic.Int64
+	cfg                    Config
+	core                   *core.Node
+	log                    *diskLog
+	inbox                  chan input
+	persistQ               chan persistBatch
+	persisted              chan persistDone
+	ckptQ                  chan core.CheckpointChunk
+	cleanQ                 chan packRoot
 	// sparesQ takes the number of spare segment files the log keeps to
 	// the disk goroutine, which rotates segments into them.
 	sparesQ  chan int
@@ -692,7 +697,9 @@ func (n *Node) open() error {
 		n.log.mu.Unlock()
 	}
 	n.core = c
-	n.persistQ = make(chan []core.PersistJob, maxBacklog)
+	n.replySeen = n.replyFreed.Load()
+	c.SetReplyBytes(n.replyIssued - n.replySeen)
+	n.persistQ = make(chan persistBatch, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
 	n.cleanQ = make(chan packRoot)
@@ -949,7 +956,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 	waiters := map[uint64]waiter{}
 	var groups []completions
 	groupOf := map[Completer]int{}
-	var backlog [][]core.PersistJob
+	var backlog []persistBatch
 	// chunks are checkpoint parts for the writer; pace wakes the committer
 	// to copy the next one once the writer took them all, so a slow disk
 	// slows the copy instead of piling parts up in memory.
@@ -964,8 +971,8 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if len(backlog) >= maxBacklog {
 			inbox = nil
 		}
-		var toDisk chan<- []core.PersistJob
-		var next []core.PersistJob
+		var toDisk chan<- persistBatch
+		var next persistBatch
 		if len(backlog) > 0 {
 			toDisk, next = n.persistQ, backlog[0]
 		}
@@ -1001,15 +1008,16 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case done := <-n.persisted:
 			if done.err != nil {
 				if errors.Is(done.err, errReload) {
-					dropAll(waiters, streams)
+					n.dropAll(waiters, streams)
 				}
 				return done.err
 			}
 			for _, j := range done.jobs {
 				n.core.Persisted(j)
 			}
+			n.logPersistTiming(done)
 		case toDisk <- next:
-			backlog[0] = nil
+			backlog[0] = persistBatch{}
 			backlog = backlog[1:]
 			continue
 		case toWriter <- chunk:
@@ -1033,9 +1041,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
+		freed := n.replyFreed.Load()
+		n.core.ReleaseReplyBytes(freed - n.replySeen)
+		n.replySeen = freed
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
-			backlog = append(backlog, eff.Persist)
+			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
@@ -1057,7 +1068,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		for _, m := range eff.Send {
 			t.Send(m)
 		}
-		groups = completeAll(eff.Replies, waiters, groups, groupOf)
+		groups = n.completeAll(eff.Replies, waiters, groups, groupOf)
 		for _, w := range eff.Watch {
 			ws, ok := streams[w.Stream]
 			if !ok {
@@ -1104,12 +1115,12 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 // dropAll fails every request and ends every watch stream of a run that
 // ends for a reload; the node goes on, so their clients would otherwise
 // wait for good. Clients try again, as after a restart.
-func dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
+func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
 	replies := make([]core.Reply, 0, len(waiters))
 	for id := range waiters {
 		replies = append(replies, core.Reply{ID: id, Err: rpctypes.ErrGRPCStopped})
 	}
-	completeAll(replies, waiters, nil, map[Completer]int{})
+	n.completeAll(replies, waiters, nil, map[Completer]int{})
 	for id, ws := range streams {
 		delete(streams, id)
 		ws.err = rpctypes.ErrGRPCStopped
@@ -1125,10 +1136,11 @@ type completions struct {
 
 // completeAll hands every reply to its waiter: a Do call gets its own,
 // and each completer gets all of its replies in one Complete call.
-func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []completions, groupOf map[Completer]int) []completions {
+func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []completions, groupOf map[Completer]int) []completions {
 	for _, r := range replies {
 		w, ok := waiters[r.ID]
 		if !ok {
+			n.core.ReleaseReplyBytes(r.Held)
 			continue
 		}
 		delete(waiters, r.ID)
@@ -1142,7 +1154,7 @@ func completeAll(replies []core.Reply, waiters map[uint64]waiter, groups []compl
 			groupOf[w.to] = i
 			groups = append(groups, completions{to: w.to})
 		}
-		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
+		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r, Hold: n.holdReply(r.Held)})
 	}
 	for _, g := range groups {
 		g.to.Complete(g.cs)
@@ -1201,15 +1213,23 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 	case in.fetching:
 		n.core.SnapshotStarted(in.snapshot)
 	case in.served:
-		n.core.SnapshotSent(in.snapshot, in.servedOK)
+		n.core.SnapshotSent(in.snapshot, in.serveErr)
 	}
 }
 
 // persistDone reports one group of synced jobs, or the error that stops
 // the node.
 type persistDone struct {
-	jobs []core.PersistJob
-	err  error
+	jobs   []core.PersistJob
+	err    error
+	timing persistTiming
+}
+
+// persistBatch starts its clock before the committer's backlog, not when
+// the writer receives it. Coalesced batches keep the oldest queue time.
+type persistBatch struct {
+	jobs   []core.PersistJob
+	queued time.Time
 }
 
 // syncsInFlight is how many written groups may wait for their sync.
@@ -1222,6 +1242,8 @@ type written struct {
 	f              wal.File
 	start          time.Time
 	entries, bytes int
+	timing         persistTiming
+	flushed        time.Time
 }
 
 // syncedGroup is a written group after its sync, or after the error that
@@ -1233,9 +1255,9 @@ type syncedGroup struct {
 
 // persist writes every queued job, hands the group to syncGroups, and
 // writes the next group while that one syncs, so the disk always has the
-// next group to take. Groups come back from syncGroups in order, and
-// persist reports their jobs on their own channel, so it never waits for
-// the committer's inbox. A failed write or sync stops the node; it is
+// next group to take. syncGroups reports durable jobs to the committer
+// before returning them here: a later blocked Flush must not hold back
+// an earlier append's response. A failed write or sync stops the node; it is
 // never retried, and no later group is reported. A job with a snapshot
 // first fetches it from the leader into the log, and a failed fetch ends
 // the run for a reload; a job with a root removes what the root made
@@ -1246,15 +1268,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 	w := n.log.w
 	toSync := make(chan written, syncsInFlight)
 	synced := make(chan syncedGroup, syncsInFlight)
-	var wg sync.WaitGroup
-	wg.Go(func() { n.syncGroups(toSync, synced) })
-	defer func() {
-		close(toSync)
-		wg.Wait()
-	}()
-	inFlight := 0
-	// report hands a group back, and reports whether the node goes on.
-	report := func(g written, err error) bool {
+	// report runs on the sync goroutine. Rotation, snapshot installation
+	// and cleaning wait for it before changing the segment or the roots
+	// it reads in afterSync.
+	report := func(g written, err error) error {
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
@@ -1265,18 +1282,25 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		if err == nil && d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
 		}
-		done := persistDone{jobs: g.jobs, err: err}
+		done := persistDone{jobs: g.jobs, err: err, timing: g.timing}
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():
-			return false
+			return errors.Join(err, ctx.Err())
 		}
-		return err == nil
+		return err
 	}
-	// drain waits for every group in flight.
+	var wg sync.WaitGroup
+	wg.Go(func() { n.syncGroups(toSync, synced, report) })
+	defer func() {
+		close(toSync)
+		wg.Wait()
+	}()
+	inFlight := 0
+	// drain waits until every earlier group was reported to the committer.
 	drain := func() bool {
 		for ; inFlight > 0; inFlight-- {
-			if s := <-synced; !report(s.g, s.err) {
+			if s := <-synced; s.err != nil {
 				return false
 			}
 		}
@@ -1289,7 +1313,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 	}
 	for {
-		var jobs []core.PersistJob
+		var pending persistBatch
 		queue, cleanQ := n.persistQ, n.cleanQ
 		if inFlight == syncsInFlight {
 			queue = nil
@@ -1298,10 +1322,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			cleanQ = nil
 		}
 		select {
-		case jobs = <-queue:
+		case pending = <-queue:
 		case s := <-synced:
 			inFlight--
-			if !report(s.g, s.err) {
+			if s.err != nil {
 				return
 			}
 			continue
@@ -1337,12 +1361,15 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		for {
 			select {
 			case js := <-n.persistQ:
-				jobs = append(jobs, js...)
+				pending.jobs = append(pending.jobs, js.jobs...)
 			default:
 				break more
 			}
 		}
+		jobs := pending.jobs
 		g := written{jobs: jobs, start: time.Now()}
+		g.timing.queued = pending.queued
+		g.timing.queue = g.start.Sub(pending.queued)
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
@@ -1368,31 +1395,49 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
 		wrote := time.Now()
+		g.timing.append = wrote.Sub(g.start)
 		err := w.Flush()
-		m.WALWrite.Observe(time.Since(wrote).Seconds())
+		g.flushed = time.Now()
+		writeTime := g.flushed.Sub(wrote)
+		g.timing.flush = writeTime
+		m.WALWrite.Observe(writeTime.Seconds())
+		if writeTime > n.cfg.Tick {
+			n.logf("slow log flush: %d bytes in %v", buffered, writeTime)
+		}
 		m.WALWriteBytes.Add(float64(buffered))
 		if err != nil {
 			fail(err)
 			return
 		}
-		mustSync := slices.ContainsFunc(jobs, core.PersistJob.MustSync)
-		if !w.Full() {
-			if mustSync {
-				g.f = w.Segment()
-			}
-			toSync <- g
-			inFlight++
+		full := w.Full()
+		if full || slices.ContainsFunc(jobs, core.PersistJob.MustSync) {
+			g.f = w.Segment()
+		}
+		toSync <- g
+		inFlight++
+		if !full {
 			continue
 		}
-		// The segment is full: once the groups in flight are synced, Sync
-		// syncs this one and starts the next segment.
+		// Report the full segment's durable appends before starting the
+		// next one. Its header and directory syncs do not make these
+		// appends any more durable, and may block for a long time.
 		if !drain() {
 			return
 		}
 		syncStart := time.Now()
 		err = w.Sync()
-		m.WALFsync.Observe(time.Since(syncStart).Seconds())
-		if !report(g, err) {
+		syncTime := time.Since(syncStart)
+		m.WALFsync.Observe(syncTime.Seconds())
+		if syncTime > n.cfg.Tick {
+			n.logf("slow log rotation: %v start=%s end=%s", syncTime,
+				syncStart.UTC().Format(time.RFC3339Nano), syncStart.Add(syncTime).UTC().Format(time.RFC3339Nano))
+		}
+		if err == nil {
+			// Rotation sealed a segment after the last durable report.
+			err = n.afterSync(nil)
+		}
+		if err != nil {
+			fail(err)
 			return
 		}
 	}
@@ -1400,9 +1445,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 
 // syncGroups syncs the written groups in order and hands them back. One
 // sync covers every group written before it started, so it takes all the
-// groups queued at once. After a failed sync it syncs nothing more and
-// hands every later group back with that error.
-func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
+// groups queued at once. It reports each result before returning the
+// group to the writer. After a failed sync or report it syncs nothing more
+// and hands every later group back with that error.
+func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, report func(written, error) error) {
 	var failed error
 	for g := range groups {
 		batch := []written{g}
@@ -1425,18 +1471,27 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup) {
 				f = g.f
 			}
 		}
+		start := time.Now()
 		if err == nil && f != nil {
-			start := time.Now()
 			if n.cfg.BeforeSync != nil {
 				n.cfg.BeforeSync()
 			}
 			err = f.Sync()
-			n.cfg.Metrics.WALFsync.Observe(time.Since(start).Seconds())
+			syncTime := time.Since(start)
+			n.cfg.Metrics.WALFsync.Observe(syncTime.Seconds())
+			if syncTime > n.cfg.Tick {
+				n.logf("slow log sync: %v", syncTime)
+			}
 		}
-		failed = err
+		end := time.Now()
 		for _, g := range batch {
+			g.timing.syncQueue = start.Sub(g.flushed)
+			g.timing.sync = end.Sub(start)
+			g.timing.reporting = end
+			err = report(g, err)
 			synced <- syncedGroup{g: g, err: err}
 		}
+		failed = err
 	}
 }
 
@@ -1712,7 +1767,7 @@ func (n *Node) Serve(id, first, last uint64, w io.Writer) error {
 	n.log.serving--
 	n.log.mu.Unlock()
 	n.log.wake()
-	n.tell(input{snapshot: id, served: true, servedOK: err == nil})
+	n.tell(input{snapshot: id, served: true, serveErr: err})
 	return err
 }
 

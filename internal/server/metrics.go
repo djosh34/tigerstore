@@ -280,6 +280,7 @@ var tigerstoreGauges = []struct {
 	{prometheus.NewDesc("tigerstore_disk_bytes", "Size of the log's files: segments, packs and checkpoints.", nil, nil), prometheus.GaugeValue, func(m *core.Metrics) int64 { return m.DiskBytes }},
 	{prometheus.NewDesc("tigerstore_disk_budget_bytes", "The disk budget of the log's files; 0 means none.", nil, nil), prometheus.GaugeValue, func(m *core.Metrics) int64 { return m.DiskBudget }},
 	{prometheus.NewDesc("tigerstore_cleaned_bytes_total", "Bytes that cleaning wrote into packs.", nil, nil), prometheus.CounterValue, func(m *core.Metrics) int64 { return m.CleanedBytes }},
+	{prometheus.NewDesc("tigerstore_range_reply_bytes", "Memory reserved for unary Range answers being read, encoded or sent.", nil, nil), prometheus.GaugeValue, func(m *core.Metrics) int64 { return m.RangeReplyBytes }},
 	{prometheus.NewDesc("tigerstore_cache_bytes", "Bytes of values in the value cache.", nil, nil), prometheus.GaugeValue, func(m *core.Metrics) int64 { return m.CacheBytes }},
 	{prometheus.NewDesc("tigerstore_cache_limit_bytes", "Bytes the value cache may hold now: the memory that the index and the entries in memory leave.", nil, nil), prometheus.GaugeValue, func(m *core.Metrics) int64 { return m.CacheLimit }},
 	{prometheus.NewDesc("tigerstore_cache_hits_total", "Values read from the value cache.", nil, nil), prometheus.CounterValue, func(m *core.Metrics) int64 { return m.CacheHits }},

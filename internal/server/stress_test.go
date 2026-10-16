@@ -77,7 +77,9 @@ func TestLargeValuesAtRealTicks(t *testing.T) {
 					_, err := kv.Put(ctx, &pb.PutRequest{Key: key, Value: value})
 					cancel()
 					if err != nil {
-						t.Errorf("put on node %d after %v: %v", id, time.Since(start), err)
+						end := time.Now()
+						t.Errorf("put on node %d after %v: %v; key=%q start=%s end=%s", id, end.Sub(start), err,
+							key, start.UTC().Format(time.RFC3339Nano), end.UTC().Format(time.RFC3339Nano))
 						return
 					}
 					puts.Add(1)
