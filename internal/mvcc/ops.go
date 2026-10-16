@@ -105,11 +105,16 @@ func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
 	if !res.values {
 		return res, nil
 	}
-	// The values of the answer take one allocation.
-	arena := make([]byte, 0, values)
+	// The values of an answer with several take one allocation; make
+	// zeroes it, which a copy of one value alone does not need.
+	var arena *[]byte
+	if len(res.KVs) > 1 {
+		b := make([]byte, 0, values)
+		arena = &b
+	}
 	for i := range res.KVs {
 		kv := &res.KVs[i]
-		if err := s.fill(kv.Key, kv.ref, &kv.Value, &arena); err != nil {
+		if err := s.fill(kv.Key, kv.ref, &kv.Value, arena); err != nil {
 			return RangeResult{}, err
 		}
 	}
