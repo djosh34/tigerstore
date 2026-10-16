@@ -194,8 +194,11 @@ func (s *Sim) maybeCorrupt(n *node) {
 			return
 		}
 	}
-	// Half the time the damage is in the checkpoint a synced root names.
-	if n.root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(n.root)) {
+	// Half the time the damage is in the checkpoint that recovery starts
+	// from: the newest root on the disk, which the crash may have kept
+	// though its sync never finished, so n.root does not know it yet
+	// (seed 439 damaged the older one, which recovery no longer reads).
+	if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(root)) {
 		n.corrupted = true
 		s.mix(0xc1, uint64(n.idx))
 		return
@@ -204,6 +207,16 @@ func (s *Sim) maybeCorrupt(n *node) {
 		n.corrupted = true
 		s.mix(0xc0, uint64(n.idx))
 	}
+}
+
+// recoveredRoot is the index of the root that recovery of n's disk would
+// start from now.
+func recoveredRoot(n *node) (uint64, error) {
+	w, rec, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return 0, err
+	}
+	return rec.Root.Index, w.Close()
 }
 
 // checkpoint is a copy of every disk as a power cut would leave it, the

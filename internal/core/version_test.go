@@ -38,7 +38,7 @@ func TestAnnounceRaisesVersionOnce(t *testing.T) {
 		if step.late {
 			base = 1
 		}
-		st.announce(step.id, step.v, base, index, voters)
+		st.announce(step.id, step.v, base, true, index, voters)
 		if st.version != step.want {
 			t.Fatalf("step %d: node %d announced %d, version %d, want %d", i, step.id, step.v, st.version, step.want)
 		}
@@ -50,21 +50,43 @@ func TestAnnouncementBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, base, err := parseAnnouncement(b); err != nil || v != 3 || base != 1234 {
-		t.Fatalf("got %d, %d, %v", v, base, err)
+	if v, base, has, err := parseAnnouncement(b); err != nil || v != 3 || base != 1234 || !has {
+		t.Fatalf("got %d, %d, %v, %v", v, base, has, err)
 	}
 	// A build before the base reads the version alone.
 	var old wrapperspb.UInt32Value
 	if err := proto.Unmarshal(b, &old); err != nil || old.Value != 3 {
 		t.Fatalf("plain message: %v, %v", old.Value, err)
 	}
-	// And this one reads its announcements with base 0.
+	// And this one reads its announcements without a base.
 	plain, err := proto.Marshal(wrapperspb.UInt32(2))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, base, err := parseAnnouncement(plain); err != nil || v != 2 || base != 0 {
-		t.Fatalf("got %d, %d, %v", v, base, err)
+	if v, _, has, err := parseAnnouncement(plain); err != nil || v != 2 || has {
+		t.Fatalf("got %d, %v, %v", v, has, err)
+	}
+}
+
+// TestLegacyAnnouncements replays announcements without a base, from a
+// build before #174: each counts, as it did there, so versions rise and a
+// rollback holds the cluster back; a later one with a base still works.
+func TestLegacyAnnouncements(t *testing.T) {
+	st := NewState(2, &mvcc.Heap{})
+	voters := []uint64{1, 2, 3}
+	for i, step := range []struct {
+		id      uint64
+		v, want uint32
+		legacy  bool
+	}{
+		{1, 2, 1, true}, {2, 2, 1, true}, {3, 1, 1, true}, // node 3 is older
+		{2, 1, 1, true}, {3, 2, 1, true}, // node 2 rolls back
+		{2, 2, 2, false}, // node 2 upgrades again with a new build
+	} {
+		st.announce(step.id, step.v, uint64(i), !step.legacy, uint64(i+1), voters)
+		if st.version != step.want {
+			t.Fatalf("step %d: version %d, want %d", i, st.version, step.want)
+		}
 	}
 }
 

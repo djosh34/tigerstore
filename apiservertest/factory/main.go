@@ -79,6 +79,10 @@ func run() error {
 			"--trusted-ca-file", filepath.Join(certs, "ca.pem"), "--client-cert-auth",
 			"--peer-cert-file", filepath.Join(certs, name+".pem"), "--peer-key-file", filepath.Join(certs, name+"-key.pem"),
 			"--peer-trusted-ca-file", filepath.Join(certs, "ca.pem"),
+			// As the version's own test server sets UnsafeNoFsync: tests
+			// such as TestCompact give a request 100 ms, which one fsync
+			// on a shared runner can pass.
+			"--unsafe-no-fsync",
 		}
 		if etcd != "" {
 			// tigerstore always verifies peer certificates.

@@ -517,7 +517,9 @@ type Node struct {
 	tokenWaits []tokenWait
 	// installs counts the persist jobs with a snapshot install that are
 	// not durable yet.
-	installs int
+	// installTop is the highest snapshot index among them.
+	installs   int
+	installTop uint64
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -1315,6 +1317,9 @@ func (n *Node) Persisted(job PersistJob) {
 	n.unpersisted -= job.bytes
 	if job.Install != nil {
 		n.installs--
+		if n.installs == 0 {
+			n.installTop = 0
+		}
 		if err := n.install(job.Install); err != nil {
 			n.fail(err)
 			return
@@ -1474,6 +1479,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 			if m.Snapshot != nil {
 				n.installs++
 				meta := m.Snapshot.GetMetadata()
+				n.installTop = max(n.installTop, meta.GetIndex())
 				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
 			}
 			if m.Vote != nil {

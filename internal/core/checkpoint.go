@@ -389,8 +389,12 @@ func (n *Node) copyChunk(limit int) {
 	}
 }
 
-// Installing reports whether a snapshot install is on its way to disk.
-func (n *Node) Installing() bool { return n.installs > 0 }
+// HoldsRootForInstall reports whether CheckpointWritten(index) asks for no
+// root only because an install of a later snapshot is on its way to disk,
+// behind whose root it would land (#182). The simulator counts these.
+func (n *Node) HoldsRootForInstall(index uint64) bool {
+	return n.installs > 0 && n.installTop > index && index == n.last.index && index > n.storage.ckpt.Index
+}
 
 // Copying reports whether a checkpoint is being copied out of the index.
 func (n *Node) Copying() bool { return n.copy != nil }

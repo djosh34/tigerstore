@@ -167,13 +167,13 @@ func learnerJoinsAndLeaves(t *testing.T, snapshot bool) {
 	<-c.nodes[4].Done()
 	// Raft drops a configuration change while the leader has not applied
 	// the one before, and the request times out, as in etcd; a client
-	// tries again.
+	// tries again. The client's 2 s may end first, before the server's 7 s.
 	retry(t, func(ctx context.Context) (*pb.MemberRemoveResponse, error) {
 		r, err := cl.MemberRemove(ctx, &pb.MemberRemoveRequest{ID: 4})
 		if errors.Is(err, rpctypes.ErrGRPCMemberNotFound) {
 			return r, nil
 		}
-		if err == nil || status.Code(err) != codes.Unavailable {
+		if code := status.Code(err); err == nil || code != codes.Unavailable && code != codes.DeadlineExceeded {
 			t.Fatalf("removing a removed member: %v, %v", r, err)
 		}
 		return r, err

@@ -136,7 +136,7 @@ func (s *Sim) checkpointSynced(e *event) {
 	if s.stepCrash(n) {
 		return
 	}
-	if n.core.Installing() {
+	if n.core.HoldsRootForInstall(index) {
 		s.stats.CheckpointsDuringInstall++
 	}
 	n.core.CheckpointWritten(index, nil)
