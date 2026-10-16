@@ -246,7 +246,15 @@ func (n *Node) applyConfChange(e *raftpb.Entry) error {
 		n.answer(p, rep, nil)
 	}
 	if err == nil && op == confRemove && m.ID == n.cfg.ID {
-		return ErrRemoved
+		if n.rn == nil {
+			return ErrRemoved
+		}
+		// Stopping here closes the transport before a removed leader's
+		// queued commit update reaches its followers. They can be left
+		// needing the old quorum, including us. As in etcd, keep Raft
+		// and the transport running for one second before shutting down.
+		// Recovery still refuses a disk that already commits our removal.
+		n.removeAt = n.now + n.cfg.ticksOf(1)
 	}
 	return nil
 }
