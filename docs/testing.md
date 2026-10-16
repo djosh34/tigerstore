@@ -164,7 +164,7 @@ The first long run on `main` ([38909081059](https://github.com/djosh34/tigerstor
 
 # Soak
 
-`soak.yml`, started by hand on `main` (`gh workflow run soak.yml --ref main`), runs `cmd/soak` for 5 hours: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects (about 0.9 GB of values, so reads miss the cache).
+`soak.yml`, started by hand on `main` (`gh workflow run soak.yml --ref main`), runs `cmd/soak` for 5 hours: three tigerstore processes, each in a cgroup of its own with a 640 MiB memory limit and a 3 GiB disk budget, under 600,000 Kubernetes-shaped objects. They hold about 0.9 GB of values. The preloaded events expire with their leases after 2 minutes, which leaves about 0.6 GB: still more than the value cache's share of the limit, so reads miss the cache.
 
 Sixteen workers make 400 calls per second in loadgen's mixed proportions:
 - creates and updates in Txns that compare the create or mod revision, as the apiserver does;
@@ -190,4 +190,4 @@ After each fault:
 
 No node may exit on its own or be killed by its memory limit, no alarm may go off, and a data directory may not pass its budget by more than 256 MiB.
 
-The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, and the longest recovery and catch-up. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.
+The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, its bytes cleaned and its cache hits and misses since its last start, and the longest recovery and catch-up. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.

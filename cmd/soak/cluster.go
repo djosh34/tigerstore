@@ -201,7 +201,7 @@ func (n *node) signal(sig syscall.Signal) error {
 		return err
 	}
 	if sig == syscall.SIGKILL {
-		for cmd.ProcessState == nil {
+		for {
 			if err := syscall.Kill(cmd.Process.Pid, 0); errors.Is(err, syscall.ESRCH) {
 				break
 			}

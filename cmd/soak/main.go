@@ -30,10 +30,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -132,15 +135,23 @@ type nodeStat struct {
 	OOMKills int64 `json:"oom_kills"`
 	Disk     int64 `json:"max_data_dir_bytes"`
 	Starts   int   `json:"starts"`
+	// Cleaned and the cache's hits and misses are the node's counters at
+	// the end, since its last start.
+	Cleaned     int64 `json:"cleaned_bytes"`
+	CacheHits   int64 `json:"cache_hits"`
+	CacheMisses int64 `json:"cache_misses"`
 }
 
 func (r *report) summary() string {
-	var calls int64
+	var calls, cleaned int64
 	for _, n := range r.Load.Calls {
 		calls += n
 	}
-	return fmt.Sprintf("%.0f s, %d calls, %d kills, %d holds with %d snapshot fetches, %d compactions, %d hash checks, final revision %d, max recovery %.1f s, max catch-up %.1f s",
-		r.Seconds, calls, r.Kills, r.Holds, r.Snapshots, r.Compactions, r.Hashes, r.Revision, r.Recovery, r.CatchUp)
+	for _, n := range r.Nodes {
+		cleaned += n.Cleaned
+	}
+	return fmt.Sprintf("%.0f s, %d calls, %d kills, %d holds with %d snapshot fetches, %d compactions, %d hash checks, final revision %d, max recovery %.1f s, max catch-up %.1f s, %d MiB cleaned",
+		r.Seconds, calls, r.Kills, r.Holds, r.Snapshots, r.Compactions, r.Hashes, r.Revision, r.Recovery, r.CatchUp, cleaned>>20)
 }
 
 // soak is one run.
@@ -318,7 +329,10 @@ func (s *soak) run(ctx context.Context) error {
 	if s.rep.Compactions == 0 && s.cfg.duration >= 2*s.cfg.compactEvery {
 		return fmt.Errorf("no compaction succeeded, %d failed", s.rep.CompactErrors)
 	}
-	return s.hashes(ctx)
+	if err := s.hashes(ctx); err != nil {
+		return err
+	}
+	return s.counters(ctx)
 }
 
 // faults kills a node every few minutes and holds a follower now and
@@ -491,8 +505,9 @@ func (s *soak) hold(ctx context.Context) error {
 }
 
 // hashes checks that the nodes agree on the hash of their keys at the
-// current revision. A compaction that lands between two of the answers
-// moves the revision the hash starts from, so then it asks all again.
+// current revision. Their compaction revisions may differ, as one may
+// land between the answers: the hash of a revision at or above both is
+// the same.
 func (s *soak) hashes(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, s.cfg.requestTimeout)
 	resp, err := s.l.cl.Get(cctx, "/soak/probe")
@@ -501,38 +516,75 @@ func (s *soak) hashes(ctx context.Context) error {
 		return fmt.Errorf("hash check: %w", err)
 	}
 	rev := resp.Header.Revision
-	for try := 0; ; try++ {
-		var hs [3]*clientv3.HashKVResponse
-		for _, n := range s.c.nodes {
-			deadline := time.Now().Add(time.Minute)
-			for {
-				cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				hs[n.i], err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
-				cancel()
-				if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
-					break
-				}
-				time.Sleep(time.Second)
-			}
-			if err != nil {
-				return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
-			}
-		}
-		if hs[0].CompactRevision != hs[1].CompactRevision || hs[0].CompactRevision != hs[2].CompactRevision {
-			if try == 10 {
-				return fmt.Errorf("at revision %d the nodes hash after compactions %d, %d and %d, ten times in a row", rev, hs[0].CompactRevision, hs[1].CompactRevision, hs[2].CompactRevision)
+	var first uint32
+	for _, n := range s.c.nodes {
+		var h *clientv3.HashKVResponse
+		deadline := time.Now().Add(time.Minute)
+		for {
+			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			h, err = n.one.HashKV(cctx, n.one.Endpoints()[0], rev)
+			cancel()
+			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
+				break
 			}
 			time.Sleep(time.Second)
-			continue
 		}
-		for i := 1; i < 3; i++ {
-			if hs[i].Hash != hs[0].Hash {
-				return &violation{fmt.Sprintf("at revision %d after compaction %d node1 hashes its keys to %08x, node%d to %08x", rev, hs[0].CompactRevision, hs[0].Hash, i+1, hs[i].Hash)}
-			}
+		if err != nil {
+			return fmt.Errorf("hash of node%d at revision %d: %w", n.i+1, rev, err)
 		}
-		s.rep.Hashes++
-		return nil
+		if n.i == 0 {
+			first = h.Hash
+		} else if h.Hash != first {
+			return &violation{fmt.Sprintf("at revision %d node1 hashes its keys to %08x, node%d to %08x", rev, first, n.i+1, h.Hash)}
+		}
 	}
+	s.rep.Hashes++
+	return nil
+}
+
+// counters records each node's cleaning and cache counters from its
+// metrics.
+func (s *soak) counters(ctx context.Context) error {
+	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: s.c.tls}, Timeout: 10 * time.Second}
+	for i, n := range s.c.nodes {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+s.c.endpoints[i]+"/metrics", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := hc.Do(req)
+		if err != nil {
+			return fmt.Errorf("metrics of node%d: %w", n.i+1, err)
+		}
+		b, err := io.ReadAll(resp.Body)
+		err = errors.Join(err, resp.Body.Close())
+		if err != nil {
+			return fmt.Errorf("metrics of node%d: %w", n.i+1, err)
+		}
+		st := &s.rep.Nodes[i]
+		for line := range strings.SplitSeq(string(b), "\n") {
+			name, value, ok := strings.Cut(line, " ")
+			if !ok {
+				continue
+			}
+			var dst *int64
+			switch name {
+			case "tigerstore_cleaned_bytes_total":
+				dst = &st.Cleaned
+			case "tigerstore_cache_hits_total":
+				dst = &st.CacheHits
+			case "tigerstore_cache_misses_total":
+				dst = &st.CacheMisses
+			default:
+				continue
+			}
+			f, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return fmt.Errorf("metrics of node%d: %s: %w", n.i+1, line, err)
+			}
+			*dst = int64(f)
+		}
+	}
+	return nil
 }
 
 // compact compacts every interval to the revision of the interval before.
@@ -645,9 +697,16 @@ func logSize(n *node) int64 {
 
 // logSince is what n's log file got from offset from on.
 func logSince(n *node, from int64) string {
-	b, err := os.ReadFile(n.log.Name())
-	if err != nil || int64(len(b)) < from {
+	f, err := os.Open(n.log.Name())
+	if err != nil {
 		return ""
 	}
-	return string(b[from:])
+	var b []byte
+	if _, err = f.Seek(from, io.SeekStart); err == nil {
+		b, err = io.ReadAll(f)
+	}
+	if err = errors.Join(err, f.Close()); err != nil {
+		return ""
+	}
+	return string(b)
 }

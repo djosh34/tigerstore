@@ -40,7 +40,9 @@ jobs:
         env:
           DURATION: ${{ inputs.duration }}
           SEED: ${{ inputs.seed }}
-        # 600,000 objects hold about 0.9 GB of values, above each node's
+        # 600,000 objects hold about 0.9 GB of values. The preloaded
+        # events go with their leases after 2 minutes, which leaves about
+        # 0.6 GB, still above the value cache's share of each node's
         # 640 MiB limit, so reads miss the cache and go to the disk.
         run: |
           "$RUNNER_TEMP/soak" -tigerstore "$RUNNER_TEMP/tigerstore" -out "$RUNNER_TEMP/soak-out" \
