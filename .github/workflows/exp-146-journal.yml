@@ -1,11 +1,7 @@
 name: exp-146-journal
 on:
-  workflow_dispatch:
-    inputs:
-      candidate:
-        default: work/146-disk
-      baseline:
-        default: main
+  push:
+    branches: [exp/146-journal]
 jobs:
   journal:
     runs-on: ubuntu-24.04-arm
@@ -19,8 +15,8 @@ jobs:
           go-version-file: go.mod
       - name: Build
         env:
-          CANDIDATE: ${{ inputs.candidate }}
-          BASELINE: ${{ inputs.baseline }}
+          CANDIDATE: work/146-disk
+          BASELINE: main
         run: |
           curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
           tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
