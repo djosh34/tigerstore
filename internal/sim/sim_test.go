@@ -96,49 +96,29 @@ func TestSeeds(t *testing.T) {
 		})
 	}
 	// Random faults can end a gray period or disk stall before the watchdog
-	// fires (#183, #218). Each shard runs both deliberate scenarios instead.
+	// fires (#183, #218), so each shard also runs both deliberate scenarios.
 	if ran >= 64 {
 		t.Run("stalled-leader", TestStalledLeaderIsReplaced)
 		t.Run("gray-leader", TestGrayLeaderIsReplaced)
 	}
-	if !t.Failed() {
-		if err := seedCoverage(ran, total); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
-}
-
-// seedCoverage checks the aggregate coverage of the exploratory seeds.
-// Watchdog coverage comes from the deliberate scenarios, not these counts.
-func seedCoverage(ran int, total Stats) error {
-	if ran >= 64 && (total.Fenced == 0 || total.Asymmetric == 0 ||
+	// Corruption, a link 10 times slower than its other direction and the
+	// other common events are rare in one run, but a set of seeds must see
+	// each.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0) {
-		return fmt.Errorf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
 			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
 	}
-	return nil
-}
-
-func TestSeedCoverage(t *testing.T) {
-	// Neither rare event occurred, even in a campaign-sized process.
-	total := Stats{Fenced: 1, Asymmetric: 1, RecoveryCrashes: 1, ErasedAtRoot: 1, ErasedAtRemoval: 1}
-	for _, n := range []int{64, 400, 2000, 2500} {
-		if err := seedCoverage(n, total); err != nil {
-			t.Errorf("zero rare events must not fail exploration: %v", err)
-		}
+	// A stalled leader that hands over and a gray leader the commit
+	// watchdog stops are rarer: about 0.9% of seeds had the first (#218),
+	// 0.75% to 1.1% the second (#183). Over 2000 seeds even 0.7% leaves
+	// less than one chance in a million of none. CI's shards of 400 do not
+	// reach that, the seed campaign does.
+	if ran >= 2000 && !t.Failed() && (total.StallHandOffs == 0 || total.GrayLeaderStops == 0) {
+		t.Fatalf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders; each must happen",
+			ran, total.StallHandOffs, total.GrayLeaderStops)
 	}
-	// The other aggregate requirements retain their 64-seed threshold.
-	for _, count := range []*int{&total.Fenced, &total.Asymmetric, &total.RecoveryCrashes, &total.ErasedAtRoot, &total.ErasedAtRemoval} {
-		*count = 0
-		if err := seedCoverage(63, total); err != nil {
-			t.Error(err)
-		}
-		if err := seedCoverage(64, total); err == nil {
-			t.Errorf("missing common event passed: %+v", total)
-		}
-		*count = 1
-	}
+	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
 }
 
 // checkers runs the independent checkers of package check on a run:

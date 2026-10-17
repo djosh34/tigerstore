@@ -105,6 +105,8 @@ var plantedCases = map[string]plantedCase{
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
 	"B27": {seeds: 2048, cfg: slowFetchConfig, want: refused},
+	// Seed 1 updates the URLs only after healing and catches B28 there;
+	// the case wants a catch during faults.
 	"B28": {first: 2, seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged.*during faults`},
 }
 
