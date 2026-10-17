@@ -5,8 +5,8 @@
 // a peer), Tick (one clock tick) and Persisted (a disk write finished).
 // Process returns the effects: disk writes, messages to send and replies.
 // The core never does I/O, never reads the clock, never starts a goroutine
-// and has no randomness of its own, so the simulator can run it exactly
-// as the real node does.
+// and has no randomness of its own: its driver, internal/node, does those,
+// in production and in the simulator.
 package core
 
 import (

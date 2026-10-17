@@ -1,7 +1,7 @@
 // Package node runs one tigerstore node: the committer goroutine that owns
 // the core, the disk goroutine that persists the log, and the hookup to the
-// peer transport. It is the real-world driver of core.Node; the simulator
-// is the other one.
+// peer transport. It is the driver of core.Node, in production and in the
+// simulator, which runs it on simulated disks and links.
 package node
 
 import (
