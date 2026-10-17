@@ -4,16 +4,22 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/djosh34/tigerstore/internal/wal"
 	"github.com/djosh34/tigerstore/internal/simfs"
+	"github.com/djosh34/tigerstore/internal/wal"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
 func TestCompressionWaitsForEveryVoter(t *testing.T) {
 	w, _, err := wal.Open(simfs.New())
-	if err != nil { t.Fatal(err) }
-	defer func() { if err := w.Close(); err != nil { t.Error(err) } }()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	c := newMemCluster(t, func(cfg *Config) {
 		cfg.MaxVersion = 4
 		if cfg.ID == 3 {

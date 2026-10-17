@@ -224,7 +224,8 @@ func concurrentCleaning(t *testing.T, seed uint64) (err error) {
 		cancel()
 		err = errors.Join(err, lostValue(<-ran))
 	}()
-	cold, hot := keys("c", 24), keys("h", 24)
+	// Cold values stay compressible; hot churn must still fill the disk.
+	cold, hot := keys("c", 24), keys("noise-h", 24)
 	want := map[string]int{}
 	if _, err := putAll(n, 0, cold...); err != nil {
 		return err

@@ -24,29 +24,29 @@ import (
 )
 
 type config struct {
-	endpoints   []string
-	workload    string
-	mix         string
-	valueSize   int
-	corpus string
+	endpoints    []string
+	workload     string
+	mix          string
+	valueSize    int
+	corpus       string
 	randomCorpus bool
-	walMetrics string
-	keys        int
-	conns       int
-	streams     int
-	rate        float64
-	preloadRate float64
-	warmup      time.Duration
-	duration    time.Duration
-	watchers    int
-	page        int
-	pids        []int
-	disk        string
-	label       string
-	seed        uint64
-	out         string
-	cacert      string
-	cert, key   string
+	walMetrics   string
+	keys         int
+	conns        int
+	streams      int
+	rate         float64
+	preloadRate  float64
+	warmup       time.Duration
+	duration     time.Duration
+	watchers     int
+	page         int
+	pids         []int
+	disk         string
+	label        string
+	seed         uint64
+	out          string
+	cacert       string
+	cert, key    string
 }
 
 var workloads = []string{"put", "txn", "delete", "range", "list", "watch", "mixed"}
@@ -156,7 +156,7 @@ type result struct {
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
 	// all servers on it and anything else, per operation.
 	DiskBytesPerOp float64          `json:"disk_bytes_per_op,omitempty"`
-	WALBytesPerOp float64 `json:"wal_bytes_per_op,omitempty"`
+	WALBytesPerOp  float64          `json:"wal_bytes_per_op,omitempty"`
 	Errors         map[string]int64 `json:"errors"`
 }
 
@@ -296,7 +296,9 @@ func run(cfg config) (*result, error) {
 	if cfg.corpus != "" {
 		var err error
 		corpus, err = loadCorpus(cfg.corpus)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 	}
 	loads := make([]load, len(workers))
 	for i := range workers {
@@ -321,7 +323,9 @@ func run(cfg config) (*result, error) {
 		case "put":
 			if len(corpus) > 0 {
 				loads[i], err = newCorpusPut(b, corpus, cfg.randomCorpus, cfg.seed+uint64(i))
-				if err != nil { return nil, err }
+				if err != nil {
+					return nil, err
+				}
 			} else {
 				loads[i] = &putLoad{base: b}
 			}
@@ -389,7 +393,9 @@ func run(cfg config) (*result, error) {
 			samples[i] = s
 			if cfg.walMetrics != "" {
 				walSamples[i], sampleErr = sampleWAL(cfg.walMetrics)
-				if sampleErr != nil { return }
+				if sampleErr != nil {
+					return
+				}
 			}
 		}
 	})
@@ -423,12 +429,14 @@ func run(cfg config) (*result, error) {
 
 	res := summarize(cfg, workers, watches, samples)
 	if cfg.walMetrics != "" && res.Ops > 0 {
-		res.WALBytesPerOp = (walSamples[1]-walSamples[0])/float64(res.Ops)
+		res.WALBytesPerOp = (walSamples[1] - walSamples[0]) / float64(res.Ops)
 	}
 	if len(corpus) > 0 {
 		res.ValueSize = 0
 		res.SizeSource = "Kubernetes 1.37 live etcd corpus; native mixed lengths"
-		if cfg.randomCorpus { res.SizeSource += "; independent random bytes per connection at identical lengths" }
+		if cfg.randomCorpus {
+			res.SizeSource += "; independent random bytes per connection at identical lengths"
+		}
 	}
 	if len(res.Errors) > 0 {
 		errs = append(errs, fmt.Errorf("%d kinds of request errors, see the result", len(res.Errors)))

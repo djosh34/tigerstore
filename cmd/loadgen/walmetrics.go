@@ -15,7 +15,9 @@ func sampleWAL(endpoints string) (float64, error) {
 	var total float64
 	for _, endpoint := range strings.Split(endpoints, ",") {
 		resp, err := client.Get(endpoint + "/metrics")
-		if err != nil { return 0, err }
+		if err != nil {
+			return 0, err
+		}
 		var value float64
 		found := false
 		scanner := bufio.NewScanner(resp.Body)
@@ -28,8 +30,12 @@ func sampleWAL(endpoints string) (float64, error) {
 			}
 		}
 		err = errors.Join(err, scanner.Err(), resp.Body.Close())
-		if err != nil { return 0, err }
-		if resp.StatusCode != http.StatusOK || !found { return 0, fmt.Errorf("no WAL write counter at %s: HTTP %d", endpoint, resp.StatusCode) }
+		if err != nil {
+			return 0, err
+		}
+		if resp.StatusCode != http.StatusOK || !found {
+			return 0, fmt.Errorf("no WAL write counter at %s: HTTP %d", endpoint, resp.StatusCode)
+		}
 		total += value
 	}
 	return total, nil

@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
+	"encoding/base64"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -111,7 +110,7 @@ func TestMetadataAfterCleaning(t *testing.T) {
 	// remain untouched after 'through'. This also forces new checkpoints.
 	for round := range 100 {
 		call(n, &pb.InternalRaftRequest{AuthUserChangePassword: &pb.AuthUserChangePasswordRequest{
-			Name: "padding", HashedPassword: fmt.Sprintf("%d-%s", round, strings.Repeat("x", 16<<10)),
+			Name: "padding", HashedPassword: base64.RawStdEncoding.EncodeToString(cleaningNoise("password", round, 12<<10)),
 		}})
 	}
 	for id := uint64(1); id <= 2; id++ {

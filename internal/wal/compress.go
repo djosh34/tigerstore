@@ -59,7 +59,9 @@ func (w *WAL) CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) 
 		if w.encoder == nil {
 			var err error
 			w.encoder, err = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)), zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(true))
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 		}
 		header := binary.LittleEndian.AppendUint32([]byte{0, compressionVersion, 0}, uint32(len(data)))
 		packed := w.encoder.EncodeAll(data[2:], header)
@@ -104,7 +106,7 @@ type compressedReader struct {
 	at         int64
 	index, seq uint64
 	seed       uint32
-	decoder *zstd.Decoder
+	decoder    *zstd.Decoder
 }
 
 func (r compressedReader) ReadAt(p []byte, off int64) (int, error) {

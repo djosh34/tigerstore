@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -66,7 +67,21 @@ func runClean(t *testing.T, dir string, budget int64, changes ...func(*Config)) 
 
 // bigValue is a value of about 1 KiB.
 func bigValue(key string, round int) []byte {
+	if strings.HasPrefix(key, "noise-") {
+		return cleaningNoise(key, round, 1024)
+	}
 	return fmt.Appendf(nil, "%s of round %d %01000d", key, round, 0)
+}
+
+// cleaningNoise makes deterministic incompressible churn so compression
+// does not remove the disk pressure that a cleaning scenario requires.
+func cleaningNoise(key string, round, size int) []byte {
+	b := make([]byte, size)
+	for at := 0; at < len(b); at += sha256.Size {
+		sum := sha256.Sum256(fmt.Appendf(nil, "%s/%d/%d", key, round, at))
+		copy(b[at:], sum[:])
+	}
+	return b
 }
 
 // putAll writes keys in one transaction and returns its revision.

@@ -45,8 +45,8 @@ import (
 	"slices"
 	"strings"
 
-	"go.etcd.io/raft/v3/raftpb"
 	"github.com/klauspost/compress/zstd"
+	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -225,9 +225,9 @@ type valueRec struct {
 type WAL struct {
 	encoder *zstd.Encoder // only the disk writer uses it
 	decoder *zstd.Decoder // DecodeAll is safe for concurrent cold readers
-	fs  FS
-	seg File
-	seq uint64
+	fs      FS
+	seg     File
+	seq     uint64
 	// version is the format of the newest segment, size where its records
 	// end, and reused whether its file was a spare, which may hold more
 	// after the records.
@@ -308,7 +308,9 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 
 	w := &WAL{fs: fs, maxSize: SegmentBytes, spares: MaxSpares, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
 	w.decoder, err = zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxEntryBytes), zstd.WithDecoderMaxWindow(MaxEntryBytes))
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 	rec := &Recovered{}
 	// first is the index of the first entry the scan found, 0 for none.
 	var first uint64
@@ -942,7 +944,9 @@ func (w *WAL) SetSpares(n int) error {
 func (w *WAL) Close() error {
 	w.decoder.Close()
 	var codecErr error
-	if w.encoder != nil { codecErr = w.encoder.Close() }
+	if w.encoder != nil {
+		codecErr = w.encoder.Close()
+	}
 	var err error
 	if w.seg != nil {
 		err = w.seg.Close()
