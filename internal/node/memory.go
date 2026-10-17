@@ -72,11 +72,11 @@ func ProcessMemory(limit int64) int64 {
 // counts as the runtime holds it.
 type memoryGauge struct {
 	samples []metrics.Sample
-	// gcs is the count of finished collections at the last read, cache
-	// the cache's bytes then, and other the result as of the last
-	// collection.
-	gcs          uint64
-	cache, other int64
+	// gcs is the count of finished collections at the last read, low
+	// the cache's low mark of the span before, and other the result as
+	// of the last collection.
+	gcs        uint64
+	low, other int64
 }
 
 func newMemoryGauge() *memoryGauge {
@@ -95,29 +95,26 @@ func newMemoryGauge() *memoryGauge {
 	return g
 }
 
-// read returns what the process uses besides a value cache that holds
-// cache bytes now, and whether a collection finished since the last
-// read. The live heap changes only when a collection finishes, and it
-// held the cache as it was then: somewhere between its size after the
-// last read (shrunk) and now. The smaller of the two counts, so that
-// bytes the cache let go of before the collection never count as room
-// (an overestimate of the rest only shrinks the cache).
-func (g *memoryGauge) read(cache int64) (int64, bool) {
+// read returns what the process uses besides the value cache, and
+// whether a collection finished since the last read. The live heap
+// changes only when a collection finishes, and it held at least the
+// smallest the cache was since the read before the last: low, since the
+// last read (core.Node.CacheLow), or the span before, where the
+// collection may have started. Only that counts as the cache's, so that
+// bytes it let go of before the collection never count as room; an
+// overestimate of the rest only shrinks the cache.
+func (g *memoryGauge) read(low int64) (int64, bool) {
 	metrics.Read(g.samples)
 	v := func(i int) int64 { return int64(g.samples[i].Value.Uint64()) }
 	gcs := g.samples[0].Value.Uint64()
 	fresh := gcs != g.gcs
 	if fresh {
 		outside := v(2) - v(3) - v(4) - v(5)
-		g.gcs, g.other = gcs, max(v(1)+outside-min(g.cache, cache), 0)
+		g.gcs, g.other = gcs, max(v(1)+outside-min(g.low, low), 0)
 	}
-	g.cache = cache
+	g.low = low
 	return g.other, fresh
 }
-
-// shrunk records the cache's size once the core fitted it to the last
-// read.
-func (g *memoryGauge) shrunk(cache int64) { g.cache = min(g.cache, cache) }
 
 // cgroupLimit returns the lowest memory.max of the process's cgroup and
 // the cgroups above it, and false if none has a limit.

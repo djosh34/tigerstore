@@ -352,7 +352,8 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	if err := r.loop(); err != nil {
 		return err
 	}
-	if !r.quorum() {
+	refused := slices.ContainsFunc(r.nodes, func(n *node) bool { return n.inactive && !n.fenced })
+	if refused && !r.quorum() {
 		// A member whose disk commits its own removal refuses it, as
 		// etcd's does, and with the erased disk the others can be left
 		// without a quorum of the voters they know: nothing commits.

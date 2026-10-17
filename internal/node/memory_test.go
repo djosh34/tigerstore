@@ -123,23 +123,31 @@ func TestMemoryGauge(t *testing.T) {
 	}
 }
 
-// TestMemoryGaugeAfterEviction drops a 32 MiB cache between two reads, as
-// the core does when the rest grows. The bytes it let go of must not
-// count as room for the cache.
+// TestMemoryGaugeAfterEviction drops a 32 MiB cache, collects, and fills
+// a new one before the next read, as the core may between two ticks. The
+// cache's sizes at both reads are 32 MiB, but its low mark between them
+// is 0: the bytes it let go of must not count as room.
 func TestMemoryGaugeAfterEviction(t *testing.T) {
 	g := newMemoryGauge()
-	cache := make([]byte, 32<<20)
-	for i := range cache {
-		cache[i] = 1
+	fill := func() []byte {
+		b := make([]byte, 32<<20)
+		for i := range b {
+			b[i] = 1
+		}
+		return b
 	}
+	cache := fill()
+	g.read(32 << 20)
+	runtime.GC()
 	g.read(32 << 20)
 	runtime.GC()
 	before, _ := g.read(32 << 20)
-	g.shrunk(0)
 	runtime.KeepAlive(cache)
 	runtime.GC()
+	cache = fill()
 	other, fresh := g.read(0)
-	if !fresh || other < 0 || other < before-8<<20 {
-		t.Fatalf("after the cache let go of 32 MiB: %d bytes besides it, %d before (fresh %v)", other, before, fresh)
+	runtime.KeepAlive(cache)
+	if !fresh || other < before-8<<20 {
+		t.Fatalf("after the cache let go of 32 MiB and took 32 MiB more: %d bytes besides it, %d before (fresh %v)", other, before, fresh)
 	}
 }

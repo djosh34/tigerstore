@@ -22,8 +22,9 @@ import (
 // overwritten ones frees memory.
 type cache struct {
 	// bytes counts every value with cachedOverhead and every slot of
-	// items up to peak with slotOverhead.
-	limit, bytes int64
+	// items up to peak with slotOverhead, and low is the smallest it was
+	// since the last CacheLow.
+	limit, bytes, low int64
 	items        map[mvcc.Ref]*cached
 	// peak is the most values items held since it was made. A Go map
 	// keeps its memory as it empties, so items is made again once it
@@ -114,7 +115,7 @@ func (c *cache) setLimit(limit int64) {
 func (c *cache) clear() {
 	c.items, c.peak = map[mvcc.Ref]*cached{}, 0
 	c.head.prev, c.head.next = &c.head, &c.head
-	c.bytes = 0
+	c.bytes, c.low = 0, 0
 }
 
 // fit drops the least recently used values until the cache is within
@@ -135,6 +136,7 @@ func (c *cache) remove(e *cached) {
 		c.bytes -= int64(c.peak-len(items)) * slotOverhead
 		c.items, c.peak = items, len(items)
 	}
+	c.low = min(c.low, c.bytes)
 }
 
 func (c *cache) push(e *cached) {
@@ -166,8 +168,15 @@ func (n *Node) SetOtherMemory(bytes int64) {
 	n.fitCache()
 }
 
-// CacheBytes is what the value cache holds.
-func (n *Node) CacheBytes() int64 { return n.cache.bytes }
+// CacheLow is the smallest the value cache held since the last call,
+// and the next span starts from what it holds now. A collection of the
+// garbage collector in between found at least that much of it live,
+// whatever it dropped and took in meanwhile.
+func (n *Node) CacheLow() int64 {
+	low := n.cache.low
+	n.cache.low = n.cache.bytes
+	return low
+}
 
 // fitCache sets the cache's limit to the memory the rest of the process
 // leaves.

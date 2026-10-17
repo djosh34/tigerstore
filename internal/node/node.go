@@ -680,8 +680,6 @@ func (n *Node) open() error {
 	// new one loads, so that the two are never in memory at once.
 	reload := n.core != nil
 	n.core = nil
-	// The gauge must not take the old core's cache for room.
-	n.memory.cache = 0
 	if reload && n.cfg.reloading != nil {
 		n.cfg.reloading(n)
 	}
@@ -1115,9 +1113,8 @@ func (n *Node) measureMemory(streams map[uint64]*WatchStream) {
 	if limit <= 0 {
 		return
 	}
-	other, fresh := n.memory.read(n.core.CacheBytes())
+	other, fresh := n.memory.read(n.core.CacheLow())
 	n.core.SetOtherMemory(other)
-	n.memory.shrunk(n.core.CacheBytes())
 	if !fresh || other < limit {
 		return
 	}

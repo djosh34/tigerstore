@@ -190,3 +190,24 @@ func TestCacheShrinksAsOtherMemoryGrows(t *testing.T) {
 		t.Fatalf("the rest of the process takes all the memory, yet %d values are cached", len(s.n.cache.items))
 	}
 }
+
+// TestCacheLow checks the low mark the memory gauge relies on: a cache
+// that is emptied and then filled again between two calls reports the
+// empty cache, and the next span starts from its size then.
+func TestCacheLow(t *testing.T) {
+	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = 1 << 20 })
+	full := s.n.cache.bytes
+	if full == 0 {
+		t.Fatal("setup: nothing cached")
+	}
+	s.n.CacheLow()
+	s.n.cache.setLimit(0)
+	s.n.cache.setLimit(1 << 20)
+	s.n.cache.add(mvcc.Ref{Index: 1 << 40, Len: 1000}, make([]byte, 1000))
+	if low := s.n.CacheLow(); low != 0 {
+		t.Fatalf("emptied and filled again: low %d, want 0", low)
+	}
+	if low, now := s.n.CacheLow(), s.n.cache.bytes; low != now || now == 0 {
+		t.Fatalf("next span: low %d, cache %d", low, now)
+	}
+}
