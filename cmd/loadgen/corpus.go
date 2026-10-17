@@ -14,9 +14,13 @@ import (
 // uses the same lengths, with an independent byte stream per connection.
 func loadCorpus(path string) ([][]byte, error) {
 	b, err := os.ReadFile(path)
-	if err != nil { return nil, err }
-	var dump struct { KVs []struct { Key, Value []byte } }
-	if err := json.Unmarshal(b, &dump); err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
+	var dump struct{ KVs []struct{ Key, Value []byte } }
+	if err := json.Unmarshal(b, &dump); err != nil {
+		return nil, err
+	}
 	var values [][]byte
 	var total, excluded int
 	for _, kv := range dump.KVs {
@@ -27,14 +31,18 @@ func loadCorpus(path string) ([][]byte, error) {
 		values = append(values, kv.Value)
 		total += len(kv.Value)
 	}
-	if len(values) == 0 { return nil, errors.New("empty Kubernetes corpus") }
-	if _, err := fmt.Fprintf(os.Stderr, "Kubernetes corpus: %d values, %d bytes, mean %.2f B, %d excluded outside /registry/ or 8..51200 B\n", len(values), total, float64(total)/float64(len(values)), excluded); err != nil { return nil, err }
+	if len(values) == 0 {
+		return nil, errors.New("empty Kubernetes corpus")
+	}
+	if _, err := fmt.Fprintf(os.Stderr, "Kubernetes corpus: %d values, %d bytes, mean %.2f B, %d excluded outside /registry/ or 8..51200 B\n", len(values), total, float64(total)/float64(len(values)), excluded); err != nil {
+		return nil, err
+	}
 	return values, nil
 }
 
 type corpusPutLoad struct {
 	putLoad
-	templates []*template
+	templates    []*template
 	nextTemplate int
 }
 
@@ -44,7 +52,9 @@ func newCorpusPut(b base, values [][]byte, random bool, seed uint64) (*corpusPut
 	for _, v := range values {
 		if random {
 			v = make([]byte, len(v))
-			if _, err := rng.Read(v); err != nil { return nil, err }
+			if _, err := rng.Read(v); err != nil {
+				return nil, err
+			}
 		}
 		m := newMsg()
 		m.key(putKey, b.ks.size)
@@ -52,18 +62,26 @@ func newCorpusPut(b base, values [][]byte, random bool, seed uint64) (*corpusPut
 		m.keys = nil // Only the small key in the first DATA frame is patched.
 		m.bytes(putValue, v)
 		t, err := newTemplate("/etcdserverpb.KV/Put", m, true)
-		if err != nil { return nil, err }
-		if keyAt+b.ks.size+grpcPrefixLen > maxDataFrame { return nil, errors.New("corpus key crosses a frame") }
-		t.keys = []int{frameHeaderLen+grpcPrefixLen+keyAt}
+		if err != nil {
+			return nil, err
+		}
+		if keyAt+b.ks.size+grpcPrefixLen > maxDataFrame {
+			return nil, errors.New("corpus key crosses a frame")
+		}
+		t.keys = []int{frameHeaderLen + grpcPrefixLen + keyAt}
 		w.templates = append(w.templates, t)
 	}
 	return w, nil
 }
 
 func (w *corpusPutLoad) start(c *conn, st *stream) bool {
-	if w.nextTemplate < 0 { w.nextTemplate = w.rng.IntN(len(w.templates)) }
+	if w.nextTemplate < 0 {
+		w.nextTemplate = w.rng.IntN(len(w.templates))
+	}
 	t := w.templates[w.nextTemplate]
-	if !c.canStart(t, w.limit) { return false }
+	if !c.canStart(t, w.limit) {
+		return false
+	}
 	k := w.own[w.rng.IntN(len(w.own))]
 	st.slot = k
 	r := c.startStream(st, t)

@@ -164,6 +164,7 @@ start() {
 			--listen-client-urls "$client" \
 			--advertise-client-urls "$client" \
 			--listen-peer-urls "$peer" \
+			--listen-metrics-urls "http://127.0.0.1:$((port + 10 * i + 2))" \
 			--initial-advertise-peer-urls "$peer" \
 			--initial-cluster "$initial" \
 			--initial-cluster-token bench \

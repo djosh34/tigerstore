@@ -6,8 +6,8 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 all_runs = {}
-print("| Values | Store | Mode | Put/s min / median / max | p99 ms min / median / max | Physical B/Put min / median / max |")
-print("| --- | --- | --- | ---: | ---: | ---: |")
+print("| Values | Store | Mode | Put/s min / median / max | p99 ms min / median / max | Physical B/Put min / median / max | WAL B/Put min / median / max |")
+print("| --- | --- | --- | ---: | ---: | ---: | ---: |")
 for content in ("real", "random"):
     for target in ("etcd", "baseline", "candidate"):
         for mode in ("max", "rate"):
@@ -18,8 +18,13 @@ for content in ("real", "random"):
             all_runs[content, target, mode] = runs
             fields = ([r["throughput"] for r in runs], [r["latency_us"]["p99"] / 1000 for r in runs], [r["disk_bytes_per_op"] for r in runs])
             cells = [" / ".join(f"{x:.3f}" for x in (min(xs), statistics.median(xs), max(xs))) for xs in fields]
+            if target != "etcd":
+                xs = [r["wal_bytes_per_op"] for r in runs]
+                cells.append(" / ".join(f"{x:.3f}" for x in (min(xs), statistics.median(xs), max(xs))))
+            else:
+                cells.append("not sampled")
             print(f"| {content} | {target} | {mode} | " + " | ".join(cells) + " |")
-print("\nBytes are block-device writes over the measurement window, summed across all three replicas, including filesystem journal and any other runner writes. They are not compressed payload sizes or per-replica bytes. Each operation is one Put RPC. Rate is half etcd's median max rate for that value set.")
+print("\nBytes are block-device writes over the measurement window, summed across all three replicas, including filesystem journal and any other runner writes. The separate WAL counter sums all three replicas' actual Flush bytes, including record framing and hard state, but excludes checkpoints, packs and filesystem overhead. Neither column is per replica. Each operation is one Put RPC. Rate is half etcd's median max rate for that value set.")
 for content in ("real", "random"):
     for mode in ("max", "rate"):
         base = all_runs[content, "baseline", mode]

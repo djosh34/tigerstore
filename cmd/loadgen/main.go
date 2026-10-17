@@ -30,6 +30,7 @@ type config struct {
 	valueSize   int
 	corpus string
 	randomCorpus bool
+	walMetrics string
 	keys        int
 	conns       int
 	streams     int
@@ -70,6 +71,7 @@ func parseFlags(args []string) (config, error) {
 	fs.IntVar(&cfg.page, "page", 500, "list workload: the limit of each LIST page; keys spread over 100 namespaces")
 	pids := fs.String("pids", "", "comma-separated pids of the server processes, for server CPU per operation")
 	fs.StringVar(&cfg.disk, "disk", "", "device or partition in /proc/diskstats, such as sda1, whose bytes written in the window are reported per operation")
+	fs.StringVar(&cfg.walMetrics, "wal-metrics", "", "comma-separated HTTP metrics URLs for tigerstore WAL bytes in the measurement window")
 	fs.StringVar(&cfg.label, "label", "", "name of the store under test, copied into the result")
 	fs.Uint64Var(&cfg.seed, "seed", 1, "random seed")
 	fs.StringVar(&cfg.out, "out", "", "write the JSON result to this file instead of stdout")
@@ -154,6 +156,7 @@ type result struct {
 	// DiskBytesPerOp counts every byte -disk wrote in the window, from
 	// all servers on it and anything else, per operation.
 	DiskBytesPerOp float64          `json:"disk_bytes_per_op,omitempty"`
+	WALBytesPerOp float64 `json:"wal_bytes_per_op,omitempty"`
 	Errors         map[string]int64 `json:"errors"`
 }
 
@@ -372,6 +375,7 @@ func run(cfg config) (*result, error) {
 	}
 
 	var samples [2]cpuSample
+	var walSamples [2]float64
 	var sampleErr error
 	var sampler sync.WaitGroup
 	sampler.Go(func() {
@@ -383,6 +387,10 @@ func run(cfg config) (*result, error) {
 				return
 			}
 			samples[i] = s
+			if cfg.walMetrics != "" {
+				walSamples[i], sampleErr = sampleWAL(cfg.walMetrics)
+				if sampleErr != nil { return }
+			}
 		}
 	})
 	perConn := cfg.rate / float64(cfg.conns)
@@ -414,6 +422,9 @@ func run(cfg config) (*result, error) {
 	}
 
 	res := summarize(cfg, workers, watches, samples)
+	if cfg.walMetrics != "" && res.Ops > 0 {
+		res.WALBytesPerOp = (walSamples[1]-walSamples[0])/float64(res.Ops)
+	}
 	if len(corpus) > 0 {
 		res.ValueSize = 0
 		res.SizeSource = "Kubernetes 1.37 live etcd corpus; native mixed lengths"

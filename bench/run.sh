@@ -150,7 +150,11 @@ once() {
 	"$here/cluster.sh" stop "$dir"
 	env TMPFS_DIR="$tmpfs/$target" "${place[@]}" "$here/cluster.sh" start "$(kind "$target")" "$bins/$target" "$dir" "${layout[@]:1}"
 	cp "$dir/placement.json" "$out/$bench/$target-$mode-$rep.placement"
-	local status=0 endpoint_file=leader
+	local status=0 endpoint_file=leader metrics_flags=()
+	if [ "${#corpus_flags[@]}" -gt 0 ] && [ "$target" != etcd ]; then
+		local port=${BENCH_PORT:-20000}
+		metrics_flags=(-wal-metrics "http://127.0.0.1:$((port+12)),http://127.0.0.1:$((port+22)),http://127.0.0.1:$((port+32))")
+	fi
 	if [ "$workload" = mixed ]; then endpoint_file=endpoints; fi
 	taskset -c "${layout[0]}" "$loadgen" \
 		-endpoints "$(cat "$dir/$endpoint_file")" \
@@ -159,7 +163,7 @@ once() {
 		-label "$target" \
 		-workload "$workload" \
 		-value-size "$size" \
-		"${corpus_flags[@]}" \
+		"${corpus_flags[@]}" "${metrics_flags[@]}" \
 		-watchers "$watchers" \
 		-warmup "$warmup" \
 		-duration "$duration" \
