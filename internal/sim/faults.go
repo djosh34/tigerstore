@@ -228,7 +228,9 @@ type checkpoint struct {
 	bad     []bool
 	// runs are the nodes' run numbers, which a real node keeps on its
 	// disk with the log.
-	runs []uint64
+	runs     []uint64
+	ids      []uint64
+	inactive []bool
 }
 
 func (s *Sim) newCheckpoint() *checkpoint {
@@ -237,6 +239,8 @@ func (s *Sim) newCheckpoint() *checkpoint {
 		c.disks = append(c.disks, n.disk.Durable())
 		c.bad = append(c.bad, n.corrupted)
 		c.runs = append(c.runs, n.runs)
+		c.ids = append(c.ids, n.id)
+		c.inactive = append(c.inactive, n.inactive)
 	}
 	return c
 }
@@ -278,7 +282,7 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 func disagree(nodes []*node) (*node, *node) {
 	var first *node
 	for _, n := range nodes {
-		if n.fenced {
+		if n.fenced || n.inactive {
 			continue
 		}
 		if first == nil {
@@ -295,7 +299,7 @@ func disagree(nodes []*node) (*node, *node) {
 // Every entry and state they reach up to the index applied at the
 // checkpoint is checked against the run's record as they go.
 func (s *Sim) coldRestart(c *checkpoint, erased int) error {
-	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0})
+	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0, Membership: s.cfg.Membership})
 	r.endAt = 6 * Second
 	r.healed = true
 	r.base, r.baseUpTo = s.log, c.applied
@@ -305,7 +309,13 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 		}
 		r.addNode(i, d.Durable())
 		r.nodes[i].runs = c.runs[i]
-		if i == erased {
+		r.nodes[i].id = c.ids[i]
+		// A process stopped by a peer's removed-member reply may not
+		// have the removal on disk. Cold boot must recover that disk,
+		// not copy the old process's volatile stopped flag. Only a node
+		// that never joined stays absent without trying recovery.
+		r.nodes[i].inactive = c.inactive[i] && c.runs[i] == 0
+		if i == erased || r.nodes[i].inactive {
 			r.nodes[i].fenced = true
 			continue
 		}
@@ -326,11 +336,17 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
-		return fmt.Errorf("the two restarted nodes did not converge: applied %d and %d", a.core.Applied(), b.core.Applied())
+		return fmt.Errorf("cold restart did not converge: node %d applied %d, members %v, removed %v; node %d applied %d, members %v, removed %v; checkpoint applied %d, inactive %v",
+			a.id, a.core.Applied(), a.core.Members(), a.core.RemovedMembers(), b.id, b.core.Applied(), b.core.Members(), b.core.RemovedMembers(), c.applied, c.inactive)
 	}
 	for _, n := range r.nodes {
-		if !n.fenced && n.core.Applied() < c.applied {
-			return fmt.Errorf("the two left apply %d entries, but %d were applied before", n.core.Applied(), c.applied)
+		if !n.fenced && !n.inactive && n.core.Applied() < c.applied {
+			var active []uint64
+			for _, live := range r.live() {
+				active = append(active, live.id)
+			}
+			return fmt.Errorf("cold restart: node %d applied %d entries, but %d were applied before; leader %d, members %v, active %v, inactive at copy %v",
+				n.id, n.core.Applied(), c.applied, n.core.Leader(), n.core.Members(), active, c.inactive)
 		}
 	}
 	return nil

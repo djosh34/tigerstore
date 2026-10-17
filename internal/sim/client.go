@@ -42,6 +42,8 @@ type clientOp struct {
 	client *client
 	rec    *Record
 	done   bool
+	// member calls have their own response checker, outside the KV history.
+	member bool
 }
 
 const numKeys = 8
@@ -55,7 +57,9 @@ func (c *client) start() {
 		return
 	}
 	c.n++
-	n := s.nodes[s.rng.IntN(len(s.nodes))]
+	// The fourth member is a learner for part of the run and is later
+	// removed. Ordinary clients keep the original voting endpoints.
+	n := s.nodes[s.rng.IntN(3)]
 	op := &clientOp{client: c, rec: &Record{Client: c.id, Node: n.idx, Call: s.now, req: c.request()}}
 	s.push(&event{at: s.now + s.cfg.ClientTimeout, kind: evClientTimeout, op: op})
 	if !n.up {

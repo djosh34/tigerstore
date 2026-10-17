@@ -1,0 +1,139 @@
+package external_test
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"go.uber.org/zap"
+	"golang.org/x/time/rate"
+
+	"go.etcd.io/etcd/tests/v3/robustness/client"
+	"go.etcd.io/etcd/tests/v3/robustness/identity"
+	"go.etcd.io/etcd/tests/v3/robustness/report"
+	"go.etcd.io/etcd/tests/v3/robustness/traffic"
+	"go.etcd.io/etcd/tests/v3/robustness/validate"
+)
+
+// This package is copied into the pinned etcd tests module in Actions.
+// The upstream generators, recording clients and model are not replaced.
+func TestExternalTraffic(t *testing.T) {
+	endpoints := strings.Split(os.Getenv("ENDPOINTS"), ",")
+	if len(endpoints) != 3 || os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Fatal("requires three fresh endpoints on a GitHub runner")
+	}
+	presets := map[string]traffic.Traffic{
+		"etcd-put-delete-lease": traffic.EtcdPutDeleteLease,
+		"etcd-put": traffic.EtcdPut,
+		"etcd-delete": traffic.EtcdDelete,
+		"kubernetes": traffic.Kubernetes,
+		"kubernetes-create-delete": traffic.KubernetesCreateDelete,
+	}
+	tf, ok := presets[os.Getenv("TRAFFIC")]
+	if !ok {
+		t.Fatal("unknown TRAFFIC preset")
+	}
+	out := os.Getenv("RESULTS")
+	lg := zap.NewExample()
+	ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
+	defer cancel()
+	cs := client.NewSet(identity.NewIDProvider(), time.Now())
+	defer cs.Close()
+	c, err := cs.NewClient(endpoints)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Record revision 1. A prefix on a previously used database is not enough.
+	for {
+		readCtx, stop := context.WithTimeout(ctx, time.Second)
+		r, err := c.Get(readCtx, "key")
+		stop()
+		if err == nil {
+			if r.Header.Revision != 1 || len(r.Kvs) != 0 {
+				t.Fatal("cluster is not fresh")
+			}
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal(ctx.Err())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	finish := make(chan struct{})
+	var wg sync.WaitGroup
+	limiter := rate.NewLimiter(50, 50)
+	keys := traffic.NewKeyStore(10, "key")
+	storage := traffic.NewKubernetesStorage()
+	profile := traffic.KeyValueVeryLow
+	profile.MaximalQPS = 50
+	profile.BurstableQPS = 50
+	watch := traffic.WatchDefault
+	start := time.Since(cs.BaseTime())
+	if err := traffic.SimulateKeyValueTraffic(ctx, &wg, &profile, endpoints, cs, tf, traffic.RunTrafficLoopParam{
+		QPSLimiter: limiter, IDs: cs.IdentityProvider(), LeaseIDStorage: identity.NewLeaseIDStorage(),
+		NonUniqueRequestConcurrencyLimiter: traffic.NewConcurrencyLimiter(3),
+		KeyStore: keys, Storage: storage, Finish: finish,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := traffic.SimulateWatchTraffic(ctx, &wg, &watch, endpoints, cs, tf, traffic.RunWatchLoopParam{
+		Config: watch, QPSLimiter: limiter, KeyStore: keys, Storage: storage, Finish: finish, Logger: lg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "traffic-ready"), []byte("ready\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(40 * time.Second)
+	close(finish)
+	wg.Wait()
+	end := time.Since(cs.BaseTime())
+	putCtx, stop := context.WithTimeout(ctx, 10*time.Second)
+	_, putErr := c.Put(putCtx, "tombstone", "true")
+	stop()
+	reports := cs.Reports()
+	// Save typed operations before checking, including on a timeout or failure.
+	r, err := report.NewTestReport(lg, filepath.Join(out, "reports"), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SetClientReports(reports)
+	if err := r.SaveEtcdData(); err != nil {
+		t.Fatal(err)
+	}
+	if putErr != nil {
+		t.Fatalf("terminal put failed: %v", putErr)
+	}
+	stats := traffic.CalculateStats(reports, start, end)
+	watches := traffic.CalculateWatchStats(reports, start, end)
+	// No etcd WAL decoder is valid for tigerstore. Uncertain operations stay
+	// uncertain. Replay-dependent watch and historical-read checks are skipped.
+	result := validate.ValidateAndReturnVisualize(lg, validate.Config{
+		ExpectRevisionUnique: tf.ExpectUniqueRevision(),
+	}, reports, nil, 120*time.Second)
+	summary := map[string]any{
+		"traffic": os.Getenv("TRAFFIC"), "stats": stats, "watch_traffic": watches,
+		"assumptions": result.Assumptions, "linearization": result.Linearization.Result,
+		"watch_validation": "not run: needs ordered persisted requests",
+		"historical_read_validation": "not run: needs ordered persisted requests",
+	}
+	data, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "summary.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s", data)
+	if stats.Successes < 200 || watches.Events == 0 {
+		t.Error("insufficient successful KV operations or no watch events")
+	}
+	if result.Assumptions.Status != validate.Success || result.Linearization.Status != validate.Success {
+		t.Errorf("required validation failed: %v", result.Error())
+	}
+}
