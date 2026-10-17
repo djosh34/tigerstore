@@ -986,8 +986,9 @@ func (s *Sim) exited(p *proc, err error) {
 		s.stopNode(n)
 	case n.corrupted && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
 		// It started again from its log after a snapshot install or a
-		// failed fetch, and recovery found the damage, as a start does.
-		// The restart fences it.
+		// failed fetch, and recovery found the damage and ended the
+		// process, as a start on this disk refuses it. The restart
+		// fences it.
 		s.stopNode(n)
 	case s.cfg.Membership && core.FailureOf(err) == core.Leave:
 		n.inactive = true
