@@ -114,6 +114,13 @@ func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
 		s.stats.MembershipFaults[w.stage]++
 	}
 	s.tracef("membership: stage %d done", w.stage)
+	if w.stage == 3 && s.healed {
+		// The removed member stops, and when it led, the others elect
+		// another as after a stop: the liveness rule starts after that
+		// (seed 50214159).
+		s.lateStopAt = s.now()
+		s.extendLiveness()
+	}
 	w.stage++
 	if w.stage > 1 {
 		s.mu.Unlock()
