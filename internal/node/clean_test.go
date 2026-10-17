@@ -199,10 +199,12 @@ func TestCleaningCycles(t *testing.T) {
 	if err := checkValues(r.n, want); err != nil {
 		t.Fatal(err)
 	}
-	// The map's size swings with the number of segments; with nothing
-	// removed it would grow with the history, about tenfold here.
-	if first, second := slices.Max(maps[:len(maps)/2]), slices.Max(maps[len(maps)/2:]); second > 2*first {
-		t.Fatalf("the map grew from at most %d to %d bytes", first, second)
+	// The map's size swings with the number of segments, and a sample
+	// taken while cleaning lags behind is a spike. With nothing removed it
+	// would grow with the history, about tenfold here, so every sample of
+	// the second half would be larger. Compare the smallest of each half.
+	if first, second := slices.Min(maps[:len(maps)/2]), slices.Min(maps[len(maps)/2:]); second > 2*first {
+		t.Fatalf("the map grew from at least %d to %d bytes", first, second)
 	}
 	segs, packs := walFiles(t, dir)
 	if packs == 0 {

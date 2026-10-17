@@ -66,7 +66,9 @@ replacement PIDs, stopped processes, or DROP counters with packet hits.
 LazyFS additionally requires a cache-clear completion in the filesystem log.
 The checker summary must report `valid: true` and no coverage errors.
 
-Docker nodes share the host clock. Clock faults are rejected, as #114 requires.
+Docker nodes share the host clock, so `run.sh` takes only `kill`, `pause`,
+`partition` and `lazyfs` and rejects anything else, upstream's `all` included,
+because it contains the clock nemesis (#114).
 SIGKILL alone does not simulate power loss. Only the LazyFS cases discard
 unsynced writes.
 
@@ -81,7 +83,8 @@ count as results for this new main commit. The new run needs its own verdicts.
 into its tests module. The text extension keeps its dependencies out of the
 tigerstore Go module. Actions formats and compiles the copied test.
 
-The five upstream presets run unchanged against both products:
+The five upstream presets run unchanged against tigerstore, and against etcd
+with `stores`:
 `EtcdPutDeleteLease`, `EtcdPut`, `EtcdDelete`, `Kubernetes`, and
 `KubernetesCreateDelete`. Each has member-pinned and cluster clients, watch
 traffic, 40 seconds of load, a 50-QPS shared limit, a pause/resume and a
@@ -97,9 +100,9 @@ This is not the complete upstream robustness suite. Its process manager and
 WAL decoder only understand etcd. No tigerstore WAL adapter exists here.
 Watch traffic runs, but the replay-dependent watch and historical-read
 validators do not run. `summary.json` names those omissions rather than
-calling their zero-value statuses successful. This limitation must remain
-visible when the task worker decides how to complete #148's gate.
+calling their zero-value statuses successful. The
+[manager decided](https://github.com/djosh34/tigerstore/issues/148#issuecomment-6221843602)
+not to add them for #148.
 
-Plan 1 audited this integration in `experiments/jepsen/robustness.md`; it did
-not execute upstream robustness traffic. This prework uses its endpoint-based
-entrypoints rather than pretending tigerstore's files are etcd WALs.
+The test uses upstream's endpoint-based entrypoints rather than pretending
+tigerstore's files are etcd WALs.

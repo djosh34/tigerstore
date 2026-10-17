@@ -36,8 +36,6 @@ def summarize(root):
     match = re.search(r'--nemesis (\S+)', command)
     faults = match[1].split(',') if match else []
     result = {'directory': root.name, 'command': command.strip(), 'coverage_errors': []}
-    if (root / 'clock-blocked.txt').exists():
-        return {**result, 'status': 'blocked', 'reason': (root / 'clock-blocked.txt').read_text().strip()}
     latest = root / 'store/latest'
     if not (latest / 'results.edn').exists():
         return {**result, 'status': 'execution-failure', 'reason': 'No checker result'}

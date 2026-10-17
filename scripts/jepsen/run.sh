@@ -4,6 +4,12 @@ set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true ]] || { echo 'GitHub runner required' >&2; exit 2; }
 STORE=${1:?store}; WORKLOAD=${2:?workload}; NEMESIS=${3:?nemesis}; DURATION=${4:-60}; OPS_PER_KEY=${5:-200}
 export STORE
+# Only the four faults of #148. Upstream's `all` includes its clock nemesis,
+# and Docker nodes share the runner's clock (#114).
+case $NEMESIS in
+  kill|pause|partition|lazyfs) ;;
+  *) echo "Unsupported nemesis $NEMESIS: use kill, pause, partition or lazyfs" >&2; exit 2 ;;
+esac
 root=$PWD
 out=$root/results/jepsen
 mkdir -p "$out" "$root/.jepsen/assets"
@@ -108,10 +114,6 @@ docker cp .jepsen/etcd jepsen-control:/jepsen/etcd
 for node in control n1 n2 n3; do
   docker exec "jepsen-$node" sh -c 'hostname; readlink /proc/self/ns/time; date -u +%s.%N'
 done
-if [[ $NEMESIS == *clock* ]]; then
-  printf '%s\n' 'BLOCKED: Docker shares CLOCK_REALTIME across the nodes and control. Independent clock skew requires VMs. The upstream clock nemesis was not run.' | tee "$out/clock-blocked.txt"
-  exit 3
-fi
 # Independent observations; the upstream fault generators and implementations stay unchanged.
 (
   while true; do

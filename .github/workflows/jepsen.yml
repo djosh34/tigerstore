@@ -34,6 +34,11 @@ jobs:
         shell: bash
         run: |
           bash -n scripts/jepsen/run.sh scripts/jepsen/robustness.sh
+          # run.sh refuses every nemesis but the four of #148 before it starts anything.
+          for nemesis in all clock kill,all; do
+            rc=0; bash scripts/jepsen/run.sh tigerstore append "$nemesis" || rc=$?
+            [[ $rc == 2 ]] || { echo "nemesis $nemesis: exit $rc, want 2"; exit 1; }
+          done
           pip install edn_format==0.7.5
           python3 -m unittest discover -s scripts/jepsen -p 'test_*.py'
   jepsen:
