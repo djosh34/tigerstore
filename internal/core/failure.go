@@ -8,8 +8,10 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// ErrDisk marks a failed write or sync of the node's own disk. The file
-// is then in an unknown state, so the node stops and never retries it.
+// ErrDisk marks a failed write or sync of the node's own disk, or a
+// failed read of an entry it holds. The file is then in an unknown state,
+// so the node stops and never retries it; damage (wal.ErrCorrupt) also
+// fences it.
 var ErrDisk = errors.New("core: the disk failed")
 
 // ErrFetch marks a snapshot install that failed for any reason but the
@@ -17,6 +19,11 @@ var ErrDisk = errors.New("core: the disk failed")
 // the snapshot back, so the driver starts a new core from its log, as a
 // restart does, and Raft sends another snapshot.
 var ErrFetch = errors.New("core: the snapshot fetch failed")
+
+// ErrInstalled ends a core whose snapshot install is durable in its log.
+// The driver starts a new core from the log, as a restart does, which
+// loads the snapshot's checkpoint and replays the entries after it.
+var ErrInstalled = errors.New("core: installed a snapshot")
 
 // FetchFailed is the error of a snapshot install that failed with err, in
 // both drivers. A failed write or sync of the node's own disk (ErrDisk)
@@ -56,7 +63,7 @@ const (
 // install.
 func FailureOf(err error) Failure {
 	switch {
-	case errors.Is(err, ErrFetch):
+	case errors.Is(err, ErrFetch), errors.Is(err, ErrInstalled):
 		return Reload
 	case errors.Is(err, ErrRemoved):
 		return Leave

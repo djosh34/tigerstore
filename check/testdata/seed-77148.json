@@ -1,0 +1,10588 @@
+{
+ "ops": [
+  {
+   "client": 4,
+   "call": 21794740,
+   "return": 3021794740,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c4-1"
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 28533062,
+   "return": 3028533062,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c5-1"
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 2268476880,
+   "return": 3373291936,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 1,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3043055768,
+   "return": 3373361873,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 1,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3037412311,
+   "return": 3375210590,
+   "req": {
+    "delete": {
+     "key": "k1",
+     "end": "k4"
+    }
+   },
+   "resp": {
+    "revision": 1,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3028597819,
+   "return": 3375911764,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c3-2a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-2b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 4,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k0",
+         "value": "c5-1",
+         "createRevision": 3,
+         "modRevision": 3,
+         "version": 1
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3014225575,
+   "return": 3376041676,
+   "req": {
+    "delete": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 3,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3377209238,
+   "return": 3382499009,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c2-6"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 5,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3382432340,
+   "return": 3393146459,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c1-3"
+    }
+   },
+   "resp": {
+    "revision": 6,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 3384986799,
+   "return": 3393703199,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 5,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c2-6",
+       "createRevision": 5,
+       "modRevision": 5,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3383954067,
+   "return": 3394949881,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c4-3"
+    }
+   },
+   "resp": {
+    "revision": 7,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 3389108372,
+   "return": 3395444149,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k6",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c2-7"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k6"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 8,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3393442341,
+   "return": 3396104820,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 9,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c5-3",
+       "createRevision": 2,
+       "modRevision": 9,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3392143839,
+   "return": 3396114810,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c5-3",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 9,
+    "put": {
+     "prevKV": {
+      "key": "k4",
+      "value": "c4-1",
+      "createRevision": 2,
+      "modRevision": 2,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3396975703,
+   "return": 3403410305,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c2-8",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 11,
+    "put": {
+     "prevKV": {
+      "key": "k6",
+      "value": "c2-7",
+      "createRevision": 8,
+      "modRevision": 8,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3397633262,
+   "return": 3404183131,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c1-5"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 10,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3404574018,
+   "return": 3408478259,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c5-4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 12,
+    "put": {
+     "prevKV": {
+      "key": "k6",
+      "value": "c2-8",
+      "createRevision": 8,
+      "modRevision": 11,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3407008729,
+   "return": 3412760607,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 12,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3409350091,
+   "return": 3414805856,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8"
+    }
+   },
+   "resp": {
+    "revision": 12,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3421852241,
+   "return": 3421992908,
+   "req": {
+    "range": {
+     "key": "k4",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 14,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c5-3",
+       "createRevision": 2,
+       "modRevision": 9,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3416283848,
+   "return": 3422052772,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c1-6"
+    }
+   },
+   "resp": {
+    "revision": 13,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 3417389435,
+   "return": 3439179143,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c2-9"
+    }
+   },
+   "resp": {
+    "revision": 14,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 3425493663,
+   "return": 3439228116,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c4-5"
+    }
+   },
+   "resp": {
+    "revision": 16,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 3433957524,
+   "return": 3439304162,
+   "req": {
+    "compact": {
+     "revision": 2,
+     "physical": true
+    }
+   },
+   "resp": {
+    "revision": 16,
+    "compact": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3438391975,
+   "return": 3445540961,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 17,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k7",
+       "value": "c5-5b",
+       "createRevision": 15,
+       "modRevision": 15,
+       "version": 1
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3442981155,
+   "return": 3447903911,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 17,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-5",
+       "createRevision": 16,
+       "modRevision": 16,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3440395165,
+   "return": 3448944194,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-7"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 17,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k3",
+          "value": "c5-5a",
+          "createRevision": 4,
+          "modRevision": 15,
+          "version": 2
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3453681384,
+   "return": 3457111926,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 17,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      },
+      {
+       "key": "k1",
+       "value": "c4-5",
+       "createRevision": 16,
+       "modRevision": 16,
+       "version": 1
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3470584571,
+   "return": 3508501421,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c2-11"
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 3508863373,
+   "return": 3516635296,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8"
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3466078684,
+   "return": 3518290547,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c3-8",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 19,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c4-7",
+      "createRevision": 16,
+      "modRevision": 18,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3457291199,
+   "return": 3518469458,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3449122365,
+   "return": 3518492913,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c4-7",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 18,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c4-5",
+      "createRevision": 16,
+      "modRevision": 16,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3422430449,
+   "return": 3518967154,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c5-5a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k7",
+        "value": "c5-5b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 15,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k3",
+         "value": "c3-2b",
+         "createRevision": 4,
+         "modRevision": 4,
+         "version": 1
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3520654583,
+   "return": 3520850778,
+   "req": {
+    "range": {
+     "key": "k7",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3521283211,
+   "return": 3523883498,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      },
+      {
+       "key": "k1",
+       "value": "c3-8",
+       "createRevision": 16,
+       "modRevision": 19,
+       "version": 3
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3523090207,
+   "return": 3526591528,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      },
+      {
+       "key": "k1",
+       "value": "c3-8",
+       "createRevision": 16,
+       "modRevision": 19,
+       "version": 3
+      },
+      {
+       "key": "k2",
+       "value": "c1-5",
+       "createRevision": 10,
+       "modRevision": 10,
+       "version": 1
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3524102131,
+   "return": 3529363872,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c2-9",
+       "createRevision": 8,
+       "modRevision": 14,
+       "version": 4
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3524084580,
+   "return": 3532424447,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c1-9"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 20,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k5",
+          "value": "c1-6",
+          "createRevision": 5,
+          "modRevision": 13,
+          "version": 4
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3524491968,
+   "return": 3533045338,
+   "req": {
+    "delete": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 21,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3534134906,
+   "return": 3540041660,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8"
+    }
+   },
+   "resp": {
+    "revision": 21,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3547330913,
+   "return": 3558916003,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c3-11"
+    }
+   },
+   "resp": {
+    "revision": 23,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3554357086,
+   "return": 3561420099,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 23,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3543170839,
+   "return": 3585805855,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 23,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c3-11",
+       "createRevision": 23,
+       "modRevision": 23,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3539837750,
+   "return": 3586205868,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 23,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3536719448,
+   "return": 3586680352,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 22,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k4",
+       "value": "c5-3",
+       "createRevision": 2,
+       "modRevision": 9,
+       "version": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3570515309,
+   "return": 3588792462,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c1-12",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 24,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c3-8",
+      "createRevision": 16,
+      "modRevision": 19,
+      "version": 3
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3595257964,
+   "return": 3598060303,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 25,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3602932487,
+   "return": 3609077313,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 4
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c1-13"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 26,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k0",
+          "value": "c4-10",
+          "createRevision": 3,
+          "modRevision": 26,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3610371229,
+   "return": 3622133120,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c2-16",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 27,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3610249063,
+   "return": 3622906499,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 9
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c1-14"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 26,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k4",
+          "value": "c3-11",
+          "createRevision": 23,
+          "modRevision": 23,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3588807207,
+   "return": 3633045078,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 24,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3577245775,
+   "return": 3633505693,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c3-12"
+    }
+   },
+   "resp": {
+    "revision": 25,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 3599868021,
+   "return": 3634005229,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c4-10",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 26,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c3-2a",
+      "createRevision": 3,
+      "modRevision": 4,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3634913931,
+   "return": 3637798922,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 23
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c2-17"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3638792325,
+   "return": 3640073287,
+   "req": {
+    "range": {
+     "key": "k5",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 27,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c3-12",
+       "createRevision": 5,
+       "modRevision": 25,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3637637500,
+   "return": 3643119240,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c2-16",
+       "createRevision": 27,
+       "modRevision": 27,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3640026958,
+   "return": 3643731374,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3647930513,
+   "return": 3651184487,
+   "req": {
+    "compact": {
+     "revision": 3,
+     "physical": true
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "compact": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 3649191849,
+   "return": 3652077838,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l"
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c4-10",
+       "createRevision": 3,
+       "modRevision": 26,
+       "version": 3
+      },
+      {
+       "key": "k1",
+       "value": "c1-12",
+       "createRevision": 16,
+       "modRevision": 24,
+       "version": 4
+      },
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      },
+      {
+       "key": "k4",
+       "value": "c2-17",
+       "createRevision": 23,
+       "modRevision": 28,
+       "version": 2
+      },
+      {
+       "key": "k5",
+       "value": "c3-12",
+       "createRevision": 5,
+       "modRevision": 25,
+       "version": 5
+      },
+      {
+       "key": "k6",
+       "value": "c2-9",
+       "createRevision": 8,
+       "modRevision": 14,
+       "version": 4
+      },
+      {
+       "key": "k7",
+       "value": "c2-16",
+       "createRevision": 27,
+       "modRevision": 27,
+       "version": 1
+      }
+     ],
+     "count": 7
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3650780093,
+   "return": 3654120936,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 28,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c4-10",
+       "createRevision": 3,
+       "modRevision": 26,
+       "version": 3
+      },
+      {
+       "key": "k1",
+       "value": "c1-12",
+       "createRevision": 16,
+       "modRevision": 24,
+       "version": 4
+      },
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3653350761,
+   "return": 3659435173,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c4-12"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3657119577,
+   "return": 3661992692,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3661650148,
+   "return": 3666773723,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c1-12",
+       "createRevision": 16,
+       "modRevision": 24,
+       "version": 4
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3670458900,
+   "return": 3675568832,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3675115777,
+   "return": 3680293352,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c2-17",
+       "createRevision": 23,
+       "modRevision": 28,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3677647434,
+   "return": 3683942767,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3697407858,
+   "return": 3728310286,
+   "req": {
+    "delete": {
+     "key": "k2",
+     "end": "k5"
+    }
+   },
+   "resp": {
+    "revision": 33,
+    "delete": {
+     "deleted": 3
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3670326206,
+   "return": 3728568680,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c3-14"
+    }
+   },
+   "resp": {
+    "revision": 30,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 3676795747,
+   "return": 3732730889,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c5-12"
+    }
+   },
+   "resp": {
+    "revision": 31,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 3665990270,
+   "return": 3732837145,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 23
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c2-20"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 29,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k4",
+          "value": "c2-17",
+          "createRevision": 23,
+          "modRevision": 28,
+          "version": 2
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3695705883,
+   "return": 3733675145,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c4-14a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k1",
+        "value": "c4-14b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 32,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k0",
+         "value": "c4-10",
+         "createRevision": 3,
+         "modRevision": 26,
+         "version": 3
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3731775758,
+   "return": 3737544893,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 33,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c2-16",
+       "createRevision": 27,
+       "modRevision": 27,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 22,
+   "call": 3735119003,
+   "return": 3735119003,
+   "req": {
+    "leaseRevoke": {
+     "id": 7285800186738114561
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 3735119003,
+   "return": 3740272380,
+   "req": {
+    "leaseGrant": {
+     "ttl": 2
+    }
+   },
+   "resp": {
+    "revision": 33,
+    "leaseGrant": {
+     "id": 7285800186738114561,
+     "ttl": 2
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3735149069,
+   "return": 3741734241,
+   "req": {
+    "delete": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 34,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3739183045,
+   "return": 3742448019,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 25
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c3-16"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 34,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3741533145,
+   "return": 3744988759,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c4-16",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 35,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3743665372,
+   "return": 3749797807,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 20
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c1-19"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 35,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k3",
+          "value": "c4-16",
+          "createRevision": 35,
+          "modRevision": 35,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3748277125,
+   "return": 3754185791,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c2-22a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k0",
+        "value": "c2-22b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 36,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3751410276,
+   "return": 3757216982,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 36,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-22b",
+       "createRevision": 3,
+       "modRevision": 36,
+       "version": 5
+      },
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      },
+      {
+       "key": "k3",
+       "value": "c4-16",
+       "createRevision": 35,
+       "modRevision": 35,
+       "version": 1
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3755486726,
+   "return": 3758359652,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 36,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3755403011,
+   "return": 3763278853,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c4-17"
+    }
+   },
+   "resp": {
+    "revision": 37,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 3764143753,
+   "return": 3767984550,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c4-18",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 38,
+    "put": {
+     "prevKV": {
+      "key": "k3",
+      "value": "c4-16",
+      "createRevision": 35,
+      "modRevision": 35,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3766494717,
+   "return": 3769307488,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c5-14"
+    }
+   },
+   "resp": {
+    "revision": 39,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3764892729,
+   "return": 3770996875,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 39,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-22b",
+       "createRevision": 3,
+       "modRevision": 36,
+       "version": 5
+      },
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3770313775,
+   "return": 3779771591,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 39,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-17",
+       "createRevision": 36,
+       "modRevision": 37,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3772524029,
+   "return": 3780036355,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c3-18"
+    }
+   },
+   "resp": {
+    "revision": 40,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 3777477817,
+   "return": 3781849330,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c4-19",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 41,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c2-22b",
+      "createRevision": 3,
+      "modRevision": 36,
+      "version": 5
+     }
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3779906732,
+   "return": 3782460527,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 42,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-15",
+       "createRevision": 3,
+       "modRevision": 42,
+       "version": 7
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3778201309,
+   "return": 3784122308,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c5-15",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 42,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c4-19",
+      "createRevision": 3,
+      "modRevision": 41,
+      "version": 6
+     }
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3788119458,
+   "return": 3788583802,
+   "req": {
+    "range": {
+     "key": "k2",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 42,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-14",
+       "createRevision": 39,
+       "modRevision": 39,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3798681273,
+   "return": 3799509092,
+   "req": {
+    "range": {
+     "key": "k7",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 43,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c2-16",
+       "createRevision": 27,
+       "modRevision": 27,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3794993264,
+   "return": 3800740394,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c1-22",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 43,
+    "put": {
+     "prevKV": {
+      "key": "k3",
+      "value": "c4-18",
+      "createRevision": 35,
+      "modRevision": 38,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3795637489,
+   "return": 3801131937,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 43,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-15",
+       "createRevision": 3,
+       "modRevision": 42,
+       "version": 7
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3802105728,
+   "return": 3803989911,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1,
+       "number": 27
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c3-20"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 45,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3799669352,
+   "return": 3806323450,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c4-20",
+     "lease": 7285800186738114561,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 44,
+    "put": {
+     "prevKV": {
+      "key": "k4",
+      "value": "c3-18",
+      "createRevision": 40,
+      "modRevision": 40,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3804254362,
+   "return": 3810004430,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 45,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-15",
+       "createRevision": 3,
+       "modRevision": 42,
+       "version": 7
+      },
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3806232211,
+   "return": 3813702226,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 16
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c2-25"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 45,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k1",
+          "value": "c4-14b",
+          "createRevision": 16,
+          "modRevision": 32,
+          "version": 6
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3810825490,
+   "return": 3817318142,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 35
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c5-17"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 45,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k3",
+          "value": "c1-22",
+          "createRevision": 35,
+          "modRevision": 43,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3822477946,
+   "return": 3825846920,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 42
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c1-24"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 46,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3821417937,
+   "return": 3827694781,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 45,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3821977388,
+   "return": 3827841343,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c5-18"
+    }
+   },
+   "resp": {
+    "revision": 48,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 3821738184,
+   "return": 3828181152,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c4-21",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 47,
+    "put": {
+     "prevKV": {
+      "key": "k5",
+      "value": "c4-17",
+      "createRevision": 36,
+      "modRevision": 37,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3828644010,
+   "return": 3834489095,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 48,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-24",
+       "createRevision": 3,
+       "modRevision": 46,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3830042633,
+   "return": 3836047351,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "revision": 20
+    }
+   },
+   "resp": {
+    "revision": 48,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-2a",
+       "createRevision": 3,
+       "modRevision": 4,
+       "version": 2
+      },
+      {
+       "key": "k1",
+       "value": "c3-8",
+       "createRevision": 16,
+       "modRevision": 19,
+       "version": 3
+      },
+      {
+       "key": "k2",
+       "value": "c1-5",
+       "createRevision": 10,
+       "modRevision": 10,
+       "version": 1
+      },
+      {
+       "key": "k3",
+       "value": "c2-11",
+       "createRevision": 4,
+       "modRevision": 20,
+       "version": 3
+      },
+      {
+       "key": "k4",
+       "value": "c5-3",
+       "createRevision": 2,
+       "modRevision": 9,
+       "version": 2
+      },
+      {
+       "key": "k5",
+       "value": "c1-6",
+       "createRevision": 5,
+       "modRevision": 13,
+       "version": 4
+      },
+      {
+       "key": "k6",
+       "value": "c2-9",
+       "createRevision": 8,
+       "modRevision": 14,
+       "version": 4
+      }
+     ],
+     "count": 7
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3835669844,
+   "return": 3836776932,
+   "req": {
+    "range": {
+     "key": "k3",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 48,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c1-22",
+       "createRevision": 35,
+       "modRevision": 43,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3833215829,
+   "return": 3842173455,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c3-22",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c1-24",
+      "createRevision": 3,
+      "modRevision": 46,
+      "version": 8
+     }
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3838878541,
+   "return": 3844894946,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c3-20",
+       "createRevision": 27,
+       "modRevision": 45,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3838298352,
+   "return": 3845578856,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 28
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c2-27"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k4",
+          "value": "c5-18",
+          "createRevision": 40,
+          "modRevision": 48,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3855768826,
+   "return": 3858766926,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-22",
+       "createRevision": 3,
+       "modRevision": 49,
+       "version": 9
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3854188857,
+   "return": 3861871946,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c4-23"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k7",
+          "value": "c3-20",
+          "createRevision": 27,
+          "modRevision": 45,
+          "version": 2
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3859420416,
+   "return": 3866854209,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 50,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c5-21",
+       "createRevision": 27,
+       "modRevision": 50,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3872912934,
+   "return": 3878343336,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 50,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c5-21",
+       "createRevision": 27,
+       "modRevision": 50,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3896999621,
+   "return": 3902985017,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 50,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c3-22",
+       "createRevision": 3,
+       "modRevision": 49,
+       "version": 9
+      },
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3859520033,
+   "return": 3913817441,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c5-21"
+    }
+   },
+   "resp": {
+    "revision": 50,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 3903867736,
+   "return": 3914015620,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c2-31a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k0",
+        "value": "c2-31b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 51,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k7",
+         "value": "c5-21",
+         "createRevision": 27,
+         "modRevision": 50,
+         "version": 3
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3841895105,
+   "return": 3914540064,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c1-25"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 49,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k2",
+          "value": "c5-14",
+          "createRevision": 39,
+          "modRevision": 39,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3862597308,
+   "return": 3914558754,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 51,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c4-12",
+       "createRevision": 8,
+       "modRevision": 29,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3862341472,
+   "return": 3914882065,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 51,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c5-18",
+       "createRevision": 40,
+       "modRevision": 48,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3921545251,
+   "return": 3925000346,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c5-22"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3921219919,
+   "return": 3926693756,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 51,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-14",
+       "createRevision": 39,
+       "modRevision": 39,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3926946044,
+   "return": 3929943912,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-14",
+       "createRevision": 39,
+       "modRevision": 39,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3926942956,
+   "return": 3930493132,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3926765160,
+   "return": 3935521561,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3930591123,
+   "return": 3940836312,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c5-22",
+       "createRevision": 27,
+       "modRevision": 52,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 3944723469,
+   "return": 3949923082,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 52,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c5-22",
+       "createRevision": 27,
+       "modRevision": 52,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3943609179,
+   "return": 3951986133,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 43
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c5-24"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 53,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3952310484,
+   "return": 3955613245,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1,
+       "number": 45
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c5-25"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 54,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k7",
+          "value": "c5-22",
+          "createRevision": 27,
+          "modRevision": 52,
+          "version": 5
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3947906911,
+   "return": 3956998425,
+   "req": {
+    "delete": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 54,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3952927129,
+   "return": 3959070025,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c4-26",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 55,
+    "put": {
+     "prevKV": {
+      "key": "k7",
+      "value": "c5-22",
+      "createRevision": 27,
+      "modRevision": 52,
+      "version": 5
+     }
+    }
+   }
+  },
+  {
+   "client": 23,
+   "call": 3954316910,
+   "return": 3954316910,
+   "req": {
+    "leaseRevoke": {
+     "id": 6776663570768723969
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 3954316910,
+   "return": 3965274505,
+   "req": {
+    "leaseGrant": {
+     "ttl": 2
+    }
+   },
+   "resp": {
+    "revision": 55,
+    "leaseGrant": {
+     "id": 6776663570768723969,
+     "ttl": 2
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3966948395,
+   "return": 3970547009,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l"
+    }
+   },
+   "resp": {
+    "revision": 55,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-31b",
+       "createRevision": 3,
+       "modRevision": 51,
+       "version": 10
+      },
+      {
+       "key": "k1",
+       "value": "c4-14b",
+       "createRevision": 16,
+       "modRevision": 32,
+       "version": 6
+      },
+      {
+       "key": "k3",
+       "value": "c5-24",
+       "createRevision": 35,
+       "modRevision": 53,
+       "version": 4
+      },
+      {
+       "key": "k4",
+       "value": "c5-18",
+       "createRevision": 40,
+       "modRevision": 48,
+       "version": 3
+      },
+      {
+       "key": "k5",
+       "value": "c4-21",
+       "createRevision": 36,
+       "modRevision": 47,
+       "version": 3
+      },
+      {
+       "key": "k6",
+       "value": "c4-12",
+       "createRevision": 8,
+       "modRevision": 29,
+       "version": 5
+      },
+      {
+       "key": "k7",
+       "value": "c4-26",
+       "createRevision": 27,
+       "modRevision": 55,
+       "version": 6
+      }
+     ],
+     "count": 7
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3969791910,
+   "return": 3976973797,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 37
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c2-34"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 55,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k5",
+          "value": "c4-21",
+          "createRevision": 36,
+          "modRevision": 47,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 3988251528,
+   "return": 3989481904,
+   "req": {
+    "range": {
+     "key": "k6",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 56,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c4-12",
+       "createRevision": 8,
+       "modRevision": 29,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 3990470217,
+   "return": 3995846532,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c2-35",
+     "lease": 6776663570768723969
+    }
+   },
+   "resp": {
+    "revision": 57,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 3969686808,
+   "return": 4007010000,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 39
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c1-28"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 56,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 3967652901,
+   "return": 4007262759,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 57,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 3969734020,
+   "return": 4007995049,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 56,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k4",
+       "value": "c5-18",
+       "createRevision": 40,
+       "modRevision": 48,
+       "version": 3
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4006461342,
+   "return": 4012685199,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 57,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c4-12",
+       "createRevision": 8,
+       "modRevision": 29,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4015685120,
+   "return": 4019073779,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c5-27"
+    }
+   },
+   "resp": {
+    "revision": 59,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 4014396717,
+   "return": 4019683326,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 57,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-31b",
+       "createRevision": 3,
+       "modRevision": 51,
+       "version": 10
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4013616249,
+   "return": 4020372155,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c1-29",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 58,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c4-14b",
+      "createRevision": 16,
+      "modRevision": 32,
+      "version": 6
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4014081979,
+   "return": 4020384539,
+   "req": {
+    "delete": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 58,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4022767322,
+   "return": 4026167199,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 59,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-35",
+       "createRevision": 35,
+       "modRevision": 57,
+       "version": 5,
+       "lease": 6776663570768723969
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4021367937,
+   "return": 4026694004,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 10
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c5-28"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 59,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4032279173,
+   "return": 4039364283,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 59,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4035728462,
+   "return": 4041464841,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 59,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c4-12",
+       "createRevision": 8,
+       "modRevision": 29,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4037524862,
+   "return": 4045482113,
+   "req": {
+    "delete": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 61,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4037664534,
+   "return": 4045987713,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 47
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c3-31"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4049855580,
+   "return": 4055909948,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4054573999,
+   "return": 4061009605,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c4-26",
+       "createRevision": 27,
+       "modRevision": 55,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4055123727,
+   "return": 4061365901,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4076243017,
+   "return": 4081393977,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4099437805,
+   "return": 4105296680,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c3-31",
+       "createRevision": 36,
+       "modRevision": 62,
+       "version": 4
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4076498691,
+   "return": 4109462945,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c3-33",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 63,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 4039959671,
+   "return": 4116893138,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c2-37",
+     "lease": 6776663570768723969
+    }
+   },
+   "resp": {
+    "revision": 60,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4053109914,
+   "return": 4118360861,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 39
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c1-31"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 62,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k2",
+          "value": "c2-37",
+          "createRevision": 60,
+          "modRevision": 60,
+          "version": 1,
+          "lease": 6776663570768723969
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4072608346,
+   "return": 4118401715,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 63,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4105362359,
+   "return": 4119558698,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 62
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c4-33"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4117422328,
+   "return": 4120824744,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4121701108,
+   "return": 4128802363,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 42
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c1-32"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k0",
+          "value": "c2-31b",
+          "createRevision": 3,
+          "modRevision": 51,
+          "version": 10
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4126617783,
+   "return": 4129637394,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c2-37",
+       "createRevision": 60,
+       "modRevision": 60,
+       "version": 1,
+       "lease": 6776663570768723969
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4129621245,
+   "return": 4135658013,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c4-26",
+       "createRevision": 27,
+       "modRevision": 55,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4136203534,
+   "return": 4137293286,
+   "req": {
+    "range": {
+     "key": "k1",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4134313647,
+   "return": 4140588528,
+   "req": {
+    "delete": {
+     "key": "k1",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 65,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4134995541,
+   "return": 4141410531,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 64,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-31b",
+       "createRevision": 3,
+       "modRevision": 51,
+       "version": 10
+      },
+      {
+       "key": "k1",
+       "value": "c5-27",
+       "createRevision": 16,
+       "modRevision": 59,
+       "version": 8
+      },
+      {
+       "key": "k2",
+       "value": "c2-37",
+       "createRevision": 60,
+       "modRevision": 60,
+       "version": 1,
+       "lease": 6776663570768723969
+      }
+     ],
+     "count": 7,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4140696076,
+   "return": 4147588248,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 65,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-31b",
+       "createRevision": 3,
+       "modRevision": 51,
+       "version": 10
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4141784143,
+   "return": 4147844945,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c1-33a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k3",
+        "value": "c1-33b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 66,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k0",
+         "value": "c2-31b",
+         "createRevision": 3,
+         "modRevision": 51,
+         "version": 10
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4155677794,
+   "return": 4159245098,
+   "req": {
+    "delete": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 66,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4157303973,
+   "return": 4160846664,
+   "req": {
+    "delete": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 68,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4155361784,
+   "return": 4161066581,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c3-36a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k2",
+        "value": "c3-36b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 67,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k6",
+         "value": "c4-12",
+         "createRevision": 8,
+         "modRevision": 29,
+         "version": 5
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4160199410,
+   "return": 4161473350,
+   "req": {
+    "range": {
+     "key": "k0",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 66,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4161868409,
+   "return": 4164946669,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 59
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c2-41"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 68,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4162336526,
+   "return": 4167758884,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c1-34",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 69,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4174417292,
+   "return": 4177153879,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 69,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c3-36a",
+       "createRevision": 8,
+       "modRevision": 67,
+       "version": 6
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4173757003,
+   "return": 4178839668,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 69,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4173111662,
+   "return": 4180579246,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 69,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4179421328,
+   "return": 4182587548,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 59
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c2-42"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 69,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4179671215,
+   "return": 4184982963,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c4-37"
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4183953981,
+   "return": 4187037397,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c3-36b",
+       "createRevision": 60,
+       "modRevision": 67,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4188262782,
+   "return": 4192611091,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 57
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-38"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k3",
+          "value": "c1-33b",
+          "createRevision": 66,
+          "modRevision": 66,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4194332173,
+   "return": 4195409086,
+   "req": {
+    "range": {
+     "key": "k0",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4190772204,
+   "return": 4196503843,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 24,
+   "call": 4197017450,
+   "return": 4197017450,
+   "req": {
+    "leaseRevoke": {
+     "id": 7285800186738114562
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 4197017450,
+   "return": 4202280618,
+   "req": {
+    "leaseGrant": {
+     "ttl": 2
+    }
+   },
+   "resp": {
+    "revision": 70,
+    "leaseGrant": {
+     "id": 7285800186738114562,
+     "ttl": 2
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4198945478,
+   "return": 4205888131,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c1-36",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 71,
+    "put": {
+     "prevKV": {
+      "key": "k6",
+      "value": "c3-36a",
+      "createRevision": 8,
+      "modRevision": 67,
+      "version": 6
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4202435615,
+   "return": 4207516235,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 72,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      },
+      {
+       "key": "k3",
+       "value": "c1-33b",
+       "createRevision": 66,
+       "modRevision": 66,
+       "version": 1
+      },
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4208935116,
+   "return": 4218505491,
+   "req": {
+    "delete": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 73,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4216956289,
+   "return": 4219970945,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 73,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4221943581,
+   "return": 4233495992,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8"
+    }
+   },
+   "resp": {
+    "revision": 73,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4190772708,
+   "return": 4233586778,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 73,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4200877039,
+   "return": 4233590636,
+   "req": {
+    "delete": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 72,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4218936315,
+   "return": 4234273868,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 51
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c3-40"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 73,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k0",
+          "value": "c1-33a",
+          "createRevision": 3,
+          "modRevision": 66,
+          "version": 11
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4236063730,
+   "return": 4239082106,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 74,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4234302099,
+   "return": 4239858532,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c2-47",
+     "lease": 6776663570768723969
+    }
+   },
+   "resp": {
+    "revision": 74,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4240765358,
+   "return": 4243854864,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 74,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c2-47",
+       "createRevision": 66,
+       "modRevision": 74,
+       "version": 2,
+       "lease": 6776663570768723969
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4239313201,
+   "return": 4244189776,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 67
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c1-39"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 74,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4243240247,
+   "return": 4249193279,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 48
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c3-41"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 74,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k4",
+          "value": "c4-37",
+          "createRevision": 69,
+          "modRevision": 70,
+          "version": 2
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4246693655,
+   "return": 4252291995,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c5-38"
+    }
+   },
+   "resp": {
+    "revision": 75,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4250397170,
+   "return": 4253515181,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 75,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4251881554,
+   "return": 4257564967,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 75,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c5-38",
+       "createRevision": 66,
+       "modRevision": 75,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4253597299,
+   "return": 4259372899,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l"
+    }
+   },
+   "resp": {
+    "revision": 75,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      },
+      {
+       "key": "k3",
+       "value": "c5-38",
+       "createRevision": 66,
+       "modRevision": 75,
+       "version": 3
+      },
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      },
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      },
+      {
+       "key": "k6",
+       "value": "c1-36",
+       "createRevision": 8,
+       "modRevision": 71,
+       "version": 7
+      }
+     ],
+     "count": 5
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4255598303,
+   "return": 4259677419,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c1-40",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 76,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4255254185,
+   "return": 4259699748,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 75,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c1-36",
+       "createRevision": 8,
+       "modRevision": 71,
+       "version": 7
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4266477169,
+   "return": 4274333114,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c4-41",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 77,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c1-40",
+      "createRevision": 76,
+      "modRevision": 76,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4270274523,
+   "return": 4274504675,
+   "req": {
+    "delete": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 77,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4282282945,
+   "return": 4285172181,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 77,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4259359667,
+   "return": 4337472393,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1,
+       "number": 52
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c5-39"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 76,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4266085558,
+   "return": 4338300968,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 13
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c1-41"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 76,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k5",
+          "value": "c4-33",
+          "createRevision": 36,
+          "modRevision": 64,
+          "version": 5
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4276686962,
+   "return": 4341465693,
+   "req": {
+    "delete": {
+     "key": "k5",
+     "end": "k8",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 78,
+    "delete": {
+     "deleted": 2,
+     "prevKVs": [
+      {
+       "key": "k5",
+       "value": "c4-33",
+       "createRevision": 36,
+       "modRevision": 64,
+       "version": 5
+      },
+      {
+       "key": "k6",
+       "value": "c1-36",
+       "createRevision": 8,
+       "modRevision": 71,
+       "version": 7
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4342121780,
+   "return": 4347369596,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 80,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4353430412,
+   "return": 4356861616,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-40"
+    }
+   },
+   "resp": {
+    "revision": 81,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4361069100,
+   "return": 4361637383,
+   "req": {
+    "range": {
+     "key": "k4",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 81,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4363867572,
+   "return": 4366780100,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c5-42"
+    }
+   },
+   "resp": {
+    "revision": 82,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 4366354920,
+   "return": 4374072552,
+   "req": {
+    "compact": {
+     "revision": 54,
+     "physical": true
+    }
+   },
+   "resp": {
+    "revision": 82,
+    "compact": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4303182981,
+   "return": 4376913825,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c3-46",
+     "lease": 7285800186738114562
+    }
+   },
+   "resp": {
+    "revision": 80,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4345134484,
+   "return": 4377741745,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 82,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c1-33a",
+       "createRevision": 3,
+       "modRevision": 66,
+       "version": 11
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4291500594,
+   "return": 4377748021,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c4-42",
+     "lease": 7285800186738114561,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 79,
+    "put": {
+     "prevKV": {
+      "key": "k3",
+      "value": "c5-38",
+      "createRevision": 66,
+      "modRevision": 75,
+      "version": 3
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4374873589,
+   "return": 4378648876,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c2-52",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c1-33a",
+      "createRevision": 3,
+      "modRevision": 66,
+      "version": 11
+     }
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4372551139,
+   "return": 4379806885,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-43",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 83,
+    "put": {
+     "prevKV": {
+      "key": "k5",
+      "value": "c5-40",
+      "createRevision": 81,
+      "modRevision": 81,
+      "version": 1
+     }
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4381464900,
+   "return": 4386853469,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-52",
+       "createRevision": 3,
+       "modRevision": 84,
+       "version": 12
+      },
+      {
+       "key": "k1",
+       "value": "c4-41",
+       "createRevision": 76,
+       "modRevision": 77,
+       "version": 2
+      },
+      {
+       "key": "k2",
+       "value": "c5-42",
+       "createRevision": 82,
+       "modRevision": 82,
+       "version": 1
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4379175757,
+   "return": 4387871213,
+   "req": {
+    "delete": {
+     "key": "k6",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4387743256,
+   "return": 4392519250,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c3-46",
+       "createRevision": 66,
+       "modRevision": 80,
+       "version": 5,
+       "lease": 7285800186738114562
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4390515991,
+   "return": 4393058023,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c3-46",
+       "createRevision": 66,
+       "modRevision": 80,
+       "version": 5,
+       "lease": 7285800186738114562
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4397477727,
+   "return": 4400524434,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c2-52",
+       "createRevision": 3,
+       "modRevision": 84,
+       "version": 12
+      },
+      {
+       "key": "k1",
+       "value": "c4-41",
+       "createRevision": 76,
+       "modRevision": 77,
+       "version": 2
+      },
+      {
+       "key": "k2",
+       "value": "c5-42",
+       "createRevision": 82,
+       "modRevision": 82,
+       "version": 1
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4396689031,
+   "return": 4401941883,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4401860992,
+   "return": 4404753428,
+   "req": {
+    "delete": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4403819422,
+   "return": 4409175111,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c3-48"
+    }
+   },
+   "resp": {
+    "revision": 85,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4406725490,
+   "return": 4414357385,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c5-45"
+    }
+   },
+   "resp": {
+    "revision": 87,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4416824549,
+   "return": 4422336205,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 87,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c3-48",
+       "createRevision": 85,
+       "modRevision": 85,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4423005213,
+   "return": 4424392869,
+   "req": {
+    "range": {
+     "key": "k3",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 84,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c3-46",
+       "createRevision": 66,
+       "modRevision": 80,
+       "version": 5,
+       "lease": 7285800186738114562
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4405454429,
+   "return": 4435696565,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 84
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c2-55"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 86,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4433831053,
+   "return": 4437715580,
+   "req": {
+    "delete": {
+     "key": "k1",
+     "end": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 90,
+    "delete": {
+     "deleted": 3,
+     "prevKVs": [
+      {
+       "key": "k1",
+       "value": "c4-41",
+       "createRevision": 76,
+       "modRevision": 77,
+       "version": 2
+      },
+      {
+       "key": "k2",
+       "value": "c5-42",
+       "createRevision": 82,
+       "modRevision": 82,
+       "version": 1
+      },
+      {
+       "key": "k3",
+       "value": "c3-46",
+       "createRevision": 66,
+       "modRevision": 80,
+       "version": 5,
+       "lease": 7285800186738114562
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4433738053,
+   "return": 4440853313,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 66
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c4-46"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 90,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k0",
+          "value": "c5-46",
+          "createRevision": 3,
+          "modRevision": 89,
+          "version": 15
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4451848685,
+   "return": 4454863298,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 90,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-46",
+       "createRevision": 3,
+       "modRevision": 89,
+       "version": 15
+      },
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 3,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4458165249,
+   "return": 4461451673,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 90,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-46",
+       "createRevision": 3,
+       "modRevision": 89,
+       "version": 15
+      }
+     ],
+     "count": 3,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4460220577,
+   "return": 4465967653,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c4-47",
+     "lease": 7285800186738114561,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 91,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4417162782,
+   "return": 4468533695,
+   "req": {
+    "delete": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 88,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4447639724,
+   "return": 4468900504,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 91,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-46",
+       "createRevision": 3,
+       "modRevision": 89,
+       "version": 15
+      },
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 4,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4417420265,
+   "return": 4468929387,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c5-46",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 89,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c5-45",
+      "createRevision": 3,
+      "modRevision": 87,
+      "version": 14
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4469017419,
+   "return": 4473541139,
+   "req": {
+    "delete": {
+     "key": "k7"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 4471940975,
+   "return": 4489798208,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 60
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c4-48"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 91,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4478219878,
+   "return": 4489843692,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 92,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-46",
+       "createRevision": 3,
+       "modRevision": 89,
+       "version": 15
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4479069564,
+   "return": 4490279640,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 92,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c4-37",
+       "createRevision": 69,
+       "modRevision": 70,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4490005786,
+   "return": 4493240136,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 92,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4494240034,
+   "return": 4501062247,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c1-49a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k7",
+        "value": "c1-49b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 93,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k5",
+         "value": "c4-47",
+         "createRevision": 91,
+         "modRevision": 91,
+         "version": 1,
+         "lease": 7285800186738114561
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4496060947,
+   "return": 4503340687,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 70
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c3-51"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 94,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4504856221,
+   "return": 4505755119,
+   "req": {
+    "range": {
+     "key": "k5",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 94,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c1-49a",
+       "createRevision": 91,
+       "modRevision": 93,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4505565231,
+   "return": 4508848283,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 82
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c3-53"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 94,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4507896574,
+   "return": 4513520853,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c2-61",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 95,
+    "put": {
+     "prevKV": {
+      "key": "k5",
+      "value": "c1-49a",
+      "createRevision": 91,
+      "modRevision": 93,
+      "version": 2
+     }
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4511995682,
+   "return": 4515180911,
+   "req": {
+    "delete": {
+     "key": "k2",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 96,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4511082027,
+   "return": 4515201568,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c5-49"
+    }
+   },
+   "resp": {
+    "revision": 96,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 4517429084,
+   "return": 4522352871,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 96,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c2-61",
+       "createRevision": 91,
+       "modRevision": 95,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4534653025,
+   "return": 4541370923,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 96,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4538766639,
+   "return": 4544444752,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 96,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c2-61",
+       "createRevision": 91,
+       "modRevision": 95,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4529625184,
+   "return": 4586921529,
+   "req": {
+    "delete": {
+     "key": "k1",
+     "end": "k4"
+    }
+   },
+   "resp": {
+    "revision": 97,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4534932588,
+   "return": 4587057318,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 84
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c3-55"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 97,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k0",
+          "value": "c5-46",
+          "createRevision": 3,
+          "modRevision": 89,
+          "version": 15
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 25,
+   "call": 4561105115,
+   "return": 4561105115,
+   "req": {
+    "leaseRevoke": {
+     "id": 7285800186738114563
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 4561105115,
+   "return": 4588923015,
+   "req": {
+    "leaseGrant": {
+     "ttl": 3
+    }
+   },
+   "resp": {
+    "revision": 97,
+    "leaseGrant": {
+     "id": 7285800186738114563,
+     "ttl": 3
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4533366248,
+   "return": 4589323353,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 70
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c2-62"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 97,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k4",
+          "value": "c3-51",
+          "createRevision": 69,
+          "modRevision": 94,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4546863695,
+   "return": 4591230547,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 98,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k4",
+       "value": "c3-51",
+       "createRevision": 69,
+       "modRevision": 94,
+       "version": 3
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4594709439,
+   "return": 4597603615,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 98,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4601081476,
+   "return": 4605153299,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c3-57",
+     "lease": 7285800186738114562,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 99,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4606449544,
+   "return": 4610301557,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c5-54",
+     "lease": 7285800186738114563,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 100,
+    "put": {
+     "prevKV": {
+      "key": "k0",
+      "value": "c5-46",
+      "createRevision": 3,
+      "modRevision": 89,
+      "version": 15
+     }
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4605606671,
+   "return": 4611011208,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 99,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4605125322,
+   "return": 4611403515,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 99,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-46",
+       "createRevision": 3,
+       "modRevision": 89,
+       "version": 15
+      },
+      {
+       "key": "k5",
+       "value": "c2-61",
+       "createRevision": 91,
+       "modRevision": 95,
+       "version": 3
+      },
+      {
+       "key": "k6",
+       "value": "c3-57",
+       "createRevision": 99,
+       "modRevision": 99,
+       "version": 1,
+       "lease": 7285800186738114562
+      }
+     ],
+     "count": 4,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4614914021,
+   "return": 4615701310,
+   "req": {
+    "range": {
+     "key": "k7",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 100,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c1-49b",
+       "createRevision": 93,
+       "modRevision": 93,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4619555880,
+   "return": 4620588566,
+   "req": {
+    "range": {
+     "key": "k1",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 101,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-56",
+       "createRevision": 101,
+       "modRevision": 101,
+       "version": 1,
+       "lease": 7285800186738114561
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4615149588,
+   "return": 4621263614,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c4-56",
+     "lease": 7285800186738114561
+    }
+   },
+   "resp": {
+    "revision": 101,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4617713206,
+   "return": 4624365855,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c5-55",
+     "lease": 7285800186738114563,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 102,
+    "put": {
+     "prevKV": {
+      "key": "k1",
+      "value": "c4-56",
+      "createRevision": 101,
+      "modRevision": 101,
+      "version": 1,
+      "lease": 7285800186738114561
+     }
+    }
+   }
+  },
+  {
+   "client": 26,
+   "call": 4629578039,
+   "return": 4629578039,
+   "req": {
+    "leaseRevoke": {
+     "id": 7285800186738114564
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 1,
+   "call": 4629578039,
+   "return": 4634929605,
+   "req": {
+    "leaseGrant": {
+     "ttl": 2
+    }
+   },
+   "resp": {
+    "revision": 102,
+    "leaseGrant": {
+     "id": 7285800186738114564,
+     "ttl": 2
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4640333583,
+   "return": 4644015625,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 59
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c1-55"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 102,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k1",
+          "value": "c5-55",
+          "createRevision": 101,
+          "modRevision": 102,
+          "version": 2,
+          "lease": 7285800186738114563
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4641549258,
+   "return": 4645080163,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 66
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-61"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 102,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4643289351,
+   "return": 4651029061,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 102,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c2-61",
+       "createRevision": 91,
+       "modRevision": 95,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4648157256,
+   "return": 4655477583,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-57",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 103,
+    "put": {
+     "prevKV": {
+      "key": "k5",
+      "value": "c2-61",
+      "createRevision": 91,
+      "modRevision": 95,
+      "version": 3
+     }
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4660485230,
+   "return": 4663846939,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 105,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c1-49b",
+       "createRevision": 93,
+       "modRevision": 93,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4658708362,
+   "return": 4664150322,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c4-59"
+    }
+   },
+   "resp": {
+    "revision": 104,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 4659783640,
+   "return": 4665521550,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c5-58"
+    }
+   },
+   "resp": {
+    "revision": 105,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4663186366,
+   "return": 4670721746,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 105,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c3-57",
+       "createRevision": 99,
+       "modRevision": 99,
+       "version": 1,
+       "lease": 7285800186738114562
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4670355668,
+   "return": 4677659503,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c5-59",
+     "lease": 7285800186738114563
+    }
+   },
+   "resp": {
+    "revision": 106,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4675584134,
+   "return": 4679437106,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k6",
+       "target": 3,
+       "result": 1,
+       "number": 99
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c1-57"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k6"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 107,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4684040841,
+   "return": 4687861212,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c5-60a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k3",
+        "value": "c5-60b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 108,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k4",
+         "value": "c5-59",
+         "createRevision": 105,
+         "modRevision": 106,
+         "version": 2,
+         "lease": 7285800186738114563
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4689464188,
+   "return": 4695624033,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 108,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c1-49b",
+       "createRevision": 93,
+       "modRevision": 93,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4691258363,
+   "return": 4697652361,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 59
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c4-61"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 108,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k1",
+          "value": "c4-59",
+          "createRevision": 101,
+          "modRevision": 104,
+          "version": 3
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 4696848960,
+   "return": 4700441812,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c3-66",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 109,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 4696914990,
+   "return": 4703586082,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c1-59",
+     "lease": 7285800186738114564
+    }
+   },
+   "resp": {
+    "revision": 110,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 4698625839,
+   "return": 4704425780,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 110,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-54",
+       "createRevision": 3,
+       "modRevision": 100,
+       "version": 16,
+       "lease": 7285800186738114563
+      },
+      {
+       "key": "k1",
+       "value": "c4-59",
+       "createRevision": 101,
+       "modRevision": 104,
+       "version": 3
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4705340086,
+   "return": 4711112558,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 110,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c5-57",
+       "createRevision": 91,
+       "modRevision": 103,
+       "version": 4
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 4716667555,
+   "return": 4720280136,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c4-62",
+     "lease": 7285800186738114561
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 4718964664,
+   "return": 4724993400,
+   "req": {
+    "range": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c4-59",
+       "createRevision": 101,
+       "modRevision": 104,
+       "version": 3
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 4724010535,
+   "return": 4734206032,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-54",
+       "createRevision": 3,
+       "modRevision": 100,
+       "version": 16,
+       "lease": 7285800186738114563
+      },
+      {
+       "key": "k1",
+       "value": "c4-59",
+       "createRevision": 101,
+       "modRevision": 104,
+       "version": 3
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 4747480306,
+   "return": 5083717233,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c1-63"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 4734957085,
+   "return": 5083742358,
+   "req": {
+    "put": {
+     "key": "k4",
+     "value": "c3-69",
+     "lease": 7285800186738114562
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 4753814956,
+   "return": 5083769902,
+   "req": {
+    "delete": {
+     "key": "k5",
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 5099565116,
+   "return": 5513165922,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-54",
+       "createRevision": 3,
+       "modRevision": 100,
+       "version": 16,
+       "lease": 7285800186738114563
+      }
+     ],
+     "count": 8,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 5093238453,
+   "return": 5513702036,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "range": {
+     "kvs": [
+      {
+       "key": "k4",
+       "value": "c1-59",
+       "createRevision": 105,
+       "modRevision": 110,
+       "version": 4,
+       "lease": 7285800186738114564
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 5522819008,
+   "return": 5526163265,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 111,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c1-57",
+       "createRevision": 99,
+       "modRevision": 107,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 4735157398,
+   "return": 7724525144,
+   "req": {
+    "delete": {
+     "key": "k7"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 5317697917,
+   "return": 7724591171,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c0-9"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 5096460919,
+   "return": 7724629654,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 64
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c3-71"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 4731970913,
+   "return": 7724673273,
+   "req": {
+    "leaseGrant": {
+     "ttl": 4
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 5555387512,
+   "return": 8554468294,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c5-70",
+     "lease": 7285800186738114563,
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 7772573228,
+   "return": 8554586160,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 9700974759,
+   "return": 12700974759,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k6",
+       "target": 3,
+       "result": 1,
+       "number": 99
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c2-197"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k6"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 9704241742,
+   "return": 12704241742,
+   "req": {
+    "delete": {
+     "key": "k2",
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 9706708828,
+   "return": 12706708828,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c5-186",
+     "lease": 7285800186738114563,
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 9709286350,
+   "return": 12709286350,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "end": "k7"
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 9727064515,
+   "return": 12727064515,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c4-181",
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 1,
+   "call": 9730657862,
+   "return": 12730657862,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k5",
+       "target": 3,
+       "result": 1,
+       "number": 103
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k5",
+        "value": "c1-186"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k5"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 12704316853,
+   "return": 15704316853,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 75
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c2-198"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 12713468039,
+   "return": 15713468039,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c3-188"
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 12726075835,
+   "return": 15726075835,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1,
+       "number": 60
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c5-187"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 1,
+   "call": 12770352277,
+   "return": 15770352277,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c1-188",
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "DeadlineExceeded",
+    "message": "sim: client timed out",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 15740776958,
+   "return": 15869876028,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k1",
+       "target": 3,
+       "result": 1,
+       "number": 104
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k1",
+        "value": "c2-201"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k1"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 15736867169,
+   "return": 15869934978,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c0-126"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 15758104582,
+   "return": 15870033232,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c4-183",
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 3,
+   "call": 15716867666,
+   "return": 15993827343,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 66
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-189"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 15881581320,
+   "return": 15993835900,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c0-128"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 2,
+   "call": 15880147715,
+   "return": 15993923068,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c2-202"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 1,
+   "call": 15887327934,
+   "return": 15993948232,
+   "req": {
+    "put": {
+     "key": "k6",
+     "value": "c1-192",
+     "lease": 7285800186738114564,
+     "prevKV": true
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 5,
+   "call": 15759011618,
+   "return": 15993972902,
+   "req": {
+    "put": {
+     "key": "k2",
+     "value": "c5-191"
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 15918600917,
+   "return": 15994052714,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1,
+       "number": 55
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c4-188"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "err": {
+    "code": "Unavailable",
+    "message": "sim: connection lost",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 4,
+   "call": 18729409331,
+   "return": 20061215079,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c4-423"
+    }
+   },
+   "resp": {
+    "revision": 132,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 18758072497,
+   "return": 20061365371,
+   "req": {
+    "delete": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 133,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 18711122688,
+   "return": 20061409668,
+   "req": {
+    "put": {
+     "key": "k7",
+     "value": "c5-430"
+    }
+   },
+   "resp": {
+    "revision": 130,
+    "put": {}
+   }
+  },
+  {
+   "client": 0,
+   "call": 18713674632,
+   "return": 20061500982,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c0-373"
+    }
+   },
+   "resp": {
+    "revision": 131,
+    "put": {}
+   }
+  },
+  {
+   "client": 3,
+   "call": 18710459812,
+   "return": 20061662903,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 133,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20063187529,
+   "return": 20065087852,
+   "req": {
+    "delete": {
+     "key": "k4",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 133,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20065350626,
+   "return": 20067247438,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-431",
+     "lease": 7285800186738114563
+    }
+   },
+   "resp": {
+    "revision": 134,
+    "put": {}
+   }
+  },
+  {
+   "client": 0,
+   "call": 20074310257,
+   "return": 20075928094,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k6",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c0-375"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k6"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 134,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k6",
+          "value": "c0-126",
+          "createRevision": 127,
+          "modRevision": 127,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20083519844,
+   "return": 20084792019,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k2",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k2",
+        "value": "c0-376"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k2"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 134,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k2",
+          "value": "c5-191",
+          "createRevision": 125,
+          "modRevision": 126,
+          "version": 2
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20092001363,
+   "return": 20093667436,
+   "req": {
+    "range": {
+     "key": "k2"
+    }
+   },
+   "resp": {
+    "revision": 134,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 20092794883,
+   "return": 20094069585,
+   "req": {
+    "delete": {
+     "key": "k1"
+    }
+   },
+   "resp": {
+    "revision": 135,
+    "delete": {
+     "deleted": 1
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20093995206,
+   "return": 20095126730,
+   "req": {
+    "range": {
+     "key": "k3",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 135,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c4-423",
+       "createRevision": 132,
+       "modRevision": 132,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20095806303,
+   "return": 20096795805,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k6",
+       "target": 3,
+       "result": 1,
+       "number": 107
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k6",
+        "value": "c5-433"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k6"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 135,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k6",
+          "value": "c0-126",
+          "createRevision": 127,
+          "modRevision": 127,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20104126756,
+   "return": 20104739081,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 135,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20106412691,
+   "return": 20109014525,
+   "req": {
+    "delete": {
+     "key": "k3",
+     "end": "k6",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 136,
+    "delete": {
+     "deleted": 2,
+     "prevKVs": [
+      {
+       "key": "k3",
+       "value": "c4-423",
+       "createRevision": 132,
+       "modRevision": 132,
+       "version": 1
+      },
+      {
+       "key": "k5",
+       "value": "c5-431",
+       "createRevision": 128,
+       "modRevision": 134,
+       "version": 2,
+       "lease": 7285800186738114563
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20107714266,
+   "return": 20109915508,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-434",
+     "lease": 7285800186738114563,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 137,
+    "put": {}
+   }
+  },
+  {
+   "client": 0,
+   "call": 20108698023,
+   "return": 20110109208,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c0-379"
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 20112980268,
+   "return": 20114331425,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 35
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c1-414"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 20118130058,
+   "return": 20118582720,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      },
+      {
+       "key": "k5",
+       "value": "c0-379",
+       "createRevision": 137,
+       "modRevision": 138,
+       "version": 2
+      }
+     ],
+     "count": 4,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20118709731,
+   "return": 20119724067,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c0-126",
+       "createRevision": 127,
+       "modRevision": 127,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20120370572,
+   "return": 20122366629,
+   "req": {
+    "delete": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 27,
+   "call": 20120903285,
+   "return": 20120903285,
+   "req": {
+    "leaseRevoke": {
+     "id": 845608597382496257
+    }
+   },
+   "err": {
+    "code": "Unknown",
+    "message": "lease expiry",
+    "ambiguous": true
+   }
+  },
+  {
+   "client": 0,
+   "call": 20120903285,
+   "return": 20123100772,
+   "req": {
+    "leaseGrant": {
+     "ttl": 3
+    }
+   },
+   "resp": {
+    "revision": 138,
+    "leaseGrant": {
+     "id": 845608597382496257,
+     "ttl": 3
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20124997316,
+   "return": 20126313765,
+   "req": {
+    "delete": {
+     "key": "k7",
+     "end": "k8",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 139,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k7",
+       "value": "c5-430",
+       "createRevision": 123,
+       "modRevision": 130,
+       "version": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 20127052811,
+   "return": 20128102896,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 139,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20126775689,
+   "return": 20128148406,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 139,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      }
+     ],
+     "count": 3,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20130874023,
+   "return": 20132343315,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k0",
+       "target": 3,
+       "result": 1,
+       "number": 100
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c2-439"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k0"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 139,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20139073627,
+   "return": 20140312328,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c0-384",
+     "lease": 845608597382496257,
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 140,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 20139177595,
+   "return": 20140502565,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 139,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      },
+      {
+       "key": "k5",
+       "value": "c0-379",
+       "createRevision": 137,
+       "modRevision": 138,
+       "version": 2
+      },
+      {
+       "key": "k6",
+       "value": "c0-126",
+       "createRevision": 127,
+       "modRevision": 127,
+       "version": 1
+      }
+     ],
+     "count": 3
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20140557286,
+   "return": 20142828842,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 70
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c5-436"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 140,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20145188379,
+   "return": 20146683213,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c5-437",
+     "lease": 7285800186738114563
+    }
+   },
+   "resp": {
+    "revision": 141,
+    "put": {}
+   }
+  },
+  {
+   "client": 4,
+   "call": 20149402995,
+   "return": 20150013531,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 141,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20150436895,
+   "return": 20151860590,
+   "req": {
+    "range": {
+     "key": "k5"
+    }
+   },
+   "resp": {
+    "revision": 141,
+    "range": {
+     "kvs": [
+      {
+       "key": "k5",
+       "value": "c0-379",
+       "createRevision": 137,
+       "modRevision": 138,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20153003649,
+   "return": 20154547161,
+   "req": {
+    "put": {
+     "key": "k1",
+     "value": "c2-442",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 142,
+    "put": {}
+   }
+  },
+  {
+   "client": 5,
+   "call": 20157416733,
+   "return": 20158510539,
+   "req": {
+    "range": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 142,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20158658992,
+   "return": 20161005073,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c0-386a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k5",
+        "value": "c0-386b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 143,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20160509646,
+   "return": 20161436150,
+   "req": {
+    "range": {
+     "key": "k3",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 142,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c5-437",
+       "createRevision": 140,
+       "modRevision": 141,
+       "version": 2,
+       "lease": 7285800186738114563
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 20160636421,
+   "return": 20162499791,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 3
+    }
+   },
+   "resp": {
+    "revision": 143,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c0-386a",
+       "createRevision": 143,
+       "modRevision": 143,
+       "version": 1
+      },
+      {
+       "key": "k1",
+       "value": "c2-442",
+       "createRevision": 142,
+       "modRevision": 142,
+       "version": 1
+      },
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20165243037,
+   "return": 20167099772,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c1-419a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k6",
+        "value": "c1-419b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 144,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {}
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20170321528,
+   "return": 20171116030,
+   "req": {
+    "range": {
+     "key": "k1",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 144,
+    "range": {
+     "kvs": [
+      {
+       "key": "k1",
+       "value": "c2-442",
+       "createRevision": 142,
+       "modRevision": 142,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20172288875,
+   "return": 20174022584,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 144,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c0-386a",
+       "createRevision": 143,
+       "modRevision": 143,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20173393973,
+   "return": 20174856090,
+   "req": {
+    "range": {
+     "key": "k7"
+    }
+   },
+   "resp": {
+    "revision": 144,
+    "range": {
+     "kvs": [
+      {
+       "key": "k7",
+       "value": "c1-419a",
+       "createRevision": 144,
+       "modRevision": 144,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20182000881,
+   "return": 20182936368,
+   "req": {
+    "put": {
+     "key": "k3",
+     "value": "c5-440",
+     "lease": 7285800186738114563
+    }
+   },
+   "resp": {
+    "revision": 145,
+    "put": {}
+   }
+  },
+  {
+   "client": 2,
+   "call": 20182902496,
+   "return": 20185245946,
+   "req": {
+    "delete": {
+     "key": "k4"
+    }
+   },
+   "resp": {
+    "revision": 145,
+    "delete": {
+     "deleted": 0
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20183677176,
+   "return": 20185310609,
+   "req": {
+    "put": {
+     "key": "k0",
+     "value": "c0-388"
+    }
+   },
+   "resp": {
+    "revision": 146,
+    "put": {}
+   }
+  },
+  {
+   "client": 0,
+   "call": 20193078346,
+   "return": 20193825760,
+   "req": {
+    "range": {
+     "key": "k2",
+     "serializable": true
+    }
+   },
+   "resp": {
+    "revision": 146,
+    "range": {
+     "kvs": [
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20195132369,
+   "return": 20196336846,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 146,
+    "range": {
+     "kvs": [
+      {
+       "key": "k3",
+       "value": "c5-440",
+       "createRevision": 140,
+       "modRevision": 145,
+       "version": 3,
+       "lease": 7285800186738114563
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 20196277131,
+   "return": 20198545572,
+   "req": {
+    "delete": {
+     "key": "k6",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 147,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k6",
+       "value": "c1-419b",
+       "createRevision": 127,
+       "modRevision": 144,
+       "version": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20197764748,
+   "return": 20198691222,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 147,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20202053536,
+   "return": 20202867801,
+   "req": {
+    "range": {
+     "key": "k0"
+    }
+   },
+   "resp": {
+    "revision": 147,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c0-388",
+       "createRevision": 143,
+       "modRevision": 146,
+       "version": 2
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 20206509970,
+   "return": 20207403146,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l"
+    }
+   },
+   "resp": {
+    "revision": 147,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c0-388",
+       "createRevision": 143,
+       "modRevision": 146,
+       "version": 2
+      },
+      {
+       "key": "k1",
+       "value": "c2-442",
+       "createRevision": 142,
+       "modRevision": 142,
+       "version": 1
+      },
+      {
+       "key": "k2",
+       "value": "c5-191",
+       "createRevision": 125,
+       "modRevision": 126,
+       "version": 2
+      },
+      {
+       "key": "k3",
+       "value": "c5-440",
+       "createRevision": 140,
+       "modRevision": 145,
+       "version": 3,
+       "lease": 7285800186738114563
+      },
+      {
+       "key": "k5",
+       "value": "c0-386b",
+       "createRevision": 137,
+       "modRevision": 143,
+       "version": 3
+      },
+      {
+       "key": "k7",
+       "value": "c1-419a",
+       "createRevision": 144,
+       "modRevision": 144,
+       "version": 1
+      }
+     ],
+     "count": 6
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20211838471,
+   "return": 20214076993,
+   "req": {
+    "txn": {
+     "success": [
+      {
+       "put": {
+        "key": "k0",
+        "value": "c5-442a",
+        "prevKV": true
+       }
+      },
+      {
+       "put": {
+        "key": "k6",
+        "value": "c5-442b"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 148,
+    "txn": {
+     "succeeded": true,
+     "results": [
+      {
+       "put": {
+        "prevKV": {
+         "key": "k0",
+         "value": "c0-388",
+         "createRevision": 143,
+         "modRevision": 146,
+         "version": 2
+        }
+       }
+      },
+      {
+       "put": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 1,
+   "call": 20213182668,
+   "return": 20215239096,
+   "req": {
+    "delete": {
+     "key": "k3",
+     "prevKV": true
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "delete": {
+     "deleted": 1,
+     "prevKVs": [
+      {
+       "key": "k3",
+       "value": "c5-440",
+       "createRevision": 140,
+       "modRevision": 145,
+       "version": 3,
+       "lease": 7285800186738114563
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 20214091204,
+   "return": 20215506662,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k3",
+       "target": 3,
+       "result": 1,
+       "number": 66
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k3",
+        "value": "c3-425"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k3"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 0,
+   "call": 20222409970,
+   "return": 20223402456,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k7",
+       "target": 3,
+       "result": 1
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k7",
+        "value": "c0-391"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k7"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "kvs": [
+         {
+          "key": "k7",
+          "value": "c1-419a",
+          "createRevision": 144,
+          "modRevision": 144,
+          "version": 1
+         }
+        ],
+        "count": 1
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 4,
+   "call": 20223033921,
+   "return": 20224437453,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 2
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-442a",
+       "createRevision": 143,
+       "modRevision": 148,
+       "version": 3
+      },
+      {
+       "key": "k1",
+       "value": "c2-442",
+       "createRevision": 142,
+       "modRevision": 142,
+       "version": 1
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20224254964,
+   "return": 20225341487,
+   "req": {
+    "txn": {
+     "compare": [
+      {
+       "key": "k4",
+       "target": 3,
+       "result": 1,
+       "number": 70
+      }
+     ],
+     "success": [
+      {
+       "put": {
+        "key": "k4",
+        "value": "c5-443"
+       }
+      }
+     ],
+     "failure": [
+      {
+       "range": {
+        "key": "k4"
+       }
+      }
+     ]
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "txn": {
+     "succeeded": false,
+     "results": [
+      {
+       "range": {
+        "count": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "client": 2,
+   "call": 20231210372,
+   "return": 20231992323,
+   "req": {
+    "range": {
+     "key": "k3"
+    }
+   },
+   "resp": {
+    "revision": 149,
+    "range": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "client": 5,
+   "call": 20232032837,
+   "return": 20233000367,
+   "req": {
+    "put": {
+     "key": "k5",
+     "value": "c5-445"
+    }
+   },
+   "resp": {
+    "revision": 150,
+    "put": {}
+   }
+  },
+  {
+   "client": 1,
+   "call": 20233954508,
+   "return": 20235202842,
+   "req": {
+    "range": {
+     "key": "k6"
+    }
+   },
+   "resp": {
+    "revision": 150,
+    "range": {
+     "kvs": [
+      {
+       "key": "k6",
+       "value": "c5-442b",
+       "createRevision": 148,
+       "modRevision": 148,
+       "version": 1
+      }
+     ],
+     "count": 1
+    }
+   }
+  },
+  {
+   "client": 3,
+   "call": 20235147132,
+   "return": 20236106832,
+   "req": {
+    "range": {
+     "key": "k",
+     "end": "l",
+     "limit": 1
+    }
+   },
+   "resp": {
+    "revision": 150,
+    "range": {
+     "kvs": [
+      {
+       "key": "k0",
+       "value": "c5-442a",
+       "createRevision": 143,
+       "modRevision": 148,
+       "version": 3
+      }
+     ],
+     "count": 6,
+     "more": true
+    }
+   }
+  }
+ ]
+}

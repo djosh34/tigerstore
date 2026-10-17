@@ -6,6 +6,8 @@ import (
 	"io"
 	"testing"
 
+	"go.etcd.io/raft/v3/raftpb"
+
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -38,5 +40,37 @@ func TestSnapshotSendError(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestDroppedSnapshotSentAgain checks the leader's rule for a snapshot a
+// follower dropped: a heartbeat answer an election timeout after the
+// snapshot went out, with no fetch started, gives up on it at once; one
+// earlier, or after the fetch started, does not.
+func TestDroppedSnapshotSentAgain(t *testing.T) {
+	c := newMemCluster(t, func(*Config) {})
+	n := c.nodes[0]
+	resp := &raftpb.Message{Type: new(raftpb.MessageType_MsgHeartbeatResp), From: new(uint64(3)), To: new(n.cfg.ID), Term: new(n.term)}
+	for _, tc := range []struct {
+		name    string
+		since   int64
+		started bool
+		dropped bool
+	}{
+		{"just sent", 1, false, false},
+		{"an election timeout ago", int64(n.cfg.ElectionTicks), false, true},
+		{"fetch under way", int64(n.cfg.ElectionTicks), true, false},
+	} {
+		n.snapWait[3] = n.now - tc.since
+		if tc.started {
+			n.SnapshotStarted(3)
+		}
+		if err := n.Step(resp); err != nil {
+			t.Fatal(err)
+		}
+		if _, waiting := n.snapWait[3]; waiting == tc.dropped {
+			t.Errorf("%s: still waiting %v, want %v", tc.name, waiting, !tc.dropped)
+		}
+		delete(n.snapWait, 3)
 	}
 }

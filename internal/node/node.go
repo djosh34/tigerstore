@@ -92,10 +92,11 @@ type Config struct {
 	// sync and each item of a snapshot install, with its stage, and an
 	// error it returns breaks the stream there; and reloading, if set,
 	// runs when a run that ended for a reload opened the log again,
-	// before the core replays it. For tests.
+	// after the old core went and before the new one replays the log.
+	// For tests.
 	snapshotSync int
 	stage        func(string) error
-	reloading    func()
+	reloading    func(*Node)
 	// cleanStage, if set, runs at each step of the cleaner that changes
 	// what is durable. For tests.
 	cleanStage func(string)
@@ -131,7 +132,8 @@ type input struct {
 	written  uint64
 	writeErr error
 	// snapshot is a follower that started (fetching) or ended (served,
-	// with serveErr) a snapshot fetch from this node.
+	// with serveErr) a snapshot fetch from this node, or 0 for a backup
+	// that found the log damaged.
 	snapshot         uint64
 	fetching, served bool
 	serveErr         error
@@ -296,7 +298,6 @@ type Completer interface {
 type Completion struct {
 	Tag any
 	core.Reply
-	Hold *ReplyHold
 }
 
 // batch is requests that one client connection hands the committer at
@@ -344,18 +345,14 @@ func (n *Node) SubmitBatch(ctx context.Context, reqs []core.Request, tags []any,
 
 // Node is a running node.
 type Node struct {
-	// Issued and seen belong to the committer. Writers only add to freed.
-	// Cumulative counts survive reloads without losing a concurrent release.
-	replyIssued, replySeen int64
-	replyFreed             atomic.Int64
-	cfg                    Config
-	core                   *core.Node
-	log                    *diskLog
-	inbox                  chan input
-	persistQ               chan persistBatch
-	persisted              chan persistDone
-	ckptQ                  chan core.CheckpointChunk
-	cleanQ                 chan packRoot
+	cfg       Config
+	core      *core.Node
+	log       *diskLog
+	inbox     chan input
+	persistQ  chan persistBatch
+	persisted chan persistDone
+	ckptQ     chan core.CheckpointChunk
+	cleanQ    chan packRoot
 	// sparesQ takes the number of spare segment files the log keeps to
 	// the disk goroutine, which rotates segments into them.
 	sparesQ  chan int
@@ -381,6 +378,9 @@ type Node struct {
 	transport atomic.Value
 	// members are the members' IDs the committer saw last.
 	members atomic.Pointer[[]uint64]
+	// memory measures the process's memory for the value cache, each
+	// tick; only the committer uses it.
+	memory *memoryGauge
 }
 
 // diskLog is the WAL as the committer, the snapshot server and the
@@ -616,10 +616,11 @@ func newOnDisk(cfg Config, path string, dir logFS) (*Node, error) {
 		}
 	}
 	n := &Node{
-		cfg:   cfg,
-		log:   &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
-		inbox: make(chan input, 8192),
-		done:  make(chan struct{}),
+		cfg:    cfg,
+		log:    &diskLog{fs: dir, dir: path, maps: map[uint64][]byte{}, before: cfg.BeforeRead, retry: make(chan struct{}, 1)},
+		inbox:  make(chan input, 8192),
+		done:   make(chan struct{}),
+		memory: newMemoryGauge(),
 		// Defragment sends to it from gRPC goroutines, so a reload keeps
 		// it.
 		defragQ: make(chan chan error),
@@ -675,9 +676,12 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
-	// Only a reload finds a core of an earlier run.
-	if n.core != nil && n.cfg.reloading != nil {
-		n.cfg.reloading()
+	// Only a reload finds a core of an earlier run. It goes before the
+	// new one loads, so that the two are never in memory at once.
+	reload := n.core != nil
+	n.core = nil
+	if reload && n.cfg.reloading != nil {
+		n.cfg.reloading(n)
 	}
 	run, err := nextRun(n.log.fs)
 	if err != nil {
@@ -697,8 +701,6 @@ func (n *Node) open() error {
 		n.log.mu.Unlock()
 	}
 	n.core = c
-	n.replySeen = n.replyFreed.Load()
-	c.SetReplyBytes(n.replyIssued - n.replySeen)
 	n.persistQ = make(chan persistBatch, maxBacklog)
 	n.persisted = make(chan persistDone, 1)
 	n.ckptQ = make(chan core.CheckpointChunk, 64)
@@ -1005,7 +1007,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case done := <-n.persisted:
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
-					n.dropAll(waiters, streams)
+					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
 				}
 				return done.err
 			}
@@ -1032,28 +1034,19 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			n.core.CopyCheckpoint()
 		case <-ticker.C:
 			n.core.Tick()
+			n.measureMemory(streams)
 		case <-ctx.Done():
 			return nil
 		}
 		if b := n.cfg.DiskBudget; b > 0 {
 			n.core.SetDisk(n.log.used.Load(), b)
 		}
-		freed := n.replyFreed.Load()
-		n.core.ReleaseReplyBytes(freed - n.replySeen)
-		n.replySeen = freed
 		eff, err := n.core.Process()
 		if len(eff.Persist) > 0 {
 			backlog = append(backlog, persistBatch{jobs: eff.Persist, queued: time.Now()})
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
-		for _, id := range eff.Closed {
-			if ws, ok := streams[id]; ok {
-				delete(streams, id)
-				ws.err = ErrSnapshotInstalled
-				close(ws.done)
-			}
-		}
 		if eff.HandOff != 0 {
 			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
 		}
@@ -1087,10 +1080,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 				}
 			}
 			if !sent {
-				delete(streams, w.Stream)
-				n.core.CloseWatchStream(w.Stream)
-				ws.err = ErrWatchTooSlow
-				close(ws.done)
+				n.closeTooSlow(streams, w.Stream)
 			}
 		}
 		if l, tm := n.core.Leader(), n.core.Term(); l != n.leader.Load() || tm != term {
@@ -1104,15 +1094,57 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		n.authEnabled.Store(n.core.AuthEnabled())
 		n.loadAlarms()
 		if err != nil {
+			if errors.Is(err, core.ErrInstalled) {
+				n.dropAll(waiters, streams, ErrSnapshotInstalled)
+			}
 			return err
 		}
 	}
 }
 
-// dropAll fails every request and ends every watch stream of a run that
-// ends for a reload; the node goes on, so their clients would otherwise
-// wait for good. Clients try again, as after a restart.
-func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
+// measureMemory gives the core what the process uses besides the value
+// cache, so the cache takes only what the rest leaves. When the rest alone
+// is at the limit, which leaves the cache nothing, it closes the watch
+// stream that is furthest behind, as one too slow: its client resumes
+// from the last revision it got. One stream goes per collection, which
+// shows what that freed.
+func (n *Node) measureMemory(streams map[uint64]*WatchStream) {
+	limit := n.cfg.Core.MemoryBytes
+	if limit <= 0 {
+		return
+	}
+	other, fresh := n.memory.read(n.core.CacheLow())
+	n.core.SetOtherMemory(other)
+	if !fresh || other < limit {
+		return
+	}
+	var slowest uint64
+	var behind int64
+	for id, ws := range streams {
+		if q := ws.queued.Load(); q > behind {
+			slowest, behind = id, q
+		}
+	}
+	if behind > 0 {
+		n.logf("memory: %d bytes in use besides the cache, limit %d; closing watch stream %d, %d bytes behind", other, limit, slowest, behind)
+		n.closeTooSlow(streams, slowest)
+	}
+}
+
+// closeTooSlow closes a watch stream whose client fell too far behind.
+func (n *Node) closeTooSlow(streams map[uint64]*WatchStream, id uint64) {
+	ws := streams[id]
+	delete(streams, id)
+	n.core.CloseWatchStream(id)
+	ws.err = ErrWatchTooSlow
+	close(ws.done)
+}
+
+// dropAll fails every request and ends every watch stream, with
+// streamErr, of a run that ends for a reload; the node goes on, so their
+// clients would otherwise wait for good. Clients try again, as after a
+// restart.
+func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream, streamErr error) {
 	replies := make([]core.Reply, 0, len(waiters))
 	for id := range waiters {
 		replies = append(replies, core.Reply{ID: id, Err: rpctypes.ErrGRPCStopped})
@@ -1120,7 +1152,7 @@ func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStrea
 	n.completeAll(replies, waiters, nil, map[Completer]int{})
 	for id, ws := range streams {
 		delete(streams, id)
-		ws.err = rpctypes.ErrGRPCStopped
+		ws.err = streamErr
 		close(ws.done)
 	}
 }
@@ -1137,7 +1169,6 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 	for _, r := range replies {
 		w, ok := waiters[r.ID]
 		if !ok {
-			n.core.ReleaseReplyBytes(r.Held)
 			continue
 		}
 		delete(waiters, r.ID)
@@ -1151,7 +1182,7 @@ func (n *Node) completeAll(replies []core.Reply, waiters map[uint64]waiter, grou
 			groupOf[w.to] = i
 			groups = append(groups, completions{to: w.to})
 		}
-		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r, Hold: n.holdReply(r.Held)})
+		groups[i].cs = append(groups[i].cs, Completion{Tag: w.tag, Reply: r})
 	}
 	for _, g := range groups {
 		g.to.Complete(g.cs)
@@ -1361,11 +1392,18 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 				break more
 			}
 		}
-		jobs := pending.jobs
+		jobs, installs := core.UpToInstall(pending.jobs)
 		g := written{jobs: jobs, times: persistTimes{queued: pending.queued, start: time.Now()}}
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
+					return
+				}
+				// The install checks the entries this group already
+				// holds, which must be readable.
+				n.log.used.Add(w.Buffered())
+				if err := w.Flush(); err != nil {
+					fail(err)
 					return
 				}
 				if err := n.install(ctx, t, j.Install); err != nil {
@@ -1406,6 +1444,11 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		}
 		toSync <- g
 		inFlight++
+		if installs {
+			// The run ends at the install and starts again from the log.
+			drain()
+			return
+		}
 		if !full {
 			continue
 		}

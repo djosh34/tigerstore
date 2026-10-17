@@ -114,10 +114,11 @@ type Config struct {
 	// CheckpointChunk is about how many bytes of the index each
 	// CopyCheckpoint copies into a checkpoint under way.
 	CheckpointChunk int
-	// MemoryBytes is shared by the index, entries, unary Range answers
-	// and value cache, after buffers and room for the garbage collector.
-	// The cache takes what the other three leave. 0 disables the cache
-	// and Range reservations.
+	// MemoryBytes is the memory the whole process may use, the value
+	// cache included: the Go memory limit less room for the garbage
+	// collector. The cache takes what the rest of the process leaves, as
+	// the driver measures it (SetOtherMemory). A Range answer larger than
+	// MemoryBytes is refused. 0 turns the cache and that check off.
 	MemoryBytes int64
 	// SnapshotTicks is how long a leader waits for a follower to fetch a
 	// snapshot before it sends another.
@@ -276,9 +277,17 @@ type Reply struct {
 	PrevKv *mvccpb.KeyValue
 	// Range is the answer to a Compact range.
 	Range mvcc.RangeResult
-	// Held is the reservation for a compact Range. The driver reports
-	// ReleaseReplyBytes only after the answer is sent or dropped.
-	Held int64
+}
+
+// UpToInstall returns the jobs up to the first with an install, that one
+// included, and whether there is one. The core ends at an install
+// (ErrInstalled), so a driver writes nothing after it: a root that came
+// later names a checkpoint of the state the install replaced (#182).
+func UpToInstall(jobs []PersistJob) ([]PersistJob, bool) {
+	if i := slices.IndexFunc(jobs, func(j PersistJob) bool { return j.Install != nil }); i >= 0 {
+		return jobs[:i+1], true
+	}
+	return jobs, false
 }
 
 // ownDepth is how many appends of the leader's own writes may be on their
@@ -292,7 +301,7 @@ const ownDepth = 2
 type PersistJob struct {
 	// Install, if set, is a snapshot from Raft. The driver first brings
 	// its log to the snapshot's index (ReceiveSnapshot), then appends the
-	// rest of the job.
+	// rest of the job. Persisted then ends the core with ErrInstalled.
 	Install   *Install
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
@@ -324,9 +333,6 @@ type Effects struct {
 	Send    []*raftpb.Message
 	Replies []Reply
 	Watch   []WatchResponse
-	// Closed are watch streams that the node ended after a snapshot
-	// replaced its state; their clients watch again from where they were.
-	Closed []uint64
 	// Expired lists the leases that expired as this node applied the log.
 	// Drivers may log them; the simulator checks their timing.
 	Expired []int64
@@ -375,8 +381,9 @@ type pending struct {
 	// queued marks a write in proposals that was not proposed yet.
 	queued bool
 	// fetched holds the values read from the log for a read that needed
-	// them at once.
-	fetched map[mvcc.Ref][]byte
+	// them at once, and compares how far its transaction's compares got.
+	fetched  map[mvcc.Ref][]byte
+	compares *mvcc.Compares
 	// early marks a write in Node.early.
 	early bool
 	// conf is the configuration change of a member change.
@@ -460,12 +467,13 @@ type Node struct {
 	// ownDepth of them are on their way, new writes wait. awaitOwn marks
 	// that the next append with entries carries a batch just proposed.
 	// Appends of forwarded proposals do not hold anything.
-	own        []uint64
-	awaitOwn   bool
-	replyBytes int64               // compact Range answers under construction or at clients
-	replyWait  []*pending          // ranges waiting for answer memory
-	waiting    map[uint64]*pending // writes by request ID
-	timeouts   []*pending          // every waiting request in deadline order
+	own      []uint64
+	awaitOwn bool
+	// otherMemory is what the process uses besides the value cache, as
+	// the driver measured it last.
+	otherMemory int64
+	waiting     map[uint64]*pending // writes by request ID
+	timeouts    []*pending          // every waiting request in deadline order
 
 	proposals []*pending
 	// early are writes that need featureVersion, which wait for it.
@@ -508,16 +516,15 @@ type Node struct {
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
-	// cold are the value reads under way, and epoch counts the snapshots
-	// installed. watchRead is the read of this turn's watch events.
+	// cold are the value reads under way. watchRead is the read of this
+	// turn's watch events.
 	cold      map[*ValueRead]struct{}
-	epoch     uint64
 	watchRead *ValueRead
 	// applyQ holds Raft's apply messages not applied yet: while paused
 	// waits for values from the log, ordered apply waits with it. resume
 	// is the write that runs again after its read. readInline is set
-	// while the node starts or installs a snapshot: nothing else waits
-	// then, so a write reads the values it needs itself.
+	// while the node starts: nothing else waits then, so a write reads
+	// the values it needs itself.
 	applyQ         []*raftpb.Message
 	paused, resume *pausedWrite
 	readInline     bool
@@ -528,11 +535,6 @@ type Node struct {
 	// tokenWaits the requests whose token's entry is not applied yet.
 	tokens     map[string]*simpleToken
 	tokenWaits []tokenWait
-	// installs counts the persist jobs with a snapshot install that are
-	// not durable yet.
-	// installTop is the highest snapshot index among them.
-	installs   int
-	installTop uint64
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
@@ -649,10 +651,16 @@ func (n *Node) replay(commit uint64) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("core: read entry %d: %w", i, err)
 		}
+		term = e.GetTerm()
+		if i == commit && planted.On("B23") {
+			// Planted: the replay stops one entry short; the state lacks
+			// the last committed entry's writes.
+			n.applied = i
+			break
+		}
 		if err := n.apply([]*raftpb.Entry{e}); err != nil {
 			return 0, err
 		}
-		term = e.GetTerm()
 	}
 	return term, nil
 }
@@ -832,6 +840,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
 		n.confMessages = append(n.confMessages, m)
 		return nil
+	}
+	if m.GetType() == raftpb.MsgHeartbeatResp {
+		n.snapshotDropped(m.GetFrom())
 	}
 	if n.noSpace && m.GetType() == raftpb.MsgProp {
 		// Writes a follower forwards. Past its budget, the leader refuses
@@ -1378,15 +1389,17 @@ func (n *Node) Persisted(job PersistJob) {
 		return
 	}
 	n.unpersisted -= job.bytes
-	if job.Install != nil {
-		n.installs--
-		if n.installs == 0 {
-			n.installTop = 0
+	if in := job.Install; in != nil {
+		if !planted.On("B27") {
+			n.fail(fmt.Errorf("%w at %d from %d, checkpoint %d", ErrInstalled, in.Index, in.From, in.Checkpoint.Index))
+			return
 		}
-		if err := n.install(job.Install); err != nil {
+		// Planted: the core goes on with the state the snapshot replaced.
+		if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
 			n.fail(err)
 			return
 		}
+		n.applied = in.Index
 	}
 	if job.Root != nil {
 		n.storage.ckpt = *job.Root
@@ -1456,7 +1469,6 @@ func (n *Node) Process() (Effects, error) {
 		// so one client sees no delay. The byte cap still sends a full
 		// entry early (queueWrite).
 		n.releaseEarly()
-		n.retryReplies()
 		if len(n.tokenWaits) > 0 {
 			n.retryTokenWaits()
 		}
@@ -1497,10 +1509,6 @@ func (n *Node) Process() (Effects, error) {
 
 // stop fails every waiting request once the node stopped.
 func (n *Node) stop() {
-	for _, p := range n.replyWait {
-		n.finish(p, rpctypes.ErrGRPCStopped)
-	}
-	n.replyWait = nil
 	for _, p := range n.timeouts {
 		n.finish(p, rpctypes.ErrGRPCStopped)
 	}
@@ -1554,9 +1562,7 @@ func (n *Node) handleReady(rd raft.Ready) {
 		case raft.LocalAppendThread:
 			job := PersistJob{Entries: m.Entries, msg: m}
 			if m.Snapshot != nil {
-				n.installs++
 				meta := m.Snapshot.GetMetadata()
-				n.installTop = max(n.installTop, meta.GetIndex())
 				job.Install = &Install{From: n.rn.BasicStatus().Lead, Index: meta.GetIndex(), Term: meta.GetTerm(), Applied: n.applied}
 			}
 			if m.Vote != nil {
@@ -1660,15 +1666,7 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.RangeRequest:
 		if p.req.Compact {
 			var res mvcc.RangeResult
-			if res, err = n.kv.RangeKVsReserved(op, func(bytes int64) error {
-				if err := n.reserveReply(bytes); err != nil {
-					return err
-				}
-				if n.cfg.MemoryBytes > 0 {
-					rep.Held = bytes
-				}
-				return nil
-			}); err == nil {
+			if res, err = n.kv.RangeKVs(op, n.cfg.MemoryBytes); err == nil {
 				rep.Term, rep.Range = n.term, res
 			}
 			break
@@ -1691,6 +1689,12 @@ func (n *Node) serveRead(p *pending) {
 			resp = r
 		}
 	case *pb.LeaseTimeToLiveRequest:
+		// Only the leader counts the time a lease has left. etcd's
+		// followers ask it (node.TimeToLive).
+		if !n.isLeader {
+			err = rpctypes.ErrGRPCNotLeader
+			break
+		}
 		r := n.state.timeToLive(op, n.remaining(op.ID))
 		n.fillHeader(r.Header)
 		resp = r
@@ -1718,19 +1722,10 @@ func (n *Node) serveRead(p *pending) {
 	case *pb.DowngradeRequest:
 		resp, err = n.validateDowngrade(op)
 	}
-	if errors.Is(err, errReplyBusy) {
-		p.fetched = nil
-		n.replyWait = append(n.replyWait, p)
-		return
-	}
 	if cold, ok := errors.AsType[*mvcc.ColdError](err); ok {
-		r := n.fetch(cold.Need)
-		r.read, r.held = p, rep.Held
+		n.fetch(cold.Need).read = p
+		p.compares = cold.Compares
 		return
-	}
-	if err != nil {
-		n.ReleaseReplyBytes(rep.Held)
-		rep.Held = 0
 	}
 	if t := n.cfg.Timer; t != nil {
 		switch p.req.Op.(type) {
@@ -1878,12 +1873,17 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 			break
 		}
 		if !n.readInline {
-			n.pause(e.GetIndex(), k, cold.Need)
+			n.pause(e.GetIndex(), k, cold)
 			return errPaused
+		}
+		if batch(cold.Compares) {
+			// The compare is done with the batch before.
+			n.values.fetched = nil
 		}
 		if err := n.readNow(cold.Need); err != nil {
 			return err
 		}
+		n.kv.Resume(cold.Compares)
 		resp, err = n.applyOp(op)
 	}
 	if n.readInline {

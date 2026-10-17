@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -329,38 +331,15 @@ func TestColdReadKeepsItsSegment(t *testing.T) {
 	}
 }
 
-// TestInstallAfterPausedWrite pauses the second write of an entry on a
-// value compare, then installs a snapshot with no checkpoint past it. The
-// state stays, so the install applies only the writes from the paused one
-// on: the first write runs once.
-func TestInstallAfterPausedWrite(t *testing.T) {
+// TestPersistedInstallEndsTheCore checks that a durable snapshot install
+// ends the core with ErrInstalled, which both drivers act on by starting a
+// new core from the log, and that the core then answers nothing more.
+func TestPersistedInstallEndsTheCore(t *testing.T) {
 	s, _ := coldSingle(t, nil)
-	rev := s.n.kv.Rev()
-	s.hold = true
-	s.n.Submit(Request{ID: 201, Op: &pb.PutRequest{Key: []byte("x"), Value: []byte("1")}})
-	s.n.Submit(Request{ID: 202, Op: &pb.TxnRequest{
-		Compare: []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: []byte("va")}}},
-		Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("swapped")}}}},
-	}})
-	s.run()
-	w := s.n.paused
-	if w == nil || w.write != 1 || s.n.kv.Rev() != rev+1 {
-		t.Fatalf("setup: paused %+v at revision %d, want the second write paused at %d", w, s.n.kv.Rev(), rev+1)
-	}
-	term, err := s.n.termAt(w.index)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.n.install(&Install{From: 1, Index: w.index, Term: term, Applied: w.index - 1}); err != nil {
-		t.Fatal(err)
-	}
-	if s.n.kv.Rev() != rev+2 {
-		t.Fatalf("revision %d after the install, want %d", s.n.kv.Rev(), rev+2)
-	}
-	release(t, s)
-	r := s.do(301, &pb.RangeRequest{Key: []byte("x")})
-	if kvs := r.Resp.(*pb.RangeResponse).Kvs; len(kvs) != 1 || kvs[0].Version != 1 {
-		t.Fatalf("x after the install: %v", kvs)
+	s.n.Persisted(PersistJob{Install: &Install{From: 2, Index: s.n.Applied(), Term: s.n.Term(), Applied: s.n.Applied()}})
+	_, err := s.n.Process()
+	if !errors.Is(err, ErrInstalled) || FailureOf(err) != Reload {
+		t.Fatalf("after a durable install: %v", err)
 	}
 }
 
@@ -385,5 +364,75 @@ func TestReplaySortsOwnWrites(t *testing.T) {
 	s = startSingle(t, disk, 2)
 	if s.n.Hash() != want {
 		t.Fatal("the restarted node's state differs")
+	}
+}
+
+// TestCompareBatches runs a VALUE compare over 30 values of 100 KiB on
+// disk only, in a read-only transaction and in one that writes. Each
+// read the core asks for must stay near one batch, a paused write must
+// hold no more than one batch it read, and both must answer right.
+func TestCompareBatches(t *testing.T) {
+	const keys, size = 30, 100 << 10
+	value := bytes.Repeat([]byte("v"), size)
+	s, _ := coldSingle(t, nil)
+	for i := range keys {
+		if r := s.do(uint64(500+i), &pb.PutRequest{Key: fmt.Appendf(nil, "big%02d", i), Value: value}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	fill(t, s, 600, 20)
+	compare := []*pb.Compare{{Key: []byte("big"), RangeEnd: []byte("bih"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: value}}}
+	write := []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("x"), Value: []byte("1")}}}}
+	for _, tc := range []struct {
+		name string
+		id   uint64
+		txn  *pb.TxnRequest
+	}{
+		{"read-only", 700, &pb.TxnRequest{Compare: compare}},
+		{"write", 701, &pb.TxnRequest{Compare: compare, Success: write}},
+	} {
+		s.hold = true
+		s.n.Submit(Request{ID: tc.id, Op: tc.txn})
+		reads := 0
+		for got := replies(s); ; got = replies(s) {
+			if r, ok := got[tc.id]; ok {
+				if r.Err != nil || !r.Resp.(*pb.TxnResponse).Succeeded {
+					t.Fatalf("%s: %v, %v", tc.name, r.Resp, r.Err)
+				}
+				break
+			}
+			if len(s.held) == 0 {
+				t.Fatalf("%s: no reply and no read", tc.name)
+			}
+			held := s.held
+			s.held = nil
+			for _, r := range held {
+				n := 0
+				for _, f := range r.fills {
+					n += int(f.Ref.Len)
+				}
+				if n > 1<<20+size {
+					t.Fatalf("%s: a read of %d bytes", tc.name, n)
+				}
+				reads++
+				s.n.ValuesRead(r, r.Run())
+			}
+			if w := s.n.paused; w != nil {
+				n := 0
+				for _, b := range w.fetched {
+					n += len(b)
+				}
+				if n > 1<<20+size {
+					t.Fatalf("%s: the paused write holds %d bytes it read", tc.name, n)
+				}
+			}
+		}
+		if reads < 3 {
+			t.Fatalf("%s: %d reads, want one per batch", tc.name, reads)
+		}
+	}
+	s.hold = false
+	if kvs := s.do(800, &pb.RangeRequest{Key: []byte("x")}).Resp.(*pb.RangeResponse).Kvs; len(kvs) != 1 {
+		t.Fatalf("the write's put: %v", kvs)
 	}
 }

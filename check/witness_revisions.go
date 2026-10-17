@@ -28,7 +28,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
 	}
 	if err := r.index(); err != nil {
 		return err
@@ -52,6 +52,12 @@ type revisionOrder struct {
 	// returned before each was called: it writes no revision up to it.
 	ambiguous []int
 	lb        map[int]int64
+	// alive is, per lease, the highest revision at which an answer shows
+	// it in use: an acked put with it wrote that revision, or a key a
+	// client saw still had it there. Its revoke writes a later revision,
+	// unless the ID was granted more than once (grants).
+	alive  map[int64]int64
+	grants map[int64]int
 	// returns and highest are the return times of the acked ops, in
 	// order, and the highest header revision of those up to each; calls
 	// and lowest their call times, in order, and the lowest header
@@ -149,9 +155,25 @@ func (r *revisionOrder) index() error {
 		r.byCall(ops)
 	}
 	r.lowerBounds()
+	for i := range h.Ops {
+		op := &h.Ops[i]
+		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
+			r.alive[op.Req.Put.Lease] = max(r.alive[op.Req.Put.Lease], op.Resp.Revision)
+		}
+		if g := op.Req.LeaseGrant; g != nil {
+			id := g.ID
+			if op.Resp != nil && op.Resp.LeaseGrant != nil {
+				id = op.Resp.LeaseGrant.ID
+			}
+			r.grants[id]++
+		}
+	}
 	// What clients saw: a key unchanged over a span, and the writer of a
-	// value, if they saw the value.
+	// value, if they saw the value, and the leases still in use.
 	saw := func(kv history.KeyValue, unchangedTo int64, valued bool) {
+		if kv.Lease != 0 {
+			r.alive[kv.Lease] = max(r.alive[kv.Lease], unchangedTo)
+		}
 		if kv.ModRevision < unchangedTo {
 			r.covered[kv.Key] = append(r.covered[kv.Key], span{kv.ModRevision, unchangedTo})
 		}
@@ -659,6 +681,43 @@ func (r *revisionOrder) expire(call, rev int64) {
 	}
 }
 
+// expireEarly puts in the late optional mutations due by the end of
+// revision rev before the acked ops of rev that change no key. Those write
+// nothing that an ambiguous put of the lease could come after, and an
+// answer called after the rejection that found the lease gone may have to
+// come before them, such as a read below a compaction of rev (#237). One
+// that an answer at rev shows in use waits for the end of rev.
+func (r *revisionOrder) expireEarly(rev int64) {
+	w := r.w
+	for _, o := range r.due(0, rev) {
+		if l := w.h.Ops[o.op].Req.LeaseRevoke; l != nil && r.alive[l.ID] >= rev {
+			continue
+		}
+		if r.takes(w.live.clone(), o) {
+			w.apply(o.op, w.reqs[o.op])
+			r.used[o.op] = true
+		}
+	}
+}
+
+// expireEnd puts in, past every revision a client saw, the late optional
+// mutations not yet placed. Unlike expire, it lets them write: no answer
+// shows the revisions they write. An expiry of a lease that still has
+// keys deletes them, and when no client saw a revision after it, it can
+// go in nowhere else (#237).
+func (r *revisionOrder) expireEnd() {
+	w := r.w
+	for _, o := range r.due(math.MaxInt64, math.MaxInt64) {
+		if o.from > w.live.rev || !r.isReady(o) {
+			continue
+		}
+		if out := w.live.clone().step(w.reqs[o.op], false); out.err == nil {
+			w.apply(o.op, w.reqs[o.op])
+			r.used[o.op] = true
+		}
+	}
+}
+
 // leasesOf lists the leases the puts of a request use.
 func leasesOf(req history.Request) []int64 {
 	var out []int64
@@ -744,7 +803,7 @@ func (r *revisionOrder) search() error {
 		}
 		var ok bool
 		if rev > r.top {
-			r.expire(math.MaxInt64, math.MaxInt64)
+			r.expireEnd()
 			err := w.observe()
 			if err == nil {
 				err = w.verify()
@@ -821,8 +880,12 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 // fault hides a long prefix of writes, this tries the puts before later
 // deletes that may depend on them. Reversing that order can exhaust the
 // search on permutations before it reaches the first observed revision.
-// Call order is only a preference: the search still tries other orders,
-// and verifies every response and real-time constraint before passing.
+// Ambiguous revokes come last: a lease expiry is called when its lease
+// is granted, so by call it would come first in every gap, and the
+// search could try every order of the gaps after a wrong one before it
+// found the delete that wrote it (seed 59113215 on #238). Call order is
+// only a preference: the search still tries other orders, and verifies
+// every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
@@ -831,11 +894,23 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
+		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
+			// An answer shows the lease in use at rev or later (#237).
+			continue
+		}
 		if !r.used[i] && r.lb[i] < rev {
 			amb = append(amb, i)
 		}
 	}
-	slices.SortFunc(amb, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
+	revoke := func(i int) int {
+		if h.Ops[i].Req.LeaseRevoke != nil {
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(amb, func(a, b int) int {
+		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b))
+	})
 	return append(out, amb...)
 }
 
@@ -899,6 +974,7 @@ func (r *revisionOrder) fits(i int, rev int64) bool {
 func (r *revisionOrder) finish(rev int64) bool {
 	w := r.w
 	r.insertOptional(rev)
+	r.expireEarly(rev)
 	var acked []int
 	for _, i := range slices.Concat(r.others[rev], r.revokes[rev]) {
 		if !r.used[i] {

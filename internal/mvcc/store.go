@@ -71,8 +71,35 @@ func (f Fill) Set(b []byte) error {
 // ColdError is the answer of an operation that needs values at once, to
 // compare or sort them, that only the log on disk has. The store is
 // unchanged. The operation runs again once the values in Need are read
-// and Values.Read returns them; their Dst is nil.
-type ColdError struct{ Need []Fill }
+// and Values.Read returns them; their Dst is nil. A transaction also says
+// how far its compares got, for its next run (Store.Resume).
+type ColdError struct {
+	Need     []Fill
+	Compares *Compares
+}
+
+// Compares is how far the compares of a transaction that waits for
+// values from disk got. A VALUE compare over many keys reads the values
+// only the disk has in batches of about compareBatch bytes, and its next
+// run goes on after the last key it matched, so no run holds more than one
+// batch (#221).
+type Compares struct {
+	// Rev is the store's revision then: after a write, the next run
+	// starts over.
+	Rev int64
+	// Done are the results of the compares that finished, in the order
+	// the transaction runs them, and After the last key whose value the
+	// next one matched, if any.
+	Done  []bool
+	After []byte
+	// Batch says that Need is a batch of the next compare's values: once
+	// compared, they are not needed again.
+	Batch bool
+}
+
+// compareBatch is about how many bytes of values one run of a VALUE
+// compare reads from disk.
+const compareBatch = 1 << 20
 
 func (e *ColdError) Error() string {
 	return fmt.Sprintf("mvcc: %d values must be read from disk first", len(e.Need))
@@ -240,6 +267,8 @@ type Store struct {
 	changes []Change
 	// fills are the values that responses and events wait for.
 	fills []Fill
+	// resume is how far the next transaction's compares got (Resume).
+	resume *Compares
 
 	counts Counts
 	// compactHash is the hash the last compaction took.

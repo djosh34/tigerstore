@@ -130,7 +130,9 @@ func (n *Node) validateDowngrade(r *pb.DowngradeRequest) (proto.Message, error) 
 // applyVersionSet applies etcd's DowngradeInfoSet or ClusterVersionSet.
 // A downgrade is checked again here, so that of two at once one fails;
 // a CANCEL without a downgrade changes nothing and answers without
-// error, as etcd's does.
+// error, as etcd's does: its version.Manager returns
+// ErrNoInflightDowngrade, but EtcdServer.downgradeCancel only logs that
+// and answers with the cluster version (v3_server.go).
 func (n *Node) applyVersionSet(r *pb.InternalRaftRequest) (proto.Message, error) {
 	st := n.state
 	switch d := r.DowngradeInfoSet; {

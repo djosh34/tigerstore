@@ -353,6 +353,9 @@ type node struct {
 
 	diskQ    []core.PersistJob
 	diskBusy bool
+	// installing is set while a group with a snapshot install is on its
+	// way to disk.
+	installing bool
 
 	nextReq     uint64
 	reqs        map[uint64]*clientOp
@@ -378,6 +381,9 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// installs are the times the node started again from its log after
+	// a snapshot install.
+	installs []int64
 	// durableLast is the last entry index of the last append the node
 	// reported durable to its core; recovery must give at least that.
 	durableLast uint64
@@ -1048,9 +1054,6 @@ func (s *Sim) process(n *node) {
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
 	}
-	for _, id := range eff.Closed {
-		s.streamClosed(n, id)
-	}
 	if len(eff.Checkpoint) > 0 && err == nil {
 		s.writeCheckpoint(n, eff.Checkpoint)
 		if !n.up {
@@ -1082,6 +1085,16 @@ func (s *Sim) process(n *node) {
 		s.stopNode(n)
 		return
 	}
+	if errors.Is(err, core.ErrInstalled) {
+		// A snapshot install is durable: the node starts a new core from
+		// its log, as the real node does.
+		n.installs = append(n.installs, s.now)
+		s.down(n)
+		if serr := s.start(n); serr != nil {
+			s.fail("%w", errors.Join(err, serr))
+		}
+		return
+	}
 	if err != nil {
 		s.fail("node %d stopped: %w", n.id, err)
 		return
@@ -1108,6 +1121,7 @@ func rotStop(n *node, err error) bool {
 func (s *Sim) startDisk(n *node) {
 	jobs := n.diskQ
 	n.diskQ = nil
+	_, n.installing = core.UpToInstall(jobs)
 	if s.cfg.Faults.SlowFetch && !s.healed && slices.ContainsFunc(jobs, func(j core.PersistJob) bool { return j.Install != nil }) && s.rng.IntN(2) == 0 {
 		s.stats.SlowFetches++
 		n.diskBusy = true
@@ -1120,6 +1134,7 @@ func (s *Sim) startDisk(n *node) {
 // writeJobs writes jobs and schedules the fsync. A crash before the fsync
 // finishes leaves a torn tail.
 func (s *Sim) writeJobs(n *node, jobs []core.PersistJob) {
+	jobs, _ = core.UpToInstall(jobs)
 	n.inflight, n.replaceFrom = jobs, 0
 	for _, j := range jobs {
 		if len(j.Entries) > 0 && j.Entries[0].GetIndex() <= n.durableLast && (n.replaceFrom == 0 || j.Entries[0].GetIndex() < n.replaceFrom) {
@@ -1139,6 +1154,12 @@ func (s *Sim) writeJobs(n *node, jobs []core.PersistJob) {
 		if j.Install != nil {
 			if i := s.firstReplaced(n, j.Install); i <= n.durableLast && (n.replaceFrom == 0 || i < n.replaceFrom) {
 				n.replaceFrom = i
+			}
+			// The install checks the entries the node holds, which must
+			// be readable.
+			if err := n.log.Flush(); err != nil {
+				s.diskFailed(n, err)
+				return
 			}
 			if err := s.install(n, j.Install); err != nil {
 				s.installFailed(n, err)
@@ -1201,7 +1222,7 @@ func (s *Sim) diskDone(e *event) {
 			return
 		}
 	}
-	n.diskBusy = false
+	n.diskBusy, n.installing = false, false
 	if e.grayDisk {
 		s.graySyncEnded()
 	}
@@ -1362,7 +1383,7 @@ func (s *Sim) down(n *node) {
 	if n.inflight != nil && n.replaceFrom > 0 {
 		n.recoverFloor = min(n.recoverFloor, n.replaceFrom-1)
 	}
-	n.up = false
+	n.up, n.installing = false, false
 	if n.pausedUntil > s.now {
 		// A crash ends a pause; the node handles what it held, as a node
 		// that is down.

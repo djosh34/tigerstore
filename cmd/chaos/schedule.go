@@ -281,6 +281,9 @@ func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *r
 	rec.Installed, rec.Effect = true, true
 	var errs []error
 	for _, lf := range faults {
+		awaitTraffic(ctx, lf.l, lf.f.Dir)
+	}
+	for _, lf := range faults {
 		st, err := lf.l.Proxy.Set(lf.f)
 		lr := linkRecord{Link: lf.l.Name, Requested: lf.f, Installed: st}
 		if err != nil || st.Fault != lf.f {
@@ -306,6 +309,24 @@ func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *r
 	}
 	rec.HealedAt = r.since()
 	return errors.Join(append(errs, holdErr)...)
+}
+
+// trafficWait bounds awaitTraffic.
+const trafficWait = 15 * time.Second
+
+// awaitTraffic waits, up to trafficWait, until l has an open connection
+// and new bytes in the directions of dir, so that a fault installed then
+// has traffic to act on. A client link to a node that just started has
+// no client yet for a while (#224). A fault without a direction (Reset)
+// needs only the connection.
+func awaitTraffic(ctx context.Context, l *link, dir proxy.Dir) bool {
+	start := l.Proxy.Stats()
+	return waitUntil(ctx, trafficWait, func() bool {
+		st := l.Proxy.Stats()
+		return st.Open > 0 &&
+			(dir&proxy.Forward == 0 || st.ForwardBytes > start.ForwardBytes) &&
+			(dir&proxy.Backward == 0 || st.BackwardBytes > start.BackwardBytes)
+	})
 }
 
 // kill sends SIGKILL to node i, checks that the kernel reports the

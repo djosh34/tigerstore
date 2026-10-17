@@ -107,7 +107,7 @@ var methods = withAuth(map[string]*method{
 	"/etcdserverpb.KV/Compact":             {op: newOp[pb.CompactionRequest]},
 	"/etcdserverpb.Lease/LeaseGrant":       {op: newOp[pb.LeaseGrantRequest]},
 	"/etcdserverpb.Lease/LeaseRevoke":      {op: newOp[pb.LeaseRevokeRequest]},
-	"/etcdserverpb.Lease/LeaseTimeToLive":  {op: newOp[pb.LeaseTimeToLiveRequest]},
+	"/etcdserverpb.Lease/LeaseTimeToLive":  {unary: leaseTimeToLive},
 	"/etcdserverpb.Lease/LeaseLeases":      {op: newOp[pb.LeaseLeasesRequest]},
 	"/etcdserverpb.Lease/LeaseKeepAlive":   {stream: (*Server).keepAlive},
 	"/etcdserverpb.Watch/Watch":            {stream: (*Server).watch},
@@ -191,6 +191,20 @@ func nodeCall[T any, P interface {
 		return nil, err
 	}
 	resp, err := s.n.DoAs(ctx, caller, req)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return resp, nil
+}
+
+// leaseTimeToLive answers Lease.LeaseTimeToLive, which a follower hands
+// the leader (node.TimeToLive).
+func leaseTimeToLive(ctx context.Context, s *Server, caller core.Caller, b []byte) (proto.Message, error) {
+	var r pb.LeaseTimeToLiveRequest
+	if err := unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	resp, err := s.n.TimeToLive(ctx, caller, &r)
 	if err != nil {
 		return nil, toStatus(err)
 	}

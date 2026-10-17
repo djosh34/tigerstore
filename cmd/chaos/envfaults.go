@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/chaos/env"
+	"github.com/djosh34/tigerstore/chaos/proxy"
 	"github.com/djosh34/tigerstore/history"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -644,6 +645,12 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // crashInInstall stops follower target, writes until the leader's log
 // moved past it, resumes it so that it fetches a snapshot, and kills it
 // once the fetch started; it then starts it again, which must recover.
+// The fetch is a connection of the follower's own, so the replies on its
+// links to the others come at 64 KiB/s from before it resumes until the
+// kill, which comes once 16 KiB of the stream arrived: a small snapshot
+// would otherwise be fetched and installed before the kill (#223). Its
+// Raft messages go out on the same links at full speed, and those it gets
+// come on the others' links.
 func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
 	if target == lead {
 		target = others(lead)[0]
@@ -660,13 +667,54 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%s", k, strings.Repeat("b", 1000))}}
 		r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
 	}
+	var held []*link
+	for _, j := range others(target) {
+		held = append(held, r.c.peers[target][j])
+	}
+	slow := proxy.Fault{Kind: proxy.Rate, Dir: proxy.Backward, Rate: 64 << 10}
+	// release heals the links slowed so far, which rec.Links records.
+	release := func() error {
+		var errs []error
+		for i := range rec.Links {
+			l := held[i]
+			rec.Links[i].BeforeHeal = l.Proxy.Stats()
+			st, err := l.Proxy.Set(proxy.Fault{Kind: proxy.None})
+			rec.Links[i].Healed = st
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
+	}
+	// received is how much the slowed links delivered to the follower
+	// since then.
+	var base uint64
+	received := func() uint64 {
+		var n uint64
+		for _, l := range held {
+			n += l.Proxy.Stats().BackwardSent
+		}
+		return n - base
+	}
+	for _, l := range held {
+		st, err := l.Proxy.Set(slow)
+		rec.Links = append(rec.Links, linkRecord{Link: l.Name, Requested: slow, Installed: st})
+		if err != nil {
+			return errors.Join(err, release())
+		}
+	}
+	base = received()
 	logBefore := logSize(n)
 	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
-		return err
+		return errors.Join(err, release())
 	}
 	rec.Installed = true
-	fetching := waitUntil(ctx, 10*time.Second, func() bool { return strings.Contains(logSince(n, logBefore), "fetching the snapshot") })
+	// The fetch started, and part of its stream came.
+	fetching := waitUntil(ctx, 10*time.Second, func() bool {
+		return strings.Contains(logSince(n, logBefore), "fetching the snapshot") && received() >= 16<<10
+	})
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
+		return errors.Join(err, release())
+	}
+	if err := release(); err != nil {
 		return err
 	}
 	text := logSince(n, logBefore)

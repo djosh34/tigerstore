@@ -114,7 +114,7 @@ func (s *Sim) check(res *Result) error {
 		if r.Call < liveFrom {
 			continue
 		}
-		if s.nodes[r.Node].stalledAt(r.Call) {
+		if s.nodes[r.Node].stalledAt(r.Call) || r.Err != nil && s.nodes[r.Node].installedDuring(r.Call, r.Return) {
 			continue
 		}
 		if s.nodes[r.Node].fenced && errors.Is(r.Err, errConnRefused) {

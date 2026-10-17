@@ -123,6 +123,8 @@ func newCluster(cfg config) (*cluster, error) {
 			"--advertise-client-urls", "https://" + c.endpoints[i],
 			"--cert-file", cert, "--key-file", key, "--trusted-ca-file", caFile, "--client-cert-auth",
 			"--peer-cert-file", cert, "--peer-key-file", key, "--peer-trusted-ca-file", caFile,
+			// Each watch gets a progress notification every 3 s (watch.go).
+			"--watch-progress-notify-interval", "3s",
 		}
 		if cfg.memory > 0 {
 			// The node's budget is its cgroup's limit, which it would read

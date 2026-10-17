@@ -11,6 +11,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -23,6 +25,10 @@ type writer struct {
 	s       *Store
 	begin   int64
 	changed bool
+	// done are the results of a transaction's finished compares, and
+	// resume how far an earlier run of it got.
+	done   []bool
+	resume *Compares
 }
 
 func (s *Store) start() *writer {
@@ -87,16 +93,11 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 
 // RangeKVs is Range without building protobuf messages: one slice of
 // values instead of a message per key, for drivers that encode the
-// response themselves.
-func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
-	return s.RangeKVsReserved(r, nil)
-}
-
-// RangeKVsReserved reserves memory before allocating the answer's values.
-// reserve may refuse the read; no fills then escape to the caller.
-func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) (RangeResult, error) {
+// response themselves. If limit is above 0, an answer whose keys and
+// values take more than limit bytes is refused before any value is read.
+func (s *Store) RangeKVs(r *pb.RangeRequest, limit int64) (RangeResult, error) {
 	w := s.reader()
-	res, err := w.rangeResult(r, true, reserve)
+	res, err := w.rangeResult(r, true, limit)
 	if err != nil {
 		return res, err
 	}
@@ -132,7 +133,7 @@ func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) 
 
 // rangeKeys answers r as etcd's message. Without total, as rangeResult.
 func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, total, nil)
+	res, err := w.rangeResult(r, total, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +176,9 @@ func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 
 // rangeResult answers r without the values, unless it sorts by them, and
 // sets values if they are still to be read. Without total, the walk stops
-// at the pushed-down limit and Count holds only the keys it saw.
-func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64) error) (RangeResult, error) {
+// at the pushed-down limit and Count holds only the keys it saw. An
+// answer larger than limit, if above 0, is refused (tooLarge).
+func (w *writer) rangeResult(r *pb.RangeRequest, total bool, limit int64) (RangeResult, error) {
 	w.s.counts.Ranges++
 	cur := w.cur()
 	at := r.Revision
@@ -219,7 +221,7 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	if byValue {
 		// A VALUE sort reads the values of every candidate, also of keys
 		// the limit drops.
-		if err := reserveReply(reserve, kvs, true); err != nil {
+		if err := tooLarge(kvs, true, limit); err != nil {
 			return RangeResult{}, err
 		}
 		if err := w.s.readNow(kvs); err != nil {
@@ -235,7 +237,7 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	}
 	if !byValue {
 		// Only the page's values are read, after this returns.
-		if err := reserveReply(reserve, kvs, !r.KeysOnly); err != nil {
+		if err := tooLarge(kvs, !r.KeysOnly, limit); err != nil {
 			return RangeResult{}, err
 		}
 	}
@@ -253,23 +255,28 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	return res, nil
 }
 
-// reserveReply asks reserve, if set, for the memory of an answer of kvs
-// before any of their values are allocated. It allows for the values,
-// wire encoding and compression, plus the KVs, fills and allocator
-// rounding. The KVs count by capacity: a page keeps its whole backing
-// array.
-func reserveReply(reserve func(int64) error, kvs []KV, values bool) error {
-	if reserve == nil {
+// ErrTooLarge refuses a Range answer larger than the node's whole memory
+// budget, which it could never hold. The client can ask for a smaller
+// page.
+var ErrTooLarge = status.Error(codes.ResourceExhausted, "tigerstore: Range answer exceeds the memory budget; use a smaller limit")
+
+// tooLarge returns ErrTooLarge if the keys of kvs, and their values if
+// values is set, take more than limit bytes, and limit is above 0.
+func tooLarge(kvs []KV, values bool, limit int64) error {
+	if limit <= 0 {
 		return nil
 	}
-	bytes := int64(1024) + 512*int64(cap(kvs))
+	var bytes int64
 	for _, kv := range kvs {
-		bytes += 4 * int64(len(kv.Key))
+		bytes += int64(len(kv.Key))
 		if values {
-			bytes += 4 * int64(kv.ref.Len)
+			bytes += int64(kv.ref.Len)
 		}
 	}
-	return reserve(bytes)
+	if bytes > limit {
+		return ErrTooLarge
+	}
+	return nil
 }
 
 // readNow reads the value of every KV at once, for a sort on them. If
@@ -573,6 +580,10 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	w := s.start()
+	if c := s.resume; c != nil && c.Rev == w.cur() {
+		w.resume = c
+	}
+	s.resume = nil
 	ops := s.counts.Puts + s.counts.Deletes + s.counts.Ranges
 	defer func() {
 		if s.counts.Puts+s.counts.Deletes+s.counts.Ranges-ops > 1 {
@@ -580,10 +591,17 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 		}
 	}()
 	path, err := w.compareToPath(r)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		_, err = w.checkTxn(r, path)
 	}
-	if _, err := w.checkTxn(r, path); err != nil {
+	if cold, ok := errors.AsType[*ColdError](err); ok {
+		if cold.Compares == nil {
+			cold.Compares = &Compares{Done: w.done}
+		}
+		cold.Compares.Rev = w.cur()
+		return nil, cold
+	}
+	if err != nil {
 		return nil, err
 	}
 	resp, _, err := w.executeTxn(r, path)
@@ -636,14 +654,38 @@ func (w *writer) applyCompares(cs []*pb.Compare) (bool, error) {
 func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	// etcd reads each compare's keys with a range.
 	w.s.counts.Ranges++
-	end := c.RangeEnd
-	matched := false
+	i := len(w.done)
+	if r := w.resume; r != nil && i < len(r.Done) {
+		w.done = append(w.done, r.Done[i])
+		return r.Done[i], nil
+	}
+	ok, err := w.compare(c)
+	if err == nil {
+		w.done = append(w.done, ok)
+	}
+	return ok, err
+}
+
+// compare runs one compare. It stops at the first key that fails it. The
+// values only the disk has are read in batches: the walk stops once one
+// is full, and the next run goes on after the last key that matched
+// before the batch.
+func (w *writer) compare(c *pb.Compare) (bool, error) {
+	start, end := c.Key, c.RangeEnd
+	var after []byte
+	if r := w.resume; r != nil && len(r.Done) == len(w.done) && r.After != nil && len(end) > 0 {
+		after = r.After
+		start = append(bytes.Clone(after), 0)
+	}
+	matched := after != nil
 	ok := true
 	var err error
-	// cold are the values only the disk has. Any key that fails the
-	// compare decides it without them.
+	// cold are the values only the disk has, size their bytes and last the
+	// last key that matched before the first of them.
 	var cold []Fill
-	w.s.ascend(c.Key, end, func(k *keyIndex) bool {
+	var size int64
+	last := after
+	w.s.ascend(start, end, func(k *keyIndex) bool {
 		v, live := k.live(w.cur())
 		if !live {
 			return true
@@ -658,12 +700,16 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 			}
 			if !in {
 				cold = append(cold, Fill{Key: k.key, Ref: v.value})
-				return true
+				size += int64(v.value.Len)
+				return size < compareBatch
 			}
 		}
 		if !compareKV(c, &kv) {
 			ok = false
 			return false
+		}
+		if len(cold) == 0 {
+			last = k.key
 		}
 		return true
 	})
@@ -671,7 +717,7 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		return false, err
 	}
 	if ok && len(cold) > 0 {
-		return false, &ColdError{Need: cold}
+		return false, &ColdError{Need: cold, Compares: &Compares{Done: w.done, After: last, Batch: true}}
 	}
 	if !matched {
 		// A missing key has no value to compare, so VALUE compares fail.
@@ -682,6 +728,10 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	}
 	return ok, nil
 }
+
+// Resume makes the next Txn go on from where an earlier run of it got,
+// unless a write came between. Only that Txn uses c.
+func (s *Store) Resume(c *Compares) { s.resume = c }
 
 func compareKV(c *pb.Compare, kv *KV) bool {
 	var result int

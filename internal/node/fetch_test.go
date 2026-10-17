@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -322,6 +323,41 @@ func (c *behind) caughtUp(n3 *Node, wait time.Duration) error {
 			}
 			return fmt.Errorf("node 3 did not catch up: %w", err)
 		}
+	}
+}
+
+// TestInstallStartsFromLog starts node 3 of a behind cluster, which needs
+// a snapshot. Once the install is durable, the node must start again from
+// its log, as a restart does, with the old core gone before the new one
+// loads, and serve the newest values.
+func TestInstallStartsFromLog(t *testing.T) {
+	c, err := newBehind(t)
+	defer c.close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloads atomic.Int32
+	var kept atomic.Bool
+	c.tune = func(id uint64, cfg *Config) {
+		cfg.reloading = func(n *Node) {
+			reloads.Add(1)
+			if n.core != nil {
+				kept.Store(true)
+			}
+		}
+	}
+	n3, err := c.start(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.caughtUp(n3, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if reloads.Load() == 0 {
+		t.Fatal("node 3 caught up without starting again from its log")
+	}
+	if kept.Load() {
+		t.Fatal("the old core was still there when the new one loaded")
 	}
 }
 

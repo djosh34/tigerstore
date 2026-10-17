@@ -22,8 +22,10 @@ import (
 // A follower that is behind the leader's window gets a snapshot from
 // Raft: only an index and a term, the newest checkpoint's or the window's
 // start, with no data. Its driver fetches what it lacks from the leader,
-// writes it to its own log (ReceiveSnapshot), and reports the persist job;
-// the core then brings its state to the snapshot's index (install).
+// writes it to its own log (ReceiveSnapshot), and once that job is
+// durable starts a new core from its log, as a restart does (ErrInstalled):
+// the old core goes first, so its state, window and cache are never in
+// memory next to the new one's.
 //
 // The leader sends the raw entries the follower lacks, read from its
 // segments. When those are gone, it sends its newest checkpoint at or
@@ -49,92 +51,11 @@ type Install struct {
 	Checkpoint wal.Root
 }
 
-// install brings the state to the snapshot: it loads the checkpoint that
-// came with it, if any, and applies the entries after that from the log.
-// Memory is emptied first: the entries it held after the applied index
-// can be ones the snapshot replaced, and values must come from the log.
-func (n *Node) install(in *Install) error {
-	// A write that waited for values is before the snapshot, and reads
-	// under way may find their files gone (ValuesRead). Without a
-	// checkpoint the state stays, and the writes of the paused entry
-	// before that write are applied.
-	if in.Checkpoint.Index == 0 {
-		n.resume = n.paused
-	}
-	n.paused, n.epoch = nil, n.epoch+1
-	defer func() { n.resume = nil }()
-	// The entries in memory up to the applied index leave it now.
-	n.fillCache(n.applied)
-	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
-		return err
-	}
-	if c := in.Checkpoint; c.Index > 0 {
-		if n.copy != nil {
-			// The checkpoint under way is of the state being replaced;
-			// it is finished, written, and never counts.
-			n.copyChunk(-1)
-		}
-		st, last, err := loadCheckpoint(n.cfg, n.log, c, n.values)
-		if err != nil {
-			return fmt.Errorf("core: load the snapshot's checkpoint at %d: %w", c.Index, err)
-		}
-		n.setState(st)
-		n.cache.clear()
-		n.applied, n.last, n.base, n.sinceCkpt, n.storage.ckpt = c.Index, last, last.base, 0, c
-		n.storage.confs = nil
-		n.storage.setConf(c.Index, st.confState())
-		n.membersChanged()
-		n.record(c.Index, c.Term)
-		// The state jumped; watchers would miss the changes in between.
-		// Their clients watch again from where they were.
-		n.closeWatchStreams()
-	}
-	to := in.Index
-	if planted.On("B23") {
-		// Planted: the state stops one entry short of Raft's snapshot.
-		to--
-	}
-	term := in.Checkpoint.Term
-	n.readInline = true
-	defer func() { n.readInline = false }()
-	for i := n.applied + 1; i <= to; i++ {
-		e, err := n.log.Entry(i)
-		if err != nil {
-			return fmt.Errorf("core: read entry %d of the snapshot: %w", i, err)
-		}
-		if err := n.apply([]*raftpb.Entry{e}); err != nil {
-			return err
-		}
-		term = e.GetTerm()
-	}
-	// Forget what the entries applied from the log wrote: they never
-	// enter memory, so none of their values go into the cache.
-	n.fillCache(n.applied)
-	if (n.applied != in.Index || term != in.Term) && !planted.On("B23") {
-		return fmt.Errorf("core: the snapshot at %d term %d left the state at %d term %d", in.Index, in.Term, n.applied, term)
-	}
-	n.applied, n.membershipAt = in.Index, in.Index
-	return nil
-}
-
 // record notes, with Config.Record, that the state at index came from a
 // checkpoint instead of from applying the entry.
 func (n *Node) record(index, term uint64) {
 	if n.cfg.Record {
 		n.out.Applied = append(n.out.Applied, Applied{Index: index, Term: term, Hash: n.state.Hash(), Checkpoint: true})
-	}
-}
-
-// closeWatchStreams ends every watch stream, in order.
-func (n *Node) closeWatchStreams() {
-	ids := make([]uint64, 0, len(n.streams))
-	for id := range n.streams {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	for _, id := range ids {
-		n.CloseWatchStream(id)
-		n.out.Closed = append(n.out.Closed, id)
 	}
 }
 
@@ -201,6 +122,19 @@ func (n *Node) snapshotProgress() {
 	})
 	slices.Sort(failed)
 	for _, id := range failed {
+		delete(n.snapWait, id)
+		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
+	}
+}
+
+// snapshotDropped gives up, on the leader, on a snapshot that follower
+// id answers heartbeats without having started to fetch an election
+// timeout after it was sent. A follower whose core starts again from its
+// log after an install drops a snapshot that came meanwhile, as the
+// driver writes nothing after the install (UpToInstall); Raft then sends
+// another instead of waiting SnapshotTicks.
+func (n *Node) snapshotDropped(id uint64) {
+	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(n.cfg.ElectionTicks) {
 		delete(n.snapWait, id)
 		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
 	}
@@ -617,7 +551,11 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 		}
 		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
 		root = &wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}
-		if holds(disk, ckpt, ckptTerm) {
+		ok, err := holds(disk, ckpt, ckptTerm)
+		if err != nil {
+			return err
+		}
+		if ok {
 			root.Keep = ckpt
 		}
 	}
@@ -650,7 +588,12 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 			return fmt.Errorf("%w: entry %d term %d where entry %d after term %d was due", errBadSnapshot, e.GetIndex(), e.GetTerm(), next, term)
 		}
 		next, term = e.GetIndex()+1, e.GetTerm()
-		if held = held && holds(disk, e.GetIndex(), e.GetTerm()); held {
+		if held {
+			if held, err = holds(disk, e.GetIndex(), e.GetTerm()); err != nil {
+				return err
+			}
+		}
+		if held {
 			if root != nil {
 				root.Keep = e.GetIndex()
 			}
@@ -681,14 +624,20 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 	return flush()
 }
 
-// holds reports whether the log holds entry index with term. An entry
-// it cannot read counts as missing, and the stream replaces it.
-func holds(disk Log, index, term uint64) bool {
+// holds reports whether the log holds entry index with term. One it
+// does not have, or has with another term, the stream replaces. One it
+// has but cannot read is a failure of its own disk, damage included
+// (FailureOf), not an entry to replace: the node may have acknowledged
+// it.
+func holds(disk Log, index, term uint64) (bool, error) {
 	if !disk.Has(index) {
-		return false
+		return false, nil
 	}
 	e, err := disk.Entry(index)
-	return err == nil && e.GetTerm() == term
+	if err != nil {
+		return false, fmt.Errorf("%w: read entry %d of the log: %w", ErrDisk, index, err)
+	}
+	return e.GetTerm() == term, nil
 }
 
 func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {

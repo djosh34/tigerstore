@@ -294,6 +294,32 @@ func disagree(nodes []*node) (*node, *node) {
 	return nil, nil
 }
 
+// quorum reports whether the running nodes are a quorum of the voters
+// that each of them knows.
+func (s *Sim) quorum() bool {
+	running := 0
+	for _, n := range s.nodes {
+		if n.up && !n.out() {
+			running++
+		}
+	}
+	for _, n := range s.nodes {
+		if !n.up || n.out() {
+			continue
+		}
+		voters := 0
+		for _, m := range n.core.Members() {
+			if !m.IsLearner {
+				voters++
+			}
+		}
+		if running < voters/2+1 {
+			return false
+		}
+	}
+	return true
+}
+
 // coldRestart starts the two nodes whose disks were not erased, with no
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
@@ -326,6 +352,13 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	if err := r.loop(); err != nil {
 		return err
 	}
+	refused := slices.ContainsFunc(r.nodes, func(n *node) bool { return n.inactive && !n.fenced })
+	if refused && !r.quorum() {
+		// A member whose disk commits its own removal refuses it, as
+		// etcd's does, and with the erased disk the others can be left
+		// without a quorum of the voters they know: nothing commits.
+		return nil
+	}
 	// The leader may have proposed a lease expiry just before the end, so
 	// the follower has yet to learn that it committed (seed 736998125).
 	// One more second settles that.
@@ -350,6 +383,18 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 		}
 	}
 	return nil
+}
+
+// installedDuring reports whether a node started again from its log
+// after a snapshot install between two times. The calls it had under way
+// fail, as on a restart, and a client tries again.
+func (n *node) installedDuring(from, to int64) bool {
+	for _, t := range n.installs {
+		if t >= from && t <= to {
+			return true
+		}
+	}
+	return false
 }
 
 // stalledAt reports whether a node's disk was stalled at a time. A node

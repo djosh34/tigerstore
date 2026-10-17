@@ -411,13 +411,6 @@ func (n *Node) copyChunk(limit int) {
 	}
 }
 
-// HoldsRootForInstall reports whether CheckpointWritten(index) asks for no
-// root only because an install of a later snapshot is on its way to disk,
-// behind whose root it would land (#182). The simulator counts these.
-func (n *Node) HoldsRootForInstall(index uint64) bool {
-	return n.installs > 0 && n.installTop > index && index == n.last.index && index > n.storage.ckpt.Index
-}
-
 // Copying reports whether a checkpoint is being copied out of the index.
 func (n *Node) Copying() bool { return n.copy != nil }
 
@@ -439,10 +432,11 @@ func (n *Node) CheckpointWritten(index uint64, err error) {
 		n.fail(fmt.Errorf("core: write the checkpoint at %d: %w", index, err))
 		return
 	}
-	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index || n.installs > 0 && !planted.On("B27") {
-		// An older checkpoint than one a snapshot installed, or one of
-		// the state an install on its way to disk replaces; it never
-		// counts. Its root would land after the install's.
+	if n.err != nil || index != n.last.index || index <= n.storage.ckpt.Index {
+		// An older checkpoint than the newest durable one; it never
+		// counts. The root of one finished while an install is on its
+		// way to disk is never written: the driver writes nothing after
+		// the install (UpToInstall).
 		return
 	}
 	term, err := n.termAt(index)

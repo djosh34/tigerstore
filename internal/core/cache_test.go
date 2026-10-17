@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -172,76 +171,43 @@ func TestCacheFillsOnReadMiss(t *testing.T) {
 	}
 }
 
-// TestCacheShrinksAsIndexGrows checks that the cache stays within what
-// the index and the entries in memory leave of MemoryBytes, and gives up
-// its values as new keys grow the index.
-func TestCacheShrinksAsIndexGrows(t *testing.T) {
+// TestCacheShrinksAsOtherMemoryGrows checks that the cache stays within
+// what the rest of the process leaves of MemoryBytes, as the driver
+// measures it, and gives up its values at once as that grows.
+func TestCacheShrinksAsOtherMemoryGrows(t *testing.T) {
 	const memory = 8 << 10
 	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = memory })
-	limit := s.n.cache.limit
-	if limit <= 0 || len(s.n.cache.items) == 0 {
-		t.Fatalf("limit %d, %d values cached", limit, len(s.n.cache.items))
+	if s.n.cache.limit != memory || len(s.n.cache.items) == 0 {
+		t.Fatalf("limit %d, %d values cached", s.n.cache.limit, len(s.n.cache.items))
 	}
-	for i := range 100 {
-		s.ok(uint64(1000+i), &pb.PutRequest{Key: fmt.Appendf(nil, "new%03d", i), Value: make([]byte, 64)})
-		want := memory - s.n.kv.Bytes() - s.n.EntryBytes()
-		if c := s.n.cache; c.limit != want || c.bytes > max(want, 0) {
-			t.Fatalf("after key %d: limit %d, want %d, %d bytes cached", i, c.limit, want, c.bytes)
+	for other := int64(0); other <= memory; other += 1 << 10 {
+		s.n.SetOtherMemory(other)
+		if c := s.n.cache; c.limit != memory-other || c.bytes > memory-other {
+			t.Fatalf("with %d bytes besides the cache: limit %d, %d bytes cached", other, c.limit, c.bytes)
 		}
 	}
-	if s.n.cache.limit > 0 || len(s.n.cache.items) > 0 {
-		t.Fatalf("the index outgrew the memory, yet %d values are cached", len(s.n.cache.items))
+	if len(s.n.cache.items) > 0 {
+		t.Fatalf("the rest of the process takes all the memory, yet %d values are cached", len(s.n.cache.items))
 	}
 }
 
-// TestCacheOnInstall installs a snapshot on a node whose second write of
-// an entry waits for a value, as TestInstallAfterPausedWrite does, with
-// the cache on. Without a checkpoint, the values of the entries that
-// leave memory go into the cache. With one, the state is new, the cache
-// starts empty and the values come from the log.
-func TestCacheOnInstall(t *testing.T) {
-	for _, withCheckpoint := range []bool{false, true} {
-		s, _ := coldSingle(t, func(cfg *Config) {
-			cfg.MemoryBytes = 1 << 20
-			cfg.CheckpointBytes, cfg.CheckpointRatio, cfg.CheckpointChunk = 2048, 2, 64
-		})
-		// Rewrite the f keys until a checkpoint is on disk.
-		for id := uint64(1000); s.n.DurableCheckpoint().Index == 0 && id < 2000; id += 20 {
-			fill(t, s, id, 20)
-		}
-		// An empty cache, so that the compare on a waits for the log.
-		s.n.cache.clear()
-		s.hold = true
-		s.n.Submit(Request{ID: 201, Op: &pb.PutRequest{Key: []byte("x"), Value: []byte("1")}})
-		s.n.Submit(Request{ID: 202, Op: &pb.TxnRequest{
-			Compare: []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: []byte("va")}}},
-			Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("swapped")}}}},
-		}})
-		s.run()
-		w := s.n.paused
-		if w == nil || w.write != 1 || s.cached("f19") || s.n.DurableCheckpoint().Index == 0 {
-			t.Fatalf("setup: paused %+v, f19 cached %v, checkpoint at %d", w, s.cached("f19"), s.n.DurableCheckpoint().Index)
-		}
-		term, err := s.n.termAt(w.index)
-		if err != nil {
-			t.Fatal(err)
-		}
-		in := &Install{From: 1, Index: w.index, Term: term, Applied: w.index - 1}
-		if withCheckpoint {
-			in.Checkpoint = s.n.DurableCheckpoint()
-		}
-		if err := s.n.install(in); err != nil {
-			t.Fatal(err)
-		}
-		release(t, s)
-		if withCheckpoint && len(s.n.cache.items) != 0 {
-			t.Fatalf("%d values cached after the checkpoint loaded", len(s.n.cache.items))
-		}
-		if !withCheckpoint && !s.cached("f19") {
-			t.Fatal("f19 left memory, yet is not cached")
-		}
-		if v, waited := s.get(300, "f19", 0); v != string(make([]byte, 64)) || waited != withCheckpoint {
-			t.Fatalf("with checkpoint %v: read of f19 = %q, waited %v", withCheckpoint, v, waited)
-		}
+// TestCacheLow checks the low mark the memory gauge relies on: a cache
+// that is emptied and then filled again between two calls reports the
+// empty cache, and the next span starts from its size then.
+func TestCacheLow(t *testing.T) {
+	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = 1 << 20 })
+	full := s.n.cache.bytes
+	if full == 0 {
+		t.Fatal("setup: nothing cached")
+	}
+	s.n.CacheLow()
+	s.n.cache.setLimit(0)
+	s.n.cache.setLimit(1 << 20)
+	s.n.cache.add(mvcc.Ref{Index: 1 << 40, Len: 1000}, make([]byte, 1000))
+	if low := s.n.CacheLow(); low != 0 {
+		t.Fatalf("emptied and filled again: low %d, want 0", low)
+	}
+	if low, now := s.n.CacheLow(), s.n.cache.bytes; low != now || now == 0 {
+		t.Fatalf("next span: low %d, cache %d", low, now)
 	}
 }

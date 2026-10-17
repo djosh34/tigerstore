@@ -318,6 +318,37 @@ func TestRateMakesOneLinkSlower(t *testing.T) {
 	}
 }
 
+// TestSentLagsRead checks that Sent counts what a rate limit let through,
+// not what the proxy read: crash-in-install kills once the follower got
+// part of its snapshot (#223).
+func TestSentLagsRead(t *testing.T) {
+	p, c := start(t, echo(t), 1)
+	set(t, p, Fault{Kind: Rate, Dir: Backward, Rate: 32 << 10})
+	if _, err := c.Write(make([]byte, 64<<10)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for p.Stats().BackwardBytes < 64<<10 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	st := p.Stats()
+	if st.ForwardSent != 64<<10 || st.BackwardBytes != 64<<10 || st.BackwardSent >= st.BackwardBytes {
+		t.Fatalf("stats %+v: want all 64 KiB sent forward, read back, and less sent back so far", st)
+	}
+	b := make([]byte, 64<<10)
+	if _, err := io.ReadFull(c, b); err != nil {
+		t.Fatal(err)
+	}
+	// The writer counts a write once it returned, after the reader may
+	// already have the bytes.
+	for p.Stats().BackwardSent < 64<<10 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if st := p.Stats(); st.BackwardSent != 64<<10 {
+		t.Fatalf("after the echo arrived: %+v", st)
+	}
+}
+
 func TestValidate(t *testing.T) {
 	for _, f := range []Fault{
 		{Kind: "melt", Dir: Both},

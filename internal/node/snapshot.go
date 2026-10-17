@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // A client's snapshot (Maintenance.Snapshot) is tigerstore's own format:
@@ -105,7 +106,7 @@ func (n *Node) Snapshot(ctx context.Context, w io.Writer, start func(size int64)
 	info.ClusterID = n.ClusterID()
 	// A first pass counts the bytes without reading any value.
 	var count counter
-	if err := core.ServeSnapshot(sizeOnly{n.log}, ckpts, 1, info.Index, &count); err != nil {
+	if err := n.serveBackup(sizeOnly{n.log}, ckpts, info.Index, &count); err != nil {
 		return info, nil, err
 	}
 	body := int64(SnapshotHeaderBytes) + count.n
@@ -116,7 +117,7 @@ func (n *Node) Snapshot(ctx context.Context, w io.Writer, start func(size int64)
 	if _, err := sw.Write(info.header()); err != nil {
 		return info, nil, err
 	}
-	if err := core.ServeSnapshot(n.log, ckpts, 1, info.Index, sw); err != nil {
+	if err := n.serveBackup(n.log, ckpts, info.Index, sw); err != nil {
 		return info, nil, err
 	}
 	if sw.n != body {
@@ -126,6 +127,17 @@ func (n *Node) Snapshot(ctx context.Context, w io.Writer, start func(size int64)
 		return info, nil, err
 	}
 	return info, sw.h.Sum(nil), nil
+}
+
+// serveBackup writes the stream of a backup up to index. Damage to the
+// node's own log that it finds stops the node, as when it serves a peer
+// (core.Node.SnapshotSent); the backup fails either way.
+func (n *Node) serveBackup(log core.Log, ckpts []wal.Root, index uint64, w io.Writer) error {
+	err := core.ServeSnapshot(log, ckpts, 1, index, w)
+	if core.FailureOf(err) == core.Fence {
+		n.tell(input{served: true, serveErr: err})
+	}
+	return err
 }
 
 // snapshotPoint is the committer's answer to a snapshot's start.

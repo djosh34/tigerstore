@@ -15,15 +15,17 @@ import (
 // overwritten or deleted, or when it is the least recently used and the
 // cache is past its limit.
 //
-// The limit is Config.MemoryBytes less the index and the entries in
-// memory, so the cache shrinks as the index grows. A value is named by
-// its Raft position, which no later write changes, so the cache never
-// hands out a stale value; dropping overwritten ones frees memory.
+// The limit is Config.MemoryBytes less what the rest of the process
+// uses, as the driver measures it, so the cache shrinks as anything else
+// grows. A value is named by its Raft position, which no later write
+// changes, so the cache never hands out a stale value; dropping
+// overwritten ones frees memory.
 type cache struct {
 	// bytes counts every value with cachedOverhead and every slot of
-	// items up to peak with slotOverhead.
-	limit, bytes int64
-	items        map[mvcc.Ref]*cached
+	// items up to peak with slotOverhead, and low is the smallest it was
+	// since the last CacheLow.
+	limit, bytes, low int64
+	items             map[mvcc.Ref]*cached
 	// peak is the most values items held since it was made. A Go map
 	// keeps its memory as it empties, so items is made again once it
 	// holds half of that.
@@ -113,7 +115,7 @@ func (c *cache) setLimit(limit int64) {
 func (c *cache) clear() {
 	c.items, c.peak = map[mvcc.Ref]*cached{}, 0
 	c.head.prev, c.head.next = &c.head, &c.head
-	c.bytes = 0
+	c.bytes, c.low = 0, 0
 }
 
 // fit drops the least recently used values until the cache is within
@@ -134,6 +136,7 @@ func (c *cache) remove(e *cached) {
 		c.bytes -= int64(c.peak-len(items)) * slotOverhead
 		c.items, c.peak = items, len(items)
 	}
+	c.low = min(c.low, c.bytes)
 }
 
 func (c *cache) push(e *cached) {
@@ -157,8 +160,26 @@ func (n *Node) fillCache(index uint64) {
 	})
 }
 
-// fitCache sets the cache's limit to the memory that the index and the
-// entries in memory leave.
+// SetOtherMemory tells the core how much memory the process uses besides
+// the value cache, as the driver measured it. The cache may take what
+// that leaves of Config.MemoryBytes, and gives back the rest at once.
+func (n *Node) SetOtherMemory(bytes int64) {
+	n.otherMemory = bytes
+	n.fitCache()
+}
+
+// CacheLow is the smallest the value cache held since the last call,
+// and the next span starts from what it holds now. A collection of the
+// garbage collector in between found at least that much of it live,
+// whatever it dropped and took in meanwhile.
+func (n *Node) CacheLow() int64 {
+	low := n.cache.low
+	n.cache.low = n.cache.bytes
+	return low
+}
+
+// fitCache sets the cache's limit to the memory the rest of the process
+// leaves.
 func (n *Node) fitCache() {
-	n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes() - n.replyBytes)
+	n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)
 }

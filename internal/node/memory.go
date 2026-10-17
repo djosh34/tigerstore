@@ -8,16 +8,10 @@ import (
 	"math"
 	"path"
 	"runtime/debug"
+	"runtime/metrics"
 	"strconv"
 	"strings"
 )
-
-// BufferBytes is the memory a node keeps for what neither the index, the
-// entries in memory nor the value cache hold: the buffers of clients,
-// peers, the log and checkpoints, responses that wait for slow clients,
-// value reads under way and goroutine stacks. It is a guess until the
-// memory-limited runs of #148 measure it.
-const BufferBytes = 64 << 20
 
 // MemoryBudget returns the memory the node may use, and where that came
 // from: flag if it is not 0, else GOMEMLIMIT, else the memory limit of
@@ -61,12 +55,69 @@ func GoMemory(budget int64, from string) int64 {
 	return budget - budget/8
 }
 
-// CacheMemory returns what the index, the entries in memory and the
-// value cache share out of the Go memory limit (core.Config.MemoryBytes):
-// a quarter stays free, so that the garbage collector does not run all
-// the time near the limit, and BufferBytes goes to buffers.
-func CacheMemory(limit int64) int64 {
-	return max(limit-limit/4-BufferBytes, 0)
+// ProcessMemory returns what the whole process may use out of the Go
+// memory limit, its value cache included (core.Config.MemoryBytes): a
+// quarter of the limit stays free, so that the garbage collector does not
+// run all the time near it.
+func ProcessMemory(limit int64) int64 {
+	return limit - limit/4
+}
+
+// memoryGauge measures what the process uses besides the value cache,
+// from the Go runtime's metrics, for core.Node.SetOtherMemory. The heap
+// counts as the last collection found it live: garbage that the next one
+// frees does not count, or the cache would shrink as garbage builds up
+// and grow again after every collection. Memory outside the heap's
+// objects, such as stacks, the runtime's own and unused heap spans,
+// counts as the runtime holds it.
+type memoryGauge struct {
+	samples []metrics.Sample
+	// gcs is the count of finished collections at the last read, low
+	// the cache's low mark of the span before, and other the result as
+	// of the last collection.
+	gcs        uint64
+	low, other int64
+}
+
+func newMemoryGauge() *memoryGauge {
+	names := []string{
+		"/gc/cycles/total:gc-cycles",
+		"/gc/heap/live:bytes",
+		"/memory/classes/total:bytes",
+		"/memory/classes/heap/released:bytes",
+		"/memory/classes/heap/free:bytes",
+		"/memory/classes/heap/objects:bytes",
+	}
+	g := &memoryGauge{samples: make([]metrics.Sample, len(names))}
+	for i, name := range names {
+		g.samples[i].Name = name
+	}
+	return g
+}
+
+// read returns what the process uses besides the value cache, and
+// whether a collection finished since the last read. The live heap
+// changes only when a collection finishes, and it held at least the
+// smallest the cache was since the read before the last: low, since the
+// last read (core.Node.CacheLow), or the span before, where the
+// collection may have started. Only that counts as the cache's, so that
+// bytes it let go of before the collection never count as room; an
+// overestimate of the rest only shrinks the cache.
+func (g *memoryGauge) read(low int64) (int64, bool) {
+	metrics.Read(g.samples)
+	v := func(i int) int64 { return int64(g.samples[i].Value.Uint64()) }
+	return g.take(g.samples[0].Value.Uint64(), v(1), v(2)-v(3)-v(4)-v(5), low)
+}
+
+// take is read with the metrics read: gcs finished collections, the heap
+// live as of the last, and the memory outside the heap's objects.
+func (g *memoryGauge) take(gcs uint64, live, outside, low int64) (int64, bool) {
+	fresh := gcs != g.gcs
+	if fresh {
+		g.gcs, g.other = gcs, max(live+outside-min(g.low, low), 0)
+	}
+	g.low = low
+	return g.other, fresh
 }
 
 // cgroupLimit returns the lowest memory.max of the process's cgroup and

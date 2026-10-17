@@ -82,6 +82,51 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
 			return h
 		}},
+		{"lease expiry that deletes keys, found gone by the last call", func(t *testing.T) *history.History {
+			// The expiry writes a revision that no answer shows (#237,
+			// seed 28187).
+			b := newBuilder(t, "a", "b")
+			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "x", Lease: 42}})
+			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "y", Lease: 42}})
+			h := b.done()
+			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+			return h
+		}},
+		{"lease expiry before a compaction of the same revision", func(t *testing.T) *history.History {
+			// A read below the compaction is called after the rejection
+			// that found the lease gone, and returns before the compaction
+			// does: the expiry goes before the compaction (#237, seed
+			// 85441).
+			b := newBuilder(t, "a")
+			b.put(0, "a", "1")
+			grant := b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 1}})
+			b.put(0, "a", "2")
+			expiry := b.do(5, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			gone := b.do(1, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			read := b.do(2, history.Request{Range: &history.RangeRequest{Key: "a", Revision: 2}})
+			compact := b.do(3, history.Request{Compact: &history.CompactRequest{Revision: 3}})
+			h := b.done()
+			h.Ops[expiry].Call, h.Ops[expiry].Return = h.Ops[grant].Call, h.Ops[grant].Call
+			h.Ops[expiry].Resp, h.Ops[expiry].Err = nil, errUnavailable
+			h.Ops[compact].Call, h.Ops[compact].Return = h.Ops[gone].Call-1, h.Ops[read].Return+1
+			return h
+		}},
+		{"ambiguous revoke of a lease ID granted again", func(t *testing.T) *history.History {
+			// The second grant's put shows the ID in use after the
+			// revoke's revision, which says nothing about the first.
+			b := newBuilder(t, "a", "b")
+			b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 60}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "1", Lease: 42}})
+			revoke := b.do(1, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 60}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "2", Lease: 42}})
+			h := b.done()
+			h.Ops[revoke].Resp, h.Ops[revoke].Err = nil, errUnavailable
+			return h
+		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
 	}
 	for _, c := range cases {
