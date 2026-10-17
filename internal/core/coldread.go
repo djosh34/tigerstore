@@ -60,10 +60,11 @@ func ReadValues(log Log, fills []mvcc.Fill) error {
 // apply behind it: its entry, how many writes of the entry are applied,
 // the read that brings the values, and those read for it so far.
 type pausedWrite struct {
-	index   uint64
-	write   int
-	read    *ValueRead
-	fetched map[mvcc.Ref][]byte
+	index    uint64
+	write    int
+	read     *ValueRead
+	fetched  map[mvcc.Ref][]byte
+	compares *mvcc.Compares
 }
 
 // errPaused stops the walk of an entry at a write that waits for values.
@@ -132,17 +133,21 @@ func (n *Node) answer(p *pending, r Reply, fills []mvcc.Fill) {
 }
 
 // pause stops ordered apply at write number write of entry index until
-// need is read.
-func (n *Node) pause(index uint64, write int, need []mvcc.Fill) {
+// the values cold needs are read.
+func (n *Node) pause(index uint64, write int, cold *mvcc.ColdError) {
 	fetched := map[mvcc.Ref][]byte{}
-	if r := n.resume; r != nil && r.index == index && r.write == write {
+	if r := n.resume; r != nil && r.index == index && r.write == write && !batch(cold.Compares) {
 		// The write needs more values than the last read brought; it
 		// keeps those too.
 		fetched = r.fetched
 	}
-	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(need)}
+	n.paused = &pausedWrite{index: index, write: write, fetched: fetched, read: n.fetch(cold.Need), compares: cold.Compares}
 	n.paused.read.apply = true
 }
+
+// batch reports whether the values a transaction waits for are a batch of
+// a compare's, so that those it read before are no longer needed.
+func batch(c *mvcc.Compares) bool { return c != nil && c.Batch }
 
 // runApply applies Raft's apply messages in order, until a write waits
 // for values.
@@ -187,22 +192,26 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 		n.releaseWatches(s)
 	}
 	if p := r.read; p != nil && !p.done {
-		if p.fetched == nil {
+		if p.fetched == nil || batch(p.compares) {
 			p.fetched = map[mvcc.Ref][]byte{}
 		}
 		keep(p.fetched, r)
 		n.values.fetched = p.fetched
+		n.kv.Resume(p.compares)
 		n.serveRead(p)
+		n.kv.Resume(nil)
 		n.values.fetched = nil
 		if p.done {
-			p.fetched = nil
+			p.fetched, p.compares = nil, nil
 		}
 	}
 	if w := n.paused; w != nil && w.read == r {
 		keep(w.fetched, r)
 		n.paused, n.resume = nil, w
 		n.values.fetched = w.fetched
+		n.kv.Resume(w.compares)
 		n.runApply()
+		n.kv.Resume(nil)
 		n.values.fetched, n.resume = nil, nil
 	}
 }

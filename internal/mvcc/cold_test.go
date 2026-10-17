@@ -1,7 +1,9 @@
 package mvcc
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -285,5 +287,93 @@ func TestRangeTooLarge(t *testing.T) {
 		if fills := s.TakeFills(); !c.ok && len(fills) > 0 {
 			t.Errorf("%v under %d: a refused answer left %d value reads", c.r, c.limit, len(fills))
 		}
+	}
+}
+
+// fetchHeap is a coldHeap that also returns the values a driver read for
+// the last ColdError, and nothing it read before.
+type fetchHeap struct {
+	coldHeap
+	fetched map[Ref][]byte
+}
+
+func (h *fetchHeap) Read(r Ref, arena *[]byte) ([]byte, bool, error) {
+	if b, ok := h.fetched[r]; ok {
+		return b, true, nil
+	}
+	return h.coldHeap.Read(r, arena)
+}
+
+// TestCompareInBatches runs a VALUE compare over 40 values of 100 KiB on
+// disk only, as a driver does: after each ColdError it reads only the
+// values named, drops those of the batch before, and runs the
+// transaction again from where it got. Each batch must stay near
+// compareBatch, the compare must stop at the batch with the first value
+// that fails it, and a write in between must make it start over.
+func TestCompareInBatches(t *testing.T) {
+	const keys, size = 40, 100 << 10
+	value := bytes.Repeat([]byte("v"), size)
+	setup := func(bad int) (*Store, *fetchHeap) {
+		h := &fetchHeap{}
+		s := New(h)
+		for i := range keys {
+			v := value
+			if i == bad {
+				v = bytes.Repeat([]byte("x"), size)
+			}
+			put(t, s, fmt.Sprintf("k%02d", i), string(v))
+		}
+		h.evict()
+		return s, h
+	}
+	txn := &pb.TxnRequest{Compare: []*pb.Compare{{Key: []byte("k"), RangeEnd: []byte("l"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: value}}}}
+	// run runs txn to its end and returns its result and the batches it
+	// read. between, if set, runs after the first batch.
+	run := func(s *Store, h *fetchHeap, between func()) (bool, int) {
+		var resume *Compares
+		batches := 0
+		for {
+			s.Resume(resume)
+			r, err := s.Txn(txn)
+			cold, ok := errors.AsType[*ColdError](err)
+			if !ok {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r.Succeeded, batches
+			}
+			read := 0
+			h.fetched = map[Ref][]byte{}
+			for _, f := range cold.Need {
+				b, _, err := h.Heap.Read(f.Ref, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				h.fetched[f.Ref] = b
+				read += len(b)
+			}
+			if read > compareBatch+size {
+				t.Fatalf("a batch of %d bytes", read)
+			}
+			batches++
+			resume = cold.Compares
+			if between != nil && batches == 1 {
+				between()
+			}
+		}
+	}
+	s, h := setup(-1)
+	if ok, n := run(s, h, nil); !ok || n != 4 {
+		t.Errorf("all equal: succeeded %v after %d batches, want true after 4", ok, n)
+	}
+	s, h = setup(15)
+	if ok, n := run(s, h, nil); ok || n != 2 {
+		t.Errorf("k15 differs: succeeded %v after %d batches, want false after 2", ok, n)
+	}
+	// A write to a key the first batch matched makes the compare start
+	// over and see it.
+	s, h = setup(-1)
+	if ok, n := run(s, h, func() { put(t, s, "k05", "x") }); ok || n != 1 {
+		t.Errorf("k05 changed after the first batch: succeeded %v after %d batches, want false after 1", ok, n)
 	}
 }

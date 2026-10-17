@@ -370,8 +370,9 @@ type pending struct {
 	// queued marks a write in proposals that was not proposed yet.
 	queued bool
 	// fetched holds the values read from the log for a read that needed
-	// them at once.
-	fetched map[mvcc.Ref][]byte
+	// them at once, and compares how far its transaction's compares got.
+	fetched  map[mvcc.Ref][]byte
+	compares *mvcc.Compares
 	// early marks a write in Node.early.
 	early bool
 	// conf is the configuration change of a member change.
@@ -1696,6 +1697,7 @@ func (n *Node) serveRead(p *pending) {
 	}
 	if cold, ok := errors.AsType[*mvcc.ColdError](err); ok {
 		n.fetch(cold.Need).read = p
+		p.compares = cold.Compares
 		return
 	}
 	if t := n.cfg.Timer; t != nil {
@@ -1844,12 +1846,17 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 			break
 		}
 		if !n.readInline {
-			n.pause(e.GetIndex(), k, cold.Need)
+			n.pause(e.GetIndex(), k, cold)
 			return errPaused
+		}
+		if c := cold.Compares; c != nil && c.Batch {
+			// The compare is done with the batch before.
+			n.values.fetched = nil
 		}
 		if err := n.readNow(cold.Need); err != nil {
 			return err
 		}
+		n.kv.Resume(cold.Compares)
 		resp, err = n.applyOp(op)
 	}
 	if n.readInline {

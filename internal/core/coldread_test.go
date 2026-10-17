@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
@@ -363,5 +364,75 @@ func TestReplaySortsOwnWrites(t *testing.T) {
 	s = startSingle(t, disk, 2)
 	if s.n.Hash() != want {
 		t.Fatal("the restarted node's state differs")
+	}
+}
+
+// TestCompareBatches runs a VALUE compare over 30 values of 100 KiB on
+// disk only, in a read-only transaction and in one that writes. Each
+// read the core asks for must stay near one batch, a paused write must
+// hold no more than one batch it read, and both must answer right.
+func TestCompareBatches(t *testing.T) {
+	const keys, size = 30, 100 << 10
+	value := bytes.Repeat([]byte("v"), size)
+	s, _ := coldSingle(t, nil)
+	for i := range keys {
+		if r := s.do(uint64(500+i), &pb.PutRequest{Key: fmt.Appendf(nil, "big%02d", i), Value: value}); r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	fill(t, s, 600, 20)
+	compare := []*pb.Compare{{Key: []byte("big"), RangeEnd: []byte("bih"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: value}}}
+	write := []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("x"), Value: []byte("1")}}}}
+	for _, tc := range []struct {
+		name string
+		id   uint64
+		txn  *pb.TxnRequest
+	}{
+		{"read-only", 700, &pb.TxnRequest{Compare: compare}},
+		{"write", 701, &pb.TxnRequest{Compare: compare, Success: write}},
+	} {
+		s.hold = true
+		s.n.Submit(Request{ID: tc.id, Op: tc.txn})
+		reads := 0
+		for got := replies(s); ; got = replies(s) {
+			if r, ok := got[tc.id]; ok {
+				if r.Err != nil || !r.Resp.(*pb.TxnResponse).Succeeded {
+					t.Fatalf("%s: %v, %v", tc.name, r.Resp, r.Err)
+				}
+				break
+			}
+			if len(s.held) == 0 {
+				t.Fatalf("%s: no reply and no read", tc.name)
+			}
+			held := s.held
+			s.held = nil
+			for _, r := range held {
+				n := 0
+				for _, f := range r.fills {
+					n += int(f.Ref.Len)
+				}
+				if n > 1<<20+size {
+					t.Fatalf("%s: a read of %d bytes", tc.name, n)
+				}
+				reads++
+				s.n.ValuesRead(r, r.Run())
+			}
+			if w := s.n.paused; w != nil {
+				n := 0
+				for _, b := range w.fetched {
+					n += len(b)
+				}
+				if n > 1<<20+size {
+					t.Fatalf("%s: the paused write holds %d bytes it read", tc.name, n)
+				}
+			}
+		}
+		if reads < 3 {
+			t.Fatalf("%s: %d reads, want one per batch", tc.name, reads)
+		}
+	}
+	s.hold = false
+	if kvs := s.do(800, &pb.RangeRequest{Key: []byte("x")}).Resp.(*pb.RangeResponse).Kvs; len(kvs) != 1 {
+		t.Fatalf("the write's put: %v", kvs)
 	}
 }

@@ -25,6 +25,10 @@ type writer struct {
 	s       *Store
 	begin   int64
 	changed bool
+	// done are the results of a transaction's finished compares, and
+	// resume how far an earlier run of it got.
+	done   []bool
+	resume *Compares
 }
 
 func (s *Store) start() *writer {
@@ -576,6 +580,10 @@ func (w *writer) deleteRange(d *pb.DeleteRangeRequest) (*pb.DeleteRangeResponse,
 // checkTxn passed is a bug, and the caller must stop using the store.
 func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	w := s.start()
+	if c := s.resume; c != nil && c.Rev == w.cur() {
+		w.resume = c
+	}
+	s.resume = nil
 	ops := s.counts.Puts + s.counts.Deletes + s.counts.Ranges
 	defer func() {
 		if s.counts.Puts+s.counts.Deletes+s.counts.Ranges-ops > 1 {
@@ -583,10 +591,17 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 		}
 	}()
 	path, err := w.compareToPath(r)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		_, err = w.checkTxn(r, path)
 	}
-	if _, err := w.checkTxn(r, path); err != nil {
+	if cold, ok := errors.AsType[*ColdError](err); ok {
+		if cold.Compares == nil {
+			cold.Compares = &Compares{Done: w.done}
+		}
+		cold.Compares.Rev = w.cur()
+		return nil, cold
+	}
+	if err != nil {
 		return nil, err
 	}
 	resp, _, err := w.executeTxn(r, path)
@@ -639,14 +654,38 @@ func (w *writer) applyCompares(cs []*pb.Compare) (bool, error) {
 func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	// etcd reads each compare's keys with a range.
 	w.s.counts.Ranges++
-	end := c.RangeEnd
-	matched := false
+	i := len(w.done)
+	if r := w.resume; r != nil && i < len(r.Done) {
+		w.done = append(w.done, r.Done[i])
+		return r.Done[i], nil
+	}
+	ok, err := w.compare(c)
+	if err == nil {
+		w.done = append(w.done, ok)
+	}
+	return ok, err
+}
+
+// compare runs one compare. It stops at the first key that fails it. The
+// values only the disk has are read in batches: the walk stops once one
+// is full, and the next run goes on after the last key that matched
+// before the batch.
+func (w *writer) compare(c *pb.Compare) (bool, error) {
+	start, end := c.Key, c.RangeEnd
+	var after []byte
+	if r := w.resume; r != nil && len(r.Done) == len(w.done) && r.After != nil && len(end) > 0 {
+		after = r.After
+		start = append(bytes.Clone(after), 0)
+	}
+	matched := after != nil
 	ok := true
 	var err error
-	// cold are the values only the disk has. Any key that fails the
-	// compare decides it without them.
+	// cold are the values only the disk has, size their bytes and last the
+	// last key that matched before the first of them.
 	var cold []Fill
-	w.s.ascend(c.Key, end, func(k *keyIndex) bool {
+	var size int64
+	last := after
+	w.s.ascend(start, end, func(k *keyIndex) bool {
 		v, live := k.live(w.cur())
 		if !live {
 			return true
@@ -661,12 +700,16 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 			}
 			if !in {
 				cold = append(cold, Fill{Key: k.key, Ref: v.value})
-				return true
+				size += int64(v.value.Len)
+				return size < compareBatch
 			}
 		}
 		if !compareKV(c, &kv) {
 			ok = false
 			return false
+		}
+		if len(cold) == 0 {
+			last = k.key
 		}
 		return true
 	})
@@ -674,7 +717,7 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 		return false, err
 	}
 	if ok && len(cold) > 0 {
-		return false, &ColdError{Need: cold}
+		return false, &ColdError{Need: cold, Compares: &Compares{Done: w.done, After: last, Batch: true}}
 	}
 	if !matched {
 		// A missing key has no value to compare, so VALUE compares fail.
@@ -685,6 +728,10 @@ func (w *writer) applyCompare(c *pb.Compare) (bool, error) {
 	}
 	return ok, nil
 }
+
+// Resume makes the next Txn go on from where an earlier run of it got,
+// unless a write came between. Only that Txn uses c.
+func (s *Store) Resume(c *Compares) { s.resume = c }
 
 func compareKV(c *pb.Compare, kv *KV) bool {
 	var result int
