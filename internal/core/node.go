@@ -841,6 +841,9 @@ func (n *Node) Step(m *raftpb.Message) error {
 		n.confMessages = append(n.confMessages, m)
 		return nil
 	}
+	if m.GetType() == raftpb.MsgHeartbeatResp {
+		n.snapshotDropped(m.GetFrom())
+	}
 	if n.noSpace && m.GetType() == raftpb.MsgProp {
 		// Writes a follower forwards. Past its budget, the leader refuses
 		// those that take space, as it refuses its own clients': each

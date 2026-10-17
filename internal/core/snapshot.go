@@ -127,6 +127,19 @@ func (n *Node) snapshotProgress() {
 	}
 }
 
+// snapshotDropped gives up, on the leader, on a snapshot that follower
+// id answers heartbeats without having started to fetch an election
+// timeout after it was sent. A follower whose core starts again from its
+// log after an install drops a snapshot that came meanwhile, as the
+// driver writes nothing after the install (UpToInstall); Raft then sends
+// another instead of waiting SnapshotTicks.
+func (n *Node) snapshotDropped(id uint64) {
+	if at, ok := n.snapWait[id]; ok && at != 0 && n.now-at >= int64(n.cfg.ElectionTicks) {
+		delete(n.snapWait, id)
+		n.rn.ReportSnapshot(id, raft.SnapshotFailure)
+	}
+}
+
 // SnapshotStarted tells the leader that a follower started to fetch a
 // snapshot from it.
 func (n *Node) SnapshotStarted(to uint64) {
