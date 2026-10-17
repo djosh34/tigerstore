@@ -124,11 +124,12 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 	s := w.sim
 	for {
 		s.mu.Lock()
-		// A drop comes only before the clients stop, also when the
-		// stream waits from before then: a watch reopened late can start
-		// below a compaction and not be created again by the end
-		// (#245).
-		p, untilDrop, dropping := w.proc, dropAt-s.now(), dropAt < s.stopAt
+		// A drop comes at least 3 s before the end, as the next stream
+		// opens up to 2 s later: one that starts below a compaction is
+		// canceled, and the new logical watch must be created by the end
+		// (#245). Drops after the clients stopped resume over compacted
+		// history, which catches B08.
+		p, untilDrop, dropping := w.proc, dropAt-s.now(), dropAt < s.endAt-3*Second
 		s.mu.Unlock()
 		t := time.NewTimer(time.Duration(max(untilDrop, 0)))
 		drop := t.C

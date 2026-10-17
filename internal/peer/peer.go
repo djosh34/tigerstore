@@ -893,9 +893,6 @@ func (s *sender) run() {
 	backoff := 50 * time.Millisecond
 	for ctx.Err() == nil {
 		c, v, err := s.dial(ctx, s.t.cfg.ID)
-		if errors.Is(err, errRemoved) && s.t.cfg.Removed != nil {
-			s.t.cfg.Removed()
-		}
 		if err != nil {
 			s.drop()
 			select {
@@ -961,6 +958,10 @@ func (s *sender) dial(ctx context.Context, id uint64) (net.Conn, byte, error) {
 			s.t.logHandshake(fmt.Sprintf("with %d", s.id), err)
 		}
 		s.t.untrack(c)
+		if errors.Is(err, errRemoved) && s.t.cfg.Removed != nil {
+			// Messages and snapshot fetches alike: the node stops.
+			s.t.cfg.Removed()
+		}
 		return nil, 0, err
 	}
 	return c, v, nil
