@@ -25,7 +25,7 @@ type cache struct {
 	// items up to peak with slotOverhead, and low is the smallest it was
 	// since the last CacheLow.
 	limit, bytes, low int64
-	items        map[mvcc.Ref]*cached
+	items             map[mvcc.Ref]*cached
 	// peak is the most values items held since it was made. A Go map
 	// keeps its memory as it empties, so items is made again once it
 	// holds half of that.
