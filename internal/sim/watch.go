@@ -97,14 +97,14 @@ func (w *watchClient) run(wait, dropAt int64) {
 		wait = 100*Millisecond + s.rng.Int64N(400*Millisecond)
 		next := w.next
 		s.mu.Unlock()
-		ws, err := s.openStream(n, []int64{next}, func(start int64) *pb.WatchCreateRequest {
+		ws, p, err := s.openStream(n, []int64{next}, func(start int64) *pb.WatchCreateRequest {
 			return &pb.WatchCreateRequest{Key: w.key, RangeEnd: w.end, StartRevision: start, PrevKv: w.prevKV, ProgressNotify: w.progress}
 		})
 		if err != nil {
 			continue
 		}
 		s.mu.Lock()
-		w.open, w.proc, w.watchID = true, n.proc, -1
+		w.open, w.proc, w.watchID = true, p, -1
 		if dropAt < s.now() {
 			dropAt = s.exp(3 * Second)
 		}

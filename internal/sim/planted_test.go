@@ -63,6 +63,9 @@ const (
 	// A node read a value that is not the one it wrote, or that its log
 	// no longer holds, and stopped.
 	badValue = `does not match its checksum|past the end of entry|wal: read \d+ of \d+ bytes`
+	// A node that never catches up, so the nodes end at different
+	// indexes.
+	stuck = `node \d+ applied \d+ entries, node \d+ applied \d+`
 )
 
 var plantedCases = map[string]plantedCase{
@@ -98,14 +101,16 @@ var plantedCases = map[string]plantedCase{
 		return nil
 	}},
 	"B18": {seeds: 16, cfg: DefaultConfig, want: `unknown watch stream|holds \d+ watchers`},
-	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk`},
+	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
 	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
 	"B22": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused},
-	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints`},
+	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
-	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState},
+	// The real driver's disk goroutine ends at an install, so a core that
+	// goes on writes nothing more.
+	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + stuck},
 	// A node refuses a member change unless it has been connected to the
 	// other voters for 5 s, so stage 1 completes during the faults in
 	// some runs and after healing in others; either catch counts.

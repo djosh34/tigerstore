@@ -176,7 +176,7 @@ func (s *Sim) grayClientRun() {
 		if n == nil {
 			continue
 		}
-		ws, err := s.openStream(n, starts, func(start int64) *pb.WatchCreateRequest {
+		ws, _, err := s.openStream(n, starts, func(start int64) *pb.WatchCreateRequest {
 			return &pb.WatchCreateRequest{Key: []byte("k"), RangeEnd: []byte("l"), StartRevision: start, PrevKv: true}
 		})
 		if err == nil {
@@ -189,26 +189,27 @@ func (s *Sim) grayClientRun() {
 }
 
 // openStream opens a watch stream on n's process with a watch for each
-// start, as a client on the other end of a connection.
-func (s *Sim) openStream(n *node, starts []int64, req func(int64) *pb.WatchCreateRequest) (*tnode.WatchStream, error) {
+// start, as a client on the other end of a connection. It returns the
+// stream and the process.
+func (s *Sim) openStream(n *node, starts []int64, req func(int64) *pb.WatchCreateRequest) (*tnode.WatchStream, *proc, error) {
 	s.mu.Lock()
 	p, lat := n.proc, s.clientLatency()
 	s.mu.Unlock()
 	if p == nil || !s.sleep(lat) {
-		return nil, errConnRefused
+		return nil, nil, errConnRefused
 	}
 	ws, err := p.node.OpenWatch(p.ctx, core.Caller{})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, start := range starts {
 		r := &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: req(start)}}
 		if err := ws.Send(p.ctx, r); err != nil {
 			ws.Close()
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return ws, nil
+	return ws, p, nil
 }
 
 // errRecoveryCrash is the simulator's crash inside recovery.

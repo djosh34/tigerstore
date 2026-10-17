@@ -550,13 +550,43 @@ func (s *Sim) addNode(i int, disk *simfs.Disk) {
 // run runs the workload and the faults until the end, then holds every
 // node still for the checks.
 func (s *Sim) run() error {
+	if s.cfg.Membership {
+		s.nodes[3].inactive = true
+	}
 	for _, n := range s.nodes[:3] {
 		if err := s.start(n); err != nil {
 			return err
 		}
 	}
+	s.schedule()
+	// The end can move while the run goes on (extendLiveness).
+	for {
+		s.mu.Lock()
+		end, err := s.endAt, s.err
+		s.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		if s.now() >= end {
+			break
+		}
+		select {
+		case <-time.After(time.Duration(end - s.now())):
+		case <-s.failed():
+		}
+	}
+	s.mu.Lock()
+	s.stop()
+	s.mu.Unlock()
+	s.wg.Wait()
+	return s.freeze()
+}
+
+// schedule starts the clients, the watchers and the faults.
+func (s *Sim) schedule() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cfg.Membership {
-		s.nodes[3].inactive = true
 		s.after(2*Second, s.changeMembership)
 	}
 	for i := range s.cfg.Clients {
@@ -598,27 +628,6 @@ func (s *Sim) run() error {
 		s.at(s.cfg.StallLeaderAt, s.stallLeader)
 	}
 	s.at(s.healAt, s.heal)
-	// The end can move while the run goes on (extendLiveness).
-	for {
-		s.mu.Lock()
-		end, err := s.endAt, s.err
-		s.mu.Unlock()
-		if err != nil {
-			return err
-		}
-		if s.now() >= end {
-			break
-		}
-		select {
-		case <-time.After(time.Duration(end - s.now())):
-		case <-s.failed():
-		}
-	}
-	s.mu.Lock()
-	s.stop()
-	s.mu.Unlock()
-	s.wg.Wait()
-	return s.freeze()
 }
 
 // now is the run's virtual time.

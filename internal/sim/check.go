@@ -540,7 +540,7 @@ func (s *Sim) sameLatestOn(a *mvcc.Store, n *node) (err error) {
 	s.mu.Unlock()
 	log, _, err := wal.Open(d)
 	if err != nil {
-		return err
+		return fmt.Errorf("node %d cannot recover its log for the final reads: %w", n.id, err)
 	}
 	defer func() { err = errors.Join(err, log.Close()) }()
 	return sameLatest(a, n.proc.core.Store(), log)
