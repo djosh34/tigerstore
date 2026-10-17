@@ -46,6 +46,7 @@ import (
 	"strings"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"github.com/klauspost/compress/zstd"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -189,10 +190,10 @@ type Recovered struct {
 // that record chains from, so that a read can check it. Every segment has
 // a run, maybe empty, and several when a snapshot moved the log on.
 type run struct {
-	seq   uint64
-	first uint64
-	offs  []uint32
-	seeds []uint32
+	seq        uint64
+	first      uint64
+	offs       []uint32
+	seeds      []uint32
 	compressed []bool
 	// top is the highest index of an entry or value the run ever held.
 	top uint64
@@ -222,6 +223,8 @@ type valueRec struct {
 
 // WAL appends to the newest segment and reads from all of them.
 type WAL struct {
+	encoder *zstd.Encoder // only the disk writer uses it
+	decoder *zstd.Decoder // DecodeAll is safe for concurrent cold readers
 	fs  FS
 	seg File
 	seq uint64
@@ -304,6 +307,8 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 	}
 
 	w := &WAL{fs: fs, maxSize: SegmentBytes, spares: MaxSpares, vals: map[uint64][]valueRec{}, readers: map[uint64]File{}, sizes: map[uint64]int64{}}
+	w.decoder, err = zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxEntryBytes), zstd.WithDecoderMaxWindow(MaxEntryBytes))
+	if err != nil { return nil, nil, err }
 	rec := &Recovered{}
 	// first is the index of the first entry the scan found, 0 for none.
 	var first uint64
@@ -935,6 +940,9 @@ func (w *WAL) SetSpares(n int) error {
 // Close closes the newest segment without syncing, and every file opened
 // for reading.
 func (w *WAL) Close() error {
+	w.decoder.Close()
+	var codecErr error
+	if w.encoder != nil { codecErr = w.encoder.Close() }
 	var err error
 	if w.seg != nil {
 		err = w.seg.Close()
@@ -943,7 +951,7 @@ func (w *WAL) Close() error {
 		err = errors.Join(err, f.Close())
 		delete(w.readers, seq)
 	}
-	return errors.Join(err, w.closePacks())
+	return errors.Join(err, codecErr, w.closePacks())
 }
 
 // locate returns the run that holds entry index and the entry's position
@@ -986,10 +994,10 @@ func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readEntry(f, int64(s.offs[i]), index, s.seq, s.seeds[i])
+	return readEntry(f, int64(s.offs[i]), index, s.seq, s.seeds[i], w.decoder)
 }
 
-func readEntry(f io.ReaderAt, at int64, index, seq uint64, seed uint32) (*raftpb.Entry, error) {
+func readEntry(f io.ReaderAt, at int64, index, seq uint64, seed uint32, decoder *zstd.Decoder) (*raftpb.Entry, error) {
 	var hdr [recHdrSize]byte
 	if _, err := f.ReadAt(hdr[:], at); err != nil {
 		return nil, err
@@ -1012,7 +1020,7 @@ func readEntry(f io.ReaderAt, at int64, index, seq uint64, seed uint32) (*raftpb
 	data := p[entryHdrSize:]
 	if etype == raftpb.EntryNormal {
 		var err error
-		data, err = decodeEntry(data)
+		data, err = decodeEntry(decoder, data)
 		if err != nil {
 			return nil, &RecordError{Entry: index, Segment: seq, Reason: err.Error()}
 		}
@@ -1055,7 +1063,7 @@ func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, erro
 		if err != nil {
 			return nil, 0, err
 		}
-		return compressedReader{file: f, at: int64(s.offs[i]), index: index, seq: s.seq, seed: s.seeds[i]}, int64(off), nil
+		return compressedReader{file: f, at: int64(s.offs[i]), index: index, seq: s.seq, seed: s.seeds[i], decoder: w.decoder}, int64(off), nil
 	}
 	if seq, at, ok := w.ValuePlace(index, off, n); ok {
 		f, err := w.reader(seq)

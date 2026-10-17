@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/klauspost/compress/zstd"
 	"go.etcd.io/raft/v3/raftpb"
@@ -19,14 +18,6 @@ import (
 // the peer transport and the in-memory window keep raw entries. Recovery
 // and cold readers decode on helpers, never on the committer.
 const compressionVersion = 4
-
-var compressionEncoder = sync.OnceValues(func() (*zstd.Encoder, error) {
-	return zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)), zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(true))
-})
-
-var compressionDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxEntryBytes), zstd.WithDecoderMaxWindow(MaxEntryBytes))
-})
 
 func compressed(data []byte) bool {
 	return len(data) >= 3 && data[0] == 0 && data[1] == compressionVersion && data[2] == 0
@@ -54,7 +45,7 @@ func compressible(data []byte) bool {
 // CompressEntries returns disk copies of format-4 normal entries. It does
 // not mutate entries held by Raft. Older formats and incompressible data
 // remain byte-for-byte raw, with no extra tag or allocation per entry.
-func CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {
+func (w *WAL) CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {
 	out := entries
 	copied := false
 	for i, e := range entries {
@@ -65,12 +56,13 @@ func CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {
 		if len(data) > MaxEntryBytes {
 			return nil, fmt.Errorf("wal: entry exceeds compression limit: %d", len(data))
 		}
-		enc, err := compressionEncoder()
-		if err != nil {
-			return nil, err
+		if w.encoder == nil {
+			var err error
+			w.encoder, err = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)), zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(true))
+			if err != nil { return nil, err }
 		}
 		header := binary.LittleEndian.AppendUint32([]byte{0, compressionVersion, 0}, uint32(len(data)))
-		packed := enc.EncodeAll(data[2:], header)
+		packed := w.encoder.EncodeAll(data[2:], header)
 		if len(packed) >= len(data) {
 			continue
 		}
@@ -83,7 +75,7 @@ func CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {
 	return out, nil
 }
 
-func decodeEntry(data []byte) ([]byte, error) {
+func decodeEntry(dec *zstd.Decoder, data []byte) ([]byte, error) {
 	if !compressed(data) {
 		return data, nil
 	}
@@ -93,10 +85,6 @@ func decodeEntry(data []byte) ([]byte, error) {
 	n := binary.LittleEndian.Uint32(data[3:])
 	if n < 3 || n > MaxEntryBytes {
 		return nil, fmt.Errorf("%w: decoded entry length %d", ErrCorrupt, n)
-	}
-	dec, err := compressionDecoder()
-	if err != nil {
-		return nil, err
 	}
 	out, err := dec.DecodeAll(data[7:], []byte{0, compressionVersion})
 	if err != nil {
@@ -112,14 +100,15 @@ func decodeEntry(data []byte) ([]byte, error) {
 // diskLog.Value releases the append lock. The caller pins the file until
 // the read completes, as it does for raw value readers.
 type compressedReader struct {
-	file io.ReaderAt
-	at int64
+	file       io.ReaderAt
+	at         int64
 	index, seq uint64
-	seed uint32
+	seed       uint32
+	decoder *zstd.Decoder
 }
 
 func (r compressedReader) ReadAt(p []byte, off int64) (int, error) {
-	e, err := readEntry(r.file, r.at, r.index, r.seq, r.seed)
+	e, err := readEntry(r.file, r.at, r.index, r.seq, r.seed, r.decoder)
 	if err != nil {
 		return 0, err
 	}

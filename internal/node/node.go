@@ -1381,7 +1381,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 					return
 				}
 			}
-			entries, err := wal.CompressEntries(j.Entries)
+			entries, err := w.CompressEntries(j.Entries)
 			if err != nil {
 				fail(err)
 				return
