@@ -170,6 +170,7 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 			return err
 		}
 		s.stats.Snapshots++
+		s.servedRoot[id] = n.root
 		data := buf.Bytes()
 		switch {
 		case !crash && !flip:
@@ -178,7 +179,12 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		case len(data) == 0:
 		case crash:
 			s.stats.FetchCrashes++
-			data = data[:s.rng.IntN(len(data))]
+			// A prefix of at least a byte.
+			k := 1
+			if len(data) > 1 {
+				k += s.rng.IntN(len(data) - 1)
+			}
+			data = data[:k]
 		default:
 			data[s.rng.IntN(len(data))] ^= byte(1 + s.rng.IntN(255))
 			s.stats.SnapshotFlips++
@@ -187,11 +193,13 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		s.mu.Unlock()
 		_, err = w.Write(data)
 		if crash {
-			// The prefix reaches the follower before the crash, as what
-			// a process sent before it crashed does: links take up to
-			// about 40 ms.
-			if !s.sleep(50 * Millisecond) {
-				return errDead
+			// The follower reads the prefix before the source crashes,
+			// so the fault tests a partly received snapshot, also behind
+			// a link stall or a pause.
+			for s.net.unread(s, n.idx, id) {
+				if !s.sleep(10 * Millisecond) {
+					return errDead
+				}
 			}
 			s.mu.Lock()
 			if n.proc == p {

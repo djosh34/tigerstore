@@ -283,10 +283,15 @@ type node struct {
 	// waits for the next sync of the directory.
 	ckptDone       []string
 	removedSegment bool
-	// root is the index of the node's newest durable root, and
-	// servedDamage is set once a serve failed on its own damage.
-	root         uint64
-	servedDamage bool
+	// root is the index of the node's newest durable root, rootDue that
+	// of the first root its core asked for, until the erase-one-disk copy
+	// at it, and servedDamage is set once a serve failed on its own
+	// damage. duringInstall are the checkpoint files the node finished
+	// while an install was on its way to disk, the install's own among
+	// them.
+	root, rootDue uint64
+	servedDamage  bool
+	duringInstall []string
 }
 
 // pendingJob is a job a node's core handed its disk: the first entry it
@@ -350,7 +355,10 @@ type Sim struct {
 	wg, procs sync.WaitGroup
 
 	healAt, stopAt, endAt int64
-	healed                bool
+	// servedRoot is the newest durable root of the source of the last
+	// snapshot served to each node, by Raft ID, when it was served.
+	servedRoot map[uint64]uint64
+	healed     bool
 	// downFor is how long HoldDown keeps its follower down.
 	downFor int64
 
@@ -515,15 +523,16 @@ func runInspect(cfg Config, inspect func(*Sim) error) (*Result, error) {
 // newSim sets up an empty run.
 func newSim(cfg Config) (*Sim, error) {
 	s := &Sim{
-		cfg:       cfg,
-		rng:       rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
-		t0:        time.Now(),
-		end:       make(chan struct{}),
-		expiredAt: map[int64]int64{},
-		log:       map[uint64]logRec{},
-		ckpts:     map[uint64]ckptRec{},
-		healAt:    cfg.Duration,
-		stopAt:    cfg.Duration + cfg.Heal,
+		cfg:        cfg,
+		rng:        rand.New(rand.NewPCG(cfg.Seed, 0x7469676572)),
+		t0:         time.Now(),
+		end:        make(chan struct{}),
+		expiredAt:  map[int64]int64{},
+		log:        map[uint64]logRec{},
+		ckpts:      map[uint64]ckptRec{},
+		servedRoot: map[uint64]uint64{},
+		healAt:     cfg.Duration,
+		stopAt:     cfg.Duration + cfg.Heal,
 	}
 	// After the clients stop, give the cluster time to settle: leases
 	// still expire for up to leaseGrace, and the watch events of the last
@@ -1067,6 +1076,9 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		}
 		pj.replaces = pj.first <= n.durableLast
 		n.pending = append(n.pending, pj)
+		if j.Root != nil && n.rootDue == 0 && s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
+			n.rootDue = j.Root.Index
+		}
 	}
 	for _, id := range eff.Expired {
 		if _, seen := s.expiredAt[id]; !seen {
@@ -1129,17 +1141,19 @@ func (s *Sim) persisted(p *proc, j core.PersistJob) {
 	}
 	if j.Install != nil {
 		n.durableLast = j.Install.Index
-		if c := j.Install.Checkpoint.Index; c > 0 && c < s.byID(j.Install.From).root {
+		c := j.Install.Checkpoint.Index
+		if c > 0 && c < s.servedRoot[n.id] {
 			s.stats.OlderCheckpoints++
 		}
+		for _, f := range n.duringInstall {
+			if f != wal.CheckpointName(c) {
+				s.stats.CheckpointsDuringInstall++
+			}
+		}
+		n.duringInstall = nil
 	}
 	if j.Root != nil {
 		n.root = j.Root.Index
-	}
-	if j.Root != nil && s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
-		// The root of a checkpoint is durable now.
-		s.stats.ErasedAtRoot++
-		s.takeCheckpoint()
 	}
 	if len(j.Entries) > 0 {
 		n.durableLast = j.Entries[len(j.Entries)-1].GetIndex()
@@ -1257,7 +1271,7 @@ func (s *Sim) down(n *node) {
 	if p == nil {
 		return
 	}
-	n.proc, n.pending = nil, nil
+	n.proc, n.pending, n.duringInstall = nil, nil, nil
 	n.gen++
 	// A crash ends a pause.
 	n.pausedUntil = 0
@@ -1452,15 +1466,4 @@ func (s *Sim) shutdown() {
 	s.mu.Unlock()
 	s.wg.Wait()
 	s.procs.Wait()
-}
-
-// byID returns the node with Raft ID id, or an empty one. The lock is
-// held.
-func (s *Sim) byID(id uint64) *node {
-	for _, n := range s.nodes {
-		if n.id == id {
-			return n
-		}
-	}
-	return &node{}
 }

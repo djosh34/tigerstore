@@ -72,13 +72,21 @@ func (s *Sim) afterCall(p *proc, op simfs.Op, name string) error {
 		return nil
 	}
 	switch {
+	case op == simfs.OpSync && isSegment(name) && n.rootDue > 0 && s.stats.ErasedAtRoot == 0:
+		// The first root is durable once recovery would start from it;
+		// the driver removes what it made obsolete only after this sync
+		// returns.
+		if root, err := recoveredRoot(n); err == nil && root >= n.rootDue {
+			s.stats.ErasedAtRoot++
+			s.takeCheckpoint()
+		}
 	case op == simfs.OpRemove && isSegment(name):
 		n.removedSegment = true
 	case op == simfs.OpSyncDir:
 		for _, f := range n.ckptDone {
 			s.ckptWritten(n, f)
 			if slices.ContainsFunc(n.pending, func(j pendingJob) bool { return j.install }) {
-				s.stats.CheckpointsDuringInstall++
+				n.duringInstall = append(n.duringInstall, f)
 			}
 		}
 		n.ckptDone = nil

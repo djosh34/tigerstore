@@ -168,6 +168,19 @@ func (nw *network) resetBetween(i, j int) {
 	}
 }
 
+// unread reports whether a connection from node index from to the node
+// with Raft ID to holds bytes its reader has not taken yet.
+func (nw *network) unread(s *Sim, from int, to uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for c := range nw.conns {
+		if c.from == from && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // reset breaks both ends of c's connection. The lock is held.
 func (nw *network) reset(c *conn) {
 	for _, e := range []*conn{c, c.other} {
