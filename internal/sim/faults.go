@@ -1,49 +1,79 @@
 package sim
 
 import (
-	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
+// scheduleDiskFaults starts the disk faults of the run. The lock is held.
 func (s *Sim) scheduleDiskFaults() {
 	f := s.cfg.Faults
 	if f.DiskErrorEvery > 0 {
-		s.push(&event{at: s.exp(f.DiskErrorEvery), kind: evDiskFault})
+		s.every(f.DiskErrorEvery, s.injectDiskFault)
 		// One more fault, due early in the faults and armed on the next
-		// append with entries of any node, so that no run goes without: a
-		// run that lost a node to corruption, or holds a partition, may
+		// write of any node's log, so that no run goes without: a run
+		// that lost a node to corruption, or holds a partition, may
 		// append nothing for many seconds. It stays due after healing.
 		// TestSeeds checks that one fired.
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/4), kind: evDiskFaultOnce})
+		s.once(s.cfg.Duration/4, 500*Millisecond, func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if s.stats.DiskFaults > 0 {
+				return true
+			}
+			s.diskFaultDue = true
+			return false
+		})
 	}
 	if f.StallEvery > 0 {
-		s.push(&event{at: s.exp(f.StallEvery), kind: evStall})
+		s.every(f.StallEvery, s.injectStall)
 	}
 	if f.Checkpoint {
-		s.push(&event{at: s.cfg.Duration/2 + s.rng.Int64N(s.cfg.Duration/2) + 1, kind: evCheckpoint})
+		s.at(s.cfg.Duration/2+s.rng.Int64N(s.cfg.Duration/2)+1, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.takeCheckpoint()
+		})
 	}
 	if f.StepCrash {
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration/2), kind: evStepCrashDue})
+		s.once(s.cfg.Duration/2, 500*Millisecond, func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.stepCrashDue = s.stats.StepCrashes == 0
+			return !s.stepCrashDue
+		})
 	}
 	if f.Rot {
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration*3/4), kind: evRot})
+		s.once(s.cfg.Duration*3/4, 500*Millisecond, func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if s.healed || slices.ContainsFunc(s.nodes, func(n *node) bool { return n.corrupted }) {
+				return true
+			}
+			// The node's committer rots a value at its next turn.
+			s.rotDue = s.upNode()
+			return false
+		})
 	}
 	if f.HoldDown {
 		s.downFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
-		s.push(&event{at: 1 + s.rng.Int64N(s.cfg.Duration-s.downFor), kind: evDownFollower})
+		s.at(1+s.rng.Int64N(s.cfg.Duration-s.downFor), func() {
+			for !s.downFollower() && s.sleep(200*Millisecond) {
+			}
+		})
 	}
 }
 
-// upNode picks a random node that is up, or nil.
+// upNode picks a random node that is up, or nil. The lock is held.
 func (s *Sim) upNode() *node {
 	var up []*node
 	for _, n := range s.nodes {
-		if n.up {
+		if n.proc != nil {
 			up = append(up, n)
 		}
 	}
@@ -54,24 +84,22 @@ func (s *Sim) upNode() *node {
 }
 
 // injectDiskFault makes the next write or sync of a node fail: EIO on a
-// sync, EIO on a write, or a short write with ENOSPC. It reports whether
-// a node was up to take it.
-func (s *Sim) injectDiskFault() bool {
+// sync, EIO on a write, or a short write with ENOSPC.
+func (s *Sim) injectDiskFault() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.healed {
-		return false
+		return
 	}
-	n := s.upNode()
-	if n == nil {
-		return false
+	if n := s.upNode(); n != nil {
+		s.armDiskFault(n, s.rng.IntN(3))
 	}
-	s.armDiskFault(n, s.rng.IntN(3))
-	return true
 }
 
 // armDiskFault arms a disk fault on n: EIO on the next sync (kind 0) or
-// write (1), or a short write with ENOSPC (2).
+// write (1), or a short write with ENOSPC (2). The lock is held.
 func (s *Sim) armDiskFault(n *node, kind int) {
-	s.mix(0xdf, uint64(n.idx), uint64(kind))
+	s.tracef("node %d: disk fault %d armed", n.id, kind)
 	switch kind {
 	case 0, 1:
 		target := simfs.OpSync
@@ -91,85 +119,50 @@ func (s *Sim) armDiskFault(n *node, kind int) {
 	}
 }
 
-// injectStall holds back a random node's disk writes for 1.5 to 4 s.
+// injectStall holds back a random node's log syncs for 1.5 to 4 s.
 func (s *Sim) injectStall() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.healed {
 		return
 	}
 	if n := s.upNode(); n != nil {
-		s.stall(n, s.now+1500*Millisecond+s.rng.Int64N(2500*Millisecond))
+		s.stall(n, s.now()+1500*Millisecond+s.rng.Int64N(2500*Millisecond))
 	}
-	s.push(&event{at: s.exp(s.cfg.Faults.StallEvery), kind: evStall})
 }
 
-// stallLeader holds back the leader's disk writes until healing.
+// stallLeader holds back the leader's log syncs until healing.
 func (s *Sim) stallLeader() {
-	for _, n := range s.nodes {
-		if n.up && n.core.Leader() == n.id {
-			s.stall(n, s.healAt)
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if i := s.leaderIdx(); i >= 0 {
+		s.stall(s.nodes[i], s.healAt)
 	}
 }
 
-// downFollower crashes a follower and restarts it downFor later.
-func (s *Sim) downFollower() {
+// downFollower crashes a follower and restarts it downFor later. It
+// reports false if there was no follower yet.
+func (s *Sim) downFollower() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.healed {
-		return
+		return true
 	}
 	for _, n := range s.nodes {
-		if n.up && n.core.Leader() != 0 && n.core.Leader() != n.id {
+		if p := n.proc; p != nil && p.node.Leader() != 0 && p.node.Leader() != n.id {
 			s.crash(n)
-			s.push(&event{at: s.now + s.downFor, kind: evRestart, node: n.idx, gen: n.gen})
-			return
+			s.restartLater(n, s.downFor)
+			return true
 		}
 	}
-	// No follower yet; try again soon.
-	s.push(&event{at: s.now + 200*Millisecond, kind: evDownFollower})
+	return false
 }
 
+// stall holds back n's log syncs until a time. The lock is held.
 func (s *Sim) stall(n *node, until int64) {
 	n.stallUntil = until
-	n.stalls = append(n.stalls, [2]int64{s.now, until})
-	s.mix(0x57, uint64(n.idx), uint64(until))
-}
-
-// diskFailed handles a failed write or sync. Only injected faults may
-// fail; the node stops at once and never retries, as a failed fsync
-// leaves the file in an unknown state.
-func (s *Sim) diskFailed(n *node, err error) {
-	if !errors.Is(err, simfs.ErrIO) && !errors.Is(err, simfs.ErrNoSpace) {
-		s.fail("node %d disk: %w", n.id, err)
-		return
-	}
-	s.stats.DiskFaults++
-	n.disk.Fault = nil
-	if planted.On("B11") && errors.Is(err, simfs.ErrIO) && n.diskBusy {
-		// Planted: carry on as if the sync worked. diskBusy is set only
-		// once the write is done, so this is a failed sync.
-		n.diskBusy = false
-		for _, j := range n.inflight {
-			s.persisted(n, j)
-		}
-		s.process(n)
-		return
-	}
-	s.stopNode(n)
-}
-
-// stopNode stops a node like a crash and restarts it later from its disk.
-func (s *Sim) stopNode(n *node) {
-	if s.healed && s.now <= s.healAt+s.cfg.LiveAfter {
-		// The guaranteed disk fault fired after healing, or a watchdog
-		// whose wait began before it. The liveness rule starts once the
-		// node is back (check.go); the clients keep going for 3 s more
-		// than that, so the rule has calls to check. Only a stop in the
-		// first LiveAfter of healing counts, so the bound stays fixed: a
-		// node that keeps stopping later fails the rule.
-		s.lateStopAt = s.now
-		s.extendLiveness()
-	}
-	s.crash(n)
-	s.push(&event{at: s.now + 1 + s.rng.Int64N(max(s.cfg.Faults.MaxDown, Second)), kind: evRestart, node: n.idx, gen: n.gen})
+	n.stalls = append(n.stalls, [2]int64{s.now(), until})
+	s.tracef("node %d: disk stalled until %d ms", n.id, until/Millisecond)
 }
 
 // flipPayload is set only in planted builds (planted_flip.go).
@@ -177,6 +170,7 @@ var flipPayload func(*Sim, *node) bool
 
 // maybeCorrupt damages the synced bytes of a node that just crashed, at
 // most once per run and only if no node is damaged yet, so a quorum stays.
+// The lock is held.
 func (s *Sim) maybeCorrupt(n *node) {
 	if !s.cfg.Faults.Corrupt || s.healed || s.rng.IntN(2) != 0 {
 		return
@@ -185,7 +179,7 @@ func (s *Sim) maybeCorrupt(n *node) {
 		// Planted: flip one payload bit that still decodes, and do not
 		// expect the node to notice; the run must catch what it applies.
 		if flipPayload(s, n) {
-			s.mix(0xc4, uint64(n.idx))
+			s.tracef("node %d: flipped a payload bit", n.id)
 		}
 		return
 	}
@@ -196,16 +190,16 @@ func (s *Sim) maybeCorrupt(n *node) {
 	}
 	// Half the time the damage is in the checkpoint that recovery starts
 	// from: the newest root on the disk, which the crash may have kept
-	// though its sync never finished, so n.root does not know it yet
-	// (seed 439 damaged the older one, which recovery no longer reads).
+	// though its sync never finished (seed 439 damaged the older one,
+	// which recovery no longer reads).
 	if root, err := recoveredRoot(n); err == nil && root > 0 && s.rng.IntN(2) == 0 && n.disk.CorruptFile(s.rng, wal.CheckpointName(root)) {
 		n.corrupted = true
-		s.mix(0xc1, uint64(n.idx))
+		s.tracef("node %d: damaged checkpoint %d", n.id, root)
 		return
 	}
 	if n.disk.Corrupt(s.rng) {
 		n.corrupted = true
-		s.mix(0xc0, uint64(n.idx))
+		s.tracef("node %d: damaged a segment", n.id)
 	}
 }
 
@@ -222,30 +216,34 @@ func recoveredRoot(n *node) (uint64, error) {
 // checkpoint is a copy of every disk as a power cut would leave it, the
 // time it was taken, and the highest index any node had applied by then.
 type checkpoint struct {
-	at      int64
-	applied uint64
-	disks   []*simfs.Disk
-	bad     []bool
-	// runs are the nodes' run numbers, which a real node keeps on its
-	// disk with the log.
-	runs     []uint64
+	at       int64
+	applied  uint64
+	disks    []*simfs.Disk
+	bad      []bool
 	ids      []uint64
 	inactive []bool
+	// started marks the nodes that ever started, whose disks hold a run.
+	started []bool
 }
 
+// newCheckpoint copies every disk. The lock is held, so every disk is
+// copied at the same instant.
 func (s *Sim) newCheckpoint() *checkpoint {
-	c := &checkpoint{at: s.now, applied: s.applied}
+	c := &checkpoint{at: s.now(), applied: s.applied}
 	for _, n := range s.nodes {
 		c.disks = append(c.disks, n.disk.Durable())
 		c.bad = append(c.bad, n.corrupted)
-		c.runs = append(c.runs, n.runs)
 		c.ids = append(c.ids, n.id)
 		c.inactive = append(c.inactive, n.inactive)
+		c.started = append(c.started, len(n.disk.DurableNames()) > 0)
 	}
 	return c
 }
 
+// takeCheckpoint keeps a copy of every disk for the cold restarts. The
+// lock is held.
 func (s *Sim) takeCheckpoint() {
+	s.tracef("erase-one-disk copy")
 	s.checkpoints = append(s.checkpoints, s.newCheckpoint())
 }
 
@@ -258,7 +256,10 @@ func (s *Sim) takeCheckpoint() {
 // and its revision. That is the guarantee that an acknowledged write
 // survives the loss of one node.
 func (s *Sim) checkColdRestarts(res *Result) error {
-	for _, c := range append(slices.Clone(s.checkpoints), s.newCheckpoint()) {
+	s.mu.Lock()
+	all := append(slices.Clone(s.checkpoints), s.newCheckpoint())
+	s.mu.Unlock()
+	for _, c := range all {
 		for erased := range c.disks {
 			skip := false
 			for i, bad := range c.bad {
@@ -278,16 +279,16 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 }
 
 // disagree returns two nodes that are not fenced and differ in their
-// applied index or state, or nil.
+// applied index or state, or nil. The nodes are frozen.
 func disagree(nodes []*node) (*node, *node) {
 	var first *node
 	for _, n := range nodes {
-		if n.out() {
+		if n.out() || n.proc == nil {
 			continue
 		}
 		if first == nil {
 			first = n
-		} else if n.core.Applied() != first.core.Applied() || n.core.Hash() != first.core.Hash() {
+		} else if c, f := n.proc.core, first.proc.core; c.Applied() != f.Applied() || c.Hash() != f.Hash() {
 			return first, n
 		}
 	}
@@ -295,20 +296,20 @@ func disagree(nodes []*node) (*node, *node) {
 }
 
 // quorum reports whether the running nodes are a quorum of the voters
-// that each of them knows.
+// that each of them knows. The nodes are frozen.
 func (s *Sim) quorum() bool {
 	running := 0
 	for _, n := range s.nodes {
-		if n.up && !n.out() {
+		if n.proc != nil && !n.out() {
 			running++
 		}
 	}
 	for _, n := range s.nodes {
-		if !n.up || n.out() {
+		if n.proc == nil || n.out() {
 			continue
 		}
 		voters := 0
-		for _, m := range n.core.Members() {
+		for _, m := range n.proc.core.Members() {
 			if !m.IsLearner {
 				voters++
 			}
@@ -325,31 +326,37 @@ func (s *Sim) quorum() bool {
 // Every entry and state they reach up to the index applied at the
 // checkpoint is checked against the run's record as they go.
 func (s *Sim) coldRestart(c *checkpoint, erased int) error {
-	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
-	r.endAt = 6 * Second
+	s.mu.Lock()
+	seed := s.rng.Uint64()
+	s.mu.Unlock()
+	r, err := newSim(Config{Seed: seed, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
+	if err != nil {
+		return err
+	}
+	defer r.shutdown()
 	r.healed = true
 	r.base, r.baseUpTo = s.log, c.applied
 	for i, d := range c.disks {
 		if i == erased {
 			d = simfs.New()
 		}
-		r.addNode(i, d.Durable())
-		r.nodes[i].runs = c.runs[i]
-		r.nodes[i].id = c.ids[i]
+		n := r.nodes[i]
+		n.disk, n.id = d.Durable(), c.ids[i]
 		// A process stopped by a peer's removed-member reply may not
 		// have the removal on disk. Cold boot must recover that disk,
 		// not copy the old process's volatile stopped flag. Only a node
 		// that never joined stays absent without trying recovery.
-		r.nodes[i].inactive = c.inactive[i] && c.runs[i] == 0
-		if i == erased || r.nodes[i].inactive {
-			r.nodes[i].fenced = true
-			continue
+		n.inactive = c.inactive[i] && !c.started[i]
+		if i == erased || n.inactive {
+			n.fenced = true
 		}
-		if err := r.start(r.nodes[i]); err != nil {
+	}
+	for _, n := range r.nodes {
+		if err := r.start(n); err != nil {
 			return err
 		}
 	}
-	if err := r.loop(); err != nil {
+	if err := r.runFor(6 * Second); err != nil {
 		return err
 	}
 	refused := slices.ContainsFunc(r.nodes, func(n *node) bool { return n.inactive && !n.fenced })
@@ -363,33 +370,48 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	// the follower has yet to learn that it committed (seed 736998125).
 	// One more second settles that.
 	if a, _ := disagree(r.nodes); a != nil {
-		r.endAt += Second
-		if err := r.loop(); err != nil {
+		r.thaw()
+		if err := r.runFor(Second); err != nil {
 			return err
 		}
 	}
 	if a, b := disagree(r.nodes); a != nil {
+		ca, cb := a.proc.core, b.proc.core
 		return fmt.Errorf("cold restart did not converge: node %d applied %d, members %v, removed %v; node %d applied %d, members %v, removed %v; checkpoint applied %d, inactive %v",
-			a.id, a.core.Applied(), a.core.Members(), a.core.RemovedMembers(), b.id, b.core.Applied(), b.core.Members(), b.core.RemovedMembers(), c.applied, c.inactive)
+			a.id, ca.Applied(), ca.Members(), ca.RemovedMembers(), b.id, cb.Applied(), cb.Members(), cb.RemovedMembers(), c.applied, c.inactive)
 	}
 	for _, n := range r.nodes {
-		if !n.out() && n.core.Applied() < c.applied {
+		if n.out() || n.proc == nil {
+			continue
+		}
+		if cn := n.proc.core; cn.Applied() < c.applied {
 			var active []uint64
 			for _, live := range r.live() {
 				active = append(active, live.id)
 			}
 			return fmt.Errorf("cold restart: node %d applied %d entries, but %d were applied before; leader %d, members %v, active %v, inactive at copy %v",
-				n.id, n.core.Applied(), c.applied, n.core.Leader(), n.core.Members(), active, c.inactive)
+				n.id, cn.Applied(), c.applied, cn.Leader(), cn.Members(), active, c.inactive)
 		}
 	}
 	return nil
 }
 
-// installedDuring reports whether a node started again from its log
-// after a snapshot install between two times. The calls it had under way
-// fail, as on a restart, and a client tries again.
-func (n *node) installedDuring(from, to int64) bool {
-	for _, t := range n.installs {
+// runFor lets a cold restart run for d, then freezes its nodes.
+func (s *Sim) runFor(d int64) error {
+	select {
+	case <-time.After(time.Duration(d)):
+	case <-s.failed():
+	}
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.freeze()
+}
+
+// reloadedDuring reports whether a node started again from its log
+// between two times.
+func (n *node) reloadedDuring(from, to int64) bool {
+	for _, t := range n.reloads {
 		if t >= from && t <= to {
 			return true
 		}

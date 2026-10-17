@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
-	"testing/cryptotest"
+	"testing/synctest"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -33,8 +33,32 @@ func TestPastRAMRecovery(t *testing.T) {
 	var total int
 	for seed := uint64(1); seed <= 16; seed++ {
 		t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
-			cryptotest.SetGlobalRandom(t, seed)
-			s, res, err := runWithState(cacheConfig(seed))
+			var res *Result
+			var cleaned int
+			var hits, misses int64
+			var err error
+			synctest.Test(t, func(*testing.T) {
+				res, err = runInspect(cacheConfig(seed), func(s *Sim) error {
+					for _, n := range s.live() {
+						m := n.proc.core.Metrics()
+						hits += m.CacheHits
+						misses += m.CacheMisses
+						s.mu.Lock()
+						disk := n.disk.Durable()
+						s.mu.Unlock()
+						model, err := durableModel(s, disk)
+						if err != nil {
+							return err
+						}
+						nfiles, err := cleanHistory(disk, n.id, model)
+						if err != nil {
+							return fmt.Errorf("node %d: %w", n.id, err)
+						}
+						cleaned += nfiles
+					}
+					return nil
+				})
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -45,22 +69,6 @@ func TestPastRAMRecovery(t *testing.T) {
 			}
 			if err := agree(h); err != nil {
 				t.Fatal(err)
-			}
-			var cleaned int
-			var hits, misses int64
-			for _, n := range s.live() {
-				m := n.core.Metrics()
-				hits += m.CacheHits
-				misses += m.CacheMisses
-				model, err := durableModel(s, n.disk)
-				if err != nil {
-					t.Fatal(err)
-				}
-				nfiles, err := cleanHistory(n.disk.Durable(), n.id, model)
-				if err != nil {
-					t.Fatalf("node %d: %v", n.id, err)
-				}
-				cleaned += nfiles
 			}
 			total += cleaned
 			if hits == 0 || misses == 0 {

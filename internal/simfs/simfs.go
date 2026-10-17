@@ -132,6 +132,18 @@ func (d *Disk) Durable() *Disk {
 	return c
 }
 
+// Copy returns a new disk whose files hold what this disk's hold now,
+// synced or not, all durable.
+func (d *Disk) Copy() *Disk {
+	c := New()
+	for _, name := range sortedNames(d.names) {
+		g := &file{data: slices.Clone(d.names[name].data), durable: slices.Clone(d.names[name].data)}
+		c.names[name] = g
+		c.durable[name] = g
+	}
+	return c
+}
+
 // Corrupt copies 16 to 64 synced bytes from a random file and offset over
 // synced bytes of a WAL segment, like a write that landed at the wrong
 // offset. It leaves the newest segment alone: the WAL names segments in

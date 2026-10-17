@@ -2,14 +2,16 @@ package sim
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
+	tnode "github.com/djosh34/tigerstore/internal/node"
 	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
@@ -45,7 +47,7 @@ type logRec struct {
 
 // record checks an entry a node applied, or the state it loaded from a
 // checkpoint, against what the other nodes have at that index, and keeps
-// it.
+// it. The lock is held.
 func (s *Sim) record(n *node, a core.Applied) {
 	log := s.log
 	if a.Index <= s.baseUpTo {
@@ -86,77 +88,6 @@ func (s *Sim) committed(last uint64) ([]*raftpb.Entry, error) {
 	return out, nil
 }
 
-// writeCheckpoint writes a node's checkpoint parts to its disk. The last
-// part is synced, with the directory, after a disk latency.
-func (s *Sim) writeCheckpoint(n *node, chunks []core.CheckpointChunk) {
-	for _, c := range chunks {
-		if n.ckptFile == nil || n.ckptIndex != c.Index {
-			f, err := n.log.CreateCheckpoint(c.Index)
-			if err != nil {
-				s.diskFailed(n, err)
-				return
-			}
-			n.ckptFile, n.ckptIndex = f, c.Index
-		}
-		if _, err := n.ckptFile.Write(c.Data); err != nil {
-			s.diskFailed(n, err)
-			return
-		}
-		if s.stepCrash(n) {
-			return
-		}
-		if c.Done {
-			// One writer, as in the node: checkpoints sync in order.
-			n.ckptSyncAt = max(s.now+50*Microsecond+s.rng.Int64N(950*Microsecond), n.ckptSyncAt+1)
-			s.push(&event{at: n.ckptSyncAt, kind: evCheckpointSync, node: n.idx, gen: n.gen, stream: c.Index, ckpt: n.ckptFile})
-			n.ckptFile = nil
-		}
-	}
-}
-
-// checkpointSynced syncs a written checkpoint and its directory, and
-// tells the core.
-func (s *Sim) checkpointSynced(e *event) {
-	n := s.nodes[e.node]
-	if !n.up || n.gen != e.gen {
-		return
-	}
-	f, index := e.ckpt, e.stream
-	if err := f.Sync(); err != nil {
-		s.diskFailed(n, err)
-		return
-	}
-	if s.stepCrash(n) {
-		return
-	}
-	if err := errors.Join(f.Close(), n.log.SyncDir()); err != nil {
-		s.diskFailed(n, err)
-		return
-	}
-	s.ckptWritten(n, index)
-	if s.stepCrash(n) {
-		return
-	}
-	if n.installing {
-		s.stats.CheckpointsDuringInstall++
-	}
-	n.core.CheckpointWritten(index, nil)
-	s.process(n)
-}
-
-// ckptWritten checks that every node writes the same bytes for the
-// checkpoint at an index.
-func (s *Sim) ckptWritten(n *node, index uint64) {
-	b := n.disk.DurableBytes(wal.CheckpointName(index))
-	sum := hashBytes(b)
-	if c, ok := s.ckpts[index]; ok && c.sum != sum {
-		s.fail("node %d and node %d wrote different checkpoints at index %d", n.id, c.node, index)
-		return
-	}
-	s.ckpts[index] = ckptRec{sum: sum, node: n.id}
-	s.stats.Checkpoints++
-}
-
 type ckptRec struct {
 	sum  uint64
 	node uint64
@@ -170,172 +101,97 @@ func hashBytes(b []byte) uint64 {
 	return h
 }
 
-// removed carries out a synced root's removals. The first root a run
-// syncs and its first removal of a segment each take an erase-one-disk
-// copy at once, so that the cold restarts check E's steps (#163).
-func (s *Sim) removed(n *node, j core.PersistJob) bool {
-	n.root, n.roots = j.Root.Index, append(n.roots, *j.Root)
-	if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRoot == 0 {
-		s.stats.ErasedAtRoot++
-		s.takeCheckpoint()
+// deliverer is the Deliver of p's transport: it hands the node the peer
+// frames that arrive, except the appends to and from a gray node, which
+// it drops.
+func (s *Sim) deliverer(p *proc, tn *tnode.Node) func(*raftpb.Message) {
+	return func(m *raftpb.Message) {
+		s.mu.Lock()
+		g := s.gray
+		drop := g != nil && (g == p.n || g.id == m.GetFrom()) && (m.GetType() == raftpb.MessageType_MsgApp || m.GetType() == raftpb.MessageType_MsgSnap)
+		if drop {
+			s.stats.Dropped++
+			if !s.grayDropped {
+				s.grayDropped = true
+				s.stats.GrayNodes++
+			}
+			if s.healed {
+				// The guaranteed gray period, which waited for this.
+				s.gray, s.grayOnce = nil, false
+			}
+		} else {
+			s.stats.Messages++
+		}
+		s.mu.Unlock()
+		if !drop {
+			tn.Deliver(m)
+		}
 	}
-	if j.RemoveBelow == 0 {
-		return true
-	}
-	oldest := n.log.Oldest()
-	if s.stepCrash(n) {
-		return false
-	}
-	if err := n.log.RemoveBelow(j.RemoveBelow); err != nil {
-		s.diskFailed(n, err)
-		return false
-	}
-	if s.stepCrash(n) {
-		return false
-	}
-	if err := n.log.RemoveCheckpoints(j.Root.Index); err != nil {
-		s.diskFailed(n, err)
-		return false
-	}
-	n.roots = []wal.Root{*j.Root}
-	if s.cfg.Faults.Checkpoint && s.stats.ErasedAtRemoval == 0 && n.log.Oldest() > oldest {
-		s.stats.ErasedAtRemoval++
-		s.takeCheckpoint()
-	}
-	return true
 }
 
-// firstReplaced is the first entry an install may take from n's log: the
-// first after its applied index that is not the committed one. Those
-// before it the node may have acknowledged, and the install keeps them.
-func (s *Sim) firstReplaced(n *node, in *core.Install) uint64 {
-	for i := in.Applied + 1; i <= in.Index; i++ {
-		r, ok := s.log[i]
-		if i <= s.baseUpTo {
-			r, ok = s.base[i]
+// server is the Serve of p's transport: the node serves the snapshot
+// stream a follower fetches. Half the streams during the faults start late
+// (SlowFetch). The first stream of a run, and one in four after it, is
+// damaged on its way (FlipSnapshot), and the source of the first one
+// crashes partway through it instead (FetchCrash); such a stream is
+// served whole first, then sent as the fault leaves it.
+func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.Writer) error {
+	return func(id, first, last uint64, w io.Writer) error {
+		n := p.n
+		s.mu.Lock()
+		var wait int64
+		if s.cfg.Faults.SlowFetch && !s.healed && s.rng.IntN(2) == 0 {
+			s.stats.SlowFetches++
+			wait = 200*Millisecond + s.rng.Int64N(1800*Millisecond)
 		}
-		if !ok || !n.log.Has(i) {
-			return i
+		crash := s.cfg.Faults.FetchCrash && !s.healed && s.stats.FetchCrashes == 0
+		flip := !crash && s.cfg.Faults.FlipSnapshot && !s.healed && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0)
+		s.mu.Unlock()
+		t := time.NewTimer(time.Duration(wait))
+		select {
+		case <-t.C:
+		case <-p.ctx.Done():
+			t.Stop()
+			return errDead
 		}
-		e, err := n.log.Entry(i)
+		var buf bytes.Buffer
+		out := w
+		if crash || flip {
+			out = &buf
+		}
+		err := tn.Serve(id, first, last, out)
+		s.mu.Lock()
 		if err != nil {
-			// The install fails at an entry the node holds but cannot
-			// read, and replaces nothing (core.ReceiveSnapshot).
-			return in.Index + 1
+			s.stats.ServeFailures++
+			s.mu.Unlock()
+			return err
 		}
-		if e.GetTerm() != r.term {
-			return i
+		s.stats.Snapshots++
+		data := buf.Bytes()
+		switch {
+		case !crash && !flip:
+			s.mu.Unlock()
+			return nil
+		case len(data) == 0:
+		case crash:
+			s.stats.FetchCrashes++
+			data = data[:s.rng.IntN(len(data))]
+		default:
+			data[s.rng.IntN(len(data))] ^= byte(1 + s.rng.IntN(255))
+			s.stats.SnapshotFlips++
 		}
-	}
-	return in.Index + 1
-}
-
-var errFetch = errors.New("sim: the snapshot's source cannot be reached")
-
-// install fetches a snapshot for n from the node that sent it, as a
-// separate connection, and writes it to n's log. The source of the first
-// stream of a run crashes partway through it, and the first stream that
-// arrives whole, and one in four after it, arrives damaged.
-func (s *Sim) install(n *node, in *core.Install) error {
-	i := slices.IndexFunc(s.nodes, func(n *node) bool { return n.id == in.From })
-	if i < 0 {
-		return errFetch
-	}
-	src := s.nodes[i]
-	if !src.up || src.pausedUntil > s.now || !s.links[src.idx][n.idx].up || !s.links[n.idx][src.idx].up {
-		return errFetch
-	}
-	src.core.SnapshotStarted(n.id)
-	var buf bytes.Buffer
-	err := core.ServeSnapshot(src.log, src.roots, in.Applied+1, in.Index, &buf)
-	s.push(&event{at: s.now + s.clientLatency(), kind: evSnapshotSent, node: src.idx, gen: src.gen, from: n.idx, err: err})
-	if err != nil {
-		s.stats.ServeFailures++
+		s.tracef("node %d: serving %d bytes of a snapshot to %d, crash %v, flip %v", n.id, len(data), id, crash, flip)
+		s.mu.Unlock()
+		_, err = w.Write(data)
+		if crash {
+			s.mu.Lock()
+			if n.proc == p {
+				s.stopNode(n)
+			}
+			s.mu.Unlock()
+			return errDead
+		}
 		return err
-	}
-	data := buf.Bytes()
-	s.stats.Snapshots++
-	newest := src.root
-	if s.cfg.Faults.FetchCrash && !s.healed && s.stats.FetchCrashes == 0 {
-		s.stats.FetchCrashes++
-		data = data[:s.rng.IntN(len(data))]
-		s.stopNode(src)
-	} else if s.cfg.Faults.FlipSnapshot && !s.healed && len(data) > 0 && (s.stats.SnapshotFlips == 0 || s.rng.IntN(4) == 0) {
-		data[s.rng.IntN(len(data))] ^= byte(1 + s.rng.IntN(255))
-		s.stats.SnapshotFlips++
-	}
-	s.mix(0x5a, uint64(n.idx), in.Index, uint64(len(data)))
-	sink := &core.LogSink{WAL: n.log, Step: s.snapshotStep(n)}
-	err = errors.Join(core.ReceiveSnapshot(bytes.NewReader(data), sink, n.log, in), sink.Close())
-	if err == nil && in.Checkpoint.Index > 0 {
-		s.stats.CheckpointSnapshots++
-		if in.Checkpoint.Index < newest {
-			s.stats.OlderCheckpoints++
-		}
-	}
-	return err
-}
-
-// errStepCrash ends an install that a step crash stopped.
-var errStepCrash = errors.New("sim: crashed during the install")
-
-// snapshotStep is the Step of a node's snapshot sink: it writes what the
-// log buffered after each item, so that a crash keeps part of it, and may
-// crash there.
-func (s *Sim) snapshotStep(n *node) func(string, int) error {
-	return func(string, int) error {
-		if err := n.log.Flush(); err != nil {
-			return fmt.Errorf("%w: %w", core.ErrDisk, err)
-		}
-		if s.stepCrash(n) {
-			return errStepCrash
-		}
-		return nil
-	}
-}
-
-// stepCrash crashes n, once the run armed it, at one of the steps of a
-// checkpoint, a removal or an install, and reports whether it did.
-func (s *Sim) stepCrash(n *node) bool {
-	if !s.stepCrashDue || s.healed || s.rng.IntN(4) != 0 {
-		return false
-	}
-	s.stepCrashDue = false
-	s.stats.StepCrashes++
-	s.mix(0x5c, uint64(n.idx))
-	s.stopNode(n)
-	return true
-}
-
-// installFailed handles a snapshot that could not be fetched or did not
-// check out, as the real node does: it syncs what the stream wrote and
-// at once starts a new core from its disk, and Raft sends another
-// snapshot.
-func (s *Sim) installFailed(n *node, err error) {
-	switch {
-	case errors.Is(err, errStepCrash):
-		return
-	case n.rotted && rotStop(n, err):
-		// It read the entry the run damaged, which it held, and stopped
-		// instead of replacing it.
-		s.stopNode(n)
-		return
-	case errors.Is(err, core.ErrDisk):
-		s.diskFailed(n, err)
-		return
-	case errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace):
-		s.fail("node %d: a failed write of its own disk is not core.ErrDisk: %w", n.id, err)
-		return
-	}
-	s.stats.InstallFailures++
-	s.mix(0x5f, uint64(n.idx), uint64(len(err.Error())))
-	if err = core.FetchFailed(err, n.log.Sync); core.FailureOf(err) != core.Reload {
-		s.diskFailed(n, err)
-		return
-	}
-	s.down(n)
-	if serr := s.start(n); serr != nil {
-		s.fail("%w", errors.Join(err, serr))
 	}
 }
 
@@ -353,40 +209,45 @@ func newestSegment(d *simfs.Disk) string {
 // rot flips a bit of the newest value of a key on a node's disk while it
 // runs, a value that is only on disk, once per run. The node must never
 // return it: it stops when it reads it, and refuses its log on the next
-// start.
-func (s *Sim) rot() bool {
-	if s.healed {
-		return false
+// start. It runs on the node's committer, with its core c. The lock is
+// held.
+func (s *Sim) rot(n *node, c *core.Node) {
+	w, _, err := wal.Open(n.disk.Durable())
+	if err != nil {
+		return
 	}
-	for _, m := range s.nodes {
-		if m.corrupted {
-			return true
+	defer func() {
+		if err := w.Close(); err != nil {
+			s.fail("%w", err)
 		}
-	}
-	n := s.upNode()
-	if n == nil {
-		return false
+	}()
+	live, err := n.disk.List()
+	if err != nil {
+		return
 	}
 	for range numKeys {
-		refs := n.core.Store().Refs(key(s.rng.IntN(numKeys)))
+		refs := c.Store().Refs(key(s.rng.IntN(numKeys)))
 		if len(refs) == 0 {
 			continue
 		}
 		// Clients read the newest value most, unless the key was deleted
 		// since; the restart check catches the damage either way.
 		r := refs[len(refs)-1]
-		if r.Index >= n.core.FirstIndex() {
+		if r.Index >= c.FirstIndex() {
 			continue
 		}
-		seq, at, ok := n.log.ValuePlace(r.Index, r.Off, r.Len)
+		seq, at, ok := w.ValuePlace(r.Index, r.Off, r.Len)
 		if !ok {
 			continue
 		}
 		name := wal.SegmentName(seq)
+		if !slices.Contains(live, name) {
+			continue
+		}
 		if name == newestSegment(n.disk) {
 			// Damage to the newest segment's last durable record looks
 			// like a torn write; a later entry must be durable after it.
-			next, end, ok := n.log.ValuePlace(r.Index+2, 0, 0)
+			next, end, ok := w.ValuePlace(r.Index+2, 0, 0)
 			if !ok || next != seq || end >= int64(len(n.disk.DurableBytes(name))) {
 				continue
 			}
@@ -394,8 +255,7 @@ func (s *Sim) rot() bool {
 		n.disk.Rot(name, int(at)+s.rng.IntN(int(r.Len)))
 		n.corrupted, n.rotted, n.rotFile, n.rotEntry, n.rotSeg = true, true, name, r.Index, seq
 		s.stats.Rots++
-		s.mix(0x60, uint64(n.idx), r.Index)
-		return true
+		s.tracef("node %d: rotted a value of entry %d in %s", n.id, r.Index, name)
+		return
 	}
-	return false
 }
