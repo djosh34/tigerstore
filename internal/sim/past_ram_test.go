@@ -17,11 +17,11 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// cacheConfig is linearizableConfig with a small value cache, so reads hit
-// it and miss it.
+// cacheConfig is linearizableConfig with a small memory budget, so the value
+// cache is on and reads hit it and miss it.
 func cacheConfig(seed uint64) Config {
 	cfg := linearizableConfig(seed)
-	cfg.CacheBytes = 16 << 10
+	cfg.MemoryBytes = 16 << 10
 	return cfg
 }
 

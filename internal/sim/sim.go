@@ -78,9 +78,11 @@ type Config struct {
 	// Membership adds, updates, promotes and removes a fourth member
 	// while the ordinary clients and faults continue.
 	Membership bool
-	// CacheBytes enables the value cache in targeted storage scenarios.
-	CacheBytes int64
-	Faults     Faults
+	// MemoryBytes is each node's memory budget (core.Config.MemoryBytes):
+	// it turns the value cache on and bounds Range answers. Zero leaves
+	// both off.
+	MemoryBytes int64
+	Faults      Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -958,7 +960,7 @@ func (s *Sim) start(n *node) error {
 		// see them.
 		cfg.ProgressTicks = 20
 		tinyLimits(&cfg)
-		cfg.MemoryBytes = s.cfg.CacheBytes
+		cfg.MemoryBytes = s.cfg.MemoryBytes
 		c, err = core.New(cfg, rec, w)
 	}
 	if s.cfg.Membership && errors.Is(err, core.ErrRemoved) {

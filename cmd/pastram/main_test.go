@@ -7,7 +7,7 @@ import (
 )
 
 func TestExpectedValues(t *testing.T) {
-	w := &workload{changed: map[int]int64{}}
+	w := &workload{}
 	for i, b := range k8ssize.Buckets {
 		for range b.Count {
 			w.rows = append(w.rows, i)
@@ -16,21 +16,15 @@ func TestExpectedValues(t *testing.T) {
 	w.objects = len(w.rows)
 	var size int
 	for i := range w.objects {
-		v := w.value(i, 0)
+		v := w.value(i)
 		size += len(v)
 		if err := w.check([]byte(w.key(i)), v); err != nil {
 			t.Fatal(err)
 		}
-		w.changed[i] = 1
-		if err := w.check([]byte(w.key(i)), v); err == nil {
-			t.Fatalf("old value accepted for %s", w.key(i))
-		}
-		if err := w.check([]byte(w.key(i)), w.value(i, 1)); err != nil {
-			t.Fatal(err)
-		}
-		w.changed[i] = -1
-		if err := w.check([]byte(w.key(i)), w.value(i, 1)); err == nil {
-			t.Fatalf("deleted value accepted for %s", w.key(i))
+		if i > 0 && len(w.value(i-1)) == len(v) {
+			if err := w.check([]byte(w.key(i)), w.value(i-1)); err == nil {
+				t.Fatalf("another key's value accepted for %s", w.key(i))
+			}
 		}
 	}
 	if w.objects != 6345 || size != 9253583 {

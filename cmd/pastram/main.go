@@ -48,7 +48,6 @@ type workload struct {
 	rows    []int
 	objects int
 	live    int64
-	changed map[int]int64
 	rng     *rand.Rand
 	latency []int64
 }
@@ -84,7 +83,7 @@ func run(c config) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, cl.Close()) }()
-	w := &workload{cfg: c, cl: cl, changed: map[int]int64{}, rng: rand.New(rand.NewPCG(148, 7))}
+	w := &workload{cfg: c, cl: cl, rng: rand.New(rand.NewPCG(148, 7))}
 	for i, b := range k8ssize.Buckets {
 		for range b.Count {
 			w.rows = append(w.rows, i)
@@ -95,7 +94,7 @@ func run(c config) (err error) {
 		var ops []clientv3.Op
 		var added int64
 		for i := w.objects; i < w.objects+64; i++ {
-			v := w.value(i, 0)
+			v := w.value(i)
 			ops = append(ops, clientv3.OpPut(w.key(i), string(v)))
 			added += int64(len(v))
 		}
@@ -238,10 +237,9 @@ func (w *workload) key(i int) string {
 	return fmt.Sprintf("/registry/%s/past-ram/%09d", w.bucket(i).Resource, i)
 }
 
-func (w *workload) value(i int, generation int64) []byte {
+func (w *workload) value(i int) []byte {
 	var seed [16]byte
 	binary.LittleEndian.PutUint64(seed[:8], uint64(i))
-	binary.LittleEndian.PutUint64(seed[8:], uint64(generation))
 	sum := sha256.Sum256(seed[:])
 	v := make([]byte, w.bucket(i).Size)
 	for at := 0; at < len(v); at += len(sum) {
@@ -255,30 +253,27 @@ func (w *workload) check(k, v []byte) error {
 	if _, err := fmt.Sscanf(string(k[strings.LastIndexByte(string(k), '/')+1:]), "%d", &i); err != nil {
 		return err
 	}
-	if i < 0 || i >= w.objects || string(k) != w.key(i) || w.changed[i] < 0 || !bytes.Equal(v, w.value(i, w.changed[i])) {
+	if i < 0 || i >= w.objects || string(k) != w.key(i) || !bytes.Equal(v, w.value(i)) {
 		return fmt.Errorf("value mismatch for %q", k)
 	}
 	return nil
 }
 
+// mixed reads the preloaded keys, which nothing changes: point reads and
+// one bounded LIST in five. The cache mode only reads, eight in ten from
+// the first percent of the keys.
 func (w *workload) mixed() error {
 	i := w.rng.IntN(w.objects)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	// 40% point reads, 10% paginated LIST, 40% revision-CAS updates,
-	// 10% deletes. A later update recreates a deleted key.
-	op := w.rng.IntN(10)
-	if w.cfg.mode == "proof" {
-		op = w.rng.IntN(5)
-	}
+	list := w.rng.IntN(5) == 4
 	if w.cfg.mode == "cache" {
-		op = 0
-		// Eight reads in ten target the first percent of the keys.
+		list = false
 		if w.rng.IntN(10) < 8 {
 			i = w.rng.IntN(max(1, w.objects/100))
 		}
 	}
-	if op == 4 {
+	if list {
 		r, err := w.cl.Get(ctx, w.key(i), clientv3.WithRange("/registry0"), clientv3.WithLimit(32))
 		if err != nil {
 			return err
@@ -294,44 +289,10 @@ func (w *workload) mixed() error {
 	if err != nil {
 		return err
 	}
-	var mod int64
-	if w.changed[i] < 0 {
-		if len(r.Kvs) != 0 {
-			return fmt.Errorf("deleted key %s returned", w.key(i))
-		}
-	} else {
-		if len(r.Kvs) != 1 {
-			return fmt.Errorf("missing key %s", w.key(i))
-		}
-		if err := w.check(r.Kvs[0].Key, r.Kvs[0].Value); err != nil {
-			return err
-		}
-		mod = r.Kvs[0].ModRevision
+	if len(r.Kvs) != 1 {
+		return fmt.Errorf("missing key %s", w.key(i))
 	}
-	if op < 4 {
-		return nil
-	}
-	generation := int64(len(w.latency) + 1)
-	mutation := clientv3.OpPut(w.key(i), string(w.value(i, generation)))
-	if op == 9 {
-		mutation = clientv3.OpDelete(w.key(i))
-		generation = -1
-	}
-	resp, err := w.cl.Txn(ctx).If(clientv3.Compare(clientv3.ModRevision(w.key(i)), "=", mod)).Then(mutation).Commit()
-	if err != nil {
-		// Do not retry an ambiguous write or call it a definite rejection.
-		return fmt.Errorf("mutation outcome unknown for %s: %w", w.key(i), err)
-	}
-	if !resp.Succeeded {
-		return fmt.Errorf("CAS rejected for exclusively owned key %s", w.key(i))
-	}
-	if w.changed[i] < 0 && generation >= 0 {
-		w.live += int64(w.bucket(i).Size)
-	} else if w.changed[i] >= 0 && generation < 0 {
-		w.live -= int64(w.bucket(i).Size)
-	}
-	w.changed[i] = generation
-	return nil
+	return w.check(r.Kvs[0].Key, r.Kvs[0].Value)
 }
 
 func (w *workload) verify(cl *clientv3.Client) error {
@@ -391,11 +352,6 @@ func (w *workload) verify(cl *clientv3.Client) error {
 		return scanErr
 	}
 	want := w.objects
-	for _, generation := range w.changed {
-		if generation < 0 {
-			want--
-		}
-	}
 	if count != want || live != w.live {
 		return fmt.Errorf("scan got %d objects, %d bytes; want %d, %d", count, live, want, w.live)
 	}

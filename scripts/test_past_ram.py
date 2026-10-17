@@ -80,9 +80,20 @@ class ClassificationTests(unittest.TestCase):
     def test_success_is_not_a_limit(self):
         result = self.result("tigerstore", "proof")
         result["failure"] = None
+        result["final_cgroups"] = [dict(events=dict(oom_kill=0))] * 3
         past_ram.classify(result, [])
         self.assertEqual(result["outcome"], "passed")
         self.assertNotIn("limit", result)
+
+    def test_final_oom_fails_a_finished_run(self):
+        for mode in ["proof", "cache"]:
+            with self.subTest(mode=mode):
+                result = self.result("tigerstore", mode)
+                result["failure"] = None
+                result["last_acknowledged"]["phase"] = "mixed"
+                past_ram.classify(result, [dict(phase="mixed")])
+                self.assertEqual(result["outcome"], "failed")
+                self.assertEqual(result["failure"], "a member was OOM-killed")
 
 
 if __name__ == "__main__":

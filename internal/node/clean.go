@@ -300,8 +300,16 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	}
 	c.n.cleaningStage("pack-synced")
 	if planted.On("B29") {
-		c.pending = &rm
-		if err := c.remove(); err != nil {
+		// Remove the old segments now, before a root names the pack, and
+		// wait for readers rather than skip. The packs it replaces are still
+		// named, so they stay until the normal removal.
+		l := c.n.log
+		l.mu.Lock()
+		l.reading.Lock()
+		err := l.w.RemoveCleaned(rm.upto, nil)
+		l.reading.Unlock()
+		l.mu.Unlock()
+		if err != nil {
 			return false, err
 		}
 	}

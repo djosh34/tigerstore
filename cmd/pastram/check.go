@@ -108,6 +108,12 @@ func checkRecorded(out string) error {
 	if err := os.WriteFile(filepath.Join(out, "history.json"), b, 0o644); err != nil {
 		return err
 	}
+	// Porcupine keeps an ambiguous write open to the end of the history;
+	// the member kill leaves dozens of them.
+	lin, _, err := h.WithoutLostWrites()
+	if err != nil {
+		return err
+	}
 	type result struct {
 		Name    string
 		Seconds float64
@@ -119,7 +125,7 @@ func checkRecorded(out string) error {
 		name string
 		run  func() error
 	}{
-		{"Linearizable", func() error { return check.Linearizable(h, 2*time.Minute) }},
+		{"Linearizable", func() error { return check.Linearizable(lin, 2*time.Minute) }},
 		{"Witnessed-log", func() error { return check.Witnessed(h, check.FromLog, 2*time.Minute) }},
 		{"Witnessed-revisions", func() error { return check.Witnessed(h, check.FromRevisions, 2*time.Minute) }},
 		{"Watches", func() error { return check.Watches(h) }},

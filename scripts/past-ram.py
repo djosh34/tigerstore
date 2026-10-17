@@ -30,6 +30,9 @@ def metrics(port):
 
 def classify(result, progress):
     """Keep test failures distinct from measured, cgroup-confirmed limits."""
+    # A kill after the last poll shows only in the final counters.
+    if not result["failure"] and any(g["events"]["oom_kill"] for g in result.get("final_cgroups", [])):
+        result["failure"] = "a member was OOM-killed"
     result["outcome"] = "failed" if result["failure"] else "passed"
     if not result["failure"] or result.get("censored"):
         return

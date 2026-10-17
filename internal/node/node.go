@@ -94,12 +94,13 @@ type Config struct {
 	// returns breaks the stream there; and reloading, if set, runs when a
 	// run that ended for a reload opened the log again, before the core
 	// replays it. For tests.
-	// cleanStage observes the production cleaner's durability boundaries in tests.
-	cleanStage   func(string)
 	snapshotSync int
 	stage        func(string) error
 	reloading    func()
-	Logf         func(format string, args ...any)
+	// cleanStage, if set, runs at each step of the cleaner that changes
+	// what is durable. For tests.
+	cleanStage func(string)
+	Logf       func(format string, args ...any)
 	// Metrics are the metrics the node observes into; nil gives the node
 	// a set of its own.
 	Metrics *metrics.Set
