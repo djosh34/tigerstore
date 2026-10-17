@@ -1,279 +1,72 @@
-# A pull request runs the fast set. The push to main and the nightly run
-# also run every sim and chaos shard, race-sim, chaos-race and apiserver.
-# The planted bugs run in planted.yml.
+# Branch-only checks for #223 and #224. Drop this commit before integration.
 name: ci
-
 on:
-  pull_request:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch:
-
+    inputs:
+      timing_only:
+        type: boolean
+        default: false
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  lint:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-      # The planted bugs and their tests build only with this tag.
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          args: --build-tags difftest,planted
-
-  build:
-    strategy:
-      matrix:
-        runner: [ubuntu-24.04-arm, ubuntu-24.04]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go build ./...
-
-  test:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      # cmd/loadgen's tests drive a real etcd v3.7.2.
-      - name: Install etcd v3.7.2
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          echo "LOADGEN_ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      # The simulator's tests run under -race in their own job, race-sim:
-      # they took 545 s of the 600 s package timeout here.
-      - run: go list ./... | grep -v '/internal/sim$' | xargs go test -race
-
-  # Values near the request limit from clients on every node at a real
-  # node's 100 ms ticks, failing if a leader entry waits one election
-  # timeout to commit (#88). Its own job: every value stays in memory.
-  # With -v every repetition prints its margins: the longest put, commit
-  # wait and log write of each node.
-  stress:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -count=20 -v -run 'TestLargeValuesAtRealTicks$' ./internal/server
-        env:
-          TIGERSTORE_STRESS: 10s
-          GOMEMLIMIT: 8GiB
-
-  determinism-lint:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -count=1 ./internal/lint/
-
-  # Each shard runs its seeds twice in one process with the checkers of
-  # package check (TestSeeds), checks short runs of the same seeds with
-  # Porcupine (TestLinearizable), then replays TestSeeds in a second process
-  # with GOMAXPROCS=1 and compares the trace hashes. Shards 0 and 1 run fixed
-  # seeds; shards 2 and 3 run fresh seeds from the run ID. A pull request
-  # runs shard 0 only. A failing seed reproduces with
-  # go test ./internal/sim/ -run 'TestSeeds/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
-  # go test ./internal/sim/ -run 'TestLinearizable/<seed>$' -args -sim.seed=<seed> -sim.seeds=1
-  sim:
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2, 3]') }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Pick seeds
-        env:
-          SHARD: ${{ matrix.shard }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          if [ "$SHARD" -lt 2 ]; then
-            first=$((1 + SHARD * 400))
-          else
-            first=$((1000000 + (RUN_ID % 1000000000) * 2 + SHARD * 400))
-          fi
-          echo "FIRST_SEED=$first" >> "$GITHUB_ENV"
-          echo "seeds $first to $((first + 399))"
-      - name: Run seeds, each twice in one process, with the checkers
-        run: go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$|TestLinearizable$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/a.txt"
-      - name: Replay the seeds in a second process
-        run: GOMAXPROCS=1 go test -count=1 -timeout 14m ./internal/sim/ -run 'TestSeeds$' -args -sim.seed="$FIRST_SEED" -sim.seeds=400 -sim.traces="$RUNNER_TEMP/b.txt"
-      - name: Compare trace hashes
-        run: |
-          test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
-          diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
-
-  # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
-  # with client certificates.
-  smoke:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Install etcdctl v3.7.2
-        run: |
-          curl -fsSL https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz | tar xz -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/etcd-v3.7.2-linux-arm64" >> "$GITHUB_PATH"
-      - run: etcdctl version
-      - run: scripts/smoke.sh
-
-  # The k8s.io/apiserver etcd3 storage tests of each supported Kubernetes
-  # version, unchanged, against a fresh 3-node TLS tigerstore per test.
-  apiserver:
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        version: [v0.35.0, v0.36.0, v0.37.0]
-        race: [""]
-        # The newest version once more against a tigerstore built with
-        # -race: a race report fails the test whose server made it.
-        include:
-          - version: v0.37.0
-            race: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: apiservertest/run.sh ${{ matrix.version }}
-        env:
-          RACE: ${{ matrix.race }}
-
-  # Sequential differential tests: the same requests against a fresh etcd
-  # v3.7.2 and a fresh 3-node tigerstore, compared with etcd's recorded
-  # answers in difftest/testdata.
-  # The third runs tigerstore and the tests built with -race.
-  difftest:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - server: etcd
-          - server: tigerstore
-          - server: tigerstore
-            race: "1"
+  timing:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Install etcd v3.7.2
+      - name: Format and vet
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-          echo "ETCD=$RUNNER_TEMP/etcd-v3.7.2-linux-arm64/etcd" >> "$GITHUB_ENV"
-      - run: scripts/difftest.sh ${{ matrix.server }}
-        env:
-          RACE: ${{ matrix.race }}
-
-  # Real-process chaos (#49). Each shard builds tigerstore and runs two
-  # seeds of cmd/chaos: a fresh 3-node TLS cluster with a seeded fault
-  # proxy on every client and peer link, recording clients and watches,
-  # and every fault of the schedule once (SIGKILL and SIGSTOP of leader
-  # and follower, and proxy faults), then the checkers of package check.
-  # Seeds come from the run ID. A pull request runs shard 0 only. A
-  # failing seed reproduces with
-  # go run ./cmd/chaos -tigerstore <binary> -seed <seed>
-  # and its evidence (schedule, fault records, node logs, data, history)
-  # is uploaded.
-  chaos:
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[0]' || '[0, 1, 2]') }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+          gofmt -d cmd/chaos
+          test -z "$(gofmt -l cmd/chaos)"
+          go vet ./cmd/chaos ./chaos/...
+      - uses: golangci/golangci-lint-action@v9
         with:
-          go-version-file: go.mod
-      - run: |
-          go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run seeds
+          version: v2.14.0
+          args: ./cmd/chaos/... ./chaos/...
+      - name: Race regressions
+        run: |
+          go build -race -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
+          CHAOS_TIGERSTORE="$RUNNER_TEMP/tigerstore" go test -race -v -count=3 ./cmd/chaos ./chaos/proxy
+      - name: Check the regressions without each fix
         shell: bash
-        env:
-          SHARD: ${{ matrix.shard }}
-          RUN_ID: ${{ github.run_id }}
         run: |
-          set -uo pipefail
-          status=0
-          for k in 0 1; do
-            seed=$(( (RUN_ID % 1000000000) * 8 + SHARD * 2 + k + 1 ))
-            echo "seed $seed"
-            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
-          done
-          exit "$status"
-      - if: failure()
+          set -euo pipefail
+          git show 8d44e969:cmd/chaos/envfaults.go > cmd/chaos/envfaults.go
+          if CHAOS_TIGERSTORE="$RUNNER_TEMP/tigerstore" go test -race -v -run '^TestCrashInInstall$' ./cmd/chaos > "$RUNNER_TEMP/control-223.log" 2>&1; then
+            cat "$RUNNER_TEMP/control-223.log"
+            echo 'The old snapshot step escaped the regression'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/control-223.log"
+          grep -E 'snapshot crash missed the fetch|snapshot crash did not hold a reply before the kill' "$RUNNER_TEMP/control-223.log"
+          git restore cmd/chaos/envfaults.go
+          git show 8d44e969:cmd/chaos/schedule.go > cmd/chaos/schedule.go
+          if go test -race -v -run '^TestNetworkWaitsForClient$' ./cmd/chaos > "$RUNNER_TEMP/control-224.log" 2>&1; then
+            cat "$RUNNER_TEMP/control-224.log"
+            echo 'The old client step escaped the regression'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/control-224.log"
+          grep 'fault ended before the client reconnected' "$RUNNER_TEMP/control-224.log"
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: chaos-evidence-${{ matrix.shard }}
-          path: ${{ runner.temp }}/chaos-out
+          name: timing-controls
+          path: ${{ runner.temp }}/control-*.log
           retention-days: 30
 
-  # Real-process chaos in an environment of its own (#148), through
-  # sudo: each node on a loop device, under a device-mapper target that
-  # fails, delays or stalls I/O, on a small ext4 that fills for real, and
-  # in a cgroup; netem on every link, with 1 to 10 ms between nodes. On
-  # top of that schedule, faults of the environment: netem loss,
-  # reordering and corruption, a CPU-throttled gray node, a slow and a
-  # stalled disk, crashes inside recovery and inside a snapshot install,
-  # a client that stops reading its watch, two faults at once, and a
-  # member replaced after an erased disk or a refused log. The lazyfs row
-  # runs every disk under Jepsen's LazyFS, which loses on a power loss
-  # what no fsync covered and tears writes; the plain row fails fsyncs and
-  # fills disks, which LazyFS would hide. Gray faults require every probe
-  # write through the healthy nodes to commit within 10 election
-  # timeouts. Seeds come from the run ID.
   chaos-env:
+    if: ${{ !inputs.timing_only }}
     strategy:
       fail-fast: false
       matrix:
         mode: [lazyfs, plain]
+        seed: [7856403745, 7866580249, 223224]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -288,190 +81,24 @@ jobs:
           echo "LAZYFS=$(scripts/lazyfs.sh "$RUNNER_TEMP/lazyfs")" >> "$GITHUB_ENV"
           go build -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
           go build -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Test fault timing
-        run: CHAOS_TIGERSTORE="$RUNNER_TEMP/tigerstore" go test -race -run 'Test(Network|CrashInInstall)' ./cmd/chaos/
       - name: Test the environment
-        if: matrix.mode == 'lazyfs'
-        run: CHAOS_LAZYFS="$LAZYFS" go test -tags chaosenv ./chaos/env/
+        if: matrix.seed == 223224 && matrix.mode == 'lazyfs'
+        run: CHAOS_LAZYFS="$LAZYFS" go test -race -tags chaosenv ./chaos/env/
       - name: Run a seed
         shell: bash
         env:
           MODE: ${{ matrix.mode }}
-          RUN_ID: ${{ github.run_id }}
+          SEED: ${{ matrix.seed }}
         run: |
-          set -uo pipefail
-          seed=$(( (RUN_ID % 1000000000) * 8 + 1 ))
+          set -euo pipefail
           lazy=()
           if [ "$MODE" = lazyfs ]; then lazy=(-lazyfs "$LAZYFS"); fi
-          echo "seed $seed, $MODE"
-          "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}"
-      - if: failure()
+          "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$SEED" -out "$RUNNER_TEMP/chaos-out" -env "${lazy[@]}"
+      - if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: chaos-env-evidence-${{ matrix.mode }}
+          name: chaos-env-evidence-${{ matrix.mode }}-${{ matrix.seed }}
           path: |
             ${{ runner.temp }}/chaos-out
             !${{ runner.temp }}/chaos-out/**/disks
           retention-days: 30
-
-  # Each fuzz test of a hand-written decoder runs for 20 s from its saved
-  # corpus in testdata/fuzz, one after the other. A failing input
-  # reproduces with go test -run '<target>/<input>' ./<package>, once
-  # copied into testdata/fuzz/<target>/ from the artifact.
-  fuzz:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Fuzz each target for 20 s
-        shell: bash
-        run: |
-          set -uo pipefail
-          status=0
-          for t in core:FuzzDecodeAlias core:FuzzParsePut core:FuzzReceiveSnapshot wal:FuzzOpen mvcc:FuzzLoad peer:FuzzFrames server:FuzzHTTP2; do
-            pkg=./internal/${t%:*} target=${t#*:}
-            echo "::group::$pkg $target"
-            go test -run '^$' -fuzz "^$target\$" -fuzztime 20s "$pkg" || { status=1; echo "::error::$target failed"; }
-            echo "::endgroup::"
-          done
-          exit "$status"
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: fuzz
-          path: internal/*/testdata/fuzz
-          retention-days: 30
-
-  # The statement coverage of the internal/... packages, measured across
-  # every package's tests, must be 80% at least.
-  coverage:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -short -coverpkg=./internal/... -coverprofile="$RUNNER_TEMP/cover.out" ./...
-      - name: At least 80%
-        run: |
-          total=$(go tool cover -func="$RUNNER_TEMP/cover.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
-          echo "internal/... coverage: $total%"
-          awk -v t="$total" 'BEGIN { exit !(t >= 80) }'
-
-  # The simulator under the race detector too, which test leaves out to
-  # keep its time: no goroutine runs there, so it has nothing to find yet.
-  race-sim:
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go test -race -timeout 40m ./internal/sim
-
-  # The chaos job's binaries built with -race, two seeds. A data race
-  # stops the node (GORACE halt_on_error), which fails the run as an
-  # exit nobody asked for, and the logs are searched for a report too.
-  chaos-race:
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: |
-          go build -race -o "$RUNNER_TEMP/tigerstore" ./cmd/tigerstore
-          go build -race -o "$RUNNER_TEMP/chaos" ./cmd/chaos
-      - name: Run seeds
-        shell: bash
-        env:
-          RUN_ID: ${{ github.run_id }}
-          GORACE: halt_on_error=1
-        run: |
-          set -uo pipefail
-          status=0
-          for k in 0 1; do
-            # The chaos shards take offsets 1 to 6.
-            seed=$(( (RUN_ID % 1000000000) * 8 + 7 + k ))
-            echo "seed $seed"
-            "$RUNNER_TEMP/chaos" -tigerstore "$RUNNER_TEMP/tigerstore" -seed "$seed" -out "$RUNNER_TEMP/chaos-out" || status=1
-          done
-          if grep -rl 'WARNING: DATA RACE' "$RUNNER_TEMP/chaos-out"; then status=1; fi
-          exit "$status"
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: chaos-race-evidence
-          path: ${{ runner.temp }}/chaos-out
-          retention-days: 30
-
-  # Differential fuzzing (#148): random sequences against a fresh etcd
-  # v3.7.2 and a fresh 3-node tigerstore side by side for 90 s, every
-  # answer compared, then every saved mismatch again. A mismatch is shrunk
-  # into a named case, uploaded; commit it to difftest/testdata/fuzz.
-  # Seeds come from the run ID. The long run is difffuzz.yml.
-  # The second row builds tigerstore and the tests with -race.
-  difffuzz:
-    strategy:
-      fail-fast: false
-      matrix:
-        race: ["", "1"]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Install etcd v3.7.2
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/etcd.tgz" https://github.com/etcd-io/etcd/releases/download/v3.7.2/etcd-v3.7.2-linux-arm64.tar.gz
-          echo "5e3ff99d428fabfcefdc95348f6560d1efe835f7b2d1ab3334fe0831076966b7  $RUNNER_TEMP/etcd.tgz" | sha256sum -c
-          tar xzf "$RUNNER_TEMP/etcd.tgz" -C "$RUNNER_TEMP"
-      - name: Fuzz for 90 s
-        env:
-          ETCD: ${{ runner.temp }}/etcd-v3.7.2-linux-arm64/etcd
-          DURATION: 90s
-          RACE: ${{ matrix.race }}
-          RUN_ID: ${{ github.run_id }}
-        run: SEED=$(( (RUN_ID % 1000000000) * 1000000 + 1 + ${RACE:-0} * 500000 )) scripts/difffuzz.sh
-      - if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: difffuzz-mismatch-${{ strategy.job-index }}
-          path: difftest/testdata/fuzz/
-
-  rolling-upgrade:
-    uses: ./.github/workflows/rolling-upgrade.yml
-
-  # The required check. It runs even when a job it needs failed or was
-  # skipped, and passes only if every one of them succeeded. On a pull
-  # request the jobs of main and the nightly run are skipped by their own
-  # condition; no job here needs another, so nothing else skips them.
-  ci:
-    if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade]
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
-    steps:
-      - env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          for result in $RESULTS; do
-            if [ "$result" = skipped ] && [ "$EVENT" = pull_request ]; then
-              continue
-            fi
-            if [ "$result" != success ]; then
-              echo "a needed job ended with: $result"
-              exit 1
-            fi
-          done
