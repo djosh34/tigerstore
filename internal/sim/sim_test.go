@@ -388,9 +388,10 @@ func TestHalfOpenLink(t *testing.T) {
 // TestGrayLeaderIsReplaced makes the leader gray at 5 s until healing,
 // with no other fault: its heartbeats get through, its appends do not, so
 // Raft's quorum check keeps it leader while nothing commits. It must stop
-// within core.CommitStallTicks election timeouts plus two ticks, and every
-// call to another node that starts 3 election timeouts after that must
-// succeed in under a second.
+// within core.CommitStallTicks election timeouts plus two ticks. It
+// restarts still gray and with the longest log, so it can win the next
+// election and stop again. Every call to another node that starts 3
+// election timeouts after its last stop must succeed in under a second.
 func TestGrayLeaderIsReplaced(t *testing.T) {
 	election := int64(core.DefaultConfig(1, nil).ElectionTicks) * TickTime
 	for seed := uint64(1); seed <= 3; seed++ {
@@ -412,9 +413,10 @@ func TestGrayLeaderIsReplaced(t *testing.T) {
 		if stop < cfg.GrayLeaderAt || stop > limit {
 			t.Fatalf("seed %d: the gray leader stopped at %d ms, want between %d and %d ms", seed, stop/Millisecond, cfg.GrayLeaderAt/Millisecond, limit/Millisecond)
 		}
+		last := res.CommitStops[len(res.CommitStops)-1]
 		ok := 0
 		for _, r := range res.History {
-			if r.Call < stop+3*election || r.Call >= cfg.Duration || r.Node == res.grayNode {
+			if r.Call < last+3*election || r.Call >= cfg.Duration || r.Node == res.grayNode {
 				continue
 			}
 			if r.Err != nil && (r.Ambiguous || !isRejection(r.Err)) {

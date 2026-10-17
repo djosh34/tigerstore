@@ -984,6 +984,11 @@ func (s *Sim) exited(p *proc, err error) {
 		// It read the value the run damaged and stopped instead of
 		// answering with it.
 		s.stopNode(n)
+	case n.corrupted && core.FailureOf(err) == core.Reload && errors.Is(err, wal.ErrCorrupt):
+		// It started again from its log after a snapshot install or a
+		// failed fetch, and recovery found the damage, as a start does.
+		// The restart fences it.
+		s.stopNode(n)
 	case s.cfg.Membership && core.FailureOf(err) == core.Leave:
 		n.inactive = true
 		s.down(n)
