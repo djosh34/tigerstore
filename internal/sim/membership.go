@@ -160,13 +160,16 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 // membershipConfig keeps the standard fault mechanisms, with more time
 // between the faults that break connections, so that changes can commit
 // before healing: as etcd's, a node refuses a change unless it has been
-// connected to the other voters for 5 s. Corruption is left to the
+// connected to the other voters for 5 s. For the same reason healing
+// lasts 20 s: the first change after it can wait 10 s for that (seeds 14
+// and 58), and three more follow. Corruption is left to the
 // three-voter runs: a permanently fenced learner cannot catch up and be
 // promoted, so that workload would require disk replacement too.
 func membershipConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Membership = true
 	cfg.Duration = 60 * Second
+	cfg.Heal = 20 * Second
 	cfg.NoLeases = true
 	cfg.Clients = 3
 	cfg.Faults.Corrupt, cfg.Faults.Rot = false, false

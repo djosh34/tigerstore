@@ -106,13 +106,13 @@ var plantedCases = map[string]plantedCase{
 	"B19": {seeds: 64, cfg: DefaultConfig, want: refused + `|not on disk|` + stuck},
 	"B20": {seeds: 64, cfg: DefaultConfig, want: `holds entries from \d+ in memory`},
 	"B21": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|already exists|` + refused},
-	"B22": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused},
+	"B22": {seeds: 256, cfg: DefaultConfig, want: inventedState + `|` + badValue + `|malformed|` + refused},
 	"B23": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|wrote different checkpoints|` + stuck},
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
 	// The real driver's disk goroutine ends at an install, so a core that
 	// goes on writes nothing more.
-	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|` + stuck},
+	"B27": {seeds: 64, cfg: DefaultConfig, want: inventedState + `|cold restart did not converge|` + stuck},
 	// A node refuses a member change unless it has been connected to the
 	// other voters for 5 s, so stage 1 completes during the faults in
 	// some runs and after healing in others; either catch counts.

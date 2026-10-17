@@ -10,6 +10,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+
 	"github.com/djosh34/tigerstore/internal/core"
 
 	"github.com/djosh34/tigerstore/check"
@@ -465,6 +467,11 @@ func TestGrayClient(t *testing.T) {
 	calls := 0
 	for _, r := range res.History {
 		if r.Call >= cfg.Duration || r.Call < Second {
+			continue
+		}
+		if errors.Is(r.Err, rpctypes.ErrGRPCStopped) {
+			// The node started again from its log after a snapshot
+			// install, which the run's tiny window makes frequent.
 			continue
 		}
 		if r.Err != nil && !isRejection(r.Err) {

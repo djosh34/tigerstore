@@ -212,6 +212,11 @@ func newestSegment(d *simfs.Disk) string {
 // start. It runs on the node's committer, with its core c. The lock is
 // held.
 func (s *Sim) rot(n *node, c *core.Node) {
+	if slices.ContainsFunc(s.nodes, func(m *node) bool { return m.corrupted }) {
+		// A crash damaged a node since the rot was due; a quorum must
+		// stay whole.
+		return
+	}
 	w, _, err := wal.Open(n.disk.Durable())
 	if err != nil {
 		return
