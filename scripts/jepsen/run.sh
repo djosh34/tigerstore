@@ -40,8 +40,6 @@ fi
 sha256sum "$assets/server" | tee "$out/server.sha256"
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$assets/ca.key" -out "$assets/ca.crt" -days 2 -subj /CN=jepsen-test-ca
 openssl req -newkey rsa:2048 -nodes -keyout "$assets/peer.key" -out "$assets/peer.csr" -subj /CN=jepsen-test-peer
-printf 'subjectAltName=DNS:n1,DNS:n2,DNS:n3\nextendedKeyUsage=serverAuth,clientAuth\n' > "$assets/extensions"
-openssl x509 -req -in "$assets/peer.csr" -CA "$assets/ca.crt" -CAkey "$assets/ca.key" -CAcreateserial -out "$assets/peer.crt" -days 2 -extfile "$assets/extensions"
 # Three DB containers, otherwise the upstream compose file.
 python3 - <<'PY'
 from pathlib import Path
@@ -85,6 +83,7 @@ trap cleanup EXIT
 "${compose[@]}" pull
 docker image ls --digests --no-trunc
 "${compose[@]}" up -d --wait --wait-timeout 120
+# The peer certificate names the nodes and their addresses, known only now.
 sans=DNS:n1,DNS:n2,DNS:n3
 for node in n1 n2 n3; do
   ip=$(docker inspect "jepsen-$node" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')

@@ -138,7 +138,7 @@ func (s *Sim) check(res *Result) error {
 func (s *Sim) live() []*node {
 	var out []*node
 	for _, n := range s.nodes {
-		if !n.fenced && !n.inactive {
+		if !n.out() {
 			out = append(out, n)
 		}
 	}

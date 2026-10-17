@@ -660,6 +660,10 @@ func newSim(cfg Config) *Sim {
 	return s
 }
 
+// out reports whether n is out of the cluster for now: fenced, or not a
+// member.
+func (n *node) out() bool { return n.fenced || n.inactive }
+
 func (s *Sim) addNode(i int, disk *simfs.Disk) {
 	s.nodes = append(s.nodes, &node{idx: i, id: uint64(i + 1), disk: disk, reqs: map[uint64]*clientOp{}, streams: map[uint64]*watchClient{}, closing: map[uint64]bool{}, grayStreams: map[uint64]bool{}})
 }
@@ -909,7 +913,7 @@ func (s *Sim) handle(e *event) {
 
 // start opens a node from its disk, as a process start does.
 func (s *Sim) start(n *node) error {
-	if n.fenced || n.inactive {
+	if n.out() {
 		return nil
 	}
 	if n.rotted && !slices.Contains(n.disk.DurableNames(), n.rotFile) {

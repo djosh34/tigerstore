@@ -210,9 +210,14 @@ func (c *behind) close() {
 
 // do retries op on n for up to 20 s.
 func do(n *Node, op proto.Message) (proto.Message, error) {
+	return doAs(n, core.Caller{}, op)
+}
+
+// doAs retries op of caller on n for up to 20 s.
+func doAs(n *Node, caller core.Caller, op proto.Message) (proto.Message, error) {
 	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		r, err := n.Do(ctx, op)
+		r, err := n.DoAs(ctx, caller, op)
 		cancel()
 		if err == nil || time.Now().After(deadline) {
 			return r, err
@@ -220,9 +225,9 @@ func do(n *Node, op proto.Message) (proto.Message, error) {
 	}
 }
 
-// newBehind sets up a behind cluster with node 3 stopped. The caller
-// closes it, also after an error.
-func newBehind(t *testing.T) (*behind, error) {
+// startThree starts the three nodes of a behind cluster, with tune. The
+// caller closes it, also after an error.
+func startThree(t *testing.T, tune func(id uint64, cfg *Config)) (*behind, error) {
 	c := &behind{
 		t:     t,
 		net:   &memNet{queues: map[uint64]chan *raftpb.Message{}, nodes: map[uint64]*Node{}},
@@ -230,11 +235,22 @@ func newBehind(t *testing.T) (*behind, error) {
 		nodes: map[uint64]*Node{},
 		ran:   map[uint64]chan error{},
 		stops: map[uint64]context.CancelFunc{},
+		tune:  tune,
 	}
 	for id := uint64(1); id <= 3; id++ {
 		if _, err := c.start(id); err != nil {
 			return c, err
 		}
+	}
+	return c, nil
+}
+
+// newBehind sets up a behind cluster with node 3 stopped. The caller
+// closes it, also after an error.
+func newBehind(t *testing.T) (*behind, error) {
+	c, err := startThree(t, nil)
+	if err != nil {
+		return c, err
 	}
 	write := func(round int) (int64, error) {
 		var rev int64

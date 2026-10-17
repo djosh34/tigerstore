@@ -46,6 +46,20 @@ func (d *concurrentDisk) delay() {
 	}
 }
 
+// serial runs f with the disk to itself, after a few yields, so that the
+// goroutines interleave at file calls.
+func serial[T any](d *concurrentDisk, f func() (T, error)) (T, error) {
+	d.delay()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return f()
+}
+
+func serialErr(d *concurrentDisk, f func() error) error {
+	_, err := serial(d, func() (struct{}, error) { return struct{}{}, f() })
+	return err
+}
+
 func (d *concurrentDisk) List() ([]string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -58,55 +72,41 @@ func (d *concurrentDisk) Usage() (int64, error) {
 	return int64(d.d.Bytes()), nil
 }
 
-func (d *concurrentDisk) Create(name string) (wal.File, error) {
-	d.delay()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	f, err := d.d.Create(name)
-	if err != nil {
-		return nil, err
-	}
-	return &concurrentFile{d: d, f: f, name: name}, nil
+func (d *concurrentDisk) file(name string, open func(string) (wal.File, error)) (wal.File, error) {
+	return serial(d, func() (wal.File, error) {
+		f, err := open(name)
+		if err != nil {
+			return nil, err
+		}
+		return &concurrentFile{d: d, f: f, name: name}, nil
+	})
 }
 
-func (d *concurrentDisk) Open(name string) (wal.File, error) {
-	d.delay()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	f, err := d.d.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	return &concurrentFile{d: d, f: f, name: name}, nil
-}
+func (d *concurrentDisk) Create(name string) (wal.File, error) { return d.file(name, d.d.Create) }
+func (d *concurrentDisk) Open(name string) (wal.File, error)   { return d.file(name, d.d.Open) }
 
 func (d *concurrentDisk) Remove(name string) error {
-	d.delay()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	err := d.d.Remove(name)
-	if err == nil && strings.HasSuffix(name, ".wal") {
-		d.removes++
-	}
-	return err
+	return serialErr(d, func() error {
+		err := d.d.Remove(name)
+		if err == nil && strings.HasSuffix(name, ".wal") {
+			d.removes++
+		}
+		return err
+	})
 }
 
 func (d *concurrentDisk) Rename(a, b string) error {
-	d.delay()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.d.Rename(a, b)
+	return serialErr(d, func() error { return d.d.Rename(a, b) })
 }
 
 func (d *concurrentDisk) SyncDir() error {
-	d.delay()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	err := d.d.SyncDir()
-	if err == nil && d.removes > 0 {
-		d.cut("directory-removal")
-	}
-	return err
+	return serialErr(d, func() error {
+		err := d.d.SyncDir()
+		if err == nil && d.removes > 0 {
+			d.cut("directory-removal")
+		}
+		return err
+	})
 }
 
 func (d *concurrentDisk) cut(stage string) {
@@ -121,50 +121,32 @@ type concurrentFile struct {
 	name string
 }
 
-func (f *concurrentFile) ReadAll() ([]byte, error) {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.ReadAll()
-}
+func (f *concurrentFile) ReadAll() ([]byte, error) { return serial(f.d, f.f.ReadAll) }
 
 func (f *concurrentFile) ReadAt(p []byte, off int64) (int, error) {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.ReadAt(p, off)
+	return serial(f.d, func() (int, error) { return f.f.ReadAt(p, off) })
 }
 
 func (f *concurrentFile) Write(p []byte) (int, error) {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.Write(p)
+	return serial(f.d, func() (int, error) { return f.f.Write(p) })
 }
 
 func (f *concurrentFile) WriteAt(p []byte, off int64) (int, error) {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.WriteAt(p, off)
+	return serial(f.d, func() (int, error) { return f.f.WriteAt(p, off) })
 }
 
 func (f *concurrentFile) Truncate(n int64) error {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	return f.f.Truncate(n)
+	return serialErr(f.d, func() error { return f.f.Truncate(n) })
 }
 
 func (f *concurrentFile) Sync() error {
-	f.d.delay()
-	f.d.mu.Lock()
-	defer f.d.mu.Unlock()
-	err := f.f.Sync()
-	if err == nil && strings.HasPrefix(f.name, "pack-") {
-		f.d.packs++
-	}
-	return err
+	return serialErr(f.d, func() error {
+		err := f.f.Sync()
+		if err == nil && strings.HasPrefix(f.name, "pack-") {
+			f.d.packs++
+		}
+		return err
+	})
 }
 
 func (f *concurrentFile) Close() error {

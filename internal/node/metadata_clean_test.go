@@ -15,7 +15,6 @@ import (
 	"go.etcd.io/etcd/api/v3/authpb"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -25,33 +24,18 @@ import (
 // restart or snapshot catch-up can pass. The follower's old log cannot
 // contain those changes, and the donors no longer have their entries.
 func TestMetadataAfterCleaning(t *testing.T) {
-	c := &behind{
-		t:     t,
-		net:   &memNet{queues: map[uint64]chan *raftpb.Message{}, nodes: map[uint64]*Node{}},
-		dirs:  map[uint64]string{1: t.TempDir(), 2: t.TempDir(), 3: t.TempDir()},
-		nodes: map[uint64]*Node{}, ran: map[uint64]chan error{}, stops: map[uint64]context.CancelFunc{},
-		tune: func(_ uint64, cfg *Config) { cfg.Core.StrictReconfigCheck = false },
-	}
+	c, err := startThree(t, func(_ uint64, cfg *Config) { cfg.Core.StrictReconfigCheck = false })
 	t.Cleanup(c.close)
-	for id := uint64(1); id <= 3; id++ {
-		if _, err := c.start(id); err != nil {
-			t.Fatal(err)
-		}
+	if err != nil {
+		t.Fatal(err)
 	}
 	call := func(n *Node, op proto.Message) proto.Message {
 		t.Helper()
-		for deadline := time.Now().Add(20 * time.Second); ; {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			r, err := n.DoAs(ctx, core.RootCaller(), op)
-			cancel()
-			if err == nil {
-				return r
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("%T: %v", op, err)
-			}
-			time.Sleep(20 * time.Millisecond)
+		r, err := doAs(n, core.RootCaller(), op)
+		if err != nil {
+			t.Fatalf("%T: %v", op, err)
 		}
+		return r
 	}
 	n := c.nodes[1]
 	cold := bytes.Repeat([]byte("cold"), 2048)
