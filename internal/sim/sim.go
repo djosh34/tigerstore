@@ -378,6 +378,9 @@ type node struct {
 	// stall window, for the liveness rule.
 	stallUntil int64
 	stalls     [][2]int64
+	// installs are the times the node started again from its log after
+	// a snapshot install.
+	installs []int64
 	// durableLast is the last entry index of the last append the node
 	// reported durable to its core; recovery must give at least that.
 	durableLast uint64
@@ -1048,9 +1051,6 @@ func (s *Sim) process(n *node) {
 	for _, r := range eff.Watch {
 		s.watchResponse(n, r)
 	}
-	for _, id := range eff.Closed {
-		s.streamClosed(n, id)
-	}
 	if len(eff.Checkpoint) > 0 && err == nil {
 		s.writeCheckpoint(n, eff.Checkpoint)
 		if !n.up {
@@ -1080,6 +1080,16 @@ func (s *Sim) process(n *node) {
 		}
 		s.commitStops = append(s.commitStops, s.now)
 		s.stopNode(n)
+		return
+	}
+	if errors.Is(err, core.ErrInstalled) {
+		// A snapshot install is durable: the node starts a new core from
+		// its log, as the real node does.
+		n.installs = append(n.installs, s.now)
+		s.down(n)
+		if serr := s.start(n); serr != nil {
+			s.fail("%w", errors.Join(err, serr))
+		}
 		return
 	}
 	if err != nil {

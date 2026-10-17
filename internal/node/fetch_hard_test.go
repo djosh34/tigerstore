@@ -126,7 +126,7 @@ func TestFetchHardCases(t *testing.T) {
 				}
 				return nil
 			}
-			cfg.reloading = func() {
+			cfg.reloading = func(*Node) {
 				if rooted.Load() {
 					once.Do(func() { copied <- os.CopyFS(crash, os.DirFS(c.dirs[3])) })
 				}

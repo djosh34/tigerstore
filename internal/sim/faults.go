@@ -352,6 +352,18 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 	return nil
 }
 
+// installedDuring reports whether a node started again from its log
+// after a snapshot install between two times. The calls it had under way
+// fail, as on a restart, and a client tries again.
+func (n *node) installedDuring(from, to int64) bool {
+	for _, t := range n.installs {
+		if t >= from && t <= to {
+			return true
+		}
+	}
+	return false
+}
+
 // stalledAt reports whether a node's disk was stalled at a time. A node
 // with a stalled disk cannot apply, so it answers nothing; the liveness
 // rule is about the healthy nodes.

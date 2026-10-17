@@ -99,8 +99,7 @@ func (n *Node) overQuota() error {
 
 // raiseNoSpace proposes this node's NOSPACE alarm, unless it is active or
 // a proposal of it is under way: one from the last leaseRetryTicks that
-// has not applied. A node that replays its log or installs a snapshot
-// proposes nothing: it raised the alarm when it applied the entry first.
+// has not applied. A node that replays its log proposes nothing: it raised the alarm when it applied the entry first.
 // If it proposes the alarm and id is not 0, request id gets ErrNoSpace
 // once the alarm applied.
 func (n *Node) raiseNoSpace(id uint64) bool {
@@ -132,8 +131,8 @@ func (n *Node) clearNoSpace() {
 }
 
 // noSpaceDue reports whether the node proposes setting its own NOSPACE
-// alarm to active, and notes the proposal: not while it replays its log or
-// installs a snapshot, not if the alarm is already so, and not within
+// alarm to active, and notes the proposal: not while it replays its log,
+// not if the alarm is already so, and not within
 // leaseRetryTicks of its last proposal of a change, which may not have
 // applied yet.
 func (n *Node) noSpaceDue(active bool) bool {

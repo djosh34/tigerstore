@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -329,38 +330,15 @@ func TestColdReadKeepsItsSegment(t *testing.T) {
 	}
 }
 
-// TestInstallAfterPausedWrite pauses the second write of an entry on a
-// value compare, then installs a snapshot with no checkpoint past it. The
-// state stays, so the install applies only the writes from the paused one
-// on: the first write runs once.
-func TestInstallAfterPausedWrite(t *testing.T) {
+// TestPersistedInstallEndsTheCore checks that a durable snapshot install
+// ends the core with ErrInstalled, which both drivers act on by starting a
+// new core from the log, and that the core then answers nothing more.
+func TestPersistedInstallEndsTheCore(t *testing.T) {
 	s, _ := coldSingle(t, nil)
-	rev := s.n.kv.Rev()
-	s.hold = true
-	s.n.Submit(Request{ID: 201, Op: &pb.PutRequest{Key: []byte("x"), Value: []byte("1")}})
-	s.n.Submit(Request{ID: 202, Op: &pb.TxnRequest{
-		Compare: []*pb.Compare{{Key: []byte("a"), Target: pb.Compare_VALUE, Result: pb.Compare_EQUAL, TargetUnion: &pb.Compare_Value{Value: []byte("va")}}},
-		Success: []*pb.RequestOp{{Request: &pb.RequestOp_RequestPut{RequestPut: &pb.PutRequest{Key: []byte("a"), Value: []byte("swapped")}}}},
-	}})
-	s.run()
-	w := s.n.paused
-	if w == nil || w.write != 1 || s.n.kv.Rev() != rev+1 {
-		t.Fatalf("setup: paused %+v at revision %d, want the second write paused at %d", w, s.n.kv.Rev(), rev+1)
-	}
-	term, err := s.n.termAt(w.index)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.n.install(&Install{From: 1, Index: w.index, Term: term, Applied: w.index - 1}); err != nil {
-		t.Fatal(err)
-	}
-	if s.n.kv.Rev() != rev+2 {
-		t.Fatalf("revision %d after the install, want %d", s.n.kv.Rev(), rev+2)
-	}
-	release(t, s)
-	r := s.do(301, &pb.RangeRequest{Key: []byte("x")})
-	if kvs := r.Resp.(*pb.RangeResponse).Kvs; len(kvs) != 1 || kvs[0].Version != 1 {
-		t.Fatalf("x after the install: %v", kvs)
+	s.n.Persisted(PersistJob{Install: &Install{From: 2, Index: s.n.Applied(), Term: s.n.Term(), Applied: s.n.Applied()}})
+	_, err := s.n.Process()
+	if !errors.Is(err, ErrInstalled) || FailureOf(err) != Reload {
+		t.Fatalf("after a durable install: %v", err)
 	}
 }
 

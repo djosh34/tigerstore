@@ -22,8 +22,10 @@ import (
 // A follower that is behind the leader's window gets a snapshot from
 // Raft: only an index and a term, the newest checkpoint's or the window's
 // start, with no data. Its driver fetches what it lacks from the leader,
-// writes it to its own log (ReceiveSnapshot), and reports the persist job;
-// the core then brings its state to the snapshot's index (install).
+// writes it to its own log (ReceiveSnapshot), and once that job is
+// durable starts a new core from its log, as a restart does (ErrInstalled):
+// the old core goes first, so its state, window and cache are never in
+// memory next to the new one's.
 //
 // The leader sends the raw entries the follower lacks, read from its
 // segments. When those are gone, it sends its newest checkpoint at or
@@ -49,92 +51,11 @@ type Install struct {
 	Checkpoint wal.Root
 }
 
-// install brings the state to the snapshot: it loads the checkpoint that
-// came with it, if any, and applies the entries after that from the log.
-// Memory is emptied first: the entries it held after the applied index
-// can be ones the snapshot replaced, and values must come from the log.
-func (n *Node) install(in *Install) error {
-	// A write that waited for values is before the snapshot, and reads
-	// under way may find their files gone (ValuesRead). Without a
-	// checkpoint the state stays, and the writes of the paused entry
-	// before that write are applied.
-	if in.Checkpoint.Index == 0 {
-		n.resume = n.paused
-	}
-	n.paused, n.epoch = nil, n.epoch+1
-	defer func() { n.resume = nil }()
-	// The entries in memory up to the applied index leave it now.
-	n.fillCache(n.applied)
-	if err := n.storage.reset(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: new(in.Index), Term: new(in.Term), ConfState: n.storage.confAt(in.Index)}}); err != nil {
-		return err
-	}
-	if c := in.Checkpoint; c.Index > 0 {
-		if n.copy != nil {
-			// The checkpoint under way is of the state being replaced;
-			// it is finished, written, and never counts.
-			n.copyChunk(-1)
-		}
-		st, last, err := loadCheckpoint(n.cfg, n.log, c, n.values)
-		if err != nil {
-			return fmt.Errorf("core: load the snapshot's checkpoint at %d: %w", c.Index, err)
-		}
-		n.setState(st)
-		n.cache.clear()
-		n.applied, n.last, n.base, n.sinceCkpt, n.storage.ckpt = c.Index, last, last.base, 0, c
-		n.storage.confs = nil
-		n.storage.setConf(c.Index, st.confState())
-		n.membersChanged()
-		n.record(c.Index, c.Term)
-		// The state jumped; watchers would miss the changes in between.
-		// Their clients watch again from where they were.
-		n.closeWatchStreams()
-	}
-	to := in.Index
-	if planted.On("B23") {
-		// Planted: the state stops one entry short of Raft's snapshot.
-		to--
-	}
-	term := in.Checkpoint.Term
-	n.readInline = true
-	defer func() { n.readInline = false }()
-	for i := n.applied + 1; i <= to; i++ {
-		e, err := n.log.Entry(i)
-		if err != nil {
-			return fmt.Errorf("core: read entry %d of the snapshot: %w", i, err)
-		}
-		if err := n.apply([]*raftpb.Entry{e}); err != nil {
-			return err
-		}
-		term = e.GetTerm()
-	}
-	// Forget what the entries applied from the log wrote: they never
-	// enter memory, so none of their values go into the cache.
-	n.fillCache(n.applied)
-	if (n.applied != in.Index || term != in.Term) && !planted.On("B23") {
-		return fmt.Errorf("core: the snapshot at %d term %d left the state at %d term %d", in.Index, in.Term, n.applied, term)
-	}
-	n.applied, n.membershipAt = in.Index, in.Index
-	return nil
-}
-
 // record notes, with Config.Record, that the state at index came from a
 // checkpoint instead of from applying the entry.
 func (n *Node) record(index, term uint64) {
 	if n.cfg.Record {
 		n.out.Applied = append(n.out.Applied, Applied{Index: index, Term: term, Hash: n.state.Hash(), Checkpoint: true})
-	}
-}
-
-// closeWatchStreams ends every watch stream, in order.
-func (n *Node) closeWatchStreams() {
-	ids := make([]uint64, 0, len(n.streams))
-	for id := range n.streams {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	for _, id := range ids {
-		n.CloseWatchStream(id)
-		n.out.Closed = append(n.out.Closed, id)
 	}
 }
 

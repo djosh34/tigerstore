@@ -290,7 +290,7 @@ const ownDepth = 2
 type PersistJob struct {
 	// Install, if set, is a snapshot from Raft. The driver first brings
 	// its log to the snapshot's index (ReceiveSnapshot), then appends the
-	// rest of the job.
+	// rest of the job. Persisted then ends the core with ErrInstalled.
 	Install   *Install
 	HardState *wal.HardState
 	Entries   []*raftpb.Entry
@@ -322,9 +322,6 @@ type Effects struct {
 	Send    []*raftpb.Message
 	Replies []Reply
 	Watch   []WatchResponse
-	// Closed are watch streams that the node ended after a snapshot
-	// replaced its state; their clients watch again from where they were.
-	Closed []uint64
 	// Expired lists the leases that expired as this node applied the log.
 	// Drivers may log them; the simulator checks their timing.
 	Expired []int64
@@ -507,16 +504,15 @@ type Node struct {
 	streams  map[uint64]*watchStream
 	watchers []*watcher
 
-	// cold are the value reads under way, and epoch counts the snapshots
-	// installed. watchRead is the read of this turn's watch events.
+	// cold are the value reads under way. watchRead is the read of this
+	// turn's watch events.
 	cold      map[*ValueRead]struct{}
-	epoch     uint64
 	watchRead *ValueRead
 	// applyQ holds Raft's apply messages not applied yet: while paused
 	// waits for values from the log, ordered apply waits with it. resume
 	// is the write that runs again after its read. readInline is set
-	// while the node starts or installs a snapshot: nothing else waits
-	// then, so a write reads the values it needs itself.
+	// while the node starts: nothing else waits then, so a write reads
+	// the values it needs itself.
 	applyQ         []*raftpb.Message
 	paused, resume *pausedWrite
 	readInline     bool
@@ -1377,15 +1373,9 @@ func (n *Node) Persisted(job PersistJob) {
 		return
 	}
 	n.unpersisted -= job.bytes
-	if job.Install != nil {
-		n.installs--
-		if n.installs == 0 {
-			n.installTop = 0
-		}
-		if err := n.install(job.Install); err != nil {
-			n.fail(err)
-			return
-		}
+	if in := job.Install; in != nil {
+		n.fail(fmt.Errorf("%w at %d from %d, checkpoint %d", ErrInstalled, in.Index, in.From, in.Checkpoint.Index))
+		return
 	}
 	if job.Root != nil {
 		n.storage.ckpt = *job.Root

@@ -92,10 +92,11 @@ type Config struct {
 	// sync and each item of a snapshot install, with its stage, and an
 	// error it returns breaks the stream there; and reloading, if set,
 	// runs when a run that ended for a reload opened the log again,
-	// before the core replays it. For tests.
+	// after the old core went and before the new one replays the log.
+	// For tests.
 	snapshotSync int
 	stage        func(string) error
-	reloading    func()
+	reloading    func(*Node)
 	// cleanStage, if set, runs at each step of the cleaner that changes
 	// what is durable. For tests.
 	cleanStage func(string)
@@ -674,9 +675,12 @@ func (n *Node) open() error {
 	if err != nil {
 		return err
 	}
-	// Only a reload finds a core of an earlier run.
-	if n.core != nil && n.cfg.reloading != nil {
-		n.cfg.reloading()
+	// Only a reload finds a core of an earlier run. It goes before the
+	// new one loads, so that the two are never in memory at once.
+	reload := n.core != nil
+	n.core = nil
+	if reload && n.cfg.reloading != nil {
+		n.cfg.reloading(n)
 	}
 	run, err := nextRun(n.log.fs)
 	if err != nil {
@@ -1002,7 +1006,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		case done := <-n.persisted:
 			if done.err != nil {
 				if core.FailureOf(done.err) == core.Reload {
-					n.dropAll(waiters, streams)
+					n.dropAll(waiters, streams, rpctypes.ErrGRPCStopped)
 				}
 				return done.err
 			}
@@ -1042,13 +1046,6 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		}
 		chunks = append(chunks, eff.Checkpoint...)
 		reads = append(reads, eff.Reads...)
-		for _, id := range eff.Closed {
-			if ws, ok := streams[id]; ok {
-				delete(streams, id)
-				ws.err = ErrSnapshotInstalled
-				close(ws.done)
-			}
-		}
 		if eff.HandOff != 0 {
 			n.logf("the leader's disk stalled; handing leadership to %x", eff.HandOff)
 		}
@@ -1096,6 +1093,9 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 		n.authEnabled.Store(n.core.AuthEnabled())
 		n.loadAlarms()
 		if err != nil {
+			if errors.Is(err, core.ErrInstalled) {
+				n.dropAll(waiters, streams, ErrSnapshotInstalled)
+			}
 			return err
 		}
 	}
@@ -1139,10 +1139,11 @@ func (n *Node) closeTooSlow(streams map[uint64]*WatchStream, id uint64) {
 	close(ws.done)
 }
 
-// dropAll fails every request and ends every watch stream of a run that
-// ends for a reload; the node goes on, so their clients would otherwise
-// wait for good. Clients try again, as after a restart.
-func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream) {
+// dropAll fails every request and ends every watch stream, with
+// streamErr, of a run that ends for a reload; the node goes on, so their
+// clients would otherwise wait for good. Clients try again, as after a
+// restart.
+func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStream, streamErr error) {
 	replies := make([]core.Reply, 0, len(waiters))
 	for id := range waiters {
 		replies = append(replies, core.Reply{ID: id, Err: rpctypes.ErrGRPCStopped})
@@ -1150,7 +1151,7 @@ func (n *Node) dropAll(waiters map[uint64]waiter, streams map[uint64]*WatchStrea
 	n.completeAll(replies, waiters, nil, map[Completer]int{})
 	for id, ws := range streams {
 		delete(streams, id)
-		ws.err = rpctypes.ErrGRPCStopped
+		ws.err = streamErr
 		close(ws.done)
 	}
 }

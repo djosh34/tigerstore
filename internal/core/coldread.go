@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/djosh34/tigerstore/internal/mvcc"
 )
 
@@ -31,8 +28,6 @@ import (
 type ValueRead struct {
 	log   Log
 	fills []mvcc.Fill
-	// epoch is the node's epoch when the read began.
-	epoch uint64
 	done  bool
 	// replies wait for the read, and so do the held responses of streams.
 	replies []Reply
@@ -61,11 +56,6 @@ func ReadValues(log Log, fills []mvcc.Fill) error {
 	return nil
 }
 
-// errStateReplaced answers a request whose values could not be read after
-// a snapshot replaced the node's state, which can take the files they were
-// in. Clients retry Unavailable.
-var errStateReplaced = status.Error(codes.Unavailable, "tigerstore: the node installed a snapshot; retry")
-
 // pausedWrite is a write that waits for values from the log, with ordered
 // apply behind it: its entry, how many writes of the entry are applied,
 // the read that brings the values, and those read for it so far.
@@ -81,7 +71,7 @@ var errPaused = errors.New("core: a write waits for values from the log")
 
 // readValues starts a read of fills.
 func (n *Node) readValues(fills []mvcc.Fill) *ValueRead {
-	r := &ValueRead{log: n.log, fills: fills, epoch: n.epoch}
+	r := &ValueRead{log: n.log, fills: fills}
 	n.cache.misses += int64(len(fills))
 	n.cold[r] = struct{}{}
 	n.out.Reads = append(n.out.Reads, r)
@@ -110,9 +100,8 @@ func keep(fetched map[mvcc.Ref][]byte, r *ValueRead) {
 	}
 }
 
-// readNow reads the values a write needs while the node starts or
-// installs a snapshot, when no driver runs reads yet and nothing else
-// waits. They stay in values.fetched for the write's next run.
+// readNow reads the values a write needs while the node starts, when no
+// driver runs reads yet and nothing else waits. They stay in values.fetched for the write's next run.
 func (n *Node) readNow(need []mvcc.Fill) error {
 	r := &ValueRead{fills: withDst(need)}
 	if err := ReadValues(n.log, r.fills); err != nil {
@@ -182,21 +171,15 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 	}
 	r.done = true
 	delete(n.cold, r)
-	if err != nil && r.epoch == n.epoch {
+	if err != nil {
 		// As with a value in memory: one that cannot be read, or does not
 		// match its checksum, never reaches a client. The node stops.
 		n.fail(err)
 		return
 	}
-	if err != nil {
-		n.replaced(r)
-		return
-	}
-	if r.epoch == n.epoch {
-		for _, f := range r.fills {
-			if n.kv.Current(f.Key, f.Ref) {
-				n.cache.add(f.Ref, *f.Dst)
-			}
+	for _, f := range r.fills {
+		if n.kv.Current(f.Key, f.Ref) {
+			n.cache.add(f.Ref, *f.Dst)
 		}
 	}
 	n.out.Replies = append(n.out.Replies, r.replies...)
@@ -221,23 +204,6 @@ func (n *Node) ValuesRead(r *ValueRead, err error) {
 		n.values.fetched = w.fetched
 		n.runApply()
 		n.values.fetched, n.resume = nil, nil
-	}
-}
-
-// replaced answers what waited for a read that failed after a snapshot
-// replaced the state, and ends the watch streams that waited for it.
-func (n *Node) replaced(r *ValueRead) {
-	for _, rep := range r.replies {
-		n.out.Replies = append(n.out.Replies, Reply{ID: rep.ID, Err: errStateReplaced})
-	}
-	if p := r.read; p != nil {
-		n.finish(p, errStateReplaced)
-	}
-	for _, s := range r.streams {
-		if n.streams[s.id] == s {
-			n.CloseWatchStream(s.id)
-			n.out.Closed = append(n.out.Closed, s.id)
-		}
 	}
 }
 

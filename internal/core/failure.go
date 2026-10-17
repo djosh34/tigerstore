@@ -18,6 +18,11 @@ var ErrDisk = errors.New("core: the disk failed")
 // restart does, and Raft sends another snapshot.
 var ErrFetch = errors.New("core: the snapshot fetch failed")
 
+// ErrInstalled ends a core whose snapshot install is durable in its log.
+// The driver starts a new core from the log, as a restart does, which
+// loads the snapshot's checkpoint and replays the entries after it.
+var ErrInstalled = errors.New("core: installed a snapshot")
+
 // FetchFailed is the error of a snapshot install that failed with err, in
 // both drivers. A failed write or sync of the node's own disk (ErrDisk)
 // stays as it is. Otherwise sync writes out what the stream wrote, as a
@@ -56,7 +61,7 @@ const (
 // install.
 func FailureOf(err error) Failure {
 	switch {
-	case errors.Is(err, ErrFetch):
+	case errors.Is(err, ErrFetch), errors.Is(err, ErrInstalled):
 		return Reload
 	case errors.Is(err, ErrRemoved):
 		return Leave
