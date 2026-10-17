@@ -474,13 +474,21 @@ jobs:
   rolling-upgrade:
     uses: ./.github/workflows/rolling-upgrade.yml
 
+  # The simulator's recovery check after cleaning runs on every PR. Main,
+  # nightly and manual runs also run the memory-limited proof against etcd,
+  # the max-objects runs and the cache measurement (docs/testing.md).
+  past-ram:
+    uses: ./.github/workflows/past-ram.yml
+    with:
+      capacity: ${{ github.event_name != 'pull_request' }}
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded. On a pull
   # request the jobs of main and the nightly run are skipped by their own
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade]
+    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

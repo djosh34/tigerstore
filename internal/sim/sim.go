@@ -78,7 +78,11 @@ type Config struct {
 	// Membership adds, updates, promotes and removes a fourth member
 	// while the ordinary clients and faults continue.
 	Membership bool
-	Faults     Faults
+	// MemoryBytes is each node's memory budget (core.Config.MemoryBytes):
+	// it turns the value cache on and bounds Range answers. Zero leaves
+	// both off.
+	MemoryBytes int64
+	Faults      Faults
 }
 
 // Faults sets what goes wrong in the faulty phase. A zero field turns its
@@ -574,11 +578,16 @@ type Result struct {
 // Run runs one seed and checks it. The error describes the first broken
 // rule.
 func Run(cfg Config) (*Result, error) {
+	_, res, err := runWithState(cfg)
+	return res, err
+}
+
+func runWithState(cfg Config) (*Sim, *Result, error) {
 	s := newSim(cfg)
 	for i := range 3 {
 		s.addNode(i, simfs.New())
 		if err := s.start(s.nodes[i]); err != nil {
-			return nil, err
+			return s, nil, err
 		}
 	}
 	if cfg.Membership {
@@ -613,13 +622,13 @@ func Run(cfg Config) (*Result, error) {
 	}
 	s.push(&event{at: s.healAt, kind: evHeal})
 	if err := s.loop(); err != nil {
-		return nil, err
+		return s, nil, err
 	}
 	res := &Result{Trace: s.trace.Sum64(), History: s.history, Stats: s.stats, StallHandOffs: s.stallHandOffs, CommitStops: s.commitStops, grayNode: s.lastGray, grayHealedAt: s.grayHealedAt, halfOpens: s.halfOpens, Clients: cfg.Clients}
 	if err := s.check(res); err != nil {
-		return res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
+		return s, res, fmt.Errorf("seed %d: %w", cfg.Seed, err)
 	}
-	return res, nil
+	return s, res, nil
 }
 
 // newSim sets up an empty run.
@@ -951,6 +960,7 @@ func (s *Sim) start(n *node) error {
 		// see them.
 		cfg.ProgressTicks = 20
 		tinyLimits(&cfg)
+		cfg.MemoryBytes = s.cfg.MemoryBytes
 		c, err = core.New(cfg, rec, w)
 	}
 	if s.cfg.Membership && errors.Is(err, core.ErrRemoved) {

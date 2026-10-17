@@ -108,6 +108,7 @@ var plantedCases = map[string]plantedCase{
 	// Seed 1 updates the URLs only after healing and catches B28 there;
 	// the case wants a catch during faults.
 	"B28": {first: 2, seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged.*during faults`},
+	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each
@@ -117,6 +118,8 @@ var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
 	"B26": "internal/node",
+	"B29": "internal/node",
+	"B30": "internal/node",
 }
 
 // TestPlantedInventory requires a case for every planted bug.

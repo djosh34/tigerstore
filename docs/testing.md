@@ -200,3 +200,30 @@ After each fault:
 No node may exit on its own or be killed by its memory limit, no alarm may go off, and a data directory may not pass its budget by more than 256 MiB.
 
 The run writes `report.json`: the calls, their errors and ambiguous answers, watch events, peak memory and disk of each node, its bytes cleaned and its cache hits and misses since its last start, and the longest recovery and catch-up. A soak against planted B01a (stale reads) and against B09a (one revision per key of a write) fails within 3 minutes.
+
+# More data than memory
+
+`past-ram.yml` checks that tigerstore holds more live values than its memory limit (#144). The required `ci` gate calls it. A pull request runs only its `storage` job; the push to `main`, the nightly run and a manual dispatch (`gh workflow run past-ram.yml --ref <branch>`) also run the process measurements.
+
+## Storage checks
+
+- `sim.TestPastRAMRecovery` runs 16 simulator seeds with a small value cache and all six checkers. On each node's durable disk it then copies the values the durable checkpoint names out of the old segments into a pack, the way the cleaner does, and removes those segments. It crashes after the pack sync, with the root buffered, after the root sync and after the removal. At each point it checks that every checkpoint value is still there, that the original segment files are gone, and that a recovered core matches a model replayed from the simulator's own committed history, not from the disk under test. Seeds must have cache hits and cold reads.
+- `node.TestConcurrentCleanerSimulation` runs the real node driver and paced cleaner on a simulated disk under `testing/synctest`, for 8 seeds that change the interleaving of file calls. Clients overwrite and compact, readers hold cold values and snapshots are served while the cleaner packs and removes segments. Copies of the durable disk taken at each cleaner step must resolve every value of their durable checkpoint, and a restart from the final crash copy must return every acknowledged value.
+- `node.TestColdReaderDuringCleaning`, `core.TestColdReadEIO`, `core.TestColdReadsCompleteInReverse` and `core.TestCacheReferenceIdentity` cover a reader holding a value while its segment is cleaned, EIO on a cold read, delayed reads that complete out of order after an overwrite, and a cache that must not return an overwritten value at the same offset.
+- `node.TestCleaningCycles` logs the bytes the cleaner copied per acknowledged Put. That counts pack bytes only: WAL, checkpoint, root and journal writes are not in it.
+
+Three planted bugs belong to this: B29 removes segments before the root that replaces them is synced, B30 leaves one checkpoint value out of a pack, and B31 makes a cache lookup ignore the Raft index. B29 and B30 must fail seed 1 of the concurrent cleaner scenario with a lost value; B31 must fail the simulator with the cache on.
+
+## Process measurements
+
+Each capacity job runs three members of one store, tigerstore or etcd v3.7.2, through `scripts/past-ram.py` and the `cmd/pastram` driver. Every member gets its own cgroup with a 640 MiB `memory.max` that includes its page cache, no swap, and `GOMEMLIMIT=560MiB`. The driver preloads objects with the Kubernetes size histogram of `internal/k8ssize`, 64 Puts per Txn, and records the last acknowledged count; one more Txn may have an unknown outcome.
+
+| Mode | What it does |
+| --- | --- |
+| `proof` | Preloads 3.1 times the limit in live values under `/registry/`, then runs 3 minutes of load: a bulk client of cold point reads and bounded LISTs checked against the generator, and recorded clients doing Put, Delete, Get, LIST, CAS Txns, leases, `prev_kv` watches and a compaction under `/proof/`. Member 2 is killed after 30 s and restarted after 5 s. Afterwards every bulk key is checked byte for byte through every member, and the six checkers run on the recorded history and the committed log decoded from the members' WALs. It reports throughput, latency and server CPU. |
+| `max` | Grows the live object count until something fails, etcd at its 8 GiB quota and uncapped, tigerstore uncapped. It names what failed and the count. |
+| `cache` | Reads after the proof's preload, 8 in 10 aimed at the first 1% of keys. One job keeps the value cache; the other builds tigerstore with the cache limit set to 0, so the memory goes to the kernel's page cache. Both report reads per second, p99, cache hits and the bytes read from disk. |
+
+A job fails when a checker, a value check or the driver fails, on a time limit, and on an OOM kill in tigerstore's proof or a cache case. The `max` cases and etcd's proof can end in an OOM kill during preload; the script then reports `capacity-limit` or `reference-preload-limit`, with the count and the cgroup's OOM counters, and the job passes. That outcome is the measured limit, not a pass of the proof. A small etcd proof with a 16 MiB preload checks the recorder and the checkers against etcd and must pass. The `etcd-index` job measures etcd's index bytes per key with its own `treeIndex` and the same keys; tigerstore reports its index bytes in `/metrics`.
+
+Results go on the issue that asked for them, not here.
