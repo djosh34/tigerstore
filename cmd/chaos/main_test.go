@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 	"time"
 
@@ -33,7 +35,15 @@ func TestFaultsOverlapWrites(t *testing.T) {
 // report the failed start, not crash while stopping nodes that never ran.
 func TestFailedStart(t *testing.T) {
 	err := run(config{Seed: 1, Tigerstore: filepath.Join(t.TempDir(), "missing"), Faults: allFaults}, t.TempDir())
-	if err == nil || !strings.Contains(err.Error(), "start: ") || strings.Contains(err.Error(), "stop: ") {
+	var steps []string
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, e := range joined.Unwrap() {
+			if se, ok := errors.AsType[*stepError](e); ok {
+				steps = append(steps, se.step)
+			}
+		}
+	}
+	if !slices.Equal(steps, []string{"start"}) || !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("got %v, want only the failed start", err)
 	}
 }

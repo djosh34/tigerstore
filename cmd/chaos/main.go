@@ -114,6 +114,15 @@ type verdict struct {
 	Seconds float64  `json:"seconds"`
 }
 
+// stepError is the failure of one step of a run.
+type stepError struct {
+	step string
+	err  error
+}
+
+func (e *stepError) Error() string { return e.step + ": " + e.err.Error() }
+func (e *stepError) Unwrap() error { return e.err }
+
 func run(c config, dir string) (err error) {
 	for _, f := range c.Faults {
 		if slices.Contains(envFaults, f) && !c.Env {
@@ -144,10 +153,10 @@ func run(c config, dir string) (err error) {
 		_, _ = logFile.WriteString(line)
 	}
 	var errs []error
-	fail := func(what string, e error) {
+	fail := func(step string, e error) {
 		if e != nil {
-			logf("%s: %v", what, e)
-			errs = append(errs, fmt.Errorf("%s: %w", what, e))
+			logf("%s: %v", step, e)
+			errs = append(errs, &stepError{step, e})
 		}
 	}
 	defer func() {

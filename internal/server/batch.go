@@ -112,8 +112,12 @@ func (c *conn) callerOf(st *stream) core.Caller {
 	}
 	caller.Token = st.token
 	if t := c.s.cfg.JWT; t != nil && caller.Token != "" {
+		// A token that does not verify leaves the caller without a user,
+		// which the node answers as an invalid token.
 		caller.Verified = true
-		caller.User, caller.Revision, _ = t.info(caller.Token)
+		if user, rev, err := t.info(caller.Token); err == nil {
+			caller.User, caller.Revision = user, rev
+		}
 	}
 	return caller
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"io/fs"
 	"slices"
 
 	"go.etcd.io/raft/v3"
@@ -214,10 +215,10 @@ func (n *Node) SnapshotStarted(to uint64) {
 }
 
 // SnapshotSent reports the result of serving a follower's snapshot.
-// Local log corruption stops the sender even if it has lost leadership.
-// Other failures let Raft retry the fetch.
+// Damage to the sender's own log stops it (Fence), even if it has lost
+// leadership. Other failures let Raft retry the fetch.
 func (n *Node) SnapshotSent(to uint64, err error) {
-	if errors.Is(err, wal.ErrCorrupt) {
+	if FailureOf(err) == Fence {
 		n.fail(err)
 		return
 	}
@@ -445,6 +446,102 @@ type SnapshotSink interface {
 	Root(r wal.Root) error
 }
 
+// LogSink is the SnapshotSink of both drivers: it writes a snapshot into
+// the node's WAL. Every write or sync of its own that fails is ErrDisk.
+type LogSink struct {
+	WAL *wal.WAL
+	// Lock, if set, is the driver's lock, held around each append for
+	// readers of the WAL on its other goroutines.
+	Lock interface {
+		Lock()
+		Unlock()
+	}
+	// Step, if set, runs after each item with its stage and the bytes of
+	// entries or values it appended: the real node syncs every few MiB
+	// there, and the simulator writes out and may crash.
+	Step func(stage string, bytes int) error
+	ckpt wal.File
+}
+
+func (s *LogSink) append(add func()) {
+	if s.Lock != nil {
+		s.Lock.Lock()
+		defer s.Lock.Unlock()
+	}
+	add()
+}
+
+func (s *LogSink) step(stage string, bytes int) error {
+	if s.Step == nil {
+		return nil
+	}
+	return s.Step(stage, bytes)
+}
+
+func (s *LogSink) Entries(ents []*raftpb.Entry) error {
+	s.append(func() { s.WAL.Append(nil, ents) })
+	size := 0
+	for _, e := range ents {
+		size += len(e.Data)
+	}
+	return s.step("entries", size)
+}
+
+func (s *LogSink) Value(index uint64, off uint32, value []byte) error {
+	s.append(func() { s.WAL.AppendValue(index, off, value) })
+	return s.step("value", len(value))
+}
+
+func (s *LogSink) CheckpointChunk(index uint64, data []byte) error {
+	if s.ckpt == nil {
+		f, err := s.WAL.CreateCheckpoint(index)
+		if errors.Is(err, fs.ErrExist) {
+			// An install queued before this one wrote the checkpoint, and
+			// this one asked from an older applied index. A core started
+			// from the log asks from after it.
+			return err
+		}
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrDisk, err)
+		}
+		s.ckpt = f
+	}
+	if _, err := s.ckpt.Write(data); err != nil {
+		return fmt.Errorf("%w: %w", ErrDisk, err)
+	}
+	return s.step("checkpoint", 0)
+}
+
+func (s *LogSink) CheckpointDone(uint64) error {
+	f := s.ckpt
+	s.ckpt = nil
+	if f == nil {
+		return fmt.Errorf("%w: a checkpoint with no data", errBadSnapshot)
+	}
+	if err := errors.Join(f.Sync(), f.Close(), s.WAL.SyncDir()); err != nil {
+		return fmt.Errorf("%w: %w", ErrDisk, err)
+	}
+	return s.step("checkpoint done", 0)
+}
+
+func (s *LogSink) Root(r wal.Root) error {
+	s.append(func() { s.WAL.AppendRoot(r) })
+	return s.step("root", 0)
+}
+
+// Close closes a checkpoint file that a failed fetch left open.
+func (s *LogSink) Close() error {
+	if s.ckpt == nil {
+		return nil
+	}
+	f := s.ckpt
+	s.ckpt = nil
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("%w: %w", ErrDisk, err)
+	}
+	return nil
+}
+
 type snapReader struct {
 	r   *bufio.Reader
 	buf []byte
@@ -461,7 +558,7 @@ func (s *snapReader) next() (byte, []byte, error) {
 		return 0, nil, err
 	}
 	if n > maxSnapItem {
-		return 0, nil, fmt.Errorf("core: snapshot item of %d bytes", n)
+		return 0, nil, fmt.Errorf("%w: an item of %d bytes", errBadSnapshot, n)
 	}
 	if uint64(cap(s.buf)) < n+4 {
 		s.buf = make([]byte, n+4)
@@ -473,7 +570,7 @@ func (s *snapReader) next() (byte, []byte, error) {
 	payload := s.buf[:n]
 	crc := crc32.Update(crc32.Update(0, castagnoli, []byte{kind}), castagnoli, payload)
 	if crc != binary.LittleEndian.Uint32(s.buf[n:]) && !planted.On("B22") {
-		return 0, nil, errors.New("core: a snapshot item does not match its checksum")
+		return 0, nil, fmt.Errorf("%w: an item does not match its checksum", errBadSnapshot)
 	}
 	return kind, payload, nil
 }
@@ -584,7 +681,8 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 	return flush()
 }
 
-// holds reports whether the log holds entry index with term.
+// holds reports whether the log holds entry index with term. An entry
+// it cannot read counts as missing, and the stream replaces it.
 func holds(disk Log, index, term uint64) bool {
 	if !disk.Has(index) {
 		return false

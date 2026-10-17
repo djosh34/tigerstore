@@ -548,7 +548,7 @@ func (r *runner) tornWrite(ctx context.Context, s step, target int, rec *record)
 	crashed := waitUntil(ctx, s.Hold, d.Crashed)
 	rec.Effect = crashed
 	rec.Env.Disk = filepath.Base(seg)
-	if _, _, err := n.signal(syscall.SIGKILL); err != nil && !strings.Contains(err.Error(), "process already finished") {
+	if _, _, err := n.signal(syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
 	healErr := d.Remount()
@@ -561,6 +561,15 @@ func (r *runner) tornWrite(ctx context.Context, s step, target int, rec *record)
 
 // newestSegment is the log segment a node writes to.
 func newestSegment(data string) (string, error) {
+	segs, err := segments(data)
+	if err != nil {
+		return "", err
+	}
+	return segs[len(segs)-1], nil
+}
+
+// segments are the log segments under data, oldest first.
+func segments(data string) ([]string, error) {
 	var segs []string
 	err := filepath.WalkDir(data, func(path string, de os.DirEntry, err error) error {
 		if err == nil && !de.IsDir() && strings.HasSuffix(path, ".wal") {
@@ -568,11 +577,14 @@ func newestSegment(data string) (string, error) {
 		}
 		return err
 	})
-	if err != nil || len(segs) == 0 {
-		return "", errors.Join(err, fmt.Errorf("no log segment under %s", data))
+	if err != nil {
+		return nil, err
+	}
+	if len(segs) == 0 {
+		return nil, fmt.Errorf("no log segment under %s", data)
 	}
 	slices.Sort(segs)
-	return segs[len(segs)-1], nil
+	return segs, nil
 }
 
 func waitUntil(ctx context.Context, d time.Duration, cond func() bool) bool {
@@ -992,10 +1004,11 @@ func (r *runner) replaceMember(ctx context.Context, s step, target int, rec *rec
 		if _, _, err := n.signal(syscall.SIGKILL); err != nil {
 			return err
 		}
-		seg, err := oldestSegment(d.Data)
+		segs, err := segments(d.Data)
 		if err != nil {
 			return err
 		}
+		seg := segs[0]
 		if err := flipByte(seg); err != nil {
 			return err
 		}
@@ -1101,22 +1114,6 @@ func lastLine(text, with string) string {
 		}
 	}
 	return ""
-}
-
-// oldestSegment is the oldest log segment of a node.
-func oldestSegment(data string) (string, error) {
-	var segs []string
-	err := filepath.WalkDir(data, func(path string, de os.DirEntry, err error) error {
-		if err == nil && !de.IsDir() && strings.HasSuffix(path, ".wal") {
-			segs = append(segs, path)
-		}
-		return err
-	})
-	if err != nil || len(segs) == 0 {
-		return "", errors.Join(err, fmt.Errorf("no log segment under %s", data))
-	}
-	slices.Sort(segs)
-	return segs[0], nil
 }
 
 // flipByte flips one bit in the middle of a file and syncs it.

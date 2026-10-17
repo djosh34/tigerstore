@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -221,7 +223,7 @@ func TestRejectsBadPreface(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := io.ReadAll(io.LimitReader(conn, 1))
-			if err != nil && !strings.Contains(err.Error(), "connection reset") {
+			if err != nil && !errors.Is(err, syscall.ECONNRESET) {
 				t.Fatalf("read: %v", err)
 			}
 			if !slices.Equal(got, c.reply) {

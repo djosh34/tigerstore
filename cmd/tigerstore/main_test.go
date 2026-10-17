@@ -164,14 +164,14 @@ func TestClientListeners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := clientListeners(&c.ec, false, zap.NewNop()); err == nil || !strings.Contains(err.Error(), "cannot bind both") {
+	if _, err := clientListeners(&c.ec, false, zap.NewNop()); !errors.Is(err, errBindBoth) {
 		t.Errorf("the same URL in both flags: %v", err)
 	}
 	c, err = parseArgs(t, "--listen-client-urls", "https://127.0.0.1:0", "--advertise-client-urls", "https://127.0.0.1:2379")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := clientListeners(&c.ec, false, zap.NewNop()); err == nil || !strings.Contains(err.Error(), "must be provided") {
+	if _, err := clientListeners(&c.ec, false, zap.NewNop()); !errors.Is(err, errNoClientTLS) {
 		t.Errorf("https without a certificate: %v", err)
 	}
 }
@@ -228,7 +228,7 @@ func TestTLSFlags(t *testing.T) {
 	if !slices.Equal(cfg.CipherSuites, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}) || cfg.MinVersion != tls.VersionTLS12 || cfg.MaxVersion != tls.VersionTLS12 || cfg.ClientAuth != tls.RequireAndVerifyClientCert {
 		t.Errorf("client TLS: suites %v, versions %x-%x, client auth %v", cfg.CipherSuites, cfg.MinVersion, cfg.MaxVersion, cfg.ClientAuth)
 	}
-	if _, err := peerConfig(&c.ec, false); err == nil || !strings.Contains(err.Error(), "TLS 1.3") {
+	if _, err := peerConfig(&c.ec, false); !errors.Is(err, errPeerTLS13) {
 		t.Errorf("peers with --tls-max-version TLS1.2: %v", err)
 	}
 

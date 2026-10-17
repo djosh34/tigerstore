@@ -20,6 +20,13 @@ import (
 	"strings"
 )
 
+// errInvalidResult is a result that loadgen marked invalid, and
+// errUnequalRuns targets that ran a bench a different number of times.
+var (
+	errInvalidResult = errors.New("invalid result")
+	errUnequalRuns   = errors.New("unequal runs")
+)
+
 // result is the part of a loadgen result the tables use.
 type result struct {
 	Valid       bool    `json:"valid"`
@@ -92,7 +99,7 @@ func report(w io.Writer, dir string) error {
 			return fmt.Errorf("%s: %w", f, err)
 		}
 		if !r.Valid {
-			return fmt.Errorf("%s: invalid result; a comparison without it would be wrong", f)
+			return fmt.Errorf("%s: %w; a comparison without it would be wrong", f, errInvalidResult)
 		}
 		k := key{filepath.Base(filepath.Dir(f)), parts[0], parts[1]}
 		all[k] = append(all[k], r)
@@ -111,7 +118,7 @@ func report(w io.Writer, dir string) error {
 				continue
 			}
 			if n := len(all[key{k.bench, t, k.mode}]); n != len(rs) {
-				return fmt.Errorf("%s %s: %s has %d runs, %s has %d", k.bench, k.mode, k.target, len(rs), t, n)
+				return fmt.Errorf("%w: %s %s: %s has %d runs, %s has %d", errUnequalRuns, k.bench, k.mode, k.target, len(rs), t, n)
 			}
 		}
 	}

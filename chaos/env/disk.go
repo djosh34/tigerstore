@@ -150,14 +150,19 @@ func (d *Disk) mountLazyFS() error {
 		exited <- cmd.Wait()
 		_ = out.Close()
 	}()
-	if !waitFor(10*time.Second, func() bool { return mounted(d.Data) }) {
-		b, _ := os.ReadFile(out.Name())
+	var merr error
+	if !waitFor(10*time.Second, func() bool {
+		ok, err := mounted(d.Data)
+		merr = err
+		return ok || err != nil
+	}) {
+		b, err := os.ReadFile(out.Name())
 		if len(b) > 2000 {
 			b = b[len(b)-2000:]
 		}
-		return fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b)))
+		return errors.Join(fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b))), err)
 	}
-	return nil
+	return merr
 }
 
 // stopLazyFS unmounts LazyFS, lazily if it is gone already, and waits for
@@ -166,8 +171,9 @@ func (d *Disk) stopLazyFS() error {
 	if d.proc == nil {
 		return nil
 	}
-	var errs []error
-	if mounted(d.Data) {
+	ok, err := mounted(d.Data)
+	errs := []error{err}
+	if ok {
 		if _, err := runIn("", "fusermount3", "-uz", d.Data); err != nil {
 			errs = append(errs, err)
 		}
@@ -307,15 +313,16 @@ func (d *Disk) Repair() error {
 	if err := d.stopLazyFS(); err != nil {
 		return err
 	}
-	if mounted(d.Backing) {
+	if ok, err := mounted(d.Backing); err != nil {
+		return err
+	} else if ok {
 		if _, err := sudo("umount", d.Backing); err != nil {
 			return err
 		}
 	}
 	// e2fsck exits 1 or 2 when it fixed something.
 	if out, err := sudo("e2fsck", "-fy", d.device()); err != nil {
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() > 2 {
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() > 2 {
 			return fmt.Errorf("%w: %s", err, out)
 		}
 	}
@@ -418,7 +425,9 @@ func (d *Disk) Close() error {
 		errs = append(errs, d.Healthy())
 	}
 	errs = append(errs, d.stopLazyFS())
-	if mounted(d.Backing) {
+	ok, err := mounted(d.Backing)
+	errs = append(errs, err)
+	if ok {
 		_, err := sudo("umount", d.Backing)
 		errs = append(errs, err)
 	}

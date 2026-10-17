@@ -3,6 +3,7 @@ package env
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -119,8 +120,12 @@ func (c *Cgroup) Stats() (CgroupStats, error) {
 // Close removes the group; its processes must be gone.
 func (c *Cgroup) Close() error {
 	_, err := sudo("rmdir", c.Path)
-	if err != nil && strings.Contains(err.Error(), "No such file") {
+	if err == nil {
 		return nil
 	}
-	return errors.Join(err)
+	if _, serr := os.Stat(c.Path); errors.Is(serr, fs.ErrNotExist) {
+		// Gone already.
+		return nil
+	}
+	return err
 }

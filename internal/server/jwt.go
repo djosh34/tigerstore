@@ -206,10 +206,14 @@ func (t *JWT) sign(user string, revision uint64) (string, error) {
 	}).SignedString(t.key)
 }
 
+// errInvalidToken is a token that does not verify, has expired or lacks
+// its claims.
+var errInvalidToken = errors.New("auth: invalid token")
+
 // info is etcd's tokenJWT.info: the user and revision of a valid token.
-func (t *JWT) info(token string) (user string, revision uint64, ok bool) {
+func (t *JWT) info(token string) (user string, revision uint64, err error) {
 	if t.nop {
-		return "", 0, false
+		return "", 0, fmt.Errorf("%w: the token provider takes no tokens", errInvalidToken)
 	}
 	parsed, err := jwt.Parse(token, func(tk *jwt.Token) (any, error) {
 		if tk.Method.Alg() != t.method.Alg() {
@@ -225,20 +229,23 @@ func (t *JWT) info(token string) (user string, revision uint64, ok bool) {
 		}
 		return t.key, nil
 	})
-	if err != nil || !parsed.Valid {
-		return "", 0, false
+	if err != nil {
+		return "", 0, fmt.Errorf("%w: %w", errInvalidToken, err)
+	}
+	if !parsed.Valid {
+		return "", 0, errInvalidToken
 	}
 	claims, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", 0, false
+		return "", 0, fmt.Errorf("%w: claims of type %T", errInvalidToken, parsed.Claims)
 	}
 	user, ok = claims["username"].(string)
 	if !ok {
-		return "", 0, false
+		return "", 0, fmt.Errorf("%w: no username", errInvalidToken)
 	}
 	rev, ok := claims["revision"].(float64)
 	if !ok {
-		return "", 0, false
+		return "", 0, fmt.Errorf("%w: no revision", errInvalidToken)
 	}
-	return user, uint64(rev), true
+	return user, uint64(rev), nil
 }

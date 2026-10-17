@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/raft/v3/raftpb"
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/osfs"
@@ -64,7 +64,11 @@ func Restore(path, dataDir string, members []*pb.Member, skipHash bool) (Snapsho
 	if err != nil {
 		return info, err
 	}
-	if entries, err := os.ReadDir(dataDir); err == nil && len(entries) > 0 {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return info, err
+	}
+	if len(entries) > 0 {
 		return info, fmt.Errorf("node: data directory %q exists and is not empty", dataDir)
 	}
 	if len(members) == 0 {
@@ -121,13 +125,20 @@ func receive(r io.Reader, dir string, in *core.Install) error {
 	if err != nil {
 		return err
 	}
-	sink := &restoreSink{w: w}
+	pending := 0
+	sink := &core.LogSink{WAL: w, Step: func(_ string, bytes int) error {
+		if pending += bytes; pending < syncBytes {
+			return nil
+		}
+		pending = 0
+		return w.Sync()
+	}}
 	err = core.ReceiveSnapshot(r, sink, w, in)
 	if err == nil {
 		w.Append(&wal.HardState{Term: in.Term, Commit: in.Index}, nil)
 		err = w.Sync()
 	}
-	return errors.Join(err, sink.close(), w.Close())
+	return errors.Join(err, sink.Close(), w.Close())
 }
 
 // restoredLog reads a restored log, with the checkpoint that gives the
@@ -139,66 +150,4 @@ type restoredLog struct {
 
 func (l restoredLog) Checkpoint(uint64) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(l.ckpt)), nil
-}
-
-// restoreSink writes a snapshot into a new log.
-type restoreSink struct {
-	w       *wal.WAL
-	ckpt    wal.File
-	pending int
-}
-
-func (s *restoreSink) wrote(n int) error {
-	if s.pending += n; s.pending < syncBytes {
-		return nil
-	}
-	s.pending = 0
-	return s.w.Sync()
-}
-
-func (s *restoreSink) Entries(ents []*raftpb.Entry) error {
-	s.w.Append(nil, ents)
-	size := 0
-	for _, e := range ents {
-		size += len(e.GetData())
-	}
-	return s.wrote(size)
-}
-
-func (s *restoreSink) Value(index uint64, off uint32, value []byte) error {
-	s.w.AppendValue(index, off, value)
-	return s.wrote(len(value))
-}
-
-func (s *restoreSink) CheckpointChunk(index uint64, data []byte) error {
-	if s.ckpt == nil {
-		f, err := s.w.CreateCheckpoint(index)
-		if err != nil {
-			return err
-		}
-		s.ckpt = f
-	}
-	_, err := s.ckpt.Write(data)
-	return err
-}
-
-func (s *restoreSink) CheckpointDone(uint64) error {
-	f := s.ckpt
-	s.ckpt = nil
-	if f == nil {
-		return errors.New("node: the snapshot's checkpoint has no data")
-	}
-	return errors.Join(f.Sync(), f.Close(), s.w.SyncDir())
-}
-
-func (s *restoreSink) Root(r wal.Root) error {
-	s.w.AppendRoot(r)
-	return nil
-}
-
-func (s *restoreSink) close() error {
-	if s.ckpt == nil {
-		return nil
-	}
-	return s.ckpt.Close()
 }

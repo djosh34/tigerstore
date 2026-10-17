@@ -221,8 +221,7 @@ func (s *Server) ServeListener(l Listener) error {
 			if stopped {
 				return nil
 			}
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
+			if ne, ok := errors.AsType[net.Error](err); ok && ne.Timeout() {
 				continue
 			}
 			return err

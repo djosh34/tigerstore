@@ -282,7 +282,7 @@ func (s *Sim) checkColdRestarts(res *Result) error {
 func disagree(nodes []*node) (*node, *node) {
 	var first *node
 	for _, n := range nodes {
-		if n.fenced || n.inactive {
+		if n.out() {
 			continue
 		}
 		if first == nil {
@@ -299,7 +299,7 @@ func disagree(nodes []*node) (*node, *node) {
 // Every entry and state they reach up to the index applied at the
 // checkpoint is checked against the run's record as they go.
 func (s *Sim) coldRestart(c *checkpoint, erased int) error {
-	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0, Membership: s.cfg.Membership})
+	r := newSim(Config{Seed: s.rng.Uint64(), Heal: 0, Membership: s.cfg.Membership, MemoryBytes: s.cfg.MemoryBytes})
 	r.endAt = 6 * Second
 	r.healed = true
 	r.base, r.baseUpTo = s.log, c.applied
@@ -340,7 +340,7 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 			a.id, a.core.Applied(), a.core.Members(), a.core.RemovedMembers(), b.id, b.core.Applied(), b.core.Members(), b.core.RemovedMembers(), c.applied, c.inactive)
 	}
 	for _, n := range r.nodes {
-		if !n.fenced && !n.inactive && n.core.Applied() < c.applied {
+		if !n.out() && n.core.Applied() < c.applied {
 			var active []uint64
 			for _, live := range r.live() {
 				active = append(active, live.id)

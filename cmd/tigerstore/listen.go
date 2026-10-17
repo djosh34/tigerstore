@@ -75,6 +75,13 @@ func checkPeerURLs(ec *embed.Config, members []*pb.Member) error {
 	return nil
 }
 
+// The configuration errors of the client and peer listeners.
+var (
+	errNoClientTLS = errors.New("TLS key/cert (--cert-file, --key-file) must be provided")
+	errBindBoth    = errors.New("cannot bind both --listen-client-urls and --listen-client-http-urls on the same url")
+	errPeerTLS13   = errors.New("node-to-node traffic is always TLS 1.3")
+)
+
 // peerConfig is the transport's configuration from the peer flags,
 // with a listener for each --listen-peer-urls URL. The transport does
 // TLS itself and always verifies both ends: against
@@ -95,7 +102,7 @@ func peerConfig(ec *embed.Config, selfSigned bool) (peer.Config, error) {
 		return peer.Config{}, errors.New("peer TLS key/cert (--peer-cert-file, --peer-key-file) or --peer-auto-tls must be provided: node-to-node traffic is always encrypted")
 	}
 	if info.MaxVersion != 0 && info.MaxVersion < tls.VersionTLS13 {
-		return peer.Config{}, fmt.Errorf("--tls-max-version %s: node-to-node traffic is always TLS 1.3", ec.TlsMaxVersion)
+		return peer.Config{}, fmt.Errorf("--tls-max-version %s: %w", ec.TlsMaxVersion, errPeerTLS13)
 	}
 	if (info.ClientCertFile == "") != (info.ClientKeyFile == "") {
 		return peer.Config{}, fmt.Errorf("ClientKeyFile and ClientCertFile must both be present or both absent: key: %v, cert: %v]", info.ClientKeyFile, info.ClientCertFile)
@@ -231,7 +238,7 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 			}
 		}
 		if (u.Scheme == "https" || u.Scheme == "unixs") && !haveTLS {
-			return nil, fmt.Errorf("TLS key/cert (--cert-file, --key-file) must be provided for client url %s with HTTPS scheme", u.String())
+			return nil, fmt.Errorf("%w for client url %s with HTTPS scheme", errNoClientTLS, u.String())
 		}
 	}
 	grpcOnly := len(ec.ListenClientHttpUrls) > 0
@@ -262,7 +269,7 @@ func clientListeners(ec *embed.Config, haveTLS bool, lg *zap.Logger) (out []clie
 			l := out[i]
 			switch {
 			case sp.traffic == server.TrafficHTTP && l.Traffic != server.TrafficHTTP:
-				return out, fmt.Errorf("cannot bind both --listen-client-urls and --listen-client-http-urls on the same url %s", u.String())
+				return out, fmt.Errorf("%w %s", errBindBoth, u.String())
 			case secure != l.TLS:
 				return out, fmt.Errorf("tigerstore cannot serve both http and https on %s", addr)
 			}

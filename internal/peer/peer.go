@@ -606,9 +606,9 @@ func (t *TCP) handshake(c net.Conn, r io.Reader) (id, mode uint64, v byte, err e
 	if _, ok := t.peer(id); !ok && (id != 0 || mode != callBit) {
 		if (*t.removed.Load())[id] {
 			// As etcd's peers answer a removed member, so that it stops.
-			if werr := c.SetWriteDeadline(t.writeDeadline()); werr == nil {
-				_, werr = c.Write([]byte{removedReply})
-				err = werr
+			err = c.SetWriteDeadline(t.writeDeadline())
+			if err == nil {
+				_, err = c.Write([]byte{removedReply})
 			}
 			return 0, 0, 0, errors.Join(fmt.Errorf("peer %d was removed from the cluster", id), err)
 		}

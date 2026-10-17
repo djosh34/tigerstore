@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -95,7 +96,7 @@ func TestReportRefusesInvalidResults(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "etcd-max-1.json", valid)
 	write(t, dir, "main-max-1.json", `{"valid": false, "throughput": 1000}`)
-	if err := report(io.Discard, dir); err == nil || !strings.Contains(err.Error(), "invalid") {
+	if err := report(io.Discard, dir); !errors.Is(err, errInvalidResult) {
 		t.Fatalf("an invalid result was reported: %v", err)
 	}
 }
@@ -105,7 +106,7 @@ func TestReportRefusesUnequalRuns(t *testing.T) {
 	write(t, dir, "etcd-max-1.json", valid)
 	write(t, dir, "etcd-max-2.json", valid)
 	write(t, dir, "main-max-1.json", valid)
-	if err := report(io.Discard, dir); err == nil || !strings.Contains(err.Error(), "runs") {
+	if err := report(io.Discard, dir); !errors.Is(err, errUnequalRuns) {
 		t.Fatalf("unequal runs were reported: %v", err)
 	}
 }
