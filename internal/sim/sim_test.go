@@ -95,24 +95,30 @@ func TestSeeds(t *testing.T) {
 			}
 		})
 	}
-	// Corruption, a leader stalled long enough to hand over and a link 10
-	// times slower than its other direction are rare in one run, but a set
-	// of seeds must see each.
-	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.StallHandOffs == 0 || total.Asymmetric == 0 ||
+	// Random faults can end a gray period or disk stall before the watchdog
+	// fires (#183, #218), so each shard also runs both deliberate scenarios.
+	if ran >= 64 {
+		t.Run("stalled-leader", TestStalledLeaderIsReplaced)
+		t.Run("gray-leader", TestGrayLeaderIsReplaced)
+	}
+	// Corruption, a link 10 times slower than its other direction and the
+	// other common events are rare in one run, but a set of seeds must see
+	// each.
+	if ran >= 64 && !t.Failed() && (total.Fenced == 0 || total.Asymmetric == 0 ||
 		total.RecoveryCrashes == 0 || total.ErasedAtRoot == 0 || total.ErasedAtRemoval == 0) {
-		t.Fatalf("%d seeds: %d fenced nodes, %d stalled leaders that handed over, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
-			ran, total.Fenced, total.StallHandOffs, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
+		t.Fatalf("%d seeds: %d fenced nodes, %d asymmetric links, %d crashes in recovery, %d disks erased after a root, %d after a removal; each must happen",
+			ran, total.Fenced, total.Asymmetric, total.RecoveryCrashes, total.ErasedAtRoot, total.ErasedAtRemoval)
 	}
-	// A gray leader stopped by the commit watchdog is rarer: 22 of seeds 1
-	// to 2000 had one, 1.1%, as gray periods on the leader mostly end
-	// before three election timeouts (#183). Over 2000 seeds even 0.7%,
-	// the low end of that estimate, leaves less than one chance in a
-	// million of none, so the rule needs that many; CI's shards of 400 do
-	// not reach it, the seed campaign does.
-	if ran >= 2000 && !t.Failed() && total.GrayLeaderStops == 0 {
-		t.Fatalf("%d seeds: no gray leader stopped; at least one must", ran)
+	// A stalled leader that hands over and a gray leader the commit
+	// watchdog stops are rarer: about 0.9% of seeds had the first (#218),
+	// 0.75% to 1.1% the second (#183). Over 2000 seeds even 0.7% leaves
+	// less than one chance in a million of none. CI's shards of 400 do not
+	// reach that, the seed campaign does.
+	if ran >= 2000 && !t.Failed() && (total.StallHandOffs == 0 || total.GrayLeaderStops == 0) {
+		t.Fatalf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders; each must happen",
+			ran, total.StallHandOffs, total.GrayLeaderStops)
 	}
-	t.Logf("%d seeds: %d stopped gray leaders", ran, total.GrayLeaderStops)
+	t.Logf("%d seeds: %d stalled leaders that handed over, %d stopped gray leaders", ran, total.StallHandOffs, total.GrayLeaderStops)
 }
 
 // checkers runs the independent checkers of package check on a run:
@@ -226,7 +232,7 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 		cfg.LiveFrom = cfg.StallLeaderAt + 10*election
 		cfg.Duration = 25 * Second
 		res := run(t, cfg)
-		if len(res.StallHandOffs) == 0 {
+		if len(res.StallHandOffs) == 0 || res.Stats.StallHandOffs == 0 {
 			t.Fatalf("seed %d: the stalled leader never handed over", seed)
 		}
 		limit := cfg.StallLeaderAt + core.StallTicks*election + 2*TickTime
@@ -234,6 +240,8 @@ func TestStalledLeaderIsReplaced(t *testing.T) {
 			t.Fatalf("seed %d: the stalled leader handed over at %d ms, want between %d and %d ms",
 				seed, at/Millisecond, cfg.StallLeaderAt/Millisecond, limit/Millisecond)
 		}
+		checkers(t, res)
+		t.Logf("seed %d: stalled leader handed over at %d ms, deadline %d ms", seed, res.StallHandOffs[0]/Millisecond, limit/Millisecond)
 	}
 }
 
@@ -414,12 +422,13 @@ func TestGrayLeaderIsReplaced(t *testing.T) {
 		// seed (seed 1 had 19 in 20 s).
 		cfg.Duration = 30 * Second
 		res := run(t, cfg)
-		if len(res.CommitStops) == 0 {
+		if len(res.CommitStops) == 0 || res.Stats.GrayLeaderStops == 0 {
 			t.Fatalf("seed %d: the gray leader never stopped", seed)
 		}
 		stop := res.CommitStops[0]
-		if limit := cfg.GrayLeaderAt + core.CommitStallTicks*election + 2*TickTime; stop > limit {
-			t.Fatalf("seed %d: the gray leader stopped at %d ms, after %d ms", seed, stop/Millisecond, limit/Millisecond)
+		limit := cfg.GrayLeaderAt + core.CommitStallTicks*election + 2*TickTime
+		if stop < cfg.GrayLeaderAt || stop > limit {
+			t.Fatalf("seed %d: the gray leader stopped at %d ms, want between %d and %d ms", seed, stop/Millisecond, cfg.GrayLeaderAt/Millisecond, limit/Millisecond)
 		}
 		ok := 0
 		for _, r := range res.History {
@@ -437,6 +446,8 @@ func TestGrayLeaderIsReplaced(t *testing.T) {
 		if ok < 20 {
 			t.Fatalf("seed %d: only %d calls to the healthy pair", seed, ok)
 		}
+		checkers(t, res)
+		t.Logf("seed %d: gray leader stopped at %d ms, deadline %d ms; %d timely calls to the healthy pair", seed, stop/Millisecond, limit/Millisecond, ok)
 	}
 }
 
