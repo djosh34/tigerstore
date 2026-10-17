@@ -880,8 +880,12 @@ func (r *revisionOrder) write(rev int64, stack *[]*frame) bool {
 // fault hides a long prefix of writes, this tries the puts before later
 // deletes that may depend on them. Reversing that order can exhaust the
 // search on permutations before it reaches the first observed revision.
-// Call order is only a preference: the search still tries other orders,
-// and verifies every response and real-time constraint before passing.
+// Ambiguous revokes come last: a lease expiry is called when its lease
+// is granted, so by call it would come first in every gap, and the
+// search could try every order of the gaps after a wrong one before it
+// found the delete that wrote it (seed 59113215 on #238). Call order is
+// only a preference: the search still tries other orders, and verifies
+// every response and real-time constraint before passing.
 func (r *revisionOrder) candidates(rev int64) []int {
 	h := r.w.h
 	out := slices.Clone(r.revokes[rev])
@@ -898,7 +902,15 @@ func (r *revisionOrder) candidates(rev int64) []int {
 			amb = append(amb, i)
 		}
 	}
-	slices.SortFunc(amb, func(a, b int) int { return cmp.Or(cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b)) })
+	revoke := func(i int) int {
+		if h.Ops[i].Req.LeaseRevoke != nil {
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(amb, func(a, b int) int {
+		return cmp.Or(cmp.Compare(revoke(a), revoke(b)), cmp.Compare(h.Ops[a].Call, h.Ops[b].Call), cmp.Compare(a, b))
+	})
 	return append(out, amb...)
 }
 
