@@ -538,7 +538,11 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 		}
 		in.Checkpoint = wal.Root{Index: ckpt, Term: ckptTerm}
 		root = &wal.Root{Index: ckpt, Term: ckptTerm, Reset: true, Keep: in.Applied}
-		if holds(disk, ckpt, ckptTerm) {
+		ok, err := holds(disk, ckpt, ckptTerm)
+		if err != nil {
+			return err
+		}
+		if ok {
 			root.Keep = ckpt
 		}
 	}
@@ -571,7 +575,12 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 			return fmt.Errorf("%w: entry %d term %d where entry %d after term %d was due", errBadSnapshot, e.GetIndex(), e.GetTerm(), next, term)
 		}
 		next, term = e.GetIndex()+1, e.GetTerm()
-		if held = held && holds(disk, e.GetIndex(), e.GetTerm()); held {
+		if held {
+			if held, err = holds(disk, e.GetIndex(), e.GetTerm()); err != nil {
+				return err
+			}
+		}
+		if held {
 			if root != nil {
 				root.Keep = e.GetIndex()
 			}
@@ -602,14 +611,20 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 	return flush()
 }
 
-// holds reports whether the log holds entry index with term. An entry
-// it cannot read counts as missing, and the stream replaces it.
-func holds(disk Log, index, term uint64) bool {
+// holds reports whether the log holds entry index with term. One it
+// does not have, or has with another term, the stream replaces. One it
+// has but cannot read is a failure of its own disk, damage included
+// (FailureOf), not an entry to replace: the node may have acknowledged
+// it.
+func holds(disk Log, index, term uint64) (bool, error) {
 	if !disk.Has(index) {
-		return false
+		return false, nil
 	}
 	e, err := disk.Entry(index)
-	return err == nil && e.GetTerm() == term
+	if err != nil {
+		return false, fmt.Errorf("%w: read entry %d of the log: %w", ErrDisk, index, err)
+	}
+	return e.GetTerm() == term, nil
 }
 
 func decodeSnapEntry(p []byte) (*raftpb.Entry, error) {

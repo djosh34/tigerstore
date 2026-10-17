@@ -8,8 +8,10 @@ import (
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
-// ErrDisk marks a failed write or sync of the node's own disk. The file
-// is then in an unknown state, so the node stops and never retries it.
+// ErrDisk marks a failed write or sync of the node's own disk, or a
+// failed read of an entry it holds. The file is then in an unknown state,
+// so the node stops and never retries it; damage (wal.ErrCorrupt) also
+// fences it.
 var ErrDisk = errors.New("core: the disk failed")
 
 // ErrFetch marks a snapshot install that failed for any reason but the

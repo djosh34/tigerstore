@@ -132,7 +132,8 @@ type input struct {
 	written  uint64
 	writeErr error
 	// snapshot is a follower that started (fetching) or ended (served,
-	// with serveErr) a snapshot fetch from this node.
+	// with serveErr) a snapshot fetch from this node, or 0 for a backup
+	// that found the log damaged.
 	snapshot         uint64
 	fetching, served bool
 	serveErr         error

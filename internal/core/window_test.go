@@ -536,6 +536,35 @@ func TestInstallKeepsHeldEntries(t *testing.T) {
 			t.Errorf("from %d: the log ends at %d, want %d (%v)", applied+1, rec.Last, last, err)
 		}
 	}
+	// A held entry the follower cannot read is damage to its own log,
+	// which fences it, not an entry the stream may replace (#231 E1).
+	var buf bytes.Buffer
+	if err := ServeSnapshot(src.log, []wal.Root{ckpt}, ckpt.Index+1, last, &buf); err != nil {
+		t.Fatal(err)
+	}
+	w, _, err := wal.Open(follower.Durable())
+	if err != nil {
+		t.Fatal(err)
+	}
+	damaged := unreadable{Log: w, index: held, err: &wal.RecordError{Entry: held}}
+	err = ReceiveSnapshot(bytes.NewReader(buf.Bytes()), &walSink{w: w}, damaged, &Install{From: 1, Index: last, Term: term, Applied: ckpt.Index})
+	if !errors.Is(err, ErrDisk) || FailureOf(FetchFailed(err, w.Sync)) != Fence {
+		t.Fatalf("an unreadable held entry: %v", err)
+	}
+}
+
+// unreadable is a log whose entry index does not read.
+type unreadable struct {
+	Log
+	index uint64
+	err   error
+}
+
+func (l unreadable) Entry(index uint64) (*raftpb.Entry, error) {
+	if index == l.index {
+		return nil, l.err
+	}
+	return l.Log.Entry(index)
 }
 
 // TestRepliesCopyValues checks that the values a reply carries, current

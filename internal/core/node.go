@@ -1668,6 +1668,12 @@ func (n *Node) serveRead(p *pending) {
 			resp = r
 		}
 	case *pb.LeaseTimeToLiveRequest:
+		// Only the leader counts the time a lease has left. etcd's
+		// followers ask it (node.TimeToLive).
+		if !n.isLeader {
+			err = rpctypes.ErrGRPCNotLeader
+			break
+		}
 		r := n.state.timeToLive(op, n.remaining(op.ID))
 		n.fillHeader(r.Header)
 		resp = r

@@ -217,7 +217,13 @@ func (s *Sim) firstReplaced(n *node, in *core.Install) uint64 {
 		if !ok || !n.log.Has(i) {
 			return i
 		}
-		if e, err := n.log.Entry(i); err != nil || e.GetTerm() != r.term {
+		e, err := n.log.Entry(i)
+		if err != nil {
+			// The install fails at an entry the node holds but cannot
+			// read, and replaces nothing (core.ReceiveSnapshot).
+			return in.Index + 1
+		}
+		if e.GetTerm() != r.term {
 			return i
 		}
 	}
@@ -308,6 +314,11 @@ func (s *Sim) stepCrash(n *node) bool {
 func (s *Sim) installFailed(n *node, err error) {
 	switch {
 	case errors.Is(err, errStepCrash):
+		return
+	case n.rotted && rotStop(n, err):
+		// It read the entry the run damaged, which it held, and stopped
+		// instead of replacing it.
+		s.stopNode(n)
 		return
 	case errors.Is(err, core.ErrDisk):
 		s.diskFailed(n, err)

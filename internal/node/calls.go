@@ -24,6 +24,9 @@ const (
 	// callMembers asks for the members, which a node that joins a
 	// running cluster needs to learn the Raft IDs, as etcd's do.
 	callMembers = 3
+	// callTimeToLive asks the leader for a lease's time left, which only
+	// it counts, as etcd's followers forward LeaseTimeToLive.
+	callTimeToLive = 4
 )
 
 // Answer answers a peer's Call. A node without a Raft ID yet may only
@@ -40,6 +43,8 @@ func (n *Node) Answer(from uint64, req []byte) ([]byte, error) {
 		r = &pb.MemberPromoteRequest{}
 	case callMembers:
 		r = &pb.MemberListRequest{}
+	case callTimeToLive:
+		r = &pb.LeaseTimeToLiveRequest{}
 	default:
 		return nil, fmt.Errorf("node: unknown call %d", req[0])
 	}
@@ -73,6 +78,22 @@ func call(ctx context.Context, t peer.Transport, id uint64, kind byte, req, resp
 // Promote answers Cluster.MemberPromote. Only the leader can check that
 // the learner caught up; another node asks the leader, as etcd does.
 func (n *Node) Promote(ctx context.Context, caller core.Caller, r *pb.MemberPromoteRequest) (proto.Message, error) {
+	return forwarded(ctx, n, caller, callPromote, r, &pb.MemberPromoteResponse{})
+}
+
+// TimeToLive answers Lease.LeaseTimeToLive. Only the leader counts the
+// time a lease has left; another node checks the caller's permissions,
+// then asks the leader, as etcd does.
+func (n *Node) TimeToLive(ctx context.Context, caller core.Caller, r *pb.LeaseTimeToLiveRequest) (proto.Message, error) {
+	return forwarded(ctx, n, caller, callTimeToLive, r, &pb.LeaseTimeToLiveResponse{})
+}
+
+// forwarded runs r on n, and, if only the leader may answer it, asks the
+// leader with a Call of kind, into out.
+func forwarded[T interface {
+	proto.Message
+	GetHeader() *pb.ResponseHeader
+}](ctx context.Context, n *Node, caller core.Caller, kind byte, r proto.Message, out T) (proto.Message, error) {
 	resp, err := n.DoAs(ctx, caller, r)
 	if !errors.Is(err, rpctypes.ErrGRPCNotLeader) {
 		return resp, err
@@ -82,12 +103,13 @@ func (n *Node) Promote(ctx context.Context, caller core.Caller, r *pb.MemberProm
 	if !ok || leader == 0 || leader == n.ID() {
 		return nil, rpctypes.ErrGRPCNoLeader
 	}
-	out := &pb.MemberPromoteResponse{}
-	if err := call(ctx, t, leader, callPromote, r, out); err != nil {
+	if err := call(ctx, t, leader, kind, r, out); err != nil {
 		return nil, err
 	}
 	// The header is this node's, as the answer comes from it.
-	out.Header.MemberId = n.ID()
+	if h := out.GetHeader(); h != nil {
+		h.MemberId = n.ID()
+	}
 	return out, nil
 }
 

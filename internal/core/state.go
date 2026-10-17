@@ -388,8 +388,8 @@ func (st *State) revoke(id int64) (proto.Message, error) {
 	return &pb.LeaseRevokeResponse{Header: header(st.kv.Rev())}, nil
 }
 
-// timeToLive answers LeaseTimeToLive. remaining is the leader's count of
-// seconds left, or -1 to report the granted TTL. A missing lease has TTL -1,
+// timeToLive answers LeaseTimeToLive on the leader. remaining is its
+// count of seconds left, or -1 to report the granted TTL. A missing lease has TTL -1,
 // as in etcd.
 func (st *State) timeToLive(r *pb.LeaseTimeToLiveRequest, remaining int64) *pb.LeaseTimeToLiveResponse {
 	resp := &pb.LeaseTimeToLiveResponse{Header: header(st.kv.Rev()), ID: r.ID, TTL: -1}

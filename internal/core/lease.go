@@ -102,8 +102,8 @@ func (n *Node) leadershipChanged() {
 }
 
 // remaining is the leader's count of whole seconds left on a lease,
-// rounded down as in etcd, or -1 on other nodes, which report the granted
-// TTL.
+// rounded down as in etcd, or -1, to report the granted TTL, before the
+// leader armed it.
 func (n *Node) remaining(id int64) int64 {
 	l, ok := n.state.leases[id]
 	if !ok || !n.isLeader || l.expiry == 0 {

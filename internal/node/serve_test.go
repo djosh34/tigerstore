@@ -21,8 +21,23 @@ import (
 )
 
 // TestServeCorruptRecordStops damages an old record after it leaves the
-// Raft window. Serving it must stop the sender, not just fail the fetch.
+// Raft window. Serving it must stop the sender, not just fail the fetch,
+// to a peer and in a client's backup (#231 E4) alike.
 func TestServeCorruptRecordStops(t *testing.T) {
+	t.Run("peer", func(t *testing.T) {
+		serveCorruptRecord(t, func(n *Node, last uint64) error { return n.Serve(2, 1, last, io.Discard) })
+	})
+	t.Run("backup", func(t *testing.T) {
+		serveCorruptRecord(t, func(n *Node, _ uint64) error {
+			_, _, err := n.Snapshot(t.Context(), io.Discard, func(int64) error { return nil })
+			return err
+		})
+	})
+}
+
+// serveCorruptRecord runs TestServeCorruptRecordStops with serve, which
+// reads the log up to last.
+func serveCorruptRecord(t *testing.T, serve func(n *Node, last uint64) error) {
 	cfg := Config{DataDir: t.TempDir(), Tick: 50 * time.Millisecond, SegmentBytes: 4 << 10, Logf: t.Logf}
 	cfg.Core = core.DefaultConfig(1, []uint64{1})
 	cfg.Core.WindowBytes, cfg.Core.WindowMaxBytes = 256, 512
@@ -87,7 +102,7 @@ func TestServeCorruptRecordStops(t *testing.T) {
 	if err := errors.Join(err, f.Sync(), f.Close()); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.Serve(2, 1, st.RaftAppliedIndex, io.Discard); !errors.Is(err, wal.ErrCorrupt) {
+	if err := serve(n, st.RaftAppliedIndex); !errors.Is(err, wal.ErrCorrupt) {
 		t.Fatalf("serve: %v, want wal.ErrCorrupt", err)
 	}
 	select {
