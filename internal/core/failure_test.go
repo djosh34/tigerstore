@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"testing"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/simfs"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -30,5 +32,41 @@ func TestFailureOf(t *testing.T) {
 		if got := FailureOf(tc.err); got != tc.want {
 			t.Errorf("FailureOf(%v) = %d, want %d", tc.err, got, tc.want)
 		}
+	}
+}
+
+// LogSink marks a failed write or sync of its own disk ErrDisk, so both
+// drivers stop on it, and anything wrong with the stream not, so both
+// reload.
+func TestLogSinkErrors(t *testing.T) {
+	d := simfs.New()
+	w, _, err := wal.Open(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	sink := &LogSink{WAL: w}
+	if err := sink.CheckpointDone(5); err == nil || errors.Is(err, ErrDisk) {
+		t.Fatalf("a checkpoint with no data: %v, want a stream error", err)
+	}
+	d.Fault = func(op simfs.Op, _ string) error {
+		if op == simfs.OpWrite {
+			return simfs.ErrIO
+		}
+		return nil
+	}
+	if err := sink.CheckpointChunk(5, []byte("chunk")); !errors.Is(err, ErrDisk) || !errors.Is(err, simfs.ErrIO) {
+		t.Fatalf("a failed checkpoint write: %v, want ErrDisk", err)
+	}
+	d.Fault = nil
+	if err := sink.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.CheckpointChunk(5, []byte("chunk")); !errors.Is(err, fs.ErrExist) || errors.Is(err, ErrDisk) {
+		t.Fatalf("a checkpoint an earlier install wrote: %v, want fs.ErrExist alone", err)
 	}
 }
