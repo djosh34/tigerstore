@@ -176,6 +176,7 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 		// The revision it needed is compacted. Like Kubernetes, start a
 		// new logical watch from now.
 		s.stats.WatchCompacted++
+		s.tracef("watch %d: compacted at %d, starting again", w.id, r.CompactRevision)
 		w.ended = append(w.ended, segment{start: w.start, events: w.events, responses: w.responses})
 		w.start, w.next, w.events, w.responses = 0, 0, nil, nil
 		return true
@@ -190,6 +191,7 @@ func (w *watchClient) receive(r *pb.WatchResponse) bool {
 		}
 		if w.start == 0 {
 			w.start = w.next
+			s.tracef("watch %d: created on node %d from %d", w.id, w.proc.n.id, w.start)
 		}
 		w.watchID = r.WatchId
 		return false

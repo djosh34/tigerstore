@@ -657,6 +657,16 @@ func (s *Sim) liveFrom() int64 {
 	if s.cfg.LiveFrom > 0 {
 		return s.cfg.LiveFrom
 	}
+	t := s.recovered()
+	if s.lateStopAt > 0 {
+		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
+	}
+	return t
+}
+
+// recovered is when the cluster must serve again after the faults,
+// unless a node stopped by then (liveFrom).
+func (s *Sim) recovered() int64 {
 	// A gray fsync in flight at healing finishes when it finishes, up to
 	// 3 s later. Until then its node's term and vote changes and the peer
 	// messages behind them are held, so a higher term can reach the new
@@ -669,9 +679,6 @@ func (s *Sim) liveFrom() int64 {
 		// pre-votes until the first learns the term from a rejection: one
 		// more election timeout, plus one to win (seed 714720575).
 		t += 2 * Second
-	}
-	if s.lateStopAt > 0 {
-		t = max(t, s.lateStopAt+max(s.cfg.Faults.MaxDown, Second)+s.cfg.LiveAfter)
 	}
 	return t
 }

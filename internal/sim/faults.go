@@ -62,7 +62,9 @@ func (s *Sim) scheduleDiskFaults() {
 	}
 	if f.HoldDown {
 		s.downFor = min(3*Second+s.rng.Int64N(2*Second), s.cfg.Duration/2)
-		s.at(1+s.rng.Int64N(s.cfg.Duration-s.downFor), func() {
+		// The follower is back 2 s before healing, so that its first
+		// fetch, which the stream faults damage, comes during the faults.
+		s.at(1+s.rng.Int64N(max(s.cfg.Duration-s.downFor-2*Second, 1)), func() {
 			for !s.downFollower() && s.sleep(200*Millisecond) {
 			}
 		})

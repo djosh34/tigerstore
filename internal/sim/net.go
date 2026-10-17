@@ -90,31 +90,45 @@ func (nw *network) dial(ctx context.Context, s *Sim, p *proc, addr string) (net.
 		return nil, errRefused
 	}
 	from, to := p.n.idx, l.p.n.idx
-	out, back := s.links[from][to], s.links[to][from]
-	now := s.now()
-	halfOpen := out.halfOpenUntil > now || back.halfOpenUntil > now
-	wait := out.base + back.base
-	if halfOpen {
-		// What it sends vanishes, so the dial times out.
-		wait = dialTimeout
+	timeout := s.now() + dialTimeout
+	for {
+		out, back := s.links[from][to], s.links[to][from]
+		now := s.now()
+		wait := out.base + back.base
+		until := max(out.halfOpenUntil, back.halfOpenUntil)
+		halfOpen := until > now
+		if halfOpen {
+			// What it sends vanishes until the link ends its half-open
+			// state, at its end or at healing; the dial times out first
+			// or goes on then.
+			if now >= timeout {
+				s.mu.Unlock()
+				return nil, os.ErrDeadlineExceeded
+			}
+			wait = min(timeout, until) - now
+			if !s.healed {
+				// At least 1 ns, so that healing, due now, comes first.
+				wait = max(min(wait, s.healAt-now), 1)
+			}
+		}
+		s.mu.Unlock()
+		if !out.up || !back.up {
+			return nil, errRefused
+		}
+		t := time.NewTimer(time.Duration(wait))
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			t.Stop()
+			return nil, ctx.Err()
+		}
+		s.mu.Lock()
+		if !halfOpen {
+			break
+		}
 	}
-	s.mu.Unlock()
-	if !out.up || !back.up {
-		return nil, errRefused
-	}
-	t := time.NewTimer(time.Duration(wait))
-	defer t.Stop()
-	select {
-	case <-t.C:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	if halfOpen {
-		return nil, os.ErrDeadlineExceeded
-	}
-	s.mu.Lock()
 	defer s.mu.Unlock()
-	out, back = s.links[from][to], s.links[to][from]
+	out, back := s.links[from][to], s.links[to][from]
 	if p.dead() || l.p.dead() || nw.listeners[addr] != l || !out.up || !back.up {
 		return nil, errRefused
 	}
