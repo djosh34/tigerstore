@@ -111,9 +111,9 @@ func CheckCertSAN(ctx context.Context, cert *x509.Certificate, remoteAddr string
 			}
 		}
 	}
-	msg := ""
+	err = fmt.Errorf("tls: %q does not match any of DNSNames %q", h, cert.DNSNames)
 	if lerr != nil {
-		msg = " (" + lerr.Error() + ")"
+		err = fmt.Errorf("%w (%w)", err, lerr)
 	}
-	return fmt.Errorf("tls: %q does not match any of DNSNames %q%s", h, cert.DNSNames, msg)
+	return err
 }

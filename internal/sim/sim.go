@@ -1095,8 +1095,8 @@ func rotStop(n *node, err error) bool {
 	if errors.Is(err, mvcc.ErrBadValue) {
 		return true
 	}
-	var re *wal.RecordError
-	return errors.As(err, &re) && re.Entry == n.rotEntry && re.Segment == n.rotSeg
+	re, ok := errors.AsType[*wal.RecordError](err)
+	return ok && re.Entry == n.rotEntry && re.Segment == n.rotSeg
 }
 
 // startDisk writes every queued job and schedules the fsync, or, for a

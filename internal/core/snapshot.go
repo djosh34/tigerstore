@@ -556,7 +556,7 @@ func (s *snapReader) next() (byte, []byte, error) {
 		return 0, nil, err
 	}
 	if n > maxSnapItem {
-		return 0, nil, fmt.Errorf("core: snapshot item of %d bytes", n)
+		return 0, nil, fmt.Errorf("%w: an item of %d bytes", errBadSnapshot, n)
 	}
 	if uint64(cap(s.buf)) < n+4 {
 		s.buf = make([]byte, n+4)
@@ -679,7 +679,8 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 	return flush()
 }
 
-// holds reports whether the log holds entry index with term.
+// holds reports whether the log holds entry index with term. An entry
+// it cannot read counts as missing, on purpose: the stream replaces it.
 func holds(disk Log, index, term uint64) bool {
 	if !disk.Has(index) {
 		return false

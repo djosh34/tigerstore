@@ -167,8 +167,8 @@ func stop(nodes []*exec.Cmd, exited chan error, running int, etcd bool) error {
 // interrupted reports whether a node was ended by the SIGINT it was sent,
 // as etcd is.
 func interrupted(err error) bool {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+	exit, ok := errors.AsType[*exec.ExitError](err)
+	if !ok {
 		return false
 	}
 	ws, ok := exit.Sys().(syscall.WaitStatus)

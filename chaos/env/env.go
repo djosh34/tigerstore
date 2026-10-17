@@ -61,15 +61,15 @@ func waitFor(timeout time.Duration, cond func() bool) bool {
 }
 
 // mounted reports whether path is a mount point.
-func mounted(path string) bool {
+func mounted(path string) (bool, error) {
 	b, err := os.ReadFile("/proc/self/mounts")
 	if err != nil {
-		return false
+		return false, err
 	}
 	for line := range strings.SplitSeq(string(b), "\n") {
 		if f := strings.Fields(line); len(f) > 1 && f[1] == path {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -63,7 +64,11 @@ func Restore(path, dataDir string, members []*pb.Member, skipHash bool) (Snapsho
 	if err != nil {
 		return info, err
 	}
-	if entries, err := os.ReadDir(dataDir); err == nil && len(entries) > 0 {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return info, err
+	}
+	if len(entries) > 0 {
 		return info, fmt.Errorf("node: data directory %q exists and is not empty", dataDir)
 	}
 	if len(members) == 0 {

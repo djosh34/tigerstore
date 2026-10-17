@@ -90,6 +90,10 @@ type File interface {
 // cause. The node must not take part in the cluster with it.
 var ErrCorrupt = errors.New("wal: corrupt log")
 
+// ErrFormat is a segment or pack of a format version this build does not
+// read: a newer build's, as damage would also fail its checksum.
+var ErrFormat = errors.New("wal: unknown format version")
+
 // RecordError is an entry's record that does not verify when it is read:
 // it is ErrCorrupt, and says which entry and segment.
 type RecordError struct {
@@ -338,7 +342,7 @@ func Open(fs FS) (*WAL, *Recovered, error) {
 			break
 		}
 		if version < 1 || version > Version {
-			return nil, nil, errors.Join(fmt.Errorf("wal: segment %s has format version %d; this build reads versions 1 to %d", name, version, Version), f.Close())
+			return nil, nil, errors.Join(fmt.Errorf("%w: segment %s has format version %d; this build reads versions 1 to %d", ErrFormat, name, version, Version), f.Close())
 		}
 		w.seq, w.crc, w.version = seq, crc, version
 		w.current()

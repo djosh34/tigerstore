@@ -595,7 +595,7 @@ func TestOtherFormatVersion(t *testing.T) {
 	d := simfs.New()
 	names := segments(t, d, 2)
 	rewrite(t, d, names[0], func(b []byte) []byte { b[8] = wal.Version + 1; return b })
-	if _, _, err := wal.Open(d); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("format version %d", wal.Version+1)) {
+	if _, _, err := wal.Open(d); !errors.Is(err, wal.ErrFormat) {
 		t.Fatalf("open of version %d: %v", wal.Version+1, err)
 	}
 }

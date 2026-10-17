@@ -242,7 +242,7 @@ func (p *Pack) read(data []byte) error {
 		return fmt.Errorf("%w: bad header of pack %d", ErrCorrupt, p.id)
 	}
 	if v := binary.LittleEndian.Uint32(data[len(packMagic):]); v != packVersion {
-		return fmt.Errorf("wal: pack %d has format version %d; this build reads version %d", p.id, v, packVersion)
+		return fmt.Errorf("%w: pack %d has format version %d; this build reads version %d", ErrFormat, p.id, v, packVersion)
 	}
 	var crc uint32
 	for off := packHeaderSize; off < len(data); {

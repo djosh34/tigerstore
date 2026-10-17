@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -214,7 +213,7 @@ func TestOldBinaryRefusesToStart(t *testing.T) {
 			if !errors.Is(err, ErrTooOld) {
 				t.Fatalf("the old binary started with %v", err)
 			}
-			if ckpt != strings.Contains(err.Error(), "load the checkpoint") {
+			if ckpt != errors.Is(err, errLoadCheckpoint) {
 				t.Fatalf("refused for the wrong reason: %v", err)
 			}
 			t.Log(err)

@@ -588,7 +588,7 @@ func (s *Store) Txn(r *pb.TxnRequest) (*pb.TxnResponse, error) {
 	}
 	resp, _, err := w.executeTxn(r, path)
 	if err != nil {
-		if cold := (*ColdError)(nil); errors.As(err, &cold) {
+		if cold, ok := errors.AsType[*ColdError](err); ok {
 			// checkTxn found every value it sorts by in memory; the
 			// transaction may have changed keys already, so it cannot run
 			// again.

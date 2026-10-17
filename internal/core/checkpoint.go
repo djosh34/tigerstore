@@ -168,6 +168,10 @@ func (h *ckptHeader) encode() ([]byte, error) {
 
 var errBadCheckpoint = fmt.Errorf("%w: bad checkpoint", wal.ErrCorrupt)
 
+// errLoadCheckpoint is a start that could not load the checkpoint its
+// log's root names.
+var errLoadCheckpoint = errors.New("core: load the checkpoint")
+
 // maxCheckpointString bounds a name or URL in a checkpoint header.
 const maxCheckpointString = 64 << 10
 

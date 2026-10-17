@@ -575,7 +575,7 @@ func New(cfg Config, rec *wal.Recovered, disk Log) (*Node, error) {
 	if root := rec.Root; root.Index > 0 {
 		state, last, err := loadCheckpoint(cfg, disk, root, vals)
 		if err != nil {
-			return nil, fmt.Errorf("core: load the checkpoint at %d: %w", root.Index, err)
+			return nil, fmt.Errorf("%w at %d: %w", errLoadCheckpoint, root.Index, err)
 		}
 		n.setState(state)
 		n.applied, n.last, n.base, st.ckpt = root.Index, last, last.base, root
@@ -1723,7 +1723,7 @@ func (n *Node) serveRead(p *pending) {
 		n.replyWait = append(n.replyWait, p)
 		return
 	}
-	if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) {
+	if cold, ok := errors.AsType[*mvcc.ColdError](err); ok {
 		r := n.fetch(cold.Need)
 		r.read, r.held = p, rep.Held
 		return
@@ -1872,8 +1872,11 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 	}
 	room := n.quotaLeft(quotaCost(op))
 	resp, err := n.applyOp(op)
-	var cold *mvcc.ColdError
-	for errors.As(err, &cold) {
+	for {
+		cold, ok := errors.AsType[*mvcc.ColdError](err)
+		if !ok {
+			break
+		}
 		if !n.readInline {
 			n.pause(e.GetIndex(), k, cold.Need)
 			return errPaused
@@ -1949,7 +1952,7 @@ func (n *Node) applyPut(b []byte, at int, p *pending) error {
 func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	resp, err := n.state.Apply(op)
 	if err != nil {
-		if cold := (*mvcc.ColdError)(nil); errors.As(err, &cold) || errors.Is(err, errInternal) || isAnswer(err) {
+		if _, cold := errors.AsType[*mvcc.ColdError](err); cold || errors.Is(err, errInternal) || isAnswer(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %w", errInternal, err)

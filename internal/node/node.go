@@ -462,7 +462,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	}
 	if m != nil {
 		if at+int64(n) > int64(len(m)) {
-			return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
+			return nil, fmt.Errorf("%w: value at %d+%d is past the end of segment %d", wal.ErrCorrupt, at, n, seq)
 		}
 		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
@@ -916,9 +916,11 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 		err := n.run(ctx, t)
 		if core.FailureOf(err) == core.Reload && ctx.Err() == nil {
 			n.logf("%v; starting again from the log", err)
-			if err = n.open(); err == nil {
+			oerr := n.open()
+			if oerr == nil {
 				continue
 			}
+			err = errors.Join(err, oerr)
 		}
 		close(n.done)
 		return errors.Join(err, n.log.close())
