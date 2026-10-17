@@ -106,11 +106,15 @@ func newMemoryGauge() *memoryGauge {
 func (g *memoryGauge) read(low int64) (int64, bool) {
 	metrics.Read(g.samples)
 	v := func(i int) int64 { return int64(g.samples[i].Value.Uint64()) }
-	gcs := g.samples[0].Value.Uint64()
+	return g.take(g.samples[0].Value.Uint64(), v(1), v(2)-v(3)-v(4)-v(5), low)
+}
+
+// take is read with the metrics read: gcs finished collections, the heap
+// live as of the last, and the memory outside the heap's objects.
+func (g *memoryGauge) take(gcs uint64, live, outside, low int64) (int64, bool) {
 	fresh := gcs != g.gcs
 	if fresh {
-		outside := v(2) - v(3) - v(4) - v(5)
-		g.gcs, g.other = gcs, max(v(1)+outside-min(g.low, low), 0)
+		g.gcs, g.other = gcs, max(live+outside-min(g.low, low), 0)
 	}
 	g.low = low
 	return g.other, fresh

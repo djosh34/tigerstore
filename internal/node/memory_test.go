@@ -123,31 +123,22 @@ func TestMemoryGauge(t *testing.T) {
 	}
 }
 
-// TestMemoryGaugeAfterEviction drops a 32 MiB cache, collects, and fills
-// a new one before the next read, as the core may between two ticks. The
-// cache's sizes at both reads are 32 MiB, but its low mark between them
-// is 0: the bytes it let go of must not count as room.
+// TestMemoryGaugeAfterEviction checks the gauge's arithmetic on fixed
+// readings: 20 MiB besides a 32 MiB cache, which is dropped, collected
+// and filled again between two reads, so its size is 32 MiB at both. Only
+// its low mark, 0, may count as the cache's in the collection after the
+// drop, which no longer saw it.
 func TestMemoryGaugeAfterEviction(t *testing.T) {
+	const mib = 1 << 20
 	g := newMemoryGauge()
-	fill := func() []byte {
-		b := make([]byte, 32<<20)
-		for i := range b {
-			b[i] = 1
-		}
-		return b
+	g.take(1, 52*mib, 0, 32*mib)
+	if other, _ := g.take(2, 52*mib, 0, 32*mib); other != 20*mib {
+		t.Fatalf("with the cache in the live heap: %d bytes besides it, want 20 MiB", other)
 	}
-	cache := fill()
-	g.read(32 << 20)
-	runtime.GC()
-	g.read(32 << 20)
-	runtime.GC()
-	before, _ := g.read(32 << 20)
-	runtime.KeepAlive(cache)
-	runtime.GC()
-	cache = fill()
-	other, fresh := g.read(0)
-	runtime.KeepAlive(cache)
-	if !fresh || other < before-8<<20 {
-		t.Fatalf("after the cache let go of 32 MiB and took 32 MiB more: %d bytes besides it, %d before (fresh %v)", other, before, fresh)
+	if other, fresh := g.take(3, 20*mib, 0, 0); !fresh || other != 20*mib {
+		t.Fatalf("after the drop: %d bytes besides it (fresh %v), want 20 MiB", other, fresh)
+	}
+	if other, fresh := g.take(3, 0, 0, 32*mib); fresh || other != 20*mib {
+		t.Fatalf("without a collection: %d (fresh %v), want the last result", other, fresh)
 	}
 }
