@@ -1217,9 +1217,9 @@ func (n *Node) handle(in input, waiters map[uint64]waiter, streams map[uint64]*W
 // persistDone reports one group of synced jobs, or the error that stops
 // the node.
 type persistDone struct {
-	jobs   []core.PersistJob
-	err    error
-	timing persistTiming
+	jobs  []core.PersistJob
+	err   error
+	times persistTimes
 }
 
 // persistBatch starts its clock before the committer's backlog, not when
@@ -1237,10 +1237,8 @@ const syncsInFlight = 4
 type written struct {
 	jobs           []core.PersistJob
 	f              wal.File
-	start          time.Time
 	entries, bytes int
-	timing         persistTiming
-	flushed        time.Time
+	times          persistTimes
 }
 
 // syncedGroup is a written group after its sync, or after the error that
@@ -1272,14 +1270,14 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		if err == nil {
 			err = n.afterSync(g.jobs)
 		}
-		d := time.Since(g.start)
+		d := time.Since(g.times.start)
 		if err == nil && d > time.Duration(n.log.maxWrite.Load()) {
 			n.log.maxWrite.Store(int64(d))
 		}
 		if err == nil && d > n.cfg.Tick {
 			n.logf("slow write to the log: %d entries, %d bytes in %v", g.entries, g.bytes, d)
 		}
-		done := persistDone{jobs: g.jobs, err: err, timing: g.timing}
+		done := persistDone{jobs: g.jobs, err: err, times: g.times}
 		select {
 		case n.persisted <- done:
 		case <-ctx.Done():
@@ -1364,9 +1362,7 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 			}
 		}
 		jobs := pending.jobs
-		g := written{jobs: jobs, start: time.Now()}
-		g.timing.queued = pending.queued
-		g.timing.queue = g.start.Sub(pending.queued)
+		g := written{jobs: jobs, times: persistTimes{queued: pending.queued, start: time.Now()}}
 		for _, j := range jobs {
 			if j.Install != nil {
 				if !drain() {
@@ -1391,12 +1387,10 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 		buffered := w.Buffered()
 		n.log.used.Add(buffered)
 		m := n.cfg.Metrics
-		wrote := time.Now()
-		g.timing.append = wrote.Sub(g.start)
+		g.times.flush = time.Now()
 		err := w.Flush()
-		g.flushed = time.Now()
-		writeTime := g.flushed.Sub(wrote)
-		g.timing.flush = writeTime
+		g.times.flushed = time.Now()
+		writeTime := g.times.flushed.Sub(g.times.flush)
 		m.WALWrite.Observe(writeTime.Seconds())
 		if writeTime > n.cfg.Tick {
 			n.logf("slow log flush: %d bytes in %v", buffered, writeTime)
@@ -1482,9 +1476,7 @@ func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, repo
 		}
 		end := time.Now()
 		for _, g := range batch {
-			g.timing.syncQueue = start.Sub(g.flushed)
-			g.timing.sync = end.Sub(start)
-			g.timing.reporting = end
+			g.times.sync, g.times.synced = start, end
 			err = report(g, err)
 			synced <- syncedGroup{g: g, err: err}
 		}
