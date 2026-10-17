@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/djosh34/tigerstore/chaos/env"
+	"github.com/djosh34/tigerstore/chaos/proxy"
 	"github.com/djosh34/tigerstore/history"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -632,7 +633,11 @@ func (r *runner) crashInRecovery(ctx context.Context, s step, target int, rec *r
 // crashInInstall stops follower target, writes until the leader's log
 // moved past it, resumes it so that it fetches a snapshot, and kills it
 // once the fetch started; it then starts it again, which must recover.
-func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) error {
+// Replies on the follower's outgoing peer links stay stalled until the
+// kill. Fetch opens a new connection on one of those links, so even a
+// tiny snapshot cannot finish between the log poll and SIGKILL. Incoming
+// Raft links stay open so the leader can still tell it to fetch.
+func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *record) (err error) {
 	if target == lead {
 		target = others(lead)[0]
 	}
@@ -648,12 +653,40 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		q := history.Request{Put: &history.PutRequest{Key: fmt.Sprintf("%sk%d", prefix, k%r.t.cfg.keys), Value: fmt.Sprintf("bulk-%d-%s", k, strings.Repeat("b", 1000))}}
 		r.t.r.call(cl, installClient, q, r.t.cfg.requestTimeout)
 	}
+	var held []*link
+	heal := func() error {
+		var errs []error
+		for _, l := range held {
+			_, e := l.Proxy.Set(proxy.Fault{Kind: proxy.None})
+			errs = append(errs, e)
+		}
+		held = nil
+		return errors.Join(errs...)
+	}
+	defer func() { err = errors.Join(err, heal()) }()
+	for _, i := range others(target) {
+		l := r.c.peers[target][i]
+		if _, err := l.Proxy.Set(proxy.Fault{Kind: proxy.Stall, Dir: proxy.Backward}); err != nil {
+			return err
+		}
+		held = append(held, l)
+	}
 	logBefore := logSize(n)
 	if _, _, err := n.signal(syscall.SIGCONT); err != nil {
 		return err
 	}
 	rec.Installed = true
-	fetching := waitUntil(ctx, 10*time.Second, func() bool { return strings.Contains(logSince(n, logBefore), "fetching the snapshot") })
+	fetching := waitUntil(ctx, 10*time.Second, func() bool {
+		if !strings.Contains(logSince(n, logBefore), "fetching the snapshot") {
+			return false
+		}
+		for _, l := range held {
+			if l.Proxy.Stats().Hits > 0 {
+				return true
+			}
+		}
+		return false
+	})
 	if _, _, err := n.signal(syscall.SIGKILL); err != nil {
 		return err
 	}
@@ -663,8 +696,14 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 	}
 	// The crash must cut the fetch: no installed line before the kill.
 	rec.Effect = fetching && !strings.Contains(text, "installed the snapshot")
-	err := r.c.start(n)
+	if err := heal(); err != nil {
+		return err
+	}
+	err = r.c.start(n)
 	rec.Healed, rec.HealedAt = err == nil, r.since()
+	if !fetching {
+		err = errors.Join(err, errors.New("no snapshot fetch started within 10s"))
+	}
 	return err
 }
 

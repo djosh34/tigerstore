@@ -278,6 +278,16 @@ type linkFault struct {
 // Every proxy must report the requested fault installed and at least one
 // hit before the heal.
 func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *record) error {
+	// A restarted node may answer direct status calls before its workload
+	// client reconnects. Do not spend the hold on an empty client link.
+	for _, lf := range faults {
+		if lf.l.From < 0 {
+			if err := waitClientTraffic(ctx, lf.l); err != nil {
+				return err
+			}
+		}
+	}
+	rec.Requested = r.since()
 	rec.Installed, rec.Effect = true, true
 	var errs []error
 	for _, lf := range faults {
@@ -306,6 +316,20 @@ func (r *runner) network(ctx context.Context, s step, faults []linkFault, rec *r
 	}
 	rec.HealedAt = r.since()
 	return errors.Join(append(errs, holdErr)...)
+}
+
+// waitClientTraffic requires a live connection and fresh traffic in both
+// directions, not bytes left over from before a restart. The workload
+// stays active during the fault; the hit check still decides its effect.
+func waitClientTraffic(ctx context.Context, l *link) error {
+	before := l.Proxy.Stats()
+	if !waitUntil(ctx, 15*time.Second, func() bool {
+		st := l.Proxy.Stats()
+		return st.Open > 0 && st.ForwardBytes > before.ForwardBytes && st.BackwardBytes > before.BackwardBytes
+	}) {
+		return errors.Join(fmt.Errorf("%s: no live client traffic within 15s", l.Name), ctx.Err())
+	}
+	return nil
 }
 
 // kill sends SIGKILL to node i, checks that the kernel reports the
