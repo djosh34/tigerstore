@@ -12,7 +12,7 @@ jobs:
           go-version-file: go.mod
       - name: Format on Actions and retain the patch
         run: |
-          gofmt -w internal/wal/compress.go internal/wal/compress_test.go internal/wal/wal.go internal/wal/pack.go internal/core/compression_test.go cmd/loadgen/corpus.go cmd/loadgen/corpus_test.go cmd/loadgen/main.go cmd/loadgen/walmetrics.go
+          gofmt -w internal/wal/compress.go internal/wal/compress_test.go internal/wal/wal.go internal/wal/pack.go internal/core/compression_test.go cmd/loadgen/corpus.go cmd/loadgen/corpus_test.go cmd/loadgen/main.go cmd/loadgen/walmetrics.go internal/node/clean_test.go internal/node/clean_sim_test.go internal/node/metadata_clean_test.go
           go mod tidy
           git diff > "$RUNNER_TEMP/format.patch"
       - uses: actions/upload-artifact@v6
