@@ -1,7 +1,7 @@
 # Compression experiment for #132
 
-This branch is an experiment, not a merge recommendation. The verdict and
-Actions links go in one comment on #148 after the measurements finish.
+Do not merge this experiment. Random-value throughput fails #132's rule.
+The [results](compression-results.md) contain the numbers and Actions links.
 
 ## Format and execution
 
@@ -91,5 +91,7 @@ must fail on the expected compression-size assertion. The corpus test
 checks original value bytes, independent random streams and multi-frame
 requests.
 
-The prep-only CI commits are not integration changes. Drop them if any
-of this experiment is used elsewhere. No PR is opened by this worker.
+The final prep-only CI commit is not an integration change. Dropping it
+restores main's full CI. Earlier temporary CI changes remain in the branch
+history, with an explicit restoration before that final commit. No PR is
+opened by this worker.

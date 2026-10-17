@@ -3,8 +3,8 @@ package node
 import (
 	"bytes"
 	"context"
-	"errors"
 	"encoding/base64"
+	"errors"
 	"slices"
 	"testing"
 	"time"
