@@ -682,7 +682,7 @@ func ReceiveSnapshot(r io.Reader, sink SnapshotSink, disk Log, in *Install) erro
 }
 
 // holds reports whether the log holds entry index with term. An entry
-// it cannot read counts as missing, on purpose: the stream replaces it.
+// it cannot read counts as missing, and the stream replaces it.
 func holds(disk Log, index, term uint64) bool {
 	if !disk.Has(index) {
 		return false

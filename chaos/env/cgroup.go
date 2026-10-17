@@ -120,7 +120,10 @@ func (c *Cgroup) Stats() (CgroupStats, error) {
 // Close removes the group; its processes must be gone.
 func (c *Cgroup) Close() error {
 	_, err := sudo("rmdir", c.Path)
-	if _, serr := os.Stat(c.Path); err != nil && errors.Is(serr, fs.ErrNotExist) {
+	if err == nil {
+		return nil
+	}
+	if _, serr := os.Stat(c.Path); errors.Is(serr, fs.ErrNotExist) {
 		// Gone already.
 		return nil
 	}

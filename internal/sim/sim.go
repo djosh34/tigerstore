@@ -980,7 +980,7 @@ func (s *Sim) start(n *node) error {
 		if err == nil {
 			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
 		}
-		if core.FailureOf(err) != core.Fence {
+		if !errors.Is(err, wal.ErrCorrupt) {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
 		n.fenced = true

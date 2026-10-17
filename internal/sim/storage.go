@@ -217,7 +217,6 @@ func (s *Sim) firstReplaced(n *node, in *core.Install) uint64 {
 		if !ok || !n.log.Has(i) {
 			return i
 		}
-		// An entry it cannot read is replaced, as in ReceiveSnapshot.
 		if e, err := n.log.Entry(i); err != nil || e.GetTerm() != r.term {
 			return i
 		}
@@ -319,8 +318,8 @@ func (s *Sim) installFailed(n *node, err error) {
 	}
 	s.stats.InstallFailures++
 	s.mix(0x5f, uint64(n.idx), uint64(len(err.Error())))
-	if serr := n.log.Sync(); serr != nil {
-		s.diskFailed(n, errors.Join(err, fmt.Errorf("%w: %w", core.ErrDisk, serr)))
+	if err = core.FetchFailed(err, n.log.Sync); core.FailureOf(err) != core.Reload {
+		s.diskFailed(n, err)
 		return
 	}
 	s.down(n)

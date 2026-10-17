@@ -25,6 +25,8 @@ type persister struct {
 	n       *Node
 	ctx     context.Context
 	stopped chan struct{}
+	// failing is set by a test whose sync fails, which closes the segment.
+	failing bool
 }
 
 // startPersist opens the log, lets setup change it and the node's
@@ -62,7 +64,7 @@ func startPersist(t *testing.T, wrap func(wal.FS) wal.FS, setup func(*wal.WAL, *
 		cancel()
 		<-p.stopped
 		// A failed rotation has already closed the old segment.
-		if err := w.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+		if err := w.Close(); err != nil && (!p.failing || !errors.Is(err, os.ErrClosed)) {
 			t.Error(err)
 		}
 	})
@@ -257,6 +259,7 @@ func TestPersistReportsBeforeRotation(t *testing.T) {
 				// Only now, so that the syncs of wal.Open are real.
 				fs.hold = func(op string, file, _ int) bool { return op == tc.op && file == tc.file }
 			}, fs.let)
+			p.failing = tc.fail
 			p.append(1, 2048)
 			p.wait(fs.blocked, "writer never reached the held sync")
 			if tc.file == 2 {

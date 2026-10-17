@@ -7,7 +7,6 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/planted"
-	"github.com/djosh34/tigerstore/internal/wal"
 )
 
 // placer records where the values of the puts of one write start in their
@@ -93,7 +92,7 @@ func (v *values) Read(r mvcc.Ref, arena *[]byte) ([]byte, bool, error) {
 		return b, ok, nil
 	}
 	if uint64(r.Off)+uint64(r.Len) > uint64(len(data)) {
-		return nil, false, fmt.Errorf("%w: value at %d+%d is past the end of entry %d", wal.ErrCorrupt, r.Off, r.Len, r.Index)
+		return nil, false, fmt.Errorf("core: value at %d+%d is past the end of entry %d", r.Off, r.Len, r.Index)
 	}
 	b := data[r.Off : r.Off+r.Len]
 	if arena == nil {

@@ -462,7 +462,7 @@ func (l *diskLog) Value(index uint64, off, n uint32) ([]byte, error) {
 	}
 	if m != nil {
 		if at+int64(n) > int64(len(m)) {
-			return nil, fmt.Errorf("%w: value at %d+%d is past the end of segment %d", wal.ErrCorrupt, at, n, seq)
+			return nil, fmt.Errorf("node: value at %d+%d is past the end of segment %d", at, n, seq)
 		}
 		return bytes.Clone(m[at : at+int64(n)]), nil
 	}
@@ -1512,10 +1512,8 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 }
 
 // install fetches a snapshot from its leader and writes it to the log.
-// A failed write stops the node. When the fetch fails, it syncs what the
-// stream wrote, as a crash after a sync could keep it, and returns
-// core.ErrFetch: the core cannot drop the snapshot, a core started from
-// the log can.
+// A failed write stops the node, and a failed fetch reloads it
+// (core.FetchFailed).
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
 	m, from := n.cfg.Metrics, peerLabel(in.From)
 	n.logf("fetching the snapshot at %d from %d", in.Index, in.From)
@@ -1543,13 +1541,10 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 	case err == nil:
 		n.logf("installed the snapshot at %d from %d, checkpoint %d", in.Index, in.From, in.Checkpoint.Index)
 		return nil
-	case errors.Is(err, core.ErrDisk) || ctx.Err() != nil || planted.On("B26"):
+	case ctx.Err() != nil || planted.On("B26"):
 		return err
 	}
-	if serr := n.log.w.Sync(); serr != nil {
-		return errors.Join(err, fmt.Errorf("%w: %w", core.ErrDisk, serr))
-	}
-	return fmt.Errorf("%w: %w", core.ErrFetch, err)
+	return core.FetchFailed(err, n.log.w.Sync)
 }
 
 // syncBytes is how much of a snapshot the WAL buffers before a sync.

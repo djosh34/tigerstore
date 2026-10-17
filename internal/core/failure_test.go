@@ -70,3 +70,19 @@ func TestLogSinkErrors(t *testing.T) {
 		t.Fatalf("a checkpoint an earlier install wrote: %v, want fs.ErrExist alone", err)
 	}
 }
+
+func TestFetchFailed(t *testing.T) {
+	disk := fmt.Errorf("%w: %w", ErrDisk, io.ErrShortWrite)
+	synced := 0
+	sync := func() error { synced++; return nil }
+	if err := FetchFailed(disk, sync); FailureOf(err) != Stop || synced != 0 {
+		t.Fatalf("a failed write of our disk: %v, %d syncs; want Stop and none", err, synced)
+	}
+	if err := FetchFailed(io.ErrUnexpectedEOF, sync); FailureOf(err) != Reload || synced != 1 {
+		t.Fatalf("a cut stream: %v, %d syncs; want Reload after one", err, synced)
+	}
+	err := FetchFailed(io.ErrUnexpectedEOF, func() error { return io.ErrClosedPipe })
+	if FailureOf(err) != Stop || !errors.Is(err, ErrDisk) || !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("a cut stream whose sync failed: %v, want Stop with both causes", err)
+	}
+}

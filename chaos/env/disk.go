@@ -150,18 +150,19 @@ func (d *Disk) mountLazyFS() error {
 		exited <- cmd.Wait()
 		_ = out.Close()
 	}()
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if ok, err := mounted(d.Data); ok || err != nil {
-			return err
+	var merr error
+	if !waitFor(10*time.Second, func() bool {
+		ok, err := mounted(d.Data)
+		merr = err
+		return ok || err != nil
+	}) {
+		b, err := os.ReadFile(out.Name())
+		if len(b) > 2000 {
+			b = b[len(b)-2000:]
 		}
-		if time.Now().After(deadline) {
-			b, err := os.ReadFile(out.Name())
-			if len(b) > 2000 {
-				b = b[len(b)-2000:]
-			}
-			return errors.Join(fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b))), err)
-		}
+		return errors.Join(fmt.Errorf("LazyFS did not mount %s within 10s; it wrote: %s", d.Data, strings.TrimSpace(string(b))), err)
 	}
+	return merr
 }
 
 // stopLazyFS unmounts LazyFS, lazily if it is gone already, and waits for

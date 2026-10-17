@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/djosh34/tigerstore/internal/mvcc"
 	"github.com/djosh34/tigerstore/internal/wal"
@@ -16,6 +17,21 @@ var ErrDisk = errors.New("core: the disk failed")
 // the snapshot back, so the driver starts a new core from its log, as a
 // restart does, and Raft sends another snapshot.
 var ErrFetch = errors.New("core: the snapshot fetch failed")
+
+// FetchFailed is the error of a snapshot install that failed with err, in
+// both drivers. A failed write or sync of the node's own disk (ErrDisk)
+// stays as it is. Otherwise sync writes out what the stream wrote, as a
+// crash after a sync could keep it, and the install reloads (ErrFetch),
+// unless that sync failed too.
+func FetchFailed(err error, sync func() error) error {
+	if errors.Is(err, ErrDisk) {
+		return err
+	}
+	if serr := sync(); serr != nil {
+		return errors.Join(err, fmt.Errorf("%w: %w", ErrDisk, serr))
+	}
+	return fmt.Errorf("%w: %w", ErrFetch, err)
+}
 
 // Failure is what a driver does once its node failed. The real node and
 // the simulator both act on FailureOf, so they treat every error alike.
