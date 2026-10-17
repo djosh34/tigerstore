@@ -1430,15 +1430,19 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 
 // syncGroups syncs the written groups in order and hands them back. One
 // sync covers every group written before it started, so it takes all the
-// groups queued at once. It reports each result before returning the
-// group to the writer. After a failed sync or report it syncs nothing more
+// groups queued at once, after reporting any written-only prefix. It
+// reports each result before returning the group to the writer. After a
+// failed sync or report it syncs nothing more
 // and hands every later group back with that error.
 func (n *Node) syncGroups(groups <-chan written, synced chan<- syncedGroup, report func(written, error) error) {
 	var failed error
 	for g := range groups {
 		batch := []written{g}
 	more:
-		for {
+		// A written-only head is already durable after the preceding
+		// groups. Report it before collecting a later append whose sync
+		// could block its responses again.
+		for g.f != nil {
 			select {
 			case g, ok := <-groups:
 				if !ok {
