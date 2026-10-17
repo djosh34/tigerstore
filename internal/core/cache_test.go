@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"testing"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -172,25 +171,23 @@ func TestCacheFillsOnReadMiss(t *testing.T) {
 	}
 }
 
-// TestCacheShrinksAsIndexGrows checks that the cache stays within what
-// the index and the entries in memory leave of MemoryBytes, and gives up
-// its values as new keys grow the index.
-func TestCacheShrinksAsIndexGrows(t *testing.T) {
+// TestCacheShrinksAsOtherMemoryGrows checks that the cache stays within
+// what the rest of the process leaves of MemoryBytes, as the driver
+// measures it, and gives up its values at once as that grows.
+func TestCacheShrinksAsOtherMemoryGrows(t *testing.T) {
 	const memory = 8 << 10
 	s, _ := coldSingle(t, func(cfg *Config) { cfg.MemoryBytes = memory })
-	limit := s.n.cache.limit
-	if limit <= 0 || len(s.n.cache.items) == 0 {
-		t.Fatalf("limit %d, %d values cached", limit, len(s.n.cache.items))
+	if s.n.cache.limit != memory || len(s.n.cache.items) == 0 {
+		t.Fatalf("limit %d, %d values cached", s.n.cache.limit, len(s.n.cache.items))
 	}
-	for i := range 100 {
-		s.ok(uint64(1000+i), &pb.PutRequest{Key: fmt.Appendf(nil, "new%03d", i), Value: make([]byte, 64)})
-		want := memory - s.n.kv.Bytes() - s.n.EntryBytes()
-		if c := s.n.cache; c.limit != want || c.bytes > max(want, 0) {
-			t.Fatalf("after key %d: limit %d, want %d, %d bytes cached", i, c.limit, want, c.bytes)
+	for other := int64(0); other <= memory; other += 1 << 10 {
+		s.n.SetOtherMemory(other)
+		if c := s.n.cache; c.limit != memory-other || c.bytes > memory-other {
+			t.Fatalf("with %d bytes besides the cache: limit %d, %d bytes cached", other, c.limit, c.bytes)
 		}
 	}
-	if s.n.cache.limit > 0 || len(s.n.cache.items) > 0 {
-		t.Fatalf("the index outgrew the memory, yet %d values are cached", len(s.n.cache.items))
+	if len(s.n.cache.items) > 0 {
+		t.Fatalf("the rest of the process takes all the memory, yet %d values are cached", len(s.n.cache.items))
 	}
 }
 

@@ -40,9 +40,8 @@ func testCall(c *conn, id uint32) *stream {
 // drain runs the writer's side: it takes all queued output.
 func drain(c *conn) {
 	c.mu.Lock()
-	frames := c.take(nil)
+	c.take(nil)
 	c.mu.Unlock()
-	releaseFrames(frames)
 }
 
 // TestCallCharges checks that every order of reply, deadline and reset

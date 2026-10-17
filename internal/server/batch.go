@@ -232,17 +232,6 @@ type completed struct {
 	next  *completed
 }
 
-// closedCompletions prevents a late node reply from retaining values on
-// a connection whose writer has already exited.
-var closedCompletions = &completed{}
-
-func releaseCompletions(cs []node.Completion) {
-	for i := range cs {
-		cs[i].Hold.Release()
-		cs[i] = node.Completion{}
-	}
-}
-
 // replyEstimate is the size counted for a reply that is an error or a
 // put in wire form.
 const replyEstimate = 64
@@ -275,11 +264,6 @@ func (c *conn) Complete(cs []node.Completion) {
 	c.waitingReplies.Add(n.bytes)
 	for {
 		n.next = c.completions.Load()
-		if n.next == closedCompletions {
-			c.waitingReplies.Add(-n.bytes)
-			releaseCompletions(cs)
-			return
-		}
 		if c.completions.CompareAndSwap(n.next, n) {
 			break
 		}
@@ -293,17 +277,7 @@ func (c *conn) Complete(cs []node.Completion) {
 func (c *conn) takeCompletions() ([][]node.Completion, int64) {
 	var out [][]node.Completion
 	var bytes int64
-	var head *completed
-	for {
-		head = c.completions.Load()
-		if head == closedCompletions {
-			return nil, 0
-		}
-		if c.completions.CompareAndSwap(head, nil) {
-			break
-		}
-	}
-	for n := head; n != nil; n = n.next {
+	for n := c.completions.Swap(nil); n != nil; n = n.next {
 		out = append(out, n.cs)
 		bytes += n.bytes
 	}
@@ -325,7 +299,6 @@ type finished struct {
 	err error
 	// granted is the ID of a lease the node granted, for its span.
 	granted int64
-	hold    *node.ReplyHold
 }
 
 // complete encodes the replies the node handed over and queues them on
@@ -341,7 +314,7 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	now := time.Now()
 	for _, cs := range batches {
 		for _, cp := range cs {
-			f := finished{st: cp.Tag.(*stream), err: cp.Err, hold: cp.Hold}
+			f := finished{st: cp.Tag.(*stream), err: cp.Err}
 			c.logSlow(f.st, now.Sub(f.st.admitted))
 			if g, ok := cp.Resp.(*pb.LeaseGrantResponse); ok {
 				f.granted = g.ID
@@ -374,16 +347,10 @@ func (c *conn) complete(batches [][]node.Completion, waiting int64) {
 	c.mu.Lock()
 	for _, f := range out {
 		c.releaseReqLocked(f.st)
-		if c.closed || f.st.reset || f.st.done.Swap(true) {
+		if f.st.reset || f.st.done.Swap(true) {
 			// Reset by the client or ended at its deadline: the reply is
 			// dropped.
-			f.hold.Release()
 			continue
-		}
-		if f.err != nil {
-			f.hold.Release()
-		} else {
-			f.st.replyHold = f.hold
 		}
 		c.chargeLocked(&f.st.replyHeld, len(f.msg))
 		if f.st.span != nil && f.granted != 0 {

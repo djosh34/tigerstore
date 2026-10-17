@@ -11,6 +11,8 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
@@ -87,16 +89,11 @@ func (s *Store) Range(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 
 // RangeKVs is Range without building protobuf messages: one slice of
 // values instead of a message per key, for drivers that encode the
-// response themselves.
-func (s *Store) RangeKVs(r *pb.RangeRequest) (RangeResult, error) {
-	return s.RangeKVsReserved(r, nil)
-}
-
-// RangeKVsReserved reserves memory before allocating the answer's values.
-// reserve may refuse the read; no fills then escape to the caller.
-func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) (RangeResult, error) {
+// response themselves. If limit is above 0, an answer whose keys and
+// values take more than limit bytes is refused before any value is read.
+func (s *Store) RangeKVs(r *pb.RangeRequest, limit int64) (RangeResult, error) {
 	w := s.reader()
-	res, err := w.rangeResult(r, true, reserve)
+	res, err := w.rangeResult(r, true, limit)
 	if err != nil {
 		return res, err
 	}
@@ -132,7 +129,7 @@ func (s *Store) RangeKVsReserved(r *pb.RangeRequest, reserve func(int64) error) 
 
 // rangeKeys answers r as etcd's message. Without total, as rangeResult.
 func (w *writer) rangeKeys(r *pb.RangeRequest, total bool) (*pb.RangeResponse, error) {
-	res, err := w.rangeResult(r, total, nil)
+	res, err := w.rangeResult(r, total, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +172,9 @@ func (s *Store) RangeChunk(r *pb.RangeRequest) (*pb.RangeResponse, error) {
 
 // rangeResult answers r without the values, unless it sorts by them, and
 // sets values if they are still to be read. Without total, the walk stops
-// at the pushed-down limit and Count holds only the keys it saw.
-func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64) error) (RangeResult, error) {
+// at the pushed-down limit and Count holds only the keys it saw. An
+// answer larger than limit, if above 0, is refused (tooLarge).
+func (w *writer) rangeResult(r *pb.RangeRequest, total bool, limit int64) (RangeResult, error) {
 	w.s.counts.Ranges++
 	cur := w.cur()
 	at := r.Revision
@@ -219,7 +217,7 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	if byValue {
 		// A VALUE sort reads the values of every candidate, also of keys
 		// the limit drops.
-		if err := reserveReply(reserve, kvs, true); err != nil {
+		if err := tooLarge(kvs, true, limit); err != nil {
 			return RangeResult{}, err
 		}
 		if err := w.s.readNow(kvs); err != nil {
@@ -235,7 +233,7 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	}
 	if !byValue {
 		// Only the page's values are read, after this returns.
-		if err := reserveReply(reserve, kvs, !r.KeysOnly); err != nil {
+		if err := tooLarge(kvs, !r.KeysOnly, limit); err != nil {
 			return RangeResult{}, err
 		}
 	}
@@ -253,23 +251,28 @@ func (w *writer) rangeResult(r *pb.RangeRequest, total bool, reserve func(int64)
 	return res, nil
 }
 
-// reserveReply asks reserve, if set, for the memory of an answer of kvs
-// before any of their values are allocated. It allows for the values,
-// wire encoding and compression, plus the KVs, fills and allocator
-// rounding. The KVs count by capacity: a page keeps its whole backing
-// array.
-func reserveReply(reserve func(int64) error, kvs []KV, values bool) error {
-	if reserve == nil {
+// ErrTooLarge refuses a Range answer larger than the node's whole memory
+// budget, which it could never hold. The client can ask for a smaller
+// page.
+var ErrTooLarge = status.Error(codes.ResourceExhausted, "tigerstore: Range answer exceeds the memory budget; use a smaller limit")
+
+// tooLarge returns ErrTooLarge if the keys of kvs, and their values if
+// values is set, take more than limit bytes, and limit is above 0.
+func tooLarge(kvs []KV, values bool, limit int64) error {
+	if limit <= 0 {
 		return nil
 	}
-	bytes := int64(1024) + 512*int64(cap(kvs))
+	var bytes int64
 	for _, kv := range kvs {
-		bytes += 4 * int64(len(kv.Key))
+		bytes += int64(len(kv.Key))
 		if values {
-			bytes += 4 * int64(kv.ref.Len)
+			bytes += int64(kv.ref.Len)
 		}
 	}
-	return reserve(bytes)
+	if bytes > limit {
+		return ErrTooLarge
+	}
+	return nil
 }
 
 // readNow reads the value of every KV at once, for a sort on them. If

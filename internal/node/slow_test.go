@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"testing"
 	"time"
 
@@ -173,5 +174,89 @@ func TestWatchBytesBound(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatalf("a stream behind by 20 KiB was not closed; %d responses queued", len(ws.C))
+	}
+}
+
+// TestMemoryPressureClosesSlowestWatch runs a node whose process uses
+// more than its whole memory budget, so the value cache cannot give
+// anything back. After a collection, the node must close the watch stream
+// that is furthest behind as too slow, and keep one that keeps up.
+func TestMemoryPressureClosesSlowestWatch(t *testing.T) {
+	cfg := core.DefaultConfig(1, []uint64{1})
+	cfg.MemoryBytes = 1
+	n, err := New(Config{Core: cfg, DataDir: t.TempDir(), Tick: 20 * time.Millisecond, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ran := make(chan error, 1)
+	go func() { ran <- n.Run(ctx, noPeers{}) }()
+	defer func() {
+		cancel()
+		if err := <-ran; err != nil {
+			t.Error(err)
+		}
+	}()
+	put := func(key string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := n.Do(ctx, &pb.PutRequest{Key: []byte(key), Value: []byte("v")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	watch := func(key string) *WatchStream {
+		t.Helper()
+		ws, err := n.OpenWatch(ctx, core.Caller{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ws.Send(ctx, &pb.WatchRequest{RequestUnion: &pb.WatchRequest_CreateRequest{CreateRequest: &pb.WatchCreateRequest{Key: []byte(key)}}}); err != nil {
+			t.Fatal(err)
+		}
+		return ws
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, err := n.Do(ctx, &pb.PutRequest{Key: []byte("a"), Value: []byte("v")})
+		cancel()
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the node never took a write")
+		}
+	}
+	slow, fast := watch("k"), watch("z")
+	// The fast client takes its created response; the slow one never
+	// reads.
+	select {
+	case r := <-fast.C:
+		fast.Taken(r)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no created response")
+	}
+	for range 3 {
+		put("k")
+	}
+	for {
+		runtime.GC()
+		select {
+		case <-slow.Done():
+			if !errors.Is(slow.Err(), ErrWatchTooSlow) {
+				t.Fatalf("the slow stream ended with %v", slow.Err())
+			}
+			select {
+			case <-fast.Done():
+				t.Fatalf("the stream that kept up was closed too: %v", fast.Err())
+			default:
+			}
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stream furthest behind was not closed")
+		}
 	}
 }

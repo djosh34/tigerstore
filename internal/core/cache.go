@@ -15,10 +15,11 @@ import (
 // overwritten or deleted, or when it is the least recently used and the
 // cache is past its limit.
 //
-// The limit is Config.MemoryBytes less the index and the entries in
-// memory, so the cache shrinks as the index grows. A value is named by
-// its Raft position, which no later write changes, so the cache never
-// hands out a stale value; dropping overwritten ones frees memory.
+// The limit is Config.MemoryBytes less what the rest of the process
+// uses, as the driver measures it, so the cache shrinks as anything else
+// grows. A value is named by its Raft position, which no later write
+// changes, so the cache never hands out a stale value; dropping
+// overwritten ones frees memory.
 type cache struct {
 	// bytes counts every value with cachedOverhead and every slot of
 	// items up to peak with slotOverhead.
@@ -157,8 +158,19 @@ func (n *Node) fillCache(index uint64) {
 	})
 }
 
-// fitCache sets the cache's limit to the memory that the index and the
-// entries in memory leave.
+// SetOtherMemory tells the core how much memory the process uses besides
+// the value cache, as the driver measured it. The cache may take what
+// that leaves of Config.MemoryBytes, and gives back the rest at once.
+func (n *Node) SetOtherMemory(bytes int64) {
+	n.otherMemory = bytes
+	n.fitCache()
+}
+
+// CacheBytes is what the value cache holds.
+func (n *Node) CacheBytes() int64 { return n.cache.bytes }
+
+// fitCache sets the cache's limit to the memory the rest of the process
+// leaves.
 func (n *Node) fitCache() {
-	n.cache.setLimit(n.cfg.MemoryBytes - n.kv.Bytes() - n.EntryBytes() - n.replyBytes)
+	n.cache.setLimit(n.cfg.MemoryBytes - n.otherMemory)
 }

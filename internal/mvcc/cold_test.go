@@ -126,7 +126,7 @@ func TestColdEventAndRangeKVs(t *testing.T) {
 	if string(ev.Kv.Value) != "2" || string(ev.PrevKv.Value) != "1" || ev.PrevKv.ModRevision != 2 {
 		t.Fatalf("event after the reads: %v", ev)
 	}
-	res, err := s.RangeKVs(&pb.RangeRequest{Key: []byte("a")})
+	res, err := s.RangeKVs(&pb.RangeRequest{Key: []byte("a")}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,12 +238,52 @@ func TestRangeKVsBytes(t *testing.T) {
 		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), SortTarget: pb.RangeRequest_VALUE}, 2 + 1<<20 + 2},
 		{&pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}, 2},
 	} {
-		res, err := s.RangeKVs(c.r)
+		res, err := s.RangeKVs(c.r, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if res.Bytes != c.want {
 			t.Errorf("%v: %d bytes, want %d", c.r, res.Bytes, c.want)
+		}
+	}
+}
+
+// TestRangeTooLarge checks the one size check: an answer whose keys and
+// values pass the limit is refused before any value is read, and the
+// values of keys that a page drops count only for a sort on values.
+func TestRangeTooLarge(t *testing.T) {
+	h := &coldHeap{}
+	s := New(h)
+	put(t, s, "a", strings.Repeat("v", 100))
+	put(t, s, "b", strings.Repeat("v", 100))
+	h.evict()
+	page := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), Limit: 1}
+	byValue := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), Limit: 1, SortTarget: pb.RangeRequest_VALUE, SortOrder: pb.RangeRequest_ASCEND}
+	whole := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c")}
+	keys := &pb.RangeRequest{Key: []byte("a"), RangeEnd: []byte("c"), KeysOnly: true}
+	for _, c := range []struct {
+		r     *pb.RangeRequest
+		limit int64
+		ok    bool
+	}{
+		{page, 101, true},
+		{page, 100, false},
+		{byValue, 201, false},
+		{byValue, 202, true},
+		{whole, 201, false},
+		{keys, 2, true},
+		{whole, 0, true},
+	} {
+		// A sort on values that fits still needs them from disk first.
+		_, err := s.RangeKVs(c.r, c.limit)
+		if _, cold := errors.AsType[*ColdError](err); c.ok && err != nil && !cold {
+			t.Errorf("%v under %d: %v", c.r, c.limit, err)
+		}
+		if !c.ok && !errors.Is(err, ErrTooLarge) {
+			t.Errorf("%v under %d: %v, want ErrTooLarge", c.r, c.limit, err)
+		}
+		if fills := s.TakeFills(); !c.ok && len(fills) > 0 {
+			t.Errorf("%v under %d: a refused answer left %d value reads", c.r, c.limit, len(fills))
 		}
 	}
 }

@@ -2,6 +2,7 @@ package node
 
 import (
 	"math"
+	"runtime"
 	"runtime/debug"
 	"testing"
 	"testing/fstest"
@@ -90,11 +91,34 @@ func TestGoMemory(t *testing.T) {
 	}
 }
 
-func TestCacheMemory(t *testing.T) {
-	if got := CacheMemory(1 << 30); got != 3<<28-BufferBytes {
-		t.Errorf("CacheMemory(1 GiB) = %d", got)
+func TestProcessMemory(t *testing.T) {
+	if got := ProcessMemory(560 << 20); got != 420<<20 {
+		t.Errorf("ProcessMemory(560 MiB) = %d, want 420 MiB", got)
 	}
-	if got := CacheMemory(64 << 20); got != 0 {
-		t.Errorf("CacheMemory(64 MiB) = %d, want 0", got)
+}
+
+// TestMemoryGauge checks that memory the heap holds counts once a
+// collection saw it, less what the cache held then.
+func TestMemoryGauge(t *testing.T) {
+	g := newMemoryGauge()
+	runtime.GC()
+	base, fresh := g.read(0)
+	if !fresh {
+		t.Fatal("the first read saw no collection")
+	}
+	held := make([]byte, 64<<20)
+	for i := range held {
+		held[i] = 1
+	}
+	// The cache holds half of it, at this read and the next.
+	g.read(32 << 20)
+	runtime.GC()
+	other, fresh := g.read(32 << 20)
+	runtime.KeepAlive(held)
+	if !fresh {
+		t.Fatal("the read after a collection saw none")
+	}
+	if d := other - base; d < 28<<20 || d > 40<<20 {
+		t.Errorf("64 MiB with 32 MiB of it in the cache added %d bytes, want about 32 MiB", d)
 	}
 }

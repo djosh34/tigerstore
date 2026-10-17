@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/djosh34/tigerstore/internal/node"
-
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/http2/hpack"
@@ -74,8 +72,6 @@ type stream struct {
 	// reqHeld is above 0 while the node has the request and has not
 	// answered.
 	reqHeld, replyHeld int
-	// replyHold counts the answer against the node, across connections.
-	replyHold *node.ReplyHold
 	// calls counts this call for /metrics; counted is set once its end is.
 	// began is when a timed call started, readonlyTxn marks a read-only
 	// Txn (metrics.go).
