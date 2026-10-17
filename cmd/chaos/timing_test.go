@@ -177,7 +177,7 @@ func TestCrashInInstall(t *testing.T) {
 	}
 	target := others(lead)[0]
 	r := &runner{c: c, start: time.Now(), t: &traffic{
-		cs:  cs, r: &recorder{origin: time.Now()},
+		cs: cs, r: &recorder{origin: time.Now()},
 		cfg: workloadConfig{keys: 6, requestTimeout: time.Second},
 	}}
 	rec := &record{Env: &envRecord{}}
