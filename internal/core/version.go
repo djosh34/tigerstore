@@ -20,7 +20,7 @@ import (
 
 // MaxVersion is the newest cluster version, and so entry format, this
 // build supports. It reads every format up to it.
-const MaxVersion = 3
+const MaxVersion = 4
 
 // featureVersion is the cluster version, and entry format, from which
 // entries may hold the writes of etcd's features that format 2 has no

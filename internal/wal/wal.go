@@ -193,6 +193,7 @@ type run struct {
 	first uint64
 	offs  []uint32
 	seeds []uint32
+	compressed []bool
 	// top is the highest index of an entry or value the run ever held.
 	top uint64
 }
@@ -208,7 +209,7 @@ func (s *run) cut(index uint64) {
 	if index > s.first {
 		k = index - s.first
 	}
-	s.offs, s.seeds = s.offs[:k], s.seeds[:k]
+	s.offs, s.seeds, s.compressed = s.offs[:k], s.seeds[:k], s.compressed[:k]
 }
 
 // valueRec is a value record: the file offset of its value and the place
@@ -534,7 +535,7 @@ func (w *WAL) apply(typ byte, p []byte, at uint32, rec *Recovered, first *uint64
 		if index == 0 || index > w.last+1 {
 			return fmt.Errorf("%w: entry %d follows entry %d", ErrCorrupt, index, w.last)
 		}
-		w.placeEntry(index, at, w.seed(w.crc))
+		w.placeEntry(index, at, w.seed(w.crc), raftpb.EntryType(p[16]) == raftpb.EntryNormal && compressed(p[entryHdrSize:]))
 	case recHardState:
 		if len(p) != 24 {
 			return fmt.Errorf("%w: hard state record of %d bytes", ErrCorrupt, len(p))
@@ -591,7 +592,7 @@ func (w *WAL) current() *run {
 // the current segment, whose crc starts from seed. It replaces every entry at
 // or after index. Non-empty runs are in index order, so the walk back
 // stops at the first that ends at or below index.
-func (w *WAL) placeEntry(index uint64, at, seed uint32) {
+func (w *WAL) placeEntry(index uint64, at, seed uint32, packed bool) {
 	for _, s := range slices.Backward(w.runs) {
 		if len(s.offs) == 0 {
 			continue
@@ -612,6 +613,7 @@ func (w *WAL) placeEntry(index uint64, at, seed uint32) {
 	}
 	cur.offs = append(cur.offs, at)
 	cur.seeds = append(cur.seeds, seed)
+	cur.compressed = append(cur.compressed, packed)
 	cur.top = max(cur.top, index)
 	w.last = index
 }
@@ -810,7 +812,7 @@ func (w *WAL) Append(hs *HardState, ents []*raftpb.Entry) {
 		h[16] = byte(e.GetType())
 		at, seed := uint32(w.size)+uint32(len(w.buf)), w.seed(w.crc)
 		w.record(recEntry, h[:], e.GetData())
-		w.placeEntry(e.GetIndex(), at, seed)
+		w.placeEntry(e.GetIndex(), at, seed, e.GetType() == raftpb.EntryNormal && compressed(e.GetData()))
 	}
 	if hs != nil && *hs != w.hs {
 		w.hardState(*hs)
@@ -968,19 +970,6 @@ func (w *WAL) reader(seq uint64) (File, error) {
 	return f, nil
 }
 
-// readAt reads len(p) bytes at offset off of segment seq.
-func (w *WAL) readAt(seq uint64, p []byte, off int64) error {
-	f, err := w.reader(seq)
-	if err != nil {
-		return err
-	}
-	n, err := f.ReadAt(p, off)
-	if n == len(p) {
-		return nil
-	}
-	return fmt.Errorf("wal: read %d of %d bytes at %d of segment %d: %w", n, len(p), off, seq, err)
-}
-
 // Has reports whether entry index is on disk.
 func (w *WAL) Has(index uint64) bool {
 	s, _ := w.locate(index)
@@ -993,27 +982,42 @@ func (w *WAL) Entry(index uint64) (*raftpb.Entry, error) {
 	if s == nil {
 		return nil, fmt.Errorf("%w: entry %d", ErrNotOnDisk, index)
 	}
-	at := int64(s.offs[i])
+	f, err := w.reader(s.seq)
+	if err != nil {
+		return nil, err
+	}
+	return readEntry(f, int64(s.offs[i]), index, s.seq, s.seeds[i])
+}
+
+func readEntry(f io.ReaderAt, at int64, index, seq uint64, seed uint32) (*raftpb.Entry, error) {
 	var hdr [recHdrSize]byte
-	if err := w.readAt(s.seq, hdr[:], at); err != nil {
+	if _, err := f.ReadAt(hdr[:], at); err != nil {
 		return nil, err
 	}
 	n := binary.LittleEndian.Uint32(hdr[:])
 	if n < entryHdrSize || n > MaxEntryBytes {
-		return nil, &RecordError{Entry: index, Segment: s.seq, Reason: fmt.Sprintf("has %d bytes", n)}
+		return nil, &RecordError{Entry: index, Segment: seq, Reason: fmt.Sprintf("has %d bytes", n)}
 	}
 	body := make([]byte, 1+n)
-	if err := w.readAt(s.seq, body, at+8); err != nil {
+	if _, err := f.ReadAt(body, at+8); err != nil {
 		return nil, err
 	}
-	if crc32.Update(s.seeds[i], castagnoli, body) != binary.LittleEndian.Uint32(hdr[4:]) || body[0] != recEntry ||
+	if crc32.Update(seed, castagnoli, body) != binary.LittleEndian.Uint32(hdr[4:]) || body[0] != recEntry ||
 		binary.LittleEndian.Uint64(body[9:]) != index {
-		return nil, &RecordError{Entry: index, Segment: s.seq, Reason: "does not verify"}
+		return nil, &RecordError{Entry: index, Segment: seq, Reason: "does not verify"}
 	}
 	p := body[1:]
 	term := binary.LittleEndian.Uint64(p)
 	etype := raftpb.EntryType(p[16])
-	return &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: p[entryHdrSize:]}, nil
+	data := p[entryHdrSize:]
+	if etype == raftpb.EntryNormal {
+		var err error
+		data, err = decodeEntry(data)
+		if err != nil {
+			return nil, &RecordError{Entry: index, Segment: seq, Reason: err.Error()}
+		}
+	}
+	return &raftpb.Entry{Term: new(term), Index: new(index), Type: &etype, Data: data}, nil
 }
 
 // MaxEntryBytes bounds the record of one entry that Entry reads.
@@ -1046,6 +1050,13 @@ func ReadValue(r io.ReaderAt, at int64, index uint64, off, n uint32) ([]byte, er
 // that reads it after letting go of the log must keep those from
 // running meanwhile.
 func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, error) {
+	if s, i := w.locate(index); s != nil && s.compressed[i] {
+		f, err := w.reader(s.seq)
+		if err != nil {
+			return nil, 0, err
+		}
+		return compressedReader{file: f, at: int64(s.offs[i]), index: index, seq: s.seq, seed: s.seeds[i]}, int64(off), nil
+	}
 	if seq, at, ok := w.ValuePlace(index, off, n); ok {
 		f, err := w.reader(seq)
 		return f, at, err
@@ -1061,6 +1072,9 @@ func (w *WAL) ValueReader(index uint64, off, n uint32) (io.ReaderAt, int64, erro
 // or from a value record, if a segment holds them.
 func (w *WAL) ValuePlace(index uint64, off, n uint32) (seq uint64, at int64, ok bool) {
 	if s, i := w.locate(index); s != nil {
+		if s.compressed[i] {
+			return 0, 0, false // no direct file offset for a decoded value
+		}
 		return s.seq, int64(s.offs[i]) + recHdrSize + entryHdrSize + int64(off), true
 	}
 	for _, v := range w.vals[index] {

@@ -1381,8 +1381,13 @@ func (n *Node) persist(ctx context.Context, t peer.Transport) {
 					return
 				}
 			}
+			entries, err := wal.CompressEntries(j.Entries)
+			if err != nil {
+				fail(err)
+				return
+			}
 			n.log.mu.Lock()
-			w.Append(j.HardState, j.Entries)
+			w.Append(j.HardState, entries)
 			if j.Root != nil {
 				w.AppendRoot(*j.Root)
 			}

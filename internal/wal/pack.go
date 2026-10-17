@@ -330,6 +330,9 @@ type FileID struct {
 // Where returns the file that Value reads the n bytes at offset off of the
 // data of entry index from, if any holds them.
 func (w *WAL) Where(index uint64, off, n uint32) (FileID, bool) {
+	if s, _ := w.locate(index); s != nil {
+		return FileID{N: s.seq}, true
+	}
 	if seq, _, ok := w.ValuePlace(index, off, n); ok {
 		return FileID{N: seq}, true
 	}
@@ -422,7 +425,7 @@ func (w *WAL) RemoveCleaned(upto uint64, drop []uint64) error {
 func (w *WAL) MapBytes() int64 {
 	n := int64(len(w.sizes)) * 32
 	for _, s := range w.runs {
-		n += 80 + int64(cap(s.offs)+cap(s.seeds))*4
+		n += 104 + int64(cap(s.offs)+cap(s.seeds))*4 + int64(cap(s.compressed))
 	}
 	for _, vs := range w.vals {
 		n += 48 + int64(cap(vs))*24

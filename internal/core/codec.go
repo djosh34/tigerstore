@@ -23,7 +23,9 @@ import (
 // number, then the batch; a format 1 batch never starts with 0, as it
 // holds at least one write. Format 2 adds only that header. Format 3
 // adds the kinds from kindAlarm on (featureVersion). Which format a node
-// writes is the cluster version (version.go).
+// writes is the cluster version (version.go). Format 4 permits the disk
+// writer to store a batch as zstd. The WAL returns the original raw entry
+// before apply, so value offsets and the in-memory window stay unchanged.
 
 const (
 	kindPut     = 1
