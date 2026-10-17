@@ -86,7 +86,7 @@ var plantedCases = map[string]plantedCase{
 	"B06c": {seeds: 32, cfg: DefaultConfig, want: badWatch},
 	"B06d": {seeds: 32, cfg: DefaultConfig, want: `watch \d+ got an event at revision \d+ after one at`},
 	"B07":  {seeds: 64, cfg: DefaultConfig, want: badWatch},
-	"B08":  {seeds: 32, cfg: DefaultConfig, want: badWatch},
+	"B08":  {seeds: 128, cfg: DefaultConfig, want: badWatch},
 	"B09a": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B09b": {seeds: 16, cfg: DefaultConfig, want: badState},
 	"B10":  {seeds: 64, cfg: DefaultConfig, want: badState + `|applied the same log to different states|` + badWatch},

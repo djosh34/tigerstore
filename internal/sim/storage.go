@@ -196,10 +196,19 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 			// its connection broke. Only a prefix the follower read counts
 			// as a fault that took effect: every connection to it that
 			// held unread bytes right after the write, the fetch's among
-			// them, was read to the end without breaking. A half-open
-			// link swallows the prefix and leaves none.
+			// them, was read to the end without breaking, and the link
+			// was not half-open, which swallows the prefix while older
+			// frames on it still arrive.
+			s.mu.Lock()
+			swallowed := false
+			for _, m := range s.nodes {
+				if m.id == id {
+					swallowed = s.links[n.idx][m.idx].halfOpenUntil > s.now()
+				}
+			}
+			s.mu.Unlock()
 			pipes := s.net.queued(s, n.idx, id)
-			read := len(pipes) > 0
+			read := len(pipes) > 0 && !swallowed
 			for len(pipes) > 0 {
 				s.mu.Lock()
 				pipes = slices.DeleteFunc(pipes, func(q *pipe) bool {

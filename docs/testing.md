@@ -16,7 +16,7 @@ Each planted bug switches on a deliberate defect behind the `planted` build tag 
 | B06c | Update and delete events lose their previous value | Same as B06a | 32 | planted; its CI job must catch it |
 | B06d | A progress notification goes out ahead of the events it covers | An event at or below a progress revision arrives after that progress | 32 | planted; its CI job must catch it |
 | B07 | A new watch starts one revision early | A watch gets an event older than one it already got | 64 | planted; its CI job must catch it |
-| B08 | Compaction drops the tombstone at the compaction revision | Same as B06a | 32 | planted; its CI job must catch it |
+| B08 | Compaction drops the tombstone at the compaction revision | Same as B06a | 128 | planted; its CI job must catch it |
 | B09a | Each changed key of a write gets its own revision | A read or the replayed log disagrees with the model | 16 | planted; its CI job must catch it |
 | B09b | A recreated key keeps its old version and create revision | Same as B09a | 16 | planted; its CI job must catch it |
 | B10 | Followers expire leases on their own clock | Nodes that applied the same log hold different states, a read disagrees with the model, or a watch sees a delete no replicated expiry made | 64 | planted; its CI job must catch it |

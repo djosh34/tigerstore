@@ -1109,6 +1109,16 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 		s.rot(n, c)
 	}
 	s.mu.Unlock()
+	// Once the run failed, the committer holds still until the run ends
+	// its process: a core that broke a rule can go on to break Raft's
+	// own, which panics (planted B20).
+	s.mu.Lock()
+	failed := s.err != nil
+	s.mu.Unlock()
+	if failed {
+		<-p.ctx.Done()
+		return
+	}
 	// A paused process holds still here, and so does a frozen one, which
 	// tells the checks that it does.
 	for {
