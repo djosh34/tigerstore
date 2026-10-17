@@ -1,0 +1,23 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: CERTS
+        containerPath: /etc/kubernetes/pki/external
+        readOnly: true
+  - role: worker
+  - role: worker
+kubeadmConfigPatches:
+  - |
+    apiVersion: kubeadm.k8s.io/v1beta4
+    kind: ClusterConfiguration
+    etcd:
+      external:
+        endpoints:
+          - https://172.30.0.1:20010
+          - https://172.30.0.1:20020
+          - https://172.30.0.1:20030
+        caFile: /etc/kubernetes/pki/external/ca.pem
+        certFile: /etc/kubernetes/pki/external/client.pem
+        keyFile: /etc/kubernetes/pki/external/client-key.pem

@@ -203,6 +203,29 @@ jobs:
         env:
           RACE: ${{ matrix.race }}
 
+  # Kubernetes must remove all 50,000 ConfigMaps when their namespace is
+  # deleted. Check the API and linearizable registry reads on every member.
+  configmaps:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the result parser without dirtying the checkout
+        run: python3 -B -m unittest discover -s k8stest -p 'test_*.py'
+      - uses: ./.github/actions/kind
+      - name: Create 50k ConfigMaps and delete their namespace
+        run: timeout --kill-after=30s 30m python3 k8stest/configmaps.py
+      - name: Collect logs
+        if: always()
+        run: bash k8stest/collect.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: configmaps-${{ github.sha }}
+          path: ${{ runner.temp }}/k8stest/results
+          if-no-files-found: error
+          retention-days: 30
+
   # Sequential differential tests: the same requests against a fresh etcd
   # v3.7.2 and a fresh 3-node tigerstore, compared with etcd's recorded
   # answers in difftest/testdata.
@@ -488,7 +511,7 @@ jobs:
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
+    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, configmaps, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

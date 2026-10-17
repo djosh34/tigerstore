@@ -1,0 +1,21 @@
+name: Kubernetes with external TLS storage
+description: Build this checkout and boot Kubernetes 1.37 with three store members.
+inputs:
+  store:
+    description: tigerstore or etcd
+    default: tigerstore
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+    - shell: bash
+      run: |
+        echo "K8S_ROOT=$RUNNER_TEMP/k8stest" >> "$GITHUB_ENV"
+        echo "KUBECONFIG=$RUNNER_TEMP/k8stest/kubeconfig" >> "$GITHUB_ENV"
+        echo "$RUNNER_TEMP/k8stest/bin" >> "$GITHUB_PATH"
+    - shell: bash
+      env:
+        STORE: ${{ inputs.store }}
+      run: timeout --kill-after=30s 12m bash k8stest/boot.sh
