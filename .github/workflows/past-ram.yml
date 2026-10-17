@@ -14,7 +14,8 @@ permissions:
   contents: read
 jobs:
   # The other storage, cleaner, cache and cold-read tests run under race in
-  # ci's test job; B29-B31 run in planted.yml.
+  # ci's test job; B29-B31 run in planted.yml. TestCleaningCycles runs there
+  # too, and again here with -v to log its cleaning bytes per Put.
   storage:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -29,6 +30,10 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -timeout=20m -v ./internal/sim -run '^TestPastRAMRecovery$' 2>&1 | tee storage.log
+      - name: Cleaning bytes per Put under churn
+        run: |
+          set -o pipefail
+          go test -race -count=1 -timeout=10m -v ./internal/node -run '^TestCleaningCycles$' 2>&1 | tee -a storage.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
