@@ -442,7 +442,8 @@ type Stats struct {
 	// Checkpoints counts checkpoint files completed, Snapshots snapshot
 	// streams served, ServeFailures fetches that the source could not
 	// serve, SnapshotFlips those damaged on the way, FetchCrashes sources
-	// that crashed during a stream, SlowFetches fetches served late,
+	// that crashed during a stream once the follower read a prefix of it,
+	// SlowFetches fetches served late,
 	// Reloads starts of a node from its log after a snapshot install or
 	// a failed fetch, StepCrashes crashes at a checkpoint, removal or
 	// install step, and Rots values damaged under a running node.
@@ -777,7 +778,7 @@ func (s *Sim) wakeNode(n *node) {
 func (s *Sim) hold(p *proc, until func() int64) {
 	for {
 		s.mu.Lock()
-		t, wake, done := until(), p.n.wake, p.done()
+		t, wake := until(), p.n.wake
 		s.mu.Unlock()
 		d := t - s.now()
 		if d <= 0 || p.dead() {
@@ -788,9 +789,6 @@ func (s *Sim) hold(p *proc, until func() int64) {
 		case <-timer.C:
 		case <-wake:
 		case <-p.ctx.Done():
-		case <-done:
-			timer.Stop()
-			return
 		}
 		timer.Stop()
 	}
@@ -831,9 +829,14 @@ func (s *Sim) nodeConfig(n *node, p *proc) tnode.Config {
 		// where any damage is detectable.
 		SegmentBytes: 8 << 10,
 		BeforeSync:   func() { s.beforeSync(p) },
-		BeforeRead:   func() { s.beforeRead(p) },
-		Turn:         func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
-		Persisted:    func(j core.PersistJob) { s.persisted(p, j) },
+		// A value read only yields, as a disk call does. The node holds
+		// its read lock there, which its close and a reload wait for,
+		// and synctest moves no time while a goroutine waits on a lock,
+		// so a read that waited for time could hang the run (seeds 256949
+		// and 222975). So a pause does not hold value reads either.
+		BeforeRead: s.yield,
+		Turn:       func(c *core.Node, eff core.Effects, err error) { s.turn(p, c, eff, err) },
+		Persisted:  func(j core.PersistJob) { s.persisted(p, j) },
 		// Several nodes share the process, so none can measure its
 		// memory; the value cache takes the whole budget.
 		Memory: func(int64) (int64, bool) { return 0, false },
@@ -1059,7 +1062,7 @@ func (s *Sim) turn(p *proc, c *core.Node, eff core.Effects, err error) {
 			s.stats.Reloads++
 			s.tracef("node %d: started again from its log", n.id)
 		}
-		p.core, n.pending = c, nil
+		p.core, n.pending, n.duringInstall = c, nil, nil
 	}
 	for _, a := range eff.Applied {
 		s.record(n, a)
@@ -1204,34 +1207,6 @@ func (s *Sim) beforeSync(p *proc) {
 		s.graySyncEnded()
 		s.mu.Unlock()
 	}
-}
-
-// beforeRead is the BeforeRead hook of p: a value read takes 50 us to 1
-// ms, after any pause. The node holds its read lock here, which its
-// close waits for, and synctest moves no time while a goroutine waits on
-// a lock: so the read also ends once the node is done.
-func (s *Sim) beforeRead(p *proc) {
-	s.hold(p, func() int64 { return p.n.pausedUntil })
-	s.mu.Lock()
-	lat := 50*Microsecond + s.rng.Int64N(950*Microsecond)
-	done := p.done()
-	s.mu.Unlock()
-	t := time.NewTimer(time.Duration(lat))
-	defer t.Stop()
-	select {
-	case <-t.C:
-	case <-p.ctx.Done():
-	case <-done:
-	}
-}
-
-// done is closed once p's node is done, and nil before it runs. The lock
-// is held.
-func (p *proc) done() <-chan struct{} {
-	if p.node == nil {
-		return nil
-	}
-	return p.node.Done()
 }
 
 // crashRandom crashes a node that is up and restarts it up to MaxDown

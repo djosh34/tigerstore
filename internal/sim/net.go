@@ -168,17 +168,19 @@ func (nw *network) resetBetween(i, j int) {
 	}
 }
 
-// unread reports whether a connection from node index from to the node
-// with Raft ID to holds bytes its reader has not taken yet.
-func (nw *network) unread(s *Sim, from int, to uint64) bool {
+// queued returns the pipes from node index from to the node with Raft ID
+// to that hold bytes their reader has not taken yet. Bytes written just
+// now are among them, as a link takes time.
+func (nw *network) queued(s *Sim, from int, to uint64) []*pipe {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var out []*pipe
 	for c := range nw.conns {
 		if c.from == from && s.nodes[c.to].id == to && len(c.out.chunks) > 0 {
-			return true
+			out = append(out, c.out)
 		}
 	}
-	return false
+	return out
 }
 
 // reset breaks both ends of c's connection. The lock is held.

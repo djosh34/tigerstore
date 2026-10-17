@@ -178,7 +178,6 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 			return nil
 		case len(data) == 0:
 		case crash:
-			s.stats.FetchCrashes++
 			// A prefix of at least a byte.
 			k := 1
 			if len(data) > 1 {
@@ -193,15 +192,29 @@ func (s *Sim) server(p *proc, tn *tnode.Node) func(id, first, last uint64, w io.
 		s.mu.Unlock()
 		_, err = w.Write(data)
 		if crash {
-			// The follower reads the prefix before the source crashes,
-			// so the fault tests a partly received snapshot, also behind
-			// a link stall or a pause.
-			for s.net.unread(s, n.idx, id) {
-				if !s.sleep(10 * Millisecond) {
+			// The source crashes once the follower read the prefix, or
+			// its connection broke. Only a prefix the follower read counts
+			// as a fault that took effect: every connection to it that
+			// held unread bytes right after the write, the fetch's among
+			// them, was read to the end without breaking. A half-open
+			// link swallows the prefix and leaves none.
+			pipes := s.net.queued(s, n.idx, id)
+			read := len(pipes) > 0
+			for len(pipes) > 0 {
+				s.mu.Lock()
+				pipes = slices.DeleteFunc(pipes, func(q *pipe) bool {
+					read = read && q.err == nil
+					return q.err != nil || len(q.chunks) == 0
+				})
+				s.mu.Unlock()
+				if len(pipes) > 0 && !s.sleep(10*Millisecond) {
 					return errDead
 				}
 			}
 			s.mu.Lock()
+			if read {
+				s.stats.FetchCrashes++
+			}
 			if n.proc == p {
 				s.stopNode(n)
 			}

@@ -1,10 +1,12 @@
 package peer
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -294,8 +296,23 @@ func TestFetchTellsRemoved(t *testing.T) {
 	addrs, lns := listeners(t, 1, 2)
 	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
 	a.t.SetPeers(map[uint64]string{}, []uint64{2})
+	// Only the fetch dials: the message sender's dial waits until the
+	// end, so its own removed reply cannot stand in for the fetch's.
 	var removed atomic.Int64
-	b := startWith(t, 2, lns[2], addrs, certs[2], ca.Pool, func(c *Config) { c.Removed = func() { removed.Add(1) } })
+	var fetching atomic.Bool
+	parked := make(chan struct{})
+	var once sync.Once
+	b := startWith(t, 2, lns[2], addrs, certs[2], ca.Pool, func(c *Config) {
+		c.Removed = func() { removed.Add(1) }
+		c.Dial = func(ctx context.Context, addr string) (net.Conn, error) {
+			if !fetching.Load() {
+				once.Do(func() { close(parked) })
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		}
+	})
 	defer func() {
 		if err := a.t.Close(); err != nil {
 			t.Error(err)
@@ -304,6 +321,8 @@ func TestFetchTellsRemoved(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	<-parked
+	fetching.Store(true)
 	if r, err := b.t.Fetch(t.Context(), 1, 1, 1); !errors.Is(err, errRemoved) {
 		if err == nil {
 			err = r.Close()
