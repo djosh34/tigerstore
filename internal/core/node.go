@@ -431,6 +431,11 @@ type Node struct {
 	leaseSeq     uint64
 	// announcedAt is the tick this node last proposed its version.
 	announcedAt int64
+	// confMessages wait for Raft to apply the preceding configuration
+	// change. confGate is its index, or MaxUint64 until it reaches apply.
+	confMessages []*raftpb.Message
+	confGate     uint64
+	confTerm     uint64
 	// voteTerm and vote are the newest term and vote sent to disk.
 	// unsyncedVotes counts appends that change them and are not yet
 	// durable; while any is, messages to peers wait in held. Raft with
@@ -531,6 +536,10 @@ type Node struct {
 	// noSpaceAt is the tick this node last proposed its NOSPACE alarm,
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
+
+	// removeAt is the shutdown tick after applying our own removal. Raft
+	// keeps running until then so the leader can send the commit update.
+	removeAt int64
 
 	out Effects
 	err error
@@ -759,7 +768,14 @@ func (n *Node) Tick() {
 		return
 	}
 	n.now++
+	if n.removeAt != 0 && n.now >= n.removeAt {
+		n.fail(ErrRemoved)
+		return
+	}
 	n.rn.Tick()
+	if n.removeAt != 0 {
+		return
+	}
 	n.expire()
 	// A lone voter has no one to lead in its place, so stopping would only
 	// turn a slow disk into an outage; it waits for its disk instead. It
@@ -810,6 +826,13 @@ func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
 	}
+	if n.removeAt != 0 && m.GetType() == raftpb.MsgProp {
+		return ErrRemoved
+	}
+	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
+		n.confMessages = append(n.confMessages, m)
+		return nil
+	}
 	if n.noSpace && m.GetType() == raftpb.MsgProp {
 		// Writes a follower forwards. Past its budget, the leader refuses
 		// those that take space, as it refuses its own clients': each
@@ -859,7 +882,7 @@ func (n *Node) SubmitAll(rs []Request) {
 
 // submit takes a request; p is its zero bookkeeping record.
 func (n *Node) submit(r Request, p *pending) {
-	if n.err != nil {
+	if n.err != nil || n.removeAt != 0 {
 		n.reply(r.ID, rpctypes.ErrGRPCStopped)
 		return
 	}
@@ -1405,6 +1428,13 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 			n.send(m)
 			continue
 		}
+		if n.removeAt != 0 && m.GetType() == raftpb.MsgAppResp {
+			// The followers can commit our removal before our own append
+			// finishes. Raft no longer tracks our replication progress,
+			// so this late self-ack has no recipient. Storage responses
+			// still have to reach Raft to mark the entries stable.
+			continue
+		}
 		if err := n.rn.Step(m); err != nil {
 			n.fail(fmt.Errorf("core: step local %s: %w", m.GetType(), err))
 			return
@@ -1434,6 +1464,7 @@ func (n *Node) Process() (Effects, error) {
 			n.propose()
 		}
 		n.proposeConfs()
+		n.proposeConfMessages()
 		// Apply messages left behind by a snapshot install.
 		n.runApply()
 		n.requestReads()
@@ -1455,7 +1486,7 @@ func (n *Node) Process() (Effects, error) {
 			n.fitCache()
 		}
 	}
-	if n.err != nil {
+	if n.err != nil || n.removeAt != 0 {
 		n.stop()
 	}
 	out := n.out
@@ -1477,6 +1508,7 @@ func (n *Node) stop() {
 		n.reply(w.req.ID, rpctypes.ErrGRPCStopped)
 	}
 	n.tokenWaits = nil
+	n.confMessages = nil
 	n.timeouts, n.proposals, n.reads, n.readBatches, n.early, n.confs, n.transfers = nil, nil, nil, nil, nil, nil, nil
 }
 
@@ -1822,7 +1854,7 @@ func (n *Node) applyWrite(e *raftpb.Entry, k int, origin, boot, id uint64, kind 
 		return nil
 	case kindVersion:
 		n.timed.op = "VersionAnnounce"
-		return n.applyVersion(origin, b)
+		return n.applyVersion(e.GetIndex(), origin, b)
 	}
 	op, err := newOp(kind)
 	if err != nil {
@@ -1927,11 +1959,12 @@ func (n *Node) applyOp(op proto.Message) (proto.Message, error) {
 	}
 	if _, ok := op.(*pb.CompactionRequest); ok {
 		n.keepHash(n.kv.CompactHash())
-		// Under a NOSPACE alarm, which every member has applied too, a
-		// compaction cuts a checkpoint, so that cleaning can drop the
-		// values it freed; the size rule may not cut one for long, as
-		// little new data comes in (#167).
-		n.cutNow = n.cutNow || n.state.noSpace
+		// A compaction under NOSPACE cuts a checkpoint so cleaning can
+		// drop the freed values (#167). Before alarms are supported,
+		// local disk pressure can already refuse writes, so compacting
+		// must also cut without an alarm (#213). Both conditions come
+		// from replicated state; every member cuts at the same entry.
+		n.cutNow = n.cutNow || n.state.noSpace || !n.capable()
 	}
 	switch op := op.(type) {
 	case *pb.LeaseGrantRequest:

@@ -45,7 +45,7 @@ func (s *Sim) retry(e *event, done bool) {
 
 // target is the node an event happens on, or nil.
 func (s *Sim) target(e *event) *node {
-	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd, evGrayCreate, evCheckpointSync, evSnapshotSent, evFetch, evValuesRead}, e.kind) {
+	if slices.Contains([]kind{evTick, evDeliver, evDiskDone, evSubmit, evWatchCreate, evStreamClose, evHalfOpenEnd, evGrayCreate, evCheckpointSync, evSnapshotSent, evFetch, evValuesRead, evRemoved, evMemberConnect}, e.kind) {
 		return s.nodes[e.node]
 	}
 	return nil
@@ -188,7 +188,7 @@ func (s *Sim) switchLinks() {
 		return
 	}
 	s.stats.LinkChanges++
-	s.setLinks(s.rng.Uint64N(1 << 6))
+	s.setLinks(s.rng.Uint64N(s.allLinks() + 1))
 	s.push(&event{at: s.exp(s.cfg.Faults.SwitchEvery), kind: evSwitch})
 }
 

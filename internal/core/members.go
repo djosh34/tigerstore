@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -192,7 +193,13 @@ func (st *State) checkConfChange(op byte, m *pb.Member, maxLearners int) error {
 }
 
 // applyMembers changes the members by a checked configuration change.
-func (st *State) applyMembers(op byte, m *pb.Member) {
+func (st *State) applyMembers(op byte, m *pb.Member, index uint64) {
+	// Legacy logs and checkpoints have no confirmation epoch. Keep zero
+	// until the first confirmation-aware announcement changes support.
+	if st.versionEpoch != 0 {
+		st.versionEpoch = index
+	}
+	clear(st.confirmed)
 	switch op {
 	case confAdd:
 		st.members[m.ID] = &pb.Member{ID: m.ID, Name: m.Name, PeerURLs: m.PeerURLs, ClientURLs: m.ClientURLs, IsLearner: m.IsLearner}
@@ -204,7 +211,9 @@ func (st *State) applyMembers(op byte, m *pb.Member) {
 		delete(st.runs, m.ID)
 		st.removed[m.ID] = true
 	case confUpdate:
-		st.members[m.ID].PeerURLs = m.PeerURLs
+		if !planted.On("B28") {
+			st.members[m.ID].PeerURLs = m.PeerURLs
+		}
 	}
 }
 
@@ -228,13 +237,18 @@ func (n *Node) applyConfChange(e *raftpb.Entry) error {
 		// As in etcd, Raft still hears of it, as a change of nobody.
 		cc.NodeId = new(raft.None)
 	} else {
-		n.state.applyMembers(op, m)
+		n.state.applyMembers(op, m, e.GetIndex())
 		n.membersChanged()
 	}
 	if n.rn != nil {
 		n.rn.ApplyConfChange(&cc)
 	}
 	n.storage.setConf(e.GetIndex(), n.state.confState())
+	// ApplyConfChange does not advance Raft's applied index. Wait for
+	// runApply to deliver MsgStorageApplyResp before proposing another.
+	if n.confGate == ^uint64(0) {
+		n.confGate = e.GetIndex()
+	}
 	if p != nil {
 		rep := Reply{ID: p.req.ID, Err: err}
 		if err == nil {
@@ -243,7 +257,15 @@ func (n *Node) applyConfChange(e *raftpb.Entry) error {
 		n.answer(p, rep, nil)
 	}
 	if err == nil && op == confRemove && m.ID == n.cfg.ID {
-		return ErrRemoved
+		if n.rn == nil {
+			return ErrRemoved
+		}
+		// Stopping here closes the transport before a removed leader's
+		// queued commit update reaches its followers. They can be left
+		// needing the old quorum, including us. As in etcd, keep Raft
+		// and the transport running for one second before shutting down.
+		// Recovery still refuses a disk that already commits our removal.
+		n.removeAt = n.now + n.cfg.ticksOf(1)
 	}
 	return nil
 }
@@ -346,9 +368,8 @@ func (n *Node) submitMember(p *pending) {
 	n.confs = append(n.confs, p)
 }
 
-// proposeConfs proposes the queued member changes once a leader is
-// known. Raft takes one at a time: while one is pending, it turns the
-// next into an empty entry, and its request times out, as in etcd.
+// proposeConfs encodes local requests into the same queue as member
+// changes forwarded by followers.
 func (n *Node) proposeConfs() {
 	if len(n.confs) == 0 || n.rn.BasicStatus().Lead == raft.None {
 		return
@@ -357,11 +378,70 @@ func (n *Node) proposeConfs() {
 		if p.done {
 			continue
 		}
-		if err := n.rn.ProposeConfChange(p.conf); err != nil {
-			n.finish(p, rpctypes.ErrGRPCNoLeader)
+		data, err := proto.Marshal(p.conf)
+		if err != nil {
+			n.finish(p, err)
+			continue
 		}
+		n.confMessages = append(n.confMessages, &raftpb.Message{
+			Type: raftpb.MsgProp.Enum(), From: new(n.cfg.ID),
+			Entries: []*raftpb.Entry{{Type: raftpb.EntryConfChange.Enum(), Data: data}},
+		})
 	}
 	n.confs = nil
+}
+
+// proposeConfMessages serializes configuration proposals at the leader.
+// A follower can answer a change before the leader applies it (#210).
+// Passing the next proposal straight to Raft then silently replaces it
+// with an empty entry. Keep it queued until Raft acknowledges apply.
+func (n *Node) proposeConfMessages() {
+	if len(n.confMessages) == 0 {
+		return
+	}
+	st := n.rn.BasicStatus()
+	if st.Lead == raft.None {
+		return
+	}
+	if st.GetTerm() != n.confTerm {
+		n.confTerm, n.confGate = st.GetTerm(), 0
+	}
+	if st.RaftState == raft.StateLeader {
+		if st.Applied < n.confGate || st.Applied == 0 {
+			return
+		}
+		term, err := n.storage.Term(st.Applied)
+		if err != nil {
+			n.fail(err)
+			return
+		}
+		// A new leader's pendingConfIndex covers its inherited log.
+		// Applying an entry of this term clears that initial barrier.
+		if term != st.GetTerm() {
+			return
+		}
+	}
+	// Raft replaces a change it ignores with an empty entry in place, so
+	// it gets a copy and the queue keeps the change.
+	m := proto.Clone(n.confMessages[0]).(*raftpb.Message)
+	if err := n.rn.Step(m); err != nil {
+		if !errors.Is(err, raft.ErrProposalDropped) {
+			n.fail(err)
+		}
+		return
+	}
+	if m.Entries[0].GetType() != raftpb.EntryConfChange {
+		// A proposal dropped for the uncommitted-size limit still moved
+		// Raft's pending index past its log, so this retry became an
+		// empty entry. Try again once more is applied.
+		n.confGate = st.Applied + 1
+		return
+	}
+	n.confMessages[0] = nil
+	n.confMessages = n.confMessages[1:]
+	if st.RaftState == raft.StateLeader {
+		n.confGate = ^uint64(0)
+	}
 }
 
 // newMemberID picks the ID of a new member: one above every ID the
