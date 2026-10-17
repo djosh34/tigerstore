@@ -160,7 +160,10 @@ func independent(res *Result) error {
 // run's history, which all of them must pass. A history that one passes
 // and another fails is a checker bug.
 func agree(h *history.History) error {
-	errs := []error{check.Linearizable(h, time.Minute)}
+	// Porcupine needed 85 s for the 2,891 operations of membership seed
+	// 30056371 on PR #238, a linearizable history that both witnesses
+	// passed in under a second.
+	errs := []error{check.Linearizable(h, 3*time.Minute)}
 	for _, mode := range []check.WitnessMode{check.FromLog, check.FromRevisions} {
 		errs = append(errs, check.Witnessed(h, mode, time.Minute))
 	}
