@@ -327,7 +327,7 @@ func (s *Sim) quorum() bool {
 // clients and no faults, until they have applied everything they hold.
 // Every entry and state they reach up to the index applied at the
 // checkpoint is checked against the run's record as they go.
-func (s *Sim) coldRestart(c *checkpoint, erased int) error {
+func (s *Sim) coldRestart(c *checkpoint, erased int) (err error) {
 	s.mu.Lock()
 	seed := s.rng.Uint64()
 	s.mu.Unlock()
@@ -336,6 +336,19 @@ func (s *Sim) coldRestart(c *checkpoint, erased int) error {
 		return err
 	}
 	defer r.shutdown()
+	defer func() {
+		if err != nil {
+			// The failure's report shows what the cold restart did.
+			r.mu.Lock()
+			lines := slices.Clone(r.trace)
+			r.mu.Unlock()
+			s.mu.Lock()
+			for _, l := range lines {
+				s.tracef("cold restart: %s", l)
+			}
+			s.mu.Unlock()
+		}
+	}()
 	r.healed = true
 	r.base, r.baseUpTo = s.log, c.applied
 	for i, d := range c.disks {

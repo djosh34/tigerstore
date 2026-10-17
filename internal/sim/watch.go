@@ -104,6 +104,7 @@ func (w *watchClient) run(wait, dropAt int64) {
 			continue
 		}
 		s.mu.Lock()
+		s.tracef("watch %d: stream on node %d from %d", w.id, n.id, next)
 		w.open, w.proc, w.watchID = true, p, -1
 		if dropAt < s.now() {
 			dropAt = s.exp(3 * Second)
@@ -151,6 +152,9 @@ func (w *watchClient) follow(ws *tnode.WatchStream, dropAt int64) (int64, int64)
 			}
 		case <-ws.Done():
 			t.Stop()
+			s.mu.Lock()
+			s.tracef("watch %d: stream ended: %v", w.id, ws.Err())
+			s.mu.Unlock()
 			return 0, dropAt
 		case <-p.ctx.Done():
 			t.Stop()

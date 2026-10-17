@@ -406,9 +406,10 @@ func TestGrayLeaderIsReplaced(t *testing.T) {
 		// The stopped leader restarts still gray, until healing, so a
 		// client call to it hangs for the client's 3 s timeout. How many
 		// calls reach the healthy pair then depends on how often the
-		// clients pick that node; 30 s leaves enough of them on every
-		// seed (seed 1 had 19 in 20 s).
-		cfg.Duration = 30 * Second
+		// clients pick that node, and the window starts at its last
+		// stop; 40 s leaves enough of them on every seed (seed 2 had 19
+		// in 30 s).
+		cfg.Duration = 40 * Second
 		res := run(t, cfg)
 		if len(res.CommitStops) == 0 || res.Stats.GrayLeaderStops == 0 {
 			t.Fatalf("seed %d: the gray leader never stopped", seed)
