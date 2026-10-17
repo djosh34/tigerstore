@@ -28,6 +28,8 @@ type config struct {
 	workload    string
 	mix         string
 	valueSize   int
+	corpus string
+	randomCorpus bool
 	keys        int
 	conns       int
 	streams     int
@@ -55,6 +57,8 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&cfg.workload, "workload", "put", "one of "+strings.Join(workloads, ", "))
 	fs.StringVar(&cfg.mix, "mix", defaultMix, "mixed percentages: get,list,update,create,delete; watches on every resource prefix")
 	fs.IntVar(&cfg.valueSize, "value-size", 1024, "value size in bytes")
+	fs.StringVar(&cfg.corpus, "value-corpus", "", "Put: etcdctl JSON dump of real Kubernetes values at mixed sizes")
+	fs.BoolVar(&cfg.randomCorpus, "random-corpus", false, "replace corpus values with random bytes at identical lengths")
 	fs.IntVar(&cfg.keys, "keys", 10000, "number of keys; delete deletes each once, so it needs at least as many as it sends")
 	fs.IntVar(&cfg.conns, "conns", 6, "HTTP/2 connections for requests")
 	fs.IntVar(&cfg.streams, "streams", 256, "requests in flight per connection at most")
@@ -88,6 +92,8 @@ func parseFlags(args []string) (config, error) {
 	switch {
 	case !slices.Contains(workloads, cfg.workload):
 		return cfg, fmt.Errorf("unknown workload %q", cfg.workload)
+	case cfg.corpus != "" && cfg.workload != "put" || cfg.randomCorpus && cfg.corpus == "":
+		return cfg, errors.New("a value corpus needs Put; random-corpus needs a corpus")
 	case cfg.conns < 1 || cfg.streams < 1 || cfg.keys < cfg.conns:
 		return cfg, errors.New("need -conns >= 1, -streams >= 1 and -keys >= -conns")
 	case cfg.valueSize < 8:
@@ -283,6 +289,12 @@ func run(cfg config) (*result, error) {
 		}
 	}
 
+	var corpus [][]byte
+	if cfg.corpus != "" {
+		var err error
+		corpus, err = loadCorpus(cfg.corpus)
+		if err != nil { return nil, err }
+	}
 	loads := make([]load, len(workers))
 	for i := range workers {
 		var m *msg
@@ -304,7 +316,12 @@ func run(cfg config) (*result, error) {
 		}
 		switch cfg.workload {
 		case "put":
-			loads[i] = &putLoad{base: b}
+			if len(corpus) > 0 {
+				loads[i], err = newCorpusPut(b, corpus, cfg.randomCorpus, cfg.seed+uint64(i))
+				if err != nil { return nil, err }
+			} else {
+				loads[i] = &putLoad{base: b}
+			}
 		case "watch":
 			loads[i] = &putLoad{base: b, stamp: true}
 		case "txn":
@@ -397,6 +414,11 @@ func run(cfg config) (*result, error) {
 	}
 
 	res := summarize(cfg, workers, watches, samples)
+	if len(corpus) > 0 {
+		res.ValueSize = 0
+		res.SizeSource = "Kubernetes 1.37 live etcd corpus; native mixed lengths"
+		if cfg.randomCorpus { res.SizeSource += "; independent random bytes per connection at identical lengths" }
+	}
 	if len(res.Errors) > 0 {
 		errs = append(errs, fmt.Errorf("%d kinds of request errors, see the result", len(res.Errors)))
 	}

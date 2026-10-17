@@ -76,6 +76,9 @@ jobs:
           done
           cat commits.txt
       - run: scripts/dev-certs.sh certs
+      - name: Collect real Kubernetes values for the compression pair
+        if: matrix.bench == 'compression'
+        run: bash bench/compression-corpus.sh "$RUNNER_TEMP/compression-corpus.json"
       - name: Turn disk write barriers on and record the runner
         env:
           LAYOUT: 3 0 1 2
@@ -131,6 +134,15 @@ jobs:
           fi
           DISK=$(basename "$(findmnt -T "$RUNNER_TEMP" -n -o SOURCE)")
           export DISK
+          if [ "$BENCH" = compression ]; then
+            export VALUE_CORPUS="$RUNNER_TEMP/compression-corpus.json"
+            export BENCH_GOMEMLIMIT=3GiB
+            for values in real random; do
+              DATA="$RUNNER_TEMP/bench-data" bench/run.sh "put-k8s$values" results
+            done
+            rm "$VALUE_CORPUS"
+            exit 0
+          fi
           DATA="$RUNNER_TEMP/bench-data" bench/run.sh "$BENCH" results
           if [ -n "$LAYOUTS" ]; then
             taskset -c 3 bin/diskbench -dir "$RUNNER_TEMP" | tee "results/$BENCH/diskbench.jsonl"
@@ -150,6 +162,8 @@ jobs:
               echo "test | store | requests/s per repetition | p99 ms per repetition"
               cat results/etcd-tool/summary.txt
               echo '```'
+            elif [ "$BENCH" = compression ]; then
+              python3 -B bench/compression-report.py results | tee results/compression-report.md
             else
               bin/benchreport results
             fi

@@ -62,7 +62,14 @@ export CERTS=$certs ETCDCTL=$bins/etcdctl
 here=$(dirname "$0")
 
 workload=${bench%-*}
+corpus_flags=()
 case ${bench##*-} in
+k8sreal|k8srandom)
+	if [ "$workload" != put ]; then echo "corpus needs put" >&2; exit 2; fi
+	size=1024 # actual lengths come from the Kubernetes corpus
+	corpus_flags=(-value-corpus "${VALUE_CORPUS:?VALUE_CORPUS must name the private etcdctl dump}")
+	if [ "${bench##*-}" = k8srandom ]; then corpus_flags+=(-random-corpus); fi
+	;;
 1k) size=1024 ;;
 10k) size=10240 ;;
 k8s)
@@ -152,13 +159,14 @@ once() {
 		-label "$target" \
 		-workload "$workload" \
 		-value-size "$size" \
+		"${corpus_flags[@]}" \
 		-watchers "$watchers" \
 		-warmup "$warmup" \
 		-duration "$duration" \
 		-seed "$rep" \
 		${DISK:+-disk "$DISK"} \
 		-out "$out/$bench/$target-$mode-$rep.json" \
-		"$@" || status=$?
+		"$@" 2> >(tee "$out/$bench/$target-$mode-$rep.generator.log" >&2) || status=$?
 	if [ "$status" -eq 0 ]; then
 		# The generator drove the leader on its CPUs only if the leader
 		# did not change during the run.
