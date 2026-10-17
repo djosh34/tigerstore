@@ -89,60 +89,13 @@ func run(c config) (err error) {
 			w.rows = append(w.rows, i)
 		}
 	}
-	start := time.Now()
-	for c.mode == "max" || w.live < c.bytes {
-		var ops []clientv3.Op
-		var added int64
-		for i := w.objects; i < w.objects+64; i++ {
-			v := w.value(i)
-			ops = append(ops, clientv3.OpPut(w.key(i), string(v)))
-			added += int64(len(v))
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		_, putErr := cl.Txn(ctx).Then(ops...).Commit()
-		cancel()
-		if putErr != nil {
-			m := measurement{Phase: "preload-failed", Objects: w.objects, LiveBytes: w.live, Seconds: time.Since(start).Seconds(), Failure: putErr.Error()}
-			return errors.Join(putErr, w.report(m))
-		}
-		w.objects += len(ops)
-		w.live += added
-		last, err := json.Marshal(measurement{Phase: "preload", Objects: w.objects, LiveBytes: w.live, Seconds: time.Since(start).Seconds()})
-		if err != nil {
-			return err
-		}
-		path := filepath.Join(c.out, "last-acknowledged.json")
-		if err := os.WriteFile(path+".tmp", last, 0o644); err != nil {
-			return err
-		}
-		if err := os.Rename(path+".tmp", path); err != nil {
-			return err
-		}
-		if w.objects%8192 == 0 {
-			if err := w.report(measurement{Phase: "preload", Objects: w.objects, LiveBytes: w.live, Seconds: time.Since(start).Seconds()}); err != nil {
-				return err
-			}
-		}
-	}
-	if err := w.report(measurement{Phase: "preloaded", Objects: w.objects, LiveBytes: w.live, Seconds: time.Since(start).Seconds()}); err != nil {
+	if err := w.preload(); err != nil {
 		return err
 	}
 	// A linearizable count through each member waits for its apply path.
 	// All three must have the complete preload before the kill timer starts.
-	for _, endpoint := range cl.Endpoints() {
-		one, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}, DialTimeout: 10 * time.Second})
-		if err != nil {
-			return err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		r, readErr := one.Get(ctx, "/registry/", clientv3.WithPrefix(), clientv3.WithCountOnly())
-		cancel()
-		if err := errors.Join(readErr, one.Close()); err != nil {
-			return err
-		}
-		if r.Count != int64(w.objects) {
-			return fmt.Errorf("preload on %s: %d objects, want %d", endpoint, r.Count, w.objects)
-		}
+	if err := w.eachMember(func(one *clientv3.Client) error { return w.count(one) }); err != nil {
+		return fmt.Errorf("preload: %w", err)
 	}
 	var recorded *recordedLoad
 	if c.mode == "proof" {
@@ -159,33 +112,7 @@ func run(c config) (err error) {
 	if err := waitMarker(filepath.Join(c.out, "mixed-started")); err != nil {
 		return err
 	}
-	start = time.Now()
-	if recorded != nil {
-		first := recorded.call(recorded.clients[0], 50, &pb.PutRequest{Key: []byte(proofPrefix + "start"), Value: []byte("recording")})
-		if first.Err != nil {
-			return fmt.Errorf("start marker: %v", first.Err)
-		}
-		recorded.start()
-	}
-	for time.Since(start) < c.duration {
-		at := time.Now()
-		if err := w.mixed(); err != nil {
-			return errors.Join(err, w.report(measurement{Phase: "mixed-failed", Objects: w.objects, LiveBytes: w.live, Failure: err.Error()}))
-		}
-		w.latency = append(w.latency, time.Since(at).Microseconds())
-	}
-	if recorded != nil {
-		recorded.stopTraffic()
-	}
-	seconds := time.Since(start).Seconds()
-	if len(w.latency) == 0 {
-		return errors.New("mixed interval completed no bulk requests")
-	}
-	slices.Sort(w.latency)
-	if err := w.report(measurement{
-		Phase: "mixed", Objects: w.objects, LiveBytes: w.live, Calls: len(w.latency), Seconds: seconds,
-		OpsPerSecond: float64(len(w.latency)) / seconds, P50Us: w.latency[len(w.latency)/2], P99Us: w.latency[(len(w.latency)-1)*99/100],
-	}); err != nil {
+	if err := w.mixedLoad(recorded); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(c.out, "mixed-done"), []byte("done\n"), 0o644); err != nil {
@@ -201,18 +128,119 @@ func run(c config) (err error) {
 	}
 	// A paginated scan through each member checks exact bytes against our
 	// generated history, not against another replica or a server hash.
-	for _, endpoint := range cl.Endpoints() {
+	if err := w.eachMember(w.verify); err != nil {
+		return errors.Join(err, w.report(measurement{Phase: "verify-failed", Failure: err.Error()}))
+	}
+	return w.report(measurement{Phase: "verified", Objects: w.objects, LiveBytes: w.live})
+}
+
+// preload writes objects 64 at a time until they hold the live bytes the
+// run asks for, or, in max mode, until a write fails.
+func (w *workload) preload() error {
+	start := time.Now()
+	progress := func(phase string) measurement {
+		return measurement{Phase: phase, Objects: w.objects, LiveBytes: w.live, Seconds: time.Since(start).Seconds()}
+	}
+	for w.cfg.mode == "max" || w.live < w.cfg.bytes {
+		var ops []clientv3.Op
+		var added int64
+		for i := w.objects; i < w.objects+64; i++ {
+			v := w.value(i)
+			ops = append(ops, clientv3.OpPut(w.key(i), string(v)))
+			added += int64(len(v))
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, err := w.cl.Txn(ctx).Then(ops...).Commit()
+		cancel()
+		if err != nil {
+			m := progress("preload-failed")
+			m.Failure = err.Error()
+			return errors.Join(err, w.report(m))
+		}
+		w.objects += len(ops)
+		w.live += added
+		if err := writeAtomic(filepath.Join(w.cfg.out, "last-acknowledged.json"), progress("preload")); err != nil {
+			return err
+		}
+		if w.objects%8192 == 0 {
+			if err := w.report(progress("preload")); err != nil {
+				return err
+			}
+		}
+	}
+	return w.report(progress("preloaded"))
+}
+
+// writeAtomic writes v as JSON to path through a temporary file.
+func writeAtomic(path string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path+".tmp", b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(path+".tmp", path)
+}
+
+// eachMember runs f with a client of each member alone.
+func (w *workload) eachMember(f func(*clientv3.Client) error) error {
+	for _, endpoint := range w.cl.Endpoints() {
 		one, err := clientv3.New(clientv3.Config{Endpoints: []string{endpoint}, DialTimeout: 10 * time.Second, MaxCallRecvMsgSize: 8 << 20})
 		if err != nil {
 			return err
 		}
-		err = w.verify(one)
-		err = errors.Join(err, one.Close())
-		if err != nil {
-			return errors.Join(fmt.Errorf("verify %s: %w", endpoint, err), w.report(measurement{Phase: "verify-failed", Failure: err.Error()}))
+		if err := errors.Join(f(one), one.Close()); err != nil {
+			return fmt.Errorf("%s: %w", endpoint, err)
 		}
 	}
-	return w.report(measurement{Phase: "verified", Objects: w.objects, LiveBytes: w.live})
+	return nil
+}
+
+// count checks that cl's member holds every preloaded object.
+func (w *workload) count(cl *clientv3.Client) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	r, err := cl.Get(ctx, "/registry/", clientv3.WithPrefix(), clientv3.WithCountOnly())
+	if err != nil {
+		return err
+	}
+	if r.Count != int64(w.objects) {
+		return fmt.Errorf("%d objects, want %d", r.Count, w.objects)
+	}
+	return nil
+}
+
+// mixedLoad reads for the run's duration, with the recorded load, if
+// any, beside it, and reports the reads' rate and latency.
+func (w *workload) mixedLoad(recorded *recordedLoad) error {
+	start := time.Now()
+	if recorded != nil {
+		first := recorded.call(recorded.clients[0], 50, &pb.PutRequest{Key: []byte(proofPrefix + "start"), Value: []byte("recording")})
+		if first.Err != nil {
+			return fmt.Errorf("start marker: %v", first.Err)
+		}
+		recorded.start()
+	}
+	for time.Since(start) < w.cfg.duration {
+		at := time.Now()
+		if err := w.mixed(); err != nil {
+			return errors.Join(err, w.report(measurement{Phase: "mixed-failed", Objects: w.objects, LiveBytes: w.live, Failure: err.Error()}))
+		}
+		w.latency = append(w.latency, time.Since(at).Microseconds())
+	}
+	if recorded != nil {
+		recorded.stopTraffic()
+	}
+	seconds := time.Since(start).Seconds()
+	if len(w.latency) == 0 {
+		return errors.New("mixed interval completed no bulk requests")
+	}
+	slices.Sort(w.latency)
+	return w.report(measurement{
+		Phase: "mixed", Objects: w.objects, LiveBytes: w.live, Calls: len(w.latency), Seconds: seconds,
+		OpsPerSecond: float64(len(w.latency)) / seconds, P50Us: w.latency[len(w.latency)/2], P99Us: w.latency[(len(w.latency)-1)*99/100],
+	})
 }
 
 // The controller samples before load starts and after it ends. Verification
