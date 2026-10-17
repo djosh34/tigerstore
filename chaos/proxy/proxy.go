@@ -137,9 +137,12 @@ type Stats struct {
 	// Conns counts accepted connections; Open is how many are open.
 	Conns uint64 `json:"conns"`
 	Open  int    `json:"open"`
-	// Bytes counts bytes read in each direction.
+	// Bytes counts bytes read in each direction, and Sent those written
+	// on, after any delay or rate limit.
 	ForwardBytes  uint64 `json:"forward_bytes"`
 	BackwardBytes uint64 `json:"backward_bytes"`
+	ForwardSent   uint64 `json:"forward_sent"`
+	BackwardSent  uint64 `json:"backward_sent"`
 }
 
 // Event is one fault action, kept for evidence.
@@ -172,6 +175,8 @@ type Proxy struct {
 	cur      atomic.Pointer[state]
 	hits     atomic.Uint64
 	fwd, bwd atomic.Uint64
+	// sent counts the bytes written on, by direction (Forward, Backward).
+	sent [2]atomic.Uint64
 
 	mu      sync.Mutex
 	pairs   map[*pair]bool
@@ -255,6 +260,7 @@ func (p *Proxy) Stats() Stats {
 	return Stats{
 		Generation: s.gen, Fault: s.fault, Hits: p.hits.Load(), Conns: p.conns, Open: len(p.pairs),
 		ForwardBytes: p.fwd.Load(), BackwardBytes: p.bwd.Load(),
+		ForwardSent: p.sent[0].Load(), BackwardSent: p.sent[1].Load(),
 	}
 }
 
@@ -475,7 +481,9 @@ func (p *Proxy) write(q *pair, d Dir, dst *net.TCPConn, ch chan chunk) {
 				return
 			}
 		}
-		if _, err := dst.Write(c.data); err != nil {
+		n, err := dst.Write(c.data)
+		p.sent[d>>1].Add(uint64(n))
+		if err != nil {
 			q.close(false)
 			return
 		}

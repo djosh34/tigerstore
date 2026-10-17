@@ -114,6 +114,19 @@ func TestWitnessedGood(t *testing.T) {
 			h.Ops[compact].Call, h.Ops[compact].Return = h.Ops[gone].Call-1, h.Ops[read].Return+1
 			return h
 		}},
+		{"ambiguous revoke of a lease ID granted again", func(t *testing.T) *history.History {
+			// The second grant's put shows the ID in use after the
+			// revoke's revision, which says nothing about the first.
+			b := newBuilder(t, "a", "b")
+			b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 60}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "a", Value: "1", Lease: 42}})
+			revoke := b.do(1, history.Request{LeaseRevoke: &history.LeaseRevokeRequest{ID: 42}})
+			b.do(0, history.Request{LeaseGrant: &history.LeaseGrantRequest{ID: 42, TTL: 60}})
+			b.do(0, history.Request{Put: &history.PutRequest{Key: "b", Value: "2", Lease: 42}})
+			h := b.done()
+			h.Ops[revoke].Resp, h.Ops[revoke].Err = nil, errUnavailable
+			return h
+		}},
 		{"historical reads, inside a txn too", func(*testing.T) *history.History { return historicalTxn() }},
 	}
 	for _, c := range cases {

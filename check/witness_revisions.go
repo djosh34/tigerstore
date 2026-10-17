@@ -28,7 +28,7 @@ import (
 func (w *witness) fromRevisions() error {
 	r := &revisionOrder{
 		w: w, writers: map[int64]int{}, revokes: map[int64][]int{}, others: map[int64][]int{}, seen: map[int64][]int{},
-		lb: map[int]int64{}, alive: map[int64]int64{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
+		lb: map[int]int64{}, alive: map[int64]int64{}, grants: map[int64]int{}, resolved: map[int64]int{}, reserved: map[int]int64{}, lives: map[string]map[life]int64{}, created: map[int64][]string{}, written: map[int64][]string{}, deleted: map[int64][]string{}, covered: map[string][]span{}, used: map[int]bool{}, ready: map[int]bool{},
 	}
 	if err := r.index(); err != nil {
 		return err
@@ -54,8 +54,10 @@ type revisionOrder struct {
 	lb        map[int]int64
 	// alive is, per lease, the highest revision at which an answer shows
 	// it in use: an acked put with it wrote that revision, or a key a
-	// client saw still had it there. Its revoke writes a later revision.
-	alive map[int64]int64
+	// client saw still had it there. Its revoke writes a later revision,
+	// unless the ID was granted more than once (grants).
+	alive  map[int64]int64
+	grants map[int64]int
 	// returns and highest are the return times of the acked ops, in
 	// order, and the highest header revision of those up to each; calls
 	// and lowest their call times, in order, and the lowest header
@@ -154,8 +156,16 @@ func (r *revisionOrder) index() error {
 	}
 	r.lowerBounds()
 	for i := range h.Ops {
-		if op := &h.Ops[i]; op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
+		op := &h.Ops[i]
+		if op.Resp != nil && op.Req.Put != nil && op.Req.Put.Lease != 0 {
 			r.alive[op.Req.Put.Lease] = max(r.alive[op.Req.Put.Lease], op.Resp.Revision)
+		}
+		if g := op.Req.LeaseGrant; g != nil {
+			id := g.ID
+			if op.Resp != nil && op.Resp.LeaseGrant != nil {
+				id = op.Resp.LeaseGrant.ID
+			}
+			r.grants[id]++
 		}
 	}
 	// What clients saw: a key unchanged over a span, and the writer of a
@@ -880,7 +890,7 @@ func (r *revisionOrder) candidates(rev int64) []int {
 		if at, ok := r.reserved[i]; ok && at != rev {
 			continue
 		}
-		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.alive[l.ID] >= rev {
+		if l := h.Ops[i].Req.LeaseRevoke; l != nil && r.grants[l.ID] <= 1 && r.alive[l.ID] >= rev {
 			// An answer shows the lease in use at rev or later (#237).
 			continue
 		}

@@ -684,12 +684,13 @@ func (r *runner) crashInInstall(ctx context.Context, lead, target int, rec *reco
 		}
 		return errors.Join(errs...)
 	}
-	// received is how much came back on the slowed links since then.
+	// received is how much the slowed links delivered to the follower
+	// since then.
 	var base uint64
 	received := func() uint64 {
 		var n uint64
 		for _, l := range held {
-			n += l.Proxy.Stats().BackwardBytes
+			n += l.Proxy.Stats().BackwardSent
 		}
 		return n - base
 	}

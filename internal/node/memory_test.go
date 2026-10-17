@@ -122,3 +122,24 @@ func TestMemoryGauge(t *testing.T) {
 		t.Errorf("64 MiB with 32 MiB of it in the cache added %d bytes, want about 32 MiB", d)
 	}
 }
+
+// TestMemoryGaugeAfterEviction drops a 32 MiB cache between two reads, as
+// the core does when the rest grows. The bytes it let go of must not
+// count as room for the cache.
+func TestMemoryGaugeAfterEviction(t *testing.T) {
+	g := newMemoryGauge()
+	cache := make([]byte, 32<<20)
+	for i := range cache {
+		cache[i] = 1
+	}
+	g.read(32 << 20)
+	runtime.GC()
+	before, _ := g.read(32 << 20)
+	g.shrunk(0)
+	runtime.KeepAlive(cache)
+	runtime.GC()
+	other, fresh := g.read(0)
+	if !fresh || other < 0 || other < before-8<<20 {
+		t.Fatalf("after the cache let go of 32 MiB: %d bytes besides it, %d before (fresh %v)", other, before, fresh)
+	}
+}

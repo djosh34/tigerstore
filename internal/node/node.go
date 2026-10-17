@@ -1115,6 +1115,7 @@ func (n *Node) measureMemory(streams map[uint64]*WatchStream) {
 	}
 	other, fresh := n.memory.read(n.core.CacheBytes())
 	n.core.SetOtherMemory(other)
+	n.memory.shrunk(n.core.CacheBytes())
 	if !fresh || other < limit {
 		return
 	}
