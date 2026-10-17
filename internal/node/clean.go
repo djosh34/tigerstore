@@ -14,6 +14,7 @@ import (
 
 	"github.com/djosh34/tigerstore/internal/core"
 	"github.com/djosh34/tigerstore/internal/mvcc"
+	"github.com/djosh34/tigerstore/internal/planted"
 	"github.com/djosh34/tigerstore/internal/wal"
 )
 
@@ -297,6 +298,28 @@ func (c *cleaner) pass(ctx context.Context, short bool) (did bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	c.n.cleaningStage("pack-synced")
+	if planted.On("B29") {
+		// Remove the old segments now, before a root names the pack, and
+		// wait for readers rather than skip; sleeping between tries lets
+		// synctest's clock move. The packs it replaces are still named, so
+		// they stay until the normal removal.
+		l := c.n.log
+		for {
+			l.mu.Lock()
+			if l.reading.TryLock() {
+				break
+			}
+			l.mu.Unlock()
+			time.Sleep(time.Millisecond)
+		}
+		err := l.w.RemoveCleaned(rm.upto, nil)
+		l.reading.Unlock()
+		l.mu.Unlock()
+		if err != nil {
+			return false, err
+		}
+	}
 	pr := packRoot{add: pack, drop: rm.drop, synced: make(chan struct{})}
 	select {
 	case c.n.cleanQ <- pr:
@@ -357,6 +380,7 @@ func choose(files []wal.CleanFile, live map[wal.FileID]int64, short bool) (remov
 func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool) (*wal.Pack, error) {
 	l := c.n.log
 	var pw *wal.PackWriter
+	skipped := false
 	err := c.walk(f, ckpt, func(id wal.FileID, r mvcc.Ref) error {
 		if !victims[id] {
 			return nil
@@ -380,6 +404,10 @@ func (c *cleaner) copyLive(f io.Reader, ckpt uint64, victims map[wal.FileID]bool
 			if err != nil {
 				return err
 			}
+		}
+		if planted.On("B30") && !skipped {
+			skipped = true
+			return nil
 		}
 		return pw.Add(r.Index, r.Off, b)
 	})
@@ -466,7 +494,11 @@ func (c *cleaner) remove() error {
 	if err != nil {
 		return err
 	}
-	return l.unmap(rm.upto)
+	if err := l.unmap(rm.upto); err != nil {
+		return err
+	}
+	c.n.cleaningStage("removed")
+	return nil
 }
 
 // sleep waits for d and reports whether ctx is still live.
@@ -487,15 +519,23 @@ func (n *Node) installPacks(pr packRoot) error {
 	w := n.log.w
 	n.log.mu.Lock()
 	w.InstallPacks(pr.add, pr.drop)
+	n.cleaningStage("root-buffered")
 	n.log.mu.Unlock()
 	err := w.Sync()
 	n.log.mu.Lock()
 	err = errors.Join(err, n.log.synced())
 	n.log.mu.Unlock()
 	if err == nil {
+		n.cleaningStage("root-synced")
 		close(pr.synced)
 	}
 	return err
+}
+
+func (n *Node) cleaningStage(stage string) {
+	if n.cfg.cleanStage != nil {
+		n.cfg.cleanStage(stage)
+	}
 }
 
 // delay is how long a write waits before the node takes it: nothing while

@@ -29,13 +29,17 @@ type running struct {
 
 // runClean starts a single node in dir with a disk budget, 32 KiB
 // segments and a checkpoint every 16 KiB of log or so.
-func runClean(t *testing.T, dir string, budget int64) running {
+func runClean(t *testing.T, dir string, budget int64, changes ...func(*Config)) running {
 	t.Helper()
 	cfg := core.DefaultConfig(1, []uint64{1})
 	cfg.WindowBytes, cfg.WindowMaxBytes = 4<<10, 8<<10
 	cfg.UnappliedBytes = 1 << 20
 	cfg.CheckpointBytes, cfg.CheckpointRatio = 16<<10, 2
-	n, err := New(Config{Core: cfg, DataDir: dir, Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, DiskBudget: budget, Logf: t.Logf})
+	ncfg := Config{Core: cfg, DataDir: dir, Tick: 50 * time.Millisecond, SegmentBytes: 32 << 10, DiskBudget: budget, Logf: t.Logf}
+	for _, change := range changes {
+		change(&ncfg)
+	}
+	n, err := New(ncfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +56,11 @@ func runClean(t *testing.T, dir string, budget int64) running {
 		cancel()
 		return <-ran
 	})}
-	t.Cleanup(func() { _ = r.stop() })
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	return r
 }
 
@@ -178,8 +186,9 @@ func TestCleaningCycles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("round %d: index %d B, window %d B, map %d B, disk %d B, cleaned %d B",
-				round, m.IndexBytes, m.WindowBytes, m.MapBytes, m.DiskBytes, m.CleanedBytes)
+			t.Logf("round %d: index %d B, window %d B, map %d B, disk %d B, cleaned %d B, %.2f cleaning bytes per acknowledged Put",
+				round, m.IndexBytes, m.WindowBytes, m.MapBytes, m.DiskBytes, m.CleanedBytes,
+				float64(m.CleanedBytes)/float64(1+len(cold)+round*len(hot)))
 			if m.DiskBytes > budget {
 				t.Fatalf("round %d: the log's files take %d bytes, past the budget", round, m.DiskBytes)
 			}

@@ -6,15 +6,17 @@ import (
 	"errors"
 	"flag"
 	"testing"
+	"testing/synctest"
 
 	"github.com/djosh34/tigerstore/internal/planted"
 )
 
 var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted switches on")
 
-// TestPlanted catches B13 with the slow watcher's own test and B26 with
-// the fetch test, each of which must fail with its bug on. Other bugs
-// belong to other packages.
+// TestPlanted catches B13 with the slow watcher's own test, B26 with the
+// fetch test, and B29 and B30 with seed 1 of the concurrent cleaner
+// scenario, each of which must fail with its bug on. Other bugs belong to
+// other packages.
 func TestPlanted(t *testing.T) {
 	cases := map[string]struct {
 		run func(*testing.T) error
@@ -23,6 +25,8 @@ func TestPlanted(t *testing.T) {
 	}{
 		"B13": {slowWatcherIsCut, errSlowWatcher},
 		"B26": {followerRetriesFetch, errFollowerStopped},
+		"B29": {cleanSeed1, errLostValue},
+		"B30": {cleanSeed1, errLostValue},
 	}
 	c, ok := cases[*plantedBug]
 	if !ok {
@@ -39,4 +43,10 @@ func TestPlanted(t *testing.T) {
 		t.Fatalf("%s: the scenario failed before it could catch anything: %v", bug, err)
 	}
 	t.Logf("%s (%s) caught: %v", bug, planted.Bugs[bug], err)
+}
+
+func cleanSeed1(t *testing.T) error {
+	var err error
+	synctest.Test(t, func(t *testing.T) { err = concurrentCleaning(t, 1) })
+	return err
 }

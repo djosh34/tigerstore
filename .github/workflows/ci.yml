@@ -137,6 +137,30 @@ jobs:
           test "$(wc -l < "$RUNNER_TEMP/a.txt")" -eq 400
           diff "$RUNNER_TEMP/a.txt" "$RUNNER_TEMP/b.txt"
 
+  # Membership changes share the simulator's KV traffic and faults. Run
+  # fixed and fresh seeds, then compare a second process's trace hashes.
+  membership:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Check membership and replay its traces
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for first in 1 $((1000000 + RUN_ID % 1000000000)); do
+            go test -v -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 | tee "$RUNNER_TEMP/a.log"
+            GOMAXPROCS=1 go test -v -count=1 -timeout=8m ./internal/sim -run '^TestMembershipFaults$' -args -sim.seed="$first" -sim.seeds=64 | tee "$RUNNER_TEMP/b.log"
+            grep ' trace ' "$RUNNER_TEMP/a.log" > "$RUNNER_TEMP/a.traces"
+            grep ' trace ' "$RUNNER_TEMP/b.log" > "$RUNNER_TEMP/b.traces"
+            test "$(wc -l < "$RUNNER_TEMP/a.traces")" -eq 64
+            diff "$RUNNER_TEMP/a.traces" "$RUNNER_TEMP/b.traces"
+          done
+
   # Starts a 3-node cluster and runs etcdctl v3.7.2 against it over TLS
   # with client certificates.
   smoke:
@@ -450,13 +474,21 @@ jobs:
   rolling-upgrade:
     uses: ./.github/workflows/rolling-upgrade.yml
 
+  # The simulator's recovery check after cleaning runs on every PR. Main,
+  # nightly and manual runs also run the memory-limited proof against etcd,
+  # the max-objects runs and the cache measurement (docs/testing.md).
+  past-ram:
+    uses: ./.github/workflows/past-ram.yml
+    with:
+      capacity: ${{ github.event_name != 'pull_request' }}
+
   # The required check. It runs even when a job it needs failed or was
   # skipped, and passes only if every one of them succeeded. On a pull
   # request the jobs of main and the nightly run are skipped by their own
   # condition; no job here needs another, so nothing else skips them.
   ci:
     if: always()
-    needs: [lint, build, test, stress, determinism-lint, sim, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade]
+    needs: [lint, build, test, stress, determinism-lint, sim, membership, smoke, apiserver, difftest, difffuzz, chaos, chaos-env, fuzz, coverage, race-sim, chaos-race, rolling-upgrade, past-ram]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:

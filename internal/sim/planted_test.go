@@ -30,6 +30,7 @@ var plantedBug = flag.String("planted", "", "name of the planted bug TestPlanted
 // cannot check the full runs (#112). Each cfg also runs in the plain
 // tests (TestSeeds, TestStalledLeaderIsReplaced), where it must pass.
 type plantedCase struct {
+	first   uint64 // zero starts at seed 1
 	seeds   int
 	cfg     func(seed uint64) Config
 	want    string
@@ -104,6 +105,10 @@ var plantedCases = map[string]plantedCase{
 	"B24": {seeds: 16, cfg: DefaultConfig, want: badValue},
 	"B25": {seeds: 64, cfg: DefaultConfig, want: badState + `|` + badWatch},
 	"B27": {seeds: 2048, cfg: slowFetchConfig, want: refused},
+	// Seed 1 updates the URLs only after healing and catches B28 there;
+	// the case wants a catch during faults.
+	"B28": {first: 2, seeds: 16, cfg: membershipConfig, want: `membership: stage 1 acknowledged.*during faults`},
+	"B31": {seeds: 16, cfg: cacheConfig, want: badValue + `|` + badState},
 }
 
 // plantedElsewhere are the bugs in code the simulator does not run. Each
@@ -113,6 +118,8 @@ var plantedElsewhere = map[string]string{
 	"B13": "internal/node",
 	"B14": "internal/peer",
 	"B26": "internal/node",
+	"B29": "internal/node",
+	"B30": "internal/node",
 }
 
 // TestPlantedInventory requires a case for every planted bug.
@@ -192,7 +199,11 @@ func TestPlanted(t *testing.T) {
 	want := regexp.MustCompile(c.want)
 	planted.Active = name
 	t.Cleanup(func() { planted.Active = "" })
-	for seed := uint64(1); seed <= uint64(c.seeds); seed++ {
+	first := c.first
+	if first == 0 {
+		first = 1
+	}
+	for seed := first; seed < first+uint64(c.seeds); seed++ {
 		caught := false
 		if !t.Run(strconv.FormatUint(seed, 10), func(t *testing.T) {
 			cryptotest.SetGlobalRandom(t, seed)

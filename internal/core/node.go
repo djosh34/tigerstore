@@ -537,6 +537,10 @@ type Node struct {
 	// or -1 once an alarm change of it applied.
 	noSpaceAt int64
 
+	// removeAt is the shutdown tick after applying our own removal. Raft
+	// keeps running until then so the leader can send the commit update.
+	removeAt int64
+
 	out Effects
 	err error
 }
@@ -764,7 +768,14 @@ func (n *Node) Tick() {
 		return
 	}
 	n.now++
+	if n.removeAt != 0 && n.now >= n.removeAt {
+		n.fail(ErrRemoved)
+		return
+	}
 	n.rn.Tick()
+	if n.removeAt != 0 {
+		return
+	}
 	n.expire()
 	// A lone voter has no one to lead in its place, so stopping would only
 	// turn a slow disk into an outage; it waits for its disk instead. It
@@ -814,6 +825,9 @@ func (n *Node) retryReads(now bool) {
 func (n *Node) Step(m *raftpb.Message) error {
 	if n.err != nil {
 		return n.err
+	}
+	if n.removeAt != 0 && m.GetType() == raftpb.MsgProp {
+		return ErrRemoved
 	}
 	if m.GetType() == raftpb.MsgProp && len(m.Entries) == 1 && m.Entries[0].GetType() == raftpb.EntryConfChange {
 		n.confMessages = append(n.confMessages, m)
@@ -868,7 +882,7 @@ func (n *Node) SubmitAll(rs []Request) {
 
 // submit takes a request; p is its zero bookkeeping record.
 func (n *Node) submit(r Request, p *pending) {
-	if n.err != nil {
+	if n.err != nil || n.removeAt != 0 {
 		n.reply(r.ID, rpctypes.ErrGRPCStopped)
 		return
 	}
@@ -1414,6 +1428,13 @@ func (n *Node) deliver(msgs []*raftpb.Message) {
 			n.send(m)
 			continue
 		}
+		if n.removeAt != 0 && m.GetType() == raftpb.MsgAppResp {
+			// The followers can commit our removal before our own append
+			// finishes. Raft no longer tracks our replication progress,
+			// so this late self-ack has no recipient. Storage responses
+			// still have to reach Raft to mark the entries stable.
+			continue
+		}
 		if err := n.rn.Step(m); err != nil {
 			n.fail(fmt.Errorf("core: step local %s: %w", m.GetType(), err))
 			return
@@ -1465,7 +1486,7 @@ func (n *Node) Process() (Effects, error) {
 			n.fitCache()
 		}
 	}
-	if n.err != nil {
+	if n.err != nil || n.removeAt != 0 {
 		n.stop()
 	}
 	out := n.out

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -230,10 +231,11 @@ var errFetch = errors.New("sim: the snapshot's source cannot be reached")
 // stream of a run crashes partway through it, and the first stream that
 // arrives whole, and one in four after it, arrives damaged.
 func (s *Sim) install(n *node, in *core.Install) error {
-	if in.From == 0 || in.From > uint64(len(s.nodes)) {
+	i := slices.IndexFunc(s.nodes, func(n *node) bool { return n.id == in.From })
+	if i < 0 {
 		return errFetch
 	}
-	src := s.nodes[in.From-1]
+	src := s.nodes[i]
 	if !src.up || src.pausedUntil > s.now || !s.links[src.idx][n.idx].up || !s.links[n.idx][src.idx].up {
 		return errFetch
 	}
