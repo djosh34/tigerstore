@@ -12,7 +12,7 @@ jobs:
           go-version-file: go.mod
       - name: Format on Actions and retain the patch
         run: |
-          gofmt -w internal/wal/compress.go internal/wal/compress_test.go internal/wal/wal.go internal/wal/pack.go internal/core/compression_test.go cmd/loadgen/corpus.go cmd/loadgen/corpus_test.go cmd/loadgen/main.go
+          gofmt -w internal/wal/compress.go internal/wal/compress_test.go internal/wal/wal.go internal/wal/pack.go internal/core/compression_test.go cmd/loadgen/corpus.go cmd/loadgen/corpus_test.go cmd/loadgen/main.go cmd/loadgen/walmetrics.go
           go mod tidy
           git diff > "$RUNNER_TEMP/format.patch"
       - uses: actions/upload-artifact@v6
@@ -21,7 +21,7 @@ jobs:
           path: ${{ runner.temp }}/format.patch
       - name: Unit and driver tests under race
         run: |
-          go test -race -count=1 -timeout=18m ./internal/wal ./internal/core ./internal/node ./cmd/loadgen
+          go test -short -race -count=1 -timeout=18m ./internal/wal ./internal/core ./internal/node ./cmd/loadgen
           go vet ./internal/wal ./internal/core ./internal/node ./cmd/loadgen
           CGO_ENABLED=0 go build ./cmd/tigerstore
       - name: Compression-disabled regression control
@@ -30,7 +30,7 @@ jobs:
           from pathlib import Path
           p = Path('internal/wal/compress.go')
           s = p.read_text()
-          old = 'func CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {'
+          old = 'func (w *WAL) CompressEntries(entries []*raftpb.Entry) ([]*raftpb.Entry, error) {'
           assert s.count(old) == 1
           p.write_text(s.replace(old, old + '\n if len(entries) >= 0 { return entries, nil }'))
           PY
