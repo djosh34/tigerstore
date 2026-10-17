@@ -289,6 +289,13 @@ func TestFetchHardCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The fetch must not fail first: a leader that cuts a newer
+		// checkpoint during it removes the one it serves (#239).
+		for id := uint64(1); id <= 2; id++ {
+			if err := checkpointSettled(c.nodes[id]); err != nil {
+				t.Fatalf("node %d: %v", id, err)
+			}
+		}
 		// Node 3 cannot create files in its log's directory once it runs,
 		// so the install cannot write the checkpoint: that stops it.
 		n, err := New(c.config(3))
@@ -314,4 +321,26 @@ func TestFetchHardCases(t *testing.T) {
 			t.Fatal("node 3 kept running after its disk failed")
 		}
 	})
+}
+
+// checkpointSettled waits up to 10 s until n's newest durable checkpoint
+// stayed the same for a second.
+func checkpointSettled(n *Node) error {
+	newest := func() uint64 {
+		n.log.mu.Lock()
+		defer n.log.mu.Unlock()
+		if len(n.log.ckpts) == 0 {
+			return 0
+		}
+		return n.log.ckpts[len(n.log.ckpts)-1].Index
+	}
+	last, since := newest(), time.Now()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if c := newest(); c != last {
+			last, since = c, time.Now()
+		} else if c > 0 && time.Since(since) >= time.Second {
+			return nil
+		}
+	}
+	return fmt.Errorf("its newest checkpoint did not settle, at %d", last)
 }

@@ -8,14 +8,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// membershipWork serializes changes, but not KV traffic or faults. A lost
-// reply is resolved by a linearizable member list before another attempt.
-// The oracle uses the requested URLs and learner state, not the core's
-// state hash: a mistake shared by every replica must still fail.
+// membershipWork serializes changes, but not KV traffic or faults. The
+// oracle uses the requested URLs and learner state, not the core's state
+// hash: a mistake shared by every replica must still fail.
 type membershipWork struct {
-	stage      int
-	id         uint64
-	busy, list bool
+	stage int
+	id    uint64
+	list  bool
+	// removedAt is when the removal of the fourth member completed.
+	removedAt int64
 }
 
 const (
@@ -23,97 +24,117 @@ const (
 	updatedMemberURL = "https://updated-member:2380"
 )
 
+// changeMembership adds the fourth member as a learner, moves it to
+// another URL, promotes it and removes it, one change after the other,
+// each through the leader as a client would, until all four completed or
+// the clients stop. A lost reply is resolved by a linearizable member list
+// before another attempt.
 func (s *Sim) changeMembership() {
 	w := &s.membership
-	if w.stage == 4 || s.now >= s.stopAt {
-		return
-	}
-	if w.busy {
-		return
-	}
-	i := s.leaderIdx()
-	if i < 0 {
-		s.push(&event{at: s.now + 100*Millisecond, kind: evMembership})
-		return
-	}
-	n := s.nodes[i]
-	var req proto.Message
-	if w.list {
-		req = &pb.MemberListRequest{Linearizable: true}
-	} else {
-		switch w.stage {
-		case 0:
-			req = &pb.MemberAddRequest{PeerURLs: []string{memberURL}, IsLearner: true}
-		case 1:
-			req = &pb.MemberUpdateRequest{ID: w.id, PeerURLs: []string{updatedMemberURL}}
-		case 2:
-			req = &pb.MemberPromoteRequest{ID: w.id}
-		case 3:
-			req = &pb.MemberRemoveRequest{ID: w.id}
+	for {
+		s.mu.Lock()
+		if w.stage == 4 || s.now() >= s.stopAt {
+			s.mu.Unlock()
+			return
+		}
+		i := s.leaderIdx()
+		if i < 0 {
+			s.mu.Unlock()
+			if !s.sleep(100 * Millisecond) {
+				return
+			}
+			continue
+		}
+		var req proto.Message
+		if w.list {
+			req = &pb.MemberListRequest{Linearizable: true}
+		} else {
+			switch w.stage {
+			case 0:
+				req = &pb.MemberAddRequest{PeerURLs: []string{memberURL}, IsLearner: true}
+			case 1:
+				req = &pb.MemberUpdateRequest{ID: w.id, PeerURLs: []string{updatedMemberURL}}
+			case 2:
+				req = &pb.MemberPromoteRequest{ID: w.id}
+			case 3:
+				req = &pb.MemberRemoveRequest{ID: w.id}
+			}
+		}
+		s.stats.MembershipAttempts++
+		// An add has no client-chosen ID. Wait for its core reply
+		// (including the core's own timeout) or a lost connection before
+		// retrying. A shorter caller deadline could leave an unsubmitted
+		// add queued; after a later URL update it could legitimately add
+		// a fifth member.
+		timeout := s.cfg.ClientTimeout
+		if w.stage == 0 && !w.list {
+			timeout = 0
+		}
+		s.mu.Unlock()
+		resp, err := s.call(s.nodes[i], req, timeout)
+		if !s.memberReply(req, resp, err) || !s.sleep(500*Millisecond) {
+			return
 		}
 	}
-	w.busy = true
-	s.stats.MembershipAttempts++
-	op := &clientOp{member: true, rec: &Record{Node: i, Call: s.now, req: req}}
-	// An add has no client-chosen ID. Wait for its core reply (including
-	// the core's own timeout) or a lost connection before retrying. A
-	// shorter caller deadline could leave an unsubmitted add queued;
-	// after a later URL update it could legitimately add a fifth member.
-	if w.stage != 0 || w.list {
-		s.push(&event{at: s.now + s.cfg.ClientTimeout, kind: evClientTimeout, op: op})
-	}
-	s.push(&event{at: s.now + s.clientLatency(), kind: evSubmit, node: i, gen: n.gen, op: op})
 }
 
-func (s *Sim) complete(op *clientOp, resp proto.Message, err error) {
-	if !op.member {
-		op.client.done(op, resp, err)
-		return
-	}
-	if op.done {
-		return
-	}
-	op.done = true
+// memberReply checks the reply to a membership call and moves on to the
+// next stage once it matches. It reports false once the run failed.
+func (s *Sim) memberReply(req, resp proto.Message, err error) bool {
+	s.mu.Lock()
 	w := &s.membership
-	w.busy = false
 	if err != nil {
+		s.tracef("membership: stage %d: %v", w.stage, err)
 		w.list = true
-	} else {
-		list, ok := resp.(interface{ GetMembers() []*pb.Member })
-		if !ok {
-			s.fail("membership: %T answered with %T", op.rec.req, resp)
-			return
-		}
-		ms := list.GetMembers()
-		match := w.matches(ms)
-		if !match && !w.list {
-			phase := "after healing"
-			if !s.healed {
-				phase = "during faults"
-			}
-			s.fail("membership: stage %d acknowledged %v but returned %v %s", w.stage, op.rec.req, ms, phase)
-			return
-		}
-		if match {
-			s.stats.MembershipChanges[w.stage]++
-			if !s.healed {
-				s.stats.MembershipFaults[w.stage]++
-			}
-			if w.stage == 0 {
-				w.id = ms[len(ms)-1].ID
-				n := s.nodes[3]
-				n.id, n.inactive = w.id, false
-				if err := s.start(n); err != nil {
-					s.fail("membership: start learner: %w", err)
-					return
-				}
-			}
-			w.stage++
-		}
-		w.list = false
+		s.mu.Unlock()
+		return true
 	}
-	s.mix(0x6d, uint64(w.stage), w.id)
-	s.push(&event{at: s.now + 500*Millisecond, kind: evMembership})
+	list, ok := resp.(interface{ GetMembers() []*pb.Member })
+	if !ok {
+		s.fail("membership: %T answered with %T", req, resp)
+		s.mu.Unlock()
+		return false
+	}
+	ms := list.GetMembers()
+	match := w.matches(ms)
+	if !match && !w.list {
+		phase := "after healing"
+		if !s.healed {
+			phase = "during faults"
+		}
+		s.fail("membership: stage %d acknowledged %v but returned %v %s", w.stage, req, ms, phase)
+		s.mu.Unlock()
+		return false
+	}
+	w.list = false
+	if !match {
+		s.mu.Unlock()
+		return true
+	}
+	s.stats.MembershipChanges[w.stage]++
+	if !s.healed {
+		s.stats.MembershipFaults[w.stage]++
+	}
+	s.tracef("membership: stage %d done", w.stage)
+	if w.stage == 3 {
+		w.removedAt = s.now()
+	}
+	w.stage++
+	if w.stage > 1 {
+		s.mu.Unlock()
+		return true
+	}
+	w.id = ms[len(ms)-1].ID
+	n := s.nodes[3]
+	n.id, n.inactive = w.id, false
+	s.mu.Unlock()
+	if err := s.start(n); err != nil {
+		s.mu.Lock()
+		s.fail("membership: start learner: %w", err)
+		s.mu.Unlock()
+		return false
+	}
+	return true
 }
 
 func (w *membershipWork) matches(ms []*pb.Member) bool {
@@ -125,7 +146,7 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 		return false
 	}
 	for i := range 3 {
-		if ms[i].ID != uint64(i+1) || ms[i].IsLearner || len(ms[i].PeerURLs) != 0 {
+		if ms[i].ID != uint64(i+1) || ms[i].IsLearner || !slices.Equal(ms[i].PeerURLs, []string{peerURL(i)}) {
 			return false
 		}
 	}
@@ -142,38 +163,26 @@ func (w *membershipWork) matches(ms []*pb.Member) bool {
 }
 
 // membershipConfig keeps the standard fault mechanisms, with more time
-// between faults so changes can commit before healing. Corruption is left
-// to the three-voter runs: a permanently fenced learner cannot catch up
-// and be promoted, so that workload would require disk replacement too.
+// between the faults that break connections, so that changes can commit
+// before healing: as etcd's, a node refuses a change unless it has been
+// connected to the other voters for 5 s. For the same reason healing
+// lasts 20 s: the first change after it can wait 10 s for that (seeds 14
+// and 58), and three more follow. Corruption is left to the
+// three-voter runs: a permanently fenced learner cannot catch up and be
+// promoted, so that workload would require disk replacement too.
 func membershipConfig(seed uint64) Config {
 	cfg := DefaultConfig(seed)
 	cfg.Membership = true
-	cfg.Duration = 40 * Second
+	cfg.Duration = 60 * Second
+	cfg.Heal = 20 * Second
 	cfg.NoLeases = true
 	cfg.Clients = 3
 	cfg.Faults.Corrupt, cfg.Faults.Rot = false, false
-	cfg.Faults.CrashEvery = 8 * Second
-	cfg.Faults.LinkEvery = 5 * Second
+	cfg.Faults.CrashEvery = 30 * Second
+	cfg.Faults.LinkEvery = 20 * Second
+	cfg.Faults.DiskErrorEvery = 30 * Second
+	cfg.Faults.HalfOpenEvery = 30 * Second
 	return cfg
-}
-
-// A real sender dials even when Raft has no messages, with a retry
-// backoff capped at one second. This matters for a removed learner:
-// learners never campaign, so waiting for a vote request is not enough
-// to deliver the peer's removed-member reply.
-func (s *Sim) memberConnect(n *node) {
-	for _, peer := range s.nodes {
-		if peer == n || !peer.up || peer.pausedUntil > s.now {
-			continue
-		}
-		out, back := &s.links[n.idx][peer.idx], &s.links[peer.idx][n.idx]
-		if !out.up || !back.up || out.halfOpenUntil > s.now || back.halfOpenUntil > s.now || out.stallUntil > s.now {
-			continue
-		}
-		if slices.Contains(peer.core.RemovedMembers(), n.id) {
-			s.push(&event{at: max(s.now+out.base+back.base, back.stallUntil), kind: evRemoved, node: n.idx, from: peer.idx, gen: back.epoch})
-		}
-	}
 }
 
 func (s *Sim) checkMembership() error {
@@ -181,7 +190,7 @@ func (s *Sim) checkMembership() error {
 		return fmt.Errorf("membership: completed %d of 4 changes", s.membership.stage)
 	}
 	for _, n := range s.live() {
-		if !s.membership.matches(n.core.Members()) || !slices.Contains(n.core.RemovedMembers(), s.membership.id) {
+		if c := n.proc.core; !s.membership.matches(c.Members()) || !slices.Contains(c.RemovedMembers(), s.membership.id) {
 			return fmt.Errorf("membership: node %d lost the final members or removal tombstone", n.id)
 		}
 	}

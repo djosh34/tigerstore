@@ -1,9 +1,12 @@
 package peer
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -271,5 +274,62 @@ func TestControlQueueIsCapped(t *testing.T) {
 	// Each drop is a send failure to the peer, as etcd counts them.
 	if got := testutil.ToFloat64(set.PeerSentFailures.WithLabelValues("2")); got != float64(dropped.Load()) {
 		t.Fatalf("etcd_network_peer_sent_failures_total is %g after %d drops", got, dropped.Load())
+	}
+}
+
+// TestFetchTellsRemoved is #249: a node the cluster removed that first
+// hears of it on a snapshot fetch must be told, as on a message, so that
+// it stops instead of starting again from its log.
+func TestFetchTellsRemoved(t *testing.T) {
+	ca, err := testcert.NewCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := map[uint64]tls.Certificate{}
+	for id := uint64(1); id <= 2; id++ {
+		c, _, _, err := ca.Issue("node", int64(id+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		certs[id] = c
+	}
+	addrs, lns := listeners(t, 1, 2)
+	a := start(t, 1, lns[1], addrs, certs[1], ca.Pool)
+	a.t.SetPeers(map[uint64]string{}, []uint64{2})
+	// Only the fetch dials: the message sender's dial waits until the
+	// end, so its own removed reply cannot stand in for the fetch's.
+	var removed atomic.Int64
+	var fetching atomic.Bool
+	parked := make(chan struct{})
+	var once sync.Once
+	b := startWith(t, 2, lns[2], addrs, certs[2], ca.Pool, func(c *Config) {
+		c.Removed = func() { removed.Add(1) }
+		c.Dial = func(ctx context.Context, addr string) (net.Conn, error) {
+			if !fetching.Load() {
+				once.Do(func() { close(parked) })
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		}
+	})
+	defer func() {
+		if err := a.t.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := b.t.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	<-parked
+	fetching.Store(true)
+	if r, err := b.t.Fetch(t.Context(), 1, 1, 1); !errors.Is(err, errRemoved) {
+		if err == nil {
+			err = r.Close()
+		}
+		t.Fatalf("a removed node's fetch returned %v, want errRemoved", err)
+	}
+	if removed.Load() == 0 {
+		t.Fatal("the fetch did not tell the node it was removed")
 	}
 }

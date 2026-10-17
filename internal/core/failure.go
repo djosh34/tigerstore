@@ -40,8 +40,8 @@ func FetchFailed(err error, sync func() error) error {
 	return fmt.Errorf("%w: %w", ErrFetch, err)
 }
 
-// Failure is what a driver does once its node failed. The real node and
-// the simulator both act on FailureOf, so they treat every error alike.
+// Failure is what a driver does once its node failed. The node driver acts
+// on FailureOf, so it treats every error alike.
 type Failure int
 
 const (

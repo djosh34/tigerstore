@@ -842,8 +842,8 @@ func (w *WAL) AppendValue(index uint64, off uint32, value []byte) {
 }
 
 // Flush writes what Append buffered without syncing it, at the end of
-// the records. The simulator uses it to put a crash between the write and
-// the fsync.
+// the records. The node driver writes a group with it and syncs it on
+// another goroutine.
 func (w *WAL) Flush() error {
 	if len(w.buf) == 0 {
 		return nil

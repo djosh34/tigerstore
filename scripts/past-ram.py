@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run only on Actions. Each member gets its own cgroup, including page cache."""
 import argparse
+import http.client
 import json
 import os
 from pathlib import Path
@@ -134,7 +135,7 @@ def main():
                 for i in range(3):
                     metrics(20100 + 10*i)
                 break
-            except (urllib.error.URLError, TimeoutError):
+            except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError):
                 if time.monotonic() > deadline or any(n.poll() is not None for n in nodes):
                     raise RuntimeError("cluster did not start")
                 time.sleep(1)
@@ -160,7 +161,9 @@ def main():
                               "exit": nodes[i].poll()}
                     try:
                         member["metrics"] = metrics(20100 + 10*i)
-                    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                    # A member can cut its answer short, as an etcd member
+                    # did with IncompleteRead (#242); the sample records it.
+                    except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError) as error:
                         member["metrics_error"] = str(error)
                     sample["nodes"].append(member)
                 if (out / "last-acknowledged.json").exists():

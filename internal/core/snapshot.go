@@ -391,8 +391,7 @@ type LogSink struct {
 		Unlock()
 	}
 	// Step, if set, runs after each item with its stage and the bytes of
-	// entries or values it appended: the real node syncs every few MiB
-	// there, and the simulator writes out and may crash.
+	// entries or values it appended: the node syncs every few MiB there.
 	Step func(stage string, bytes int) error
 	ckpt wal.File
 }
