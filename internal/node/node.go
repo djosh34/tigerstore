@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -90,8 +89,8 @@ type Config struct {
 	BeforeRead, BeforeSync func()
 	// snapshotSync, if set, replaces the syncBytes of a snapshot after
 	// which the log syncs what came; stage, if set, runs after each such
-	// sync and after the root of a snapshot install, and an error it
-	// returns breaks the stream there; and reloading, if set, runs when a
+	// sync and each item of a snapshot install, with its stage, and an
+	// error it returns breaks the stream there; and reloading, if set, runs when a
 	// run that ended for a reload opened the log again, before the core
 	// replays it. For tests.
 	snapshotSync int
@@ -887,11 +886,6 @@ type readDone struct {
 // and taking finished disk writes.
 const maxBacklog = 64
 
-// errReload ends a run whose snapshot could not be fetched. Raft cannot
-// take the snapshot back, so the node starts a new core from its log, as
-// a restart does, and Raft sends another snapshot.
-var errReload = errors.New("node: the snapshot fetch failed")
-
 // Run drives the node until ctx ends or the node fails. Messages for peers
 // go to t.
 func (n *Node) Run(ctx context.Context, t peer.Transport) error {
@@ -920,7 +914,7 @@ func (n *Node) Run(ctx context.Context, t peer.Transport) error {
 	}
 	for {
 		err := n.run(ctx, t)
-		if errors.Is(err, errReload) && ctx.Err() == nil {
+		if core.FailureOf(err) == core.Reload && ctx.Err() == nil {
 			n.logf("%v; starting again from the log", err)
 			if err = n.open(); err == nil {
 				continue
@@ -1008,7 +1002,7 @@ func (n *Node) commit(ctx context.Context, t peer.Transport) error {
 			}
 		case done := <-n.persisted:
 			if done.err != nil {
-				if errors.Is(done.err, errReload) {
+				if core.FailureOf(done.err) == core.Reload {
 					n.dropAll(waiters, streams)
 				}
 				return done.err
@@ -1526,21 +1520,21 @@ func (n *Node) afterSync(jobs []core.PersistJob) error {
 // install fetches a snapshot from its leader and writes it to the log.
 // A failed write stops the node. When the fetch fails, it syncs what the
 // stream wrote, as a crash after a sync could keep it, and returns
-// errReload: the core cannot drop the snapshot, a core started from the
-// log can.
+// core.ErrFetch: the core cannot drop the snapshot, a core started from
+// the log can.
 func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) error {
 	m, from := n.cfg.Metrics, peerLabel(in.From)
 	n.logf("fetching the snapshot at %d from %d", in.Index, in.From)
 	m.SnapshotApplyInProgress.Set(1)
 	m.SnapshotReceiveInflights.WithLabelValues(from).Inc()
 	start := time.Now()
-	sink := &logSink{n: n}
+	sink := &core.LogSink{WAL: n.log.w, Lock: &n.log.mu, Step: n.snapshotStep(n.log.w, cmp.Or(n.cfg.snapshotSync, syncBytes))}
 	r, err := t.Fetch(ctx, in.From, in.Applied+1, in.Index)
 	if err == nil {
 		err = core.ReceiveSnapshot(r, sink, n.log, in)
 		err = errors.Join(err, r.Close())
 	}
-	err = errors.Join(err, sink.close())
+	err = errors.Join(err, sink.Close())
 	m.SnapshotApplyInProgress.Set(0)
 	m.SnapshotReceiveInflights.WithLabelValues(from).Dec()
 	if err == nil {
@@ -1555,121 +1549,43 @@ func (n *Node) install(ctx context.Context, t peer.Transport, in *core.Install) 
 	case err == nil:
 		n.logf("installed the snapshot at %d from %d, checkpoint %d", in.Index, in.From, in.Checkpoint.Index)
 		return nil
-	case sink.err != nil || ctx.Err() != nil || planted.On("B26"):
+	case errors.Is(err, core.ErrDisk) || ctx.Err() != nil || planted.On("B26"):
 		return err
 	}
 	if serr := n.log.w.Sync(); serr != nil {
-		return errors.Join(err, serr)
+		return errors.Join(err, fmt.Errorf("%w: %w", core.ErrDisk, serr))
 	}
-	return fmt.Errorf("%w: %w", errReload, err)
-}
-
-// logSink writes a snapshot into the log, syncing every syncBytes. err is
-// its first failed disk operation.
-type logSink struct {
-	n       *Node
-	ckpt    wal.File
-	pending int
-	err     error
-}
-
-// disk notes err as a failed disk operation and returns it.
-func (s *logSink) disk(err error) error {
-	if s.err == nil {
-		s.err = err
-	}
-	return err
+	return fmt.Errorf("%w: %w", core.ErrFetch, err)
 }
 
 // syncBytes is how much of a snapshot the WAL buffers before a sync.
 const syncBytes = 16 << 20
 
-func (s *logSink) wrote(n int) error {
-	s.pending += n
-	if s.pending < cmp.Or(s.n.cfg.snapshotSync, syncBytes) {
-		return nil
+// snapshotStep is the Step of a snapshot sink: it syncs w every
+// syncEvery bytes of entries and values, and runs Config.stage, if set,
+// after each such sync and each item.
+func (n *Node) snapshotStep(w *wal.WAL, syncEvery int) func(string, int) error {
+	pending := 0
+	return func(stage string, bytes int) error {
+		if pending += bytes; pending >= syncEvery {
+			pending = 0
+			if err := syncTimed(w, n.cfg.Metrics.SnapDBFsync); err != nil {
+				return fmt.Errorf("%w: %w", core.ErrDisk, err)
+			}
+			if err := n.staged("sync"); err != nil {
+				return err
+			}
+		}
+		return n.staged(stage)
 	}
-	s.pending = 0
-	if err := s.disk(s.sync()); err != nil {
-		return err
-	}
-	return s.staged("sync")
 }
 
 // staged runs Config.stage, if set.
-func (s *logSink) staged(stage string) error {
-	if s.n.cfg.stage != nil {
-		return s.n.cfg.stage(stage)
+func (n *Node) staged(stage string) error {
+	if n.cfg.stage != nil {
+		return n.cfg.stage(stage)
 	}
 	return nil
-}
-
-// sync syncs the log and times it as an fsync of the snapshot.
-func (s *logSink) sync() error {
-	start := time.Now()
-	err := s.n.log.w.Sync()
-	s.n.cfg.Metrics.SnapDBFsync.Observe(time.Since(start).Seconds())
-	return err
-}
-
-func (s *logSink) Entries(ents []*raftpb.Entry) error {
-	s.n.log.mu.Lock()
-	s.n.log.w.Append(nil, ents)
-	s.n.log.mu.Unlock()
-	size := 0
-	for _, e := range ents {
-		size += len(e.Data)
-	}
-	return s.wrote(size)
-}
-
-func (s *logSink) Value(index uint64, off uint32, value []byte) error {
-	s.n.log.mu.Lock()
-	s.n.log.w.AppendValue(index, off, value)
-	s.n.log.mu.Unlock()
-	return s.wrote(len(value))
-}
-
-func (s *logSink) CheckpointChunk(index uint64, data []byte) error {
-	if s.ckpt == nil {
-		f, err := s.n.log.w.CreateCheckpoint(index)
-		if errors.Is(err, fs.ErrExist) {
-			// An install queued before this one wrote the checkpoint, and
-			// this one asked from an older applied index. A core started
-			// from the log asks from after it.
-			return err
-		}
-		if err != nil {
-			return s.disk(err)
-		}
-		s.ckpt = f
-	}
-	_, err := s.ckpt.Write(data)
-	return s.disk(err)
-}
-
-func (s *logSink) CheckpointDone(uint64) error {
-	f := s.ckpt
-	s.ckpt = nil
-	if f == nil {
-		return errors.New("node: a snapshot's checkpoint has no data")
-	}
-	return s.disk(errors.Join(f.Sync(), f.Close(), s.n.log.w.SyncDir()))
-}
-
-func (s *logSink) Root(r wal.Root) error {
-	s.n.log.mu.Lock()
-	s.n.log.w.AppendRoot(r)
-	s.n.log.mu.Unlock()
-	return s.staged("root")
-}
-
-// close closes a checkpoint file a failed fetch left open.
-func (s *logSink) close() error {
-	if s.ckpt == nil {
-		return nil
-	}
-	return s.disk(s.ckpt.Close())
 }
 
 // checkpointPace is how often the committer copies the next part of a

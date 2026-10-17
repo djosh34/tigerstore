@@ -259,7 +259,8 @@ func (s *Sim) install(n *node, in *core.Install) error {
 		s.stats.SnapshotFlips++
 	}
 	s.mix(0x5a, uint64(n.idx), in.Index, uint64(len(data)))
-	err = core.ReceiveSnapshot(bytes.NewReader(data), &simSink{s: s, n: n}, n.log, in)
+	sink := &core.LogSink{WAL: n.log, Step: s.snapshotStep(n)}
+	err = errors.Join(core.ReceiveSnapshot(bytes.NewReader(data), sink, n.log, in), sink.Close())
 	if err == nil && in.Checkpoint.Index > 0 {
 		s.stats.CheckpointSnapshots++
 		if in.Checkpoint.Index < newest {
@@ -269,67 +270,22 @@ func (s *Sim) install(n *node, in *core.Install) error {
 	return err
 }
 
-// simSink writes a snapshot into a node's log on its simulated disk.
-type simSink struct {
-	s    *Sim
-	n    *node
-	ckpt wal.File
-}
-
-func (k *simSink) Entries(ents []*raftpb.Entry) error {
-	k.n.log.Append(nil, ents)
-	return k.step()
-}
-
-func (k *simSink) Value(index uint64, off uint32, value []byte) error {
-	k.n.log.AppendValue(index, off, value)
-	return k.step()
-}
-
-func (k *simSink) CheckpointChunk(index uint64, data []byte) error {
-	if k.ckpt == nil {
-		f, err := k.n.log.CreateCheckpoint(index)
-		if err != nil {
-			return err
-		}
-		k.ckpt = f
-	}
-	if _, err := k.ckpt.Write(data); err != nil {
-		return err
-	}
-	return k.step()
-}
-
-func (k *simSink) CheckpointDone(uint64) error {
-	if k.ckpt == nil {
-		return errors.New("sim: a snapshot's checkpoint has no data")
-	}
-	f := k.ckpt
-	k.ckpt = nil
-	if err := errors.Join(f.Sync(), f.Close(), k.n.log.SyncDir()); err != nil {
-		return err
-	}
-	return k.step()
-}
-
-func (k *simSink) Root(r wal.Root) error {
-	k.n.log.AppendRoot(r)
-	return k.step()
-}
-
 // errStepCrash ends an install that a step crash stopped.
 var errStepCrash = errors.New("sim: crashed during the install")
 
-// step writes what the log buffered, so that a crash keeps part of it,
-// and may crash there.
-func (k *simSink) step() error {
-	if err := k.n.log.Flush(); err != nil {
-		return err
+// snapshotStep is the Step of a node's snapshot sink: it writes what the
+// log buffered after each item, so that a crash keeps part of it, and may
+// crash there.
+func (s *Sim) snapshotStep(n *node) func(string, int) error {
+	return func(string, int) error {
+		if err := n.log.Flush(); err != nil {
+			return fmt.Errorf("%w: %w", core.ErrDisk, err)
+		}
+		if s.stepCrash(n) {
+			return errStepCrash
+		}
+		return nil
 	}
-	if k.s.stepCrash(k.n) {
-		return errStepCrash
-	}
-	return nil
 }
 
 // stepCrash crashes n, once the run armed it, at one of the steps of a
@@ -353,8 +309,11 @@ func (s *Sim) installFailed(n *node, err error) {
 	switch {
 	case errors.Is(err, errStepCrash):
 		return
-	case errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace):
+	case errors.Is(err, core.ErrDisk):
 		s.diskFailed(n, err)
+		return
+	case errors.Is(err, simfs.ErrIO) || errors.Is(err, simfs.ErrNoSpace):
+		s.fail("node %d: a failed write of its own disk is not core.ErrDisk: %w", n.id, err)
 		return
 	}
 	s.stats.InstallFailures++

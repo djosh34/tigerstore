@@ -963,7 +963,7 @@ func (s *Sim) start(n *node) error {
 		cfg.MemoryBytes = s.cfg.MemoryBytes
 		c, err = core.New(cfg, rec, w)
 	}
-	if s.cfg.Membership && errors.Is(err, core.ErrRemoved) {
+	if s.cfg.Membership && core.FailureOf(err) == core.Leave {
 		n.inactive = true
 		if w != nil {
 			return w.Close()
@@ -976,7 +976,7 @@ func (s *Sim) start(n *node) error {
 		if err == nil {
 			return fmt.Errorf("node %d started on a damaged disk without noticing", n.id)
 		}
-		if !errors.Is(err, wal.ErrCorrupt) {
+		if core.FailureOf(err) != core.Fence {
 			return fmt.Errorf("node %d started on a damaged disk: %w", n.id, err)
 		}
 		n.fenced = true
@@ -1064,7 +1064,7 @@ func (s *Sim) process(n *node) {
 		s.stats.StallHandOffs++
 		s.stallHandOffs = append(s.stallHandOffs, s.now)
 	}
-	if errors.Is(err, core.ErrRemoved) && s.cfg.Membership {
+	if s.cfg.Membership && core.FailureOf(err) == core.Leave {
 		n.inactive = true
 		s.down(n)
 		return

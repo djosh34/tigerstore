@@ -307,7 +307,7 @@ func TestFetchHardCases(t *testing.T) {
 		go func() { ran <- n.Run(ctx, memPeer{net: c.net, id: 3}) }()
 		select {
 		case err := <-ran:
-			if err == nil || errors.Is(err, errReload) || !errors.Is(err, os.ErrPermission) {
+			if err == nil || errors.Is(err, core.ErrFetch) || !errors.Is(err, os.ErrPermission) {
 				t.Fatalf("node 3 stopped with %v, want the failed write", err)
 			}
 		case <-time.After(30 * time.Second):

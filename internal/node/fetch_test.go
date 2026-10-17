@@ -411,7 +411,7 @@ func TestQueuedInstalls(t *testing.T) {
 		t.Fatalf("first install: %v, checkpoint %+v, want %+v", err, first.Checkpoint, ckpt)
 	}
 	second := &core.Install{From: 1, Index: ckpt.Index + 1, Term: next.GetTerm(), Applied: applied}
-	if err := n3.install(t.Context(), p, second); !errors.Is(err, errReload) {
+	if err := n3.install(t.Context(), p, second); !errors.Is(err, core.ErrFetch) {
 		t.Fatalf("second install: %v, want a reload", err)
 	}
 }
