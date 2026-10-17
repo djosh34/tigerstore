@@ -113,15 +113,16 @@ def run(root, result):
     prefix = f"/registry/configmaps/{NAMESPACE}/"
     expected_keys = {prefix + name for name in expected}
     endpoints = os.environ["ETCDCTL_ENDPOINTS"].split(",")
-    before = {}
+    # The counts and keys go into the result before each check, so a
+    # failed run still records them.
+    before = result["storage_counts_before"] = {}
     for endpoint in endpoints:
         actual = keys(endpoint, prefix)
+        before[endpoint] = len(actual)
         require(expected_keys.issubset(actual), f"{endpoint}: missing ConfigMap keys")
         # Kubernetes may also create kube-root-ca.crt in the namespace.
         require(actual - expected_keys <= {prefix + "kube-root-ca.crt"},
                 f"{endpoint}: unexpected ConfigMap keys")
-        before[endpoint] = len(actual)
-    result["storage_counts_before"] = before
     start = time.monotonic()
     request("DELETE", base, {}, statuses=(200, 202))
     while True:
@@ -135,8 +136,9 @@ def run(root, result):
     # A successful empty LIST is required. A 404 alone does not prove the
     # storage is empty, and no per-object DELETE or forced finalization runs.
     _, data = request("GET", base + "/configmaps")
-    require(data.get("items") == [], "API returned ConfigMaps after namespace deletion")
-    after = {}
+    result["api_count_after"] = len(data["items"])
+    require(data["items"] == [], "API returned ConfigMaps after namespace deletion")
+    after = result["remaining_registry_keys"] = {}
     for endpoint in endpoints:
         # Check every current registry key belonging to this namespace,
         # including defaults, Events and the namespace object itself.
@@ -146,8 +148,6 @@ def run(root, result):
                            or key == f"/registry/namespaces/{NAMESPACE}")
         after[endpoint] = remaining
         require(not remaining, f"{endpoint}: remaining namespace keys: {remaining[:20]}")
-    result["remaining_registry_keys"] = after
-    result["api_count_after"] = 0
 
 
 if __name__ == "__main__":

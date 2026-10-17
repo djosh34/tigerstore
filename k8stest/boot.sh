@@ -75,7 +75,6 @@ for i in 1 2 3; do
     --peer-cert-file "$root/certs/node$i.pem" --peer-key-file "$root/certs/node$i-key.pem" \
     --peer-trusted-ca-file "$root/certs/ca.pem" --peer-client-cert-auth \
     --quota-backend-bytes 8589934592 "${extra[@]}" >"$root/results/n$i.log" 2>&1 &
-  echo "$!" >> "$root/pids"
 done
 export ETCDCTL_ENDPOINTS="https://$gateway:20010,https://$gateway:20020,https://$gateway:20030"
 export ETCDCTL_CACERT="$root/certs/ca.pem" ETCDCTL_CERT="$root/certs/client.pem" ETCDCTL_KEY="$root/certs/client-key.pem"
